@@ -1,0 +1,246 @@
+================================================================================
+ SISTEMA DE GESTAO DA CSSO / Sisa - UFVJM
+ Modulo Adicional Ocupacional - versao 1.1
+================================================================================
+
+ O QUE E
+ -------
+ Substitui, para o modulo Adicional Ocupacional, os tres lugares onde o mesmo
+ processo vivia e divergia: o quadro do Trello, a planilha de 25 colunas e o
+ .docx de mala direta.
+
+ O PROCESSO OFICIAL CONTINUA SENDO O SEI. Este sistema e apoio da CSSO.
+
+
+ COMO USAR NO DIA A DIA
+ ----------------------
+ 1. Duplo clique em INICIAR.bat. Na primeira vez ele instala o necessario
+    (precisa de internet uma unica vez) e cria o arquivo .env.
+ 2. O navegador abre sozinho em http://127.0.0.1:8765/
+ 3. Na primeira vez, a tela de PRIMEIRO ACESSO cria a conta inicial com o perfil
+    de superintendente. Nao existe usuario "admin" com senha "admin".
+    A senha tem no minimo 6 caracteres, misturando letras e numeros.
+ 4. Para encerrar: feche a janela preta ou rode PARAR.bat.
+
+ BACKUP-AGORA.bat   gera um backup cifrado do banco.
+ EXPORTAR-TUDO.bat  gera um .zip com planilha, CSVs, banco, documentos e anexos.
+ CONSTRUIR-FRONT.bat so em maquina de desenvolvimento, depois de mexer em
+                    frontend\ (o app da tela /app). Quem so usa nao precisa.
+ ABRIR-TESTE-NA-REDE.bat  abre a porta 8766 do AMBIENTE DE TESTE (dados
+                    inventados) para a faixa da rede local, para colegas
+                    experimentarem as telas. Roda como administrador. NAO
+                    toca no sistema de verdade (porta 8765).
+ SERVIR-TESTE-NA-REDE.bat  sobe o ambiente de teste e deixa no ar, sem abrir
+                    navegador. Serve para a Tarefa Agendada do logon; na mao,
+                    o INICIAR-TESTE.bat continua sendo o certo.
+
+ O AMBIENTE DE TESTE SOBE SOZINHO A CADA LOGON, e quem faz isso e um atalho
+ na pasta Inicializar da sua conta:
+
+   %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\
+   CSSO - ambiente de teste na rede.lnk    ->  SERVIR-TESTE-NA-REDE.bat
+
+ Escolhemos a pasta Inicializar, e nao uma Tarefa Agendada, por um motivo
+ pratico: nesta maquina o Windows exige elevacao para criar tarefa de logon, e
+ a pasta Inicializar faz o mesmo sem administrador nenhum. A janela abre
+ minimizada.
+
+ PARA DESLIGAR: apague esse atalho (tecla Windows + R, digite shell:startup,
+ Enter - a pasta abre; apague o arquivo).
+
+ SE PREFERIR TAREFA AGENDADA, ha o AGENDAR-TESTE-NA-REDE.bat: clique com o
+ botao direito e "Executar como administrador". Tendo as duas, o ambiente
+ tentaria subir duas vezes e a segunda diria que a porta ja esta em uso -
+ escolha uma.
+
+ Na tela, a tecla ? abre a lista de atalhos de teclado (/ vai ao filtro da
+ lista, n abre o "novo" da tela, Esc limpa a busca).
+
+
+ NO CELULAR E NO TABLET
+ ----------------------
+ Duas coisas se fazem em pe, longe da mesa: entregar EPI no balcao e lancar a
+ presenca de uma turma. Para elas ha duas portas de bolso, no mesmo endereco e
+ com o mesmo login:
+
+ /celular   a tela de bolso: balcao de EPI e chamada. Abre sem rede (diz "sem
+            rede" com as proprias palavras) e pode ir para a tela inicial do
+            aparelho ("adicionar a tela inicial").
+ /app       o app compilado (React), com as mesmas duas telas mais a ficha de
+            EPI e a fila de pendencias. E a versao "produto" para uma decisao
+            futura sobre replicar o sistema em outras universidades.
+
+ As duas usam a mesma regra e a mesma trilha do sistema completo: o que se
+ grava por elas e o que se gravaria pela mesa. Nada de dado pessoal fica
+ guardado no aparelho.
+
+
+ O QUE TEM EM CADA TELA
+ ----------------------
+ Painel       o que precisa de voce hoje, indicadores do exercicio.
+ Kanban       as 5 colunas, arrastando para mover. A coluna e visao;
+              o estado tecnico e a verdade.
+ Processos    busca (Ctrl+K), 8 visoes salvas, agrupamento e acoes em lote.
+ Laudos       1 laudo sustenta N pareceres; marcar como superado poe todos os
+              pareceres derivados em reavaliacao.
+ Adicionais   o direito concedido: propor, conceder, suspender, cessar.
+              No maximo um adicional vigente por servidor.
+ Servidores   cadastro pelo SIAPE (nunca pelo nome).
+ Relatorios   lacunas de numeracao, laudos sem conferencia, adicionais por laudo.
+ Sino (topo)  pendencias com dono e prazo; vermelho quando ha atrasada.
+ Importar     planilha e Trello, com simulacao antes de aplicar, e os cinco
+              relatorios de reconciliacao.
+
+
+ ONDE ESTAO OS DADOS
+ -------------------
+ dados\csso.db          o banco
+ dados\documentos\ANO\  os .docx e .pdf gerados
+ dados\anexos\          os arquivos anexados aos processos
+ dados\backups\         os backups cifrados
+ dados\logs\            o registro de acesso (90 dias, apaga sozinho)
+ .env                   configuracao (porta, caminhos, SENHA DO BACKUP)
+
+ TRES TAREFAS AGENDADAS na maquina que vale (nao viajam com a pasta): o backup
+ diario, a conferencia da cadeia de auditoria (3h30) e a varredura de
+ pendencias de EPI (3h45) - CA de lote a vencer e troca de EPI devida, que
+ sem ela so apareceriam quando alguem mexesse no lote ou na ficha. Os comandos
+ estao em MUDAR-DE-PC.md, passo 7.
+
+
+ ############################################################################
+ ##                                                                        ##
+ ##   A T E N C A O   -   D A D O S   P E S S O A I S                      ##
+ ##                                                                        ##
+ ##   O BANCO, OS DOCUMENTOS, OS ANEXOS E OS BACKUPS CONTEM DADOS           ##
+ ##   PESSOAIS DE SERVIDORES DA UFVJM.                                      ##
+ ##                                                                        ##
+ ##   NUNCA COLOQUE A PASTA dados\ DENTRO DE ONEDRIVE, GOOGLE DRIVE,        ##
+ ##   DROPBOX, ICLOUD OU QUALQUER PASTA SINCRONIZADA.                       ##
+ ##                                                                        ##
+ ##   Dois motivos, os dois graves:                                         ##
+ ##     1. A sincronizacao CORROMPE o banco SQLite.                         ##
+ ##     2. E compartilhamento de dado pessoal sem base legal                ##
+ ##        (LGPD arts. 33 a 36, 39 e 46).                                   ##
+ ##                                                                        ##
+ ##   QUALQUER DESTINO EM NUVEM EXIGE AUTORIZACAO FORMAL DA UFVJM E         ##
+ ##   CONTRATO DE OPERADOR. Se algum dia isso for autorizado, registre      ##
+ ##   aqui, abaixo, quem autorizou e em que documento.                      ##
+ ##                                                                        ##
+ ##   Autorizacao de nuvem: NAO HA.                                         ##
+ ##                                                                        ##
+ ############################################################################
+
+ A SENHA DO BACKUP esta no .env (CSSO_BACKUP_SENHA). Backup sem a senha nao
+ pode ser restaurado. Guarde a senha onde a instituicao guarda segredo, NUNCA
+ na mesma pasta do backup.
+
+
+ O QUE O SISTEMA NAO FAZ (v1, de proposito)
+ ------------------------------------------
+ - Nao conversa com o SEI. Nenhuma API, nenhum robo. O numero do processo e
+   digitado e validado localmente (formato + digito verificador).
+ - Nao assina digitalmente. A assinatura acontece no SEI; aqui voce marca o
+   parecer como assinado e anexa o PDF assinado.
+ - Nao tem login pela conta da UFVJM (gov.br, LDAP, SSO). Usuario e senha
+   proprios, com perfis de acesso.
+ - Nao guarda CPF, CID, diagnostico, atestado nem qualquer dado de saude.
+ - Nao tem "laudo vencido". O laudo nao tem prazo de validade
+   (IN SGP/SEDGG/ME 15/2022, art. 10, paragrafo 3o). O que existe e uma fila de
+   trabalho de laudos sem conferencia ha mais de 24 meses.
+
+
+ QUEM PODE ASSINAR
+ -----------------
+ So subscreve laudo e assina parecer quem tem habilitacao tecnica vigente
+ cadastrada: medico com especializacao em medicina do trabalho, ou engenheiro
+ ou arquiteto com especializacao em seguranca do trabalho (IN 15/2022, art. 10,
+ paragrafo 2o, inciso I).
+
+ A tecnica de seguranca do trabalho avalia o ambiente, mede, instrui, monta o
+ rascunho e move o kanban - e recebe bloqueio na hora de assinar. Nao e opiniao
+ do sistema: e a norma. O bloqueio existe em tres camadas, inclusive no proprio
+ banco de dados.
+
+
+ PDF
+ ---
+ Se o LibreOffice estiver instalado, o PDF sai automatico. Se nao estiver, o
+ sistema entrega o .docx com o aviso "PDF indisponivel - abra no Word e use
+ Salvar como PDF". A emissao nunca falha por causa do PDF.
+
+
+ ATENDER A REDE DO SETOR
+ -----------------------
+ O passo a passo executavel esta em entrada/implantacao/01_REDE_DO_SETOR.md.
+ Aqui fica so o que voce precisa saber ANTES de mexer no .env.
+
+ 1. LIGAR A PORTA PARA FORA DESTA MAQUINA
+    No .env: CSSO_HOST=0.0.0.0
+    O sistema passa a aceitar conexao pelo endereco de rede desta maquina. A
+    janela preta do INICIAR.bat passa a avisar isso em toda subida.
+
+ 2. QUAL E O ENDERECO DESTA MAQUINA
+    Abra o Prompt de Comando e rode:   ipconfig
+    Anote o "Endereco IPv4" do adaptador que esta em uso (algo como
+    192.168.x.y). Os colegas entram por http://ESSE-ENDERECO:8765/
+    Esse endereco pode mudar sozinho. Peca ao TI um IP fixo (ou uma reserva no
+    DHCP) para o endereco nao trocar no meio do expediente.
+
+ 3. ATE ONDE A MAQUINA FICA ALCANCAVEL - E QUEM DECIDE ISSO NAO E O SISTEMA
+    CSSO_HOST=0.0.0.0 nao significa "a rede do setor". Significa "qualquer
+    endereco que consiga rotear ate esta maquina". Se a Sisa e a reitoria estao
+    na mesma VLAN, "rede do setor" e o campus. Quem estreita isso e a REGRA DE
+    FIREWALL, e ela deve LIMITAR A ORIGEM, e nao abrir a porta para tudo:
+      - errado: liberar a porta 8765 para qualquer origem;
+      - certo:  liberar a porta 8765 SO para a faixa de IPs das maquinas da
+                CSSO (por exemplo 192.168.10.0/24), e bloquear o resto.
+    Peca ao TI a faixa exata. Sem essa conversa, voce nao sabe quem alcanca.
+
+ 4. NAO HA HTTPS, E ISSO TEM PRECO
+    Sem TLS, tudo trafega em claro no cabo: a senha do login, o cookie de
+    sessao, o nome e o SIAPE de cada servidor listado, o texto do parecer.
+    Quem estiver no mesmo segmento de rede consegue ler. A correcao e um proxy
+    reverso com certificado institucional (o TI faz) - veja o item T-1 de
+    entrada/implantacao/00_PRONTIDAO.md.
+
+ 5. O COOKIE DE SESSAO
+    CSSO_COOKIE_SEGURO=auto (o padrao) e o certo em quase todo caso: o sistema
+    olha a conexao. So troque para "sim" quando houver TLS de verdade num proxy
+    a frente E o login continuar funcionando depois da troca. Marcar "sim" sem
+    TLS faz o login voltar para a tela de login, sem mensagem nenhuma, para
+    todo mundo - e o /saude e a faixa amarela do topo avisam isso por escrito.
+
+ 6. O QUE MAIS MUDA NO .env
+    CSSO_BANCO_URL e CSSO_BACKUP_DESTINO para o disco certo (NUNCA nuvem).
+    CSSO_CHAVE_SECRETA nova (trocar esta chave derruba todas as sessoes abertas
+    - e para isso que ela serve).
+    Leia docs/POLITICA_RETENCAO.md antes: mudar de local de armazenamento
+    obriga a revisar a politica.
+
+ 7. O QUE PASSA A SER GRAVADO
+    A partir da 1.31.0 o sistema grava um registro de acesso em
+    dados/logs/acesso.log: data, origem, id da conta, metodo, rota, status e
+    duracao. Ele NAO grava nome, SIAPE, conteudo de parecer, o que foi digitado
+    na busca nem o numero do processo ou do servidor consultado. Guarda 90
+    dias e apaga sozinho. E dado pessoal (tem o endereco de origem): trate a
+    pasta dados/logs com o mesmo cuidado da pasta dados/.
+
+ AVISO: a versao anterior deste arquivo dizia "nenhuma linha de codigo muda".
+ Era falso, e seguir aquela instrucao derrubava o login de todo mundo. Foi
+ corrigido na 1.31.0.
+
+
+ DUVIDAS
+ -------
+ MUDAR-DE-PC.md             levar a pasta para outro computador sem quebrar
+                            nada. LEIA ANTES: copiar a pasta nao basta, e o
+                            .env precisa ir junto ou os backups cifrados que
+                            estao la dentro nunca mais abrem.
+ docs/ROPA.md               o que o sistema trata e com que base legal
+ docs/POLITICA_RETENCAO.md  por quanto tempo guarda e como descarta
+ PENDENCIAS.md              o que ainda precisa da sua confirmacao
+ CHANGELOG.md               o que mudou em cada versao
+
+ Setor: csso.sisa@ufvjm.edu.br
+================================================================================

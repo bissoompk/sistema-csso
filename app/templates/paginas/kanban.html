@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block titulo %}Kanban · CSSO{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('processo.criar') %}<a class="botao" href="/processos/novo">Novo processo</a>{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Kanban</h1>
+      <p class="sub">A coluna é visão; o estado técnico é a verdade. Arraste para mover.</p>
+    </div>
+    <div class="ao-lado">
+      {# Quadro e tabela são a mesma lista em duas formas: um controle só, e o
+         filtro atual viaja junto para a outra forma. #}
+      <div class="alternador">
+        <span class="ativo" aria-current="page">Quadro</span>
+        <a href="/processos?{{ filtro.como_query_string() }}">Tabela</a>
+      </div>
+      <a class="botao secundario compacto" href="/kanban?repositorio=1"
+         title="Cartões migrados do Trello que nunca entraram no fluxo">Backlog</a>
+    </div>
+  </div>
+
+  {# O mesmo cartão de filtros de `/processos`, pela mesma medição: a 1366×641
+     o cartão aberto custava metade da altura útil da tela, e o quadro rola
+     dentro de si — cada pixel acima dele é um cartão a menos visível. Nasce
+     aberto só quando algum dos cinco controles carrega valor, e o `<summary>`
+     escreve o que está aplicado por extenso, para a gaveta fechada nunca
+     parecer "sem filtro". #}
+  {% set aplicados = [] %}
+  {% if filtro.q %}{% set _ = aplicados.append('busca “' ~ filtro.q ~ '”') %}{% endif %}
+  {% for t in tipos if filtro.tipo and t.codigo == filtro.tipo %}
+  {% set _ = aplicados.append(t.nome) %}{% endfor %}
+  {% if filtro.exercicio %}{% set _ = aplicados.append('exercício ' ~ filtro.exercicio) %}{% endif %}
+  {% for u in responsaveis if filtro.responsavel_id and u.id == filtro.responsavel_id %}
+  {% set _ = aplicados.append(u.nome) %}{% endfor %}
+  {% if filtro.atrasados %}{% set _ = aplicados.append('só acima do SLA') %}{% endif %}
+
+  <details class="cartao filtros"{{ ' open' if aplicados }}>
+    <summary>
+      <span class="rotulo">Filtros</span>
+      {% if aplicados %}
+      <span class="pilula info">{{ aplicados|length }} aplicado(s)</span>
+      <span class="resumo">{{ aplicados|join(' · ') }}</span>
+      {% else %}
+      <span class="resumo">cinco controles — busca, tipo, exercício, responsável e SLA</span>
+      {% endif %}
+    </summary>
+  <form method="get" action="/kanban">
+    <div class="linha-campos">
+      {# Os `id` daqui nao reaproveitam `busca-processos`: e esse id que o Ctrl+K
+         do `base.html` procura antes de cair na busca do cabecalho, e batizar
+         assim o campo do quadro mudaria calado o destino do atalho nesta tela. #}
+      <div><label for="kanban-busca">Buscar</label>
+        <input id="kanban-busca" type="search" name="q" value="{{ filtro.q or '' }}"></div>
+      <div><label for="kanban-tipo">Tipo</label>
+        <select id="kanban-tipo" name="tipo">
+          <option value="">Todos</option>
+          {% for t in tipos %}
+          <option value="{{ t.codigo }}" {% if filtro.tipo == t.codigo %}selected{% endif %}>{{ t.nome }}</option>
+          {% endfor %}
+        </select></div>
+      <div><label for="kanban-exercicio">Exercício</label>
+        <input id="kanban-exercicio" type="number" name="exercicio"
+               value="{{ filtro.exercicio or '' }}" min="2000" max="2100"></div>
+      <div><label for="kanban-responsavel">Responsável</label>
+        <select id="kanban-responsavel" name="responsavel_id">
+          <option value="">Todos</option>
+          {% for u in responsaveis %}
+          <option value="{{ u.id }}" {% if filtro.responsavel_id == u.id %}selected{% endif %}>{{ u.nome }}</option>
+          {% endfor %}
+        </select></div>
+      <div><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+        <label class="discreto"><input type="checkbox" name="atrasados" value="1"
+          {% if filtro.atrasados %}checked{% endif %}> só acima do SLA</label></div>
+    </div>
+    <div class="acoes">
+      <button type="submit">Filtrar</button>
+      <a class="botao secundario" href="/kanban">Limpar</a>
+    </div>
+  </form>
+  </details>
+
+  {# A recusa NÃO tem mais uma caixa fixa aqui em cima. O quadro tem cinco
+     colunas longas e rola dentro de si: soltar um cartão no pé da coluna
+     "Aguardando" escrevia o motivo numa caixa fora da tela, e a conclusão de
+     quem operava era "o sistema travou". Agora ela é escrita **dentro da coluna
+     onde o cartão foi solto**, que é onde os olhos e o cursor estão no momento
+     da recusa — ver o script no fim desta página. #}
+
+  {# Cinco colunas não cabem em 1024px sem apertar o cartão até ninguém o ler.
+     O quadro rola dentro de si; a página, não. #}
+  {# A coluna vazia já se explica pela folha (`.lista-cartoes:empty::after`);
+     o que não existia era o QUADRO vazio — cinco colunas em branco, sem uma
+     palavra, na tela que se abre primeiro. Duas causas, duas saídas: com
+     recorte aplicado, dizer onde o filtro olhou e como limpar; sem recorte,
+     dizer por onde começar, nomeando o botão que resolve, que mora a ~900px
+     do texto, no canto superior direito. #}
+  {% set total = resumos.values()|map('length')|sum %}
+  {% if total == 0 %}
+  <div class="vazio quadro-vazio">
+    {% if aplicados or filtro.precisam or filtro.repositorio %}
+    <strong>Nenhum processo neste recorte.</strong>
+    <span>O filtro olha NUP, nome do servidor, número do laudo, tipo, exercício e
+      responsável. <a href="/kanban">Limpar os filtros</a> mostra o quadro inteiro.</span>
+    {% else %}
+    <strong>Nenhum processo no fluxo ainda.</strong>
+    <span>Comece por <strong>Novo processo</strong>, no canto superior direito
+      {%- if not usuario.pode('processo.criar') %} (quem tem a permissão de criar){% endif %},
+      ou traga a carga de uma vez por <a href="/importar">Importar</a> — planilha
+      ou quadro do Trello.</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="rolagem-quadro"{{ ' hidden' if total == 0 }}>
+    <div class="quadro">
+      {% for codigo, rotulo in COLUNAS_KANBAN %}
+      <section class="coluna" data-coluna="{{ codigo }}">
+        <h3>{{ rotulo }} <span class="contador">{{ resumos[codigo]|length }}</span></h3>
+        <div class="lista-cartoes" id="coluna-{{ codigo }}">{% for r in resumos[codigo] %}{% include "partes/cartao_kanban.html" %}{% endfor %}</div>
+      </section>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<script nonce="{{ nonce() }}">
+// Arrastar e soltar no quadro. Três coisas que este script tem de fazer, e que
+// antes ele não fazia:
+//
+// 1. **Dizer que está fazendo.** O POST some por um instante e a tela ficava
+//    exatamente igual — no vão entre soltar e responder, quem opera não tinha
+//    como saber se o gesto valeu, e o segundo arrasto vinha por cima do
+//    primeiro.
+// 2. **Dizer que deu certo, onde o cartão parou.** O cartão trocava de coluna e
+//    os contadores das duas colunas continuavam os de antes até a próxima
+//    recarga — dois números na tela contradizendo o que os olhos acabaram de
+//    ver.
+// 3. **Dizer que não deu, onde a pessoa está olhando.** A recusa ia para uma
+//    caixa no topo da página, acima de um quadro de cinco colunas longas que
+//    rola dentro de si: soltar um cartão embaixo da coluna "Aguardando"
+//    escrevia o motivo fora da tela. Este é o caso mais provável de "o sistema
+//    não fez nada" quando ele fez — ou de "achei que tinha feito" quando não.
+//    E `fetch` sem `.catch`: rede caída rejeitava a promessa, o bloco inteiro
+//    não rodava, `arrastando` continuava apontando para o cartão e o segundo
+//    arrasto passava a se comportar de forma imprevisível.
+//
+// E uma quarta, que veio depois: **mover sem arrastar.** Arrastar-e-soltar do
+// HTML5 não existe no toque (tablet no balcão) e não existe no teclado. O
+// cartão ganhou um menu "mover para…" — um `<form method="post">` comum, com um
+// botão por coluna, que sem JavaScript submete e a rota responde com a página
+// inteira. Com JavaScript o envio é interceptado e cai em `mover()`, o MESMO
+// caminho do arrasto: uma função, dois gestos, e a recusa aparece no mesmo
+// lugar dos dois jeitos.
+(function () {
+  let arrastando = null;
+  let emVoo = false;
+
+  function limparRecusas() {
+    document.querySelectorAll('.recusa-de-movimento').forEach(function (caixa) {
+      caixa.remove();
+    });
+  }
+
+  // A recusa nasce DENTRO da coluna onde o cartão foi solto: é ali que estão o
+  // cursor e o olhar no momento em que ela aparece.
+  function mostrarRecusa(coluna, html) {
+    limparRecusas();
+    const lista = coluna.querySelector('.lista-cartoes');
+    lista.insertAdjacentHTML('afterbegin', html);
+    const caixa = lista.querySelector('.recusa-de-movimento');
+    if (!caixa) return;
+    caixa.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // foco de verdade, e não só rolagem: quem navega por teclado ou leitor de
+    // tela também precisa chegar ao motivo
+    caixa.focus({ preventScroll: true });
+  }
+
+  function recontar() {
+    document.querySelectorAll('.coluna').forEach(function (coluna) {
+      const contador = coluna.querySelector('h3 .contador');
+      const quantos = coluna.querySelectorAll('.lista-cartoes .cartao-kanban').length;
+      if (contador) contador.textContent = quantos;
+    });
+  }
+
+  document.addEventListener('dragstart', function (e) {
+    const cartao = e.target.closest('.cartao-kanban');
+    if (!cartao) return;
+    arrastando = cartao;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  // O movimento em si — chamado pelo arrasto E pelo menu do cartão.
+  function mover(cartao, coluna) {
+    // um movimento por vez: o segundo durante o primeiro chegaria ao servidor
+    // com o estado que a tela ainda não sabe qual é
+    if (!cartao || emVoo) return;
+    if (cartao.closest('.coluna') === coluna) return;
+
+    const id = cartao.dataset.processo;
+    const destino = coluna.dataset.coluna;
+    const corpo = new URLSearchParams({ coluna: destino });
+
+    limparRecusas();
+    emVoo = true;
+    cartao.setAttribute('aria-busy', 'true');
+    cartao.classList.add('movendo');
+
+    function terminar() {
+      emVoo = false;
+      arrastando = null;
+    }
+
+    fetch('/kanban/mover/' + id, {
+      method: 'POST',
+      // é este cabeçalho que diz à rota "responda o fragmento, não a página":
+      // sem ele (formulário comum, sem JavaScript) ela redireciona para o quadro
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+      body: corpo
+    }).then(function (resposta) {
+      return resposta.text().then(function (html) {
+        cartao.removeAttribute('aria-busy');
+        cartao.classList.remove('movendo');
+        if (resposta.ok) {
+          coluna.querySelector('.lista-cartoes').appendChild(cartao);
+          cartao.outerHTML = html;
+          // o cartão foi substituído pelo HTML novo: recuperá-lo pelo id do
+          // processo é o que permite piscá-lo no lugar onde ele parou — e, no
+          // movimento por menu, devolver o foco a quem o acionou
+          const novo = coluna.querySelector('[data-processo="' + id + '"]');
+          if (novo) {
+            novo.classList.add('recem-movido');
+            setTimeout(function () { novo.classList.remove('recem-movido'); }, 1400);
+            const resumo = novo.querySelector('details.mover > summary');
+            if (resumo && document.activeElement === document.body) resumo.focus();
+          }
+          recontar();
+        } else {
+          mostrarRecusa(coluna, html);
+        }
+        terminar();
+      });
+    }).catch(function () {
+      // Rede caída, servidor fora, resposta que não chega: sem isto a promessa
+      // rejeitava em silêncio e a tela ficava igual, com o cartão parado e
+      // nenhuma palavra dizendo por quê.
+      cartao.removeAttribute('aria-busy');
+      cartao.classList.remove('movendo');
+      mostrarRecusa(
+        coluna,
+        '<div class="aviso aviso-erro recusa-de-movimento" role="alert" tabindex="-1">' +
+        '<strong>O movimento não chegou ao servidor.</strong>' +
+        '<ul><li>O cartão continua onde estava e nada foi gravado.</li>' +
+        '<li>Confira se o sistema ainda está no ar e recarregue a página (F5) ' +
+        'antes de tentar de novo — o estado que a tela mostra pode estar velho.</li>' +
+        '<li>Persistindo, mova pela ficha do processo: lá a mudança de estado ' +
+        'é um formulário comum, que não depende desta troca em segundo plano.</li>' +
+        '</ul></div>'
+      );
+      terminar();
+    });
+  }
+
+  document.querySelectorAll('.coluna').forEach(function (coluna) {
+    coluna.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      coluna.classList.add('destino');
+    });
+    coluna.addEventListener('dragleave', function () { coluna.classList.remove('destino'); });
+    coluna.addEventListener('drop', function (e) {
+      e.preventDefault();
+      coluna.classList.remove('destino');
+      mover(arrastando, coluna);
+    });
+  });
+
+  // O menu "mover para…" do cartão. Delegado no documento porque o cartão é
+  // trocado pelo HTML novo a cada movimento — um tratador preso ao cartão
+  // morreria junto com ele. `submitter` é o botão clicado: é o `value` dele que
+  // diz a coluna, e um formulário só carrega os cinco.
+  document.addEventListener('submit', function (e) {
+    const form = e.target.closest && e.target.closest('form[data-mover]');
+    if (!form) return;
+    const botao = e.submitter;
+    if (!botao || !botao.value) return;
+    const coluna = document.querySelector('.coluna[data-coluna="' + botao.value + '"]');
+    if (!coluna) return;  // sem coluna na tela, o formulário segue o caminho comum
+    e.preventDefault();
+    const gaveta = form.closest('details');
+    if (gaveta) gaveta.open = false;
+    mover(form.closest('.cartao-kanban'), coluna);
+  });
+})();
+</script>
+{% endblock %}

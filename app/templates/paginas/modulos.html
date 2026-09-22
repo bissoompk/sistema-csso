@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{# O mapa está acima dos módulos: dizer "Processos SEI / Módulos" seria falso. #}
+{% set trilha_raiz = 'Módulos' %}
+{% block titulo %}Módulos · CSSO{% endblock %}
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Módulos</h1>
+      <p class="sub">Cada módulo é o fluxo de trabalho de uma competência do setor. O que é
+        <strong>base</strong> fica fora deles de propósito: servidor, unidade, cargo e
+        posto são os mesmos para o adicional, para o EPI e para o treinamento — um
+        cadastro só, não quatro que divergem.</p>
+    </div>
+  </div>
+
+  {% for m in modulos %}
+  {% set itens = m.itens_de(usuario) if m.disponivel else [] %}
+  <section class="cartao liso cartao-modulo {{ 'modulo-previsto' if not m.disponivel }}"
+           id="{{ m.codigo }}">
+    <div class="cabecalho-cartao">
+      <h2>{{ m.nome }}</h2>
+      {% if itens %}<span class="contador">{{ itens|length }}</span>{% endif %}
+      {% if m.disponivel %}
+      <span class="pilula ok">em uso</span>
+      {% else %}
+      <span class="pilula">ainda não desenvolvido</span>
+      {% endif %}
+    </div>
+
+    <div class="corpo">
+      <p class="sub">{{ m.resumo }}</p>
+
+      {% if m.disponivel %}
+      {% if itens %}
+      <div class="grade-telas">
+        {% for item in itens %}
+        <a class="tela" href="{{ item.caminho }}">
+          <strong>{{ item.rotulo }}</strong>
+          <span class="discreto">{{ item.descricao }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      {# Módulo em uso que não abre nenhuma tela para esta pessoa: a caixa diz
+         que a ausência é de permissão, e não de módulo vazio. #}
+      <div class="vazio">
+        <strong>Nenhuma tela deste módulo abre para você</strong>
+        <span>O módulo está em uso; o que falta é permissão, que se concede em
+          Usuários.</span>
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+
+    {% if m.itens_previstos %}
+    {# Módulo previsto diz o que vai precisar ter; módulo em uso e entregue por
+       fatias diz o que ainda falta. Nos dois casos é a mesma decisão: esconder
+       é o que faz o usuário procurar uma tela que não existe. #}
+    <div class="corpo">
+      <h3>{{ 'O que ainda vem' if m.disponivel else 'O que ele vai precisar ter' }}</h3>
+      <ul class="lista-previstos">
+        {% for previsto in m.itens_previstos %}<li>{{ previsto }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Base compartilhada</h2>
+      {% if itens_base %}<span class="contador">{{ itens_base|length }}</span>{% endif %}
+      <span class="pilula sem-ponto">não é módulo</span>
+    </div>
+    <div class="corpo">
+      <p class="sub">O chão que todo módulo pisa. Não pertence ao adicional
+        ocupacional — o adicional só usa.</p>
+
+      {% if itens_base %}
+      <div class="grade-telas">
+        {% for item in itens_base %}
+        <a class="tela" href="{{ item.caminho }}">
+          <strong>{{ item.rotulo }}</strong>
+          <span class="discreto">{{ item.descricao }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="vazio">
+        <strong>Nenhuma tela da base abre para você</strong>
+        <span>Servidor, catálogo, auditoria e usuário são de todos os módulos — e
+          cada um exige a sua permissão.</span>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

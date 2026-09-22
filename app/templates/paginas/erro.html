@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }} · CSSO{% endblock %}
+
+{# O título chega como "403 — acesso negado", "404 — processo não encontrado" ou
+   "SIAPE inválido". Na trilha vale só a parte falada: o número já está no h1, e
+   repeti-lo ali não diz nada a mais. #}
+{% set curto = (titulo.split('—')|last)|trim %}
+{% block trilha %}<span class="atual inicial-maiuscula" aria-current="page">{{ curto }}</span>{% endblock %}
+
+{# "Not Found" e "Forbidden" são o texto que o Starlette põe quando ninguém
+   escreveu motivo nenhum. Impressos como motivo, eles ocupam o lugar da
+   explicação com uma palavra em inglês que não explica nada; sem eles, quem
+   explica é o aviso abaixo. Todo `detalhe` escrito por uma rota daqui passa. #}
+{% set motivo = detalhe if detalhe not in ('Not Found', 'Forbidden', 'Unauthorized',
+                                           'Method Not Allowed') else none %}
+
+{# A saída não pode ser mais uma porta trancada. O primeiro item de menu que
+   este usuário enxerga é a única saída que o sistema já garante que abre — é o
+   mesmo invariante que impede o menu de mentir. Não havendo nenhum, sobra o
+   mapa dos módulos, que não exige permissão nenhuma. #}
+{% set saidas = itens_modulo + itens_base %}
+{% set destino = saidas[0] if saidas else none %}
+
+{% block conteudo %}
+<section class="cartao cartao-erro">
+  <div class="topo-erro">
+    <span class="sinal-erro" aria-hidden="true"></span>
+    <h1>{{ titulo }}</h1>
+  </div>
+
+  {% if motivo %}<p class="motivo">{{ motivo }}</p>{% endif %}
+
+  {% if codigo == 'parecer.assinar' %}
+  {# A tela não sabe encaminhar para assinatura — não existe rota para isso —,
+     então o que ela dá é o critério de quem procurar. #}
+  <div class="aviso aviso-info">
+    <p><strong>Encaminhe para quem tem a habilitação.</strong> Quem instrui o
+      processo não é necessariamente quem pode subscrever o laudo: a habilitação
+      é que confere, não o cargo (IN SGP/SEDGG/ME nº 15/2022, art. 10, §2º, I).
+      Os profissionais habilitados vigentes estão listados em <strong>Usuários</strong>.</p>
+  </div>
+  {% elif codigo %}
+  <div class="aviso aviso-info">
+    <p><strong>A saída é a concessão do perfil, não esta tela.</strong> Perfil e
+      permissão se concedem em <strong>Usuários</strong>, por quem tem
+      <code>perfil.conceder</code>, e sempre com o ato normativo que autoriza
+      (Resolução Consu UFVJM 11/2026, art. 11, IX). Ao pedir, diga qual permissão
+      falta: <code>{{ codigo }}</code>.</p>
+  </div>
+  {% elif not motivo %}
+  <div class="aviso aviso-info">
+    <p>O endereço não corresponde a nenhuma tela deste sistema. Costuma ser link
+      antigo, endereço digitado à mão ou registro que deixou de existir.
+      {%- if not usuario %} Se ele existe e é seu, entrar de novo resolve: sem
+      sessão o sistema não reconhece nem as telas que você pode abrir.{% endif %}</p>
+  </div>
+  {% elif not usuario %}
+  <div class="aviso aviso-info">
+    <p>Talvez a sessão tenha expirado. Entrando de novo, o endereço volta a abrir
+      — se ele existir e for seu.</p>
+  </div>
+  {% endif %}
+
+  <div class="acoes">
+    {% if not usuario %}
+    <a class="botao" href="/login">Entrar</a>
+    {% elif destino %}
+    <a class="botao" href="{{ destino.caminho }}">Ir para {{ destino.rotulo }}</a>
+    <a class="botao secundario" href="/modulos">Ver os módulos</a>
+    {% else %}
+    <a class="botao" href="/modulos">Ver os módulos</a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

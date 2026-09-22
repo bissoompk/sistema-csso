@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Processos · CSSO{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('exportar') %}
+<a class="botao secundario" data-baixar="Exportando…" href="/relatorios/exportar-processos?{{ filtro.como_query_string() }}">Exportar CSV</a>
+{% endif %}
+{% if usuario.pode('processo.criar') %}<a class="botao" href="/processos/novo">Novo processo</a>{% endif %}
+{% endblock %}
+
+{% macro linha(r) %}
+<tr>
+  <td><input type="checkbox" name="processo_id" value="{{ r.processo.id }}" class="marcar"
+             aria-label="Selecionar o processo {{ r.processo.nup }}"></td>
+  <td><a class="mono" href="/processos/{{ r.processo.id }}">{{ r.processo.nup }}</a></td>
+  {% set quem = identificar(r.processo) %}
+  <td class="nome">
+    {% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+    {% else %}{{ quem.nome }}{% endif %}
+  </td>
+  <td><span class="recorte" title="{{ r.processo.unidade.nome_extenso if r.processo.unidade else '' }}">
+      {{- r.processo.unidade.nome_extenso if r.processo.unidade else '—' -}}</span></td>
+  <td>{{ ui.pilula_estado(r.processo.estado_tecnico) }}</td>
+  <td>{{ ui.selo_dias(r) }}</td>
+  <td>{{ r.processo.responsavel.nome if r.processo.responsavel else '—' }}</td>
+  <td class="mono">{{ r.processo.prazo|data or '—' }}</td>
+</tr>
+{% endmacro %}
+
+{# O `<thead>` mora DENTRO do macro, e não em volta das duas chamadas: é ele que
+   faz o cabeçalho grudar ao rolar (o `position: sticky` de um `<th>` solto não
+   gruda — o alvo tem de ser o `<thead>`) e é ele que faz o navegador repetir a
+   linha na página 2 do papel. Envolvê-lo por fora daria duas grafias para
+   manter, e a visão agrupada — que é a que tem 8 tabelas numa tela — seria a
+   primeira a divergir. #}
+{% macro cabecalho_tabela(com_marcar_todos) %}
+<thead>
+  <tr>
+    <th scope="col">{% if com_marcar_todos %}<input type="checkbox" id="marcar-todos" title="marcar todos"
+          aria-label="Marcar todos os processos da página">{% endif %}</th>
+    <th scope="col">NUP</th><th scope="col">Servidor</th><th scope="col">Unidade</th><th scope="col">Estado</th>
+    <th scope="col">Dias</th><th scope="col">Responsável</th><th scope="col">Prazo</th>
+  </tr>
+</thead>
+{% endmacro %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Processos</h1>
+      <p class="sub">
+        {%- if not total %}Nenhum processo no filtro atual.
+        {%- elif resumos|length < total %}{{ resumos|length }} de {{ total }} processo(s) no filtro atual — esta é uma página.
+        {%- else %}{{ total }} processo(s) no filtro atual.{% endif %}</p>
+    </div>
+    <div class="ao-lado">
+      <div class="alternador">
+        <a href="/kanban?{{ filtro.como_query_string() }}">Quadro</a>
+        <span class="ativo" aria-current="page">Tabela</span>
+      </div>
+    </div>
+  </div>
+
+  {# Visões salvas: cada uma é um filtro que a URL sabe reproduzir. A que está
+     em uso fica sólida — é o único jeito de saber, olhando, que a lista abaixo
+     não é a lista inteira. #}
+  <div class="fileira">
+    <span class="rotulo-grupo">Visões</span>
+    {% for nome, qs in visoes %}
+    <a class="ficha-filtro {{ 'ativa' if qs == '?' ~ filtro.como_query_string() }}"
+       href="/processos{{ qs }}">{{ nome }}</a>
+    {% endfor %}
+    <a class="ficha-filtro limpar" href="/processos">Limpar</a>
+  </div>
+
+  {# ===============================================================
+     O CARTÃO DE FILTROS FECHADO — o que ele custava, e o que o fecha
+     ===============================================================
+     Medido a 1366×641 (a tela do setor com o Chrome maximizado): com este
+     cartão aberto, a primeira linha de dados começa em y=420 e cabem
+     QUATRO linhas de 49px; sem ele, a primeira sobe para y=273 e cabem
+     OITO. De uma página de 50, o cartão custava metade da lista — numa
+     tela que fica aberta o dia inteiro.
+
+     Fechar é legítimo porque esta tela tem os DOIS idiomas de filtro que a
+     folha descreve: a fileira de visões salvas acima (uma dimensão, um
+     clique, cobre o recorte do dia a dia) e este formulário de seis
+     controles (várias dimensões ao mesmo tempo, o caso raro). O caso raro
+     não precisa estar aberto por padrão.
+
+     `<details>` e não JavaScript: abre sem script, como `.seletor-modulo`
+     e `.acoes-linha` já fazem.
+
+     O CUIDADO QUE GOVERNA TUDO ISTO: filtro ativo NÃO PODE FICAR ESCONDIDO.
+     Quem chega numa lista recortada sem ver o recorte conclui que o sistema
+     perdeu registros — e vai procurar no lugar errado. São duas travas, e
+     as duas são necessárias:
+
+     1. O cartão nasce ABERTO quando algum dos seis controles carrega valor
+        (`aplicados`, montado logo abaixo). Não se usa `como_query_string()`
+        para isso, embora fosse mais curto: ela também é não-vazia quando
+        quem filtrou foi uma VISÃO SALVA (`atrasados=1`, `dias=30`…), e
+        abrir um cartão cujos seis controles estão todos vazios diria que há
+        um filtro onde não há. Quem mostra a visão ativa é a fileira acima,
+        com a ficha sólida.
+     2. O `<summary>` ESCREVE o que está aplicado, por extenso. Sem isso, a
+        primeira trava cairia no instante em que alguém fechasse o cartão
+        com a mão — `<details>` não guarda estado, mas dentro da mesma
+        página ele fica fechado, e é ali que a lista recortada passaria a
+        parecer a lista inteira. #}
+  {% set aplicados = [] %}
+  {% if filtro.q %}{% set _ = aplicados.append('busca “' ~ filtro.q ~ '”') %}{% endif %}
+  {% if filtro.estado %}{% set _ = aplicados.append(filtro.estado|estado) %}{% endif %}
+  {% for t in tipos if filtro.tipo and t.codigo == filtro.tipo %}
+  {% set _ = aplicados.append(t.nome) %}{% endfor %}
+  {% for u in unidades if filtro.unidade_id and u.id == filtro.unidade_id %}
+  {% set _ = aplicados.append(u.nome_extenso) %}{% endfor %}
+  {% for u in responsaveis if filtro.responsavel_id and u.id == filtro.responsavel_id %}
+  {% set _ = aplicados.append(u.nome) %}{% endfor %}
+  {% if filtro.agrupar %}
+  {% set _ = aplicados.append('agrupado por ' ~ chaves_agrupamento.get(filtro.agrupar, filtro.agrupar)|lower) %}
+  {% endif %}
+
+  <details class="cartao filtros"{{ ' open' if aplicados }}>
+    <summary>
+      <span class="rotulo">Filtros</span>
+      {% if aplicados %}
+      <span class="pilula info">{{ aplicados|length }} aplicado(s)</span>
+      <span class="resumo">{{ aplicados|join(' · ') }}</span>
+      {% else %}
+      <span class="resumo">seis controles — estado, tipo, unidade, responsável,
+        agrupamento e busca</span>
+      {% endif %}
+    </summary>
+  <form method="get" action="/processos">
+    <div class="linha-campos">
+      {# Sem `autofocus`: dentro de um `<details>` fechado o campo não é
+         renderizado e o navegador não o foca — o atributo viraria promessa que
+         não se cumpre. Quem entra aqui pelo teclado entra pelo `Ctrl+K`, que o
+         rótulo anuncia e que `base.html` faz abrir a gaveta antes de focar. #}
+      <div><label for="busca-processos">Buscar (servidor, NUP, laudo) <span class="discreto">Ctrl+K</span></label>
+        <input type="search" name="q" id="busca-processos" value="{{ filtro.q or '' }}"></div>
+      <div><label for="f-estado">Estado técnico</label>
+        <select id="f-estado" name="estado"><option value="">Todos</option>
+          {# `|estado` porque quem escreve aqui e a tela. A rota manda so os
+             codigos: o rotulo ASCII que vinha no par nao era lido, e um rotulo
+             a mais na mao de quem edita o `<select>` e um rotulo errado a
+             espera de ser usado. #}
+          {% for codigo in estados %}
+          <option value="{{ codigo }}" {% if filtro.estado == codigo %}selected{% endif %}>{{ codigo|estado }}</option>
+          {% endfor %}</select></div>
+      <div><label for="f-tipo">Tipo</label>
+        <select id="f-tipo" name="tipo"><option value="">Todos</option>
+          {% for t in tipos %}
+          <option value="{{ t.codigo }}" {% if filtro.tipo == t.codigo %}selected{% endif %}>{{ t.nome }}</option>
+          {% endfor %}</select></div>
+      <div><label for="f-unidade">Unidade</label>
+        <select id="f-unidade" name="unidade_id"><option value="">Todas</option>
+          {% for u in unidades %}
+          <option value="{{ u.id }}" {% if filtro.unidade_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}</option>
+          {% endfor %}</select></div>
+      <div><label for="f-responsavel">Responsável</label>
+        <select id="f-responsavel" name="responsavel_id"><option value="">Todos</option>
+          {% for u in responsaveis %}
+          <option value="{{ u.id }}" {% if filtro.responsavel_id == u.id %}selected{% endif %}>{{ u.nome }}</option>
+          {% endfor %}</select></div>
+      <div><label for="f-agrupar">Agrupar por</label>
+        <select id="f-agrupar" name="agrupar"><option value="">(sem agrupamento)</option>
+          {% for chave, rotulo in chaves_agrupamento.items() %}
+          <option value="{{ chave }}" {% if filtro.agrupar == chave %}selected{% endif %}>{{ rotulo }}</option>
+          {% endfor %}</select></div>
+    </div>
+    <div class="acoes">
+      <button type="submit">Filtrar</button>
+      <a class="botao secundario" href="/processos">Limpar</a>
+    </div>
+  </form>
+  </details>
+
+  <form method="post" action="/processos/lote" id="form-lote">
+    <input type="hidden" name="voltar_para" value="{{ filtro.como_query_string() }}">
+
+    <div class="tabela-cartao lista">
+    {% if grupos %}
+      {% for rotulo, itens in grupos.items() %}
+      <details open class="grupo">
+        <summary>{{ rotulo }} <span class="contador">{{ itens|length }}</span></summary>
+        <table>
+          {{ cabecalho_tabela(false) }}
+          {% for r in itens %}{{ linha(r) }}{% endfor %}
+        </table>
+      </details>
+      {% endfor %}
+    {% else %}
+      <table>
+        {{ cabecalho_tabela(true) }}
+        {% for r in resumos %}{{ linha(r) }}{% else %}
+        {# `.vazio` e não `.nada`: acima desta linha há oito visões salvas e seis
+           controles de filtro, e a pergunta que a lista vazia produz não é "não
+           há" — é "o filtro está errado?". A saída diz ONDE a busca olhou, que é
+           o que faz a pessoa perceber que digitou no campo errado em vez de
+           concluir que o processo não está cadastrado. #}
+        {% if filtro.q %}
+        {{ ui.vazio_de_lista(
+             'Nenhum processo casa com “' ~ filtro.q ~ '”.',
+             'A busca olha NUP, observações, link do SEI e número de laudo — e o
+              nome do servidor só de quem você pode identificar (RN-19). Nome de
+              quem está suprimido não acha por aqui.', 8) }}
+        {% else %}
+        {{ ui.vazio_de_lista(
+             'Nenhum processo neste filtro.',
+             'Os filtros do cartão acima e a visão escolhida valem os dois ao mesmo
+              tempo. “Limpar”, na fileira das visões, devolve a lista inteira.', 8) }}
+        {% endif %}
+        {% endfor %}
+      </table>
+    {% endif %}
+    </div>
+
+    {% if resumos and (usuario.pode('processo.status') or usuario.pode('processo.editar')) %}
+    {# A classe `flutuante` NÃO vem escrita aqui: quem a põe é o script, no
+       carregamento. Escrevê-la no template esconderia a barra de quem não tem
+       JavaScript — e sem script ninguém a traria de volta, porque é o contador
+       de seleção que a mostra. Sem script a tela fica exatamente como estava:
+       o cartão no fim da lista, alcançável rolando. #}
+    <section class="cartao acoes-lote" id="acoes-lote">
+      <div class="titulo-cartao">
+        <h2>Ações em lote</h2>
+        <span id="contador-selecao" class="contador">0 selecionados</span>
+      </div>
+      <div class="linha-campos">
+        <div><label for="lote-acao">Ação</label>
+          <select id="lote-acao" name="acao">
+            {% if usuario.pode('processo.status') %}<option value="estado">Mover estado</option>{% endif %}
+            {% if usuario.pode('processo.atribuir') %}<option value="responsavel">Atribuir responsável</option>{% endif %}
+            {% if usuario.pode('processo.editar') %}<option value="prazo">Definir prazo</option>{% endif %}
+          </select></div>
+        <div><label for="lote-destino">Estado de destino</label>
+          <select id="lote-destino" name="destino"><option value="">—</option>
+            {% for codigo in estados_lote %}<option value="{{ codigo }}">{{ codigo|estado }}</option>{% endfor %}
+          </select></div>
+        <div><label for="lote-inciso">Inciso do art. 11</label>
+          <select id="lote-inciso" name="inciso_art11"><option value="">—</option>
+            {% for k, v in incisos.items() %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+          </select></div>
+        <div><label for="lote-responsavel">Responsável</label>
+          <select id="lote-responsavel" name="responsavel_id"><option value="">—</option>
+            {% for u in responsaveis %}<option value="{{ u.id }}">{{ u.nome }}</option>{% endfor %}
+          </select></div>
+        <div><label for="lote-prazo">Prazo</label><input id="lote-prazo" type="date" name="prazo"></div>
+      </div>
+      <div class="campo"><label for="lote-comentario">Comentário</label>
+        <input id="lote-comentario" name="comentario"></div>
+      <div class="acoes">
+        <button type="submit">Aplicar aos selecionados</button>
+        <p class="discreto sem-margem">Cada processo é avaliado sozinho: o que a máquina de estados
+           recusar volta com o motivo, e o resto passa.</p>
+      </div>
+    </section>
+    {% endif %}
+  </form>
+
+  {# `como_query_string()` já sai SEM `pagina=` — o dicionário dela não tem essa
+     chave, e quem a acrescentava era o `troca` da chamada antiga. É exatamente a
+     forma que o macro pede. #}
+  {{ ui.paginacao(filtro.pagina, filtro.por_pagina, total, '/processos',
+                  filtro.como_query_string()) }}
+
+</div>
+
+<script nonce="{{ nonce() }}">
+(function () {
+  const contador = document.getElementById('contador-selecao');
+  const lote = document.getElementById('acoes-lote');
+  // A barra só passa a se esconder quando há script para trazê-la de volta.
+  // Esta linha é o contrato inteiro do `.flutuante` da folha.
+  if (lote) lote.classList.add('flutuante');
+  function atualizar() {
+    if (!contador) return;
+    const n = document.querySelectorAll('.marcar:checked').length;
+    contador.textContent = n + (n === 1 ? ' selecionado' : ' selecionados');
+    if (lote) lote.classList.toggle('tem-selecao', n > 0);
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'marcar-todos') {
+      document.querySelectorAll('.marcar').forEach(c => { c.checked = e.target.checked; });
+    }
+    if (e.target.classList.contains('marcar') || e.target.id === 'marcar-todos') atualizar();
+  });
+  atualizar();
+})();
+</script>
+{% endblock %}

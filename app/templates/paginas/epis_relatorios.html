@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# Os indicadores do módulo de EPI (§9), e o cuidado que os governa.
+
+   **A célula conta SERVIDORES, e não peças entregues.** É a diferença entre um
+   indicador e um dossiê: "12 pares na Odontologia" passa por qualquer limiar e
+   pode ser uma pessoa só — cruzada com a categoria da NR-6 e com o exercício,
+   ela fica nomeada sem o nome aparecer. O limiar de cinco da RN-19 é sobre
+   gente, então a contagem é sobre gente; a quantidade aparece atrelada à célula
+   e some junto com ela.
+
+   **O total do campus é a MARGEM das unidades dele.** Por isso os dois níveis
+   saem juntos, do mesmo cálculo, e a supressão trata os dois — esconder a
+   unidade e publicar o total do campus intacto devolveria a escondida por uma
+   subtração de cabeça. #}
+
+{% block titulo %}Indicadores de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Relatórios</span>{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if pode_exportar %}
+<a class="botao secundario" data-baixar="Exportando…" href="/epis/relatorios/exportar?exercicio={{ exercicio }}">Exportar (CSV)</a>
+{% endif %}
+{% endblock %}
+
+{# A distribuição em barras é a mesma de `/relatorios` e a do painel, e agora é
+   literalmente a mesma: `ui.distribuicao`, em `partes/macros.html`. O `notas`
+   nasceu aqui — foi ele que provou que as cópias divergem. #}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Indicadores de EPI</h1>
+      <p class="sub">Exercício {{ exercicio }} · {{ dados.inicio|data }} a {{ dados.fim|data }}.
+        Cada célula conta <strong>servidores atendidos</strong>, não peças.</p>
+    </div>
+  </div>
+
+  {% if suprime %}
+  {# O FATO fica: quem lê estes números precisa saber, ao lê-los, que há células
+     escondidas — sem isso ele soma errado e conclui errado. Como a supressão
+     encadeia (a menor sobrevivente, a margem do campus) é o mecanismo, e
+     mecanismo se lê uma vez. #}
+  <div class="aviso aviso-alerta">
+    Célula com menos de {{ limiar }} servidores aparece como <span class="mono">—</span>
+    para quem não tem <code>exposicao.ver</code> (RN-19).
+    {% call ui.info('supressao', 'como a supressão da RN-19 encadeia') %}
+      <p>Quando só <strong>uma</strong> célula seria suprimida, a menor
+        sobrevivente é suprimida junto: senão a diferença entre o total e a soma
+        das visíveis devolveria, por subtração de cabeça, o número escondido.</p>
+      <p>Pela mesma razão o total de um campus some junto com as unidades dele —
+        <strong>margem intacta desfaz supressão</strong>. Publicar o total e
+        esconder a unidade seria esconder no papel e revelar na conta.</p>
+      <p>O limiar é sobre GENTE, e por isso a célula conta servidores atendidos e
+        não peças entregues: “12 pares na Odontologia” passa por qualquer limiar e
+        pode ser uma pessoa só.</p>
+    {% endcall %}
+  </div>
+  {% endif %}
+
+  <div class="grade grade-2">
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Entregue por categoria da NR-6</h2>
+        {% call ui.info('leitura-categoria', 'o que cada número desta barra é') %}
+          <p>O número ao lado da barra são <strong>servidores</strong> atendidos;
+            o número em cinza, depois do nome, é a quantidade de <strong>peças</strong>.</p>
+          <p>Onde a célula foi suprimida, a quantidade some junto: ela varia com
+            as mesmas pessoas, e publicá-la sozinha devolveria por outro caminho o
+            que a supressão escondeu.</p>
+        {% endcall %}
+        <span class="contador">{{ por_categoria|length }}</span>
+      </div>
+      {{ ui.distribuicao(por_categoria, limiar,
+                         'Nenhuma entrega no exercício.', quantidade_categoria) }}
+    </section>
+
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Recusas por motivo (RN-27)</h2>
+        {% call ui.info('recusas-por-motivo', 'por que aqui a célula conta negativas, e não pessoas') %}
+          <p>Nesta barra a célula conta <strong>negativas</strong>, e não
+            servidores: é a decisão que se conta, e dois pedidos recusados da
+            mesma pessoa pelo mesmo motivo são duas negativas.</p>
+          <p>É este número, com o de recusas por unidade, que instrui o ofício à
+            empresa contratante quando o pedido era de pessoal terceirizado — a
+            obrigação de fornecer EPI, pela NR-6, é dela.</p>
+        {% endcall %}
+        <span class="contador">{{ dados.total_recusas }}</span>
+      </div>
+      {{ ui.distribuicao(recusas_motivo, limiar, 'Nenhuma recusa registrada.') }}
+    </section>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Entregue por campus e por unidade</h2>
+      {% call ui.info('lotacao-na-entrega', 'de quando é a lotação que esta tabela usa') %}
+        <p>Campus e unidade vêm da lotação <strong>na data da entrega</strong>, e
+          não da de hoje.</p>
+        <p>Quem mudou de setor depois não recebeu o EPI na unidade nova: o
+          indicador descreve o que aconteceu, e não onde a pessoa está agora.
+          Recontar por lotação atual moveria entregas passadas entre unidades a
+          cada transferência, e a série histórica deixaria de fechar.</p>
+      {% endcall %}
+      <span class="contador">{{ por_campus|length }}</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Campus · unidade</th><th scope="col" class="numerico">Servidores atendidos</th></tr>
+      </thead>
+      {% for linha in por_campus %}
+      <tr>
+        <td><strong>{{ linha.rotulo }}</strong></td>
+        <td class="numerico">
+          {%- if linha.suprimido %}<span class="mono"
+              title="o total do campus some junto com as unidades dele: publicado, ele devolveria a célula suprimida por subtração"
+              >{{ linha.valor }}</span>
+          {%- else %}<span class="mono">{{ linha.valor }}</span>{% endif %}</td>
+      </tr>
+        {% for unidade, valor in linha.folhas %}
+        <tr>
+          <td class="discreto">↳ {{ unidade }}</td>
+          <td class="numerico"><span class="mono">{{ valor }}</span></td>
+        </tr>
+        {% endfor %}
+      {% else %}
+      {# A janela desta tela é o exercício inteiro e nada mais — `?exercicio=` na
+         URL, com o ano corrente por padrão. Vazio aqui quase nunca é "não houve
+         entrega": é entrega lançada noutro ano, e sem dizê-lo alguém conclui que
+         o módulo não registrou nada. #}
+      {{ ui.vazio_de_lista(
+           'Nenhuma entrega em ' ~ exercicio ~ '.',
+           'A janela é o exercício inteiro, de ' ~ dados.inicio|data ~ ' a '
+           ~ dados.fim|data ~ ', pela DATA DA ENTREGA. Para ver outro ano, troque
+            `exercicio` no endereço — por exemplo ?exercicio=' ~ (exercicio - 1) ~ '.', 2) }}
+      {% endfor %}
+    </table>
+  </section>
+
+  <div class="lado-a-lado principal">
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Custo por empenho</h2>
+        {% call ui.info('empenho-sem-supressao', 'por que esta tabela não passa por supressão') %}
+          <p>Empenho é <strong>execução orçamentária</strong>: nota, fornecedor e
+            valor são públicos pela Lei 12.527 e não nomeiam servidor nenhum.</p>
+          <p>Suprimir aqui esconderia o que a fiscalização de contrato precisa sem
+            proteger ninguém — a RN-19 existe para não expor pessoas, e não para
+            fechar a execução do contrato.</p>
+          <p>O <span class="mono">—</span> desta coluna não é supressão: é lote
+            sem valor unitário informado, e “não sei” não é “custou nada”. Onde
+            parte dos lotes tem valor e parte não, o total aparece marcado como
+            <strong>piso</strong>.</p>
+        {% endcall %}
+        <span class="contador">{{ dados.empenhos|length }}</span>
+      </div>
+      <table>
+        <thead>
+          <tr><th scope="col">Empenho</th><th scope="col" class="numerico">Lotes</th><th scope="col" class="numerico">Recebido</th>
+            <th scope="col" class="numerico">Custo (R$)</th></tr>
+        </thead>
+        {% for linha in dados.empenhos %}
+        <tr>
+          <td class="mono">{{ linha.empenho }}</td>
+          <td class="numerico mono">{{ linha.lotes }}</td>
+          <td class="numerico mono">{{ linha.recebido }}</td>
+          <td class="numerico mono">
+            {%- if linha.custo is none %}<span class="discreto"
+                title="nenhum lote deste empenho trouxe valor unitário — 'não sei' não é 'custou nada'">—</span>
+            {%- else %}{{ '%.2f'|format(linha.custo) }}
+              {%- if linha.incompleto %}<span class="quebra discreto"
+                  title="{{ linha.sem_valor }} lote(s) sem valor unitário">piso</span>{% endif %}
+            {%- endif %}</td>
+        </tr>
+        {% else %}
+        {# Mesmo exercício da tabela acima, outra data: aqui conta a DATA DE
+           ENTRADA do lote, e não a da entrega. Lote empenhado em dezembro e
+           recebido em janeiro cai no exercício seguinte, e é isso que faz esta
+           tabela parecer vazia com o almoxarifado cheio. #}
+        {{ ui.vazio_de_lista(
+             'Nenhum lote recebido em ' ~ exercicio ~ '.',
+             'Conta a data de ENTRADA do lote, de ' ~ dados.inicio|data ~ ' a '
+             ~ dados.fim|data ~ ' — não a do empenho nem a da entrega. Lote
+              empenhado em dezembro e recebido em janeiro aparece no exercício
+              seguinte.', 4) }}
+        {% endfor %}
+      </table>
+    </section>
+
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Recusas por unidade (RN-27)</h2>
+        {% call ui.info('recusas-por-unidade', 'o que uma unidade concentrando recusas significa') %}
+          <p>Uma unidade que concentra recusas por
+            <code>VINCULO_NAO_ATENDIDO</code> é uma unidade em que alguém está
+            pedindo EPI para pessoal terceirizado — e a obrigação, pela NR-6, é da
+            <strong>empresa contratante</strong>.</p>
+          <p>O número é o insumo do ofício, não o ofício: ele diz onde procurar, e
+            quem escreve a conversa com a contratada é gente.</p>
+        {% endcall %}
+        <span class="contador">{{ recusas_unidade|length }}</span>
+      </div>
+      {{ ui.distribuicao(recusas_unidade, limiar, 'Nenhuma recusa registrada.') }}
+    </section>
+  </div>
+
+  <div class="aviso aviso-info">
+    <strong>A contagem das recusas sai da trilha de auditoria</strong>, e não das
+    colunas da requisição.
+    {% call ui.info('recusas-vem-da-trilha', 'de onde sai a contagem das recusas') %}
+      <p>São dois motivos, e os dois importam para quem confere o número.</p>
+      <p>O código do motivo vai em <code>valor_novo</code> do evento justamente
+        para a contagem <strong>não depender de casar texto</strong>: rótulo
+        editado no catálogo não pode partir uma série histórica em duas.</p>
+      <p>E a recusa de <strong>balcão</strong> — a da decisão 3, que é a que mais
+        importa aqui — não tem linha de requisição nenhuma, porque quem não é
+        servidor não está no cadastro. Contando pelas colunas da requisição, ela
+        simplesmente não existiria.</p>
+    {% endcall %}
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+/* =====================================================================
+   celular.css — a folha da tela de bolso, em cima dos tokens de csso.css.
+
+   Nenhuma cor nova: tudo e `var(--…)` da folha principal, que continua
+   carregada antes desta. O que muda aqui e o TAMANHO — alvo de toque de 48px,
+   fonte de 16px nos campos (abaixo disso o iOS da zoom ao focar), uma coluna
+   so — e o que nao existe na tela de mesa: os passos do balcao e a lista de
+   chamada como lista de toque.
+   ===================================================================== */
+.conteudo.celular { max-width: 560px; margin: 0 auto; padding: 12px 14px 40px; }
+.app-celular h1 { font-size: 22px; margin: 6px 0 4px; }
+.app-celular .sub { margin: 0 0 14px; color: var(--tinta-media); }
+
+/* as abas: uma barra fixa embaixo, onde o polegar alcanca */
+.abas-celular {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; background: var(--cartao); border-top: 1px solid var(--borda);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.abas-celular a {
+  flex: 1; text-align: center; padding: 12px 6px; min-height: 48px;
+  font-size: 14px; font-weight: 600; color: var(--tinta-media); text-decoration: none;
+  border-top: 3px solid transparent;
+}
+.abas-celular a.ativo { color: var(--acento); border-top-color: var(--acento); }
+
+.cartoes-inicio { display: grid; gap: 10px; margin: 8px 0 16px; }
+.cartao-inicio {
+  display: flex; flex-direction: column; gap: 4px; padding: 16px;
+  background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio-cartao);
+  text-decoration: none; color: var(--tinta); min-height: 64px;
+}
+.cartao-inicio strong { font-size: 17px; }
+.cartao-inicio span { color: var(--tinta-media); font-size: 14px; }
+
+/* campos maiores do que na mesa: 16px e o minimo que o iOS nao amplia */
+.app-celular input:not([type]), .app-celular input[type=search], .app-celular input[type=date],
+.app-celular input[type=number], .app-celular select, .app-celular textarea {
+  font-size: 16px; padding: 12px; min-height: 48px;
+}
+.app-celular button, .app-celular .botao { min-height: 48px; font-size: 16px; }
+.app-celular button.largo { width: 100%; }
+
+/* os passos do balcao */
+.passos-celular { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.passos-celular > li {
+  background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao); padding: 14px;
+}
+.passos-celular > li.atual { border-color: var(--acento); }
+.passos-celular .escolhido { margin: 0 0 10px; font-weight: 600; }
+
+/* a lista de toque: um botao por linha, com altura de dedo */
+.lista-toque { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.lista-toque .toque {
+  width: 100%; text-align: left; padding: 12px 14px; min-height: 48px;
+  background: var(--superficie-fraca); border: 1px solid var(--borda);
+  border-radius: var(--raio); color: var(--tinta); font-size: 16px;
+}
+.lista-toque .toque:hover, .lista-toque .toque:focus-visible { border-color: var(--acento); }
+.lista-toque .nada { padding: 10px 4px; color: var(--tinta-dica); font-style: italic; }
+
+/* a chamada: nome a esquerda, dois marcadores a direita */
+.lista-toque.chamada .inscrito {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio);
+}
+.lista-toque.chamada .inscrito.presente { border-left: 4px solid var(--ok); }
+.lista-toque.chamada .inscrito.falta { border-left: 4px solid var(--erro); }
+.lista-toque.chamada .quem { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lista-toque.chamada .quem strong { font-size: 16px; overflow-wrap: anywhere; }
+.lista-toque.chamada .marcas { display: flex; gap: 6px; flex-shrink: 0; }
+.lista-toque.chamada .marcador { min-width: 76px; padding: 10px 8px; }
+.lista-toque.chamada .marcador.ativo { background: var(--acento); color: #fff; border-color: var(--acento); }
+
+.sem-rede { position: sticky; top: 0; z-index: 4; }

@@ -1,0 +1,819 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# A ficha do pedido de EPI — layout de `processo_ficha.html` (§9).
+
+   É a mesma pergunta que as duas telas respondem: em que ponto isto está, e por
+   quê. Responder com dois desenhos diferentes obrigaria quem opera os dois
+   módulos a reaprender a leitura.
+
+   Quatro coisas que esta tela existe para tornar visíveis:
+
+   1. **A decisão é por item.** Cada linha tem o próprio estado, a própria
+      quantidade aprovada e o próprio motivo congelado. Aprovar a luva e recusar
+      o respirador do mesmo pedido é o caso comum.
+   2. **A recusa é um seletor.** O texto que vai sair para o requerente aparece
+      embaixo da escolha ANTES de alguém clicar, e a caixa de complemento só
+      surge quando o motivo a exige.
+   3. **O bloqueio da RN-26 tem saída na própria tela.** A caixa de autorização e
+      a justificativa já estão no formulário de aprovar, com o texto dizendo que
+      quem marcar assume o nome. Erro sem caminho de saída é o que faz o analista
+      resolver o caso por fora do sistema.
+   4. **Botão desabilitado explica por quê.** Lote com CA vencido continua na
+      lista, marcado, e o botão de reservar e o de entregar ficam desabilitados
+      com o motivo escrito ao lado — nunca somem sem explicação (RN-25).
+   5. **A reserva é ato de quem opera o almoxarifado** (`epi.estoque`), com o
+      lote escolhido à mão e saldo e CA de cada candidato ao lado. Não há reserva
+      automática na entrada de lote: reserva silenciosa muda o disponível sem
+      ninguém mandar, e é assim que a contagem manual passa a divergir do sistema
+      sem explicação.
+
+   E o que ela deliberadamente NÃO oferece: botão para “em atendimento” e para
+   “atendida”. As duas transições são do sistema, e um botão para elas produziria
+   o estado que a tela mostra e que não corresponde a fato nenhum.
+
+   ===================================================================
+   OS DEZ FORMULÁRIOS SAÍRAM DA TELA — e o que isso custou em cliques
+   ===================================================================
+   Esta ficha carregava DEZ formulários abertos ao mesmo tempo: editar o
+   cabeçalho, enviar, pegar para análise, concluir, reconsiderar, indeferir,
+   devolver, cancelar, acrescentar item e excluir o rascunho. Cada um com o seu
+   `<h3>`, o seu parágrafo de explicação e os seus campos — 16 parágrafos longos
+   e 3.831 caracteres de prosa, numa tela em que só um dos dez caminhos é o
+   próximo passo. Todos viraram camada (`ui.botao_cadastro` + `ui.popup_cadastro`),
+   e a explicação de cada um foi JUNTO com ele para dentro do popup: é lá que ela
+   se lê, imediatamente antes de clicar, e não empilhada sobre a lista de itens.
+
+   **A hierarquia da 1.27.0 continua.** `.cartao.destaque` é "o próximo passo que
+   a tela pede" — o caminho normal do estado — e o botão dele continua em
+   destaque, agora sozinho no cartão. As exceções continuam abaixo, e agora são o
+   que sempre foram: uma fileira de botões.
+
+   **O custo em cliques, medido.** Decidir um pedido de cinco itens, de ENVIADA
+   até a análise concluída, custava 12 cliques: pegar (1) + cinco vezes [abrir a
+   gaveta da linha, aprovar] (10) + concluir (1). Agora custa 14: os dois passos
+   de envelope ganham um clique cada, porque o botão passa a abrir a camada onde
+   o formulário está. **O custo por ITEM não mudou** — e não mudar era o requisito:
+   na linha, o que virou camada foi a GAVETA inteira (`ui.popup_gaveta`), e não
+   cada ação dentro dela. Um popup por AÇÃO teria dado 19 cliques, +1 por item
+   para sempre; é essa diferença que o macro da gaveta existe para não pagar. #}
+
+{% set quem = identificar(requisicao) %}
+
+{# O que a pessoa digitou, devolvido pela rota quando a gravação foi recusada.
+   Vazio na leitura normal.
+
+   Esta tela tem cerca de vinte formulários, e por isso o `digitado` traz a
+   FORMA de onde o texto veio: `cabecalho`, `item-novo` ou `item-{id}`. Sem o
+   discriminador, a justificativa recusada na linha 7 reapareceria dentro da
+   linha 3 e do cartão de acrescentar — texto de outra pessoa, em campo de outro
+   item, e sem nada dizendo de onde veio. #}
+{% set d = digitado or {} %}
+{% set forma = d.get('forma') %}
+{%- macro sel(escolhido, valor) -%}
+{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{%- endmacro %}
+
+{# O preâmbulo da recusa, na forma que `popup_cadastro` documenta — só que aqui
+   com DOIS discriminadores, porque são dois os formulários desta tela que
+   recusam renderizando a página de novo (os demais redirecionam com a faixa).
+   `item-{id}` fica de fora de propósito: aquela recusa reabre a gaveta da linha,
+   dentro de `partes/itens_do_pedido.html`, e o motivo continua saindo na faixa
+   da casca — que é onde ele já saía e onde a troca parcial também o escreve. #}
+{% set recusado = true if (erro and d) else false %}
+{% set no_popup = recusado and forma in ('cabecalho', 'item-novo') %}
+{% set erro_cabecalho = erro if (recusado and forma == 'cabecalho') else none %}
+{% set erro_item_novo = erro if (recusado and forma == 'item-novo') else none %}
+{% set erro = none if no_popup else erro %}
+{% set dc = d if forma == 'cabecalho' else {} %}
+{% set dn = d if forma == 'item-novo' else {} %}
+
+{# O seletor de motivo de recusa MUDOU DE CASA: está em `partes/macros.html`,
+   como `ui.seletor_de_motivo`. Ele nasceu aqui e continua servindo os dois usos
+   desta tela — o indeferimento do envelope e a recusa de cada item —, mas a
+   recusa de item passou a viver em `partes/itens_do_pedido.html`, que as rotas
+   renderizam sozinho na troca parcial: macro definido no template da página não
+   existe quando o fragmento é montado fora dela. O argumento de por que ele é um
+   macro só, e por que a lista vem por parâmetro, foi junto. #}
+
+{% block titulo %}{{ requisicao.identificacao }} · CSSO{% endblock %}
+{% block trilha %}
+<span class="atual mono" aria-current="page">{{ requisicao.identificacao }}</span>
+{% endblock %}
+
+{% block acoes_cabecalho %}
+<a class="botao secundario" href="/epis/requisicoes/{{ requisicao.id }}/guia"
+   target="_blank" rel="noopener">Imprimir guia de entrega</a>
+{% if pode_requisitar %}
+<a class="botao" href="/epis/requisicoes/nova">Nova requisição</a>
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  {# âncora de volta para quem desceu até a confirmação de exclusão e desistiu #}
+  <div class="cabecalho-pagina" id="topo-da-ficha">
+    <div class="titulo">
+      <h1>{{ requisicao.identificacao }}</h1>
+      <p class="identificacao">
+        {% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+          <span class="discreto">· identificação suprimida (RN-19)</span>
+        {% else %}<span>{{ quem.com_siape }}</span>{% endif %}
+        <span class="ponto">·</span>
+        <span>{{ rotulo_finalidade }}</span>
+        {{ ui.pilula_requisicao(requisicao.estado, rotulos) }}
+        {{ ui.pilula_urgencia(requisicao.urgencia, requisicao.justificativa_urgencia or '') }}
+        <span class="selo" title="dias neste estado">{{ dias_no_estado }}d</span>
+      </p>
+    </div>
+  </div>
+
+  {% if requisicao.estado == 'RASCUNHO' %}
+  {# O que FICA na tela é o que muda a decisão de agora: que este pedido ainda
+     não existe para o SESMT, que o número se consome no envio e não volta, e que
+     depois do envio corrigir deixa de ser editar. O resto — o que a RN-03 e a
+     RN-31 dizem, e por que a exclusão física existe num sistema append-only —
+     explica, e explicação mora no (i).
+
+     Sem `<p>`: assim o (i) fecha a linha do texto, em vez de cair sozinho na
+     linha de baixo. É a mesma forma que os avisos de `epis_ficha.html` já usam. #}
+  <div class="aviso aviso-alerta">
+    <strong>Rascunho: ainda não há protocolo, e ninguém no SESMT viu este
+      pedido.</strong> O número é consumido no envio e <strong>não volta</strong>;
+    depois dele, corrigir passa a ser cancelar com motivo e abrir outro.
+    {% call ui.info('rascunho', 'o que rascunho é, e por que ele pode ser apagado') %}
+      <p>O protocolo é consumido <strong>no envio</strong>, e não na abertura
+        (RN-03): um rascunho abandonado não abre buraco na sequência — que é a
+        primeira pergunta que uma auditoria faz sobre numeração de documento.</p>
+      <p>Rascunho é também o <strong>único</strong> estado que pode ser excluído
+        de verdade (RN-31), e a exceção se sustenta justamente porque ele não é
+        documento: não tem protocolo, ninguém no SESMT o viu e nenhum número foi
+        gasto. Em todo o resto do sistema não se apaga — corrige-se com registro.</p>
+      <p>Depois do envio o pedido é documento protocolado. A correção passa a ser
+        cancelamento com motivo e pedido novo, e as duas linhas ficam na trilha:
+        é assim que se corrige um documento de valor probatório sem rasura.</p>
+    {% endcall %}
+  </div>
+  {% endif %}
+
+  {# ONDE RETIRAR — a linha que faltava no estado RESERVADO.
+     A ficha já dizia o lote, o CA e o saldo, e não dizia a que porta ir: a
+     auditoria da jornada procurou "retirada", "balcão" e "almoxarifado" no corpo
+     desta página e não achou nenhum dos três. Era o ponto exato em que a jornada
+     do servidor voltava para o telefone — ele sabia que o equipamento estava
+     separado com o nome dele e não sabia onde buscá-lo.
+
+     Vai FORA das duas colunas e acima delas porque é a única informação desta
+     tela que pede uma ação fora do sistema, e porque quem chega aqui pelo aviso
+     do sino chega para ler exatamente isto. #}
+  {% if reservas %}
+  <div class="aviso aviso-info">
+    <strong>{{ reservas|length }} item(ns) reservado(s): há EPI separado com o
+      número deste pedido, esperando retirada.</strong>
+    {% if local_retirada %}
+    <span class="quebra">Onde e quando: <strong>{{ local_retirada }}</strong>.</span>
+    {% else %}
+    {# Sem o parâmetro preenchido a tela diz que não sabe, e não inventa: não há
+       coluna de localização em lote nenhum, e o endereço do setor emissor é o de
+       quem assina parecer, não o do balcão. Mandar alguém ao lugar errado com a
+       aparência de informação do sistema é pior do que a lacuna. #}
+    <span class="quebra">O <strong>local de retirada ainda não está registrado
+      neste sistema</strong> — procure a CSSO antes de ir. Quem instala preenche
+      <code>CSSO_EPI_LOCAL_RETIRADA</code> uma vez, e esta linha passa a dizer o
+      prédio, a sala e o horário.</span>
+    {% endif %}
+    <span class="quebra discreto">Reserva parada segura estoque que nenhum outro
+      pedido pode receber: o que não for retirado volta ao disponível quando
+      alguém solta a reserva, com motivo.</span>
+  </div>
+  {% endif %}
+
+  <div class="lado-a-lado igual">
+    <div class="pilha">
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Contexto congelado</h2>
+          {# O (i) encosta no título e explica o que "congelado" quer dizer — o
+             parágrafo da RN-15 que fechava o cartão veio para cá inteiro. Ele não
+             muda decisão nenhuma: é a leitura correta do que já está escrito nas
+             linhas abaixo, e se lê uma vez. #}
+          {% call ui.info('contexto-congelado',
+                          'por que a lotação é a do dia do envio, e não a de hoje') %}
+            <p>Lotação, cargo e função são os do <strong>dia do envio</strong>,
+              não os de hoje.</p>
+            <p>Um pedido fundamentado no risco do laboratório não pode, depois de
+              a pessoa ser transferida, passar a dizer que veio da secretaria: a
+              decisão ficaria descrevendo outro lugar, e quem a lesse dois anos
+              adiante não teria como saber que ela não descreve mais nada
+              (RN-15).</p>
+            <p>É a mesma razão de o texto da recusa ser congelado na linha do item
+              (RN-27) e de a ficha de EPI congelar o CA: documento se lê pelo que
+              era verdade quando ele foi feito.</p>
+          {% endcall %}
+          <span class="contador">v{{ requisicao.versao }}</span>
+          {% if editavel and pode_requisitar %}
+          {# A edição deste cartão mora no próprio cabeçalho dele: era uma SEGUNDA
+             seção logo abaixo, com título, nota e seis campos abertos, repetindo
+             na coluna da esquerda o que a tabela acima já mostra. O botão é o que
+             sobra na tela; o formulário é a camada. #}
+          <span class="a-direita">{{ ui.botao_cadastro('editar-cabecalho',
+                                       'Editar o cabeçalho', 'secundario compacto') }}</span>
+          {% endif %}
+        </div>
+        {# CATORZE LINHAS DE PESO IDÊNTICO ERAM CATORZE LINHAS QUE SE LIAM UMA A
+           UMA. O cartão media ~654px — mais que a dobra inteira de um 1366×768 —
+           e "Protocolo", que é a identidade do documento, tinha exatamente o
+           mesmo 13px cinza de "Rotina de trabalho", que é contexto. Nada estava
+           errado em nenhuma delas; o problema era serem catorze iguais.
+
+           Duas mudanças, nenhuma delas de estilo:
+
+           1. **O protocolo saiu.** Ele já é o `<h1>` da tela (`identificacao` é
+              o próprio protocolo), já é a trilha e já é o `<title>` da aba —
+              repeti-lo aqui era a quarta cópia, e era ela que ocupava a primeira
+              linha da tabela, no lugar de mais peso.
+           2. **O resto virou dois blocos com nome.** O que FUNDAMENTA a decisão
+              (quem, onde, fazendo o quê, sob que risco) separado do que
+              REGISTRA a tramitação (quem tocou, quando, com que resultado). São
+              duas perguntas diferentes, feitas em momentos diferentes: quem
+              analisa lê o primeiro bloco, quem audita lê o segundo. O fio entre
+              eles é o que `.cartao.liso > dl + .corpo` já desenha. #}
+        <div class="corpo"><h3>Quem pediu, e por quê</h3></div>
+        <dl class="tabela-dados">
+          <dt>Requerente</dt>
+          <dd>
+            {% if quem.nominal %}{{ quem.nome }}
+              <span class="discreto">· SIAPE <span class="mono">{{ quem.siape }}</span></span>
+            {% elif quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+              <span class="discreto">· identificação suprimida (RN-19)</span>
+            {% else %}—{% endif %}
+          </dd>
+
+          <dt>Chefia</dt>
+          <dd>{{ identificar(requisicao.chefia).nome }}</dd>
+
+          <dt>Cargo no envio</dt>
+          <dd>{{ requisicao.cargo_snapshot or '—' }}
+            {%- if requisicao.funcao_snapshot %}
+            <span class="discreto">· {{ requisicao.funcao_snapshot }}</span>{% endif %}</dd>
+
+          <dt>Unidade no envio</dt>
+          <dd>{% if requisicao.unidade %}{{ requisicao.unidade.campus.sigla }} ·
+            {{ requisicao.unidade.nome_extenso }}{% else %}—{% endif %}</dd>
+
+          <dt>Finalidade</dt>
+          <dd>{{ rotulo_finalidade }} · {{ rotulo_urgencia|lower }}</dd>
+
+          <dt>Rotina de trabalho</dt>
+          <dd>{{ requisicao.descricao_atividade or '—' }}</dd>
+
+          <dt>Riscos declarados</dt>
+          <dd>{{ requisicao.riscos_declarados or '—' }}</dd>
+        </dl>
+
+        <div class="corpo"><h3>Quem tocou, e quando</h3></div>
+        <dl class="tabela-dados">
+          <dt>Aberto por</dt>
+          <dd>{{ nomes.get(requisicao.solicitado_por_id, '—') }}
+            <span class="discreto mono">{{ requisicao.criado_em|momento }}</span></dd>
+
+          <dt>Enviado em</dt>
+          <dd class="mono">{{ requisicao.enviada_em|momento or '—' }}</dd>
+
+          <dt>Analisado por</dt>
+          <dd>{{ nomes.get(requisicao.analisado_por, '—') }}
+            <span class="discreto mono">{{ requisicao.analisado_em|momento or '' }}</span></dd>
+
+          {% if requisicao.parecer_analise %}
+          <dt>Parecer da análise</dt>
+          <dd class="texto-literal">{{ requisicao.parecer_analise }}</dd>
+          {% endif %}
+
+          {% if requisicao.motivo_recusa %}
+          <dt>Motivo do indeferimento</dt>
+          <dd><strong>{{ requisicao.motivo_recusa.rotulo }}</strong>
+            <span class="discreto mono">{{ requisicao.motivo_recusa.codigo }}</span>
+            <span class="quebra texto-literal">{{ requisicao.motivo_recusa.texto }}</span>
+            {%- if requisicao.complemento_recusa %}
+            <span class="quebra">{{ requisicao.complemento_recusa }}</span>{% endif %}</dd>
+          {% endif %}
+
+          {% if requisicao.motivo_cancelamento %}
+          <dt>Motivo do cancelamento</dt>
+          <dd>{{ requisicao.motivo_cancelamento }}</dd>
+          {% endif %}
+        </dl>
+        {# O parágrafo da RN-15 que fechava este cartão foi INTEIRO para o (i) do
+           cabeçalho, sem perder uma palavra: ele explica como se lê a tabela
+           acima e não muda decisão nenhuma — é o caso exemplar do que sai da
+           tela. Com ele saiu o `.corpo` que o carregava. #}
+      </section>
+    </div>
+
+    <div class="pilha">
+
+      {# ============================================================
+         "O QUE EU PRECISO FAZER AGORA?"
+
+         Este cartão empilhava até quatro formulários de ação irmãos — concluir
+         a análise, indeferir o pedido inteiro, devolver à fila, cancelar —, com
+         quatro `<h3>` de 14px idênticos, quatro parágrafos `.discreto` de peso
+         idêntico, e nada separando um do outro. A única pista de qual era o
+         caminho normal era a cor do botão, que se lê DEPOIS do texto: quem abria
+         a tela tinha de ler os quatro para descobrir por onde começar, e é assim
+         que uma tela fica confusa sem nenhum elemento estar errado.
+
+         A separação agora é a que a máquina de estados já fazia e a tela não
+         mostrava: **em cada estado há um caminho normal e o resto são exceções.**
+         O caminho normal sobe para um `.cartao.destaque` — a barra de acento à
+         esquerda que o `csso.css` descreve como "o próximo passo que a tela
+         pede", e que estava em uso uma única vez em todo o sistema —, com o
+         título do cartão sendo o próprio verbo. As exceções ficam abaixo.
+
+         O QUE MUDOU AGORA: os formulários dos dois lados foram para dentro de
+         camadas, e o que fica na tela é o botão de cada caminho — em destaque o
+         normal, em fileira as exceções. A frase que sobra ao lado do botão de
+         destaque é a que muda a decisão (o que se consome, o que não volta, o
+         que a regra recusa); o resto da explicação está dentro do popup, que é
+         onde ela se lê no instante em que serve.
+
+         `ANALISADA` e `EM_ATENDIMENTO` não têm formulário nenhum aqui, e mesmo
+         assim têm próximo passo: ele acontece na TABELA DE ITENS, item a item —
+         reservar lote, entregar. Sem dizê-lo, a tela ficava com um cartão de
+         trâmite vazio justamente nos dois estados em que há mais trabalho a
+         fazer. #}
+      {% set passo =
+           'enviar'       if requisicao.estado == 'RASCUNHO' and pode_requisitar
+      else 'pegar'        if requisicao.estado == 'ENVIADA' and pode_analisar
+      else 'concluir'     if requisicao.estado == 'EM_ANALISE' and pode_analisar
+      else 'reconsiderar' if requisicao.estado == 'INDEFERIDA' and pode_analisar
+      else 'itens'        if requisicao.estado in ('ANALISADA', 'EM_ATENDIMENTO')
+                             and (pode_estocar or pode_entregar)
+      else '' %}
+
+      {% if passo %}
+      <section class="cartao destaque" id="proximo-passo">
+        <div class="titulo-cartao">
+          <h2>
+            {%- if passo == 'enviar' %}Enviar para o SESMT
+            {%- elif passo == 'pegar' %}Pegar para análise
+            {%- elif passo == 'concluir' %}Concluir a análise
+            {%- elif passo == 'reconsiderar' %}Reconsiderar
+            {%- else %}Reservar e entregar, item a item{% endif -%}
+          </h2>
+          <span class="nota">o próximo passo deste pedido</span>
+        </div>
+
+        {% if passo == 'enviar' %}
+        <p class="discreto sem-margem"><strong>Consome o protocolo e congela a
+          lotação</strong> — e nenhuma das duas coisas volta atrás.</p>
+        <div class="acoes">{{ ui.botao_cadastro('enviar-pedido', 'Enviar pedido') }}</div>
+
+        {% elif passo == 'pegar' %}
+        <p class="discreto sem-margem"><strong>Quem pega o pedido assume o nome
+          nele.</strong> A RN-28 recusa a análise do próprio pedido, sem exceção.</p>
+        <div class="acoes">{{ ui.botao_cadastro('pegar-analise', 'Iniciar análise') }}</div>
+
+        {% elif passo == 'concluir' %}
+        <p class="discreto sem-margem">Exige <strong>todo</strong> item decidido e
+          ao menos um aprovado.</p>
+        <div class="acoes">{{ ui.botao_cadastro('concluir-analise', 'Concluir análise') }}</div>
+
+        {% elif passo == 'reconsiderar' %}
+        <p class="discreto sem-margem">O único caminho de volta de um terminal. As
+          recusas de item <strong>não</strong> voltam sozinhas.</p>
+        <div class="acoes">{{ ui.botao_cadastro('reconsiderar', 'Reabrir para análise') }}</div>
+
+        {% else %}
+        <p class="discreto sem-margem">O trabalho deste estado não é do envelope,
+          e sim de cada linha: reservar o lote e entregar. Tudo isso mora no botão
+          <strong>ações</strong> de cada linha da tabela de itens, logo abaixo.</p>
+        <div class="acoes">
+          <a class="botao" href="#itens-do-pedido">Ir para os itens</a>
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% set tem_excecoes = (requisicao.estado == 'RASCUNHO' and pode_requisitar)
+                         or (requisicao.estado == 'EM_ANALISE' and pode_analisar)
+                         or (cancelavel and (pode_requisitar or pode_analisar)) %}
+      <section class="cartao">
+        <div class="titulo-cartao">
+          <h2>Trâmite</h2>
+          {{ ui.pilula_requisicao(requisicao.estado, rotulos) }}
+          {% if requisicao.estado_anterior %}
+          <span class="nota">veio de {{ rotulos.get(requisicao.estado_anterior, requisicao.estado_anterior)|lower }}</span>
+          {% endif %}
+        </div>
+
+        {% if requisicao.estado in ('EM_ATENDIMENTO', 'ATENDIDA') %}
+        {# O aviso encolheu para a linha que responde "por que não há botão aqui?"
+           — que é a pergunta que ele existe para responder. O porquê de a
+           transição ser do sistema, e não de alguém clicar, é explicação: (i). #}
+        <div class="aviso aviso-info">
+          <strong>Este estado é do sistema, não de um botão.</strong>
+          {% call ui.info('estado-automatico',
+                          'por que “em atendimento” e “atendida” não têm botão') %}
+            <p>O pedido passa a <strong>em atendimento</strong> na primeira
+              entrega, e a <strong>atendida</strong> quando todo item aprovado foi
+              entregue ou cancelado. As duas transições são consequência de um
+              fato registrado noutro lugar — a linha da ficha, a baixa no razão —,
+              e não de uma decisão de trâmite.</p>
+            <p>Deixá-las a cargo de alguém clicar produziria o pior tipo de estado
+              que um sistema pode mostrar: o que está na tela e não corresponde a
+              fato nenhum. Alguém marcaria "atendida" com item por entregar, e a
+              fila deixaria de dizer onde há trabalho.</p>
+          {% endcall %}
+        </div>
+        {% endif %}
+
+        {% if tem_excecoes %}
+        {# OS OUTROS CAMINHOS, EM FILEIRA DE BOTÕES. Eram três formulários
+           empilhados aqui dentro — indeferir, devolver, cancelar —, cada um com
+           `<h3>`, parágrafo e campo, e o de excluir rascunho descia a tela
+           inteira até um quarto cartão. Cada um deles é agora um botão e uma
+           camada; a explicação de cada um foi junto para dentro dela, que é onde
+           ela se lê imediatamente antes de decidir. #}
+        <p class="sub">Os outros caminhos que este estado permite.</p>
+        <div class="acoes">
+
+          {% if requisicao.estado == 'EM_ANALISE' and pode_analisar %}
+          {{ ui.botao_cadastro('indeferir', 'Indeferir o pedido inteiro',
+                               'perigo-discreto') }}
+          {{ ui.botao_cadastro('devolver', 'Devolver à fila', 'secundario') }}
+          {% endif %}
+
+          {% if cancelavel and (pode_requisitar or pode_analisar) %}
+          {{ ui.botao_cadastro('cancelar-pedido', 'Cancelar o pedido',
+                               'perigo-discreto') }}
+          {% endif %}
+
+          {% if requisicao.estado == 'RASCUNHO' and pode_requisitar %}
+          {{ ui.botao_cadastro('excluir-rascunho', 'Excluir o rascunho',
+                               'perigo-discreto') }}
+          {% endif %}
+
+        </div>
+        {% endif %}
+
+        {% if not (pode_requisitar or pode_analisar or pode_entregar or pode_estocar) %}
+        <div class="vazio">
+          <strong>Você lê este pedido e não age sobre ele.</strong>
+          <span>Pedir exige <code>epi.requisitar</code>, decidir exige
+            <code>epi.analisar</code>, reservar lote exige <code>epi.estoque</code>
+            e entregar exige <code>epi.entregar</code>.</span>
+        </div>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  {# ================================================================
+     Os itens — é aqui que a decisão acontece
+     ================================================================ #}
+  {# O CONTEÚDO da seção mora em `partes/itens_do_pedido.html`, e não aqui,
+     porque ele é o alvo da troca parcial: as rotas de decisão e de reserva
+     devolvem ESTE mesmo arquivo quando quem chamou foi o HTMX, e é isso que
+     transforma as dez recargas de um pedido de dez itens em dez trocas da
+     lista. O argumento inteiro — por que a seção e não a linha, por que
+     `innerHTML` e não `outerHTML`, e por que a entrega fica de fora — está
+     escrito lá.
+
+     A `<section>` fica AQUI, e o fragmento é só o miolo: com `outerHTML` o
+     tratador global de `base.html` realçaria o elemento antigo, que a troca já
+     desligou do documento, e a troca sairia sem sinal nenhum de que algo
+     mudou. #}
+  <section class="cartao liso" id="itens-do-pedido">
+    {% include "partes/itens_do_pedido.html" %}
+  </section>
+
+  {% if editavel and pode_requisitar %}
+  {# O que sobrou do cartão "Acrescentar item": o botão. Ele fica ENCOSTADO na
+     tabela, e não no canto do cabeçalho da página, porque é da tabela que se lê
+     o que ainda falta pedir — e o botão mora no template da PÁGINA, e não no
+     fragmento, porque é aqui que a varredura de invariante do popup casa botão e
+     diálogo (`test_todo_botao_de_cadastro_tem_o_popup_que_ele_abre`); no
+     fragmento, que as rotas renderizam sozinho, ela não o veria. #}
+  <div class="acoes">{{ ui.botao_cadastro('novo-item', 'Acrescentar item') }}</div>
+  {% endif %}
+
+  {# ================================================================
+     A trilha — as duas máquinas na mesma linha do tempo
+     ================================================================ #}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Trilha de auditoria</h2>
+      <span class="contador">{{ eventos|length }}</span>
+      <span class="nota">append-only, encadeada por hash</span>
+    </div>
+    <ul class="linha-tempo">
+      {% for e in eventos %}
+      <li>
+        {# A descricao passa por `texto_livre`, e nao sai crua: a frase foi
+           escrita no ato do evento e carrega nome e SIAPE por dentro ("Rascunho
+           de requisicao de EPI para Fulano (SIAPE 3010077)"), onde
+           `identificar()` nunca chega. `sobre=requisicao` e o que faz o titular
+           continuar lendo a propria trilha; sem ele a supressao acertaria o
+           dono do dado junto com o terceiro. O comentario vai pela mesma regra:
+           e o mesmo texto livre, digitado em vez de gerado. #}
+        <strong>{{ e.tipo_evento|evento }}</strong> — {{ texto_livre(e.descricao, requisicao) }}
+        {% if e.comentario %}<span class="quebra texto-literal">{{ texto_livre(e.comentario, requisicao) }}</span>{% endif %}
+        <div class="quando">{{ e.ocorrido_em|momento }} · {{ e.usuario_nome }}
+          {% if e.origem != 'SISTEMA' %}· origem {{ e.origem }}{% endif %}</div>
+      </li>
+      {% else %}<li class="nada">Sem eventos.</li>{% endfor %}
+    </ul>
+  </section>
+
+</div>
+
+{# ===================================================================
+   AS CAMADAS — os dez formulários que saíram da tela
+   ===================================================================
+   Fora de `.tela`, como último bloco do conteúdo: o diálogo é camada, não bloco
+   da coluna, e o popup de cadastro documenta o porquê.
+
+   Só o `editar-cabecalho` e o `novo-item` recebem `aberto`/`erro`: são os dois
+   que a rota recusa RENDERIZANDO a tela de novo, com o digitado. Os outros oito
+   recusam por redirecionamento com a faixa vermelha da casca, que é o que eles
+   já faziam — nenhum deles tem texto longo a preservar. #}
+
+{% if editavel and pode_requisitar %}
+{# Recusado, o formulário volta com o DIGITADO e não com o que está no banco: a
+   recusa desfaz a transação, e o banco tem a versão anterior — reler dali
+   apagaria da tela o parágrafo que acabou de ser escrito. #}
+{% call ui.popup_cadastro('editar-cabecalho', 'Editar o cabeçalho',
+                          '/epis/requisicoes/' ~ requisicao.id, 'Salvar rascunho',
+                          aberto=(recusado and forma == 'cabecalho'),
+                          erro=erro_cabecalho, nota='só enquanto for rascunho') %}
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="ed-chefia">Chefia responsável</label>
+      {% set chefia = dc.get('chefia_servidor_id', requisicao.chefia_servidor_id) %}
+      <select id="ed-chefia" name="chefia_servidor_id">
+        <option value="">—</option>
+        {% for pessoa in servidores %}
+        <option value="{{ pessoa.id }}"{{ sel(chefia, pessoa.id) }}>
+          {{ identificar(pessoa).com_siape }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="ed-finalidade">Finalidade</label>
+      {% set finalidade_atual = dc.get('finalidade') or requisicao.finalidade %}
+      <select id="ed-finalidade" name="finalidade" required>
+        {% for codigo, rotulo in finalidades %}
+        <option value="{{ codigo }}"
+                {% if finalidade_atual == codigo %}selected{% endif %}>{{ rotulo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="ed-urgencia">Urgência</label>
+      {% set urgencia_atual = dc.get('urgencia') or requisicao.urgencia %}
+      <select id="ed-urgencia" name="urgencia" required>
+        {% for codigo, rotulo in urgencias %}
+        <option value="{{ codigo }}"
+                {% if urgencia_atual == codigo %}selected{% endif %}>{{ rotulo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="campo">
+    <label for="ed-justificativa-urgencia">Justificativa da urgência</label>
+    <input id="ed-justificativa-urgencia" name="justificativa_urgencia"
+           value="{{ dc.get('justificativa_urgencia', requisicao.justificativa_urgencia or '') }}">
+  </div>
+  <div class="campo">
+    <label for="ed-rotina">Rotina de trabalho</label>
+    <textarea id="ed-rotina" name="descricao_atividade" rows="3"
+              aria-describedby="dica-ed-rotina">{{ dc.get('descricao_atividade', requisicao.descricao_atividade or '') }}</textarea>
+    <span class="dica" id="dica-ed-rotina">Nada sobre saúde, gestação, CID,
+      diagnóstico ou atestado — o sistema recusa o texto (RN-21).</span>
+  </div>
+  <div class="campo">
+    <label for="ed-riscos">Riscos declarados</label>
+    <textarea id="ed-riscos" name="riscos_declarados" rows="3">{{ dc.get('riscos_declarados', requisicao.riscos_declarados or '') }}</textarea>
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if passo == 'enviar' %}
+{% call ui.popup_cadastro('enviar-pedido', 'Enviar para o SESMT',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/enviar',
+                          'Enviar pedido',
+                          nota='daqui não se volta editando') %}
+  <p><strong>Consome o protocolo, congela a lotação e coloca o pedido na
+    fila.</strong> O número da sequência é gasto neste clique e não volta (RN-03).</p>
+  <p>Exige pelo menos um item, e a justificativa dos itens que o catálogo exige
+    (RN-29) — sem isso o envio é recusado e nada é consumido.</p>
+  <p>Depois daqui o pedido é <strong>documento protocolado</strong>: a rotina de
+    trabalho, os riscos, o cargo e a unidade ficam como estão agora, e corrigir
+    passa a ser cancelar com motivo e abrir outro pedido.</p>
+{% endcall %}
+{% endif %}
+
+{% if passo == 'pegar' %}
+{% call ui.popup_cadastro('pegar-analise', 'Pegar para análise',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/analise',
+                          'Iniciar análise',
+                          nota='o seu nome fica no pedido') %}
+  <p><strong>Quem pega o pedido assume o nome nele.</strong> A partir daqui a
+    ficha diz que foi você quem analisou, e a trilha guarda a hora.</p>
+  <p>A RN-28 recusa a análise do próprio pedido, sem exceção: gravar “analisado
+    por X” num pedido de X produziria a aparência de um controle que não houve.
+    Quem trabalha no SESMT e precisa do próprio EPI continua atendido pela
+    entrega avulsa de balcão, que registra ficha, lote, CA e comprovante do mesmo
+    jeito.</p>
+{% endcall %}
+{% endif %}
+
+{% if passo == 'concluir' %}
+{% call ui.popup_cadastro('concluir-analise', 'Concluir a análise',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/concluir',
+                          'Concluir análise') %}
+  <p>Exige <strong>todo</strong> item decidido e ao menos um aprovado. Analisar
+    pela metade tiraria da fila o que ninguém decidiu — o envelope sairia e a
+    linha esquecida iria junto.</p>
+  <div class="campo">
+    <label for="parecer">Parecer da análise</label>
+    <textarea id="parecer" name="parecer" rows="3"></textarea>
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if passo == 'reconsiderar' %}
+{% call ui.popup_cadastro('reconsiderar', 'Reconsiderar',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/reconsiderar',
+                          'Reabrir para análise') %}
+  <p>O único caminho de volta de um terminal.</p>
+  <p>As recusas de item <strong>não</strong> voltam sozinhas: cada uma foi
+    decisão própria, com texto congelado, e desfazê-las em bloco reescreveria em
+    silêncio negativas que talvez estivessem certas.</p>
+  <div class="campo">
+    <label for="motivo-reconsideracao">Motivo</label>
+    <input id="motivo-reconsideracao" name="motivo" required
+           placeholder="laudo novo do posto mudou a fundamentação">
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if requisicao.estado == 'EM_ANALISE' and pode_analisar %}
+{% call ui.popup_cadastro('indeferir', 'Indeferir o pedido inteiro',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/indeferir',
+                          'Indeferir', classe_botao='perigo-discreto') %}
+  <p>É a resposta quando <strong>todo</strong> item foi recusado.</p>
+  <p>O motivo vem do catálogo porque é ele que sai na resposta ao requerente:
+    negativa em texto livre sai diferente a cada vez, não cita norma e não se
+    conta (RN-27).</p>
+  {{ ui.seletor_de_motivo('ind', 'motivo_id', motivos) }}
+  <div class="campo">
+    <label for="ind-parecer">Parecer da análise</label>
+    <textarea id="ind-parecer" name="parecer" rows="2"></textarea>
+  </div>
+{% endcall %}
+
+{% call ui.popup_cadastro('devolver', 'Devolver à fila',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/devolver',
+                          'Devolver', classe_botao='secundario') %}
+  <p>Solta o pedido sem decidir — decidir sem base é pior do que devolver. O
+    motivo fica na trilha, e o pedido volta a esperar quem o pegue.</p>
+  <div class="campo">
+    <label for="motivo-devolucao">Motivo</label>
+    <input id="motivo-devolucao" name="motivo" required
+           placeholder="falta a descrição do posto; caso é da engenharia">
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if cancelavel and (pode_requisitar or pode_analisar) %}
+{% call ui.popup_cadastro('cancelar-pedido', 'Cancelar o pedido',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/cancelar',
+                          'Cancelar pedido', classe_botao='perigo-discreto',
+                          nota='desistência, não decisão de mérito') %}
+  <p>A desistência, com motivo — e ela é diferente do indeferimento:
+    <strong>indeferir</strong> é decisão de mérito (“o item não é devido”),
+    <strong>cancelar</strong> é desistência.</p>
+  <p>No legado a desistência não existia, e cancelar era registrar uma recusa
+    mentirosa que a contagem por motivo somava: por isso o relatório de recusas
+    dele não valia nada.</p>
+  <div class="campo">
+    <label for="motivo-cancelamento">Motivo</label>
+    <input id="motivo-cancelamento" name="motivo" required
+           placeholder="servidor mudou de posto e não usa mais o item">
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if editavel and pode_requisitar %}
+{# Acrescentar item existe AQUI e em lugar nenhum mais: só RASCUNHO é editável.
+   Depois do envio o pedido é documento protocolado.
+
+   O HTMX continua dentro da camada: o `<select>` do equipamento recarrega
+   `#opcoes-do-item`, que é um bloco DENTRO deste mesmo diálogo — a troca não
+   toca na camada, então ela não se fecha nem perde o que já foi digitado.
+
+   (Sem escrever o nome da etiqueta HTML do diálogo aqui: há uma varredura que
+   proíbe telas de montarem o elemento à mão, e ela procura o texto cru — citá-lo
+   em prosa acusaria um defeito que não existe.) #}
+{% call ui.popup_cadastro('novo-item', 'Acrescentar item',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/itens',
+                          'Acrescentar ao pedido',
+                          aberto=(recusado and forma == 'item-novo'),
+                          erro=erro_item_novo, nota='só enquanto for rascunho') %}
+  <div class="campo">
+    <label for="item_id">Equipamento</label>
+    {# ao escolher o item, o bloco abaixo se recarrega sozinho: quantidade
+       padrão, tamanhos e a justificativa da RN-29 dependem dele, e recarregar a
+       página inteira perderia o que já foi digitado #}
+    <select id="item_id" name="item_id" required
+            hx-get="/epis/requisicoes/item-opcoes"
+            hx-target="#opcoes-do-item"
+            hx-trigger="change"
+            hx-include="this">
+      <option value="">—</option>
+      {% for c in catalogo %}
+      <option value="{{ c.id }}"{{ sel(dn.get('item_id'), c.id) }}>{{ c.nome }}{% if c.modelo %} · {{ c.modelo }}{% endif %}
+        — CA {{ c.numero_ca or '—' }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {# O MESMO fragmento que o HTMX traz no `change`, montado aqui pelo servidor.
+     Sem isto a recusa devolvia o formulário à frase "escolha o equipamento" com
+     o equipamento já escolhido no seletor acima: os três campos que a pessoa
+     preencheu — quantidade, tamanho e a justificativa da RN-29, que é a mais
+     cara de reescrever — não existem no HTML da página, eles chegam neste bloco.
+     Na leitura normal `item_escolhido` é nulo e o próprio fragmento escreve a
+     frase de antes da escolha. #}
+  <div id="opcoes-do-item">
+    {% with item = item_escolhido, digitado_item = dn %}
+    {% include "partes/epi_requisicao_opcoes.html" %}
+    {% endwith %}
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if requisicao.estado == 'RASCUNHO' and pode_requisitar %}
+{# A confirmação da única exclusão física do sistema (RN-31). Não é um "tem
+   certeza?": ela conta o que vai sumir, item por item. Confirmação que não diz o
+   que vai acontecer treina a pessoa a clicar em "sim" sem ler, e aí não protege
+   nada.
+
+   Era um cartão no fim da tela, alcançado por um link — o padrão de
+   `certificado_ficha.html`, que existia justamente para afastar o botão que
+   destrói do botão que protocola. A camada faz o mesmo afastamento melhor: o
+   formulário de destruir não está em lugar nenhum até alguém pedir por ele. #}
+{% call ui.popup_cadastro('excluir-rascunho', 'Excluir o rascunho',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/excluir',
+                          'Excluir este rascunho', classe_botao='perigo') %}
+  <div class="aviso aviso-erro">
+    <p><strong>Isto apaga o pedido de verdade</strong> — é a única exclusão
+      física do sistema, e existe só porque rascunho não é documento: ele não
+      tem protocolo, ninguém no SESMT o viu e nenhum número da sequência foi
+      consumido (RN-03, RN-31).</p>
+    <p>Vão junto, e <strong>não voltam</strong>:</p>
+    <ul class="motivos erro">
+      <li>{{ requisicao.itens|length }} linha(s) de item, com quantidade,
+        tamanho e justificativa de cada uma</li>
+      <li>a rotina de trabalho e os riscos declarados escritos neste pedido</li>
+    </ul>
+    <p>O que fica é o <strong>evento</strong> da exclusão na trilha, com o seu
+      nome e a hora: apagar sem rastro seria repetir o defeito da planilha, em
+      que a linha sumia e nada dizia que ela existiu.</p>
+    <p class="discreto">Se a intenção era só corrigir o pedido, ele ainda é
+      rascunho — tudo aqui se edita, e não há por que apagar.</p>
+  </div>
+{% endcall %}
+{% endif %}
+
+<script nonce="{{ nonce() }}">
+// A recusa é um SELETOR, não uma caixa vazia: escolhido o motivo, o texto que
+// vai sair para o requerente aparece embaixo, e o complemento só surge quando o
+// motivo o exige. Sem JavaScript o complemento fica visível e continua
+// funcionando — esconder por padrão tiraria o campo de quem não tem script.
+(function () {
+  function pintar(seletor) {
+    var opcao = seletor.options[seletor.selectedIndex];
+    var texto = document.getElementById(seletor.dataset.alvo);
+    var complemento = document.getElementById(seletor.dataset.complemento);
+    var corpo = opcao ? (opcao.dataset.texto || '') : '';
+    var base = opcao ? (opcao.dataset.base || '') : '';
+    if (texto) {
+      texto.textContent = corpo
+        ? (base ? corpo + ' (' + base + ')' : corpo)
+        : 'Escolha o motivo para ler o texto que vai sair para o requerente.';
+    }
+    if (complemento) {
+      complemento.hidden = !(opcao && opcao.dataset.exige);
+    }
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('seletor-motivo')) pintar(e.target);
+  });
+  document.querySelectorAll('.seletor-motivo').forEach(pintar);
+})();
+</script>
+{% endblock %}

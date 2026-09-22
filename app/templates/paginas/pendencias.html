@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Pendências · CSSO{% endblock %}
+
+{# Sem bloco `trilha`: /pendencias virou item da base em `app/modulos.py`, então
+   os dois níveis saem de lá — "Base compartilhada / Pendências". Antes a tela
+   era prefixo extra de Processos SEI e a trilha afirmava que a pendência era do
+   processo; deixou de ser verdade quando treinamento passou a cair no mesmo
+   sino. Declarar aqui um terceiro nível "Pendências" repetiria o segundo. #}
+
+{% block conteudo %}
+{# `atrasada` é método do modelo, e não atributo: não dá para filtrar com
+   `selectattr`, e reescrever "prazo < hoje" aqui seria a regra em dois lugares. #}
+{%- set atrasadas = [] -%}
+{%- for p in pendencias if p.atrasada(hoje) -%}{%- set _ = atrasadas.append(p) -%}{%- endfor -%}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Pendências</h1>
+      <p class="sub">Tarefas que nascem de uma regra, com dono e prazo — não é lista
+        de recados.</p>
+      {% call ui.info('de-onde-vem-a-pendencia', 'de onde vem cada pendência') %}
+        <p>A lista se enche sozinha: <strong>pendência não se cria à mão</strong>. Cada
+          linha nasceu de uma regra do sistema — avaliação quantitativa pedida, laudo
+          superado que manda reavaliar, parecer assinado à espera de inclusão no SEI —
+          e a coluna de tipo diz qual foi.</p>
+        <p>Por isso <strong>fechar uma sem fazer o que ela pede é o mesmo que apagar a
+          regra</strong>: a tarefa some, o motivo que a abriu continua valendo, e o
+          processo que dependia dela para na etapa seguinte sem ninguém saber por quê.</p>
+        <p>A conclusão fica na auditoria, com quem fechou.</p>
+      {% endcall %}
+    </div>
+    {# O mesmo par de visões que o resto do sistema usa: é a mesma lista em duas
+       formas, então vive num controle só, e não em dois botões que parecem
+       ações. #}
+    <div class="ao-lado">
+      <div class="alternador">
+        <a class="{{ 'ativo' if not apenas_minhas }}" href="/pendencias">Todas</a>
+        <a class="{{ 'ativo' if apenas_minhas }}" href="/pendencias?minhas=1">Só as minhas</a>
+      </div>
+    </div>
+  </div>
+
+  {% if atrasadas %}
+  {# O atraso não é uma linha vermelha entre outras: é a razão de a tela existir.
+     O aviso diz a consequência, e não só o número. #}
+  <div class="aviso aviso-erro sem-ponto">
+    <p><strong>{{ atrasadas|length }} de {{ pendencias|length }} passaram do prazo.</strong>
+      O prazo é da regra que abriu a tarefa — avaliação quantitativa, reavaliação
+      por laudo superado, inclusão no SEI. Vencido, ele não deixa de correr:
+      o processo que depende dela é que para.</p>
+  </div>
+  {% endif %}
+
+  {# Lista vazia não mostra cabeçalho de tabela sozinho: seis rótulos de coluna
+     sobre nada é a mesma resposta que a tela dava antes com "Nada pendente." #}
+  {% if not pendencias %}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Nada pendente</strong>
+      <span>{% if apenas_minhas %}Nenhuma tarefa está atribuída a você. Em
+        <a href="/pendencias">todas</a> pode haver de outras pessoas.
+        {%- else %}Nenhuma regra abriu tarefa que continue aberta. A lista se
+        enche sozinha — pendência não se cria à mão.{% endif %}</span>
+    </div>
+  </div>
+  {% else %}
+  <div class="tabela-cartao lista tabela-pendencias">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Tarefa</th><th scope="col">Responsável</th><th scope="col">Prazo</th><th scope="col">Onde</th><th scope="col"></th>
+        </tr>
+      </thead>
+      {% for p in pendencias %}
+      <tr>
+        {# Tipo e descrição são a mesma coisa em dois níveis — a regra que abriu
+           e o caso concreto ("Incluir o parecer assinado no SEI" / "Incluir o
+           parecer 17/2025 assinado no SEI"). Em duas colunas eles se repetiam e
+           tomavam a largura de que a frase precisa; empilhados, a categoria
+           encabeça o caso e sobra coluna para o resto. #}
+        <td>
+          <div class="tarefa">
+            {# Tipo sem rótulo declarado sai em mono e cru: é código de regra de
+               um módulo que ainda não registrou o seu nome em `pendencias.TIPOS`,
+               e inventar um rótulo aqui esconderia justamente isso. #}
+            <span class="rotulo-tipo {{ 'mono' if p.tipo not in tipos }}">
+              {{- tipos[p.tipo][0] if p.tipo in tipos else p.tipo -}}</span>
+            {# Texto livre, agora COM `sobre` quando a ancora sabe dizer de quem
+               e a tarefa (`pendencias.titular_de` resolve requisicao, item de
+               requisicao e registro da ficha). `Pendencia` continua sem
+               `servidor_id`; o que mudou e a lista deixar de fingir que nao
+               sabe. Sem dono resolvido a regra continua caindo no lado seguro —
+               le a frase quem le nome de qualquer pessoa —, e com dono resolvido
+               o TITULAR le a propria (LGPD art. 18, II), que e o que faz o aviso
+               do requerente ser aviso e nao "conteudo suprimido". O tipo, o
+               prazo, o responsavel e a ancora nunca dependeram disto. #}
+            <strong>{{ texto_livre(p.descricao, de_quem.get(p.id)) }}</strong>
+          </div>
+        </td>
+        <td>
+          {%- if p.responsavel %}<span class="recorte" title="{{ p.responsavel.nome }}">
+            {{- p.responsavel.nome -}}</span>
+          {%- else %}<span class="discreto">sem dono</span>{% endif %}</td>
+        <td>
+          {% if p.prazo and p.atrasada(hoje) %}
+          <span class="selo erro" title="{{ (hoje - p.prazo).days }} dia(s) de atraso">
+            {{ p.prazo|data }}</span>
+          {% elif p.prazo %}
+          <span class="mono">{{ p.prazo|data }}</span>
+          {% else %}
+          <span class="discreto">sem prazo</span>
+          {% endif %}
+        </td>
+        {# O teto de largura mora no <div>, e não na célula: `max-width` não se
+           aplica a `display: table-cell`, e a âncora genérica é uma palavra só e
+           longa que passava por baixo do botão da coluna seguinte. #}
+        <td>
+          <div class="onde">
+            {# `?de=pendencias` em toda âncora: é o que faz a tela de destino
+               oferecer o caminho de volta (o "← voltar às pendências" do
+               cabeçalho, em `base.html`). Sem isso a volta era o botão do
+               navegador ou procurar "Pendências" na lateral — e para quem
+               opera só o EPI a lateral nem tem o item. #}
+            {% if p.processo_id %}<a href="/processos/{{ p.processo_id }}?de=pendencias">processo</a>{% endif %}
+            {% if p.parecer_id %} <a href="/pareceres/{{ p.parecer_id }}?de=pendencias">parecer</a>{% endif %}
+            {% if p.laudo_id %} <a href="/laudos/{{ p.laudo_id }}?de=pendencias">laudo</a>{% endif %}
+            {# Âncora dos módulos sem processo. Entidade cuja tela já existe vira
+               link; a que ainda não tem tela mostra o que é, em vez de oferecer
+               porta trancada. Módulo novo acrescenta uma linha ao mapa quando
+               entregar a tela — e não antes. #}
+            {# (prefixo, sufixo, rótulo, permissão que a rota exige). A permissão
+               entra no mapa porque o link só pode existir para quem a rota deixa
+               entrar — oferecer porta trancada é a mesma mentira do menu. #}
+            {# `epi_requisicao` entrou com os dois avisos do requerente. A rota
+               `/epis/requisicoes/{id}` ja e escopada (`epi_requisicao.no_escopo`),
+               entao o link nao abre nada que a fila nao abrisse: fora do escopo
+               ela redireciona, e e por isso que `epi.ver` basta aqui. Era esta
+               ancora que faltava para a tarefa levar a algum lugar — a auditoria
+               mediu a coluna "Onde" como texto puro, sem link nenhum. #}
+            {# `turma` entrou com a inscrição pedida pelo próprio servidor. A
+               tarefa é sobre uma INSCRIÇÃO e a âncora é a TURMA, de propósito: a
+               inscrição não tem tela própria, e o lugar onde o trabalho se faz é
+               a aba de inscrições da turma — que é onde está o botão de
+               confirmar. `turma.inscrever` e não `treinamento.ver`: o link só
+               aparece para quem pode agir, e é a mesma permissão que a aba
+               nominal da ficha exige. #}
+            {% set TELA_DA_ANCORA = {
+              'epi_ficha_registro': ('/epis/fichas/registros/', '', 'ficha de EPI', 'epi.ficha'),
+              'epi_entrada_estoque': ('/epis/estoque/', '/movimentos', 'extrato do lote', 'epi.ver'),
+              'epi_requisicao': ('/epis/requisicoes/', '', 'pedido de EPI', 'epi.ver'),
+              'demanda': ('/demandas/', '', 'demanda', 'demanda.ver'),
+              'turma': ('/turmas/', '?aba=inscricoes', 'inscrições da turma', 'turma.inscrever')
+            } %}
+            {% if p.entidade %}
+            {% set ancora = TELA_DA_ANCORA.get(p.entidade) %}
+            {% if ancora and usuario.pode(ancora[3]) %}
+            <a class="mono" href="{{ ancora[0] }}{{ p.entidade_id }}{{ ancora[1] }}{{ '&' if '?' in ancora[1] else '?' }}de=pendencias">{{ ancora[2] }}</a>
+            {% else %}
+            <span class="discreto mono">{{ p.entidade }} #{{ p.entidade_id }}</span>
+            {% endif %}
+            {% endif %}
+            {# Pendência sem âncora nenhuma existe (a CHECK do banco permite): a
+               célula vazia se leria como link que não carregou. #}
+            {% if not (p.processo_id or p.parecer_id or p.laudo_id or p.entidade) %}
+            <span class="discreto">sem âncora</span>{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if p.id in concluiveis %}
+          <form method="post" action="/pendencias/{{ p.id }}/concluir">
+            <button type="submit" class="secundario marcador">concluir</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% if concluidas %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Concluídas recentemente</h2>
+      <span class="contador">{{ concluidas|length }}</span>
+      <span class="nota">a conclusão fica na auditoria, com quem fechou</span>
+    </div>
+    <table>
+      {% for p in concluidas %}
+      <tr>
+        <td>{{ texto_livre(p.descricao, de_quem.get(p.id)) }}</td>
+        <td class="mono discreto">{{ p.concluida_em|momento }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

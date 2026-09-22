@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}{{ demanda.assunto }} · Demandas · CSSO{% endblock %}
+
+{# O terceiro nível da trilha é o assunto, e não um link: esta É a página dele.
+   Os dois primeiros saem de `app/modulos.py` — "Base compartilhada / Demandas"
+   —, e o link de volta para /demandas está lá, guardado pela mesma permissão
+   que esta rota exige. #}
+{% block trilha %}<span class="atual" aria-current="page">{{ demanda.assunto }}</span>{% endblock %}
+
+{% set ENCAMINHAR = 'Encaminhar' %}
+{% set ENCERRAR = 'Encerrar demanda' %}
+{% set ATRIBUIR = 'Trocar responsável' %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação foi recusada. Vazio
+   na leitura normal. `forma` diz de QUAL formulário o texto veio: são dois os
+   que recusam renderizando a página de novo, e sem o discriminador a recusa de
+   um reabriria o outro com campos trocados. #}
+{% set d = digitado or {} %}
+{% set forma = d.get('forma') %}
+{% set aberta = demanda.estado != 'ENCERRADA' %}
+
+{# O desvio do erro para dentro do popup só vale quando o popup EXISTE nesta
+   página. Duas recusas legítimas acontecem justamente quando ele não existe —
+   encaminhar uma demanda que outra pessoa acabou de encerrar, e encerrar duas
+   vezes — e nelas o erro desviado sumiria da tela inteira: a faixa da casca
+   fora zerada e o popup, não renderizado. A pessoa clicaria e nada aconteceria.
+   Por isso o desvio depende de `pode_escrever and aberta`, que é exatamente a
+   condição de o popup ser escrito lá embaixo. #}
+{% set recusado = true if (erro and d) else false %}
+{% set no_popup = recusado and pode_escrever and aberta
+                  and forma in ('encaminhar', 'encerrar') %}
+{% set erro_encaminhar = erro if (no_popup and forma == 'encaminhar') else none %}
+{% set erro_encerrar = erro if (no_popup and forma == 'encerrar') else none %}
+{% set erro = none if no_popup else erro %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ demanda.assunto }}</h1>
+      <p class="sub">Chegou por <strong>{{ rotulo_canal.get(demanda.canal, demanda.canal) }}</strong>
+        em {{ demanda.data_chegada|data }}
+        {%- if demanda.prazo %}, com prazo para {{ demanda.prazo|data }}{% endif %}.</p>
+    </div>
+    <div class="ao-lado">
+      {{ ui.pilula_demanda(demanda.estado, rotulo_estado_demanda) }}
+      {{ ui.pilula_desfecho(demanda.desfecho, rotulo_desfecho) }}
+      {%- if not pode_escrever %}
+      {{ ui.pilula_somente_leitura('demanda.registrar', 'encaminhar e encerrar') }}
+      {%- endif %}
+    </div>
+  </div>
+
+  {% if demanda.atrasada(hoje) %}
+  <div class="aviso aviso-erro sem-ponto">
+    <p><strong>{{ (hoje - demanda.prazo).days }} dia(s) de atraso.</strong> O prazo
+      foi prometido a quem pediu. Esta mesma linha está no sino, em
+      <a href="/pendencias">Pendências</a>, e sai de lá quando a demanda for
+      encerrada — com desfecho.</p>
+  </div>
+  {% endif %}
+
+  <section class="cartao">
+    <div class="cabecalho-cartao">
+      <h2>Quem demandou</h2>
+      {% call ui.info('quem-demandou', 'por que há um nome escrito e um vínculo') %}
+        <p>O <strong>nome escrito</strong> é obrigatório porque quem demanda muitas
+          vezes não está no cadastro: é a chefia de uma unidade, é o pessoal de outro
+          campus, é alguém de fora. Exigir o cadastro para poder anotar o pedido seria
+          o atrito que faz a demanda voltar para o post-it.</p>
+        <p>O <strong>vínculo com o servidor</strong> é opcional e vale ouro quando
+          existe: é ele que liga a demanda à ficha da pessoa e à unidade — e é por ele
+          que a supressão de identificação da RN-19 sabe o que esconder de quem não
+          tem <code>exposicao.ver</code>. Havendo vínculo, é ele que a tela escreve.</p>
+      {% endcall %}
+    </div>
+    <dl class="tabela-dados">
+      <dt>Quem pediu</dt>
+      <dd>
+        {%- if demanda.servidor -%}
+          {% set quem = identificar(demanda.servidor) %}
+          {%- if usuario.pode('processo.ver') -%}
+          <a href="/servidores/{{ demanda.servidor.id }}">{{ quem.com_siape }}</a>
+          {%- else -%}{{ quem.com_siape }}{%- endif -%}
+        {%- else -%}{{ demanda.solicitante_nome }}{%- endif -%}</dd>
+      <dt>Unidade</dt>
+      <dd>{{ demanda.unidade.nome_extenso if demanda.unidade else '—' }}</dd>
+      <dt>Responsável</dt>
+      <dd>{{ demanda.responsavel.nome if demanda.responsavel else 'sem dono' }}</dd>
+      <dt>Registrada em</dt>
+      <dd class="mono">{{ demanda.criada_em|momento }}</dd>
+    </dl>
+    {% if demanda.descricao %}
+    <p class="texto-literal">{{ demanda.descricao }}</p>
+    {% else %}
+    <p class="nada">Sem descrição — só o assunto foi registrado.</p>
+    {% endif %}
+  </section>
+
+  {% if pode_escrever and aberta %}
+  <div class="acoes">
+    {% if demanda.estado == 'ABERTA' %}
+    <form method="post" action="/demandas/{{ demanda.id }}/iniciar">
+      <button type="submit" class="secundario">Marcar em andamento</button>
+    </form>
+    {% endif %}
+    {# Um primário só, e é o ENCAMINHAR: é o passo que continua o trabalho, e a
+       fileira segue a hierarquia que a ficha do pedido de EPI fixou — o próximo
+       passo em destaque, as demais saídas em botão secundário. Encerrar é o mais
+       consequente dos quatro (daqui não se volta), e justamente por isso não
+       divide o destaque: dois azuis lado a lado fariam a pessoa clicar no
+       primeiro que a mão alcança. #}
+    {{ ui.botao_cadastro('encaminhar-demanda', ENCAMINHAR) }}
+    {{ ui.botao_cadastro('encerrar-demanda', ENCERRAR, 'secundario') }}
+    {{ ui.botao_cadastro('atribuir-demanda', ATRIBUIR, 'secundario') }}
+  </div>
+  {% endif %}
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Encaminhamentos</h2>
+      <span class="contador">{{ demanda.encaminhamentos|length }}</span>
+      <span class="nota">nada se apaga: correção é linha nova (RN-31)</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Data</th><th scope="col">Para quem</th>
+          <th scope="col">O que foi pedido</th><th scope="col">Quem registrou</th>
+        </tr>
+      </thead>
+      {% for e in demanda.encaminhamentos %}
+      <tr>
+        <td class="mono">{{ e.data_encaminhamento|data }}</td>
+        <td>{{ e.para_quem }}</td>
+        <td class="texto-literal">{{ e.pedido }}</td>
+        <td class="discreto">{{ e.autor.nome if e.autor else 'sistema' }}</td>
+      </tr>
+      {% else %}
+      {{ ui.vazio_de_lista(
+           'Nenhum encaminhamento registrado.',
+           'Cada linha guarda a quem se pediu o quê, e em que dia — é o que sustenta '
+           ~ 'a próxima cobrança sem começar do zero.', 4) }}
+      {% endfor %}
+    </table>
+  </section>
+
+  {% if demanda.desfecho %}
+  <section class="cartao">
+    <div class="cabecalho-cartao">
+      <h2>Desfecho</h2>
+      {{ ui.pilula_desfecho(demanda.desfecho, rotulo_desfecho) }}
+    </div>
+    <dl class="tabela-dados">
+      <dt>Encerrada em</dt>
+      <dd class="mono">{{ demanda.encerrada_em|momento }}</dd>
+      {% if demanda.processo %}
+      <dt>Processo gerado</dt>
+      <dd>
+        {%- if usuario.pode('processo.ver') -%}
+        <a class="mono" href="/processos/{{ demanda.processo.id }}">{{ demanda.processo.nup }}</a>
+        {%- else -%}<span class="mono">{{ demanda.processo.nup }}</span>{%- endif -%}</dd>
+      {% endif %}
+      {% if demanda.desfecho_setor %}
+      <dt>Encaminhada a</dt>
+      <dd>{{ demanda.desfecho_setor }}
+        {%- if demanda.desfecho_data %} <span class="mono">({{ demanda.desfecho_data|data }})</span>{% endif %}</dd>
+      {% endif %}
+    </dl>
+    {% if demanda.desfecho_relato %}
+    <p class="texto-literal">{{ demanda.desfecho_relato }}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+</div>
+
+{% if pode_escrever and aberta %}
+{# Fora de `.tela`: os diálogos são camada, não bloco da coluna. #}
+{% set dt = d if forma == 'encaminhar' else {} %}
+{% call ui.popup_cadastro('encaminhar-demanda', ENCAMINHAR,
+                          '/demandas/' ~ demanda.id ~ '/encaminhar',
+                          'Registrar encaminhamento',
+                          aberto=(no_popup and forma == 'encaminhar'),
+                          erro=erro_encaminhar,
+                          nota='append-only: não se edita nem se apaga') %}
+  <p>Encaminhar põe a demanda <strong>em andamento</strong> no mesmo ato: pedir
+    alguma coisa a alguém é estar cuidando dela.</p>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="para_quem">Para quem</label>
+      <input id="para_quem" name="para_quem" required maxlength="160"
+             value="{{ dt.get('para_quem') or '' }}"
+             {{- ' autofocus' if erro_encaminhar }}
+             placeholder="Engenharia de Segurança / PROGEP / chefia da FAMED"></div>
+    <div class="campo">
+      <label for="data_encaminhamento">Data</label>
+      <input id="data_encaminhamento" name="data_encaminhamento" type="date"
+             value="{{ dt.get('data_encaminhamento') or hoje.isoformat() }}"></div>
+  </div>
+  <div class="campo">
+    <label for="pedido">O que foi pedido</label>
+    <textarea id="pedido" name="pedido" rows="3" required
+              aria-describedby="dica-pedido">{{ dt.get('pedido') or '' }}</textarea>
+    <span class="dica" id="dica-pedido">Obrigatório. Sem isso o encaminhamento é um
+      carimbo de data — seis meses depois ninguém sabe o que se esperava de volta.
+      Descreva o pedido, nunca a condição de saúde de ninguém (RN-21).</span>
+  </div>
+{% endcall %}
+
+{% set de = d if forma == 'encerrar' else {} %}
+{% call ui.popup_cadastro('encerrar-demanda', ENCERRAR,
+                          '/demandas/' ~ demanda.id ~ '/encerrar',
+                          'Encerrar com este desfecho',
+                          aberto=(no_popup and forma == 'encerrar'),
+                          erro=erro_encerrar,
+                          nota='daqui não se volta') %}
+  <p><strong>Encerrar exige dizer como terminou.</strong> É o que separa esta
+    lista da caixa de e-mail, onde as coisas somem sem ninguém conseguir dizer o
+    que houve delas. Encerrada, a demanda sai do sino e não recebe mais
+    encaminhamento.</p>
+  <div class="campo">
+    <label for="desfecho">Desfecho</label>
+    <select id="desfecho" name="desfecho" required{{ ' autofocus' if erro_encerrar }}>
+      <option value="">—</option>
+      {% for f in desfechos %}
+      <option value="{{ f }}"{{ ui.sel(de.get('desfecho'), f) }}>{{ rotulo_desfecho[f] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="relato">O que foi feito, ou por que não houve providência</label>
+    <textarea id="relato" name="relato" rows="3"
+              aria-describedby="dica-relato">{{ de.get('relato') or '' }}</textarea>
+    <span class="dica" id="dica-relato">Obrigatório em <em>resolvida</em> e em
+      <em>sem providência</em>. “Não vamos fazer nada” é decisão legítima — o que
+      não pode é ela ser tomada por esquecimento.</span>
+  </div>
+  <div class="campo">
+    <label for="nup">NUP do processo (só em “virou processo SEI”)</label>
+    <input id="nup" name="nup" class="mono" inputmode="numeric"
+           value="{{ de.get('nup') or '' }}" placeholder="23086.000000/0000-00"
+           aria-describedby="dica-nup">
+    <span class="dica" id="dica-nup">O processo precisa já estar cadastrado em
+      <a href="/processos">Processos</a>: é isso que faz a demanda virar um link
+      para ele, e não um número anotado. Se ainda não estiver,
+      <a href="/processos/novo">cadastre o processo</a> e volte.</span>
+  </div>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="setor">Setor de destino (só em “encaminhada”)</label>
+      <input id="setor" name="setor" maxlength="160" value="{{ de.get('setor') or '' }}"
+             placeholder="PROGEP / SIASS / procuradoria"></div>
+    <div class="campo">
+      <label for="data_desfecho">Data do encaminhamento</label>
+      <input id="data_desfecho" name="data_desfecho" type="date"
+             value="{{ de.get('data_desfecho') or hoje.isoformat() }}"></div>
+  </div>
+{% endcall %}
+
+{% call ui.popup_cadastro('atribuir-demanda', ATRIBUIR,
+                          '/demandas/' ~ demanda.id ~ '/atribuir',
+                          'Passar a demanda', classe_botao='secundario',
+                          nota='férias e licença acontecem') %}
+  <p>Demanda com dono que não está é demanda parada. Trocar o responsável leva a
+    tarefa do sino junto — tarefa com o dono errado é tarefa que ninguém lê.</p>
+  <div class="campo">
+    <label for="novo_responsavel">Responsável</label>
+    <select id="novo_responsavel" name="responsavel_id">
+      <option value="">sem dono</option>
+      {% for p in pessoas %}
+      <option value="{{ p.id }}"{{ ui.sel(demanda.responsavel_id, p.id) }}>{{ p.nome }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endcall %}
+{% endif %}
+{% endblock %}

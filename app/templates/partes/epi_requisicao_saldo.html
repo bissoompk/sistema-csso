@@ -1,0 +1,63 @@
+{% import "partes/macros.html" as ui with context %}
+
+{# O saldo do tamanho escolhido. Fragmento HTMX, e o terceiro dos três lugares
+   que o §9 nomeia.
+
+   Duas coisas que ele existe para dizer, e uma que ele NÃO diz:
+
+   - **"40 luvas" não quer dizer nada se são todas P** (§12.4). O saldo é por
+     tamanho, e é por isso que ele só aparece depois da escolha.
+   - **CA vencido é etiqueta vermelha, e o lote continua na lista** — some da
+     entrega, não daqui. Sumir seria saldo mudando sem rastro.
+   - O que ele **não** diz é "está reservado para você". A reserva existe (fatia
+     5), mas ela é ato do almoxarifado **depois da aprovação**, com lote
+     escolhido à mão — pedir continua sendo declarar necessidade. O número é
+     informativo, e a tela escreve isso: número que parece promessa e não é seria
+     pior que número nenhum. #}
+
+{% set lotes = lotes|default([]) %}
+{% set tamanho = tamanho|default('') %}
+
+{% if not item %}
+{# nada a dizer antes da escolha do item #}
+{% elif item.lista_de_tamanhos and not tamanho %}
+<p class="discreto">Escolha o tamanho para ver o saldo daquele tamanho — o saldo
+  somado do item não diz se existe o tamanho que a pessoa calça.</p>
+{% elif not lotes %}
+<div class="aviso aviso-alerta">
+  <strong>Não há lote deste item{% if tamanho %} no tamanho {{ tamanho }}{% endif %}
+    no estoque.</strong> O pedido pode ser enviado assim mesmo — pedir é declarar
+  a necessidade, e é o setor que resolve a compra —, mas quem analisar vai ver a
+  mesma coisa que você.
+</div>
+{% else %}
+{% set disponivel = lotes|selectattr('pode_sair')|sum(attribute='saldo') %}
+<div class="tabela-cartao lista">
+  <table>
+    <thead>
+      {# "Disponível" é a MESMA coluna de conferência do estoque, e por isso a
+         mesma classe: aqui se compara o saldo de um lote com o do lote de baixo
+         para decidir de qual tirar. `.mono` dava a fonte e não o alinhamento. #}
+      <tr><th scope="col">Lote</th><th scope="col">Tamanho</th><th scope="col">CA · validade</th>
+        <th class="numerico" scope="col">Disponível</th>
+        <th scope="col">Situação</th></tr>
+    </thead>
+    {% for l in lotes %}
+    <tr>
+      <td class="mono">{{ l.entrada.lote or '—' }}</td>
+      <td>{{ l.entrada.tamanho or '—' }}</td>
+      <td class="mono">{{ l.entrada.numero_ca or '—' }}
+        <span class="quebra">{{ l.entrada.validade_ca|data or 'sem validade' }}</span>
+        {{ ui.pilula_ca(l.entrada.validade_ca, hoje, item.exige_ca) }}</td>
+      <td class="numerico">{{ l.saldo }}</td>
+      <td>{{ ui.pilula_lote(l.impedimento, l.saldo) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+<p class="discreto">{{ disponivel }} unidade(s) poderiam sair hoje — já
+  descontado o que outros pedidos reservaram.
+  <strong>Pedir não reserva nada</strong>: a reserva é ato do almoxarifado,
+  depois da aprovação, com o lote escolhido à mão. Até lá o número é o estado da
+  prateleira agora, e outro pedido pode levar as mesmas unidades antes.</p>
+{% endif %}

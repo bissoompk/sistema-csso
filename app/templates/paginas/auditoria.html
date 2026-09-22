@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Auditoria · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Auditoria</h1>
+      <p class="sub">Trilha append-only — o banco rejeita <code>UPDATE</code> e
+        <code>DELETE</code> por trigger, não por convenção.</p>
+    </div>
+    {# O encadeamento de hashes é o que faz a trilha valer como prova: sem ele,
+       "append-only" seria só uma promessa do código. Por isso a verificação fica
+       no cabeçalho da tela, e não escondida no rodapé.
+
+       A pílula fala dos eventos DESTA PÁGINA, e o rótulo diz isso com todas as
+       letras. Até a 1.32.0 ela dizia "encadeamento de hashes íntegro" e a
+       afirmação era sobre a trilha inteira — refeita a cada abertura, com o
+       lock de escrita do SQLite na mão, a ~55 µs por evento. Prometer o mesmo
+       agora seria pior do que a lentidão que se corrigiu: a tela afirmaria
+       sobre 90 mil eventos tendo conferido 100. A trilha inteira é o cartão
+       abaixo, com data. #}
+    <div class="ao-lado">
+      {% if not janela_ok %}
+      <span class="pilula erro">cadeia rompida no evento {{ janela_defeito }}</span>
+      {% elif eventos %}
+      <span class="pilula ok">os {{ eventos|length }} eventos desta página conferem</span>
+      {% endif %}
+      {# Sem evento na página não há pílula: "os 0 eventos desta página conferem"
+         seria verdade e não seria informação. A página vazia já se explica
+         abaixo, na própria tabela. #}
+    </div>
+  </div>
+
+  {% if not janela_ok %}
+  <div class="aviso aviso-erro">
+    <p><strong>O encadeamento de hashes não fecha a partir do evento
+      {{ janela_defeito }}.</strong> Daquele ponto em diante a trilha deixa de
+      provar que nada foi alterado — o que veio antes continua íntegro.</p>
+    <p>Isto não se conserta pela tela: preserve o arquivo do banco como está e
+      trate como incidente.</p>
+  </div>
+  {% endif %}
+
+  {# A conferência da trilha INTEIRA. Ela saiu da abertura da tela (defeito Q-2)
+     e virou ato deliberado, com o resultado guardado — por isso aqui há uma
+     data, e não uma pílula: o que a tela pode afirmar sobre os outros 90 mil
+     eventos é quando alguém conferiu pela última vez, e o que deu. #}
+  <div class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Cadeia inteira</h2>
+      {% if conferencia %}
+      <span class="nota">
+        {% if conferencia.integra %}
+        Cadeia conferida em {{ conferencia.concluida_em|momento }} —
+        {{ conferencia.eventos }} evento(s), encadeamento íntegro
+        ({{ conferencia.duracao_ms }} ms{% if conferencia.origem == 'ROTINA' %}, rotina agendada{% endif %}).
+        {% else %}
+        <strong>Conferida em {{ conferencia.concluida_em|momento }}: cadeia rompida
+          no evento {{ conferencia.primeiro_defeito_id }}</strong> — os
+        {{ conferencia.eventos }} eventos até ali conferem.
+        {% endif %}
+      </span>
+      {% else %}
+      <span class="nota">A cadeia inteira ainda não foi conferida nesta base. A
+        página acima confere sozinha os eventos que exibe; este botão percorre a
+        trilha do primeiro evento ao último.</span>
+      {% endif %}
+    </div>
+    <div class="corpo">
+      <form method="post" action="/auditoria/conferir">
+        <button type="submit">Conferir a cadeia inteira</button>
+      </form>
+    </div>
+  </div>
+
+  <form class="cartao filtros" method="get" action="/auditoria">
+    <div class="linha-campos">
+      <div><label for="f-usuario">Usuário</label>
+        <select id="f-usuario" name="usuario_id"><option value="">todos</option>
+          {% for u in usuarios %}
+          <option value="{{ u.id }}" {% if filtro_usuario == u.id %}selected{% endif %}>{{ u.nome }}</option>
+          {% endfor %}</select></div>
+      <div><label for="f-entidade">Entidade</label>
+        <select id="f-entidade" name="entidade"><option value="">todas</option>
+          {% for e in entidades %}
+          <option value="{{ e }}" {% if filtro_entidade == e %}selected{% endif %}>{{ e }}</option>
+          {% endfor %}</select></div>
+      <div><label for="f-tipo">Tipo de evento</label>
+        <select id="f-tipo" name="tipo_evento"><option value="">todos</option>
+          {% for t in tipos %}
+          <option value="{{ t }}" {% if filtro_tipo == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}</select></div>
+    </div>
+    <div class="acoes">
+      <button type="submit">Filtrar</button>
+      <a class="botao secundario" href="/auditoria">Limpar</a>
+    </div>
+  </form>
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr><th scope="col">Quando</th><th scope="col">Usuário</th><th scope="col">Entidade</th><th scope="col">Evento</th><th scope="col">Campo</th>
+            <th scope="col">Antes → depois</th><th scope="col">Descrição</th></tr>
+      </thead>
+      {% for e in eventos %}
+      <tr>
+        <td class="mono discreto">{{ e.ocorrido_em|momento }}</td>
+        <td>{{ e.usuario_nome }}</td>
+        <td class="mono">{{ e.entidade }}#{{ e.entidade_id }}</td>
+        <td class="nome">{{ e.tipo_evento }}</td>
+        <td class="mono">{{ e.campo or '—' }}</td>
+        <td class="mono discreto">
+          {%- if e.campo %}{{ e.valor_anterior }} → {{ e.valor_novo }}
+          {%- else %}—{% endif %}</td>
+        {# A trilha inteira, de todas as entidades: nao ha titular a quem
+           perguntar, e `auditoria.ver` nao e permissao de ler nome — `admin_ti`
+           a tem e a propria base normativa do perfil diz "sem acesso ao
+           conteudo tecnico". O resto da linha (quem, quando, entidade, campo,
+           antes -> depois) continua inteiro, que e do que a conferencia
+           precisa. #}
+        {%- set descricao = texto_livre(e.descricao, vazio='—') %}
+        <td><span class="recorte" title="{{ descricao }}">
+            {{- descricao -}}</span></td>
+      </tr>
+      {% else %}
+      {# Aqui a saída tem uma segunda causa que nenhuma outra lista tem: a
+         paginação desta tela é cega de propósito (o comentário abaixo explica
+         por quê), então "próxima" existe sempre e a página seguinte à última
+         abre vazia. Sem dizê-lo, quem chegou por um clique em "próxima" lê
+         "nenhum evento" e conclui que o filtro está errado — quando o que houve
+         foi passar do fim. #}
+      {% if pagina_num > 1 %}
+      {{ ui.vazio_de_lista(
+           'Nada nesta página.',
+           'A trilha não conta o total (o comentário abaixo diz por quê), então
+            “próxima” existe sempre e a página seguinte à última abre vazia. Volte
+            uma com “anterior”; o filtro continua o mesmo.', 7) }}
+      {% elif filtro_usuario or filtro_entidade or filtro_tipo %}
+      {{ ui.vazio_de_lista(
+           'Nenhum evento neste filtro.',
+           'Os três seletores valem ao mesmo tempo: usuário E entidade E tipo de
+            evento. “Limpar”, ao lado de Filtrar, devolve a trilha inteira.', 7) }}
+      {% else %}
+      {{ ui.vazio_de_lista(
+           'A trilha ainda não tem evento nenhum.',
+           'Ela não se preenche por aqui: cada gravação do sistema escreve a
+            própria linha. A primeira aparece assim que alguém cadastrar ou mover
+            algo.', 7) }}
+      {% endif %}
+      {% endfor %}
+    </table>
+  </div>
+
+  {# A trilha não sabe quantas páginas tem: a consulta é por limite e deslocamento,
+     sem contagem total. Por isso "próxima" existe sempre e pode abrir vazia — o
+     contrário seria contar 12 mil eventos a cada abertura da tela. #}
+  <div class="paginacao">
+    <span class="discreto">página <span class="mono">{{ pagina_num }}</span></span>
+    <span class="acoes">
+      {% if pagina_num > 1 %}
+      <a class="botao secundario compacto" href="/auditoria?pagina_num={{ pagina_num - 1 }}">« anterior</a>
+      {% endif %}
+      <a class="botao secundario compacto" href="/auditoria?pagina_num={{ pagina_num + 1 }}">próxima »</a>
+    </span>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Acessos a dado sensível</h2>
+      <span class="contador" title="os 50 mais recentes">{{ acessos|length }}</span>
+      <span class="nota">RN-23 — toda leitura nominal fica registrada com a finalidade;
+        aqui, os 50 acessos mais recentes</span>
+    </div>
+    {% if acessos %}
+    <table>
+      <thead>
+        <tr><th scope="col">Quando</th><th scope="col">Usuário</th><th scope="col">Campo</th><th scope="col">Servidor</th><th scope="col">Finalidade</th></tr>
+      </thead>
+      {% for a in acessos %}
+      <tr>
+        <td class="mono discreto">{{ a.ocorrido_em|momento }}</td>
+        <td class="mono">#{{ a.usuario_id }}</td>
+        <td class="mono">{{ a.campo }}</td>
+        <td class="mono">{{ a.servidor_id or '—' }}</td>
+        <td class="discreto">{{ a.finalidade }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="corpo">
+      <div class="vazio">
+        <strong>Nenhum acesso registrado</strong>
+        <span>Ninguém abriu ficha de servidor nem leu campo nominal desde que o
+          registro existe.</span>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

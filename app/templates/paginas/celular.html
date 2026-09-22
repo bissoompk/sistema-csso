@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{# Sem lateral: esta tela é para o polegar, e a lateral de 13 itens não cabe
+   num celular. A casca entrega no lugar o cabeçalho escuro com a marca e o
+   "sair", que é tudo o que se precisa aqui. #}
+{% set sem_casca = true %}
+{% block titulo %}CSSO no celular{% endblock %}
+{% block cabeca %}
+<link rel="stylesheet" href="/estaticos/css/celular.css">
+<link rel="manifest" href="/estaticos/manifest.webmanifest">
+<meta name="theme-color" content="#0f2a4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+{% endblock %}
+{% block classe_conteudo %}celular{% endblock %}
+{% block conteudo %}
+{# TUDO o que aparece abaixo vem da API. O HTML é a casca; o `celular.js` a
+   preenche a partir de `/api/v1`. O que o servidor decide AQUI é só o que a
+   pessoa pode fazer — e ele decide de novo em cada chamada da API, que é onde
+   a permissão vale. `data-` é o contrato com o script, como em toda tela. #}
+<div id="app-celular" class="app-celular"
+     data-pode-entregar="{{ '1' if pode_entregar else '' }}"
+     data-pode-chamada="{{ '1' if pode_chamada else '' }}"
+     data-ficha-propria="{{ usuario.servidor_id or '' }}"
+     data-versao="{{ VERSAO }}">
+
+  <div class="aviso aviso-alerta sem-rede" id="sem-rede" hidden role="status">
+    <strong>Sem rede.</strong> A tela abre, mas nada se consulta nem se grava
+    até a conexão voltar. Nada do que você fez foi perdido no servidor — o que
+    não chegou, não foi gravado.
+  </div>
+
+  <nav class="abas-celular" aria-label="O que fazer">
+    <a href="#inicio" data-aba="inicio" class="ativo">Início</a>
+    {% if pode_entregar %}<a href="#balcao" data-aba="balcao">Balcão de EPI</a>{% endif %}
+    {% if pode_chamada %}<a href="#chamada" data-aba="chamada">Chamada</a>{% endif %}
+  </nav>
+
+  <section id="tela-inicio" data-tela="inicio">
+    <h1>Olá, <span data-eu-nome>{{ usuario.nome.split()[0] }}</span></h1>
+    {% if not pode_entregar and not pode_chamada %}
+    <div class="vazio">
+      <strong>Esta tela ainda não tem trabalho para você.</strong>
+      <span>Ela serve a quem entrega EPI no balcão (<em>epi.entregar</em>) e a quem
+        lança presença de turma (<em>turma.avaliar</em>). O resto do sistema
+        continua no endereço de sempre.</span>
+    </div>
+    {% else %}
+    <p class="sub">Duas coisas que se fazem em pé, longe da mesa.</p>
+    <div class="cartoes-inicio">
+      {% if pode_entregar %}
+      <a class="cartao-inicio" href="#balcao">
+        <strong>Balcão de EPI</strong>
+        <span>quem recebe → equipamento → lote → registrar</span>
+      </a>
+      {% endif %}
+      {% if pode_chamada %}
+      <a class="cartao-inicio" href="#chamada">
+        <strong>Chamada</strong>
+        <span>a folha de presença de um dia, nome a nome</span>
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if tem_ficha %}
+    <p class="discreto"><a href="/epis/fichas/minha">Minha ficha de EPI</a> — no sistema completo.</p>
+    {% endif %}
+    <p class="discreto">Versão {{ VERSAO }} · <a href="/inicio">sistema completo</a></p>
+  </section>
+
+  {% if pode_entregar %}
+  <section id="tela-balcao" data-tela="balcao" hidden>
+    <h1>Balcão de EPI</h1>
+    <ol class="passos-celular">
+      <li data-passo="servidor" class="atual">
+        <label for="c-busca">Quem recebe</label>
+        <input id="c-busca" type="search" inputmode="search" autocomplete="off"
+               placeholder="SIAPE ou nome" aria-describedby="c-busca-dica">
+        <span class="dica" id="c-busca-dica">O SIAPE acha sempre; o nome, só para quem pode ler nomes (RN-19).</span>
+        <ul class="lista-toque" id="c-servidores" aria-live="polite"></ul>
+      </li>
+      <li data-passo="item" hidden>
+        <p class="escolhido" data-escolhido="servidor"></p>
+        <label for="c-item">Equipamento</label>
+        <select id="c-item"><option value="">— escolha —</option></select>
+      </li>
+      <li data-passo="detalhes" hidden>
+        <div class="campo"><label for="c-lote">Lote</label>
+          <select id="c-lote"><option value="">Sem lote — entrega de balcão</option></select>
+          <span class="dica" id="c-lote-dica"></span></div>
+        <div class="linha-campos">
+          <div class="campo"><label for="c-quantidade">Quantidade</label>
+            <input id="c-quantidade" inputmode="numeric" value="1"></div>
+          <div class="campo"><label for="c-tamanho">Tamanho</label>
+            <select id="c-tamanho"><option value="">—</option></select></div>
+        </div>
+        <div class="campo"><label for="c-data">Data</label>
+          <input id="c-data" type="date"></div>
+        <div class="campo" id="c-excecao" hidden><label for="c-justificativa">Justificativa da exceção ao máximo</label>
+          <textarea id="c-justificativa" rows="2"></textarea></div>
+        <div class="acoes">
+          <button type="button" class="largo" id="c-registrar">Registrar entrega</button>
+        </div>
+        <div id="c-recusa" role="alert"></div>
+      </li>
+      <li data-passo="feito" hidden>
+        <div class="aviso aviso-ok" id="c-feito"></div>
+        <div class="acoes">
+          <a class="botao secundario" id="c-comprovante" href="#" target="_blank" rel="noopener">Comprovante</a>
+          <button type="button" class="largo" id="c-outra">Registrar outra entrega</button>
+        </div>
+      </li>
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if pode_chamada %}
+  <section id="tela-chamada" data-tela="chamada" hidden>
+    <h1>Chamada</h1>
+    <div class="campo"><label for="c-turma">Turma em andamento</label>
+      <select id="c-turma"><option value="">— escolha —</option></select></div>
+    <div class="linha-campos" id="c-dia-caixa" hidden>
+      <div class="campo"><label for="c-dia">Dia</label>
+        <select id="c-dia"></select></div>
+      <div class="campo"><label for="c-horas">Horas do dia</label>
+        <input id="c-horas" inputmode="decimal" placeholder="h"
+               aria-describedby="c-horas-dica">
+        <span class="dica" id="c-horas-dica">Vale para cada nome marcado abaixo.</span></div>
+    </div>
+    <div id="c-retificando" class="aviso aviso-alerta" hidden>
+      Turma fora de andamento: cada lançamento é retificação e exige motivo.
+      <input id="c-motivo" placeholder="motivo da retificação">
+    </div>
+    <ul class="lista-toque chamada" id="c-inscritos" aria-live="polite"></ul>
+    <div id="c-chamada-recusa" role="alert"></div>
+  </section>
+  {% endif %}
+</div>
+<script src="/estaticos/js/celular.js" defer></script>
+{% endblock %}

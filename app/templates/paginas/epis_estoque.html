@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# O estoque de EPI: saldo por item e por lote.
+
+   Três coisas que esta tela existe para mostrar, e que a planilha do legado não
+   mostrava:
+
+   1. **Físico, reservado e disponível lado a lado.** É assim que a conferência
+      contra a contagem manual funciona: quem conta a prateleira encontra o
+      físico, e esconder esse número atrás de uma subtração é como a divergência
+      passa despercebida.
+   2. **O lote vencido, marcado e presente.** Ele tem saldo, é patrimônio, e
+      alguém vai ter de dar baixa nele. Some da lista de entrega, não desta.
+   3. **Quantidade não é campo.** Cada número tem um extrato atrás dele. Editar
+      saldo seria o `Qtd_Estoque` do legado de volta — a célula que duas
+      entregas simultâneas sobrescreviam sem deixar rastro. #}
+
+{% block titulo %}Estoque de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Estoque</span>{% endblock %}
+
+{# A entrada de lote é PÁGINA, não popup — a única exceção do sistema, e ela tem
+   número. São dezenove campos copiados de uma nota fiscal e de uma etiqueta;
+   medidos dentro do diálogo largo davam 864px contra os 577 visíveis de um
+   1366×768, ou seja, uma tela e meia de rolagem dentro da camada. O pedido que
+   criou os popups era que a lista deixasse de carregar o formulário — e a página
+   dedicada atende isso igual, sem cobrar a rolagem.
+
+   Quem quiser mover de volta para cá: meça antes. O limite do popup largo é
+   ~577px de corpo. #}
+{% block acoes_cabecalho %}
+{% if pode_escrever %}
+<a class="botao" href="/epis/estoque/nova-entrada">Dar entrada em lote</a>
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Estoque de EPI</h1>
+      <p class="sub">Cada lote com o que a compra pública registrou — pregão,
+        item, empenho e fornecedor — e o saldo somado do livro razão.</p>
+    </div>
+    {% if not pode_escrever %}
+    <div class="ao-lado">
+      {{ ui.pilula_somente_leitura('epi.estoque', 'escrever no razão') }}
+    </div>
+    {% endif %}
+  </div>
+
+  {# O recorte da lista mora na fileira, como `filtro-inline`, e não num
+     `<form class="busca">` no canto do cabeçalho da página: `.busca` é a busca
+     GLOBAL do sistema, a do cabeçalho de 62px. Duas coisas diferentes com a
+     mesma aparência ensinam a leitura errada, e no dia em que a busca global
+     mudar de forma esta mudaria junto sem motivo. #}
+  <div class="fileira">
+    <span class="rotulo-grupo">Lotes</span>
+    <form method="get" action="/epis/estoque" class="filtro-inline" role="search">
+      <label class="oculto" for="f-estoque">Buscar por item, lote, empenho,
+        pregão, CA ou fornecedor</label>
+      <input id="f-estoque" type="search" name="q" value="{{ q }}"
+             placeholder="Item, lote, empenho, pregão ou CA">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  {# `mensagem` e `erro` saem no base.html, para toda tela do sistema — repetir
+     aqui daria dois avisos iguais na mesma página. #}
+
+  {% set total_fisico = linhas|sum(attribute='fisico') %}
+  {% set total_disponivel = linhas|sum(attribute='disponivel') %}
+  <div class="tira-medidas">
+    <div class="medida">
+      <span class="rotulo">Itens com lote</span>
+      <span class="valor">{{ linhas|length }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Unidades em estoque</span>
+      <span class="valor">{{ total_fisico }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Podem ser entregues hoje</span>
+      <span class="valor">{{ total_disponivel }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Presas em lote impedido</span>
+      <span class="valor">{{ preso }}</span>
+    </div>
+  </div>
+
+  {% if lotes_impedidos %}
+  {# RN-25. Vermelho e no topo: são unidades que existem, que o patrimônio
+     cobra, e que não podem sair. O sistema não as apaga — quem decide é gente,
+     e a decisão é descarte com motivo ou renovação do CA. #}
+  {# NADA DA LISTA SAI DA TELA. Quais lotes, com quanto e por qual impedimento é
+     exatamente o que muda o que se faz a seguir — e a saída (renovar o CA ou
+     descartar com motivo) é a frase que evita a pergunta "e agora?". O que foi
+     para o (i) é o fundamento: por que a NR-6 faz de um CA vencido um bloqueio,
+     e por que o sistema não apaga o lote sozinho. #}
+  <div class="aviso aviso-erro">
+    <p><strong>{{ preso }} unidade(s) em {{ lotes_impedidos|length }} lote(s) com
+      saldo que não pode ser entregue.</strong> O caminho é renovar o CA ou
+      registrar o <strong>descarte com motivo</strong>.</p>
+    <ul class="motivos erro">
+      {% for l in lotes_impedidos %}
+      <li>{{ l.entrada.item.nome }} · lote {{ l.entrada.lote or '—' }} ·
+        {{ l.fisico }} em estoque — {{ l.impedimento }}</li>
+      {% endfor %}
+    </ul>
+    {% call ui.info('lote-impedido', 'por que o CA vencido bloqueia, e por que o lote não some sozinho') %}
+      <p>Pela <strong>NR-6</strong> o Certificado de Aprovação é o que constitui
+        o equipamento como EPI. Sem CA válido, entregar significa não ter
+        entregado proteção nenhuma — e é por isso que o bloqueio é do sistema, e
+        não um lembrete que se possa ignorar (RN-25).</p>
+      <p>O lote continua aqui, com saldo, porque ele <strong>existe</strong>: está
+        na prateleira e é patrimônio, que o inventário cobra. Some da lista de
+        entrega, não desta.</p>
+      <p>E não some sozinho quando a validade passa: tirá-lo da prateleira é
+        <strong>descarte com motivo</strong>, que é decisão registrada com nome e
+        hora. Sumiço automático seria saldo mudando sem rastro — que é o defeito
+        do legado que este razão existe para não repetir.</p>
+    {% endcall %}
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Lote · tamanho</th><th scope="col">Entrada</th><th scope="col">Compra</th><th scope="col">Fornecedor</th>
+          {# As quatro colunas de conferência vão em `.numerico` — direita, mono e
+             dígito de largura fixa —, e não em `.mono`, que dava a fonte e não o
+             alinhamento. É esta tela que se confere contra a contagem da
+             prateleira (ver o cabeçalho do arquivo), e numa coluna alinhada à
+             esquerda `9` e `148` não terminam no mesmo lugar: quem varre a coluna
+             de cima a baixo passa a ter de ler número por número, que é o
+             trabalho inteiro de um inventário. #}
+          <th scope="col">CA · validade</th><th class="numerico" scope="col">Recebido</th>
+          <th class="numerico" scope="col">Físico</th><th class="numerico" scope="col">Reservado</th>
+          <th class="numerico" scope="col">Disponível</th><th scope="col">Situação</th><th scope="col"></th>
+        </tr>
+      </thead>
+      {% for linha in linhas %}
+      {# uma faixa por item: o agrupamento é o da prateleira, e a soma do item é
+         a pergunta que quem opera faz primeiro ("tenho luva M?") #}
+      <tr>
+        <td colspan="11" class="nome">
+          <strong>{{ linha.item.nome }}</strong>
+          {% if linha.item.modelo %}<span class="discreto"> · {{ linha.item.modelo }}</span>{% endif %}
+          <span class="discreto"> — {{ linha.fisico }} {{ linha.item.unidade_medida|lower }}(s)
+            em estoque, {{ linha.disponivel }} pode(m) sair</span>
+          {% if linha.preso_em_lote_vencido %}
+          <span class="pilula erro">{{ linha.preso_em_lote_vencido }} preso(s) em lote impedido</span>
+          {% endif %}
+          {% if not linha.item.ativo %}<span class="pilula">item inativo no catálogo</span>{% endif %}
+        </td>
+      </tr>
+      {% for l in linha.lotes %}
+      {% set id = 'f-lote-' ~ l.entrada.id %}
+      <tr>
+        <td class="mono">
+          <a href="/epis/estoque/{{ l.entrada.id }}/movimentos">{{ l.entrada.lote or 'sem número' }}</a>
+          <span class="quebra discreto">{{ l.entrada.tamanho or 'tamanho único' }}</span></td>
+        <td>{{ l.entrada.data_entrada|data }}
+          {% if l.entrada.data_fabricacao %}
+          <span class="quebra discreto">fabricado em {{ l.entrada.data_fabricacao|data }}</span>
+          {% endif %}</td>
+        <td class="discreto">
+          {%- if l.entrada.pregao %}Pregão {{ l.entrada.pregao }}
+            {%- if l.entrada.item_pregao %}, item {{ l.entrada.item_pregao }}{% endif %}{% endif -%}
+          <span class="quebra mono">{{ l.entrada.empenho or 'sem empenho' }}</span>
+          {%- if l.entrada.nota_fiscal %}<span class="quebra discreto">NF {{ l.entrada.nota_fiscal }}</span>{% endif -%}
+          {#- dinheiro com vírgula: é como se lê e como se digita em português, e
+              o campo é preenchido a partir de uma nota fiscal impressa -#}
+          {%- if l.entrada.valor_unitario is not none %}
+          <span class="quebra discreto">R$ {{ '%.2f'|format(l.entrada.valor_unitario)|replace('.', ',') }} a unidade
+            {%- if l.fisico %} · R$ {{ '%.2f'|format(l.valor_em_estoque)|replace('.', ',') }} em estoque{% endif %}</span>
+          {% endif -%}</td>
+        <td class="discreto">{{ l.entrada.fornecedor_nome or '—' }}
+          {#- pontuado na saída: a coluna guarda só dígito, e catorze dígitos
+              corridos são o que ninguém confere contra a nota -#}
+          {%- if l.entrada.fornecedor_cnpj %}<span class="quebra mono">{{ l.entrada.fornecedor_cnpj|cnpj }}</span>{% endif -%}
+          {%- if l.entrada.fornecedor_contato %}<span class="quebra discreto">{{ l.entrada.fornecedor_contato }}</span>{% endif -%}</td>
+        <td class="mono">{{ l.entrada.numero_ca or '—' }}
+          <span class="quebra">{{ l.entrada.validade_ca|data or 'sem validade' }}</span>
+          {{ ui.pilula_ca(l.entrada.validade_ca, hoje, linha.item.exige_ca) }}</td>
+        <td class="numerico">{{ l.entrada.quantidade_recebida }}
+          {% if l.entrada.quantidade_empenhada %}
+          <span class="quebra discreto">de {{ l.entrada.quantidade_empenhada }} empenhada(s)</span>
+          {% endif %}</td>
+        <td class="numerico">{{ l.fisico }}</td>
+        <td class="numerico">{{ l.reservado }}</td>
+        <td class="numerico">{{ l.disponivel }}</td>
+        {# o número que decide aqui é o FÍSICO: esta coluna existe para ser
+           conferida contra a prateleira #}
+        <td>{{ ui.pilula_lote(l.impedimento, l.fisico) }}</td>
+        <td>
+          {% if pode_escrever %}
+          {# A gaveta virou camada, como na ficha do pedido e na ficha de EPI: os
+             três formulários desta linha — ajuste, descarte e documento do lote —
+             têm cinco campos e três parágrafos que distinguem um do outro, e nos
+             ~190px da última coluna eles se liam como uma coisa só. Um clique
+             continua sendo um clique. #}
+          {% call ui.popup_gaveta('acoes-lote-' ~ l.entrada.id, 'ações',
+                                  'Ações · ' ~ linha.item.nome,
+                                  nota='lote ' ~ (l.entrada.lote or 'sem número')
+                                       ~ ' · ' ~ l.fisico ~ ' em estoque') %}
+              <a class="botao secundario compacto"
+                 href="/epis/estoque/{{ l.entrada.id }}/movimentos">Ver o extrato</a>
+
+              <form method="post" action="/epis/estoque/{{ l.entrada.id }}/ajuste">
+                <h3>Ajuste de inventário</h3>
+                <p class="discreto">A única forma legítima de o saldo do sistema
+                  encontrar a contagem física. Informe <strong>o que você
+                  contou</strong> — a diferença o sistema calcula, e a linha do
+                  razão guarda a contagem, o motivo, o seu nome e a hora.</p>
+                <div class="linha-campos">
+                  <div class="campo">
+                    <label for="cont-{{ l.entrada.id }}">Contei</label>
+                    <input id="cont-{{ l.entrada.id }}" name="contagem" required
+                           inputmode="numeric" placeholder="{{ l.fisico }}"
+                           aria-describedby="dica-cont-{{ l.entrada.id }}">
+                    <span class="dica" id="dica-cont-{{ l.entrada.id }}">O sistema
+                      diz {{ l.fisico }}.</span>
+                  </div>
+                  <div class="campo">
+                    <label for="mot-aj-{{ l.entrada.id }}">Motivo</label>
+                    <input id="mot-aj-{{ l.entrada.id }}" name="motivo" required
+                           placeholder="contagem do inventário anual">
+                  </div>
+                </div>
+                <div class="acoes"><button type="submit" class="compacto">Registrar ajuste</button></div>
+              </form>
+
+              <form method="post" action="/epis/estoque/{{ l.entrada.id }}/descarte">
+                <h3>Descarte</h3>
+                <p class="discreto">Tira da prateleira por decisão — é o caminho
+                  do lote com CA vencido. O saldo não some sozinho: some quando
+                  alguém decide e diz por quê.</p>
+                <div class="linha-campos">
+                  <div class="campo">
+                    <label for="qtd-de-{{ l.entrada.id }}">Quantidade</label>
+                    <input id="qtd-de-{{ l.entrada.id }}" name="quantidade" required
+                           inputmode="numeric" value="{{ l.fisico if l.impedimento else '' }}">
+                  </div>
+                  <div class="campo">
+                    <label for="mot-de-{{ l.entrada.id }}">Motivo</label>
+                    <input id="mot-de-{{ l.entrada.id }}" name="motivo" required
+                           placeholder="CA vencido, sem renovação pelo fabricante">
+                  </div>
+                </div>
+                <div class="acoes">
+                  <button type="submit" class="perigo-discreto compacto">Descartar</button>
+                </div>
+              </form>
+
+              <form method="post" action="/epis/estoque/{{ l.entrada.id }}" id="{{ id }}">
+                <h3>Documento do lote</h3>
+                <p class="discreto">Nota fiscal, contato e observação se corrigem
+                  porque são transcrição de papel. <strong>Quantidade não está
+                  aqui</strong>: ela muda por movimento, que diz quando mudou e
+                  por quê.</p>
+                <div class="linha-campos">
+                  <div class="campo">
+                    <label for="nf-{{ l.entrada.id }}">Nota fiscal</label>
+                    <input id="nf-{{ l.entrada.id }}" name="nota_fiscal"
+                           value="{{ l.entrada.nota_fiscal or '' }}"></div>
+                  <div class="campo">
+                    <label for="ct-{{ l.entrada.id }}">Contato do fornecedor</label>
+                    <input id="ct-{{ l.entrada.id }}" name="fornecedor_contato"
+                           value="{{ l.entrada.fornecedor_contato or '' }}"></div>
+                </div>
+                <div class="campo">
+                  <label for="obs-{{ l.entrada.id }}">Observação</label>
+                  <textarea id="obs-{{ l.entrada.id }}" name="observacao" rows="2">{{ l.entrada.observacao or '' }}</textarea>
+                </div>
+                <div class="campo">
+                  <label class="discreto"><input type="checkbox" name="ativo" value="1"
+                      {% if l.entrada.ativo %}checked{% endif %}> lote ativo</label>
+                </div>
+                <div class="campo">
+                  <label for="mi-{{ l.entrada.id }}">Motivo da inativação</label>
+                  <input id="mi-{{ l.entrada.id }}" name="motivo_inativacao"
+                         value="{{ l.entrada.motivo_inativacao or '' }}"
+                         aria-describedby="dica-mi-{{ l.entrada.id }}">
+                  <span class="dica" id="dica-mi-{{ l.entrada.id }}">Obrigatório
+                    para desmarcar "ativo": lote não se exclui, inativa com
+                    motivo (RN-31). O saldo continua aparecendo aqui.</span>
+                </div>
+                <div class="acoes"><button type="submit" class="secundario compacto">Salvar</button></div>
+              </form>
+          {% endcall %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% else %}
+      <tr><td colspan="11">
+        <div class="vazio">
+          <strong>Nenhum lote em estoque.</strong>
+          <span>{% if q %}Nada casa com “{{ q }}”. A busca olha item, lote,
+            empenho, pregão, CA e fornecedor.{% else %}O estoque nasce da
+            primeira entrada de lote. Até lá, a entrega de balcão confere o CA do
+            catálogo, e não o da etiqueta que chegou na caixa.{% endif %}</span>
+        </div>
+      </td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {# Quatro parágrafos que respondem "como se lê esta tabela" e "por que ela é
+     assim". Nenhum deles muda uma decisão em curso — quem confere a prateleira
+     já sabe o que está fazendo quando abre esta tela —, e são justamente eles que
+     alguém lê uma vez e não precisa mais. A afirmação que governa a leitura das
+     quatro colunas numéricas fica; o resto é (i).
+
+     São dois (i) e não um: "saldo é soma de movimentos" e "reserva não é
+     movimento" respondem perguntas diferentes, feitas por pessoas diferentes —
+     quem confere inventário e quem não entende por que o disponível não bate com
+     o físico. Um (i) só obrigaria as duas a lerem a explicação da outra. #}
+  <div class="aviso aviso-info">
+    <strong>Saldo aqui é soma de movimentos, nunca célula.</strong>
+    {% call ui.info('saldo-e-soma', 'por que o saldo é somado, e o que é um ajuste') %}
+      <p>No sistema antigo o saldo era uma coluna que se sobrescrevia: duas
+        entregas simultâneas perdiam uma, e não havia como reconciliar depois
+        porque não sobrava rastro do que baixou.</p>
+      <p>Cada número desta tela tem um <strong>extrato</strong> atrás dele, e o
+        extrato é append-only — o banco recusa alterar e apagar. Por isso a
+        correção de um erro de contagem é <strong>ajuste</strong>, com motivo:
+        linha nova que diz de quanto para quanto foi, quem contou e quando.</p>
+      <p>E por isso quantidade não é campo: editar saldo seria o
+        <span class="mono">Qtd_Estoque</span> do legado de volta.</p>
+    {% endcall %}
+    {# `<div class="quebra">` e não `<span>`: `.quebra` já é `display: block`, e o
+       macro do (i) emite a camada do diálogo, que é conteúdo de FLUXO — dentro de
+       um `<span>`, que é fraseado, a marcação seria inválida. #}
+    <div class="quebra"><strong>Reserva não é movimento</strong> — ela não
+      aparece no extrato.
+      {% call ui.info('reserva-nao-e-movimento', 'por que a reserva não entra no razão') %}
+        <p>Reservar não tira nada da prateleira: tira da
+          <strong>disponibilidade</strong>. A coluna <em>reservado</em> é o que
+          pedidos aprovados já prometeram deste lote, o <em>físico</em> continua
+          sendo o que a contagem tem de encontrar, e <em>disponível</em> é a
+          diferença.</p>
+        <p>Se a reserva entrasse no razão, o físico deixaria de bater com a
+          prateleira — que é justamente a conferência que o razão existe para
+          permitir.</p>
+        <p>A reserva também <strong>não nasce sozinha</strong> quando um lote
+          entra: ela é ato de quem opera o almoxarifado, na ficha do pedido, com
+          o lote escolhido à mão. Reserva silenciosa mudaria o disponível sem
+          ninguém mandar, e a divergência apareceria na contagem sem explicação
+          em tela nenhuma.</p>
+      {% endcall %}</div>
+  </div>
+
+</div>
+
+{% endblock %}

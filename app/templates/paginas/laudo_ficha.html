@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Laudo {{ laudo.numero_siape }} · CSSO{% endblock %}
+{# o número do laudo em mono: número que se confere dígito a dígito nunca sai
+   em texto corrido — nem no h1, nem na trilha #}
+{% block trilha %}<span class="atual mono" aria-current="page">{{ laudo.numero_siape }}</span>{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set CONFERIR = 'Registrar conferência' %}
+{% set SUPERAR = 'Marcar como superado' %}
+{% set VINCULAR = 'Vincular posto' %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('laudo.criar') %}
+{# As duas ações da ficha são formulários com motivo obrigatório: o botão do
+   cabeçalho ABRE a camada com o formulário, não dispara nada sozinho. Ação
+   destrutiva sem motivo escrito é exatamente o que a auditoria não perdoa. #}
+{{ ui.botao_cadastro('registrar-conferencia', CONFERIR, 'secundario') }}
+{% if laudo.status == 'VIGENTE' %}
+{{ ui.botao_cadastro('superar-laudo', SUPERAR, 'perigo-discreto') }}
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1 class="mono">{{ laudo.numero_siape }}</h1>
+      <p class="identificacao">
+        <span>{{ laudo.unidade.nome_extenso if laudo.unidade else '—' }}</span>
+        <span class="ponto">·</span>
+        <span>{{ laudo.tipo_adicional.nome if laudo.tipo_adicional else '—' }}</span>
+        {{ ui.pilula_laudo(laudo.status) }}
+        {% if laudo.coletivo %}<span class="pilula sem-ponto">coletivo</span>{% endif %}
+        {% if meses_desde_conferencia and meses_desde_conferencia > 24 %}
+        <span class="selo alerta"
+              title="a conferência periódica não é vencimento do laudo; é rotina de trabalho">
+          {{ meses_desde_conferencia }} meses sem conferência</span>
+        {% elif not laudo.data_ultima_conferencia %}
+        <span class="selo">sem conferência registrada</span>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <div class="lado-a-lado igual">
+    <div class="pilha">
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao"><h2>Dados do laudo</h2>
+          {# O (i), e não um rodapé: "o laudo não vence" é fundamento normativo —
+             lê-se uma vez e depois se sabe. O que MUDA decisão nesta ficha é o
+             selo "N meses sem conferência" lá em cima, que continua na tela. #}
+          {% call ui.info('laudo-nao-vence', 'a conferência periódica e a ausência de validade') %}
+            <p class="inicial-maiuscula">{{ rodape_fila }}</p>
+            <p>A conferência é rotina de trabalho: alguém volta ao posto e confere
+              se o laudo ainda descreve o ambiente. Registrá-la <strong>não altera o
+              laudo</strong> — só data o último olhar. O laudo é refeito quando muda o
+              ambiente, o processo de trabalho ou a legislação, e não por prazo.</p>
+          {% endcall %}
+        </div>
+        <dl class="tabela-dados">
+          <dt>Subscritor</dt>
+          <dd>{{ laudo.subscritor.nome if laudo.subscritor else '—' }}</dd>
+
+          <dt>Emissão</dt>
+          <dd class="mono">{{ laudo.data_emissao|data or '—' }}</dd>
+
+          <dt>Avaliação</dt>
+          <dd class="mono">{{ laudo.data_avaliacao|data or '—' }}</dd>
+
+          <dt>Última conferência</dt>
+          <dd>
+            {% if laudo.data_ultima_conferencia %}
+              <span class="mono">{{ laudo.data_ultima_conferencia|data }}</span>
+              {% if laudo.motivo_ultima_conferencia %}
+              <span class="discreto">· {{ laudo.motivo_ultima_conferencia }}</span>{% endif %}
+            {% else %}<span class="discreto">nunca</span>{% endif %}
+          </dd>
+
+          <dt>Nº do documento SEI</dt>
+          <dd class="mono">{{ laudo.numero_documento_sei or '—' }}</dd>
+        </dl>
+      </section>
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Postos cobertos</h2>
+          <span class="contador">{{ laudo.postos|length }}</span>
+        </div>
+        {% if laudo.postos %}
+        <div class="lista-linhas simples">
+          {% for lp in laudo.postos %}
+          <div>
+            <span class="quem"><strong>{{ lp.posto.nome }}</strong>
+              <span class="onde">{{ lp.posto.unidade.sigla or lp.posto.unidade.nome_extenso
+                                      if lp.posto.unidade else '' }}</span></span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="corpo">
+          <div class="vazio">
+            <strong>Nenhum posto vinculado</strong>
+            <span>Sem posto, o laudo não alcança nenhum servidor: é o posto que liga
+              a avaliação de risco a quem trabalha nela.</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if usuario.pode('laudo.criar') %}
+        {# O formulário virou camada: o cartão passa a mostrar só os postos que o
+           laudo cobre, que é o que se vem conferir aqui. O botão continua no
+           cartão, ao lado da lista que ele muda. #}
+        <div class="corpo">
+          <div class="acoes">
+            {{ ui.botao_cadastro('vincular-posto', VINCULAR, 'secundario') }}
+          </div>
+        </div>
+        {% endif %}
+      </section>
+    </div>
+
+    <div class="pilha">
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Pareceres derivados</h2>
+          <span class="contador">{{ derivados|length }}</span>
+        </div>
+        {% if derivados %}
+        <div class="lista-linhas dupla">
+          {% for p in derivados %}
+          <a href="/pareceres/{{ p.id }}">
+            <span class="mono">{{ p.numero }}/{{ p.ano }}</span>
+            {%- set quem = identificar(p) %}
+            <span class="recorte">
+              {%- if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+              {%- else %}{{ quem.nome }}{% endif %}</span>
+            {{ ui.pilula_parecer(p.situacao) }}
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="corpo">
+          <div class="vazio">
+            <strong>Nenhum parecer derivado</strong>
+            <span>{% if laudo.status == 'VIGENTE' %}Nada depende deste laudo ainda —
+              superá-lo hoje não moveria nenhum processo.
+              {%- else %}Nada dependia deste laudo quando ele foi superado.{% endif %}</span>
+          </div>
+        </div>
+        {% endif %}
+      </section>
+
+      {% if laudo.status != 'VIGENTE' %}
+      {# FICA na tela, e não vai para um (i): quem abre um laudo superado precisa
+         saber disso ANTES de apontar um parecer novo para ele — o sistema não
+         impede, e é a única coisa que impede o engano. #}
+      <section class="cartao">
+        <div class="titulo-cartao"><h2>Laudo superado</h2></div>
+        <div class="aviso aviso-alerta">
+          <p>Este laudo foi superado{% if laudo.motivo_ultima_conferencia %}
+             ({{ laudo.motivo_ultima_conferencia }}){% endif %} e os pareceres que dependiam
+             dele foram para reavaliação (RN-11). O sistema não impede apontar um parecer
+             novo para ele — quem escolhe o laudo é que precisa saber disto.</p>
+        </div>
+      </section>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{% if usuario.pode('laudo.criar') %}
+{# Daqui para baixo é camada, e não bloco da coluna: os diálogos ficam FORA de
+   `.tela` para não entrarem no `gap` da pilha. #}
+{% call ui.popup_cadastro('vincular-posto', VINCULAR,
+                          '/laudos/' ~ laudo.id ~ '/postos', VINCULAR,
+                          nota='é o posto que liga a avaliação de risco a quem trabalha nela') %}
+  <div class="campo"><label for="posto">Posto de trabalho</label>
+    <select id="posto" name="posto_trabalho_id" required>
+      {% for p in postos %}
+      <option value="{{ p.id }}">{{ p.nome }} — {{ p.unidade.sigla or p.unidade.nome_extenso }}</option>
+      {% endfor %}
+    </select></div>
+{% endcall %}
+
+{% call ui.popup_cadastro('registrar-conferencia', CONFERIR,
+                          '/laudos/' ~ laudo.id ~ '/conferencia', 'Registrar',
+                          nota='não altera o laudo: só data o último olhar') %}
+  <div class="campo"><label for="motivo-conf">Motivo</label>
+    <input id="motivo-conf" name="motivo" required
+           placeholder="revisão anual do mapa de risco, visita ao posto…"></div>
+{% endcall %}
+
+{% if laudo.status == 'VIGENTE' %}
+{% call ui.popup_cadastro('superar-laudo', SUPERAR,
+                          '/laudos/' ~ laudo.id ~ '/superar', SUPERAR,
+                          classe_botao='perigo') %}
+  {# A consequência FICA escrita, e fica AQUI dentro: ela não explica a regra —
+     ela diz, com a contagem desta ficha, o que este clique vai desencadear. É o
+     último texto antes do botão, e é onde ele serve. "Todos os pareceres
+     derivados" não deixa ninguém decidir se vale a pena; um número, sim. #}
+  <div class="aviso aviso-erro">
+    {% if derivados %}
+    <p><strong>Superar este laudo coloca {{ derivados|length }} parecer(es) derivado(s)
+       em reavaliação (RN-11)</strong>, abre uma pendência para cada um e devolve à
+       reavaliação o adicional vigente que dependa deles.</p>
+    {% else %}
+    <p><strong>Nenhum parecer depende deste laudo hoje</strong>, então nada entra em
+       reavaliação agora.</p>
+    {% endif %}
+    <p>Não há como desfazer em lote: cada parecer volta a ser tratado um a um.</p>
+  </div>
+  <div class="campo"><label for="motivo-superar">Motivo</label>
+    <input id="motivo-superar" name="motivo" required
+           placeholder="mudança no processo de trabalho, obra no bloco, nova legislação…"
+           aria-describedby="dica-superar">
+    <span class="dica" id="dica-superar">Fica registrado na auditoria e vai no texto de
+      cada pendência de reavaliação.</span></div>
+{% endcall %}
+{% endif %}
+{% endif %}
+{% endblock %}

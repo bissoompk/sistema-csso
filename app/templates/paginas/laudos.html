@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Laudos · CSSO{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. "Cadastrar laudo" e não "Novo laudo": o botão diz o
+   que vai acontecer, e é ele que a pessoa reconhece no topo do diálogo. #}
+{% set CADASTRAR = 'Cadastrar laudo' %}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('laudo.criar') %}
+{{ ui.botao_cadastro('novo-laudo', CADASTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Laudos técnicos</h1>
+      <p class="sub">
+        {%- if not total %}Nenhum laudo cadastrado ainda. Um laudo sustenta N pareceres.
+        {#- `recorte.total` é a SELEÇÃO inteira e `total` é o cadastro inteiro;
+            `laudos|length` passou a ser só a página, e é o terceiro número. -#}
+        {%- else %}{{ recorte.total }} laudo(s) nesta seleção, de {{ total }} cadastrado(s).
+        {% if recorte.total > recorte.por_pagina %}Esta página traz {{ laudos|length }}.
+        {% endif %}Um laudo sustenta N pareceres.{% endif %}</p>
+      {# Não é enfeite, e por isso não sumiu: a lista parece um controle de
+         vencimento e não é. Quem lê a coluna "última conferência" como prazo
+         refaz laudo que não precisava. Vai para o (i) porque é fundamento
+         normativo — lê-se uma vez e depois se sabe —, e a coluna "nunca", com o
+         selo, continua dizendo na tela o que há para fazer. #}
+      {% call ui.info('laudo-nao-vence-lista', 'por que esta lista não é controle de vencimento') %}
+        <p class="inicial-maiuscula">{{ rodape_fila }}</p>
+        <p>A coluna <em>última conferência</em> diz quando alguém olhou pela última vez
+          se o laudo ainda descreve o ambiente — não quando ele expira, porque ele não
+          expira. O laudo é refeito quando muda o ambiente, o processo de trabalho ou a
+          legislação.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {# O recorte que faltava. A situação do laudo tem duas respostas e só duas — o
+     laudo vale ou foi superado por outro (IN 15/2022, art. 10, §3º: não há
+     "vencido") —, então ela é uma dimensão de dois valores, que é exatamente o
+     caso das fichas: cada uma é uma URL, a que está em uso fica sólida e a
+     contagem mora dentro do próprio filtro. O número do laudo e o resto vão no
+     `filtro-inline` ao lado, que é o segundo eixo. É a mesma fileira de
+     /certificados e /turmas, e a mesma da fila de EPI. #}
+  <div class="fileira">
+    <span class="rotulo-grupo">Situação</span>
+    <a class="ficha-filtro {{ 'ativa' if not filtro_situacao }}"
+       href="/laudos{{ '?q=' ~ q|urlencode if q }}">
+      Todos <span class="contador">{{ total }}</span></a>
+    {% for codigo, rotulo in situacoes %}
+    <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
+       href="/laudos?situacao={{ codigo }}{{ '&q=' ~ q|urlencode if q }}">
+      {{ rotulo }} <span class="contador">{{ resumo.get(codigo, 0) }}</span></a>
+    {% endfor %}
+    <form method="get" action="/laudos" class="filtro-inline" role="search">
+      {% if filtro_situacao %}
+      <input type="hidden" name="situacao" value="{{ filtro_situacao }}">{% endif %}
+      <label class="oculto" for="f-laudo">Buscar por número SIAPE, unidade ou subscritor</label>
+      <input id="f-laudo" class="mono" type="search" name="q" value="{{ q }}"
+             placeholder="26255-000.125/2019">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Nº SIAPE</th><th scope="col">Unidade</th><th scope="col">Tipo</th><th scope="col">Subscritor</th>
+          <th scope="col">Emissão</th><th scope="col">Última conferência</th><th scope="col">Pareceres</th><th scope="col">Situação</th>
+        </tr>
+      </thead>
+      {% for l in laudos %}
+      <tr>
+        <td><a class="mono" href="/laudos/{{ l.id }}">{{ l.numero_siape }}</a>
+          {%- if l.coletivo %} <span class="pilula sem-ponto">coletivo</span>{% endif %}</td>
+        <td><span class="recorte" title="{{ l.unidade.nome_extenso if l.unidade else '' }}">
+            {{- l.unidade.nome_extenso if l.unidade else '—' -}}</span></td>
+        <td>{{ l.tipo_adicional.nome if l.tipo_adicional else '—' }}</td>
+        <td>{{ l.subscritor.nome if l.subscritor else '—' }}</td>
+        <td class="mono">{{ l.data_emissao|data or '—' }}</td>
+        <td>{% if l.data_ultima_conferencia %}<span class="mono">{{ l.data_ultima_conferencia|data }}</span>
+            {% else %}<span class="selo">nunca</span>{% endif %}</td>
+        <td><span class="contador">{{ derivados[l.id]|length }}</span></td>
+        <td>{{ ui.pilula_laudo(l.status) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8">
+        <div class="vazio">
+          {%- if total %}
+          <strong>Nenhum laudo nesta seleção.</strong>
+          <span>{% if q %}Nada casa com “{{ q }}”. A busca olha número SIAPE,
+            unidade e subscritor.{% else %}Há {{ total }} laudo(s) cadastrado(s)
+            em outra situação.{% endif %}</span>
+          {%- else %}
+          <strong>Nenhum laudo cadastrado.</strong>
+          <span>Sem laudo não há parecer: é ele que sustenta a fundamentação, e
+            um laudo sustenta N pareceres.</span>
+          {%- endif %}
+        </div>
+      </td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {# Os dois eixos do recorte viajam juntos: a ficha de situação e a busca. Sem
+     eles, "próxima" devolveria a fila inteira a partir da página 2. #}
+  {% set eixos = [] %}
+  {% if filtro_situacao %}{% set _ = eixos.append('situacao=' ~ filtro_situacao) %}{% endif %}
+  {% if q %}{% set _ = eixos.append('q=' ~ q|urlencode) %}{% endif %}
+  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/laudos',
+                  eixos|join('&')) }}
+
+</div>
+
+{% if usuario.pode('laudo.criar') %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. #}
+{% call ui.popup_cadastro('novo-laudo', CADASTRAR, '/laudos', CADASTRAR,
+                          aberto=recusado, erro=erro_cadastro) %}
+  <div class="linha-campos">
+    <div class="campo codigo {{ 'com-erro' if recusado }}">
+      <label for="numero_siape">Nº SIAPE</label>
+      {# O número é o único campo que esta rota valida, então é nele que o foco
+         cai na reabertura — e só na reabertura. #}
+      <input id="numero_siape" name="numero_siape" required
+             value="{{ d.get('numero_siape') or '' }}"{{ ' autofocus' if recusado }}
+             placeholder="26255-000.125/2019" aria-describedby="dica-numero">
+      <span class="dica" id="dica-numero">Formato 26255-000.125/2019 — o ano do fim do número
+        é o ano do laudo.</span></div>
+    <div class="campo"><label for="data_emissao">Data de emissão</label>
+      <input id="data_emissao" name="data_emissao" type="date"
+             value="{{ d.get('data_emissao') or '' }}"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="tipo_adicional_id">Tipo de adicional</label>
+      <select id="tipo_adicional_id" name="tipo_adicional_id" required>
+        {% for t in tipos %}<option value="{{ t.id }}"{{ ui.sel(d.get('tipo_adicional_id'), t.id) }}>{{ t.nome }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="unidade_uorg_id">Unidade</label>
+      <select id="unidade_uorg_id" name="unidade_uorg_id" required>
+        {% for u in unidades %}<option value="{{ u.id }}"{{ ui.sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="subscritor_id">Subscritor habilitado</label>
+      <select id="subscritor_id" name="subscritor_id"><option value="">—</option>
+        {% for sb in subscritores %}<option value="{{ sb.id }}"{{ ui.sel(d.get('subscritor_id'), sb.id) }}>{{ sb.nome }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="coletivo" value="1"
+      {{- ' checked' if d.get('coletivo') == '1' }}> laudo coletivo
+      (cobre um posto inteiro, não um servidor)</label></div>
+  {# A nota que era rodapé do cartão entra no corpo do popup: aqui ela é lida
+     antes do botão, que é onde ela serve. #}
+  <p class="discreto rodape-cartao sem-margem">Não existe campo de validade: o laudo é refeito
+     quando muda o ambiente, o processo de trabalho ou a legislação (IN 15/2022, art. 10, §3º).</p>
+{% endcall %}
+{% endif %}
+{% endblock %}

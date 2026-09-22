@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# A tela do próprio servidor: o cartaz e o que é dele.
+
+   Ela existe porque `/turmas` é a lista do setor — a que tem o cartão "Abrir
+   turma", as quatro situações e a ficha com a lista nominal de inscritos. O
+   servidor que quer fazer a NR-35 não precisa de nada disso: ele precisa saber
+   que a turma existe, que há vaga, e de um botão. Esta é a tela desse caminho, e
+   o pedido dela é sempre o do PRÓPRIO — a rota não aceita "quem".
+
+   Duas tabelas, e a ordem é a da pergunta: primeiro o que ele pode pedir,
+   depois o que ele já pediu. #}
+
+{% block titulo %}Meus treinamentos · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Meus treinamentos</span>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Meus treinamentos</h1>
+      <p class="sub">
+        {%- if abertas %}{{ abertas|length }} turma(s) com inscrições abertas.
+        {%- else %}Nenhuma turma com inscrições abertas hoje.{% endif %}
+        {% if inscricoes %}{{ inscricoes|length }} inscrição(ões) em seu nome.{% endif %}
+        A inscrição pedida aqui é sempre a sua.</p>
+      {% call ui.info('pedir-vaga', 'como funciona pedir a própria vaga') %}
+        <p>Pedir vaga é ato seu; <strong>confirmar é ato da CSSO</strong> — a mesma
+          divisão do pedido de EPI, em que quem pede não decide. Enquanto a CSSO não
+          confirma, sua inscrição fica como <strong>inscrita</strong>.</p>
+        <p><strong>A vaga já é sua desde o pedido.</strong> Ela sai da conta de vagas
+          no mesmo instante, e não só na confirmação: segurar a vaga só depois faria o
+          sistema aceitar trinta pedidos para vinte lugares.</p>
+        <p>Só a turma com <strong>inscrições abertas</strong> e dentro do prazo recebe
+          pedido seu. Turma planejada, já em andamento ou fora do prazo continua
+          recebendo inscrição <em>pela CSSO</em>, que tem o contexto na mão.</p>
+        <p><strong>Desistir</strong> vale até a véspera do início, e não apaga nada: a
+          inscrição fica cancelada, com o motivo escrito e o registro na trilha. Depois
+          do início, faltar deixa de ser decisão e passa a ser ausência — que é fato, e
+          se registra em vez de se desfazer. Desistência é definitiva nesta turma:
+          voltar atrás pede a CSSO.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {% if sem_servidor %}
+  <div class="aviso aviso-alerta">
+    <p><strong>Sua conta não está ligada a um cadastro de servidor.</strong>
+      Sem essa ligação o sistema não tem em nome de quem inscrever, e a lista de
+      inscrições abaixo fica vazia mesmo que existam inscrições em seu nome.</p>
+    <p>A ligação conta&nbsp;↔&nbsp;servidor é feita em <strong>Usuários</strong>, por
+      quem tem <code>usuario.criar_conta</code>. Peça informando o seu SIAPE.</p>
+  </div>
+  {% endif %}
+
+  <h2 id="abertas">Turmas com inscrições abertas</h2>
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Código</th><th scope="col">Treinamento</th>
+        <th scope="col">Período</th><th scope="col">Local</th>
+        <th scope="col">Inscrições até</th><th scope="col">Vagas</th>
+        <th scope="col">{{ 'Pedir vaga' if pode_pedir else '' }}</th>
+      </tr>
+    </thead>
+    {% for turma in abertas %}
+    {% set restantes = vagas_restantes.get(turma.id) %}
+    <tr>
+      <td><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a></td>
+      <td class="nome">{{ turma.treinamento.nome }}</td>
+      <td class="mono">{{ turma.data_inicio|data }}
+        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</td>
+      <td><span class="recorte" title="{{ turma.local or '' }}">
+          {{- turma.local or '—' -}}</span></td>
+      <td class="mono">{{ turma.inscricao_aberta_ate|data if turma.inscricao_aberta_ate else '—' }}</td>
+      {# "18 de 20" e não "2 livres": quem lê decide pela ocupação, e a fração diz
+         as duas coisas de uma vez. Turma sem limite declarado não é turma com
+         zero vaga, e a tela precisa da diferença. #}
+      <td><span class="selo">{{ inscritos.get(turma.id, 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% else %} · sem limite{% endif %}</span></td>
+      <td>
+        {% if turma.id in ja_inscrito %}
+        <span class="discreto">já inscrito</span>
+        {% elif not pode_pedir %}
+        <span class="discreto">—</span>
+        {% elif restantes is not none and restantes <= 0 %}
+        <span class="discreto">sem vaga</span>
+        {% else %}
+        {# Um botão, e nenhum campo: a rota não tem onde receber "quem". O
+           formulário carrega só a turma, que já está na URL. #}
+        <form method="post" action="/turmas/{{ turma.id }}/inscrever-me">
+          <button type="submit" class="compacto">Quero me inscrever</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhuma turma com inscrições abertas hoje.',
+         'Turma planejada ainda não recebe inscrição, e turma que já começou é
+          inscrita pela CSSO. O catálogo de treinamentos mostra o que o setor
+          oferece; a turma é a oferta com data.', 7) }}
+    {% endfor %}
+  </table>
+  </div>
+
+  <h2 id="minhas">Minhas inscrições</h2>
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Código</th><th scope="col">Treinamento</th>
+        <th scope="col">Período</th><th scope="col">Situação</th>
+        <th scope="col">Desistir</th>
+      </tr>
+    </thead>
+    {% for i in inscricoes %}
+    <tr>
+      <td><a class="mono" href="/turmas/{{ i.turma.id }}">{{ i.turma.codigo }}</a></td>
+      <td class="nome">{{ i.turma.treinamento.nome }}</td>
+      <td class="mono">{{ i.turma.data_inicio|data }}
+        {%- if i.turma.data_fim != i.turma.data_inicio %} a {{ i.turma.data_fim|data }}{% endif %}</td>
+      <td>{{ ui.pilula_inscricao(i.situacao) }}
+        {%- if i.situacao == 'INSCRITA' %}
+        <span class="quebra discreto">aguardando confirmação da CSSO</span>{% endif %}
+        {%- if i.situacao == 'CANCELADA' and i.motivo_cancelamento %}
+        <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}</td>
+      <td>
+        {% if desistivel.get(i.id) and pode_pedir %}
+        <form method="post" action="/turmas/{{ i.turma.id }}/desistir" class="filtro-inline">
+          <label class="oculto" for="motivo-{{ i.id }}">Motivo da desistência em {{ i.turma.codigo }}</label>
+          <input id="motivo-{{ i.id }}" name="motivo" placeholder="motivo (opcional)">
+          <button type="submit" class="secundario compacto">Desistir</button>
+        </form>
+        {% elif i.situacao in ('INSCRITA', 'CONFIRMADA') %}
+        <span class="discreto">a turma já começou</span>
+        {% else %}
+        <span class="discreto">—</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    {% if sem_servidor %}
+    {{ ui.vazio_de_lista(
+         'Nada a listar enquanto a conta não tiver cadastro de servidor.',
+         'O aviso acima diz onde a ligação é feita. Ela é o que amarra a
+          inscrição à conta que a consulta.', 5) }}
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Você não tem inscrição em turma nenhuma.',
+         'A tabela acima lista as turmas que aceitam pedido seu hoje. Turma fora
+          do prazo ou já em andamento continua sendo inscrita pela CSSO — fale
+          com o setor com o código da turma.', 5) }}
+    {% endif %}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+{% endblock %}

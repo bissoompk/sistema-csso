@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# A ficha de EPI de um servidor: a linha do tempo de tudo o que ele recebeu.
+
+   Três coisas que esta tela existe para mostrar, e que o "histórico de retiradas"
+   do legado não mostrava:
+
+   1. O CA e a validade **congelados no ato** — não os de hoje. Renomear o item
+      no catálogo amanhã não reescreve a entrega de ontem.
+   2. O comprovante assinado, com o SHA-256 que prova que é aquele arquivo — e a
+      etiqueta vermelha quando ele ainda não veio.
+   3. O estorno ao lado da linha estornada, as duas visíveis. Correção de
+      documento probatório não é rasura. #}
+
+{% block titulo %}Ficha de EPI · CSSO{% endblock %}
+{# O cadastro do servidor exige `processo.ver` (`servidores.py:226`), que o
+   almoxarife não tem — e a ficha de EPI é a tela central do trabalho dele. Sem
+   a guarda, a trilha e o botão abaixo lhe ofereciam 403 no nome da pessoa que
+   ele está atendendo. É o mesmo invariante que o menu, o sino e as âncoras de
+   `/pendencias` já cumprem: link que não abre não é link, é armadilha. Sem a
+   permissão o nome continua na trilha — só não é porta. #}
+{% block trilha %}
+{% if usuario.pode('processo.ver') %}
+<a href="/servidores/{{ servidor.id }}">{{ identificar(servidor).nome }}</a>
+{% else %}
+<span>{{ identificar(servidor).nome }}</span>
+{% endif %}
+<span class="atual" aria-current="page">Ficha de EPI</span>
+{% endblock %}
+
+{% block acoes_cabecalho %}
+{# A ficha vai para o papel (é ela que a fiscalização pede), e a pessoa tinha de
+   saber que Ctrl+P produz um resultado bom. O `@media print` já cuida da
+   forma; o botão só diz que imprimir é um caminho. `data-imprimir` é o contrato
+   de `base.html`. #}
+<button type="button" class="secundario" data-imprimir>Imprimir</button>
+{% if pode_entregar %}
+<a class="botao" href="/epis/entregas/nova?servidor_id={{ servidor.id }}">Registrar entrega</a>
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set quem = identificar(servidor) %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ quem.nome }}</h1>
+      {# `.identificacao`, e não `.sub`: esta linha carrega um código que se
+         confere dígito a dígito (o SIAPE, em mono) e separadores entre três
+         dados independentes — é a mesma linha de `servidor_ficha.html`, sobre a
+         mesma pessoa, e as duas telas se abrem uma da outra. Em `.sub` ela era
+         texto corrido, com o SIAPE na fonte do parágrafo e os pontos digitados
+         à mão no meio da frase. #}
+      <p class="identificacao">
+        {%- if quem.nominal %}<span class="mono">SIAPE {{ quem.siape }}</span>
+        {%- else %}<span class="discreto">identificação suprimida (RN-19)</span>{% endif %}
+        <span class="ponto">·</span>
+        <span>{{ servidor.cargo.nome if servidor.cargo else 'sem cargo no cadastro' }}</span>
+        <span class="ponto">·</span>
+        <span>{{ servidor.unidade.nome_extenso if servidor.unidade else 'sem unidade' }}</span>
+      </p>
+    </div>
+    <div class="ao-lado">
+      {% if usuario.pode('processo.ver') %}
+      <a class="botao secundario" href="/servidores/{{ servidor.id }}">Ver o cadastro</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="tira-medidas">
+    <div class="medida">
+      <span class="rotulo">Registros</span>
+      <span class="valor">{{ linhas|length }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Sem comprovante</span>
+      <span class="valor">{{ pendentes|length }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">CA vencido no lote entregue</span>
+      <span class="valor">{{ vencidos|length }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Troca devida</span>
+      <span class="valor">{{ trocas|length }}</span>
+    </div>
+  </div>
+
+  {% if pendentes %}
+  {# O que fica: o número e a consequência dele — a ficha afirma sem poder
+     demonstrar. O que é o comprovante, de onde ele vem e quem fica com a tarefa
+     é explicação, e foi para o (i). #}
+  <div class="aviso aviso-alerta">
+    <strong>{{ pendentes|length }} entrega(s) com registro e sem prova.</strong>
+    Enquanto o papel assinado não for anexado, esta ficha afirma a entrega sem
+    poder demonstrá-la.
+    {% call ui.info('sem-comprovante', 'o comprovante assinado e a pendência que ele abre') %}
+      <p>O comprovante é o papel assinado <strong>pelo servidor no ato</strong> da
+        entrega e digitalizado depois. Ele sai do modelo com os dados congelados
+        da linha, é guardado com o SHA-256 do arquivo e tem guarda permanente —
+        é ele que uma fiscalização pede.</p>
+      <p>Cada uma dessas linhas tem uma <strong>pendência aberta com prazo</strong>,
+        com dono: ela aparece no sino de quem responde pela tarefa, e não fica
+        esperando alguém reabrir esta ficha por acaso.</p>
+    {% endcall %}
+  </div>
+  {% endif %}
+
+  {% if trocas %}
+  <div class="aviso aviso-alerta">
+    <strong>{{ trocas|length }} item(ns) com troca vencida.</strong>
+    Além do inventário, isso tem efeito no parecer: EPI com troca vencida
+    <strong>não sustenta</strong> a alegação de que o agente nocivo está
+    neutralizado.
+  </div>
+  {% endif %}
+
+  {% if divergencias %}
+  {# `epi_ficha.conferir`: refaz a forma canônica de cada linha e compara com o
+     evento da cadeia de hash que a registrou. Divergência aqui significa que a
+     linha foi alterada por fora do sistema — não é aviso de acabamento, e por
+     isso NADA daqui sai da tela: o fato, a contagem e a lista das linhas que não
+     conferem são o que muda o que se faz a seguir. Para o (i) foi só o que
+     explica COMO a conferência funciona. #}
+  <div class="aviso aviso-erro">
+    <p><strong>A conferência de integridade encontrou {{ divergencias|length }}
+      divergência(s).</strong> Abaixo, as linhas que não conferem.</p>
+    <ul class="motivos erro">
+      {% for d in divergencias %}<li>Registro {{ d.registro_id }}: {{ d.detalhe }}</li>{% endfor %}
+    </ul>
+    {% call ui.info('integridade', 'como a conferência de integridade funciona') %}
+      <p>Cada linha desta ficha é amarrada ao evento da trilha de auditoria que a
+        registrou. A conferência refaz a <strong>forma canônica</strong> da linha
+        a partir do que está gravado hoje e compara com o que o evento guardou no
+        ato; a cadeia de eventos, por sua vez, é encadeada por hash.</p>
+      <p>Divergir aqui não é erro de acabamento nem de arredondamento: significa
+        que a linha foi <strong>alterada por fora do sistema</strong> — por
+        acesso direto ao banco, por restauração parcial de backup ou por defeito
+        de gravação. A tabela é append-only por trava de banco justamente para
+        que isto não aconteça pelo caminho normal.</p>
+    {% endcall %}
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Data</th><th scope="col">Evento</th><th scope="col">Equipamento</th>
+          <th scope="col">CA congelado</th><th scope="col">Lote · tamanho</th><th scope="col">Qtd.</th>
+          <th scope="col">Entregou</th><th scope="col">Comprovante</th><th scope="col"></th>
+        </tr>
+      </thead>
+      {% for l in linhas %}
+      {% set r = l.registro %}
+      <tr>
+        <td>{{ r.data_evento|data }}
+          {% if r.previsao_troca %}
+          <span class="quebra discreto">troca: {{ r.previsao_troca|data }}</span>
+          {% endif %}</td>
+        <td>{{ ui.pilula_ficha(r.tipo) }}
+          {% if l.estornado %}
+          <span class="quebra"><span class="pilula erro"
+            title="{{ l.estornado_por.motivo }}">estornado pelo nº {{ l.estornado_por.id }}</span></span>
+          {% endif %}
+          {% if l.estorna %}
+          <span class="quebra discreto">estorna o nº {{ l.estorna.id }}</span>
+          {% endif %}
+          <span class="quebra discreto mono">nº {{ r.id }}</span></td>
+        <td class="nome">{{ r.nome_epi_snapshot }}
+          <span class="quebra discreto">{{ r.categoria_snapshot }}
+            {%- if r.fabricante_snapshot %} · {{ r.fabricante_snapshot }}{% endif %}</span></td>
+        <td class="mono">{{ r.numero_ca_snapshot or '—' }}
+          <span class="quebra">{{ r.validade_ca_snapshot|data or 'sem validade' }}</span>
+          {# a validade é a do dia da entrega, congelada: a pílula compara com
+             HOJE só para dizer que aquele CA já não valeria mais #}
+          {% if l.ca_vencido_em(hoje) %}
+          <span class="quebra"><span class="pilula erro"
+            title="o CA congelado nesta entrega já venceu">CA vencido hoje</span></span>
+          {% endif %}
+          {{ ui.pilula_troca(r.previsao_troca, hoje) }}</td>
+        <td class="mono">{{ r.lote_snapshot or '—' }}
+          <span class="quebra">{{ r.tamanho_snapshot or '—' }}</span></td>
+        <td class="mono">{{ r.quantidade }}</td>
+        <td class="discreto">{{ l.entregue_por_nome }}
+          <span class="quebra">{{ r.unidade_snapshot or '—' }}</span></td>
+        <td>
+          {% if r.tipo == 'ESTORNO' %}
+          <span class="discreto">não se aplica</span>
+          {% elif l.estornado %}
+          <span class="discreto">registro estornado</span>
+          {% elif r.tipo != 'ENTREGA' %}
+          {# a pendência da decisão 8 é da ENTREGA: é a entrega que a
+             instituição precisa provar. O papel da devolução é bom de ter e não
+             é dívida — a pílula de alerta aqui acusaria uma lacuna que não
+             existe. #}
+          {% if l.comprovante %}{{ ui.pilula_comprovante(l.comprovante) }}
+          {% else %}<span class="discreto">comprovante opcional</span>{% endif %}
+          {% else %}
+          {{ ui.pilula_comprovante(l.comprovante) }}
+          {% if l.comprovante %}
+          <span class="quebra"><a href="/epis/fichas/registros/{{ r.id }}/anexo">baixar
+            o assinado</a></span>
+          {% endif %}
+          {% endif %}
+        </td>
+        <td>
+          {% if pode_entregar %}
+          {# A gaveta desta linha virou camada (`ui.popup_gaveta`), pelo mesmo
+             motivo da ficha do pedido: três formulários — anexar o assinado,
+             devolução e estorno — não cabem nos ~190px da última coluna, e o que
+             separa devolução de estorno é justamente o parágrafo que ali ficava
+             espremido. O clique continua sendo um só: era abrir a gaveta, agora é
+             abrir a camada. #}
+          {% call ui.popup_gaveta('acoes-registro-' ~ r.id, 'ações',
+                                  'Ações · ' ~ r.nome_epi_snapshot,
+                                  nota='registro nº ' ~ r.id ~ ' · '
+                                       ~ (r.data_evento|data)) %}
+              <div>
+                <p class="discreto">O comprovante sai dos dados congelados nesta
+                  linha — nunca do catálogo de hoje.</p>
+                <a class="botao secundario compacto"
+                   href="/epis/fichas/registros/{{ r.id }}/comprovante">Imprimir comprovante</a>
+              </div>
+
+              {% if r.tipo != 'ESTORNO' and not l.estornado and not l.comprovante %}
+              <form method="post" enctype="multipart/form-data"
+                    action="/epis/fichas/registros/{{ r.id }}/comprovante">
+                <h3>Anexar o assinado</h3>
+                <div class="zona-arquivo">
+                  <label for="arq-{{ r.id }}">Arquivo</label>
+                  <input id="arq-{{ r.id }}" type="file" name="arquivo" required
+                         accept="application/pdf,image/*">
+                  <span class="formato">PDF digitalizado do papel assinado.
+                    Guardado com SHA-256, categoria FICHA_EPI, guarda permanente.</span>
+                </div>
+                <div class="acoes"><button type="submit" class="compacto">Anexar</button></div>
+              </form>
+              {% endif %}
+
+              {# Devolução e estorno ficam lado a lado, e cada uma diz o que faz:
+                 escolher a errada estraga o livro razão de um jeito que só a
+                 contagem física descobre. Devolução repõe saldo porque o
+                 equipamento voltou; estorno não repõe nada porque nada voltou —
+                 o que estava errado era o registro. #}
+              {% if r.tipo == 'ENTREGA' and not l.estornado %}
+              <form method="post" action="/epis/fichas/registros/{{ r.id }}/devolucao">
+                <h3>Registrar devolução</h3>
+                <p class="discreto">O equipamento <strong>voltou</strong>. A
+                  entrega continua valendo — devolver não desfaz o que
+                  aconteceu —, nasce uma linha nova na ficha e o saldo volta ao
+                  lote.</p>
+                <div class="linha-campos">
+                  <div class="campo">
+                    <label for="qtd-dev-{{ r.id }}">Quantidade</label>
+                    <input id="qtd-dev-{{ r.id }}" name="quantidade" required
+                           inputmode="numeric" value="{{ r.quantidade }}">
+                  </div>
+                  <div class="campo">
+                    <label for="data-dev-{{ r.id }}">Data</label>
+                    <input id="data-dev-{{ r.id }}" type="date" name="data_evento"
+                           value="{{ hoje.isoformat() }}" max="{{ hoje.isoformat() }}">
+                  </div>
+                </div>
+                <div class="campo">
+                  <label for="mot-dev-{{ r.id }}">Por que voltou</label>
+                  <input id="mot-dev-{{ r.id }}" name="motivo" required
+                         placeholder="troca por desgaste"
+                         aria-describedby="dica-dev-{{ r.id }}">
+                  <span class="dica" id="dica-dev-{{ r.id }}">Desgaste, dano,
+                    troca de posto ou desligamento mudam o que o setor faz com o
+                    equipamento depois.</span>
+                </div>
+                <div class="acoes"><button type="submit" class="compacto">Devolver</button></div>
+              </form>
+              {% endif %}
+
+              {% if r.tipo != 'ESTORNO' and not l.estornado %}
+              <form method="post" action="/epis/fichas/registros/{{ r.id }}/estorno">
+                <h3>Estornar</h3>
+                <p class="discreto">O <strong>registro</strong> estava errado — e
+                  isso é outra coisa: o saldo do lote <strong>não</strong> volta,
+                  porque nada voltou da prateleira. A linha também não some:
+                  nasce outra, apontando para esta, com o motivo. É assim que
+                  documento de valor probatório se corrige.</p>
+                <div class="campo">
+                  <label for="mot-{{ r.id }}">Motivo</label>
+                  <input id="mot-{{ r.id }}" name="motivo" required
+                         placeholder="quantidade digitada errada">
+                </div>
+                <div class="acoes">
+                  <button type="submit" class="perigo-discreto compacto">Estornar</button>
+                </div>
+              </form>
+              {% endif %}
+          {% endcall %}
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9">
+        <div class="vazio">
+          <strong>Nenhum EPI registrado para este servidor.</strong>
+          <span>A ficha nasce da primeira entrega, e é ela que prova que o
+            equipamento foi entregue.</span>
+        </div>
+      </td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {# Sobrou a afirmação, que é o que se precisa saber ao ler a tabela; a lista do
+     que exatamente está congelado e o porquê da trava de banco foram para o (i).
+     Seis linhas viraram uma. #}
+  <div class="aviso aviso-info">
+    <strong>O que está congelado aqui não muda mais.</strong>
+    {% call ui.info('congelado', 'o que a ficha congela, e por que nem por fora se altera') %}
+      <p>Ficam como eram <strong>no dia da entrega</strong>: nome do EPI,
+        categoria, número do CA, validade do CA, fabricante, lote, tamanho e a
+        identificação do servidor. Editar o catálogo depois não reescreve nenhuma
+        destas linhas.</p>
+      <p>Não é zelo de programação: esta ficha é documento de valor probatório.
+        Se o nome do item seguisse o catálogo, a entrega de 2023 passaria a
+        descrever o equipamento comprado em 2026 — e a prova deixaria de provar o
+        que aconteceu.</p>
+      <p>A tabela é <strong>append-only por trava de banco</strong>: o banco
+        recusa UPDATE e DELETE nela. Corrigir uma linha errada é
+        <strong>estornar</strong> — nasce outra apontando para esta, com o motivo
+        —, e é assim que documento probatório se corrige sem rasura.</p>
+    {% endcall %}
+  </div>
+
+</div>
+{% endblock %}

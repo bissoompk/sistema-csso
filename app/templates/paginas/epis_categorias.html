@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{% block titulo %}Categorias da NR-6 · Catálogo de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Categorias (NR-6)</span>{% endblock %}
+
+{% block conteudo %}
+{% set editavel = usuario.pode('epi.catalogo') %}
+
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Categorias da NR-6</h1>
+      <p class="sub">{{ itens|length }} categoria(s). A taxonomia do Anexo I da
+        NR-6, que classifica todo item do catálogo.</p>
+    </div>
+    {% if not editavel %}
+    <div class="ao-lado">
+      {{ ui.pilula_somente_leitura('epi.catalogo') }}
+    </div>
+    {% endif %}
+  </div>
+
+  {{ ui.abas(abas, aba) }}
+
+  {# Por que a lista é semeada e não se cadastra: no legado a categoria era
+     texto livre, e a mesma tela mostrava "proteção do tronco", "da cabeça" e
+     "dos membros superiores" — grafias de uma lista que a norma fecha em nove.
+     Criar a décima aqui seria inventar norma, pelo mesmo motivo que
+     /catalogos/percentuais e /catalogos/tipos-risco também só editam. #}
+  {# Fica a frase que responde "por que não há botão de cadastrar aqui?", que é a
+     pergunta de quem abre a tela. Por que a norma fecha em nove, e por que editar
+     o nome é seguro, é explicação. #}
+  <div class="aviso aviso-info">
+    <strong>A lista é o Anexo I da NR-6 e não se cadastra pela tela.</strong>
+    {% call ui.info('anexo-i', 'por que a lista é semeada, e por que editar o nome é seguro') %}
+      <p>No legado a categoria era texto livre, e a mesma tela mostrava “proteção
+        do tronco”, “da cabeça” e “dos membros superiores” — grafias de uma lista
+        que a norma fecha em <strong>nove</strong>. Criar a décima aqui seria
+        inventar norma, pelo mesmo motivo que os catálogos de percentuais e de
+        tipos de risco também só editam.</p>
+      <p>Editar o NOME, esse sim, é seguro: quem classifica o item é o
+        <span class="mono">código</span>, e a entrega congela o nome da categoria
+        na linha da ficha — renomear amanhã não reescreve a entrega de ontem.</p>
+    {% endcall %}
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Código</th><th scope="col">Anexo I</th><th scope="col">Nome</th><th scope="col">Ordem</th>
+        <th scope="col">Itens</th><th scope="col">Situação</th>{% if editavel %}<th scope="col"></th>{% endif %}
+      </tr>
+    </thead>
+    {% for c in itens %}
+    {% set id = 'f-cat-' ~ c.id %}
+    <tr>
+      <td class="mono">{{ c.codigo }}
+        {% if editavel %}<form method="post" action="/epis/catalogo/categorias/{{ c.id }}" id="{{ id }}"></form>{% endif %}</td>
+      {% if editavel %}
+      <td><input form="{{ id }}" name="referencia_nr6" value="{{ c.referencia_nr6 or '' }}"
+                 maxlength="12" aria-label="Item do Anexo I para {{ c.codigo }}"></td>
+      <td><input form="{{ id }}" name="nome" value="{{ c.nome }}" required
+                 aria-label="Nome da categoria {{ c.codigo }}"></td>
+      <td><input form="{{ id }}" name="ordem" value="{{ c.ordem }}" inputmode="numeric"
+                 aria-label="Ordem da categoria {{ c.codigo }}"></td>
+      <td class="mono">{{ em_uso[c.id] }}</td>
+      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
+            {% if c.ativo %}checked{% endif %}> ativa</label></td>
+      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button></td>
+      {% else %}
+      <td class="mono">{{ c.referencia_nr6 or '—' }}</td>
+      <td class="nome">{{ c.nome }}</td>
+      <td class="mono">{{ c.ordem }}</td>
+      <td class="mono">{{ em_uso[c.id] }}</td>
+      <td>{{ ui.pilula_sim_nao(c.ativo, 'ativa', 'inativa') }}</td>
+      {% endif %}
+    </tr>
+    {% else %}
+    {# Este catálogo não se cadastra pela tela: ele vem das sementes, porque as
+       categorias SÃO o Anexo I da NR-6 e não uma escolha do setor. A saída, por
+       isso, aponta para a semeadura e não para um botão que não existe. #}
+    {{ ui.vazio_de_lista(
+         'Nenhuma categoria semeada.',
+         'As categorias reproduzem o Anexo I da NR-6 e chegam pelas sementes, não
+          por cadastro — e sem elas o catálogo de EPI não tem a que vincular cada
+          item. Rode as sementes do sistema.',
+         7 if editavel else 6) }}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+{% endblock %}

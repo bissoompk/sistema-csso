@@ -1,0 +1,25 @@
+/* O que o app compilado desenha que a tela de bolso (celular.css) não tem.
+   Tudo em cima dos tokens de csso.css; nenhuma cor nova. */
+.app-compilado .cabecalho-marca { position: sticky; top: 0; z-index: 5; }
+.app-compilado .cabecalho-marca .quem-esta { margin-left: auto; margin-right: 12px; color: #fff; opacity: .8; }
+.app-compilado .conteudo.celular { padding-bottom: 84px; }
+.app-compilado .carregando { padding: 12px 0; }
+.app-compilado .rodape-app { margin-top: 24px; }
+.app-compilado h2 { font-size: 17px; margin: 18px 0 6px; }
+.app-compilado .erro { color: var(--erro); }
+
+/* a ficha e as pendências reusam a linha de toque da chamada */
+.lista-toque .linha-ficha {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio);
+}
+.lista-toque .linha-ficha.estornada { opacity: .6; }
+.lista-toque .linha-ficha.atrasada { border-left: 4px solid var(--erro); }
+.lista-toque .linha-ficha .quem { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lista-toque .linha-ficha .quem strong { font-size: 15px; overflow-wrap: anywhere; }
+.lista-toque .linha-ficha .marcas { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; }
+.lista-toque .rotulo-tipo {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tinta-dica);
+}

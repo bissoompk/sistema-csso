@@ -1,0 +1,1105 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}{{ turma.codigo }} · CSSO{% endblock %}
+{# o código da turma em mono: número que se confere dígito a dígito nunca sai em
+   texto corrido — nem no h1, nem na trilha #}
+{% block trilha %}
+<span class="atual mono" aria-current="page">{{ turma.codigo }}</span>
+{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('turma.avaliar') %}
+<a class="botao secundario" href="/turmas/{{ turma.id }}/lista-presenca"
+   title="A folha para assinar em campo, em .docx, gerada na hora com quem está inscrito hoje">
+  Lista de presença</a>
+{% endif %}
+{# O próximo passo da máquina, quando quem olha pode dá-lo. Cancelar fica de fora
+   de propósito: exige motivo escrito e não é o passo natural da turma. O botão
+   leva ao formulário, na aba Turma — não dispara nada sozinho. #}
+{% for codigo, rotulo in destinos if codigo != 'CANCELADA' and usuario.pode(permissao_por_destino[codigo]) %}
+{% if loop.first %}
+<a class="botao" href="/turmas/{{ turma.id }}?aba=turma#situacao">
+  {{- ui.ACAO_TURMA.get(codigo, 'Passar para ' ~ rotulo|lower) -}}</a>
+{% endif %}
+{% endfor %}
+{% endblock %}
+
+{# O verbo do botão e o do título de cada camada num lugar só — ver
+   `popup_cadastro` em `partes/macros.html`. Catorze formulários estavam abertos
+   nesta ficha, quatro deles ao mesmo tempo na mesma aba. #}
+{% set EDITAR_TURMA = 'Editar dados da turma' %}
+{% set CANCELAR_TURMA = 'Cancelar turma' %}
+{% set CONCLUIR_TURMA = 'Concluir turma' %}
+{% set VINCULAR_INSTRUTOR = 'Vincular instrutor' %}
+{% set CADASTRAR_EXTERNO = 'Cadastrar participante externo' %}
+{% set MARCAR_TODOS = 'Marcar todos presentes' %}
+{% set EMITIR_LOTE = 'Emitir os certificados' %}
+
+{% block conteudo %}
+{% set pode_editar = usuario.pode('turma.criar') %}
+{% set pode_inscrever = usuario.pode('turma.inscrever') %}
+{% set pode_avaliar = usuario.pode('turma.avaliar') %}
+{# retificar mexe em resultado já comunicado: pede a mesma permissão de concluir #}
+{% set pode_lancar = pode_avaliar and (not retificando or usuario.pode('turma.concluir'))
+                     and turma.situacao in ('EM_ANDAMENTO', 'CONCLUIDA') %}
+{% set editavel = pode_editar and not turma.encerrada %}
+
+{# =====================================================================
+   RN-19 NESTA FICHA — quem pode ler o nome de quem está na turma
+   =====================================================================
+   A lista de chamada nomeia gente, e o que ela diz não é "fulano existe": é
+   **fulano fez NR-35**, ou seja, em que atividade de risco ele trabalha. Esta
+   tela saía nominal para todo mundo que tem `treinamento.ver`, e isso descrevia
+   bem enquanto toda conta era da CSSO. No dia em que a inscrição abrir para o
+   servidor comum, `treinamento.ver` deixa de separar coisa nenhuma.
+
+   O que separa é `certificado.ver` — "certificado nominal e dados do
+   participante" na própria descrição da permissão —, que a 1.35.0 manteve fora
+   de `servidor_consulta` de propósito (`rbac.py:402-411`) e que TODO perfil da
+   CSSO com `treinamento.ver` já tem. Sem ela, cada linha ainda passa pela RN-19
+   comum: `identificar()` devolve o `SRV-…` da sessão, e o TITULAR continua
+   lendo o próprio nome (LGPD art. 18, II).
+
+   É a MESMA pergunta que o filtro faz — `participante.pode_identificar` —, e
+   isso não é coincidência: a busca só pode casar por nome onde esta tela
+   escreve o nome. Onde ela suprime, casar devolveria uma linha e diria de quem
+   é o código; onde ela já escreve, fechar a busca não protege nada.
+
+   O PAPEL NÃO MUDA. A lista de presença que circula em campo para assinar é
+   documento — ela nomeia quem assina, por definição —, sai em .docx por
+   `servicos/lista_presenca.py` e pede `turma.avaliar`, que não é desta conta.
+   É a mesma divisão que a 1.35.0 fez entre a prévia do parecer e o `.docx`
+   emitido: a tela obedece à RN-19, o documento continua nominal.
+
+   E o `PTC-…` acompanha o nome, some com ele. Ele é sorteado e não é
+   enumerável, mas — ao contrário do `SRV-…`, que troca a cada sessão por
+   desenho (`identificacao.semente_de`) — é ESTÁVEL para sempre e sai impresso
+   ao lado do nome na folha de presença (`lista_presenca.py:80`), que passa de
+   mão em mão na sala. Publicá-lo a quem não pode ver o nome entrega um
+   apelido permanente que uma única folha assinada resolve — e resolve em toda
+   tela do sistema, para sempre. Opaco na construção não é opaco no efeito. #}
+{% set pode_nominal = usuario.pode('certificado.ver') or usuario.ve_dado_nominal %}
+{% set SUPRIMIDO = 'identificação suprimida (RN-19)' %}
+
+<div class="tela">
+
+  {# âncora de volta para quem desceu até uma confirmação e desistiu dela #}
+  <div class="cabecalho-pagina" id="topo-da-turma">
+    <div class="titulo">
+      <h1 class="mono">{{ turma.codigo }}</h1>
+      <p class="identificacao">
+        <strong>{{ turma.treinamento.nome }}</strong>
+        <span class="ponto">·</span>
+        <span class="mono">{{ turma.data_inicio|data }}
+          {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
+        <span class="ponto">·</span>
+        <span class="mono">{{ turma.carga_efetiva }}h</span>
+        {{ ui.pilula_turma(turma.situacao) }}
+      </p>
+    </div>
+  </div>
+
+  {% if turma.motivo_cancelamento %}
+  <div class="aviso aviso-erro">
+    <strong>Turma cancelada:</strong> {{ turma.motivo_cancelamento }}. Cancelada é
+    situação final — adiar para outra data pede abrir outra turma, com código próprio.
+  </div>
+  {% endif %}
+
+  <nav class="abas" aria-label="Seções da turma">
+    {% for chave, rotulo in abas %}
+    <a href="/turmas/{{ turma.id }}?aba={{ chave }}"
+       class="{{ 'ativa' if aba == chave }}"
+       {% if aba == chave %}aria-current="page"{% endif %}>{{ rotulo }}
+      {%- if chave == 'inscricoes' %} <span class="conta">{{ inscricoes|length }}</span>{% endif %}</a>
+    {% endfor %}
+    {# declaradas e não clicáveis: quem usa o sistema precisa saber o que ainda
+       não está aqui, mesma regra dos módulos previstos em /modulos #}
+    {% for rotulo, fatia in abas_previstas %}
+    <span class="discreto" style="padding:8px 14px"
+          title="ainda não desenvolvido ({{ fatia }})">{{ rotulo }} · em breve</span>
+    {% endfor %}
+  </nav>
+
+{# ===================== aba 1 — a turma ===================== #}
+{% if aba == 'turma' %}
+<div class="lado-a-lado igual">
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Dados da turma</h2>
+      {% if turma.encerrada and pode_editar %}
+      <span class="pilula" title="turma encerrada não se edita">somente leitura</span>{% endif %}
+      {% if editavel %}
+      {{ ui.botao_cadastro('editar-turma', EDITAR_TURMA, 'secundario compacto a-direita') }}
+      {% endif %}
+    </div>
+    <dl class="tabela-dados">
+      <dt>Treinamento</dt><dd>{{ turma.treinamento.nome }}</dd>
+      <dt>Período</dt>
+      <dd class="mono">{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
+      <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva }}h</dd>
+      <dt>Local</dt><dd>{{ turma.local or '—' }}</dd>
+      <dt>Campus</dt><dd>{{ turma.campus.nome if turma.campus else '—' }}</dd>
+      <dt>Unidade promotora</dt>
+      <dd>{{ turma.unidade_promotora.nome_extenso if turma.unidade_promotora else '—' }}</dd>
+      <dt>Vagas</dt><dd>{{ turma.vagas or 'sem limite' }}</dd>
+      <dt>Inscrições até</dt>
+      <dd class="mono">{{ turma.inscricao_aberta_ate|data or '—' }}</dd>
+      <dt>Nota mínima</dt>
+      <dd>{{ turma.nota_minima_aprovacao or 'não avalia por nota' }}</dd>
+      <dt>Frequência mínima</dt>
+      <dd class="mono">{{ turma.frequencia_minima_percentual }}%</dd>
+      <dt>Data base do vencimento</dt><dd class="mono">{{ turma.data_base|data }}</dd>
+      <dt>Observações</dt><dd>{{ turma.observacoes or '—' }}</dd>
+    </dl>
+    {% if turma.encerrada and pode_editar %}
+    {# FICA: quem tem `turma.criar` e não acha o botão de editar precisa saber que
+       a ausência dele é regra, e não permissão que falta. #}
+    <div class="corpo">
+      <p class="discreto sem-margem">
+        Turma {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }} não se edita — o que ela
+        diz já foi comunicado a quem participou.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="pilha">
+    <section class="cartao" id="situacao">
+      <div class="titulo-cartao"><h2>Situação da turma</h2></div>
+
+      {# O caminho inteiro, com o passo atual sólido: a máquina de estados é a
+         regra que decide o que a tela oferece abaixo, e vê-la é o que explica
+         por que "concluir" ainda não aparece. #}
+      <div class="fileira trilho-estado">
+        {% set ordem = ['PLANEJADA', 'INSCRICOES_ABERTAS', 'EM_ANDAMENTO', 'CONCLUIDA'] %}
+        {% set posicao = ordem.index(turma.situacao) if turma.situacao in ordem else -1 %}
+        {% for passo in ordem %}
+        {% if passo == turma.situacao %}{{ ui.pilula_turma(passo) }}
+        {% else %}
+        <span class="passo {{ 'passado' if posicao > loop.index0 else 'futuro' }}">
+          {{- ui.ROTULO_TURMA_TELA[passo] -}}</span>
+        {% endif %}
+        {% if not loop.last %}<span class="seta" aria-hidden="true">→</span>{% endif %}
+        {% endfor %}
+        {% if turma.situacao == 'CANCELADA' %}
+        <span class="separador" aria-hidden="true">·</span>
+        {{ ui.pilula_turma('CANCELADA') }}
+        {% endif %}
+      </div>
+
+      {% if destinos %}
+      <div class="acoes" style="margin-top:12px">
+        {% for codigo, rotulo in destinos %}
+        {% if usuario.pode(permissao_por_destino[codigo]) %}
+        {% if codigo == 'CONCLUIDA' %}
+        {# Concluir é irreversível — `CONCLUIDA` não tem destino de saída. Saía com
+           `secundario`, a classe menos enfática do sistema, ao lado de "Cancelar
+           turma", que é igualmente final e sai em `perigo` COM motivo. Aqui o
+           botão de destaque ABRE a confirmação, e não executa: ela diz o que a
+           apuração vai gravar em cada inscrito e que não há volta. #}
+        {{ ui.botao_cadastro('concluir-turma', CONCLUIR_TURMA ~ '…') }}
+        {% elif codigo == 'CANCELADA' %}
+        {# Cancelar exige motivo escrito: o botão abre a camada com o campo. #}
+        {{ ui.botao_cadastro('cancelar-turma', CANCELAR_TURMA, 'perigo-discreto') }}
+        {% else %}
+        {# Os passos sem campo nenhum continuam sendo um clique só, na tela: um
+           popup aqui cobraria dois cliques para não mostrar informação alguma. #}
+        <form method="post" action="/turmas/{{ turma.id }}/situacao">
+          <input type="hidden" name="destino" value="{{ codigo }}">
+          <button type="submit" class="secundario"
+                  title="passa a turma para {{ ui.ROTULO_TURMA_TELA.get(codigo, rotulo)|lower }}">
+            {{- ui.ACAO_TURMA.get(codigo, 'Passar para ' ~ rotulo|lower) -}}</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+        {# Os passos da máquina se explicam uma vez; o que NÃO sai da tela é o que
+           "concluir" faz, e ele está escrito dentro da própria confirmação, que é
+           o instante da decisão. #}
+        {% call ui.info('passos-da-turma', 'o que cada passo da turma faz') %}
+          <p>Fechar as inscrições sem cancelar a turma é <strong>voltar para
+            planejada</strong>: a turma continua de pé, só deixa de receber gente.
+            Cancelar exige motivo escrito e é situação final — adiar para outra data
+            pede abrir outra turma, com código próprio.</p>
+          <p><strong>Concluir é um ato só</strong>: encerra a turma e apura cada
+            inscrito — calcula a frequência a partir dos lançamentos e atribui
+            aprovado ou reprovado. Depois disso, corrigir presença ou nota continua
+            possível na aba <em>Presença e notas</em>, como retificação com motivo.</p>
+        {% endcall %}
+      </div>
+      {% else %}
+      <div class="vazio">
+        <strong>{{ ui.ROTULO_TURMA_TELA[turma.situacao] }} é situação final</strong>
+        <span>Não há para onde ir. Erro em turma encerrada se corrige por anulação e
+          reemissão do certificado, nunca por volta de estado.</span>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Instrutores</h2>
+        <span class="contador">{{ turma.instrutores|length }}</span>
+      </div>
+      {% if turma.instrutores %}
+      <table>
+        <thead>
+          <tr><th scope="col">Nome</th><th scope="col">Título</th><th scope="col">Certificado</th>
+              {% if editavel %}<th scope="col"></th>{% endif %}</tr>
+        </thead>
+        {% for vinculo in turma.instrutores %}
+        <tr>
+          <td class="nome">{{ vinculo.instrutor.nome_exibicao }}</td>
+          <td>{{ vinculo.instrutor.titulo or '—' }}</td>
+          <td>{% if vinculo.assina_certificado %}<span class="pilula ok">assina</span>
+              {% else %}<span class="pilula sem-ponto">não assina</span>{% endif %}</td>
+          {% if editavel %}
+          <td>
+            <form method="post" action="/turmas/{{ turma.id }}/instrutores">
+              <input type="hidden" name="assinatura_instrutor_id"
+                     value="{{ vinculo.assinatura_instrutor_id }}">
+              <input type="hidden" name="remover" value="1">
+              <button type="submit" class="secundario marcador">tirar</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="corpo">
+        <div class="vazio">
+          <strong>Nenhum instrutor vinculado</strong>
+          <span>Sem alguém marcado para assinar, a emissão do certificado é recusada:
+            o papel precisa de quem responde por ele.</span>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if editavel %}
+      <div class="corpo">
+        <div class="acoes">
+          {{ ui.botao_cadastro('vincular-instrutor', VINCULAR_INSTRUTOR, 'secundario') }}
+        </div>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endif %}
+
+{# ===================== aba 2 — inscrições ===================== #}
+{% if aba == 'inscricoes' %}
+<section class="cartao liso">
+  <div class="cabecalho-cartao">
+    <h2>Inscrições</h2>
+    <span class="contador">{{ inscricoes|length }}</span>
+    {% if turma.vagas %}
+    <span class="selo">{{ vagas_restantes }} vaga(s) livre(s) de {{ turma.vagas }}</span>{% endif %}
+    {% if not turma.aceita_inscricao %}
+    <span class="pilula alerta">não recebe inscrição</span>{% endif %}
+    {% if not pode_nominal %}
+    {# O aviso fica aqui, uma vez, e não repetido em cada linha — a mesma
+       decisão de `servidores.html`: coluna em branco sem explicação é o que faz
+       alguém concluir que a inscrição está incompleta e inscrever de novo. #}
+    <span class="pilula alerta"
+          title="RN-19: sem `certificado.ver` o nome de quem está na turma não é exibido; o código SRV-… identifica a pessoa dentro desta sessão">
+      identificação suprimida</span>
+    {% endif %}
+  </div>
+  {% if inscricoes %}
+  <table>
+    <thead>
+      <tr><th scope="col">Participante</th><th scope="col">Identificador</th>
+          <th scope="col">Vínculo</th><th scope="col">E-mail</th>
+          <th scope="col">Situação</th><th scope="col">Origem</th>
+          {% if pode_inscrever %}<th scope="col"></th>{% endif %}</tr>
+    </thead>
+    {% for i in inscricoes %}
+    {# Uma linha, uma decisão, e ela é do helper: `quem.nominal` já contém o
+       titular e quem tem `exposicao.ver`; `pode_nominal` acrescenta a CSSO. #}
+    {% set quem = identificar(i.participante.servidor, vazio=SUPRIMIDO) %}
+    {% set nominal = pode_nominal or quem.nominal %}
+    <tr>
+      <td class="nome">
+        {%- if nominal %}{{ i.participante.nome_exibicao }}
+        {%- else %}<span class="mono">{{ quem }}</span>{% endif %}
+        {% if nominal and i.participante.e_servidor %}
+        <span class="quebra discreto mono"
+              title="lido do cadastro de servidor">SIAPE {{ i.participante.servidor.siape }}</span>
+        {% endif %}</td>
+      <td class="mono">
+        {{- i.participante.identificador_publico if nominal else '—' -}}</td>
+      <td>{{ rotulo_vinculo.get(i.participante.vinculo, i.participante.vinculo) }}</td>
+      <td><span class="recorte"
+                title="{{ (i.participante.email_exibicao or '') if nominal else '' }}">
+          {{- (i.participante.email_exibicao or '—') if nominal else '—' -}}</span></td>
+      <td>{{ ui.pilula_inscricao(i.situacao) }}
+        {% if i.motivo_cancelamento %}
+        <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}</td>
+      <td class="discreto">{{ i.origem|lower }}</td>
+      {% if pode_inscrever %}
+      <td>
+        {% if i.situacao in ('INSCRITA', 'CONFIRMADA') %}
+        {# A gaveta que virou camada: os dois formulários da linha moravam numa
+           célula de ~190px, e o campo de motivo do cancelamento saía com 140px de
+           largura para uma frase. Ver `popup_gaveta` em `partes/macros.html` — a
+           camada não cobra um clique a mais, porque o que virou camada foi a
+           gaveta, e não cada ação dentro dela. #}
+        {# o título da camada nomeia a pessoa: é a mesma leitura da linha, e
+           passa pela mesma decisão — senão a supressão da tabela sairia por
+           cima dela, no cabeçalho de um diálogo #}
+        {% call ui.popup_gaveta('acoes-inscricao-' ~ i.id, 'ações',
+                                'Ações · ' ~ (i.participante.nome_exibicao
+                                              if nominal else quem.nome),
+                                nota=ui.ROTULO_INSCRICAO_TELA.get(i.situacao, i.situacao)|lower) %}
+          {% if i.situacao == 'INSCRITA' %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
+            <h3>Confirmar a inscrição</h3>
+            <input type="hidden" name="destino" value="CONFIRMADA">
+            <div class="acoes"><button type="submit" class="secundario compacto">
+              Confirmar</button></div>
+          </form>
+          {% endif %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
+            <h3>Cancelar a inscrição</h3>
+            <input type="hidden" name="destino" value="CANCELADA">
+            <div class="campo">
+              <label for="motivo-cancelar-{{ i.id }}">Motivo do cancelamento</label>
+              <input id="motivo-cancelar-{{ i.id }}" name="motivo" required
+                     placeholder="desistiu, remanejado, turma cheia…"></div>
+            <div class="acoes"><button type="submit" class="perigo compacto">
+              Cancelar inscrição</button></div>
+          </form>
+        {% endcall %}
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="corpo">
+    <div class="vazio">
+      <strong>Ninguém inscrito ainda</strong>
+      <span>{% if turma.aceita_inscricao %}Use o cartão abaixo para procurar quem já
+        está na base — e, só se não achar, cadastrar um participante externo.
+        {%- else %}A turma não recebe mais inscrição.{% endif %}</span>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{% if pode_inscrever and turma.aceita_inscricao %}
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Inscrever participante</h2>
+      <span class="nota">procure primeiro; cadastre só quem não estiver aqui</span>
+      {% call ui.info('participante-ponteiro', 'como o participante se liga ao cadastro') %}
+        <p>O servidor entra como <strong>ponteiro</strong> para o cadastro: nome, cargo e
+          lotação continuam morando em <code>servidor</code> e são lidos de lá. Copiá-los
+          para cá faria os dois divergirem no dia em que um fosse corrigido — e o
+          certificado sairia com o errado.</p>
+        <p>O participante externo é o contrário: <strong>é o único lugar do sistema onde
+          o nome dessa pessoa existe</strong>. Não há campo de CPF e não deve haver — o
+          identificador é o e-mail confirmado, e a identidade pública é o
+          <code>PTC-…</code> que o sistema gera.</p>
+        <p>São duas listas porque são duas perguntas: a primeira procura quem já esteve
+          em alguma turma; a segunda, quem está no cadastro de servidor e nunca
+          participou. Não achar em nenhuma das duas é o único caso em que cadastrar como
+          externo está certo — do contrário a mesma pessoa entra duas vezes, uma com
+          SIAPE e outra sem.</p>
+      {% endcall %}
+    </div>
+    <form method="get" action="/turmas/{{ turma.id }}">
+      <input type="hidden" name="aba" value="inscricoes">
+      {# O rótulo diz o que a busca faz DE VERDADE. Sem permissão nominal ela
+         não casa por nome — casar devolveria uma linha e diria de quem é o
+         código, que é o oráculo que a RN-19 existe para fechar. Prometer nome e
+         não achar é pior do que não prometer: é o que faz alguém concluir que a
+         pessoa não está na base e cadastrá-la de novo. #}
+      <div class="campo"><label for="busca-part">Procurar por
+          {% if pode_nominal %}nome, {% endif %}SIAPE, e-mail ou PTC-…</label>
+        <input id="busca-part" type="search" name="busca" value="{{ busca }}"
+               placeholder="{% if pode_nominal %}Maria, {% endif %}1234567, PTC-…"
+               aria-describedby="dica-busca-part">
+        {% if not pode_nominal %}
+        <span class="dica" id="dica-busca-part">Sem <code>certificado.ver</code> a
+          busca não casa por nome: o nome está suprimido nesta tela, e casar por
+          ele diria de quem é cada código (RN-19). O SIAPE e o
+          <code>PTC-…</code> continuam achando.</span>
+        {% endif %}</div>
+      <div class="acoes"><button type="submit" class="secundario">Procurar</button></div>
+    </form>
+
+    {% if busca %}
+    <h3>Já participaram de alguma turma</h3>
+    <table>
+      <thead>
+        <tr><th scope="col">Nome</th><th scope="col">Identificador</th>
+            <th scope="col">Vínculo</th><th scope="col"></th></tr>
+      </thead>
+      {% for p in achados %}
+      {% set quem = identificar(p.servidor, vazio=SUPRIMIDO) %}
+      {% set nominal = pode_nominal or quem.nominal %}
+      <tr>
+        <td class="nome">
+          {%- if nominal %}{{ p.nome_exibicao }}
+          {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
+        <td class="mono">{{ p.identificador_publico if nominal else '—' }}</td>
+        <td>{{ rotulo_vinculo.get(p.vinculo, p.vinculo) }}</td>
+        <td>
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
+            <input type="hidden" name="participante_id" value="{{ p.id }}">
+            <button type="submit" class="secundario marcador">inscrever</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      {# As duas tabelas desta busca respondem perguntas diferentes, e por isso
+         cada uma diz onde OLHOU: esta procura quem já passou por alguma turma
+         (participante), a de baixo procura na base de servidores. Quem lê só
+         "ninguém encontrado" conclui que a pessoa não está no sistema e a
+         recadastra como externa — a mesma pessoa duas vezes, uma com SIAPE e
+         outra sem, que é o defeito que a segunda tabela existe para evitar. #}
+      {{ ui.vazio_de_lista(
+           'Ninguém já participante com “' ~ busca ~ '”.',
+           ('Esta lista é de quem já esteve em alguma turma. A busca olha nome,
+             SIAPE, e-mail e o identificador PTC-…. Quem nunca participou aparece
+             na tabela de servidores, logo abaixo.'
+            if pode_nominal else
+            'Esta lista é de quem já esteve em alguma turma, e nesta sessão ela
+             olha só o SIAPE e o PTC-… — o nome está suprimido, e casar por ele
+             diria de quem é cada código (RN-19). Vazio aqui não quer dizer que a
+             pessoa não está na base.'), 4) }}
+      {% endfor %}
+    </table>
+
+    <h3>Servidores da UFVJM ainda sem turma</h3>
+    <table>
+      <thead>
+        <tr><th scope="col">Nome</th><th scope="col">SIAPE</th>
+            <th scope="col">Unidade</th><th scope="col"></th></tr>
+      </thead>
+      {% for sv in servidores_achados %}
+      {# Esta é a lista do CADASTRO — gente que nunca teve nada com treinamento
+         —, e por isso aqui não há a porta do `certificado.ver`: vale a RN-19 de
+         `/servidores`, tal e qual. Sem ela, procurar "1110" devolveria todo
+         SIAPE que contém 1110 com o nome ao lado, e esta tela seria o buraco
+         por onde o cadastro inteiro sai nominal. #}
+      {% set quem = identificar(sv) %}
+      <tr>
+        <td class="nome">
+          {%- if quem.nominal %}{{ quem.nome }}
+          {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
+        <td class="mono">{{ quem.siape or '—' }}</td>
+        <td>{{ sv.unidade.sigla if sv.unidade else '—' }}</td>
+        <td>
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
+            <input type="hidden" name="servidor_id" value="{{ sv.id }}">
+            <button type="submit" class="secundario marcador">inscrever</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      {# "Novo" aqui quer dizer "que ainda não é participante", e é a metade da
+         frase que faltava: um servidor que JÁ fez treinamento não aparece nesta
+         lista de propósito — ele está na de cima. Sem isso, quem acha a pessoa em
+         nenhuma das duas cai no cadastro de externo, que é a duplicidade que
+         `buscar_servidores` existe para impedir. #}
+      {{ ui.vazio_de_lista(
+           'Nenhum servidor ainda sem turma com “' ~ busca ~ '”.',
+           ('Esta lista mostra só quem nunca participou de nenhuma turma, por nome
+             ou SIAPE. Quem já participou está na tabela acima — e não estando em
+             nenhuma das duas, o cadastro do servidor é que falta, em /servidores.'
+            if usuario.ve_dado_nominal else
+            'Esta lista é o cadastro de servidor, e aqui vale a mesma regra de
+             /servidores: sem `exposicao.ver` ela casa só pelo SIAPE, que vem no
+             processo do SEI. Quem já participou de alguma turma está na tabela
+             acima.'), 4) }}
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {# ===========================================================
+       O PAR QUE NÃO SE QUEBRA — e por que o externo virou camada
+       ===========================================================
+       "Procure primeiro, cadastre só se não achar" era um `lado-a-lado`: as duas
+       metades apareciam ao mesmo tempo, e a ordem entre elas era só a da leitura
+       da esquerda para a direita. Converter uma das duas em camada quebraria o
+       par — a menos que a camada seja a SEGUNDA, e que o botão dela more no pé
+       da PRIMEIRA. É o que está aqui: o cadastro de externo deixou de ser uma
+       coluna que compete com a busca e passou a ser a continuação dela, no lugar
+       exato onde a busca falha. A ordem, que antes dependia do olho, virou
+       estrutura.
+
+       O botão fica fora do `{% if busca %}`: quem já sabe que a pessoa é externa
+       (o terceirizado que chegou com a empresa) não precisa fazer uma busca
+       inútil primeiro. #}
+    <div class="corpo">
+      <div class="acoes">
+        {{ ui.botao_cadastro('cadastrar-externo', CADASTRAR_EXTERNO, 'secundario') }}
+        <p class="discreto sem-margem">Não achou nas duas listas? Terceirizado, discente
+          e visitante não estão no cadastro de servidor — entram por aqui.</p>
+      </div>
+    </div>
+  </section>
+{% elif pode_inscrever %}
+<div class="aviso aviso-alerta">
+  <span class="mono">{{ turma.codigo }}</span> está
+  {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }} e não recebe inscrição.
+  Inscrever em turma fechada é reescrever história.
+</div>
+{% endif %}
+{% endif %}
+
+{# ===================== aba 3 — presença e notas ===================== #}
+{% if aba == 'presencas' %}
+{# Os parâmetros sob os quais a grade abaixo foi apurada. Ficam no topo porque
+   são o que explica cada "reprovado" da última coluna. #}
+<div class="cartao tira-medidas">
+  <span class="medida"><span class="rotulo">Carga da turma</span>
+    <span class="valor">{{ carga_efetiva }}h</span></span>
+  <span class="traco" aria-hidden="true"></span>
+  <span class="medida"><span class="rotulo">Frequência mínima</span>
+    <span class="valor">{{ turma.frequencia_minima_percentual }}%</span></span>
+  <span class="traco" aria-hidden="true"></span>
+  <span class="medida"><span class="rotulo">Nota mínima</span>
+    {% if turma.nota_minima_aprovacao is not none %}
+    <span class="valor">{{ turma.nota_minima_aprovacao }}</span>
+    {% else %}<span class="valor ausente">não avalia por nota</span>{% endif %}</span>
+  <span class="traco" aria-hidden="true"></span>
+  <span class="medida"><span class="rotulo">Na apuração</span>
+    <span class="valor">{{ grade|length }}</span></span>
+  {# A primeira frase FICA: sem ela, quem procura um campo "frequência" na grade
+     conclui que a tela está incompleta. O resto — por que falta justificada
+     continua sendo falta — é explicação, e vai para o (i). #}
+  <div class="nota">A frequência é <strong>calculada</strong>, nunca digitada.
+    {% call ui.info('como-a-frequencia-e-apurada', 'como a frequência é apurada') %}
+      <p>A frequência é a soma das <strong>horas presentes</strong> sobre a carga da
+        turma — nunca um número digitado. É por isso que a carga da turma importa: é
+        ela o denominador, e mudá-la muda o resultado de todo mundo.</p>
+      <p><strong>Falta justificada continua sendo falta.</strong> A justificativa
+        explica a ausência; ela não abate a carga nem entra na conta. Quem precisar
+        tratar a ausência de outro jeito trata fora do sistema — a apuração aqui é
+        aritmética, e é dela que o certificado depende.</p>
+    {% endcall %}
+  </div>
+</div>
+
+{% if retificando %}
+<div class="aviso aviso-erro">
+  <span class="mono">{{ turma.codigo }}</span> já foi concluída e cada inscrito já tem
+  resultado. Lançar aqui agora é <strong>retificação</strong>: exige motivo por escrito,
+  recalcula a frequência e pode virar o resultado. Nada volta atrás em silêncio — e
+  quem já tem certificado não recebe lançamento nenhum: o documento que circulou se
+  anula e se reemite.
+</div>
+{% endif %}
+
+{# `id` para o 303 ter para onde voltar: toda ação sem JavaScript termina num
+   redirecionamento, e sem âncora ele devolve o topo da página a quem estava na
+   linha 27 de uma grade de 30. As rotas de presença e nota mandam
+   `#grade-presenca`. #}
+<section class="cartao liso" id="grade-presenca">
+  <div class="cabecalho-cartao">
+    <h2>Presença e notas</h2>
+    <span class="contador">{{ dias|length }} dia(s)</span>
+    {% if contagem.get('APROVADO') or contagem.get('REPROVADO') %}
+    <span class="selo ok">{{ contagem.get('APROVADO', 0) }} aprovado(s)</span>
+    <span class="selo erro">{{ contagem.get('REPROVADO', 0) }} reprovado(s)</span>
+    {% endif %}
+  </div>
+
+  <table>
+    {# O `<thead>` vem antes dos vários `<tbody>` — é HTML válido e é a ordem que
+       o navegador exige. Aqui ele rende duas vezes mais que na tabela comum: com
+       uma coluna por dia de aula, é o `scope="col"` que faz o leitor de tela
+       dizer DE QUE DIA é a caixa marcada, e sem ele a inferência se perde
+       justamente na grade em que ninguém consegue contar coluna de cabeça. #}
+    <thead>
+      <tr>
+        <th scope="col">Participante</th>
+        {% for dia in dias %}<th class="mono" scope="col">{{ dia|data }}</th>{% endfor %}
+        <th scope="col">Horas</th><th scope="col">Frequência</th>
+        <th scope="col">Nota</th><th scope="col">Situação</th>
+      </tr>
+    </thead>
+    {# A LINHA MORA EM `partes/linha_presenca.html`, e não aqui, porque ela é o
+       alvo da troca parcial: as rotas de presença e de nota devolvem ESTE mesmo
+       arquivo quando quem chamou foi o HTMX, e é isso que transforma as 150
+       recargas de página de uma turma de 30 × 5 dias em 150 trocas de linha. O
+       argumento inteiro — por que a linha e não a célula, por que a recusa volta
+       em 200, e por que sem JavaScript nada muda — está escrito lá. #}
+    {# UM `<tbody>` POR LINHA, e não um em volta da grade toda. É ele o alvo da
+       troca parcial: medido no navegador, um `hx-swap="outerHTML"` sobre o
+       `<tr>` deixa o tratador global realçando um nó já desligado do documento,
+       e a troca sai sem nenhum sinal de que algo mudou. O `<tbody>` sobrevive à
+       troca e os três estados voltam a valer. Vários `<tbody>` numa tabela é
+       HTML válido, e o `<thead>` continua sendo um só. #}
+    {% for linha in grade %}
+    <tbody>{% include "partes/linha_presenca.html" %}</tbody>
+    {% else %}
+    <tr><td colspan="{{ dias|length + 5 }}" class="nada">
+      Ninguém a avaliar: a turma não tem inscrição ativa.
+    </td></tr>
+    {% endfor %}
+  </table>
+
+  {% if pode_lancar and dias|length > 1 %}
+  {# ===============================================================
+     O BOTÃO POR COLUNA — a folha de presença como ela chega em papel
+     ===============================================================
+     "Marcar todos presentes" existe e está certo em recusar-se a rodar em
+     turma de mais de um dia: num clique só, quem faltou um dia sairia com
+     100%. O que faltava é a unidade do meio. A folha de presença não chega
+     por turma nem por pessoa — chega POR DIA, uma folha assinada por quem
+     esteve naquele dia —, e transcrever a folha de 12/03 abrindo trinta
+     formulários idênticos é o trabalho que a coluna faz de uma vez.
+
+     A diferença para o botão da turma inteira é essa e só essa: aqui o
+     lote tem o mesmo escopo do papel que o originou. Quem faltou naquele
+     dia é desmarcado em seguida, célula a célula — que é o gesto real, e é
+     por isso que a célula continua existindo.
+
+     Marcar a coluna SOBRESCREVE quem já estava lançado naquele dia,
+     inclusive as faltas, e cada sobrescrita entra na trilha com o valor de
+     antes. Está escrito DENTRO da camada, acima dos formulários, porque é
+     a única surpresa possível deste controle — e porque, virando camada,
+     "ao lado dos botões" deixou de existir.
+
+     `<form method="post">` comum, sem `hx-post`, e a assimetria é
+     deliberada: a troca parcial paga por si onde a repetição está — 150
+     células —, e a coluna são cinco cliques numa turma de cinco dias.
+     Trocar a página inteira aqui custa uma recarga a cada folha
+     transcrita, e o 303 volta com âncora na grade. Cada linha da tabela
+     mudaria de qualquer forma, então o alvo da troca seria a tabela
+     inteira: um fragmento a mais para manter, e um realce de "algo mudou"
+     que cobriria as trinta linhas sem dizer o que. #}
+  {# A gaveta que virou camada: são `dias` formulários irmãos, um por folha, e
+     `popup_gaveta` é exatamente o macro para isso (`partes/macros.html`). O botão
+     não repete o verbo do lote da turma inteira ("Marcar todos presentes"), e não
+     é preciosismo: são controles diferentes, com alcances diferentes, e a tela que
+     os chama pela mesma frase convida a confundir uma coluna com a turma. #}
+  <div class="corpo">
+    {% call ui.popup_gaveta('lancar-folha-do-dia', 'Lançar a folha de um dia',
+                            'Lançar a folha de um dia · ' ~ turma.codigo,
+                            nota=dias|length ~ ' dia(s) de aula') %}
+      {# FICA escrito, e fica AQUI: é a única surpresa possível deste controle, e
+         quem clica precisa saber dela antes — não depois. #}
+      <div class="aviso aviso-alerta">
+        Marca <strong>todo mundo</strong> presente naquele dia, com as horas informadas
+        ao lado — <strong>inclusive quem já estava lançado como falta</strong>. Cada
+        sobrescrita entra na trilha com o valor de antes. Quem faltou se desmarca
+        depois, célula a célula, na grade.
+      </div>
+      {% for dia in dias %}
+      <form method="post" action="/turmas/{{ turma.id }}/presencas/dia">
+        <h3>{{ dia|data }}</h3>
+        <div class="linha-campos">
+          <div class="campo"><label for="horas-{{ dia.isoformat() }}">Horas</label>
+            <input id="horas-{{ dia.isoformat() }}" name="horas" inputmode="decimal"
+                   required placeholder="h"></div>
+          {% if retificando %}
+          <div class="campo"><label for="motivo-dia-{{ dia.isoformat() }}">Motivo da retificação</label>
+            <input id="motivo-dia-{{ dia.isoformat() }}" name="motivo" required
+                   placeholder="por que a folha está sendo refeita"></div>
+          {% endif %}
+        </div>
+        <input type="hidden" name="data" value="{{ dia.isoformat() }}">
+        <div class="acoes"><button type="submit" class="secundario compacto">
+          Lançar {{ dia|data }} para todos</button></div>
+      </form>
+      {% endfor %}
+    {% endcall %}
+  </div>
+  {% endif %}
+
+  {% if pode_lancar and dias|length == 1 %}
+  <div class="corpo">
+    <div class="acoes">
+      {{ ui.botao_cadastro('marcar-todos-presentes',
+                           MARCAR_TODOS ~ ' (' ~ carga_efetiva ~ 'h)', 'secundario') }}
+      {% call ui.info('lote-de-um-dia', 'por que o lote só existe em curso de um dia') %}
+        <p>Numa turma de mais de um dia este botão não aparece — e a rota recusa
+          mesmo que alguém a chame direto: num clique só, quem faltou um dia sairia
+          com 100% de frequência e receberia certificado.</p>
+        <p>Em turma de vários dias o lote existe, mas com o escopo do papel que o
+          originou: a folha de UM dia, na camada <em>Lançar a folha de um dia</em>.</p>
+      {% endcall %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if turma.situacao not in ('EM_ANDAMENTO', 'CONCLUIDA') and pode_avaliar %}
+  <div class="corpo">
+    <div class="aviso aviso-alerta">
+      <span class="mono">{{ turma.codigo }}</span> está
+      {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }}: passe a turma para
+      <em>em andamento</em>, na aba <em>Turma</em>, antes de lançar presença ou nota.
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{# ===================== aba 4 — emissão ===================== #}
+{% if aba == 'emissao' %}
+{% set pode_emitir = usuario.pode('certificado.emitir') %}
+
+{# Quantos números a emissão em lote vai consumir. A tela dizia isso em lugar
+   nenhum: o único número visível era o contador "{{ certificados|length }}
+   emitido(s)", que conta exatamente o oposto. Sem a contagem, "Emitir em lote"
+   é um botão que consome N números de sequência sem dizer quantos — e número de
+   certificado não volta, nem quando o documento é anulado depois. #}
+{% set aptos = [] %}
+{% for inscricao in inscricoes %}
+{% if inscricao.situacao not in ('CANCELADA', 'AGUARDANDO_EMAIL')
+      and not certificados.get(inscricao.id)
+      and aptidao.get(inscricao.id) and not aptidao.get(inscricao.id).bloqueios %}
+{% set _ = aptos.append(inscricao) %}
+{% endif %}
+{% endfor %}
+
+{% if turma.situacao != 'CONCLUIDA' %}
+<div class="aviso aviso-erro">
+  <span class="mono">{{ turma.codigo }}</span> está
+  {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }}. O certificado atesta um curso que
+  terminou: conclua a turma na aba <em>Turma</em> antes de emitir.
+</div>
+{% endif %}
+
+<section class="cartao liso">
+  <div class="cabecalho-cartao">
+    <h2>Emissão dos certificados</h2>
+    <span class="contador">{{ certificados|length }} emitido(s)</span>
+    {% call ui.info('certificado-congelado', 'o que o certificado congela') %}
+      <p>O certificado <strong>congela</strong> tudo o que imprime — conteúdo,
+        instrutor, layout e o dicionário de tags — e a segunda via sai desse
+        congelado. Por isso mudar o catálogo depois não mexe em papel emitido.</p>
+      <p>E por isso corrigir presença ou nota de quem já tem certificado é recusado:
+        <strong>o documento que circulou se anula e se reemite, nunca se
+        reescreve</strong>. A anulação não devolve o número — a reemissão recebe
+        outro, para dois documentos diferentes nunca circularem com a mesma
+        identificação.</p>
+    {% endcall %}
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Participante</th><th scope="col">Resultado</th>
+        <th scope="col">Certificado</th>
+        <th scope="col">O que falta</th>{% if pode_emitir %}<th scope="col"></th>{% endif %}
+      </tr>
+    </thead>
+    {% for inscricao in inscricoes %}
+    {% if inscricao.situacao not in ('CANCELADA', 'AGUARDANDO_EMAIL') %}
+    {% set emitido = certificados.get(inscricao.id) %}
+    {% set apto = aptidao.get(inscricao.id) %}
+    {# a mesma decisão da aba de inscrições: é a mesma gente, uma aba ao lado #}
+    {% set quem = identificar(inscricao.participante.servidor, vazio=SUPRIMIDO) %}
+    {% set nominal = pode_nominal or quem.nominal %}
+    <tr>
+      <td class="nome">
+        {%- if nominal %}{{ inscricao.participante.nome_exibicao }}
+        <span class="quebra discreto mono">{{ inscricao.participante.identificador_publico }}</span>
+        {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
+      <td>{{ ui.pilula_inscricao(inscricao.situacao) }}</td>
+      <td>
+        {% if emitido %}
+        <a class="mono" href="/certificados/{{ emitido.id }}">{{ emitido.rotulo }}</a>
+        <span class="quebra discreto mono">{{ emitido.chave_validacao }}</span>
+        {% else %}<span class="discreto">—</span>{% endif %}
+      </td>
+      <td>
+        {# O QUE FALTA é texto livre, e `emissao_certificado.validar` escreve o
+           NOME dentro da frase — "Fulano está inscrita e não tem resultado de
+           aprovação". É a terceira porta da RN-19, a mesma da trilha e da
+           pendência, e por isso quem responde aqui é `texto_livre()`: ele
+           suprime a frase inteira (não há como raspar nome de frase arbitrária)
+           e devolve a dela ao titular. Para quem opera a emissão o texto sai
+           cru — sem ele, a coluna que diz por que o certificado não sai ficaria
+           ilegível justamente para quem tem de resolver. #}
+        {% if emitido %}<span class="pilula sem-ponto">já emitido</span>
+        {% elif apto and apto.bloqueios %}
+        {% set falta = apto.bloqueios|join('; ') %}
+        <span class="discreto">
+          {{- falta if pode_nominal
+              else texto_livre(falta, sobre=inscricao.participante.servidor) -}}</span>
+        {% else %}<span class="pilula ok">apto</span>{% endif %}
+        {% if apto and apto.avisos %}
+        {% set aviso = apto.avisos|join('; ') %}
+        <span class="quebra discreto">aviso:
+          {{ aviso if pode_nominal
+             else texto_livre(aviso, sobre=inscricao.participante.servidor) }}</span>
+        {% endif %}
+      </td>
+      {% if pode_emitir %}
+      <td>
+        {% if not emitido and apto and not apto.bloqueios %}
+        <form method="post" action="/turmas/{{ turma.id }}/certificados">
+          <input type="hidden" name="inscricao_id" value="{{ inscricao.id }}">
+          <button type="submit" class="secundario marcador">emitir</button>
+        </form>
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% endif %}
+    {% else %}
+    <tr><td colspan="{{ 5 if pode_emitir else 4 }}" class="nada">
+      A turma não tem inscrição ativa.</td></tr>
+    {% endfor %}
+  </table>
+
+  <div class="corpo">
+    {% if pode_emitir %}
+    {# O botão de destaque LEVA ao formulário, não executa — o padrão que
+       `certificado_ficha.html:12-15` já usa para anular, e pelo mesmo motivo:
+       consumir número é irreversível e a tela tem de dizer quantos antes. #}
+    {% if aptos %}
+    <div class="acoes">
+      {# O botão de destaque ABRE a confirmação, não executa — o padrão que
+         `certificado_ficha.html` usa para anular, e pelo mesmo motivo: consumir
+         número é irreversível e a tela tem de dizer quantos antes. A CONTAGEM
+         fica no rótulo, na tela: é ela que muda a decisão. #}
+      {{ ui.botao_cadastro('emitir-lote',
+                           'Emitir ' ~ aptos|length ~ ' certificado(s)…') }}
+      <p class="discreto">Emite para todo aprovado que ainda não tem certificado. Cada
+        um é uma transação própria: um que trave no meio não derruba os outros, e o
+        relatório diz quantos saíram e quantos travaram.</p>
+    </div>
+    {% else %}
+    <p class="discreto sem-margem">Ninguém apto a emitir nesta turma agora: a
+      coluna <em>O que falta</em> diz, linha a linha, o que impede cada um.</p>
+    {% endif %}
+    {% else %}
+    <p class="discreto sem-margem">
+      Emitir certificado consome número e pede <code>certificado.emitir</code>.
+    </p>
+    {% endif %}
+  </div>
+</section>
+
+{% endif %}
+
+</div>
+
+{# ===================================================================
+   As camadas. Ficam FORA de `.tela` — o diálogo é camada, não bloco da coluna, e
+   dentro da pilha ele participaria do `gap`. Cada uma sai só na aba que a
+   oferece, pelo mesmo motivo que o botão sai.
+   =================================================================== #}
+{% if aba == 'turma' %}
+{% if editavel %}
+{% call ui.popup_cadastro('editar-turma', EDITAR_TURMA,
+                          '/turmas/' ~ turma.id, 'Salvar turma',
+                          nota='o código e o treinamento não mudam depois de aberta') %}
+  <div class="linha-campos">
+    <div class="campo"><label for="data_inicio">Início</label>
+      <input id="data_inicio" type="date" name="data_inicio"
+             value="{{ turma.data_inicio.isoformat() }}" required></div>
+    <div class="campo"><label for="data_fim">Término</label>
+      <input id="data_fim" type="date" name="data_fim"
+             value="{{ turma.data_fim.isoformat() }}" required></div>
+    <div class="campo"><label for="carga">Carga horária da turma</label>
+      <input id="carga" name="carga_horaria_horas"
+             value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
+             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas }}h)"
+             aria-describedby="dica-carga">
+      <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="local">Local</label>
+      <input id="local" name="local" value="{{ turma.local or '' }}"></div>
+    <div class="campo"><label for="campus_id">Campus</label>
+      <select id="campus_id" name="campus_id"><option value="">—</option>
+        {% for c in campi %}
+        <option value="{{ c.id }}" {% if turma.campus_id == c.id %}selected{% endif %}>{{ c.nome }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo"><label for="unidade_promotora_id">Unidade promotora</label>
+      <select id="unidade_promotora_id" name="unidade_promotora_id"><option value="">—</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}" {% if turma.unidade_promotora_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}</option>
+        {% endfor %}
+      </select></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="vagas">Vagas</label>
+      <input id="vagas" name="vagas"
+             value="{{ turma.vagas if turma.vagas is not none else '' }}"
+             placeholder="sem limite"></div>
+    <div class="campo"><label for="inscricao_aberta_ate">Inscrições até</label>
+      <input id="inscricao_aberta_ate" type="date" name="inscricao_aberta_ate"
+             value="{{ turma.inscricao_aberta_ate.isoformat() if turma.inscricao_aberta_ate else '' }}"></div>
+    <div class="campo"><label for="nota_minima_aprovacao">Nota mínima (0 a 10)</label>
+      <input id="nota_minima_aprovacao" name="nota_minima_aprovacao"
+             value="{{ turma.nota_minima_aprovacao if turma.nota_minima_aprovacao is not none else '' }}"
+             placeholder="sem prova"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="frequencia_minima_percentual">Frequência mínima (%)</label>
+      <input id="frequencia_minima_percentual" name="frequencia_minima_percentual"
+             value="{{ turma.frequencia_minima_percentual }}" required></div>
+    <div class="campo"><label for="data_base_vencimento">Data base do vencimento</label>
+      <input id="data_base_vencimento" type="date" name="data_base_vencimento"
+             value="{{ turma.data_base_vencimento.isoformat() if turma.data_base_vencimento else '' }}"
+             aria-describedby="dica-base">
+      <span class="dica" id="dica-base">Vazio usa o término.</span></div>
+  </div>
+  <div class="campo"><label for="observacoes">Observações</label>
+    <textarea id="observacoes" name="observacoes" rows="2">{{ turma.observacoes or '' }}</textarea></div>
+{% endcall %}
+
+{% call ui.popup_cadastro('vincular-instrutor', VINCULAR_INSTRUTOR,
+                          '/turmas/' ~ turma.id ~ '/instrutores', 'Vincular',
+                          nota='sem alguém marcado para assinar, a emissão é recusada') %}
+  <div class="campo"><label for="vincular-instrutor-sel">Assinatura de instrutor</label>
+    <select id="vincular-instrutor-sel" name="assinatura_instrutor_id" required
+            aria-describedby="dica-instrutor">
+      <option value="">escolha a assinatura</option>
+      {% for i in instrutores_livres %}
+      <option value="{{ i.id }}">{{ i.nome_exibicao }}{% if i.titulo %} · {{ i.titulo }}{% endif %}</option>
+      {% endfor %}
+    </select>
+    <span class="dica" id="dica-instrutor">Só assinatura ativa e vigente em
+      {{ turma.data_inicio|data }}, que é o dia em que a turma começa: assinatura
+      fora de vigência seria recusada na emissão, com a turma inteira já
+      realizada.</span></div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="assina_certificado" value="1" checked>
+      assina o certificado</label></div>
+{% endcall %}
+{% endif %}
+
+{% for codigo, rotulo in destinos %}
+{% if codigo == 'CANCELADA' and usuario.pode(permissao_por_destino[codigo]) %}
+{% call ui.popup_cadastro('cancelar-turma', CANCELAR_TURMA,
+                          '/turmas/' ~ turma.id ~ '/situacao', CANCELAR_TURMA,
+                          classe_botao='perigo') %}
+  {# FICA, e fica aqui: cancelada é situação final, e quem quer só adiar precisa
+     saber disso ANTES de gravar o motivo. #}
+  <div class="aviso aviso-erro">
+    <strong>Cancelada é situação final.</strong> Adiar a turma para outra data pede
+    abrir outra turma, com código próprio — o código desta não muda e ela não volta.
+  </div>
+  <input type="hidden" name="destino" value="CANCELADA">
+  <div class="campo"><label for="motivo-cancelar">Motivo do cancelamento</label>
+    <input id="motivo-cancelar" name="motivo" required
+           placeholder="por que a turma não vai acontecer"></div>
+{% endcall %}
+{% endif %}
+{% endfor %}
+
+{% set concluivel = destinos and 'CONCLUIDA' in destinos|map(attribute=0)|list
+                    and usuario.pode(permissao_por_destino['CONCLUIDA']) %}
+{% if concluivel %}
+{# A confirmação de concluir. Não é um "tem certeza?": ela conta quantos inscritos
+   vão ser apurados e diz que a apuração grava resultado em cada um e que
+   `CONCLUIDA` não tem saída. #}
+{% set apurados = inscricoes|rejectattr('situacao', 'in', ('CANCELADA', 'AGUARDANDO_EMAIL'))|list %}
+{% call ui.popup_cadastro('concluir-turma',
+                          'Concluir ' ~ turma.codigo,
+                          '/turmas/' ~ turma.id ~ '/situacao',
+                          'Concluir e apurar os ' ~ apurados|length) %}
+  <input type="hidden" name="destino" value="CONCLUIDA">
+  <div class="aviso aviso-alerta">
+    <p><strong>Concluir é um ato só, e não tem volta.</strong>
+      <em>{{ ui.ROTULO_TURMA_TELA['CONCLUIDA'] }}</em> é situação final: não há
+      transição de saída, e erro em turma encerrada se corrige por anulação e
+      reemissão do certificado, nunca por volta de estado.</p>
+    <p>No mesmo ato o sistema <strong>apura {{ apurados|length }} inscrito(s)</strong>:
+      calcula a frequência de cada um a partir dos lançamentos que existem
+      hoje e grava aprovado ou reprovado. Quem não tiver presença lançada é
+      apurado com o que há.</p>
+    <p class="discreto">Corrigir presença ou nota continua possível depois, na
+      aba <em>Presença e notas</em>, como retificação com motivo — mas quem
+      já tiver certificado emitido não se corrige mais: o documento se anula e
+      se reemite.</p>
+  </div>
+{% endcall %}
+{% endif %}
+{% endif %}
+
+{% if aba == 'inscricoes' and pode_inscrever and turma.aceita_inscricao %}
+{% call ui.popup_cadastro('cadastrar-externo', CADASTRAR_EXTERNO,
+                          '/turmas/' ~ turma.id ~ '/inscricoes', 'Cadastrar e inscrever',
+                          nota='terceirizado, discente ou visitante') %}
+  {# FICA dentro do popup: é lido no instante da digitação, que é onde a ausência
+     do campo de CPF precisa ser explicada — e onde alguém tentaria escrevê-lo. #}
+  <div class="aviso aviso-info">
+    É o único lugar do sistema onde o nome dessa pessoa existe.
+    <strong>Não há campo de CPF</strong> e não deve haver: o identificador é o e-mail
+    confirmado, e a identidade pública é o <code>PTC-…</code> que o sistema gera.
+  </div>
+  <div class="campo"><label for="ext-nome">Nome</label>
+    <input id="ext-nome" name="nome" required></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="ext-vinculo">Vínculo</label>
+      <select id="ext-vinculo" name="vinculo">
+        {% for v in vinculos %}
+        <option value="{{ v }}">{{ rotulo_vinculo[v] }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo"><label for="ext-org">Organização</label>
+      <input id="ext-org" name="organizacao" placeholder="empresa contratada, curso…"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="ext-email">E-mail</label>
+      <input id="ext-email" name="email"></div>
+    <div class="campo"><label for="ext-matricula">Matrícula ou nº do contrato</label>
+      <input id="ext-matricula" name="matricula_externa" aria-describedby="dica-matricula">
+      <span class="dica atencao" id="dica-matricula">Opcional; nunca CPF nem RG.</span></div>
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if aba == 'presencas' and pode_lancar and dias|length == 1 %}
+{% call ui.popup_cadastro('marcar-todos-presentes', MARCAR_TODOS,
+                          '/turmas/' ~ turma.id ~ '/presencas/todos',
+                          MARCAR_TODOS ~ ' (' ~ carga_efetiva ~ 'h)',
+                          nota='curso de um dia: a folha e a turma têm o mesmo escopo') %}
+  <div class="aviso aviso-alerta">
+    Marca <strong>todo mundo</strong> com {{ carga_efetiva }}h, inclusive quem já
+    estava lançado como falta. Cada sobrescrita entra na trilha com o valor de antes.
+  </div>
+  {% if retificando %}
+  <div class="campo"><label for="motivo-todos">Motivo da retificação</label>
+    <input id="motivo-todos" name="motivo" required
+           placeholder="por que a folha está sendo refeita"></div>
+  {% endif %}
+{% endcall %}
+{% endif %}
+
+{% if aba == 'emissao' and usuario.pode('certificado.emitir') and aptos %}
+{# A confirmação da emissão em lote. Não é um "tem certeza?": ela diz **quantos**
+   números vão sair, **de quem**, e **o que não volta**. Confirmação que não diz
+   o que vai acontecer treina a pessoa a clicar em "sim" sem ler. #}
+{% call ui.popup_cadastro('emitir-lote',
+                          'Emitir ' ~ aptos|length ~ ' certificado(s) de ' ~ turma.codigo,
+                          '/turmas/' ~ turma.id ~ '/certificados',
+                          'Emitir os ' ~ aptos|length ~ ' agora', largo=true) %}
+  <div class="aviso aviso-alerta">
+    <p><strong>Isto consome {{ aptos|length }} número(s) da sequência do ano, e
+      número consumido não volta.</strong> Anular um certificado depois não
+      libera o número dele: a reemissão recebe outro, para dois documentos
+      diferentes nunca circularem com a mesma identificação.</p>
+    <p>Vão sair certificados para:</p>
+    <ul class="motivos">
+      {% for inscricao in aptos %}
+      {% set quem = identificar(inscricao.participante.servidor, vazio=SUPRIMIDO) %}
+      <li>
+        {%- if pode_nominal or quem.nominal %}{{ inscricao.participante.nome_exibicao }}
+        <span class="discreto mono">{{ inscricao.participante.identificador_publico }}</span>
+        {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <p class="discreto">Quem tiver aviso na coluna <em>O que falta</em> sai do
+      mesmo jeito — aviso não é bloqueio. Quem tiver bloqueio não está nesta
+      lista.</p>
+  </div>
+{% endcall %}
+{% endif %}
+{% endblock %}

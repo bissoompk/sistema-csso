@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Turmas · CSSO{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set CADASTRAR = 'Abrir turma' %}
+
+{# O que foi digitado no popup "Abrir turma", devolvido pela rota quando a
+   abertura é recusada. Vazio na abertura da tela. São treze campos, e a recusa
+   mais comum é de formato de data: sem isto, um "12/03/2026" apagava local,
+   campus, unidade, vagas, nota mínima e observações. #}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('turma.criar') %}
+{{ ui.botao_cadastro('nova-turma', CADASTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set pode_criar = usuario.pode('turma.criar') %}
+{% set treino_atual = '&treinamento_id=' ~ filtro_treinamento if filtro_treinamento else '' %}
+
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Turmas</h1>
+      <p class="sub">
+        {%- if not itens %}Nenhuma turma nesta seleção.
+        {%- else %}{{ itens|length }} turma(s) nesta seleção.{% endif %}
+        Uma oferta do treinamento: quando, onde, com quem e para quantos.</p>
+      {# A disciplina de numeração se aprende uma vez. O que MUDA a decisão de
+         quem está abrindo a turma — que o ano sai do INÍCIO, e que planejar em
+         dezembro consome o número 1 do ano seguinte — está escrito também na
+         `nota` do popup, no instante em que a data é digitada. #}
+      {% call ui.info('codigo-da-turma', 'de onde vem o código da turma') %}
+        <p>O código <span class="mono">TUR-2026-0007</span> sai da mesma disciplina de
+          numeração do parecer — sequência por ano, nunca <code>MAX+1</code> — e é ele
+          que vai no cartaz e no ofício.</p>
+        <p>O <strong>ano da turma é o do início</strong>: planejar em dezembro uma turma
+          de janeiro consome o número 1 do ano seguinte.</p>
+        <p>Depois de aberta, o código não muda — adiar para outro ano pede cancelar e
+          abrir outra.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {# Os atalhos de situação são links, e não um <select>: a URL reproduz cada um
+     e a que está em uso fica sólida — é o único jeito de saber, olhando, que a
+     lista abaixo não é a lista inteira. O filtro por treinamento continua num
+     <form> GET, que é o que funciona sem JavaScript. #}
+  <div class="fileira">
+    <span class="rotulo-grupo">Situação</span>
+    <a class="ficha-filtro {{ 'ativa' if not filtro_situacao }}"
+       href="/turmas{{ '?treinamento_id=' ~ filtro_treinamento if filtro_treinamento }}">Todas</a>
+    {% for codigo, rotulo in situacoes %}
+    <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
+       href="/turmas?situacao={{ codigo }}{{ treino_atual }}">{{ ui.ROTULO_TURMA_TELA.get(codigo, rotulo) }}</a>
+    {% endfor %}
+    <form method="get" action="/turmas" class="filtro-inline">
+      {% if filtro_situacao %}
+      <input type="hidden" name="situacao" value="{{ filtro_situacao }}">{% endif %}
+      <label class="oculto" for="f-treinamento">Filtrar por treinamento</label>
+      <select id="f-treinamento" name="treinamento_id" data-envia-ao-mudar>
+        <option value="">Treinamento: todos</option>
+        {% for t in treinamentos_do_filtro %}
+        <option value="{{ t.id }}" {% if filtro_treinamento == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="secundario">Filtrar</button>
+    </form>
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Código</th><th scope="col">Treinamento</th><th scope="col">Período</th><th scope="col">Local</th>
+        <th scope="col">Campus</th><th scope="col">Inscritos</th><th scope="col">Situação</th>
+      </tr>
+    </thead>
+    {% for turma in itens %}
+    <tr>
+      <td><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a></td>
+      <td class="nome">{{ turma.treinamento.nome }}</td>
+      <td class="mono">{{ turma.data_inicio|data }}
+        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</td>
+      <td><span class="recorte" title="{{ turma.local or '' }}">
+          {{- turma.local or '—' -}}</span></td>
+      <td>{{ turma.campus.sigla if turma.campus else '—' }}</td>
+      {# "18 de 20" diz mais que "18": a vaga livre é a decisão de quem lê. #}
+      <td><span class="selo">{{ inscritos.get(turma.id, 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% endif %}</span></td>
+      <td>{{ ui.pilula_turma(turma.situacao) }}</td>
+    </tr>
+    {% else %}
+    {# Dois vazios diferentes acima do mesmo `<tbody>`: com ficha de situação ou
+       treinamento escolhido, a lista vazia é recorte; sem nenhum, é o primeiro
+       dia. A saída de cada um é outra — no primeiro caso o caminho é desfazer o
+       recorte, no segundo é abrir a primeira turma. #}
+    {% if filtro_situacao or filtro_treinamento %}
+    {{ ui.vazio_de_lista(
+         'Nenhuma turma nesta seleção.',
+         'A ficha de situação e o seletor de treinamento valem os dois ao mesmo
+          tempo. “Todas”, na fileira acima, desfaz o recorte de situação; o
+          seletor volta a “Treinamento: todos”.', 7) }}
+    {% else %}
+    {# o botão só existe para quem tem `turma.criar`; nomeá-lo para quem não o vê
+       seria mandar a pessoa procurar o que não está na tela dela #}
+    {{ ui.vazio_de_lista(
+         'Nenhuma turma aberta ainda.',
+         'A turma é a oferta de um treinamento do catálogo — é ela que recebe
+          inscrição, presença e nota, e sem ela não há certificado.'
+         ~ (' Use “' ~ CADASTRAR ~ '”, no canto superior direito.'
+            if pode_criar else ' Abrir turma pede a permissão turma.criar.'), 7) }}
+    {% endif %}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+
+{% if pode_criar %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna — dentro da pilha ele
+   participaria do `gap` dela. #}
+{% call ui.popup_cadastro('nova-turma', CADASTRAR, '/turmas', CADASTRAR,
+                          aberto=recusado, erro=erro_cadastro, largo=true,
+                          nota='nasce planejada; o ano do código sai da data de início') %}
+  <div class="campo {{ 'com-erro' if recusado }}">
+    <label for="nova-treinamento">Treinamento</label>
+    {# O `autofocus` é condicional à reabertura, e não fixo: numa tela cuja
+       primeira ação é filtrar a lista, roubar o foco para o cadastro na abertura
+       seria pior. É o PRIMEIRO campo, e não "o do problema", porque esta rota
+       recusa em oito lugares (treinamento, as três datas, carga, vagas, nota e
+       frequência) e o motivo escrito vem logo acima, dentro do popup — sem ele o
+       caminho sem JavaScript reabriria o diálogo com o foco no começo do
+       documento, longe de tudo. #}
+    <select id="nova-treinamento" name="treinamento_id" required{{ ' autofocus' if recusado }}>
+      <option value="">escolha o treinamento</option>
+      {% for t in treinamentos %}
+      <option value="{{ t.id }}"{{ ui.sel(d.get('treinamento_id'), t.id) }}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas }}h)</option>
+      {% endfor %}
+    </select></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="nova-inicio">Início</label>
+      <input id="nova-inicio" type="date" name="data_inicio" required
+             value="{{ d.get('data_inicio') or '' }}"></div>
+    <div class="campo"><label for="nova-fim">Término</label>
+      <input id="nova-fim" type="date" name="data_fim" required
+             value="{{ d.get('data_fim') or '' }}"></div>
+    <div class="campo"><label for="nova-carga">Carga horária da turma</label>
+      <input id="nova-carga" name="carga_horaria_horas" placeholder="usa a do catálogo"
+             value="{{ d.get('carga_horaria_horas') or '' }}"
+             aria-describedby="dica-carga">
+      <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="nova-local">Local</label>
+      <input id="nova-local" name="local" placeholder="Auditório do Campus JK"
+             value="{{ d.get('local') or '' }}"></div>
+    <div class="campo"><label for="nova-campus">Campus</label>
+      <select id="nova-campus" name="campus_id"><option value="">—</option>
+        {% for c in campi %}
+        <option value="{{ c.id }}"{{ ui.sel(d.get('campus_id'), c.id) }}>{{ c.nome }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo"><label for="nova-unidade">Unidade promotora</label>
+      <select id="nova-unidade" name="unidade_promotora_id"><option value="">—</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}"{{ ui.sel(d.get('unidade_promotora_id'), u.id) }}>{{ u.nome_extenso }}</option>
+        {% endfor %}
+      </select></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="nova-vagas">Vagas</label>
+      <input id="nova-vagas" name="vagas" placeholder="sem limite"
+             value="{{ d.get('vagas') or '' }}"></div>
+    <div class="campo"><label for="nova-ate">Inscrições até</label>
+      <input id="nova-ate" type="date" name="inscricao_aberta_ate"
+             value="{{ d.get('inscricao_aberta_ate') or '' }}"></div>
+    <div class="campo"><label for="nova-nota">Nota mínima (0 a 10)</label>
+      <input id="nova-nota" name="nota_minima_aprovacao" placeholder="sem prova"
+             value="{{ d.get('nota_minima_aprovacao') or '' }}"></div>
+    <div class="campo"><label for="nova-freq">Frequência mínima (%)</label>
+      <input id="nova-freq" name="frequencia_minima_percentual"
+             value="{{ d.get('frequencia_minima_percentual') or 75 }}"></div>
+  </div>
+  <div class="campo"><label for="nova-base">Data base do vencimento</label>
+    <input id="nova-base" type="date" name="data_base_vencimento"
+           value="{{ d.get('data_base_vencimento') or '' }}"
+           aria-describedby="dica-base">
+    <span class="dica" id="dica-base">Vazio usa o término da turma. Preencha só quando a
+      norma contar da avaliação prática, e não do fim do curso.</span></div>
+  <div class="campo"><label for="nova-obs">Observações</label>
+    <textarea id="nova-obs" name="observacoes" rows="2">{{ d.get('observacoes') or '' }}</textarea></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Usuários · CSSO{% endblock %}
+
+{# Três cadastros na mesma tela, três popups — e por isso o `digitado` traz uma
+   FORMA junto com os campos. É o mesmo discriminador de `epi_requisicoes`: sem
+   ele, a recusa da habilitação reabriria os três diálogos com os campos
+   trocados, e é justamente na recusa que a pessoa menos tem paciência de
+   descobrir qual dos três é o dela. #}
+{% set CADASTRAR_CONTA = 'Cadastrar conta' %}
+{% set CONCEDER_PERFIL = 'Conceder perfil' %}
+{% set ATESTAR = 'Atestar habilitação' %}
+{% set d = digitado or {} %}
+{% set forma = d.get('forma') %}
+{% set erro_conta = erro if forma == 'conta' else none %}
+{% set erro_perfil = erro if forma == 'perfil' else none %}
+{% set erro_habilitacao = erro if forma == 'habilitacao' else none %}
+{# A recusa que já está dentro de um popup sai da faixa da casca: escrita nos
+   dois lugares, ela faz procurar dois problemas. #}
+{% set erro = none if forma else erro %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('perfil.conceder') %}
+{{ ui.botao_cadastro('conceder-perfil', CONCEDER_PERFIL, 'secundario') }}
+{% endif %}
+{% if usuario.pode('usuario.criar_conta') %}
+{{ ui.botao_cadastro('nova-conta', CADASTRAR_CONTA) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Usuários e governança de acesso</h1>
+      <p class="sub">A concessão de perfil sempre exige o ato normativo que a autoriza
+        (Resolução Consu 11/2026, art. 11, IX).
+        <a href="/perfis">Ver matriz de perfis »</a></p>
+    </div>
+  </div>
+
+  {# Quem não pode resetar senha nem inativar não ganha a coluna de ações: uma
+     coluna vazia em toda linha se lê como funcionalidade quebrada, e não como
+     permissão que falta. #}
+  {% set pode_gerir = usuario.pode('usuario.resetar_senha') or usuario.pode('usuario.criar_conta') %}
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr><th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfis vigentes</th><th scope="col">Situação</th>
+            <th scope="col">Último acesso</th>{% if pode_gerir %}<th scope="col">Ações</th>{% endif %}</tr>
+      </thead>
+      {% for u in usuarios %}
+      <tr>
+        <td class="nome">{{ u.nome }}</td>
+        <td class="mono">{{ u.login }}</td>
+        <td>
+          {# `vigente_em` é método, e não atributo: não dá para filtrar com
+             `selectattr`. A lista se monta aqui para a linha poder dizer
+             "sem perfil vigente" — conta sem perfil e conta com perfil vencido
+             não são a mesma coisa, e a célula vazia dizia as duas. #}
+          {%- set vigentes = [] -%}
+          {%- for a in atribuicoes[u.id] if a.vigente_em(hoje) -%}
+            {%- set _ = vigentes.append(a) -%}
+          {%- endfor %}
+          {% for a in vigentes %}
+          {# O ato normativo fica no `title`: é ele que autoriza o perfil, e uma
+             coluna a mais para ele deixaria a tabela ilegível. #}
+          <span class="pilula info sem-ponto"
+                title="{{ a.ato_normativo or 'sem ato normativo registrado' }}">{{ a.perfil.codigo }}</span>
+          {% else %}
+          <span class="discreto">sem perfil vigente</span>
+          {% endfor %}
+        </td>
+        <td>
+          {# NÃO é `pilula_sim_nao`, e a exceção está escrita no macro: conta
+             inativa é bloqueio — alguém tenta entrar e não consegue —, e não a
+             escolha de inventário que o "inativo" dos catálogos registra. Por
+             isso vermelha aqui e cinza lá, ao lado do "bloqueado". #}
+          {% if u.ativo %}<span class="pilula ok">ativo</span>
+          {% else %}<span class="pilula erro">inativo</span>{% endif %}
+          {% if u.precisa_trocar_senha %}<span class="pilula alerta">senha provisória</span>{% endif %}
+          {% if u.bloqueado_ate %}<span class="pilula erro">bloqueado</span>{% endif %}
+        </td>
+        <td class="mono discreto">{{ u.ultimo_login_em|momento or 'nunca' }}</td>
+        {% if pode_gerir %}
+        <td>
+          {# Um controle por linha, como em /adicionais: os dois botões soltos não
+             cabiam lado a lado na coluna e dobravam a altura de toda linha. Era
+             `<details class="acoes-linha">`; virou a camada de `ui.popup_gaveta`
+             pelo mesmo motivo — a gaveta resolvia dentro da coluna estreita, e a
+             camada dá aos formulários a largura da coluna de conteúdo sem cobrar
+             um clique a mais. O nome da conta vai no TÍTULO da camada: seis
+             "Gerir" iguais numa coluna não dizem a quem pertencem. #}
+          {% call ui.popup_gaveta('gerir-conta-' ~ u.id, 'Gerir',
+                                  'Gerir a conta de ' ~ u.nome,
+                                  nota=u.login) %}
+              {% if usuario.pode('usuario.resetar_senha') %}
+              <form method="post" action="/usuarios/{{ u.id }}/senha">
+                <h3>Resetar senha</h3>
+                <p class="discreto">Gera uma senha provisória, mostrada uma única vez, e
+                  revoga as sessões abertas desta conta.</p>
+                <div class="acoes"><button type="submit" class="secundario compacto">
+                  Resetar senha</button></div>
+              </form>
+              {% endif %}
+              {% if usuario.pode('usuario.criar_conta') %}
+              <form method="post" action="/usuarios/{{ u.id }}/inativar">
+                <h3>{{ 'Inativar conta' if u.ativo else 'Reativar conta' }}</h3>
+                <p class="discreto">
+                  {%- if u.ativo %}A conta deixa de entrar e as sessões abertas caem.
+                  {%- else %}A conta volta a entrar com a senha que já tinha.{% endif %}</p>
+                <div class="acoes"><button type="submit"
+                  class="{{ 'perigo' if u.ativo else 'secundario' }} compacto">
+                  {{- 'Inativar' if u.ativo else 'Ativar' }}</button></div>
+              </form>
+              {% endif %}
+          {% endcall %}
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      {# o `colspan` acompanha `pode_gerir`, que é quem decide se há a sexta
+         coluna: um a mais deixa a caixa flutuando fora da tabela #}
+      {{ ui.vazio_de_lista(
+           'Nenhuma conta cadastrada.',
+           'A conta é o que dá entrada no sistema; o perfil, concedido depois, é o
+            que decide o que ela abre — são dois atos.'
+           ~ (' Use “' ~ CADASTRAR_CONTA ~ '”, no canto superior direito.'
+              if usuario.pode('usuario.criar_conta')
+              else ' Criar conta pede a permissão usuario.criar_conta.'),
+           6 if pode_gerir else 5) }}
+      {% endfor %}
+    </table>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Profissionais habilitados a subscrever laudo</h2>
+      <span class="contador">{{ habilitados|length }}</span>
+      {# O texto da norma vai para o (i): lê-se uma vez e depois se sabe. A frase
+         que MUDA o que se faz aqui — "a habilitação confere, e não o cargo" —
+         continua escrita ao lado do botão que atesta. #}
+      {% call ui.info('art10-par2', 'quem a norma admite como subscritor de laudo') %}
+        <p>IN SGP/SEDGG/ME nº 15/2022, art. 10, §2º, I — só subscreve laudo servidor
+          público (ou militar) ocupante de cargo de <strong>médico com especialização em
+          medicina do trabalho</strong> ou de <strong>engenheiro ou arquiteto com
+          especialização em segurança do trabalho</strong>. O cargo não confere a
+          habilitação; a habilitação confere.</p>
+        <p>O profissional <strong>externo</strong> (art. 10, §5º) só entra com
+          justificativa escrita do esgotamento das possibilidades de cooperação, e é
+          essa justificativa que a coluna “Externo” guarda.</p>
+      {% endcall %}
+    </div>
+
+    {% if habilitados %}
+    <table>
+      <thead>
+        <tr><th scope="col">Nome</th><th scope="col">SIAPE</th><th scope="col">Habilitação</th><th scope="col">Título</th>
+            <th scope="col">Vigência</th><th scope="col">Externo</th></tr>
+      </thead>
+      {% for h in habilitados %}
+      <tr>
+        <td class="nome">{{ h.nome }}</td>
+        <td class="mono">{{ h.siape or '—' }}</td>
+        <td>{{ h.habilitacao }}</td>
+        <td>{{ h.titulo_assinatura }}</td>
+        <td class="mono">{{ h.vigencia_inicio|data }} —
+          {{ h.vigencia_fim|data or 'sem termo' }}</td>
+        <td>{% if h.externo %}<span class="pilula alerta"
+                title="{{ h.justificativa_art10_par5 or 'sem justificativa registrada' }}">art. 10, §5º</span>
+            {% else %}<span class="discreto">não</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="corpo">
+      <div class="vazio">
+        <strong>Nenhum profissional habilitado</strong>
+        <span>Sem habilitação vigente nenhum laudo pode ser subscrito e nenhum
+          parecer pode ser emitido — o banco recusa por trigger.</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if usuario.pode('habilitacao.atestar') %}
+    {# O botão fica NO cartão, e não no cabeçalho da página: atestar habilitação
+       é o que se faz depois de ler a lista de quem já está habilitado. No topo,
+       ao lado de "Cadastrar conta", ele se leria como um terceiro cadastro de
+       acesso — que não é. #}
+    <div class="corpo">
+      <div class="acoes">
+        {{ ui.botao_cadastro('atestar-habilitacao', ATESTAR, 'secundario') }}
+        <p class="discreto sem-margem">A habilitação confere, e não o cargo: quem
+          entra nesta lista passa a poder subscrever laudo.</p>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+
+{% if usuario.pode('usuario.criar_conta') %}
+{% call ui.popup_cadastro('nova-conta', CADASTRAR_CONTA, '/usuarios', CADASTRAR_CONTA,
+                          aberto=(forma == 'conta'), erro=erro_conta,
+                          nota='a conta nasce sem perfil nenhum') %}
+  <div class="campo"><label for="conta-nome">Nome</label>
+    <input id="conta-nome" name="nome" required value="{{ d.get('nome') or '' }}"></div>
+  {# Login e e-mail são únicos no banco, e são os dois que a rota recusa; o foco
+     cai no login, que é o que a recusa cita primeiro. #}
+  <div class="campo {{ 'com-erro' if forma == 'conta' }}">
+    <label for="conta-login">Login</label>
+    <input id="conta-login" name="login" required value="{{ d.get('login') or '' }}"
+           {{- ' autofocus' if forma == 'conta' }}></div>
+  <div class="campo {{ 'com-erro' if forma == 'conta' }}">
+    <label for="conta-email">E-mail</label>
+    <input id="conta-email" name="email" type="email" required
+           value="{{ d.get('email') or '' }}"></div>
+  <p class="discreto rodape-cartao sem-margem">A senha provisória aparece uma única
+    vez, na faixa verde do topo da lista. Não existe <code>admin/admin</code>.</p>
+{% endcall %}
+{% endif %}
+
+{% if usuario.pode('perfil.conceder') %}
+{# `action` aponta para o usuário 0 e a rota resolve o alvo pelo campo
+   `usuario_alvo`. Era um `onsubmit` que reescrevia o `action` em JavaScript —
+   e sem JavaScript a concessão ia parar num id que não existe. Dentro de um
+   popup que se propõe a funcionar sem script, isso deixou de ser tolerável. #}
+{% call ui.popup_cadastro('conceder-perfil', CONCEDER_PERFIL, '/usuarios/0/atribuicoes',
+                          CONCEDER_PERFIL, aberto=(forma == 'perfil'), erro=erro_perfil,
+                          nota='a concessão vale a partir do início da vigência') %}
+  <div class="campo"><label for="perf-usuario">Usuário</label>
+    <select id="perf-usuario" name="usuario_alvo" required>
+      {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d.get('usuario_alvo'), u.id) }}>{{ u.nome }}</option>{% endfor %}</select></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="perf-perfil">Perfil</label>
+      <select id="perf-perfil" name="perfil_id" required>
+        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d.get('perfil_id'), p.id) }}>{{ p.codigo }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="perf-campus">Campus (escopo)</label>
+      <select id="perf-campus" name="campus_id"><option value="">todos</option>
+        {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d.get('campus_id'), c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="perf-inicio">Vigência início</label>
+      <input id="perf-inicio" name="vigencia_inicio" type="date"
+             value="{{ d.get('vigencia_inicio') or '' }}"></div>
+    <div class="campo"><label for="perf-fim">Vigência fim</label>
+      <input id="perf-fim" name="vigencia_fim" type="date"
+             value="{{ d.get('vigencia_fim') or '' }}"></div>
+  </div>
+  <div class="campo {{ 'com-erro' if forma == 'perfil' }}">
+    <label for="perf-ato">Ato normativo (obrigatório)</label>
+    <input id="perf-ato" name="ato_normativo" required
+           value="{{ d.get('ato_normativo') or '' }}"{{ ' autofocus' if forma == 'perfil' }}
+           placeholder="Portaria Reitoria nº 1.553/2026" aria-describedby="dica-ato">
+    <span class="dica" id="dica-ato">Sem o ato não há concessão: é ele que a
+      auditoria guarda como autorização.</span></div>
+{% endcall %}
+{% endif %}
+
+{% if usuario.pode('habilitacao.atestar') %}
+{% call ui.popup_cadastro('atestar-habilitacao', ATESTAR, '/habilitacoes', ATESTAR,
+                          aberto=(forma == 'habilitacao'), erro=erro_habilitacao,
+                          nota='a habilitação confere, não o cargo (IN 15/2022, art. 10, §2º, I)') %}
+  <div class="linha-campos">
+    <div class="campo"><label for="hab-nome">Nome</label>
+      <input id="hab-nome" name="nome" required value="{{ d.get('nome') or '' }}"></div>
+    <div class="campo codigo"><label for="hab-siape">SIAPE</label>
+      {# opcional (o profissional externo não tem SIAPE), e por isso só `pattern`
+         e `inputmode`: o navegador não confere `pattern` em campo vazio, e
+         confere nos sete dígitos de quem preencher. #}
+      <input id="hab-siape" name="siape" inputmode="numeric" pattern="[0-9]{7}"
+             value="{{ d.get('siape') or '' }}"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="hab-tipo">Habilitação</label>
+      <select id="hab-tipo" name="habilitacao" required>
+        {% for codigo, rotulo in [
+             ('ENG_SEG_TRABALHO', 'Engenheiro de Segurança do Trabalho'),
+             ('MED_TRABALHO', 'Médico do Trabalho'),
+             ('ARQ_SEG_TRABALHO', 'Arquiteto de Segurança do Trabalho')] %}
+        <option value="{{ codigo }}"{{ ui.sel(d.get('habilitacao'), codigo) }}>{{ rotulo }}</option>
+        {%- endfor %}
+      </select></div>
+    <div class="campo"><label for="hab-titulo">Título na assinatura</label>
+      <input id="hab-titulo" name="titulo_assinatura" required
+             value="{{ d.get('titulo_assinatura') or '' }}"
+             placeholder="Eng. Seg. do Trabalho"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="hab-conta">Conta do sistema</label>
+      <select id="hab-conta" name="usuario_alvo_id"><option value="">—</option>
+        {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d.get('usuario_alvo_id'), u.id) }}>{{ u.nome }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="hab-conselho">Conselho</label>
+      <input id="hab-conselho" name="conselho" placeholder="CREA"
+             value="{{ d.get('conselho') or '' }}"></div>
+    <div class="campo codigo"><label for="hab-registro">Registro</label>
+      <input id="hab-registro" name="registro_conselho"
+             value="{{ d.get('registro_conselho') or '' }}"></div>
+    <div class="campo"><label for="hab-inicio">Vigência início</label>
+      <input id="hab-inicio" name="vigencia_inicio" type="date"
+             value="{{ d.get('vigencia_inicio') or '' }}"></div>
+  </div>
+  <div class="campo {{ 'com-erro' if forma == 'habilitacao' }}">
+    <label class="discreto" for="hab-externo">
+      <input id="hab-externo" type="checkbox" name="externo" value="1"
+        {{- ' checked' if d.get('externo') == '1' }}>
+      profissional externo (art. 10, §5º)</label>
+    <input name="justificativa_art10_par5" aria-label="Justificativa do art. 10, §5º"
+           value="{{ d.get('justificativa_art10_par5') or '' }}"
+           {{- ' autofocus' if forma == 'habilitacao' }}
+           placeholder="Justificativa do esgotamento das possibilidades de cooperação"
+           aria-describedby="dica-externo">
+    <span class="dica" id="dica-externo">Habilitação externa sem justificativa
+      é recusada.</span></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

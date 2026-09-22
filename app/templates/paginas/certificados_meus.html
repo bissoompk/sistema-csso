@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# A tela do titular: o que é dele, e só.
+
+   Ela existe porque a lista do setor (`/certificados`) é guardada por
+   `certificado.ver`, que é a permissão de ler o certificado DE OUTRO. O servidor
+   que fez a NR-35 não precisa dessa permissão para pegar o próprio papel — ele
+   precisa de uma porta, e esta é a porta. #}
+
+{% block titulo %}Meus certificados · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Meus certificados</span>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Meus certificados</h1>
+      <p class="sub">
+        {%- if not recorte.total %}Nenhum certificado emitido em seu nome.
+        {%- else %}{{ recorte.total }} certificado(s) emitido(s) em seu nome
+        {%- if recorte.total > recorte.por_pagina %}, {{ itens|length }} nesta
+        página{% endif %}.{% endif %}
+        A segunda via sai daqui, reimpressa do documento congelado.</p>
+      {% call ui.info('o-que-e-meu', 'por que esta tela mostra só o que é seu') %}
+        <p>A lista do setor é outra tela, e pede a permissão de ler o certificado
+          <strong>de outra pessoa</strong>. Esta aqui prende a consulta ao cadastro
+          de servidor da sua conta: ela não alarga se o seu perfil alargar.</p>
+        <p>O acesso do titular ao que é dele é o <strong>art. 18, II da LGPD</strong>,
+          e por isso abrir o próprio certificado <strong>não</strong> gera registro de
+          acesso a dado sensível — ao contrário de ler o de outro, que gera.</p>
+        <p><strong>Vencido</strong> e <strong>anulado</strong> são calculados agora,
+          nunca congelados: um certificado que vence continua existindo, e é a data
+          que muda de lado, não o papel.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {% if sem_servidor %}
+  <div class="aviso aviso-alerta">
+    <p><strong>Sua conta não está ligada a um cadastro de servidor.</strong>
+      Sem essa ligação o sistema não tem como saber de quem são os certificados —
+      a lista abaixo fica vazia mesmo que existam certificados em seu nome.</p>
+    <p>A ligação conta&nbsp;↔&nbsp;servidor é feita em <strong>Usuários</strong>, por
+      quem tem <code>usuario.criar_conta</code>. Peça informando o seu SIAPE.</p>
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Nº</th><th scope="col">Treinamento</th><th scope="col">Conclusão</th>
+        <th scope="col">Vencimento</th><th scope="col">Situação</th><th scope="col"></th>
+      </tr>
+    </thead>
+    {% for c in itens %}
+    {% set congelado = c.contexto_congelado or {} %}
+    <tr>
+      <td><a class="mono" href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
+      {# do congelado: é o que o papel diz. Renomear o treinamento depois não muda
+         o que está escrito no documento que já circulou. #}
+      <td>{{ congelado.get('treinamento_nome') or c.treinamento.nome }}
+        {% if congelado.get('turma_codigo') %}
+        <span class="quebra discreto mono">{{ congelado.get('turma_codigo') }}</span>{% endif %}</td>
+      <td class="mono">{{ c.data_base_vencimento|data }}</td>
+      <td>
+        {% if c.data_vencimento %}<span class="mono">{{ c.data_vencimento|data }}</span>
+        {% else %}<span class="selo">não expira</span>{% endif %}
+      </td>
+      <td>{{ ui.pilula_certificado(situacao_publica.get(c.id)) }}</td>
+      <td><a class="botao secundario compacto"
+             href="/certificados/{{ c.id }}/documento">Segunda via (.docx)</a></td>
+    </tr>
+    {% else %}
+    {% if sem_servidor %}
+    {{ ui.vazio_de_lista(
+         'Nada a listar enquanto a conta não tiver cadastro de servidor.',
+         'O aviso acima diz onde a ligação é feita. Ela é o que amarra o
+          certificado emitido à conta que o consulta.', 6) }}
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhum certificado emitido em seu nome.',
+         'O certificado nasce do fecho da turma, para quem foi aprovado — não é
+          pedido nesta tela. Se você concluiu um treinamento e ele não aparece
+          aqui, fale com a CSSO com o código da turma.', 6) }}
+    {% endif %}
+    {% endfor %}
+  </table>
+  </div>
+
+  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total,
+                  '/certificados/meus') }}
+
+</div>
+{% endblock %}

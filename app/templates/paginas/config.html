@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{# /config não é item de menu nem tela de módulo: o que está aqui vale para o
+   sistema inteiro — o setor que assina, o prazo de cada coluna, onde os arquivos
+   moram, o backup. Sem declarar o primeiro nível, a trilha herdaria "Processos
+   SEI", e o SLA do kanban não é mais de Processos SEI do que o caminho do banco.
+
+   Não ser de menu não é não ter entrada, e por um tempo foi: nenhum template
+   apontava para cá e só chegava quem digitasse a URL. **A porta é a engrenagem
+   no bloco do usuário, no cabeçalho** (`base.html`), guardada pela MESMA tupla
+   que a rota exige (`PERMISSOES_CONFIG`). Se um dia a permissão da rota mudar, a
+   de lá muda junto — é o mesmo invariante do menu.
+
+   A tela abre para duas pessoas diferentes e mostra coisas diferentes a cada
+   uma. Quem instrui processo (`processo.ver`) vê o que é congelado no parecer e
+   o SLA que pinta o vermelho das listas; quem opera a máquina
+   (`backup.executar`) vê onde o dado mora, o backup e a exportação. O
+   `admin_ti` é o segundo caso, e a base normativa do perfil dele — "sem acesso
+   ao conteúdo técnico" — é a razão de os dois primeiros cartões continuarem
+   fechados para ele. Abrir demais é defeito do mesmo tamanho que trancar. #}
+{% set trilha_raiz = 'Sistema' %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Configuração · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Configuração</span>{% endblock %}
+
+{# O verbo do botão e o do título de cada camada num lugar só — ver
+   `popup_cadastro` em `partes/macros.html`. #}
+{% set EDITAR_SLA = 'Editar os prazos' %}
+{% set BACKUP = 'Fazer backup cifrado agora' %}
+{% set EXPORTAR = 'Exportar tudo (.zip)' %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Configuração</h1>
+      {# O subtítulo promete o que ESTA conta vê. Prometer "quem assina" a quem
+         não pode ler o setor emissor é a mesma porta trancada do menu, escrita
+         em prosa. #}
+      <p class="sub">
+        {%- if do_processo %}O que vale para o sistema inteiro: quem assina, quanto
+        tempo cada coluna pode levar, onde o dado mora.
+        {%- else %}Onde o dado mora, o backup cifrado e a exportação. O que é
+        parâmetro do processo — setor emissor, autoridade e SLA — pede
+        <code>processo.ver</code>.{% endif %}</p>
+    </div>
+    <div class="ao-lado">
+      {# Versão e ambiente são fato, não alerta: quem avisa que a configuração
+         está insegura é a faixa de `avisos_config`, no topo da casca. #}
+      <span class="selo">v{{ versao }}</span>
+      <span class="selo">{{ cfg.ambiente }}</span>
+    </div>
+  </div>
+
+  {# Os dois cartões do PROCESSO. Setor emissor e autoridade destinatária são
+     congelados no parecer (RN-15) e o SLA é o prazo de cada coluna do kanban:
+     nenhum dos três é operação de máquina, e é isso que o perfil de TI não vê. #}
+  {% if do_processo %}
+  <div class="grade grade-2">
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Setor emissor</h2>
+        <span class="contador">{{ setores|length }}</span>
+        {% call ui.info('setor-congelado', 'por que a lista tem histórico') %}
+          <p>Os dados do setor são congelados no parecer na emissão (RN-15):
+            reimprimir um parecer de 2025 sai com o cabeçalho de 2025. Por isso a lista
+            tem histórico, e não uma linha só — trocar a sigla hoje não reescreve
+            documento nenhum que já saiu.</p>
+          <p>A <strong>autoridade destinatária</strong>, a quem o parecer é endereçado,
+            segue a mesma regra e é congelada na emissão pelo mesmo motivo.</p>
+        {% endcall %}
+      </div>
+      <table>
+        <thead>
+          <tr><th scope="col">Sigla</th><th scope="col">Nome extenso</th><th scope="col">Vigência</th></tr>
+        </thead>
+        {% for se in setores %}
+        <tr>
+          <td class="mono">{{ se.sigla_composta }}</td>
+          <td>{{ se.nome_extenso }}</td>
+          <td class="mono">{{ se.vigencia_inicio|data }} —
+            {{ se.vigencia_fim|data or 'em vigor' }}</td>
+        </tr>
+        {% else %}<tr><td colspan="3" class="nada">Nenhum setor emissor cadastrado.</td></tr>{% endfor %}
+      </table>
+
+      <div class="corpo"><h3>Autoridade destinatária</h3></div>
+      <table>
+        {% for d in destinatarios %}
+        <tr><td>{{ d.nome }}</td><td>{{ d.cargo }}</td>
+            <td class="mono discreto">desde {{ d.vigencia_inicio|data }}</td></tr>
+        {% else %}<tr><td class="nada">Nenhuma autoridade cadastrada.</td></tr>{% endfor %}
+      </table>
+    </section>
+
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>SLA por coluna</h2>
+        <span class="nota">em dias</span>
+        {% call ui.info('o-que-o-sla-mede', 'o que o prazo de cada coluna mede') %}
+          <p>O contador ⏱ que pinta de vermelho as listas <strong>reinicia a cada
+            mudança de coluna</strong>: ele mede quanto tempo o processo está PARADO
+            naquele passo, e não a idade dele.</p>
+          <p>A idade total é outra medida, e é ela que alimenta o indicador de
+            <em>dias médios até a emissão</em>, no painel.</p>
+        {% endcall %}
+        {% if usuario.pode('catalogo.gerenciar') %}
+        {{ ui.botao_cadastro('editar-sla', EDITAR_SLA, 'secundario compacto a-direita') }}
+        {% endif %}
+      </div>
+      <div class="corpo">
+        <table class="tabela-dados">
+          {% for coluna, dias in sla.items() %}
+          <tr><th scope="row">{{ coluna }}</th>
+              <td class="mono">{{ dias if dias is not none else '—' }}</td>
+              <td>{% if dias == 0 %}<span class="pilula sem-ponto">alerta desligado</span>
+                  {% else %}<span class="discreto">padrão {{ sla_padrao[coluna] }}</span>{% endif %}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </section>
+  </div>
+  {% endif %}
+
+  {# Os caminhos saíram de dentro do cartão de SLA. Onde o banco, os documentos e
+     os anexos moram é a pergunta de quem responde pela máquina — e era
+     justamente ela que ficava atrás de `processo.ver`, junto do prazo do kanban,
+     por morarem no mesmo cartão. #}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Onde o dado mora</h2>
+      <span class="nota">caminhos desta instalação</span>
+    </div>
+    <dl class="tabela-dados">
+      <dt>Banco</dt><dd class="mono">{{ cfg.caminho_banco }}</dd>
+      <dt>Documentos</dt><dd class="mono">{{ cfg.caminho(cfg.dir_documentos) }}</dd>
+      <dt>Anexos</dt><dd class="mono">{{ cfg.caminho(cfg.dir_anexos) }}</dd>
+      <dt>Backup</dt><dd class="mono">{{ cfg.caminho(cfg.backup_destino) }}</dd>
+      {# Onde RETIRAR o EPI reservado. Entra nesta lista, e não num cartão
+         próprio, porque é da mesma natureza: parâmetro desta instalação, lido do
+         .env e não editável por tela. Está aqui para ser DESCOBERTO — o sistema
+         não tinha como saber a que porta mandar quem pediu EPI, e vazio a ficha
+         do pedido diz isso em vez de inventar endereço. #}
+      <dt>Retirada de EPI</dt>
+      <dd>{% if cfg.epi_local_retirada.strip() %}{{ cfg.epi_local_retirada }}
+        {%- else %}<span class="discreto">não informado — a ficha do pedido diz
+        que o local não está registrado, e a pessoa continua ligando para
+        perguntar. Preencha <span class="mono">CSSO_EPI_LOCAL_RETIRADA</span> no
+        <span class="mono">.env</span> com o prédio, a sala e o horário.</span>
+        {%- endif %}</dd>
+    </dl>
+  </section>
+
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Backup e exportação</h2>
+      <span class="nota">duas ações diferentes — leia o que cada uma entrega</span>
+    </div>
+    {# A nota do cartão dizia "o arquivo sai cifrado; a senha é a da configuração"
+       para os DOIS botões, e isso era falso do lado do exportar: o zip sai em
+       claro. Aviso que mente vale menos que aviso nenhum, porque produz a
+       confiança que faz alguém pôr o pacote numa pasta de rede. Cada botão passa
+       a declarar o que produz. #}
+    <div class="aviso-legal">
+      As duas ações movem <strong>dados pessoais de servidores</strong>.
+      <strong>Nunca</strong> sincronize <code>dados/backups/</code>,
+      <code>dados/anexos/</code> ou <code>dados/documentos/</code> com nuvem pessoal ou de
+      terceiros (LGPD arts. 33-36, 39 e 46). Qualquer destino em nuvem exige autorização
+      formal da UFVJM e contrato de operador.
+    </div>
+    {% if usuario.pode('backup.executar') or usuario.pode('exportar') %}
+    {# As duas ações passaram a ser CAMADA, e não por poluição: elas movem a base
+       inteira, e o texto que diz o que cada uma produz precisava ser lido ANTES
+       do clique. Estava embaixo dos dois botões, num rodapé que se lê depois —
+       ou não se lê. Dentro do popup ele é o último texto antes do botão. #}
+    <div class="acoes">
+      {% if usuario.pode('backup.executar') %}
+      {{ ui.botao_cadastro('fazer-backup', BACKUP) }}
+      {% endif %}
+      {% if usuario.pode('exportar') %}
+      {{ ui.botao_cadastro('exportar-tudo', EXPORTAR, 'secundario') }}
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="discreto rodape-cartao sem-margem">Sua conta lê esta tela e não executa
+      backup nem exportação — as duas ações movem a base inteira e pedem permissão
+      própria.</p>
+    {% endif %}
+  </section>
+
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Integração com o SEI</h2>
+      <span class="pilula sem-ponto">não integra</span>
+    </div>
+    <p>A v1 <strong>não</strong> integra com o SEI (versão alvo {{ versao_sei }}): nenhuma API,
+       nenhum scraping. O NUP é digitado e validado localmente.</p>
+    {# O fato de não haver integração é fato de sistema e interessa a quem opera
+       a máquina — fica na tela. Os passos, não: eles são o procedimento de anexar
+       o parecer no SEI, que é trabalho de processo, se lê uma vez e já mora na
+       ficha do processo. #}
+    {% if do_processo %}
+    <div class="corpo">
+      {% call ui.info('passos-sei-config', 'o passo a passo dentro do SEI') %}
+        <ol class="passos">{% for passo in passos_sei %}<li>{{ passo }}</li>{% endfor %}</ol>
+      {% endcall %}
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+
+{# Daqui para baixo é camada, e não bloco da coluna. #}
+{% if usuario.pode('catalogo.gerenciar') and do_processo %}
+{% call ui.popup_cadastro('editar-sla', EDITAR_SLA, '/config/sla', 'Salvar SLA',
+                          largo=true,
+                          nota='0 desliga o alerta da coluna') %}
+  <div class="linha-campos">
+    {% for coluna, dias in sla.items() %}
+    <div class="campo"><label for="sla-{{ coluna }}">{{ coluna }}</label>
+      <input id="sla-{{ coluna }}" type="number"
+             name="sla_{{ coluna }}" value="{{ dias }}"
+             min="0" max="3650" aria-describedby="padrao-{{ coluna }}">
+      <span class="dica" id="padrao-{{ coluna }}">padrão {{ sla_padrao[coluna] }}</span></div>
+    {% endfor %}
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if usuario.pode('backup.executar') %}
+{% call ui.popup_cadastro('fazer-backup', BACKUP, '/config/backup',
+                          'Fazer o backup agora',
+                          nota='AES-256-GCM, com a senha desta instalação') %}
+  <div class="aviso aviso-info">
+    <p><strong>Backup cifrado</strong> — um <code>.enc</code> com o banco
+      <strong>e</strong> os arquivos de <code>anexos/</code> e <code>documentos/</code>,
+      inclusive os comprovantes de EPI assinados.</p>
+    <p>AES-256-GCM: abre <strong>só</strong> com a senha de backup desta instalação.
+      <strong>Backup sem a senha é lixo</strong> — guarde-a onde a instituição guarda
+      segredo, não junto do arquivo.</p>
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if usuario.pode('exportar') %}
+{# `popup_cadastro`, e não um link: a rota é POST desde a 1.31.0, e o porquê está
+   escrito em `rotas/configuracao.py`. Um link aqui daria 405 — e a caixa é um
+   `<form method="post">`, que é exatamente o que ela precisa ser. #}
+{% call ui.popup_cadastro('exportar-tudo', EXPORTAR, '/config/exportar-tudo',
+                          'Exportar tudo agora', classe_botao='perigo',
+                          nota='sai em claro, sem senha') %}
+  <div class="aviso aviso-erro">
+    <p><strong>Exportar tudo — sai EM CLARO, sem senha.</strong> O zip
+      leva o banco inteiro, a planilha, os CSVs com nome, SIAPE, cargo, unidade, agente
+      nocivo e fundamentação, e <strong>todos</strong> os anexos: pareceres, laudos e os
+      comprovantes de EPI com a assinatura do servidor.</p>
+    <p>É assim de propósito — ele existe para o setor trabalhar amanhã sem este
+      sistema, e um pacote que só este sistema abre não serviria a isso.</p>
+    <p>Uma cópia fica em
+      <code class="mono">{{ cfg.caminho(cfg.backup_destino) }}</code> e <strong>não é
+      apagada sozinha</strong>. Quem clica leva a base inteira embora.</p>
+  </div>
+{% endcall %}
+{% endif %}
+{% endblock %}

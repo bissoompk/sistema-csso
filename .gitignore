@@ -1,0 +1,52 @@
+# ---- segredo e ambiente ------------------------------------------------
+.env
+# variantes com segredo (.env.antes-da-rede subiu assim em 22/09/2026)
+.env.*
+!.env.exemplo
+.venv/
+uv.lock
+
+# ---- DADOS PESSOAIS: nunca versione -------------------------------------
+dados/csso.db
+dados/csso.db-wal
+dados/csso.db-shm
+dados/documentos/
+dados/anexos/
+dados/backups/
+dados/backups_preservados/
+dados/perfil_lo/
+# a chave da AC do setor: quem a tem assina HTTPS para o endereco do sistema
+dados/tls/
+# o registro de acesso guarda endereco de origem: e dado pessoal como os outros
+dados/logs/
+
+# ---- ambiente de teste: descartavel, refeito por RECRIAR-TESTE.bat -------
+# Nao ha dado pessoal aqui (e tudo inventado), mas versionar um banco que se
+# apaga a cada re-execucao so produziria diff de binario.
+dados-teste/
+dados-teste2/
+
+# entrada/ guarda o modelo .docx e PDFs reais de servidores
+entrada/*
+!entrada/.gitkeep
+
+# ---- o front compilado: as dependencias nao viajam; o bundle em
+#      app/estaticos/app/ VIAJA (quem instala nao tem npm) ------------------
+frontend/node_modules/
+
+# ---- Python -------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# ---- sistema ------------------------------------------------------------
+Thumbs.db
+desktop.ini
+~$*.docx
+~$*.xlsx
+
+# configuracao local do Claude Code desta maquina
+.claude/settings.local.json

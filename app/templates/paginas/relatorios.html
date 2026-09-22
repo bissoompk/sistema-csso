@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Relatórios · CSSO{% endblock %}
+
+{% block acoes_cabecalho %}
+{# A extração de processos é rota que já existe (`/relatorios/exportar-processos`)
+   e não tinha porta nenhuma na tela: chegava-se nela digitando a URL. Ela sai
+   com a mesma supressão de nome da tela — quem não tem `exposicao.ver` recebe o
+   CSV com o identificador opaco no lugar do nome e do SIAPE. #}
+{% if usuario.pode('exportar') %}
+<a class="botao secundario" data-baixar="Exportando…" href="/relatorios/exportar-processos">Exportar processos (CSV)</a>
+{% endif %}
+{% endblock %}
+
+{# A distribuição em barras mora em `partes/macros.html` desde que a terceira
+   cópia dela (a do painel) foi flagrada entregando contagem crua: a tabela de
+   duas colunas dizia os números e escondia a forma — qual unidade concentra o
+   trabalho só aparecia somando de cabeça —, e essa vantagem não vale três
+   implementações da mesma supressão. #}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Relatórios</h1>
+      <p class="sub">Extrações e conferências do exercício {{ exercicio }}.</p>
+    </div>
+  </div>
+
+  {# O aviso explica a consequência, e não só o fato: sem a segunda frase, quem
+     lê acha que só as células pequenas somem e estranha ver "—" numa unidade
+     que sabe ter oito processos. #}
+  {% if not usuario.ve_dado_nominal %}
+  <div class="aviso aviso-alerta">
+    Célula com menos de {{ limiar }} servidores aparece como <span class="mono">—</span>
+    para quem não tem <code>exposicao.ver</code> (RN-19). Quando só uma célula
+    seria suprimida, a menor sobrevivente é suprimida junto — senão a diferença
+    entre o total e a soma devolveria o número escondido.
+  </div>
+  {% endif %}
+
+  <div class="grade grade-2">
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Processos por unidade</h2>
+        <span class="contador">{{ por_unidade|length }}</span>
+      </div>
+      {{ ui.distribuicao(por_unidade, limiar, 'Nenhum processo registrado.') }}
+    </section>
+
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Pareceres por tipo de risco</h2>
+        <span class="contador">{{ por_risco|length }}</span>
+      </div>
+      {{ ui.distribuicao(por_risco, limiar, 'Sem dados.') }}
+    </section>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Lacunas de numeração</h2>
+      {% set total_lacunas = lacunas.values()|map('length')|sum %}
+      <span class="contador {{ 'alerta' if total_lacunas else 'ok' }}">{{ total_lacunas }}</span>
+    </div>
+    <div class="corpo">
+      <p class="discreto sem-margem">Números reservados e nunca preenchidos aparecem aqui — foi exatamente
+         o que aconteceu com 7, 9, 10 e 11 de 2026.</p>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Ano</th><th scope="col">Números não usados</th></tr>
+      </thead>
+      {% for ano, faltando in lacunas.items() %}
+      <tr>
+        <td class="mono">{{ ano }}</td>
+        {# Um selo por número, e não uma linha de texto separada por vírgula: o
+           número da lacuna é o que se digita depois, e conferir "7, 9, 10, 11"
+           corrido é onde se pula um. #}
+        <td>
+          {%- if faltando %}<span class="fileira">
+            {% for n in faltando %}<span class="selo alerta">{{ n }}</span>{% endfor %}</span>
+          {%- else %}<span class="discreto">nenhuma</span>{% endif %}</td>
+      </tr>
+      {% else %}<tr><td colspan="2" class="nada">Sem pareceres registrados.</td></tr>{% endfor %}
+    </table>
+  </section>
+
+  <div class="lado-a-lado principal">
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Laudos sem conferência há mais de 24 meses</h2>
+        <span class="contador {{ 'alerta' if laudos_fila else 'ok' }}">{{ laudos_fila|length }}</span>
+      </div>
+      <div class="corpo">
+        {# `capitalize` do Jinja levantaria a inicial e derrubaria o resto —
+           "IN 15/2022" viraria "in 15/2022". Quem levanta a inicial aqui é a
+           folha de estilo, e o texto continua intacto para quem copia. #}
+        <p class="discreto sem-margem inicial-maiuscula">{{ rodape_fila }}</p>
+      </div>
+      <table>
+        <thead>
+          <tr><th scope="col">Laudo</th><th scope="col">Unidade</th><th scope="col">Última conferência</th><th scope="col" class="numerico">Meses</th></tr>
+        </thead>
+        {% for laudo, meses in laudos_fila %}
+        <tr>
+          <td><a class="mono" href="/laudos/{{ laudo.id }}">{{ laudo.numero_siape }}</a></td>
+          <td>{{ laudo.unidade.nome_extenso if laudo.unidade else '—' }}</td>
+          <td>{% if laudo.data_ultima_conferencia %}<span class="mono">{{ laudo.data_ultima_conferencia|data }}</span>
+              {% else %}<span class="discreto">nunca</span>{% endif %}</td>
+          <td class="numerico">{{ meses if meses is not none else '—' }}</td>
+        </tr>
+        {% else %}<tr><td colspan="4" class="nada">Nada na fila.</td></tr>{% endfor %}
+      </table>
+    </section>
+
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Adicionais vigentes por laudo</h2>
+        <span class="contador">{{ vigencias_por_laudo.values()|sum }}</span>
+      </div>
+      <div class="corpo">
+        <p class="discreto sem-margem">Um laudo sustenta N pareceres: superá-lo põe
+          todos estes adicionais em reavaliação.</p>
+      </div>
+      <table>
+        <thead>
+          <tr><th scope="col">Laudo</th><th scope="col" class="numerico">Vigentes</th></tr>
+        </thead>
+        {% for laudo, quantidade in vigencias_por_laudo.items() %}
+        <tr><td class="mono">{{ laudo }}</td><td class="numerico">{{ quantidade }}</td></tr>
+        {% else %}<tr><td colspan="2" class="nada">Nenhum adicional vigente registrado.</td></tr>{% endfor %}
+      </table>
+    </section>
+  </div>
+
+</div>
+{% endblock %}

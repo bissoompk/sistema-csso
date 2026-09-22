@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Assinaturas de instrutor · CSSO{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set CADASTRAR = 'Cadastrar assinatura' %}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{{ ui.botao_cadastro('nova-assinatura', CADASTRAR) }}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Assinaturas de instrutor</h1>
+      <p class="sub">
+        {%- if itens %}{{ itens|length }} assinatura(s). {% endif -%}
+        Quem assina o certificado, com o período em que a assinatura vale.</p>
+      {% call ui.info('servidor-ou-externo', 'de onde vem o nome de cada assinatura') %}
+        <p>Instrutor da UFVJM aponta para o cadastro de servidor e <strong>o nome é lido
+          de lá</strong> — não copiado, para os dois não divergirem no dia em que um for
+          corrigido. Por isso a célula do nome, nessas linhas, não é editável.</p>
+        <p>Instrutor externo existe só aqui: é o único lugar do sistema onde aquele nome
+          está escrito, e por isso ele é digitado na própria linha.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {# A vigência não é burocracia: assinatura fora de vigência é recusada na
+     emissão, e o momento de descobrir isso não é com a turma inteira já
+     realizada. FICA na tela — é isso que decide o que se cadastra e o que se
+     corrige antes de a turma começar. Por isso a coluna "vigente hoje" tem
+     pílula, e não texto. #}
+  <div class="aviso aviso-info">
+    A emissão recusa assinatura que não vigore no <strong>início da turma</strong> — e
+    o momento de descobrir isso não é com a turma inteira já realizada.
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr><th scope="col">Nome</th><th scope="col">Título de assinatura</th><th scope="col">Conselho</th><th scope="col">Registro</th>
+          <th scope="col">Organização</th><th scope="col">Vínculo</th><th scope="col">Vigência</th>
+          <th scope="col">Vigente hoje</th><th scope="col">Ativa</th><th scope="col"></th></tr>
+    </thead>
+    {% for a in itens %}
+    {% set id = 'f-assin-' ~ a.id %}
+    <tr>
+      <td class="nome">
+        <form method="post" action="/treinamentos/assinaturas/{{ a.id }}" id="{{ id }}"></form>
+        {% if a.servidor %}
+        <span title="lido do cadastro de servidor">{{ a.nome_exibicao }}</span>
+        <input form="{{ id }}" type="hidden" name="servidor_id" value="{{ a.servidor_id }}">
+        {% else %}
+        <input form="{{ id }}" name="nome" value="{{ a.nome }}" required
+               aria-label="Nome do instrutor externo">
+        {% endif %}
+        {# A rubrica em imagem é o que sai desenhado no papel; quando ela existe,
+           a linha diz. Não há "sem rubrica" escrito: o certificado sai sem ela
+           do mesmo jeito, e uma coluna de vazios não é resposta. #}
+        {% if a.imagem_anexo_id %}
+        <span class="pilula sem-ponto" title="há imagem de rubrica anexada">rubrica</span>
+        {% endif %}
+        {% if em_uso.get(a.id) %}
+        <span class="quebra discreto"
+              title="treinamentos que a têm como instrutor padrão">
+          instrutor padrão em {{ em_uso[a.id] }} treinamento(s)</span>
+        {% endif %}
+      </td>
+      <td><input class="campo-longo" form="{{ id }}" name="titulo" value="{{ a.titulo or '' }}" placeholder="Eng. Seg. do Trabalho"
+                 aria-label="Título de assinatura de {{ a.nome_exibicao }}"></td>
+      <td><input class="campo-curto" form="{{ id }}" name="conselho" value="{{ a.conselho or '' }}"
+                 maxlength="8" placeholder="CREA"
+                 aria-label="Conselho de {{ a.nome_exibicao }}"></td>
+      <td><input class="campo-medio" form="{{ id }}" name="registro_conselho" value="{{ a.registro_conselho or '' }}"
+                 aria-label="Registro no conselho de {{ a.nome_exibicao }}"></td>
+      <td><input class="campo-longo" form="{{ id }}" name="organizacao" value="{{ a.organizacao or '' }}"
+                 aria-label="Organização de {{ a.nome_exibicao }}"></td>
+      <td>
+        {% if a.externo %}<span class="pilula sem-ponto">externo</span>
+        <input form="{{ id }}" type="hidden" name="externo" value="1">
+        {% else %}<span class="pilula ok">servidor</span>{% endif %}
+      </td>
+      <td>
+        <input form="{{ id }}" type="date" name="vigencia_inicio"
+               value="{{ a.vigencia_inicio.isoformat() }}" required
+               aria-label="Início da vigência de {{ a.nome_exibicao }}">
+        <input form="{{ id }}" type="date" name="vigencia_fim"
+               value="{{ a.vigencia_fim.isoformat() if a.vigencia_fim else '' }}"
+               aria-label="Fim da vigência de {{ a.nome_exibicao }} (vazio: sem termo)">
+      </td>
+      <td>{% if a.vigente_em(hoje) %}<span class="pilula ok">vigente</span>
+          {% else %}<span class="pilula alerta">fora de vigência</span>{% endif %}</td>
+      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
+          {% if a.ativo %}checked{% endif %}> ativa</label></td>
+      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button></td>
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhuma assinatura cadastrada ainda.',
+         'É a assinatura que responde pelo papel: sem uma ativa e vigente na data
+          de início, a turma não recebe instrutor e a emissão do certificado é
+          recusada. Use “' ~ CADASTRAR ~ '”, no canto superior direito.', 10) }}
+    {% endfor %}
+  </table>
+  </div>
+
+
+</div>
+
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. A edição em linha da
+   tabela acima continua em linha — lá o formulário aberto É o registro. #}
+{% call ui.popup_cadastro('nova-assinatura', CADASTRAR, '/treinamentos/assinaturas',
+                          CADASTRAR, aberto=recusado, erro=erro_cadastro,
+                          nota='servidor da UFVJM ou instrutor externo') %}
+  {# O vínculo é o que esta rota recusa — "instrutor da UFVJM precisa estar
+     vinculado a um servidor" —, e é aqui que ele se escolhe. #}
+  <div class="campo {{ 'com-erro' if recusado }}">
+    <label for="assin-servidor">Instrutor da UFVJM</label>
+    <select id="assin-servidor" name="servidor_id"{{ ' autofocus' if recusado }}>
+      <option value="">— (marque “externo” abaixo se não for servidor)</option>
+      {% for sv in servidores %}
+      <option value="{{ sv.id }}"{{ ui.sel(d.get('servidor_id'), sv.id) }}>{{ sv.nome }} · SIAPE {{ sv.siape }}</option>
+      {% endfor %}
+    </select></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="assin-nome">Nome (só para externo)</label>
+      <input id="assin-nome" name="nome" value="{{ d.get('nome') or '' }}"></div>
+    <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+      <label class="discreto"><input type="checkbox" name="externo" value="1"
+        {{- ' checked' if d.get('externo') == '1' }}>
+        instrutor externo</label></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="assin-titulo">Título de assinatura</label>
+      <input id="assin-titulo" name="titulo" placeholder="Eng. Seg. do Trabalho"
+             value="{{ d.get('titulo') or '' }}"></div>
+    <div class="campo"><label for="assin-conselho">Conselho</label>
+      <input id="assin-conselho" name="conselho" maxlength="8" placeholder="CREA"
+             value="{{ d.get('conselho') or '' }}"></div>
+    <div class="campo codigo"><label for="assin-registro">Registro</label>
+      <input id="assin-registro" name="registro_conselho"
+             value="{{ d.get('registro_conselho') or '' }}"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="assin-org">Organização</label>
+      <input id="assin-org" name="organizacao" placeholder="UFVJM"
+             value="{{ d.get('organizacao') or '' }}"></div>
+    <div class="campo"><label for="assin-de">Vigência — início</label>
+      <input id="assin-de" type="date" name="vigencia_inicio" required
+             value="{{ d.get('vigencia_inicio') or '' }}"></div>
+    <div class="campo"><label for="assin-ate">Vigência — fim</label>
+      <input id="assin-ate" type="date" name="vigencia_fim"
+             value="{{ d.get('vigencia_fim') or '' }}"
+             aria-describedby="dica-vigencia">
+      <span class="dica" id="dica-vigencia">Vazio: sem termo.</span></div>
+  </div>
+  <p class="discreto rodape-cartao sem-margem">
+    A rubrica em imagem entra como anexo com dedup por SHA-256, junto com a
+    emissão. No IntegraSST ela era um link do Google Drive — e certificado não
+    pode depender de arquivo que alguém move na nuvem.
+  </p>
+{% endcall %}
+{% endblock %}

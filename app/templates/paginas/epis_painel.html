@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# O painel do módulo de EPI — as cinco medidas do §9.
+
+   Uma regra governa a tela inteira: **nenhum número aparece sem o caminho para
+   a lista dele.** Um painel que só afirma "7 trocas vencidas" manda quem lê
+   procurar as sete em outra tela, e é assim que indicador vira enfeite. Aqui
+   cada medida tem a fila logo abaixo, ou o link para ela.
+
+   E nenhum deles é gravado: requisição parada, CA a vencer e troca devida são
+   estado, e estado gravado é estado que envelhece em silêncio — a mesma escolha
+   de `EpiItem.ca_vencido_em` e de `prazo_em_analise`.
+
+   RN-19: a pessoa nunca aparece nominal aqui por conta do template. Quem
+   escreve o nome é `identificar(...)`, e para quem não pode lê-lo sai o código
+   opaco da sessão. #}
+
+{% block titulo %}Gestão de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Painel</span>{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if pode_indicador %}
+<a class="botao secundario" href="/epis/relatorios">Relatórios</a>
+{% endif %}
+{% if usuario.pode('epi.entregar') %}
+<a class="botao" href="/epis/entregas/nova">Registrar entrega</a>
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Gestão de EPI</h1>
+      <p class="sub">O que está parado, o que falta comprar, o que vence e o que
+        já venceu — em {{ hoje|data }}.</p>
+    </div>
+  </div>
+
+  <div class="grade grade-kpi">
+    <div class="kpi">
+      <div class="rotulo">Requisições em trâmite</div>
+      <div class="medida"><span class="valor">{{ p.requisicoes_abertas }}</span>
+        <span class="nota"><a href="/epis/requisicoes">ver a fila</a></span></div>
+    </div>
+    <div class="kpi {% if p.esperando_estoque %}alerta{% endif %}">
+      <div class="rotulo">Itens sem estoque</div>
+      <div class="medida"><span class="valor">{{ p.esperando_estoque|length }}</span>
+        <span class="nota">aprovados e sem lote</span></div>
+    </div>
+    <div class="kpi {% if p.lotes_vencidos %}perigo{% elif p.lotes_a_vencer %}alerta{% endif %}">
+      <div class="rotulo">CA a vencer em 60 dias</div>
+      <div class="medida"><span class="valor">{{ p.lotes_a_vencer|length }}</span>
+        {% if p.lotes_vencidos %}<span class="nota">{{ p.lotes_vencidos }} já vencido(s)</span>{% endif %}</div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Entregas do mês</div>
+      <div class="medida"><span class="valor">{{ p.entregas_do_mes|length }}</span>
+        <span class="nota">sem as estornadas</span></div>
+    </div>
+    <div class="kpi {% if p.trocas_devidas %}perigo{% endif %}">
+      <div class="rotulo">Trocas devidas</div>
+      <div class="medida"><span class="valor">{{ p.trocas_devidas|length }}</span>
+        <span class="nota">vida útil esgotada (RN-32)</span></div>
+    </div>
+  </div>
+
+  {# A contagem por estado. Ela também está em cima da fila, e continua lá de
+     propósito: lá cada número É o filtro e não tira ninguém do contexto; aqui
+     ele é uma das cinco medidas. São duas leituras da mesma função, não dois
+     números. #}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Requisições por estado</h2>
+      <span class="nota">{{ p.requisicoes_por_estado.values()|sum }} no total</span>
+    </div>
+    <div class="fileira">
+      {% for codigo, nome in rotulos.items() %}
+      <a class="ficha-filtro" href="/epis/requisicoes?estado={{ codigo }}">
+        {{ nome }} <span class="contador">{{ p.requisicoes_por_estado.get(codigo, 0) }}</span></a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="lado-a-lado principal">
+    <div class="pilha">
+
+      {# Trocas devidas primeiro, e não por gravidade de inventário: um EPI com
+         troca vencida NÃO sustenta a alegação de que o agente nocivo está
+         neutralizado (§7). É dado de parecer, não lembrete de almoxarifado. #}
+      <section class="cartao liso">
+        {# O bloco `.corpo` que explicava a medida foi para o (i) do título. Num
+           painel nenhuma decisão está em curso — a tela é de leitura, e o passo
+           que resolve cada linha acontece na ficha ou no estoque, onde o aviso
+           correspondente continua escrito. Aqui a explicação é o caso puro do que
+           se lê uma vez. #}
+        <div class="cabecalho-cartao">
+          <h2>Trocas devidas</h2>
+          {% call ui.info('trocas-devidas',
+                          'o que “troca devida” significa, e por que ela pesa no parecer') %}
+            <p>A vida útil registrada no catálogo acabou e não veio substituto,
+              devolução nem estorno. O equipamento está com a pessoa, e não vale
+              mais.</p>
+            <p>Além do inventário, isso tem efeito no <strong>parecer</strong>: um
+              EPI com troca vencida não sustenta a alegação de que o agente nocivo
+              está neutralizado (RN-32). É dado técnico, e não lembrete de
+              almoxarifado.</p>
+          {% endcall %}
+          <span class="contador {{ 'alerta' if p.trocas_devidas else 'ok' }}">{{ p.trocas_devidas|length }}</span>
+        </div>
+        {# O NÚMERO é medida do setor e vai para quem tem `epi.ver`, como a §9
+           pede. As LINHAS são conteúdo da ficha — quem recebeu o quê e quando —,
+           e a ficha é `epi.ficha` desde a fatia 2, porque é histórico sobre a
+           segurança de uma pessoa determinada. Ler a lista aqui sem a permissão
+           seria abrir pela porta do painel o que a tela da ficha fecha. #}
+        {% if ve_ficha %}
+        <table>
+          <thead>
+            <tr><th scope="col">Servidor</th><th scope="col">EPI</th><th scope="col">Entregue</th><th scope="col">Troca prevista</th><th scope="col"></th></tr>
+          </thead>
+          {% for r in p.trocas_devidas[:10] %}
+          {% set quem = identificar(servidores.get(r.servidor_id)) %}
+          <tr>
+            <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+              {%- else %}{{ quem.nome }}{% endif %}</td>
+            <td>{{ r.nome_epi_snapshot }}</td>
+            <td class="mono">{{ r.data_evento|data }}</td>
+            <td>{{ ui.pilula_troca(r.previsao_troca, hoje) }}</td>
+            <td><a class="botao secundario compacto" href="/epis/fichas/{{ r.servidor_id }}">Abrir ficha</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="nada">Nenhuma troca vencida.</td></tr>
+          {% endfor %}
+          {% if p.trocas_devidas|length > 10 %}
+          <tr><td colspan="5" class="discreto">e mais {{ p.trocas_devidas|length - 10 }} —
+            todas estão no sino, como pendência com dono e prazo.</td></tr>
+          {% endif %}
+        </table>
+        {% else %}
+        <div class="corpo">
+          <div class="vazio">
+            <strong>A lista de quem deve troca pede <code>epi.ficha</code>.</strong>
+            <span>Ela é histórico sobre a segurança de pessoas determinadas. O
+              número acima continua sendo seu: ele é medida do setor, e não
+              histórico de ninguém.</span>
+          </div>
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Itens esperando estoque</h2>
+          {% call ui.info('esperando-estoque', 'o que esta fila reúne, e por que a reserva não é automática') %}
+            <p>Itens <strong>aprovados</strong>, devidos a alguém, e sem lote no
+              estoque que possa sair. É desta fila que sai a lista do que precisa
+              ser comprado.</p>
+            <p>A reserva do que entrar continua sendo ato de gente, na ficha do
+              pedido, com o lote escolhido à mão: escolher quem fica com estoque
+              escasso é decisão, não ordem de laço. Reserva automática mudaria o
+              disponível sem ninguém mandar.</p>
+          {% endcall %}
+          <span class="contador {{ 'alerta' if p.esperando_estoque else 'ok' }}">{{ p.esperando_estoque|length }}</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th scope="col">Pedido</th><th scope="col">EPI</th><th scope="col">Tamanho</th><th scope="col">Devido</th><th scope="col"></th></tr>
+          </thead>
+          {% for i in p.esperando_estoque[:10] %}
+          <tr>
+            <td><a class="mono" href="/epis/requisicoes/{{ i.requisicao_id }}">{{ i.requisicao.identificacao }}</a></td>
+            <td>{{ i.item.nome }}</td>
+            <td class="mono">{{ i.tamanho or '—' }}</td>
+            <td class="mono">{{ i.quantidade_devida }}</td>
+            <td>{{ ui.pilula_item_requisicao(i.estado, rotulos_item) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="nada">Nada esperando compra.</td></tr>
+          {% endfor %}
+        </table>
+      </section>
+    </div>
+
+    <div class="pilha">
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>CA a vencer</h2>
+          {% call ui.info('ca-a-vencer', 'por que o CA decide se o lote é proteção ou patrimônio') %}
+            <p>Pela <strong>NR-6</strong> o Certificado de Aprovação é o que
+              constitui o equipamento como EPI. Passado ele, o que está na
+              prateleira é patrimônio, não proteção — e entregar significa não ter
+              entregado proteção nenhuma.</p>
+            <p>O vencido continua aparecendo aqui de propósito: alguém tem de
+              renovar o CA ou registrar o descarte com motivo, e as duas coisas
+              são decisão de gente. O caminho está em
+              <a href="/epis/estoque">/epis/estoque</a>, onde o lote impedido é
+              listado em vermelho com o saldo preso nele.</p>
+          {% endcall %}
+          <span class="contador {{ 'alerta' if p.lotes_a_vencer else 'ok' }}">{{ p.lotes_a_vencer|length }}</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th scope="col">Item · lote</th><th scope="col">Saldo</th><th scope="col">CA</th><th scope="col"></th></tr>
+          </thead>
+          {% for lote in p.lotes_a_vencer[:10] %}
+          <tr>
+            <td>{{ lote.entrada.item.nome }}
+              <span class="quebra discreto mono">{{ lote.entrada.lote or 'sem número' }}</span></td>
+            <td class="mono">{{ lote.saldo }}</td>
+            <td>{{ ui.pilula_ca(lote.entrada.validade_ca, hoje) }}</td>
+            <td><a class="botao secundario compacto"
+                   href="/epis/estoque/{{ lote.entrada.id }}/movimentos">Extrato</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="nada">Nenhum CA na janela dos 60 dias.</td></tr>
+          {% endfor %}
+        </table>
+      </section>
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Entregas do mês</h2>
+          {% call ui.info('entregas-do-mes', 'o que entra nesta contagem, e o que fica de fora') %}
+            <p>O que saiu do balcão desde o dia 1º do mês corrente.</p>
+            <p>Linha <strong>estornada não entra</strong>: o estorno declara que
+              aquela entrega não aconteceu — o registro é que estava errado, e não
+              o equipamento que voltou. Contá-la mediria digitação, e não
+              entrega.</p>
+            <p>Devolução também não conta como entrega: ela é fato posterior, com
+              linha própria na ficha.</p>
+          {% endcall %}
+          <span class="contador">{{ p.entregas_do_mes|length }}</span>
+          {% if usuario.pode('epi.ficha') %}<a class="a-direita" href="/epis/fichas">Fichas</a>{% endif %}
+        </div>
+        {% if ve_ficha %}
+        <table>
+          <thead>
+            <tr><th scope="col">Data</th><th scope="col">EPI</th><th scope="col">Quantidade</th><th scope="col">Servidor</th></tr>
+          </thead>
+          {% for r in p.entregas_do_mes[:8] %}
+          {% set quem = identificar(servidores.get(r.servidor_id)) %}
+          <tr>
+            <td class="mono">{{ r.data_evento|data }}</td>
+            <td>{{ r.nome_epi_snapshot }}</td>
+            <td class="mono">{{ r.quantidade }}</td>
+            <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+              {%- else %}{{ quem.nome }}{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="nada">Nenhuma entrega neste mês.</td></tr>
+          {% endfor %}
+        </table>
+        {% else %}
+        <div class="corpo">
+          <div class="vazio">
+            <strong>Quem recebeu o quê é a ficha.</strong>
+            <span>E a ficha pede <code>epi.ficha</code>: o total do mês, que é
+              medida do setor, continua acima.</span>
+          </div>
+        </div>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  <div class="aviso aviso-info">
+    <strong>Estes números não são gravados em lugar nenhum.</strong>
+    {% call ui.info('numeros-calculados', 'por que o painel calcula em vez de gravar') %}
+      <p>Tudo aqui é calculado <strong>na abertura da tela</strong>, a partir do
+        que a ficha, o livro razão e a fila já registraram. Requisição parada, CA
+        a vencer e troca devida são estado, não fato guardado.</p>
+      <p>Contagem gravada é contagem que envelhece em silêncio: o painel diria “3
+        trocas devidas” durante meses depois de a quarta vencer, e ninguém teria
+        como perceber olhando a tela.</p>
+      <p>A tarefa com dono e prazo, essa sim, nasce da <strong>escrita</strong> e
+        não do relógio — o sistema não tem agendador. Uma troca que vence sem que
+        ninguém escreva nada na ficha da pessoa aparece aqui e na ficha desde o
+        primeiro dia; o que espera a próxima entrega, devolução ou estorno é a
+        pendência do sino.</p>
+    {% endcall %}
+  </div>
+
+</div>
+{% endblock %}

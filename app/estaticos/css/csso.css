@@ -1,0 +1,2718 @@
+/* Sistema CSSO - folha unica, sem CDN, sem build. */
+
+/* ================= fontes =================
+   Servidas do proprio sistema (app/estaticos/fontes, 42 KB), nunca do Google.
+   Dois motivos: a mesma regra que vendorizou o HTMX - o sistema tem de abrir
+   numa rede que so alcanca a UFVJM - e o ROPA, que declara nao haver operador
+   terceiro nem transferencia internacional; um @import de fonts.googleapis.com
+   poria o navegador de cada servidor conversando com o Google a cada tela.
+
+   `font-display: swap`: 42 KB numa rede ruim nao pode segurar texto invisivel.
+   O `unicode-range` do latin-ext existe para ele NAO ser baixado - o portugues
+   cabe inteiro no latin, e o navegador so vai buscar o segundo arquivo se a
+   pagina trouxer um caractere que so exista la. */
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  /* arquivo variavel: um download unico cobre de 300 a 800 */
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/estaticos/fontes/public-sans-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/estaticos/fontes/public-sans-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("/estaticos/fontes/jetbrains-mono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("/estaticos/fontes/jetbrains-mono-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ================= identidade =================
+   O REGISTRO, e por que ele não é neutro. Este sistema emite parecer que
+   fundamenta adicional de insalubridade, ficha de EPI que é prova de entrega em
+   fiscalização e documento que sobe ao SEI. A interface é a mesa onde esse papel
+   é preparado, e a autoridade do papel começa na tela: cor saturada, canto macio
+   e sombra flutuante enfraquecem o que ele afirma. A personalidade daqui vem de
+   proporção, ritmo, contenção e acabamento — não de matiz.
+
+   TRÊS DECISÕES governam todos os valores abaixo, e as três nasceram de defeito
+   medido, não de gosto:
+
+   1. UMA MATIZ NEUTRA (250) E DEGRAUS REGULARES DE 1,8 PONTO DE L*. As
+      superfícies eram oito quase-brancos com matiz derivando entre 228 e 248, e
+      cinco deles couberam dentro de 1,5 ponto de L*: --papel e --neutra-fundo
+      diferiam por 0,08 ponto, o que não é um degrau — é uma coincidência. A
+      consequência estava na tela: a pílula neutra sobre o papel ficava em
+      1,00:1, invisível, sustentada só por uma borda que também estava em 1,14.
+      Agora há uma escada, e ela vale 1,09 e 1,46 nos mesmos dois lugares.
+
+   2. AS QUATRO FAMÍLIAS PESAM O MESMO. Acento, ok, alerta e erro estavam em
+      8,56 / 5,32 / 6,39 / 7,40 sobre o cartão. Numa fila de pílulas o verde
+      recuava e o vermelho gritava sem que ninguém tivesse decidido isso — e o
+      que decide urgência aqui é a norma, não a saturação da tinta. As quatro
+      tintas de sinal ficam agora em ~8,05:1 contra o PRÓPRIO fundo (≈9,7 contra
+      o branco), os quatro fundos numa rung só e as quatro bordas noutra. O
+      estado se distingue por rótulo, ponto e matiz; nunca por volume.
+
+   3. A LINHA QUE LIMITA UM CONTROLE PASSA A SER VISÍVEL. --borda-campo estava em
+      1,26:1 contra o branco. A WCAG 2.1 SC 1.4.11 pede 3:1 para o que identifica
+      um componente de interface, e num sistema cujo produto é prova a borda do
+      campo não é enfeite: é o que diz onde se escreve. Foi para 3,57:1, e
+      --borda-hover para 4,70 — resposta a gesto tem de ser um degrau que se
+      veja. É também o idioma do formulário público (gov.uk, USWDS), que é o
+      lugar de onde este sistema herda a cara.
+
+   TODA RAZÃO DE CONTRASTE ESCRITA AQUI FOI CALCULADA, não estimada: fórmula de
+   luminância relativa da WCAG 2.x, par a par, contra os fundos que a folha de
+   fato usa. São 66 pares, o valor de antes está ao lado de cada um em
+   `entrada/marca/00_IDENTIDADE.md`, e NENHUM caiu — o piso de 1.27.0 continua
+   sendo piso. Quem mexer num valor daqui recalcula a coluna inteira, porque um
+   fundo que escurece derruba todas as tintas que caem nele. */
+
+/* ================= tokens ================= */
+:root {
+  /* ---------- tinta: quatro degraus de 11 pontos de L* ----------
+     Eram quatro nomes e três degraus. --tinta-fraca (5,50:1) e --tinta-dica
+     (5,01) distavam 2,2 pontos de L* — nenhum olho separa isso, e a hierarquia
+     tinha no nome um nível a mais do que tinha na tela. Agora 18 / 29 / 40 / 51,
+     e cada rung foi resolvido contra o fundo MAIS ESCURO em que a folha o põe,
+     e não contra o branco: é o fundo escuro que decide se passa. */
+  --tinta: #08121d;         /* corpo — 18,84:1 no cartão, 17,05 no papel */
+  --tinta-media: #202d3a;   /* rótulo de campo, célula numérica — 14,02 / 12,69 */
+  --tinta-fraca: #3b4959;   /* texto secundário, .sub, .discreto — 9,20 / 8,32 */
+  /* Dica sob o campo, placeholder, <dt> de ficha e <th> de lista longa. A versão
+     1.27.0 tirou este token de 3,50:1 para 5,01 e o argumento continua sendo o
+     mesmo: é o rótulo de toda linha de toda ficha, e numa universidade federal
+     isso é também eMAG/Decreto 5.296. O que muda é o método — o valor deixa de
+     ser resolvido contra o cartão branco e passa a ser resolvido contra
+     --divisor, que é o fundo mais escuro onde ele cai (o ".n" da etapa, a
+     coluna vazia do kanban). Fica em 5,70 / 5,16 / 4,89 / 4,61 sobre cartão,
+     papel, superfície fraca e divisor: os quatro acima de 4,5, e o pior deles
+     acima do pior de antes (4,45). */
+  --tinta-dica: #5b6875;
+
+  /* ---------- superfície: a escada, com degraus de 1,8 ponto de L* ----------
+     100,0 cartão · 98,2 hover de linha · 96,4 papel · 94,6 superfície fraca ·
+     92,8 divisor. Uma matiz só (250), croma subindo devagar conforme escurece —
+     que é o que faz um cinza frio parecer papel e não plástico. */
+  --cartao: #ffffff;
+  /* Hover de linha de tabela e de item de lista: o degrau mais raso da escada,
+     porque responder a um gesto não é mudar de superfície. */
+  --linha-hover: #f7f9fc;
+  --papel: #f0f4f8;         /* 1,11:1 contra o cartão — era 1,07 */
+  /* Superfície recuada DENTRO do cartão: cabeçalho de tabela longa, gaveta de
+     ações, zona de arquivo, trilho de estado, campo da busca. Eram cinco
+     quase-brancos fazendo este mesmo trabalho; a 1.27.0 os fundiu, e o que
+     faltava era o valor pertencer a uma escada — antes ele era MAIS CLARO que o
+     papel (98,09 contra 97,52), o que dizia ao olho que o painel recuado estava
+     à frente da página. 1,17:1 contra o cartão, era 1,06. */
+  --superficie-fraca: #e9eef3;
+  --divisor: #e1e8ef;       /* divisor dentro do cartão, e fundo de <th> e chip */
+  --borda-fraca: #e9eef3;   /* divisor de linha: a mesma rung, vista de canto */
+
+  /* ---------- linha: por trabalho, não por gosto ----------
+     Uma borda que LIMITA UM CONTROLE tem piso de 3:1 (WCAG 1.4.11). Uma borda
+     que apenas divide não tem, e fica quieta de propósito. A folha passa a
+     dizer qual é qual pelo nome. */
+  --borda: #bbc5d1;         /* borda de cartão (contêiner) — 1,75:1, era 1,22 */
+  /* Resolvido contra --superficie-fraca, e não contra o branco, pelo mesmo
+     motivo de --tinta-dica: o campo da busca do cabeçalho tem fundo recuado, e
+     é ali que a borda tem o pior par. 3,06:1 lá dentro e 3,57 no branco. */
+  --borda-campo: #7d8995;   /* borda de CONTROLE — 3,57:1, era 1,26 */
+  --borda-hover: #687584;   /* o mesmo, sob o cursor — 4,70:1, era 1,74 */
+  /* O separador "·" e a barra da trilha. Continua decorativo no sentido estrito
+     (o rótulo está sempre em texto ao lado) e continua abaixo de 3:1 de
+     propósito, para não competir com o que separa — mas subiu de 1,63 para
+     2,14, porque "fraco" nunca precisou significar "quase ausente". Onde o
+     cinza É o dado — o "—" do mês sem entrega no gráfico — ele não entra: lá
+     vale --tinta-dica. */
+  --ponto: #a6b3c0;
+
+  /* ---------- acento ----------
+     Mais fundo e com mais croma que o #12507a de antes, e os dois por motivo de
+     trabalho. Mais fundo porque o acento é o fundo do botão primário e a tinta
+     do link ao mesmo tempo, e o piso dele passa a ser o pior dos fundos em que
+     ele escreve (--info-fundo, 8,05:1), não o branco. Mais croma porque ele era
+     o MENOS saturado dos quatro sinais (0,092 contra 0,110 do ok, 0,125 do
+     alerta e 0,168 do erro): numa linha com pílula verde, âmbar e vermelha, a
+     única cor que significa "aqui se age" era a que recuava. */
+  --acento: #004580;        /* 9,71:1 no cartão, 8,78 no papel, 8,05 no info */
+  --acento-forte: #003a6e;  /* hover do botão primário — 11,47:1 com branco */
+  --acento-claro: #e1ebf6;  /* mesma rung dos fundos de natureza */
+
+  /* ---------- a lateral escura ----------
+     AQUI ESTAVAM AS TRÊS REPROVAÇÕES QUE A 1.27.0 NÃO VIU, porque ela conferiu
+     fundos claros: o rótulo de seção em rgba(255,255,255,.34) dava 3,06:1, o
+     rodapé em .42 dava 3,96 e a versão em .34 dava 3,06 — texto, os três, com
+     piso de 4,5. Não era descuido de quem escreveu: eram nove opacidades sem
+     nome nenhum, e valor sem nome é valor que ninguém audita. Agora são tokens,
+     e o próximo que precisar de um tom na lateral escolhe entre estes. */
+  --lateral: #06121f;
+  --lateral-texto: #b4babf;        /* item do menu — 9,62:1 (era .74 = 9,45) */
+  --lateral-texto-fraco: #9199a0;  /* base, rótulo de seção, rodapé — 6,52:1 */
+  /* A CHAPA DO ITEM ATIVO, e não mais só o anel de foco. O item ativo era um
+     bloco de --acento dentro da lateral: 1,92:1 contra o fundo, ou seja, a
+     forma que diz "você está aqui" não tinha forma. Invertido, ele passa a ser
+     uma chapa clara com tinta escura — 9,08:1 contra a lateral e 9,07 do texto
+     contra a chapa, contra 1,92 e 8,56 de antes. É também o que a casca já diz
+     em outra escala: chrome escuro, papel claro; a tela aberta é a folha. */
+  --lateral-acento: #9db7d2;
+  --lateral-linha: #333d47;        /* borda e divisor na lateral — 1,70 (era 1,49) */
+  --lateral-realce: #1c2733;       /* fundo do seletor de módulo */
+
+  /* ---------- natureza: fundo numa rung, borda noutra, tinta no mesmo piso ----
+     O trio fundo/borda/texto de sempre, agora nivelado. Os quatro fundos em
+     93,7 de L* (1,19–1,22:1 contra o cartão, eram 1,07–1,14: a pílula deixa de
+     ser um fantasma sobre a ficha branca), as quatro bordas em 82,0 — a mesma
+     rung de --borda, porque a borda de natureza É a borda de cartão, tingida —
+     e as quatro tintas em ~8,05:1 contra o próprio fundo. */
+  --ok: #005028;                  /* 9,64 no cartão, 8,07 no ok-fundo (era 4,78) */
+  --ok-fundo: #e1eee6;
+  --ok-borda: #afccba;
+  --info-fundo: #e1ebf6;
+  --info-borda: #b1c7de;
+  /* --alerta é cor de PREENCHIMENTO (barra do medidor, ponto de estado, ⚠), e
+     não de texto: o piso dele é 3:1. Escureceu o suficiente para o par que
+     manda — a barra sobre o trilho --divisor, 4,28:1 (era 4,19) — porque o
+     trilho escureceu junto com a escada. */
+  --alerta: #9f5b00;
+  --alerta-texto: #693700;        /* 9,78 no cartão, 8,08 no alerta-fundo */
+  --alerta-texto-longo: #502800;  /* texto corrido pede mais — 10,54 no fundo */
+  --alerta-fundo: #f6e7d8;
+  --alerta-borda: #dbbea1;
+  --erro: #8e010c;                /* 9,72 no cartão e no botão perigo (era 7,40) */
+  --erro-fundo: #f7e5e3;
+  --erro-borda: #dcbbb7;
+  --erro-forte: #760a0d;          /* hover do botão perigo — 11,54 com branco */
+  --neutra-fundo: #e6ebef;
+  --neutra-borda: #bbc5d1;
+
+  /* ---------- forma: quatro raios, um degrau de 2px ----------
+     Eram quatro tokens (7/9/10/12) mais 6px, 8px e 10px escritos à mão em
+     dezesseis lugares — seis raios para quatro papéis. O degrau agora é
+     declarado, e a escala inteira desceu: 12px de cartão é raio de aplicativo, e
+     o que se busca é a folha com canto aparado. Abaixo de 2px o canto some e o
+     campo volta a parecer não estilizado; a pílula continua em 999px, porque
+     pílula é pílula. */
+  --raio-item: 2px;         /* item de navegação, chip, marcador */
+  --raio: 4px;              /* campo, botão, gaveta — tudo que se aciona */
+  --raio-aviso: 6px;        /* aviso, caixa tracejada, painel */
+  --raio-cartao: 8px;       /* cartão, popup, coluna do quadro */
+
+  /* ---------- profundidade: duas, e a segunda é a única que flutua ----------
+     Documento institucional é pautado, não empilhado. Com --borda em 1,75:1 o
+     cartão passa a ser definido pelo próprio fio, e a sombra que o separava do
+     papel vira um fio de luz. --sombra-alta fica forte porque ali a peça flutua
+     mesmo: o popup e o menu de módulos cobrem o que está atrás e precisam dizer
+     isso. --sombra-hover substitui três sombras literais que faziam o mesmo
+     trabalho em três valores (0 4px 14px/.07 no cartão-link e no KPI, 0 4px
+     12px/.1 no cartão do kanban, 0 2px 10px/.08 na prévia). */
+  --sombra: 0 1px 1px rgba(8, 18, 29, .05);
+  --sombra-hover: 0 2px 8px rgba(8, 18, 29, .10);
+  --sombra-alta: 0 14px 34px rgba(8, 18, 29, .20), 0 2px 6px rgba(8, 18, 29, .10);
+
+  /* ---------- medida ---------- */
+  --largura-lateral: 252px;
+  --altura-cabecalho: 62px;
+  /* O anel de foco: a borda trocada por --acento é a parte que se lê (9,71:1
+     contra o branco do campo, muito acima dos 3:1 de 1.4.11) e o anel é o alvo.
+     Subiu de 12% para 16% porque o acento escureceu e um véu de 12% dele quase
+     não pousava sobre o branco. */
+  --anel-foco: 3px solid rgba(0, 69, 128, .16);
+  --mono: "JetBrains Mono", ui-monospace, Consolas, "Courier New", monospace;
+}
+
+/* ================= escala tipográfica =================
+   DUAS RAMPAS, E A RAZÃO DE CADA UMA ESTÁ DECLARADA. Havia vinte tamanhos entre
+   10 e 28px, seis deles com meio pixel (10,5 · 11,5 · 12,5 · 13,5 · 14,5 ·
+   15,5): não é escala, é o registro de vinte decisões tomadas uma por tela. Meio
+   pixel também não é um degrau — em 12,5 contra 13 o navegador arredonda a haste
+   para a mesma coluna de pixels e o leitor não vê diferença nenhuma, só o
+   próximo autor vê mais uma opção.
+
+   INTERFACE — rampa linear, degrau de 1px: 11 · 12 · 13 · 14 · 15.
+   Abaixo de 16px razão geométrica devolve tamanhos que diferem por menos de uma
+   haste renderizada; o degrau útil ali é o pixel inteiro. 15px é o corpo.
+
+   DISPLAY — razão 1,2 a partir do corpo: 18 · 22 · 26.
+   h2 sobe de 16 para 18 e h3 de 14 para 15, o que conserta uma inversão antiga:
+   h3 era MENOR que o texto que ele encabeça. h1 desce de 27 para 26 — contenção
+   é a matéria-prima aqui, e 26px já manda numa tela de 1366.
+
+   ENTRELINHA por tamanho, e ela CAI conforme o tamanho sobe: 1,55 nos dois
+   tamanhos de corpo (14 e 15 são os únicos que carregam prosa), 1,45 de 11 a 13,
+   1,35 em 18, 1,25 em 22, 1,15 em 26.
+
+   PESO: 400 corpo · 500 número em mono (o mono só tem 400 e 500) · 600 rótulo,
+   ênfase e estado · 700 título e versalete.
+
+   TRACKING: negativo só no display (−0,015em em 26 e 22, que é onde a fonte
+   abre demais); zero de 18 para baixo; +0,06em em versalete de interface (eram
+   cinco valores — 0,03 · 0,04 · 0,05 · 0,06 — para o mesmo gesto); +0,14em no
+   rótulo de seção da lateral, que é mono em caixa alta de 11px e precisa de mais.
+
+   O MONO CARREGA SIGNIFICADO e a regra não muda: todo número que se lê em voz
+   alta ou se confere dígito a dígito sai em JetBrains Mono — NUP, protocolo,
+   SIAPE, CA, empenho, nº de laudo, chave de validação. Texto corrido nunca. */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 15px/1.55 "Public Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  color: var(--tinta);
+  background: var(--papel);
+  /* lateral fixa + area util fluida: nada de largura fixa no corpo */
+  display: flex;
+  min-height: 100vh;
+}
+
+a { color: var(--acento); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Foco visivel global. Em campo o desenho troca a borda por --acento e poe o
+   anel de 12%; em link e botao nao ha borda para trocar, entao ali o anel e
+   solido - senao a navegacao por teclado ficaria invisivel. */
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+.lateral :focus-visible { outline-color: var(--lateral-acento); }
+
+/* ================= casca: lateral escura =================
+   O menu horizontal ja estava com onze itens em duas barras e cada modulo novo
+   piorava. Na vertical ha lugar para crescer. */
+.lateral {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: 0 0 var(--largura-lateral);
+  width: var(--largura-lateral);
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 14px 14px;
+  background: var(--lateral);
+  color: var(--lateral-texto);
+}
+.lateral a { color: inherit; }
+
+/* ---------- a marca do sistema ----------
+   SÍMBOLO GEOMÉTRICO + LOGOTIPO, e o símbolo é SVG embutido de um caminho só.
+   Era a sigla "CS" em texto dentro de um quadrado colorido: uma etiqueta, não
+   uma marca — dependia da fonte carregar, mudava de largura conforme o
+   fallback, e a 24px as duas letras viravam uma mancha sem silhueta.
+
+   O QUE ELE DESENHA: uma chapa (o carimbo) com uma folha vazada dentro, canto
+   superior direito aparado (a dobra de todo documento arquivado), uma pauta fina
+   e uma faixa cheia embaixo — o texto e a assinatura. É o que este setor
+   produz: papel conferido que sai assinado.
+
+   POR QUE UM CAMINHO SÓ COM `evenodd`: a folha e a faixa não são brancas, são
+   FURO. A marca inteira é `currentColor`, então ela vira branca sobre a lateral
+   escura, azul sobre papel branco e preta na impressão monocromática, sempre com
+   o mesmo desenho — e nunca precisa de um segundo valor que combine com o fundo
+   de onde ela for parar. A 24px o furo tem 11×15px e a faixa 6,7×3,6px: tudo
+   acima de um pixel, tudo com silhueta.
+
+   O QUE ELA NÃO É: brasão, logotipo ou identidade oficial da UFVJM. Marca de
+   universidade federal é ato de quem tem competência para isso, e inventar uma
+   seria falsificação institucional. Esta é a marca DO SISTEMA (CSSO/Sisa) e foi
+   desenhada para conviver com o brasão oficial, não para substituí-lo — o lugar
+   dele está reservado em `.marca-brasao`, logo abaixo. */
+.marca { display: flex; align-items: center; gap: 10px; padding: 0 4px; color: #fff; }
+.marca:hover { text-decoration: none; }
+.marca-sigla {
+  display: grid; place-items: center; flex: none;
+  width: 34px; height: 34px;
+  color: currentColor;
+}
+.marca-sigla svg { display: block; width: 100%; height: 100%; }
+/* ESPAÇO RESERVADO AO BRASÃO OFICIAL DA UFVJM. Ele entra à ESQUERDA da marca do
+   sistema, separado por um fio: é a ordem hierárquica correta — a instituição
+   primeiro, o sistema depois, como em papel timbrado. A regra existe pronta e
+   dimensionada; o elemento está comentado em `base.html` porque pôr um arquivo
+   de imagem aqui exigiria a versão oficial, vinda de quem pode autorizá-la.
+   Quando vier: `<img class="marca-brasao" src="/estaticos/img/brasao-ufvjm.svg"
+   alt="" aria-hidden="true">` como primeiro filho de `.marca`. Precisa ser SVG
+   ou PNG de 2x — a 30px um bitmap de 30px sai serrilhado no papel. */
+.marca-brasao {
+  flex: none; width: 30px; height: 30px; object-fit: contain;
+  padding-right: 10px; border-right: 1px solid var(--lateral-linha);
+}
+.marca-texto { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.marca-texto strong { font-size: 15px; font-weight: 700; }
+.marca-texto span { font-size: 11px; color: var(--lateral-texto-fraco); }
+
+/* Rotulo de secao: mono em caixa alta e bem espacado, para separar sem pesar.
+   Estava em rgba(255,255,255,.34) = 3,06:1 — texto de 11px abaixo do piso de
+   4,5. Agora 6,52. */
+.rotulo-secao {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--lateral-texto-fraco);
+}
+
+/* ---------- seletor de modulo ----------
+   E <details>/<summary>: abre sem JavaScript. O desenho mostra um botao com
+   `▾`, entao o summary e pintado de botao - a aparencia veio do mockup, o
+   mecanismo continua sendo o do HTML. */
+.seletor-modulo { position: relative; }
+.seletor-modulo > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 28px 8px 10px;
+  border: 1px solid var(--lateral-linha);
+  border-radius: var(--raio);
+  background: var(--lateral-realce);
+  color: #fff;
+}
+.seletor-modulo > summary::-webkit-details-marker { display: none; }
+.seletor-modulo > summary:hover { background: var(--lateral-linha); }
+.seletor-modulo > summary::after {
+  content: "▾";
+  position: absolute; right: 11px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: var(--lateral-texto-fraco);
+}
+.seletor-modulo[open] > summary::after { content: "▴"; }
+.seletor-modulo .nome { font-size: 14px; font-weight: 600; }
+
+.lista-modulos {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0;
+  min-width: 224px;
+  display: flex; flex-direction: column; padding: 6px;
+  background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio); box-shadow: var(--sombra-alta);
+}
+.lista-modulos a, .lista-modulos span {
+  padding: 7px 9px; border-radius: var(--raio-item); font-size: 14px; color: var(--tinta);
+}
+.lista-modulos a:hover { background: var(--acento-claro); text-decoration: none; }
+.lista-modulos .atual { font-weight: 700; color: var(--acento); }
+.lista-modulos .em-breve { color: var(--tinta-dica); cursor: default; }
+.lista-modulos .em-breve::after {
+  content: " em breve"; font-size: 11px; color: var(--tinta-dica); opacity: .85;
+}
+.lista-modulos .mapa {
+  margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--divisor);
+  font-size: 13px; color: var(--tinta-fraca);
+}
+
+/* ---------- itens do modulo e base compartilhada ----------
+   A base fica numa secao propria, separada de proposito: nao e deste modulo,
+   e de todos. Por isso vem recuada e sem o ponto de estado. */
+.lateral .menu { display: flex; flex-direction: column; gap: 1px; }
+.lateral .menu .rotulo-secao { padding: 0 10px 6px; }
+.lateral .menu a {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: var(--raio-item);
+  font-size: 14px; color: var(--lateral-texto);
+}
+/* O PONTO DO ITEM INATIVO SAIU, e o espaço dele fica. Ele estava em
+   rgba(255,255,255,.28) = 2,50:1: um elemento permanentemente na tela abaixo do
+   piso de 3:1, e que não dizia nada — o rótulo ao lado já é o nome do item.
+   Vazio, o pseudoelemento continua alinhando o texto de todos os itens com o do
+   item ativo, e o ponto volta a significar alguma coisa: só o item ativo e o
+   item sob o cursor o têm. */
+.lateral .menu a::before {
+  content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: transparent;
+}
+.lateral .menu a:hover { background: var(--lateral-realce); color: #fff; text-decoration: none; }
+.lateral .menu a:hover::before { background: var(--lateral-texto-fraco); }
+/* A CHAPA. O item ativo era um bloco de --acento sobre a lateral: 1,92:1 — a
+   forma que diz "você está aqui" praticamente não tinha forma, e o que
+   sustentava o estado eram o peso 600 e um ponto de 6px. Invertido, ele é a
+   folha clara na mesa escura: 9,08:1 da chapa contra a lateral e 9,07 do texto
+   contra a chapa. */
+.lateral .menu a.ativo {
+  background: var(--lateral-acento); color: var(--tinta); font-weight: 600;
+}
+.lateral .menu a.ativo::before { background: var(--acento); }
+.lateral .menu-base {
+  padding-top: 12px;
+  border-top: 1px solid var(--lateral-linha);
+}
+.lateral .menu-base a {
+  padding: 7px 10px 7px 25px; font-size: 13px; color: var(--lateral-texto-fraco);
+}
+.lateral .menu-base a::before { display: none; }
+/* `--tinta` e nao mais `#fff`: o item ativo virou chapa CLARA, e o branco que
+   antes se lia sobre o bloco de --acento passaria a ser branco sobre azul
+   pastel — 1,86:1. Empata em especificidade (0,3,1) com a regra do menu de
+   cima e so vence por vir depois na folha, entao ele precisa dizer a mesma
+   coisa que ela. */
+.lateral .menu-base a.ativo { color: var(--tinta); }
+
+/* O rodape institucional mora no fim da lateral: e informacao de identidade do
+   sistema, nao da tela, e ali ele acompanha a marca em vez de empurrar o
+   conteudo. Numa faixa embaixo da area util ele ficaria abaixo da dobra em
+   toda lista longa - que e onde ele estava e onde ninguem lia. */
+/* As outras duas reprovações da lateral: o rodapé estava em .42 = 3,96:1 e a
+   versão em .34 = 3,06 — texto de 11 e 12px, piso de 4,5. E o rodapé é o que
+   identifica a folha impressa (ver o bloco @media print): órgão, sistema e
+   versão de um papel que circula fora do sistema não podem depender de quem
+   enxerga bem. Os dois vão para 6,52. */
+.rodape-lateral {
+  margin-top: auto; padding: 12px 10px 0;
+  border-top: 1px solid var(--lateral-linha);
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 12px; line-height: 1.45; color: var(--lateral-texto-fraco);
+}
+.rodape-lateral .versao { font-family: var(--mono); font-size: 11px; color: var(--lateral-texto-fraco); }
+
+/* ================= area util ================= */
+.area { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.cabecalho {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 14px;
+  min-height: var(--altura-cabecalho); padding: 0 26px;
+  background: var(--cartao); border-bottom: 1px solid var(--borda);
+}
+
+/* ---------- trilha de navegacao ----------
+   O separador e do CSS, entre irmaos: assim a pagina que nao declara o terceiro
+   nivel para no nome do item, sem sobrar uma barra solta no fim. */
+.trilha {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 7px;
+  min-width: 0; font-size: 13px;
+}
+.trilha a { color: var(--tinta-fraca); }
+.trilha a:hover { color: var(--acento); text-decoration: none; }
+.trilha > * + *::before {
+  content: "/"; margin-right: 7px; color: var(--ponto); font-weight: 400;
+}
+.trilha .atual { color: var(--tinta); font-weight: 600; }
+.trilha .mono { font-size: 13px; }
+
+/* `flex: 1 1 auto` e nao `margin-left:auto`: como item que cresce, o bloco
+   recebe a sobra da linha e nao e medido pelo conteudo - com a medida de
+   conteudo faltavam poucos pixels e o usuario caia para uma segunda linha. */
+.acoes-cabecalho {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; justify-content: flex-end;
+  flex-wrap: wrap; gap: 10px;
+}
+/* No cabecalho o botao e menor: ali ele divide 62px de altura com a busca, o
+   sino e o avatar. */
+.acoes-cabecalho .botao, .acoes-cabecalho button {
+  padding: 8px 14px; border-radius: var(--raio); font-size: 13px; white-space: nowrap;
+}
+
+/* `flex: 1 1 180px` e nao `0 1 300px`: o bloco de acoes quebra linha, e num
+   container que quebra o navegador nao encolhe item nenhum antes de quebrar -
+   com base 300px a busca cabia, o usuario nao, e era o USUARIO que caia para a
+   segunda linha. Com base 180 e teto de 300 a busca volta a ser o que encolhe
+   primeiro, que e o que esta escrito logo acima, e o cabecalho fica nos 62px
+   ate em ficha de trilha longa. */
+.busca { flex: 1 1 180px; max-width: 300px; min-width: 0; margin: 0; }
+/* `input[type=search]` de novo de proposito: sem repetir o seletor de atributo
+   a regra generica de campo, que vem depois na folha, venceria por empate de
+   especificidade e o campo do cabecalho ficaria com 44px de altura. */
+.busca input[type=search] {
+  width: 100%; padding: 8px 11px; font-size: 13px;
+  border: 1px solid var(--borda-campo); border-radius: var(--raio);
+  background: var(--superficie-fraca); color: var(--tinta);
+}
+.busca input::placeholder { color: var(--tinta-dica); }
+
+.sino {
+  position: relative; flex: none;
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border-radius: var(--raio); font-size: 15px; color: var(--tinta-fraca);
+}
+.sino:hover { background: var(--divisor); text-decoration: none; }
+.sino .contador {
+  position: absolute; top: -3px; right: -4px;
+  min-width: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--tinta-fraca); color: #fff;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  line-height: 16px; text-align: center;
+}
+.sino-atrasado .contador { background: var(--erro); }
+
+.usuario {
+  display: flex; align-items: center; gap: 9px;
+  padding-left: 10px; border-left: 1px solid var(--divisor);
+}
+.avatar {
+  display: grid; place-items: center; flex: none;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--acento-claro); color: var(--acento);
+  font-size: 12px; font-weight: 700;
+}
+.usuario .nome {
+  font-size: 13px; font-weight: 600; max-width: 170px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sair { font-size: 12px; color: var(--tinta-dica); }
+/* A engrenagem de /config fica no bloco do usuario, ao lado de "sair": e ajuste
+   de sistema, nao tela de trabalho — pendurar na lateral a poria no meio do
+   fluxo diario de quem nunca mexe no SLA. Discreta como o "sair", e nao
+   escondida: ate a 1.26 nao havia entrada nenhuma. */
+.engrenagem { font-size: 14px; line-height: 1; color: var(--tinta-dica); }
+.engrenagem:hover { color: var(--acento); }
+
+/* ---------- a volta a origem ----------
+   O link "voltar as pendencias" fica no cabecalho, entre a trilha e as acoes:
+   e navegacao, nao acao da tela, e por isso tem o desenho de link e nao de
+   botao. So existe quando a pessoa chegou pela fila. */
+.cabecalho .volta-origem {
+  font-size: 13px; color: var(--tinta-media); white-space: nowrap;
+  text-decoration: none; padding: 4px 8px; border-radius: var(--raio);
+}
+.cabecalho .volta-origem:hover { color: var(--acento); background: var(--superficie-fraca); }
+
+/* ---------- faixas ---------- */
+.faixa-alerta {
+  background: var(--alerta-fundo); color: var(--alerta-texto-longo);
+  padding: 8px 26px; border-bottom: 1px solid var(--alerta-borda); font-size: 13px;
+}
+.faixa-alerta a { color: inherit; text-decoration: underline; }
+
+/* ---------- estrutura ---------- */
+.conteudo { flex: 1; padding: 24px 26px 34px; width: 100%; }
+/* Rodape fora da casca (login, primeiro acesso, erro sem sessao): ali nao ha
+   lateral onde pendura-lo. */
+.rodape {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 26px; font-size: 13px; color: var(--tinta-fraca);
+  border-top: 1px solid var(--borda); background: var(--cartao);
+}
+.rodape .versao { font-family: var(--mono); font-size: 12px; }
+
+h1 { font-size: 26px; font-weight: 700; letter-spacing: -.015em; line-height: 1.15; margin: 0 0 4px; }
+h1.mono { font-family: var(--mono); font-size: 26px; line-height: 1.15; letter-spacing: 0; }
+h2 { font-size: 18px; font-weight: 700; line-height: 1.35; margin: 22px 0 10px; }
+/* h3 sobe de 14 para 15: ele estava MENOR que o texto que encabeça, o que é uma
+   inversão e não uma sutileza — quem varre a tela lia o parágrafo antes do
+   título da seção. Em 15px peso 700 contra 15px peso 400 a hierarquia se lê pelo
+   peso e pela margem, que é como ela se lê em documento impresso. */
+h3 { font-size: 15px; font-weight: 700; line-height: 1.4; margin: 16px 0 8px; }
+.sub { color: var(--tinta-fraca); font-size: 14px; margin: 0 0 18px; }
+
+.cartao {
+  background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao); padding: 18px 20px; box-shadow: var(--sombra);
+}
+.cartao.compacto { padding: 16px 18px; }
+/* Cartao que E um link, e nao um cartao com links dentro: o indice dos
+   catalogos. O alvo de clique e o cartao inteiro - com o link so no titulo, os
+   dois tercos de area restantes nao fazem nada, que e o que faz a pessoa clicar
+   duas vezes ate acertar. */
+.cartao.link {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 16px 18px; color: var(--tinta);
+}
+.cartao.link:hover {
+  border-color: var(--acento); text-decoration: none;
+  box-shadow: var(--sombra-hover);
+}
+.cartao.link > .titulo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 15px; font-weight: 700; color: var(--acento);
+}
+.cartao.link > .titulo > .contador { margin-left: auto; }
+.cartao.link > .discreto { line-height: 1.4; }
+/* Primeiro titulo do cartao nao empurra o topo: a margem de h2/h3 existe para
+   separar secoes dentro de um texto, nao para afastar o titulo da borda. */
+.cartao > h2:first-child, .cartao > h3:first-child { margin-top: 0; }
+/* Cartao com barra de acento a esquerda: o proximo passo que a tela pede. */
+.cartao.destaque { border-left: 4px solid var(--acento); }
+.sem-margem { margin: 0; }
+/* Cabecalho de cartao: usa-se dentro de .cartao.liso, que nao tem padding
+   proprio, para a borda inferior (do cabecalho e de cada linha) ir de ponta a
+   ponta. Dentro do cartao liso o recuo e do bloco, nao do cartao: quem precisa
+   dele pede `.corpo`. */
+/* `overflow: auto`, e nao `hidden`: o recorte dos cantos arredondados continua
+   (a tabela de dentro tem cabecalho com fundo proprio), e a tabela larga demais
+   passa a rolar aqui em vez de ser cortada sem saida. */
+.cartao.liso { padding: 0; overflow: auto; }
+.cartao.liso > .corpo { padding: 14px 18px; }
+/* Bloco de corpo que vem depois de uma lista (ou de outro corpo) ganha o fio:
+   sem ele o formulario de "vincular posto" cola no ultimo item da lista e passa
+   a parecer mais uma linha dela. Depois de tabela vale o mesmo, e ali o fio e
+   ainda mais necessario: a ultima linha da tabela perde a borda de proposito. */
+.cartao.liso > .lista-linhas + .corpo,
+.cartao.liso > table + .corpo,
+.cartao.liso > dl.tabela-dados + .corpo,
+.cartao.liso > .corpo + .corpo { border-top: 1px solid var(--divisor); }
+/* Aviso que e o unico conteudo de um bloco de corpo dispensa a propria margem:
+   ali quem separa e o padding do bloco, e as duas coisas somadas abrem um vao
+   maior que o do cartao inteiro. */
+.corpo > .aviso:only-child, .corpo > .aviso-legal:only-child { margin: 0; }
+/* Dentro do bloco de corpo quem separa e o padding do bloco: o titulo nao
+   precisa da margem que o afastaria de um texto anterior, e o subtitulo que
+   fecha o bloco nao precisa da que o afastaria do que viria depois. */
+.corpo > h2:first-child, .corpo > h3:first-child { margin-top: 0; }
+.corpo > .sub:last-child { margin-bottom: 0; }
+.cabecalho-cartao {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 15px 18px; border-bottom: 1px solid var(--divisor);
+}
+/* Dentro de um cartao com padding proprio o titulo nao leva borda nem recuo:
+   ali quem separa e o proprio cartao. */
+.titulo-cartao {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 0 14px;
+}
+/* `h4` entrou junto quando o painel de EPI do editor de parecer ganhou um (i) ao
+   lado do titulo: ali o titulo e um `h4` (esta dentro de um `<td>` de uma tabela
+   que ja tem `h2` e `h3` acima), e sem esta linha ele levava a margem padrao do
+   navegador para dentro de uma linha `flex` alinhada pela base — o "i" descia
+   meio texto em relacao ao titulo que ele explica. */
+.cabecalho-cartao h2, .cabecalho-cartao h3, .cabecalho-cartao h4,
+.titulo-cartao h2, .titulo-cartao h3, .titulo-cartao h4 { margin: 0; }
+/* Link discreto no canto direito do titulo ("Ver todos", "Auditoria"). */
+.cabecalho-cartao .a-direita, .titulo-cartao .a-direita {
+  margin-left: auto; font-size: 13px; font-weight: 600;
+}
+.cabecalho-cartao .nota, .titulo-cartao .nota {
+  font-size: 13px; color: var(--tinta-dica); font-weight: 400;
+}
+
+.grade { display: grid; gap: 16px; }
+.grade-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.grade-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.grade-kpi { grid-template-columns: repeat(auto-fit, minmax(186px, 1fr)); gap: 12px; }
+.lado-a-lado { display: grid; grid-template-columns: minmax(360px, 1fr) 1.2fr; gap: 18px; align-items: start; }
+/* Mesmo motivo do `.tela > *`: sem o piso em zero, uma tabela larga numa das
+   colunas estica a trilha da grade e leva a pagina junto. */
+.lado-a-lado > * { min-width: 0; }
+/* Qual coluna manda depende da tela, e a diferenca nao e estetica: a fila de
+   trabalho do painel e uma linha larga que so cabe na coluna maior. */
+.lado-a-lado.principal { grid-template-columns: minmax(420px, 1.5fr) minmax(300px, 1fr); }
+.lado-a-lado.igual { grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr); }
+/* No editor do parecer a coluna da esquerda e o formulario inteiro e precisa de
+   largura; a da direita carrega validacao e previa, que comprimem melhor. */
+.lado-a-lado.editor { grid-template-columns: minmax(400px, 1fr) minmax(370px, .85fr); }
+/* Pilha vertical de cartoes dentro de uma coluna do lado-a-lado. */
+.pilha { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* ---------- a tela ----------
+   Os blocos da area util empilham com 16px de respiro. O `gap` substitui a
+   margem de cada peca: assim nenhuma tela precisa de `style="margin-top"` para
+   afastar um cartao do anterior, que era como o espacamento vinha antes. */
+.tela { display: flex; flex-direction: column; gap: 16px; }
+/* `min-width: 0` nao e zelo: em coluna flex o piso de largura de cada bloco e o
+   min-content dele, entao uma tabela larga - o dicionario de tags, a grade de
+   presenca de uma turma de cinco dias - empurrava o bloco para alem da janela e
+   a PAGINA inteira ganhava rolagem horizontal. Com o piso em zero, quem rola e
+   o cartao da tabela, dentro de si, e a leitura de tudo o mais fica de pe. */
+.tela > * { margin-top: 0; margin-bottom: 0; min-width: 0; }
+/* O aviso traz margem propria (ele nasceu para viver dentro de cartao); como
+   bloco da tela ela se soma ao `gap` e abre 30px onde os outros blocos abrem
+   16. Repetido com a classe para vencer `.aviso` por especificidade, e nao por
+   ordem na folha. */
+.tela > .aviso, .tela > .aviso-legal { margin-bottom: 0; }
+/* Tela que E um formulario (novo processo): passar de 860px faz o campo virar
+   uma linha longa demais e o rotulo perder de vista o proprio campo. A largura
+   e da tela inteira, e nao so do cartao, para o titulo nao ficar orfao a
+   esquerda de um cartao estreito. */
+.tela.formulario { max-width: 860px; }
+/* O mesmo teto, quando o formulario e UM cartao no meio de uma tela que nao e
+   formulario nenhum: o "novo laudo" no fim da lista de laudos, o "anular" no fim
+   da ficha do certificado, o "excluir rascunho" no fim da ficha do pedido. Ali a
+   largura nao pode ser da tela — a lista acima precisa dos 1062px inteiros.
+   Cinco telas reescreviam `style="max-width:860px"` a mao e uma sexta escrevia
+   980, sem nada explicando a diferenca: em /turmas o cartao de cadastro ficava
+   120px mais largo que o de /certificados/modelos ao lado, na mesma sessao de
+   trabalho. A largura de 980 nao comprava nada — a linha mais larga daquele
+   formulario tem quatro campos, e `minmax(180px, 1fr)` quatro vezes cabe em 860
+   com folga (4 x 180 + 3 x 12 = 756 contra 820 uteis). Era engano, e agora nao ha
+   onde o proximo se repetir. */
+.cartao.formulario { max-width: 860px; }
+
+/* ---------- cabecalho da pagina ----------
+   Titulo e subtitulo a esquerda, o que a tela oferece a direita. O botao
+   primario da tela mora no cabecalho de 62px (bloco `acoes_cabecalho`); aqui
+   fica o que so faz sentido junto do titulo, como o alternador de visao. Sem
+   margem propria: quem separa os blocos da area util e o `gap` de `.tela`. */
+.cabecalho-pagina {
+  display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;
+}
+.cabecalho-pagina > .titulo { min-width: 0; }
+.cabecalho-pagina h1 { margin: 0 0 3px; }
+.cabecalho-pagina .sub { margin: 0; }
+.cabecalho-pagina .ao-lado {
+  margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+/* Linha de identificacao sob o h1 da ficha: NUP, tipo, pilula de estado, selo
+   de dias. Nao e `.sub` porque carrega componentes, e nao texto corrido. */
+.identificacao {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin: 6px 0 0; font-size: 14px; color: var(--tinta-fraca);
+}
+.identificacao .ponto { color: var(--ponto); }
+
+/* ---------- alternador de visao ----------
+   Quadro/Tabela: e a mesma lista em duas formas, entao vive num controle so. */
+.alternador {
+  display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--raio); background: var(--divisor);
+}
+.alternador > * {
+  padding: 6px 13px; border-radius: var(--raio); font-size: 13px; color: var(--tinta-fraca);
+}
+.alternador > a:hover { color: var(--tinta); text-decoration: none; }
+.alternador > .ativo {
+  background: var(--cartao); color: var(--tinta); font-weight: 600;
+  box-shadow: var(--sombra);
+}
+
+/* ================= vocabulario de componentes =================
+   Em classe, nao em estilo embutido: as telas do redesign vao consumir isto. */
+
+/* ---------- pilula de estado ----------
+   O ponto e o que faz o estado ser legivel sem depender so de cor. */
+.pilula {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; line-height: 1.25;
+  background: var(--neutra-fundo); border: 1px solid var(--neutra-borda);
+  color: var(--tinta-fraca);
+}
+.pilula::before {
+  content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+.pilula.sem-ponto::before { display: none; }
+.pilula.ok { background: var(--ok-fundo); border-color: var(--ok-borda); color: var(--ok); }
+.pilula.info { background: var(--info-fundo); border-color: var(--info-borda); color: var(--acento); }
+.pilula.alerta { background: var(--alerta-fundo); border-color: var(--alerta-borda); color: var(--alerta-texto); }
+.pilula.erro { background: var(--erro-fundo); border-color: var(--erro-borda); color: var(--erro); }
+
+/* ---------- ponto de estado solto ----------
+   Onde nao cabe a pilula inteira - o cartao do kanban, em que a coluna ja diz o
+   grupo. O rotulo continua no `title` e num texto so para leitor de tela: cor
+   sozinha nunca e a informacao. */
+/* `position: relative` nao e enfeite: o rotulo de leitor de tela aqui dentro e
+   absoluto, e sem um bloco de contencao proprio ele escapa do recorte do quadro
+   do kanban e estica a rolagem horizontal da pagina inteira. */
+.ponto-estado {
+  position: relative;
+  display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--tinta-dica);
+}
+.ponto-estado.ok { background: var(--ok); }
+.ponto-estado.info { background: var(--acento); }
+.ponto-estado.alerta { background: var(--alerta); }
+.ponto-estado.erro { background: var(--erro); }
+/* Fora da tela, mas dentro da arvore de acessibilidade. */
+.oculto {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- o salto para o conteudo ----------
+   Sao ~17 tabulacoes ate o <h1> de qualquer tela com casca — marca, seletor de
+   modulo, ate 13 itens de menu, base compartilhada, trilha, acoes, busca, sino,
+   engrenagem, sair —, e sao as MESMAS 17 em cada pagina. Quem navega por teclado
+   paga a lateral inteira a cada troca de tela.
+
+   Herda `.oculto` (mesmas cinco declaracoes) e desfaz cada uma no `:focus`: e
+   isso que faz o link nao existir na tela e existir no primeiro Tab. `:focus` e
+   nao `:focus-visible` — o link so pode ser alcancado por teclado, entao os dois
+   casariam, e `:focus` e o que funciona tambem em navegador antigo. O anel vem
+   do `:focus-visible` global, que ja esta la em cima. */
+.salto {
+  position: absolute; left: 0; top: 0; z-index: 60;
+  width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.salto:focus {
+  width: auto; height: auto; margin: 8px; padding: 10px 16px;
+  overflow: visible; clip: auto;
+  background: var(--cartao); border: 1px solid var(--acento);
+  border-radius: var(--raio); box-shadow: var(--sombra-alta);
+  color: var(--acento); font-size: 13px; font-weight: 600;
+}
+/* O destino do salto e um marco, nao um controle. `tabindex="-1"` no <main> e o
+   que faz o foco DE FATO ir para la (sem ele o clique rola a pagina e o Tab
+   seguinte volta para o segundo item da lateral), mas o anel global desenharia
+   um retangulo de acento em volta da area util inteira — que se le como defeito,
+   e nao como "o foco esta aqui". Quem confirma a chegada e a rolagem. */
+.conteudo:focus { outline: none; }
+
+/* ---------- etiqueta ----------
+   Antecessora da pilula, ainda em uso nas telas que nao foram refeitas. Mesma
+   paleta, sem o ponto - some quando a ultima tela migrar. */
+.etiqueta {
+  display: inline-block; padding: 3px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  background: var(--neutra-fundo); color: var(--tinta-fraca);
+  border: 1px solid var(--neutra-borda);
+}
+.etiqueta.ok { background: var(--ok-fundo); color: var(--ok); border-color: var(--ok-borda); }
+.etiqueta.alerta { background: var(--alerta-fundo); color: var(--alerta-texto); border-color: var(--alerta-borda); }
+.etiqueta.erro { background: var(--erro-fundo); color: var(--erro); border-color: var(--erro-borda); }
+
+/* ---------- contador ----------
+   Vai ao lado do titulo: "Postos cobertos (3)". Mono porque e numero que se
+   confere. */
+.contador {
+  display: inline-block; padding: 5px 8px; border-radius: 999px;
+  background: var(--divisor); color: var(--tinta-fraca);
+  font-family: var(--mono); font-weight: 500; font-size: 12px; line-height: 1;
+}
+.contador.ok { background: var(--ok-fundo); border: 1px solid var(--ok-borda); color: var(--ok); }
+.contador.alerta { background: var(--alerta-fundo); border: 1px solid var(--alerta-borda); color: var(--alerta-texto); }
+.contador.erro { background: var(--erro-fundo); border: 1px solid var(--erro-borda); color: var(--erro); }
+
+/* ---------- selo ----------
+   Medida curta que se confere: "12d", "31d · SLA 20d", "1 de 4". E irmao da
+   pilula - mesma paleta, cantos retos - mas nao e estado: nao leva ponto, e o
+   conteudo e sempre numero. */
+.selo {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 8px; border-radius: var(--raio);
+  font-family: var(--mono); font-weight: 500; font-size: 13px; line-height: 1;
+  background: var(--neutra-fundo); border: 1px solid var(--neutra-borda); color: var(--tinta-fraca);
+  white-space: nowrap;
+}
+.selo.ok { background: var(--ok-fundo); border-color: var(--ok-borda); color: var(--ok); }
+.selo.info { background: var(--info-fundo); border-color: var(--info-borda); color: var(--acento); }
+.selo.alerta { background: var(--alerta-fundo); border-color: var(--alerta-borda); color: var(--alerta-texto); }
+.selo.erro { background: var(--erro-fundo); border-color: var(--erro-borda); color: var(--erro); }
+
+/* ---------- fileira de fichas (visoes salvas, atalhos de filtro) ----------
+   ONDE ESTA ESCRITO QUAL DOS DOIS FILTROS VALE. O sistema tem duas formas de
+   recortar uma lista e nao tinha nenhuma regra dizendo qual usar, entao cada
+   tela nova escolhia de novo — e quem opera reaprendia a filtrar ao mudar de
+   modulo. A regra e esta, e ela nao e estetica:
+
+   1. UMA DIMENSAO, POUCOS VALORES -> fichas nesta fileira, cada uma um <a> com
+      a propria URL e a propria contagem. E o idioma PADRAO: a URL reproduz o
+      recorte (colavel, favoritavel, o botao Voltar funciona), o `aria-current`
+      diz qual esta em uso, a ficha solida diz OLHANDO que a lista abaixo nao e
+      a lista inteira, e a contagem mora dentro do proprio filtro — numero que
+      nao se pode abrir e numero que ninguem confere contra a lista.
+   2. VARIAS DIMENSOES AO MESMO TEMPO -> `<form class="cartao filtros">` com
+      seus <select>. Quatro telas precisam disso de verdade (/processos com seis
+      controles, /kanban com cinco, /servidores, /auditoria): cinco eixos nao
+      viram fileira de pilulas sem virar uma parede de pilulas.
+   3. UMA DIMENSAO EM FICHAS **MAIS** um recorte livre (busca, um seletor
+      longo) -> `form.filtro-inline`, aqui dentro, encostado a direita. E o que
+      /certificados e /turmas ja faziam, e e a saida para a tela que so tinha
+      fichas e precisava de mais um eixo.
+
+   O que NAO e filtro: `.busca` (o campo do cabecalho de 62px) e a busca GLOBAL
+   do sistema, que atravessa modulos. Tres telas de EPI a tinham copiado para
+   dentro de `.cabecalho-pagina > .ao-lado` para buscar na propria lista — mesma
+   aparencia, outro significado, e no dia em que a busca global mudar de forma
+   elas mudariam junto sem motivo. Filtro de lista e `filtro-inline`. */
+.fileira { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.fileira > .rotulo-grupo {
+  font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tinta-dica); margin-right: 3px;
+}
+.ficha-filtro {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 1px solid var(--borda-campo); border-radius: 999px;
+  background: var(--cartao); color: var(--tinta-media); font-size: 13px;
+}
+.ficha-filtro:hover { border-color: var(--borda-hover); color: var(--tinta); text-decoration: none; }
+.ficha-filtro.ativa {
+  background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600;
+}
+.ficha-filtro.limpar { border-style: dashed; color: var(--tinta-dica); }
+.ficha-filtro.limpar:hover { border-color: var(--acento); color: var(--acento); }
+/* Filtro de um seletor so, dentro da propria fileira - o "Treinamento: todos ▾"
+   do desenho. Continua sendo <form> GET com botao: o `onchange` e conveniencia,
+   e sem JavaScript o botao resolve. Encosta a direita porque a esquerda da
+   fileira ja carrega o filtro principal. */
+.fileira > form.filtro-inline {
+  margin: 0 0 0 auto; display: flex; align-items: center; gap: 7px; min-width: 0;
+}
+.fileira > form.filtro-inline select {
+  width: auto; max-width: 280px; padding: 6px 11px; font-size: 13px; border-radius: 999px;
+}
+.fileira > form.filtro-inline input[type=search], .fileira > form.filtro-inline input[type=text] {
+  width: auto; max-width: 260px; padding: 6px 12px; font-size: 13px; border-radius: 999px;
+}
+.fileira > form.filtro-inline button {
+  padding: 6px 13px; border-radius: 999px; font-size: 13px;
+}
+/* Fileira que desenha a maquina de estados: as fichas continuam sendo filtros,
+   e a seta entre elas diz de graca por onde o registro anda. Decorativa no
+   sentido estrito - vai com aria-hidden -, mas nao substitui informacao
+   nenhuma: cada ficha ja diz o proprio nome. */
+.seta, .fileira .separador { color: var(--ponto); font-size: 13px; }
+.fileira .separador { margin: 0 2px; }
+/* Fileira que so exibe o caminho, sem filtrar: a situacao da turma. Cada passo
+   e um texto, e o atual e a pilula - a mesma que a lista mostra, para os dois
+   lugares dizerem a mesma coisa com o mesmo desenho. */
+.fileira.trilho-estado {
+  padding: 11px 13px; border: 1px solid var(--borda); border-radius: var(--raio-aviso);
+  background: var(--superficie-fraca); font-size: 13px; color: var(--tinta-dica);
+}
+.fileira.trilho-estado .passo.passado { color: var(--tinta-fraca); }
+/* O passo futuro era #adb8c1 sobre este #f9fbfc: 1,94:1 — nao e um cinza fraco,
+   e texto que praticamente nao se le, e o trilho existe justamente para dizer
+   por onde a turma AINDA vai passar. Herda o --tinta-dica do proprio trilho
+   (4,83:1), e a leitura de tres tempos continua: passado mais escuro
+   (--tinta-fraca, 5,30), atual e a pilula, futuro no tom fraco do bloco. */
+.fileira.trilho-estado .passo.futuro { color: var(--tinta-dica); }
+
+/* ---------- barra de filtros ----------
+   O mockup desenha os filtros como pilulas que abrem menu; aqui continuam
+   sendo <select> dentro de um <form> GET, porque e isso que funciona sem
+   JavaScript e e isso que a URL sabe reproduzir. O que se aproveita do desenho
+   e a densidade: barra baixa, rotulo pequeno, nao formulario de cadastro. */
+.filtros { padding: 13px 15px; }
+.filtros .linha-campos { gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.filtros label { font-size: 12px; margin-bottom: 3px; }
+/* Os seletores de atributo repetidos sao a mesma armadilha do `.busca`: sem
+   eles `.filtros input` empata em especificidade com a regra generica de campo,
+   que vem depois na folha e vence - e a busca da barra ficava com 44px de
+   altura ao lado de selects de 35px. */
+.filtros input, .filtros select,
+.filtros input[type=search], .filtros input[type=date], .filtros input[type=text] {
+  padding: 8px 10px; font-size: 13px; border-radius: var(--raio);
+}
+.filtros .acoes { margin-top: 11px; gap: 8px; }
+.filtros .acoes .botao, .filtros .acoes button { padding: 8px 14px; border-radius: var(--raio); font-size: 13px; }
+
+/* O CARTAO DE FILTROS FECHADO.
+   Medido a 1366x641: com o cartao de /processos aberto a primeira linha de
+   dados comeca em y=420 e cabem 4 das 50 linhas da pagina; fechado, ela sobe
+   para y=273 e cabem 8. O bloco mais alto da tela mais usada custava metade da
+   lista, e o formulario de seis controles e o caso RARO — o do dia a dia sao as
+   visoes salvas, que estao na fileira acima e continuam a um clique.
+
+   `<details>` e nao um alternador em JavaScript, pelo mesmo motivo do
+   `.seletor-modulo` e do `.acoes-linha`: abre sem script.
+
+   O `<summary>` NAO e so um rotulo, e e ai que esta a diferenca entre encolher
+   e esconder: quando ha filtro aplicado ele o escreve por extenso, ao lado de
+   uma pilula com a contagem. Lista recortada cujo recorte nao aparece se le
+   como lista inteira, e quem a le conclui que o sistema perdeu registros. O
+   template ainda abre o cartao sozinho nesse caso; esta linha e a segunda
+   trava, a que sobrevive a alguem fechar a gaveta com a mao. */
+details.filtros { padding: 0; }
+details.filtros > summary {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 11px 15px; list-style: none; cursor: pointer;
+  border-radius: var(--raio-cartao);
+  font-size: 13px; color: var(--tinta-fraca);
+}
+details.filtros[open] > summary {
+  border-bottom: 1px solid var(--divisor);
+  border-radius: var(--raio-cartao) var(--raio-cartao) 0 0;
+}
+details.filtros > summary::-webkit-details-marker { display: none; }
+details.filtros > summary:hover { background: var(--linha-hover); }
+details.filtros > summary .rotulo {
+  font-weight: 600; color: var(--tinta-media);
+}
+/* A seta e o unico glifo do bloco e vai por ultimo, empurrada para a direita:
+   ela diz "ha mais aqui dentro", e o que se le primeiro e o que esta aplicado. */
+details.filtros > summary::after {
+  content: "▾"; margin-left: auto; font-size: 11px; color: var(--tinta-dica);
+}
+details.filtros[open] > summary::after { content: "▴"; }
+/* O que esta aplicado, por extenso. `--tinta-fraca` sobre `--cartao`: 9,20:1,
+   par ja medido na paleta — nao e nota de rodape, e a explicacao de por que a
+   lista abaixo e mais curta do que a pessoa esperava. */
+details.filtros > summary .resumo { color: var(--tinta-fraca); }
+details.filtros > form { padding: 13px 15px; }
+details.filtros > form > .acoes { margin-top: 11px; }
+
+/* ---------- medidor (distribuicao em barras) ---------- */
+.medidor { display: flex; flex-direction: column; gap: 12px; }
+.medidor .faixa { display: flex; flex-direction: column; gap: 6px; }
+.medidor .faixa > .rotulo {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px;
+}
+.medidor .quanto { font-family: var(--mono); font-size: 13px; color: var(--tinta-fraca); }
+.medidor .trilho { height: 7px; border-radius: 999px; background: var(--divisor); }
+/* O valor entra por variavel para que a folha continue dona do desenho e o
+   template so informe o numero. */
+.medidor .trilho > span {
+  display: block; height: 100%; border-radius: 999px; background: var(--acento);
+  width: calc(var(--v, 0) * 1%);
+}
+
+/* ---------- progresso (checklist) ---------- */
+.progresso { display: flex; align-items: center; gap: 8px; }
+.progresso .trilho { flex: 1; height: 5px; border-radius: 999px; background: var(--divisor); }
+.progresso .trilho > span {
+  display: block; height: 100%; border-radius: 999px; background: var(--acento);
+  width: calc(var(--v, 0) * 1%);
+}
+.progresso .quanto {
+  font-family: var(--mono); font-weight: 500; font-size: 11px; color: var(--tinta-dica);
+}
+.progresso.completo .trilho > span { background: var(--ok); }
+.progresso.completo .quanto { color: var(--ok); }
+/* Numero em cima, barra embaixo: e a forma da celula de frequencia da grade de
+   presenca, onde a coluna e estreita e o que se le primeiro e o percentual. A
+   barra fica so como leitura periferica - ela deixa a linha que esta longe do
+   minimo saltar sem ninguem precisar comparar numero a numero. */
+.progresso.vertical { flex-direction: column; align-items: stretch; gap: 5px; min-width: 74px; }
+.progresso.vertical .trilho { flex: none; height: 4px; }
+.progresso.vertical .quanto { font-size: 13px; color: var(--ok); }
+/* Abaixo do minimo: a MESMA conta que decide o resultado no fecho (`avaliar`),
+   nunca uma segunda. Alerta, e nao erro, porque enquanto a turma corre ainda da
+   tempo de lancar o dia que falta. */
+.progresso.abaixo .trilho > span { background: var(--alerta); }
+.progresso.abaixo .quanto { color: var(--alerta-texto); }
+
+/* ---------- tira de medidas ----------
+   Os parametros sob os quais a tela abaixo foi apurada: carga da turma,
+   frequencia minima, nota minima, inscritos. Nao e KPI - nao mede desempenho,
+   descreve a regra que a grade seguiu -, e por isso e uma tira baixa e nao uma
+   fileira de cartoes: ela precisa caber acima da tabela sem empurra-la para
+   fora da dobra. Numero em mono pela regra do sistema de design. */
+.tira-medidas {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 13px 16px;
+}
+.tira-medidas > .medida { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tira-medidas .rotulo {
+  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tinta-dica);
+}
+.tira-medidas .valor { font-family: var(--mono); font-weight: 500; font-size: 15px; line-height: 1.3; }
+.tira-medidas .valor.ausente { font-family: inherit; font-size: 13px; color: var(--tinta-dica); }
+.tira-medidas > .traco { flex: none; width: 1px; height: 30px; background: var(--borda); }
+.tira-medidas > .nota {
+  margin: 0 0 0 auto; max-width: 430px; font-size: 13px; color: var(--tinta-dica);
+}
+
+/* ---------- etapas de um procedimento ----------
+   Os quatro tempos da carga legada: escolher, simular, revisar, aplicar. Nao e
+   barra de progresso - o sistema nao sabe em que tempo a pessoa esta -, e sim a
+   ordem que a tela cobra. Acesa fica a etapa que acontece NESTA pagina; as
+   outras acontecem no relatorio, depois do envio. O numero sai em mono pela
+   mesma regra do resto.
+   `ol.passos` e outra coisa e continua sendo: la sao os passos do SEI, texto
+   corrido numerado pelo proprio navegador. */
+.etapas {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 13px 16px;
+}
+.etapas > .etapa {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 14px; color: var(--tinta-dica);
+}
+.etapas > .etapa > .n {
+  display: grid; place-items: center; flex: none; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--divisor); color: var(--tinta-dica);
+  font-family: var(--mono); font-weight: 500; font-size: 12px; line-height: 1;
+}
+.etapas > .etapa.aqui { color: var(--acento); font-weight: 600; }
+.etapas > .etapa.aqui > .n { background: var(--acento); color: #fff; }
+/* O fio liga uma etapa a outra; sem largura minima ele some na primeira quebra
+   de linha e as etapas viram uma lista solta. */
+.etapas > .fio { flex: 1 1 24px; min-width: 18px; height: 1px; background: var(--borda); }
+
+/* ---------- grafico de meses ----------
+   Doze colunas de altura proporcional. Substitui a tabela de doze celulas: o
+   numero continua escrito em cima de cada barra, entao nada se perde ao trocar
+   a leitura celula a celula pela silhueta do ano. */
+.grafico-meses {
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; height: 158px;
+}
+/* Tres faixas: numero, barra, nome do mes. E grade, e nao flex, porque em flex
+   a barra de 100% nao cabia junto com os dois rotulos e o navegador a encolhia
+   - o grafico passava a mentir a proporcao. Na grade a faixa do meio tem altura
+   definida e a porcentagem resolve contra ela. */
+.grafico-meses .mes {
+  display: grid; grid-template-rows: auto 1fr auto; gap: 6px;
+  text-align: center; min-width: 0;
+}
+.grafico-meses .quanto {
+  font-family: var(--mono); font-weight: 500; font-size: 11px; color: var(--tinta-fraca);
+}
+/* A barra era --info-borda: 1,19:1 contra o cartao. A WCAG 1.4.11 pede 3:1 para
+   objeto grafico que carrega informacao, e aqui a barra CARREGA — o comentario
+   acima diz que o que se ganhou ao trocar a tabela de doze celulas pelo grafico
+   foi "a silhueta do ano", e uma silhueta a 1,19 nao existe. --borda-hover e a
+   rung neutra mais escura que nao e tinta de texto: 4,70:1, barra de verdade,
+   sem virar um segundo azul competindo com o mes corrente. */
+.grafico-meses .barra {
+  align-self: end; background: var(--borda-hover); border-radius: 2px 2px 0 0;
+  min-height: 5px; height: calc(var(--v, 0) * 1%);
+}
+/* `--tinta-dica` e nao o #8494a0 que estava aqui: 10,5px a 3,12:1 e o nome do
+   mes que sustenta a leitura do grafico inteiro. Some junto um sexto cinza sem
+   token, que nao fazia trabalho nenhum que a dica ja nao fizesse. */
+.grafico-meses .nome {
+  font-family: var(--mono); font-weight: 500; font-size: 11px; color: var(--tinta-dica);
+}
+.grafico-meses .mes.sem-dado .barra { background: var(--divisor); height: 5px; }
+/* Aqui o cinza E o dado: o "—" e a resposta do mes sem entrega, e nao um
+   separador. Por isso ele nao usa --ponto (1,63:1) e sim a dica. */
+.grafico-meses .mes.sem-dado .quanto { color: var(--tinta-dica); }
+.grafico-meses .mes.corrente .barra { background: var(--acento); }
+.grafico-meses .mes.corrente .quanto { color: var(--acento); font-weight: 700; }
+.grafico-meses .mes.corrente .nome { color: var(--acento); }
+
+/* ---------- lista de linhas ----------
+   Fila de trabalho: uma linha inteira clicavel, com o essencial a esquerda e
+   estado e prazo a direita. Vive dentro de `.cartao.liso`, para a borda de cada
+   linha ir de ponta a ponta. */
+.lista-linhas { display: flex; flex-direction: column; }
+/* As colunas da direita sao de largura fixa de proposito: cada linha e uma
+   grade propria (precisa ser, para a linha inteira ser um link com borda e
+   hover), e com `auto` cada uma se mediria sozinha - o estado de uma linha nao
+   ficaria alinhado com o da seguinte. */
+.lista-linhas > * {
+  display: grid; grid-template-columns: minmax(0, 1fr) 216px 116px; gap: 14px; align-items: center;
+  padding: 11px 18px; border-bottom: 1px solid var(--borda-fraca); color: inherit;
+}
+.lista-linhas > *:last-child { border-bottom: 0; }
+.lista-linhas > a:hover { background: var(--linha-hover); text-decoration: none; }
+.lista-linhas .quem { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lista-linhas .quem > strong {
+  font-size: 15px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lista-linhas .onde {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--tinta-fraca); min-width: 0; white-space: nowrap;
+}
+.lista-linhas .onde .ponto { color: var(--ponto); }
+.lista-linhas .onde .mono { flex: none; }
+.lista-linhas .recorte { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* Variante de tres colunas curtas: numero a esquerda, medida a direita. */
+.lista-linhas.dupla > * { grid-template-columns: 140px minmax(0, 1fr) auto; gap: 10px; padding: 9px 18px; }
+/* Formulario de uma acao so dentro da linha (o "propor direito"): o <form> e um
+   item da grade, entao precisa perder a altura de bloco e encostar a direita. */
+.lista-linhas form { margin: 0; display: flex; justify-content: flex-end; }
+/* Variante de coluna unica: lista em que a linha nao tem medida nenhuma a
+   direita - os postos cobertos de um laudo, por exemplo. */
+.lista-linhas.simples > * { grid-template-columns: minmax(0, 1fr); }
+
+/* ---------- estado vazio ----------
+   Caixa tracejada que diz o que significa nao haver nada ali. Substitui o
+   `.nada` onde a ausencia e informacao, e nao so uma lista curta.
+
+   O CRITERIO, escrito porque a regra existia e ninguem sabia aplica-la (havia
+   24 `.vazio` contra 56 `.nada`, e o mesmo caso resolvido dos dois jeitos em
+   telas irmas): a pergunta nao e onde o bloco mora, e sim se ha algo a DIZER
+   sobre a ausencia.
+
+   - `.vazio` quando o vazio tem consequencia, ou quando quem le vai perguntar
+     "e agora?": lista filtrada que nao devolveu nada (o filtro pode estar
+     errado), ficha que ainda nao nasceu, bloco que a permissao fecha, ausencia
+     que e boa noticia. Leva `<strong>` com o fato e `<span>` com o porque —
+     duas partes, como o erro de campo.
+   - `.nada` quando nao ha o que explicar: a celula de tabela que ficou sem
+     linha, o `<td colspan>` de uma lista curta, o evento que ainda nao
+     aconteceu. Uma caixa tracejada de 22px de padding ali seria mais alta que a
+     tabela que ela esta dizendo estar vazia.
+
+   Os dois pesos sao muito diferentes de proposito — caixa contra linha em
+   italico —, e por isso escolher errado se ve. */
+/* Tracejado em --borda e nao em --borda-campo: a caixa vazia nao e um controle,
+   e --borda-campo passou a valer 3,57:1 justamente porque limita coisa que se
+   aciona. Uma moldura de 3,57 em volta de um bloco que so informa gritaria mais
+   alto que os campos da mesma tela. */
+.vazio {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 22px 12px; border: 1px dashed var(--borda); border-radius: var(--raio-aviso);
+  text-align: center;
+}
+.vazio > strong { font-size: 14px; font-weight: 600; color: var(--tinta-media); }
+.vazio > span { font-size: 13px; color: var(--tinta-dica); max-width: 280px; }
+
+/* ---------- aviso ----------
+   Quatro naturezas. O de erro explica a consequencia, nao so o fato - quem le
+   precisa saber o que acontece se seguir em frente. */
+/* O ponto e absoluto, e nao um item de flex: os avisos de hoje trazem <strong>
+   e <ul> dentro, e num container flex a lista iria parar ao lado do titulo. */
+.aviso {
+  position: relative;
+  padding: 12px 14px 12px 31px; border-radius: var(--raio-aviso); margin-bottom: 14px;
+  font-size: 13px; line-height: 1.5;
+  background: var(--neutra-fundo); border: 1px solid var(--neutra-borda);
+  color: var(--tinta-fraca);
+}
+.aviso::before {
+  content: ""; position: absolute; left: 14px; top: 18px;
+  width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+}
+.aviso ul, .aviso ol { margin: 6px 0 0; padding-left: 18px; }
+.aviso table { background: none; font-size: 13px; }
+.aviso.sem-ponto::before { display: none; }
+.aviso p { margin: 0 0 6px; }
+.aviso p:last-child { margin-bottom: 0; }
+/* Caixa de selecao dentro do aviso: e o caso da dispensa do DV do NUP. Ela mora
+   ali de proposito - quem marca precisa ler, na mesma caixa, o que a marca faz.
+   O rotulo herda a cor do aviso; no cinza de rotulo de campo ele pareceria ter
+   caido de outro bloco. */
+.aviso label { color: inherit; font-size: 13px; margin-bottom: 0; }
+.aviso label input[type=checkbox] { accent-color: var(--acento); margin-right: 4px; }
+.aviso label + p { margin-top: 6px; }
+.aviso-ok { background: var(--ok-fundo); border-color: var(--ok-borda); color: var(--ok); }
+.aviso-info { background: var(--info-fundo); border-color: var(--info-borda); color: var(--acento); }
+.aviso-alerta { background: var(--alerta-fundo); border-color: var(--alerta-borda); color: var(--alerta-texto-longo); }
+.aviso-erro { background: var(--erro-fundo); border-color: var(--erro-borda); color: var(--erro); }
+.aviso a { color: inherit; text-decoration: underline; }
+.aviso-legal {
+  background: var(--acento-claro); border-left: 4px solid var(--acento);
+  padding: 12px 14px; border-radius: 0 var(--raio-aviso) var(--raio-aviso) 0; margin: 12px 0;
+}
+
+/* ---------- tabela de dados ----------
+   Duas colunas de largura fixa a esquerda: rotulo discreto, valor legivel.
+   Substitui o <table> de duas colunas das fichas. Vale nas duas marcacoes - a
+   <dl> e o alvo, o <table> e a ponte enquanto as telas nao migram. */
+dl.tabela-dados { display: grid; grid-template-columns: 170px 1fr; margin: 0; }
+dl.tabela-dados > dt, dl.tabela-dados > dd {
+  margin: 0; padding: 11px 18px; border-bottom: 1px solid var(--borda-fraca);
+}
+dl.tabela-dados > dt { color: var(--tinta-dica); font-size: 13px; }
+/* `overflow-wrap: anywhere` porque a ficha do certificado poe aqui um SHA-256 e
+   uma URL de validacao: 64 caracteres sem espaco nenhum. Sem a quebra forcada
+   eles fixam a largura minima da coluna, o cartao passa da metade da tela e a
+   ficha inteira ganha rolagem lateral. */
+dl.tabela-dados > dd {
+  font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  min-width: 0; overflow-wrap: anywhere;
+}
+/* Valor que e uma lista curta - os instrutores que assinam o certificado. O
+   <dd> e flex; sem esta variante os nomes ficariam lado a lado e se leriam como
+   um so. */
+dl.tabela-dados > dd.empilhada { flex-direction: column; align-items: flex-start; gap: 3px; }
+/* A ultima linha nao leva divisor: encostada na borda do cartao ela viraria
+   uma segunda borda, mais grossa que as de dentro. */
+dl.tabela-dados > *:nth-last-child(-n+2) { border-bottom: 0; }
+table.tabela-dados th, table.tabela-dados td {
+  padding: 11px 18px; border-bottom: 1px solid var(--borda-fraca); vertical-align: top;
+}
+table.tabela-dados th {
+  width: 170px; background: none; color: var(--tinta-dica);
+  font-size: 13px; font-weight: 400;
+}
+table.tabela-dados td { font-size: 14px; }
+table.tabela-dados tr:hover td { background: none; }
+
+/* ---------- tabelas ---------- */
+table { width: 100%; border-collapse: collapse; background: var(--cartao); }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--divisor); font-size: 14px; vertical-align: top; }
+th { background: var(--divisor); font-weight: 600; font-size: 13px; color: var(--tinta-media); }
+tr:hover td { background: var(--linha-hover); }
+.tabela-cartao { border: 1px solid var(--borda); border-radius: var(--raio-cartao); overflow: auto; }
+
+/* Coluna de numero que se confere linha a linha - o nº da linha da planilha, a
+   contagem de adicionais por laudo. Alinhada a direita e com digito de largura
+   fixa para 9 e 148 terminarem no mesmo lugar: e a diferenca entre CONFERIR a
+   carga e apenas ler a carga. */
+th.numerico, td.numerico {
+  text-align: right; font-family: var(--mono);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+td.numerico { color: var(--tinta-media); }
+
+/* ---------- motivos dentro da celula ----------
+   Por que a linha nao entrou inteira: pendencia (falta dado) e divergencia (dois
+   dados que nao batem). Nao e pilula, de proposito - pilula e estado curto, e
+   aqui o texto E a informacao: "marco 2024-03-12 diverge da portaria
+   2024-04-01" so serve se der para ler a frase toda. O ponto na frente separa um
+   motivo do outro sem transformar a celula num paragrafo, e o teto de largura
+   impede que a coluna empurre a tabela para fora do cartao. */
+.motivos {
+  list-style: none; margin: 0; padding: 0; max-width: 46ch;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.motivos > li {
+  position: relative; padding-left: 14px;
+  font-size: 13px; line-height: 1.4; color: var(--tinta-fraca);
+}
+.motivos > li::before {
+  content: ""; position: absolute; left: 0; top: 6px;
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+.motivos.alerta > li { color: var(--alerta-texto); }
+.motivos.erro > li { color: var(--erro); }
+
+/* Lista longa (a tabela de processos): cabecalho em versalete discreto, linha
+   mais alta e divisor mais fraco. E o unico lugar onde a tabela E a tela, e por
+   isso ganha densidade propria em vez de herdar a da tabela de apoio. */
+.tabela-cartao.lista table { table-layout: auto; }
+.tabela-cartao.lista th {
+  padding: 11px 14px; background: var(--superficie-fraca); border-bottom: 1px solid var(--borda);
+  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tinta-dica); white-space: nowrap;
+}
+.tabela-cartao.lista td {
+  padding: 11px 14px; border-bottom: 1px solid var(--borda-fraca);
+  font-size: 14px; vertical-align: middle;
+}
+.tabela-cartao.lista tr:hover td { background: var(--linha-hover); }
+.tabela-cartao.lista .nome { font-weight: 600; font-size: 14px; }
+.tabela-cartao.lista .recorte {
+  display: block; max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tabela-cartao.lista .marcar, .tabela-cartao.lista #marcar-todos { accent-color: var(--acento); }
+
+/* ---------- o cabecalho da lista longa gruda ao rolar ----------
+
+   O ALVO TEM DE SER O <thead>, E NAO O <th>. Medido nesta folha, com 62 linhas
+   na tabela e 900px de rolagem:
+
+     th   { position: sticky; top: 62px }                    NAO gruda (-503px)
+     idem, com `border-collapse: separate`                   NAO gruda (-503px)
+     thead{ position: sticky; top: ... }                     gruda
+     thead tr { position: sticky; top: ... }                 gruda
+
+   Nao e preferencia de escrita: `position: sticky` num `<th>` solto e ignorado,
+   porque em tabela quem participa da rolagem e o grupo de linhas. E por isso
+   que as 89 tabelas ganharam `<thead>` antes desta regra existir - sem ele o
+   cabecalho grudado nao e mal desenhado, e inconstruivel.
+
+   QUEM ROLA E O CARTAO, E O `top` E ZERO. O segundo degrau, tambem medido: com
+   o <thead> no lugar, `top: 62px` continua NAO grudando enquanto
+   `.tabela-cartao` tiver `overflow: auto` (logo acima) - aquele `overflow` faz
+   do cartao o scrollport, e um scrollport sem teto de altura nunca rola por
+   dentro. O que funciona e dar altura ao cartao: ele passa a ser o rolador, e
+   `top: 0` e medido a partir da borda dele, nao da janela.
+
+   O `overflow: auto` continua fazendo o trabalho horizontal que o comentario
+   de `.cartao.liso` defende - a tabela de onze colunas rola dentro do cartao em
+   vez de esticar a pagina. Ele so ganhou um teto vertical.
+
+   DE ONDE SAI O TETO, MEDIDO EM /processos a 1366x641 (a tela do setor com o
+   Chrome maximizado, com 500 processos no banco). A pergunta nao e "quanto cabe
+   na primeira dobra" — e "com a pagina rolada ate o fim, o topo do cartao ainda
+   esta ABAIXO do cabecalho grudado de 62px?". Se nao estiver, o cabecalho da
+   tabela vai parar atras do cabecalho da pagina e o cartao rola por dentro sem
+   nunca mostrar de que coluna e cada numero, que e o defeito inteiro.
+
+   A conta, com os numeros medidos: abaixo do cartao ficam a paginacao (34px), o
+   `gap` de 16px da `.tela` e os 34px de recuo do rodape de `.conteudo` — 84px.
+   Com o cartao de altura H, o topo dele com a pagina no fim vale
+   `100vh - 84 - H`. Exigindo que isso passe dos 62px do cabecalho, sai
+   `H <= 100vh - 146`. 160px deixa 14px de folga e devolve 6,6 linhas visiveis
+   dentro do cartao, com o cabecalho sempre na tela — medido: cartao em y=76,
+   cabecalho grudado em y=77, contra um cabecalho que antes sumia na primeira
+   rolagem.
+
+   E teto, nao altura: lista curta nao chega nele e o cartao continua do tamanho
+   do conteudo.
+
+   O QUE MUDA NO USO, medido em /servidores com 500 linhas: a roda do mouse
+   sobre a tabela rola o CARTAO, e so encadeia para a pagina quando o cartao
+   chega ao fim. Resultado: as 50 linhas da pagina passam inteiras — 2.025px de
+   rolagem interna — com o cabecalho parado em y=343 e a PAGINA sem se mexer.
+   Antes, o cartao tinha 2.066px de altura, quem rolava era a janela, e o
+   cabecalho ia embora na primeira volta da roda.
+
+   O LIMITE, dito: numa tela com muito conteudo abaixo da tabela (o aviso de
+   Unidade x UORG em /servidores, por exemplo), rolar a PAGINA ate o fim leva o
+   topo do cartao para cima do cabecalho grudado, e ali o cabecalho da tabela
+   sai da tela junto. So acontece quando se rola deliberadamente para ler o que
+   vem DEPOIS da lista — que e quando ninguem esta conferindo coluna. O teto e
+   um numero so para todas as listas porque a alternativa em CSS puro nao
+   existe: o que resolveria de vez seria `.conteudo` virar o elemento que rola,
+   no lugar da janela, e isso e mudanca de casca (`base.html`), nao de tabela.
+
+   Isto NAO se estende a `.cartao.liso`: aquele cartao e uma secao de ficha, e
+   uma ficha tem cinco delas na mesma tela - dar teto a cada uma trocaria uma
+   rolagem por cinco.
+
+   CONTRASTE. O cabecalho grudado NAO cria par novo: ele e opaco
+   (`--superficie-fraca`), entao o texto continua sendo `--tinta-dica` sobre
+   `--superficie-fraca`, os mesmos 4,89:1 da tabela parada. O fio que o separa
+   da linha que passa por baixo e `--borda` sobre `--cartao`, 1,75:1 - a mesma
+   razao da borda de cartao do sistema inteiro (contra o proprio fundo do
+   cabecalho ele daria 1,32:1, e por isso quem tem de ler o fio e a linha
+   branca de baixo, que e o lado em que ele de fato aparece).
+
+   O FIO PRECISA DE `inset`. Com `border-collapse: collapse` a borda de uma
+   celula grudada e pintada pela TABELA, nao pela celula: ela fica para tras na
+   rolagem e o cabecalho grudado aparece sem base, encostado no texto da linha.
+   `box-shadow: inset` e pintado pela propria celula e acompanha. */
+.tabela-cartao.lista { max-height: calc(100vh - 160px); }
+.tabela-cartao.lista thead { position: sticky; top: 0; z-index: 2; }
+.tabela-cartao.lista thead th { box-shadow: inset 0 -1px 0 var(--borda); }
+
+/* Tabela que preenche um cartao liso: recuo igual ao do cabecalho de cartao,
+   para as colunas se alinharem com o titulo da secao. */
+.cartao.liso > table th, .cartao.liso > table td { padding: 10px 18px; }
+.cartao.liso > table th {
+  background: var(--superficie-fraca); border-bottom: 1px solid var(--borda);
+  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tinta-dica);
+}
+.cartao.liso > table td {
+  border-bottom: 1px solid var(--borda-fraca); font-size: 14px; vertical-align: middle;
+}
+.cartao.liso > table tr:last-child td { border-bottom: 0; }
+
+/* ---------- formularios ---------- */
+label { display: block; font-size: 13px; font-weight: 600; color: var(--tinta-media); margin-bottom: 4px; }
+/* Rotulo de caixa de selecao anda colado no controle e nao encabeca campo
+   nenhum: em peso 600 ele competiria com o rotulo de verdade. */
+label.discreto { font-weight: 400; }
+/* `input:not([type])` nao e zelo: `<input name="motivo">` e um campo de texto
+   valido e e como 98 dos 168 campos do sistema estao escritos. Sem esta linha o
+   seletor de atributo nao os alcanca e eles ficam com o desenho do navegador -
+   24px de altura, canto reto, sem anel de foco - ao lado dos campos com `type`,
+   que ficam com o do sistema. */
+input:not([type]), input[type=text], input[type=search], input[type=password],
+input[type=email], input[type=date], input[type=number], select, textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--borda-campo);
+  border-radius: var(--raio); font: inherit; font-size: 14px;
+  background: var(--cartao); color: var(--tinta);
+}
+input::placeholder, textarea::placeholder { color: var(--tinta-dica); }
+input:not([type]):focus, input[type=text]:focus, input[type=search]:focus,
+input[type=password]:focus, input[type=email]:focus, input[type=date]:focus,
+input[type=number]:focus, select:focus, textarea:focus {
+  border-color: var(--acento);
+  outline: var(--anel-foco);
+  outline-offset: 0;
+}
+textarea { min-height: 90px; resize: vertical; }
+.campo { margin-bottom: 14px; }
+.campo .dica { display: block; margin-top: 4px; font-size: 13px; color: var(--tinta-dica); }
+/* Dica que nao e conselho e sim proibicao (RN-21 nas observacoes). Fica em
+   vermelho antes de haver erro nenhum: aqui o aviso so serve se for lido antes
+   de digitar - depois de gravado o dado sensivel ja vazou. */
+.campo .dica.atencao { color: var(--erro); }
+/* O aviso do NUP escrito pelo `csso.js` a cada tecla. E uma .dica que muda de
+   cor com o resultado: verde quando o DV confere, vermelho quando nao — e
+   VERMELHO SEM BLOQUEAR, porque a dispensa do DV (registrada em auditoria)
+   precisa continuar possivel para quem conferiu no SEI. */
+.campo .nup-aviso:empty { display: none; }
+.campo .nup-aviso.ok { color: var(--ok); }
+.campo .nup-aviso.atencao { color: var(--erro); }
+.linha-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+/* Espacador da linha de campos: onde a coluna vizinha tem rotulo e esta so tem
+   uma caixa de selecao, a caixa precisa comecar na mesma altura do campo ao
+   lado. Isso vinha escrito `<label>&nbsp;</label>` em quatro telas — um rotulo
+   que nao nomeia campo nenhum e que o leitor de tela anuncia mesmo assim, entre
+   os rotulos de verdade. Aqui o espaco continua sendo o de um rotulo (mesma
+   fonte, mesma margem, o &nbsp; da a caixa de linha) e a arvore de
+   acessibilidade nao ve nada. */
+.rotulo-vago { display: block; font-size: 13px; margin-bottom: 4px; }
+/* O agrupador que congela um formulario inteiro. `<fieldset disabled>` e o
+   unico mecanismo do HTML que desliga TODOS os campos de uma vez — inclusive o
+   Enter, que num formulario "sem botao de salvar" continuava submetendo. Sem
+   borda nem recuo, porque ele nao e uma secao visual: e um interruptor. O
+   `min-width: 0` e o que impede o fieldset de alargar a coluna do editor por
+   causa de um `<select>` longo (fieldset nasce com `min-width: min-content`). */
+fieldset.campos { border: 0; padding: 0; margin: 0; min-width: 0; }
+/* A escala de largura de campo, nomeada pelo que o campo E e nao por quantos
+   pixels mede. Eram 21 `style="max-width:NNpx"` com doze valores distintos
+   (50, 58, 60, 66, 70, 74, 90, 104, 110, 120, 140, 150) espalhados por cinco
+   telas — a mesma deriva que `.cartao.formulario` e as larguras de popup
+   fecharam antes, so que em celula de tabela. Em `ch` porque o que cabe num
+   campo e texto: UF sao dois caracteres, CREA sao oito, uma sigla sao seis. Ha
+   teste de varredura que reprova o proximo `style="max-width` em template. */
+.campo-curto { max-width: 8ch; }   /* UF, ordem, nota, horas, CREA, numero */
+.campo-medio { max-width: 14ch; }  /* sigla, codigo, norma, anexo, motivo curto */
+.campo-longo { max-width: 22ch; }  /* titulo de assinatura, conselho */
+/* Campo desligado PARECE desligado: sem isto, o congelado saia identico ao
+   editavel e a pessoa descobria a diferenca so no Enter. A cor do texto fica —
+   o conteudo continua sendo lido; o que muda e o fundo e o cursor. */
+input:disabled, select:disabled, textarea:disabled {
+  background: var(--superficie-fraca); color: var(--tinta-media);
+  cursor: not-allowed; opacity: 1;
+}
+
+/* ---------- zona de arquivo ----------
+   O controle continua sendo `<input type=file>`: arrastar-e-soltar pediria
+   JavaScript, e o sistema tem de funcionar sem. O que a caixa tracejada
+   acrescenta e alvo grande e, escrito ANTES de a pessoa escolher, o que o campo
+   aceita - na carga legada mandar o .csv no lugar do .json custa o feed
+   `actions`, que e o que preserva as datas originais. */
+.zona-arquivo {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 15px 16px; margin-bottom: 12px;
+  border: 1px dashed var(--borda-campo); border-radius: var(--raio-aviso); background: var(--superficie-fraca);
+}
+.zona-arquivo > label { margin: 0; }
+.zona-arquivo input[type=file] { font: inherit; font-size: 13px; max-width: 100%; }
+.zona-arquivo > .formato {
+  font-family: var(--mono); font-size: 12px; color: var(--tinta-dica);
+}
+
+/* Campo cujo conteudo e um codigo que se confere digito a digito: NUP, numero
+   de laudo, SIAPE. Mono pela regra do sistema de design. Na variante
+   `destaque` ele e o campo da tela - o NUP em /processos/novo - e cresce o
+   bastante para os 17 digitos serem lidos em blocos. */
+.campo.codigo input { font-family: var(--mono); }
+.campo.codigo.destaque input { font-size: 18px; padding: 12px 14px; letter-spacing: .02em; }
+
+/* Campo com erro: a borda muda, o fundo muda de leve e a mensagem fica colada
+   embaixo - longe do campo ela vira aviso de pagina e ninguem sabe qual campo. */
+/* A BORDA PASSA A SER --erro, e nao --erro-borda. O campo recusado tinha a borda
+   MAIS FRACA da tela: --erro-borda dá 1,46:1 contra o próprio fundo, enquanto o
+   campo normal ao lado tem --borda-campo em 3,57 — o campo com problema se
+   distinguia por ser mais apagado que os outros. Agora ele tem a borda mais
+   forte (9,72:1), que é o que o formulário público faz e é o que a leitura
+   rápida de uma tela recusada precisa. A cor não fica sozinha: o `.erro-campo`
+   embaixo diz o fato em texto. */
+.campo.com-erro input, .campo.com-erro select, .campo.com-erro textarea,
+input.com-erro, select.com-erro, textarea.com-erro {
+  border-color: var(--erro); background: var(--erro-fundo);
+}
+.erro-campo { display: block; margin-top: 4px; font-size: 13px; color: var(--erro); }
+/* O erro de campo vem em duas partes: o fato, em vermelho, e a explicacao, em
+   cinza. Separar as duas e o que faz a mensagem ser acionavel - "digito
+   verificador nao confere" diz o que houve, e a linha de baixo diz o que fazer
+   sem competir em peso com ela. */
+.erro-campo .fato { display: block; font-weight: 600; }
+.erro-campo .fato::first-letter { text-transform: uppercase; }
+.erro-campo .explicacao { display: block; font-weight: 400; color: var(--tinta-dica); }
+
+/* Acoes de uma linha da tabela num controle so ("Gerir"). Continua sendo
+   <details>: abre sem JavaScript, e abre empurrando a linha em vez de flutuar -
+   dentro de `.tabela-cartao`, que rola, camada flutuante seria recortada. */
+/* `position: relative` pelo mesmo motivo do `.ponto-estado`: o rotulo so de
+   leitor de tela aqui dentro e absoluto, e sem bloco de contencao proprio ele
+   se resolveria contra um ancestral distante. */
+.acoes-linha > summary {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px; list-style: none;
+  padding: 5px 10px; border: 1px solid var(--borda-campo); border-radius: var(--raio);
+  background: var(--cartao); color: var(--tinta-media); font-size: 13px; font-weight: 600;
+  white-space: nowrap;
+}
+.acoes-linha > summary::-webkit-details-marker { display: none; }
+.acoes-linha > summary::after { content: "▾"; font-size: 11px; color: var(--tinta-dica); }
+.acoes-linha[open] > summary::after { content: "▴"; }
+.acoes-linha > summary:hover { border-color: var(--borda-hover); color: var(--tinta); }
+/* `min-width` de 190px e medido, nao escolhido: e a maior largura que o painel
+   pode pedir sem fazer a tabela de nove colunas passar da largura do cartao e
+   ganhar barra de rolagem propria. Acima disso o formulario abre ja cortado. */
+.painel-acoes {
+  margin-top: 8px; padding: 12px 13px; min-width: 190px;
+  border: 1px solid var(--borda); border-radius: var(--raio-aviso); background: var(--superficie-fraca);
+  display: flex; flex-direction: column; gap: 14px;
+  white-space: normal;
+}
+/* O fio entre acoes irmas. Existia so dentro da gaveta da linha, e a ficha do
+   pedido de EPI mostrou por que ele precisa sair de la: no cartao de tramite
+   empilhavam-se ate quatro formularios de acao — concluir a analise, indeferir
+   o pedido inteiro, devolver a fila, cancelar — com quatro <h3> de 14px
+   identicos e um paragrafo `.discreto` igual embaixo de cada um. Nada estava
+   errado em nenhum deles; o problema e que nada separava um do outro, e a unica
+   pista de qual era o caminho normal era a cor do botao, que se le depois do
+   texto. `.acoes-empilhadas` e o mesmo fio, fora da gaveta, para o cartao que
+   oferece mais de um caminho. */
+.painel-acoes form + form,
+.acoes-empilhadas > * + * { padding-top: 14px; border-top: 1px solid var(--divisor); }
+.acoes-empilhadas { display: flex; flex-direction: column; gap: 14px; }
+/* Dentro da pilha o titulo do caminho nao empurra o topo do proprio bloco: quem
+   separa e o fio acima dele. */
+.acoes-empilhadas > * > h3:first-child, .acoes-empilhadas > h3:first-child { margin-top: 0; }
+.painel-acoes h3 { margin: 0 0 8px; font-size: 13px; }
+.painel-acoes .campo { margin-bottom: 9px; }
+.painel-acoes label { font-size: 12px; margin-bottom: 3px; }
+.painel-acoes .acoes { margin-top: 0; }
+.painel-acoes .discreto { margin: 0 0 9px; }
+
+/* Catalogo que edita na propria linha: com o padding do formulario a linha
+   passaria de 44px e a lista deixaria de caber na tela. */
+.tabela-cartao td input, .tabela-cartao td select, .tabela-cartao td textarea {
+  padding: 6px 8px; font-size: 13px; border-radius: var(--raio);
+}
+/* Aviso de lista vazia dentro do cartao de tabela: sem recuo proprio ele encosta
+   na borda, porque quem tinha o recuo eram as celulas que nao existem. */
+.tabela-cartao > .nada { padding: 16px 18px; }
+/* Texto de norma dentro da celula: a quebra de linha e do proprio texto, e a
+   largura e limitada para a coluna nao empurrar a tabela inteira. */
+.texto-literal { display: block; white-space: pre-line; max-width: 62ch; }
+/* Itens de um checklist modelo dentro da celula. */
+.lista-itens { margin: 0; padding-left: 18px; }
+
+/* ---------- os quatro botoes ---------- */
+.botao, button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 18px; border-radius: var(--raio);
+  border: 1px solid var(--acento); background: var(--acento); color: #fff;
+  font: inherit; font-size: 14px; font-weight: 600; line-height: 1.2;
+  cursor: pointer;
+}
+.botao:hover, button:hover {
+  background: var(--acento-forte); border-color: var(--acento-forte);
+  color: #fff; text-decoration: none;
+}
+.botao.secundario, button.secundario {
+  background: var(--cartao); border-color: var(--borda-campo); color: var(--tinta-media);
+}
+.botao.secundario:hover, button.secundario:hover {
+  background: var(--cartao); border-color: var(--borda-hover); color: var(--tinta);
+}
+.botao.perigo, button.perigo {
+  background: var(--erro); border-color: var(--erro); color: #fff;
+}
+.botao.perigo:hover, button.perigo:hover { background: var(--erro-forte); border-color: var(--erro-forte); }
+/* Perigo discreto: acao destrutiva que mora no cabecalho, onde um botao vermelho
+   solido chamaria mais atencao do que a tela merece. */
+.botao.perigo-discreto, button.perigo-discreto {
+  background: var(--cartao); border-color: var(--erro-borda); color: var(--erro);
+}
+.botao.perigo-discreto:hover, button.perigo-discreto:hover {
+  background: var(--erro-fundo); border-color: var(--erro-borda); color: var(--erro);
+}
+.botao.compacto, button.compacto { padding: 8px 14px; border-radius: var(--raio); font-size: 13px; }
+.botao[disabled], button[disabled] { opacity: .45; cursor: not-allowed; }
+/* O link de download enquanto o arquivo nao chegou (`csso.js`, bloco 4): o
+   rotulo ja diz "Gerando…"; a classe tira o clique e baixa a opacidade, como o
+   botao desabilitado — sem `disabled`, que <a> nao tem. */
+.botao.ocupado { opacity: .6; pointer-events: none; cursor: progress; }
+.acoes { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+/* Explicacao ao lado do botao, e nao debaixo dele: e ali que ela e lida antes
+   de clicar. */
+.acoes > p { flex: 1 1 240px; margin: 0; }
+.paginacao { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.paginacao .acoes { margin-top: 0; margin-left: auto; }
+/* O separador da linha "pagina 3 de 15 · 101-150 de 745" segue a mesma regra dos
+   outros quatro pontos do sistema: decorativo, em `--ponto`, e `aria-hidden` no
+   template para o leitor de tela nao pronunciar a pontuacao. */
+.paginacao .ponto { color: var(--ponto); }
+
+/* ---------- a barra de acoes em lote, grudada no rodape ----------
+
+   O PROBLEMA, MEDIDO. Em /processos as caixas de selecao estao na coluna 1 de
+   cada linha e o cartao "Acoes em lote" vem DEPOIS da tabela. Com 50 linhas de
+   49px sao ~2.450px entre marcar a terceira linha e alcancar o seletor de acao —
+   e ao chegar la nao se ve mais o que foi marcado. O contador de selecao, que
+   existe e funciona, mora no mesmo cartao inalcancavel.
+
+   POR QUE `sticky` E NAO `fixed`. `sticky; bottom: 0` prende a barra ao pe da
+   janela ENQUANTO o formulario que a contem estiver na tela, e a devolve ao
+   fluxo quando se chega ao fim da lista. `fixed` a tiraria do fluxo para sempre:
+   ela cobriria a paginacao logo abaixo e o rodape, e num 1366x641 um cartao de
+   ~300px fixo comeria metade da lista que ele existe para operar.
+
+   SEM SELECAO A TELA FICA COMO ESTAVA — E SEM JAVASCRIPT TAMBEM. Quem esconde a
+   barra e `.flutuante`, classe que o script da tela poe no carregamento: sem
+   script ela nunca chega, a barra continua sendo o cartao de sempre no fim da
+   pagina e o lote continua inteiro. Esconder por padrao no CSS teria trocado
+   "longe" por "inexistente" para quem nao tem script.
+
+   O FIO DE CIMA E `--borda-hover`, E NAO `--borda`. Enquanto grudada, a barra
+   flutua sobre linhas de dados que passam por baixo, e a borda deixa de separar
+   dois blocos parados para virar o limite de um componente sobre conteudo — o
+   piso da WCAG 1.4.11 para isso e 3:1. `--borda` da 1,75:1 contra a linha branca
+   que passa por baixo; `--borda-hover` da 4,70:1. E o mesmo argumento que fez a
+   barra do grafico de meses trocar de tinta na passagem de identidade: e a rung
+   neutra mais escura que ainda nao e tinta de texto.
+
+   Fundo `--cartao` opaco e obrigatorio: sem ele a linha de dados aparece POR
+   BAIXO do texto da barra, e ali a razao de contraste deixa de existir. */
+.acoes-lote.flutuante { display: none; }
+.acoes-lote.flutuante.tem-selecao {
+  display: block;
+  position: sticky; bottom: 0; z-index: 3;
+  background: var(--cartao); border-top: 2px solid var(--borda-hover);
+  /* O QUE A BARRA CUSTA, MEDIDO: 270px de altura num 1366x641 — titulo com o
+     contador (25), cinco seletores (70), o comentario (68), o botao com a frase
+     que diz o que a acao faz (41) e o recuo. Ela nao encolhe cortando essa
+     frase: e a resposta para "o que acontece se eu clicar", e o oposto da
+     queixa que originou toda esta passagem. O que se corta e o recuo.
+
+     O teto de 45vh nao faz nada na tela do setor (288px de teto contra 270 de
+     conteudo, entao nem barra de rolagem aparece); ele existe para a janela
+     baixa, em que sem ele a barra tomaria a tela inteira e esconderia
+     exatamente a selecao que ela veio operar. */
+  max-height: 45vh; overflow-y: auto;
+  padding: 12px 20px;
+}
+/* Botao minusculo que vive dentro de uma celula ou de um item de lista.
+   O recuo era 3px e a caixa fechava em 23,6px de altura — 3 + 3 de recuo, 15,6
+   de linha (13px x 1,2, a entrelinha do botao) e 2 de borda. Um pixel abaixo do
+   minimo de 24x24 da WCAG 2.2 (SC 2.5.8), e justamente no botao que se clica 150
+   vezes seguidas: e ele que lanca presenca celula a celula na grade da turma
+   (30 pessoas x 5 dias), que decide item a item num pedido de EPI e que marca
+   cada linha de checklist. 4px fecha em 25,6 — 26 na tela —, e nao muda altura
+   de linha nenhuma: a celula ja tinha folga do `padding` do `<td>`. */
+.marcador { padding: 4px 9px; font-size: 13px; border-radius: var(--raio); }
+/* Nota de rodape dentro do cartao: separada por um fio, mais fraca que o corpo. */
+.rodape-cartao { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--divisor); }
+
+/* Uma acao por COLUNA da grade de presenca: "todos presentes em 12/03", com as
+   horas ao lado. Fica embaixo da tabela e nao no cabecalho dela porque o
+   cabecalho e do dado — e porque, com cinco dias, cinco formularios dentro de
+   cinco `<th>` fariam a linha de cabecalho crescer para todo mundo, inclusive
+   para quem so le. Cada dia e um `<form>` proprio: o que se envia e um dia, nao
+   uma escolha entre dias. */
+.acoes-por-coluna { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.acoes-por-coluna form { display: flex; align-items: center; gap: 5px; margin: 0; }
+.acoes-por-coluna input { padding: 5px 7px; font-size: 12px; border-radius: var(--raio); }
+
+/* ---------- popup de cadastro ----------
+   O formulario que cria registro novo saiu da tela da lista e virou dialogo. O
+   componente e o macro `popup_cadastro` (`partes/macros.html`), e o argumento
+   de quando ele se aplica esta escrito la; aqui fica so o desenho.
+
+   O ELEMENTO E <dialog>, MAS A ABERTURA NAO DEPENDE DE JAVASCRIPT. `showModal()`
+   e JavaScript, e um <dialog> sem `open` e `display: none` — o cadastro sumiria
+   inteiro de quem nao tem script. Entao o botao continua sendo um link para o
+   `id` do dialogo e quem o abre aqui e `:target`. `[open]` desenha igual, e e
+   por ele que a gravacao recusada volta com o popup aberto, escrito pelo
+   servidor. Havendo JavaScript, `base.html` engole o clique no botao e abre com
+   `showModal()` (o `:target` nem chega a valer), e promove o `[open]` da recusa
+   ao mesmo `showModal()`. As duas regras abaixo continuam sendo o que sustenta
+   a tela quando nada disso acontece.
+
+   O <dialog> aqui e a CAMADA, e nao a caixa: ele cobre a janela e escurece o
+   fundo, e a caixa branca e o <form> dentro dele. Isso e o que faz os dois
+   caminhos terem a mesma aparencia — `::backdrop` so existe depois de
+   `showModal()`, e no caminho sem JavaScript ele nunca chega a ser desenhado. */
+dialog.popup {
+  position: fixed; inset: 0; z-index: 60;
+  width: 100%; max-width: none; height: 100%; max-height: none;
+  margin: 0; padding: 22px; border: 0;
+  background: rgba(8, 18, 29, .52);
+  /* o UA pinta o dialogo com CanvasText; sem isto o texto do popup deixa de
+     seguir a folha no dia em que o sistema ganhar tema escuro */
+  color: var(--tinta);
+  align-items: center; justify-content: center;
+}
+/* Especificidade 0,2,1 contra os 0,1,1 de `dialog:not([open])` do navegador:
+   quem vence e esta, e nao a ordem da folha. */
+dialog.popup:target, dialog.popup[open] { display: flex; }
+/* O escurecido ja e o fundo do proprio dialogo, porque ele precisa existir onde
+   nao ha JavaScript. Deixar tambem o ::backdrop somaria duas camadas de 45% e o
+   fundo ficaria quase preto so para quem tem script. */
+dialog.popup::backdrop { background: transparent; }
+/* O fundo nao rola atras do popup. `:has` e nao uma classe no <html>: sem
+   JavaScript nao ha quem pendure classe nenhuma, e o estado que interessa e o
+   do proprio dialogo. */
+html:has(dialog.popup[open]), html:has(dialog.popup:target) { overflow: hidden; }
+
+/* A caixa e uma coluna de tres faixas: o titulo e as acoes ficam parados e o
+   corpo rola. Formulario longo em popup e pior que em pagina, e a saida nao e
+   deixar a caixa crescer alem da janela — e manter o botao de gravar sempre
+   visivel, para ninguem ter de rolar ate o fim para descobrir que ele existe. */
+.popup-caixa {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: 720px; max-height: 100%;
+  background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao); box-shadow: var(--sombra-alta);
+}
+/* A LARGURA E DO PADRAO, E SAO DUAS — nao ha terceira, e nao ha `style=` na
+   tela. Largura escrita a mao no template foi o que produziu a deriva que a
+   auditoria de ergonomia fechou: dois cadastros abertos na mesma sessao de
+   trabalho com 120px de diferenca entre si e nada explicando a diferenca.
+
+   OS 720 CABEM TRES CAMPOS. Uteis sao 678 (720 menos 2 de borda e 40 de recuo),
+   e `minmax(180px, 1fr)` tres vezes pede 3 x 180 + 2 x 12 = 564; o quarto pediria
+   756 e nao entra. Isso e a medida do cadastro de PESSOA, que e o formulario
+   para o qual o padrao nasceu e cuja linha mais larga tem tres campos.
+
+   OS FORMULARIOS DE COMPRA PUBLICA NAO CABEM AI. Estoque e catalogo de EPI tem
+   linha de CINCO campos — nota, valor, fornecedor, CNPJ e contato numa; nome,
+   marca, modelo, CATMAT e e-Campus na outra. Cinco em tres colunas nao ficam
+   apertados: quebram em 3+2 e DOBRAM a altura da linha. E altura e exatamente o
+   que o popup nao tem de sobra — o corpo rola dentro de 577px numa tela de 768,
+   e a entrada de lote chegou a 1387px de conteudo, 2,4 telas de rolagem dentro
+   de um modal, pior do que o formulario embutido que ela substituiu.
+
+   OS 1062 CABEM CINCO, E PARAM NO QUINTO. Uteis sao 1020 contra 5 x 180 + 4 x 12
+   = 948; o sexto pediria 1140 e continua sem entrar — a variante larga e mais
+   larga, nao e "sem largura nenhuma". O numero nao foi escolhido: e a area util
+   de conteudo a 1366px, que e a tela do setor (1366 - 252 de lateral - 52 de
+   recuo do `.conteudo`), a mesma que o comentario de `.cartao.formulario` cita.
+   O popup largo cobre exatamente a coluna que a pessoa estava lendo e nao mais
+   do que ela; num monitor grande ele para ai em vez de atravessar a tela, e a
+   1366 sobram 130px de escurecido de cada lado — que e o que faz a caixa
+   continuar se lendo como camada por cima da lista, e nao como pagina nova.
+
+   NO CELULAR A LARGA VIRA A ESTREITA sozinha, e quem faz isso e o `width: 100%`
+   que ja estava aqui: a 375px as duas variantes dao a mesma caixa, porque o teto
+   nunca chega a valer. Nao ha regra de faixa para escrever — havendo, ela e que
+   seria o lugar onde as duas voltariam a divergir. */
+.popup-caixa.larga { max-width: 1062px; }
+.popup-topo {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 15px 20px; border-bottom: 1px solid var(--divisor);
+}
+.popup-titulo { min-width: 0; }
+.popup-topo h2 { margin: 0; font-size: 18px; }
+.popup-topo .nota {
+  display: block; margin-top: 2px; font-size: 13px;
+  font-weight: 400; color: var(--tinta-dica);
+}
+/* O "x" e alvo de 30px, e nao um caractere solto: no toque um alvo do tamanho
+   da letra e o que faz a pessoa fechar a tela inteira em vez do popup. */
+.popup-fechar {
+  margin-left: auto; flex: none;
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border-radius: var(--raio); color: var(--tinta-dica); font-size: 22px; line-height: 1;
+}
+.popup-fechar:hover { background: var(--divisor); color: var(--tinta); text-decoration: none; }
+.popup-corpo { padding: 16px 20px; overflow: auto; }
+/* O erro da recusa e a primeira coisa do corpo; a margem que ele traz de
+   `.aviso` somaria ao recuo do bloco. */
+.popup-corpo > .aviso:first-child { margin-top: 0; }
+/* O ultimo campo nao empurra o rodape: ali quem separa e o fio das acoes. */
+.popup-corpo > .campo:last-child,
+.popup-corpo > .linha-campos:last-child { margin-bottom: 0; }
+.popup-acoes {
+  margin-top: 0; padding: 13px 20px;
+  border-top: 1px solid var(--divisor); background: var(--superficie-fraca);
+  border-radius: 0 0 var(--raio-cartao) var(--raio-cartao);
+}
+
+/* ---------- o (i) e a gaveta em camada ----------
+   Duas variantes do mesmo <dialog> de cima. O componente e o macro `ui.info` /
+   `ui.popup_gaveta` (`partes/macros.html`) e o argumento de QUANDO cada um se
+   aplica esta la; aqui fica so o desenho, e as tres medidas que tem conta.
+
+   AS DUAS HERDAM A CAMADA INTEIRA. `dialog.popup` la em cima ja da o fundo
+   escurecido, o `:target` que abre sem JavaScript, o `[open]`, o travamento da
+   rolagem de fundo e o `display: none !important` do papel — e `base.html` ja da
+   o `Esc`, o foco preso e a devolucao do foco, porque o bloco delegado procura
+   `dialog.popup`. O modificador so muda o que difere.
+
+   O GATILHO DO (i) TEM 24px, E O NUMERO E O PISO DA WCAG 2.2 SC 2.5.8 (AA). O
+   "x" do popup de cadastro tem 30 porque e um so por tela; o (i) aparece dezenas
+   de vezes na mesma ficha, e a 30px ele passaria a competir com o texto que
+   explica. Abaixo de 24 nao se acerta com o polegar — um (i) de 12px, que e como
+   este componente costuma nascer, e um alvo que so funciona com mouse. O circulo
+   desenhado E o alvo: nao ha area de clique invisivel maior que o desenho, que e
+   o outro jeito de errar isto (o alvo passa a cobrir o vizinho). */
+.info-abre {
+  flex: none; align-self: center; vertical-align: middle;
+  box-sizing: border-box; width: 24px; height: 24px;
+  display: inline-grid; place-items: center;
+  border: 1px solid var(--borda-campo); border-radius: 50%;
+  background: var(--cartao); color: var(--tinta-dica);
+  font-size: 13px; font-weight: 700; font-style: italic; line-height: 1;
+}
+.info-abre:hover, .info-abre:focus-visible {
+  border-color: var(--acento); background: var(--acento-claro);
+  color: var(--acento); text-decoration: none;
+}
+/* Dentro de um cabecalho de cartao (flex com `align-items: baseline`) o circulo
+   se alinharia pela base da letra e ficaria pendurado abaixo do titulo; o
+   `align-self` acima o centra. Aqui so o respiro, para ele nao colar no <h2>. */
+.cabecalho-cartao > .info-abre, .titulo-cartao > .info-abre { margin-left: -4px; }
+
+/* A CAIXA DO (i) TEM A MEDIDA DE UMA COLUNA DE TEXTO, E NAO A DE UM FORMULARIO.
+   560 menos 2 de borda e 40 de recuo da 518px uteis; a 14px isso e ~72
+   caracteres por linha, dentro da faixa em que prosa se le (45-75). Os 720 da
+   caixa de cadastro sao a conta de TRES CAMPOS de 180px — medida de formulario,
+   que aplicada a texto corrido da 94 caracteres e faz o olho perder a linha na
+   volta. Nao e a "terceira largura" que a secao acima proibe: aquela regra e
+   sobre a largura de um FORMULARIO derivar em `style=` na tela, e aqui nao ha
+   formulario. A especificidade dobrada (0,2,0) e para nao depender da ordem da
+   folha contra `.popup-caixa`. */
+.popup-caixa.popup-caixa-info { max-width: 560px; }
+/* O corpo do (i) e texto, e texto pede entrelinha maior que campo de formulario.
+   O recuo de cima e menor que o dos lados porque o fio do topo ja separa. */
+.popup-info .popup-corpo {
+  padding: 14px 20px 18px;
+  font-size: 14px; line-height: 1.6; color: var(--tinta-fraca);
+}
+.popup-info .popup-corpo > *:first-child { margin-top: 0; }
+.popup-info .popup-corpo > *:last-child { margin-bottom: 0; }
+.popup-info .popup-corpo p { margin: 0 0 12px; }
+.popup-info .popup-corpo strong { color: var(--tinta); }
+.popup-info .popup-corpo ul, .popup-info .popup-corpo ol { margin: 0 0 12px; padding-left: 20px; }
+.popup-info .popup-corpo li { margin-bottom: 5px; }
+/* Um so botao no rodape, e ele fica a direita: nao ha nada a confirmar aqui, e
+   um "Fechar" a esquerda ocuparia o lugar em que toda outra caixa do sistema poe
+   a acao que grava. */
+.popup-info .popup-acoes { justify-content: flex-end; }
+
+/* A GAVETA. Ela ja e `.popup-caixa.larga` (1062px, a coluna de conteudo a 1366):
+   os formularios que estavam espremidos em ~190px de celula sao os mesmos, e a
+   largura e a razao de a gaveta ter virado camada. O corpo usa
+   `.acoes-empilhadas`, que e o fio entre formularios irmaos que a gaveta de
+   `<details>` ja usava — a peca mudou de casa, o vocabulario nao. */
+.popup-gaveta .popup-corpo > form + form { border-top: 1px solid var(--divisor); padding-top: 14px; }
+.popup-gaveta .popup-corpo h3:first-child { margin-top: 0; }
+
+/* ---------- KPIs ----------
+   O rotulo vem antes do numero: quem varre a linha le primeiro o que a medida
+   e, e so depois quanto deu. O numero fica em mono pela regra do sistema de
+   design - e numero que se le em voz alta. */
+.kpi {
+  background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao); padding: 15px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.kpi .rotulo {
+  font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tinta-dica); line-height: 1.3;
+}
+.kpi .medida { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.kpi .valor { font-family: var(--mono); font-size: 26px; font-weight: 500; line-height: 1; }
+.kpi .nota { font-size: 13px; color: var(--tinta-dica); line-height: 1.25; }
+/* KPI de exceção pinta o cartao inteiro: fila acima do SLA nao e um numero
+   entre outros, e a cor de fundo e o que a separa da fileira. */
+.kpi.perigo { background: var(--erro-fundo); border-color: var(--erro-borda); }
+.kpi.perigo .rotulo, .kpi.perigo .valor, .kpi.perigo .nota { color: var(--erro); }
+.kpi.perigo .nota a { color: inherit; text-decoration: underline; font-weight: 600; }
+/* As outras duas naturezas, para a fileira de conferencia da reconciliacao: la
+   o zero e a boa noticia e precisa se ler como tal, senao cinco cartoes cinzas
+   obrigam a ler os cinco numeros para saber se sobrou trabalho. */
+.kpi.ok { background: var(--ok-fundo); border-color: var(--ok-borda); }
+.kpi.ok .rotulo, .kpi.ok .valor, .kpi.ok .nota { color: var(--ok); }
+.kpi.alerta { background: var(--alerta-fundo); border-color: var(--alerta-borda); }
+.kpi.alerta .rotulo, .kpi.alerta .valor, .kpi.alerta .nota { color: var(--alerta-texto); }
+/* KPI que e link: leva a secao correspondente da mesma tela. O numero ja e o
+   resumo; clicar nele e o caminho mais curto para a lista que o compoe. */
+a.kpi { color: inherit; }
+a.kpi:hover {
+  text-decoration: none; border-color: var(--borda-hover);
+  box-shadow: var(--sombra-hover);
+}
+
+/* ---------- pagina /modulos ---------- */
+.cartao-modulo { margin-bottom: 14px; }
+.modulo-previsto { background: var(--superficie-fraca); border-style: dashed; }
+.cabecalho-modulo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grade-telas {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.grade-telas .tela {
+  display: flex; flex-direction: column; gap: 2px; padding: 11px 13px;
+  border: 1px solid var(--borda); border-radius: var(--raio-item); color: var(--tinta);
+}
+.grade-telas .tela:hover {
+  border-color: var(--acento); background: var(--acento-claro); text-decoration: none;
+}
+.grade-telas .tela strong { color: var(--acento); font-size: 15px; }
+.grade-telas .tela .discreto { font-size: 13px; line-height: 1.35; }
+.lista-previstos { margin: 0; padding-left: 20px; color: var(--tinta-fraca); font-size: 14px; }
+.lista-previstos li { margin-bottom: 3px; }
+
+/* ---------- /pendencias ----------
+   O tipo e categoria e a descricao e o que se le. O `.recorte` de 26ch da lista
+   longa aqui e grande demais: ele fixa a primeira coluna em 26 caracteres e,
+   abaixo de 1200px, a descricao passa a quebrar em cinco linhas de duas
+   palavras. A coluna do tipo encolhe ao proprio conteudo e a descricao fica com
+   a sobra, que e a ordem em que as duas sao lidas. */
+/* Só a tarefa quebra linha e cresce; as outras quatro colunas encolhem ao
+   próprio conteúdo. Sem isto o navegador reparte a largura em proporção ao
+   conteúdo de cada coluna, e a frase que se lê é a que sobra espremida. */
+.tabela-pendencias th, .tabela-pendencias td { width: 1%; white-space: nowrap; }
+.tabela-pendencias th:first-child, .tabela-pendencias td:first-child {
+  width: auto; white-space: normal; min-width: 22ch;
+}
+/* A âncora genérica é uma palavra só e longa (`epi_entrada_estoque`). O teto
+   mora no <div>, e não na célula, porque `max-width` não se aplica a
+   `display: table-cell` — na célula ele era ignorado e a palavra passava por
+   baixo do botão da coluna seguinte. O `min-width` é o contrapeso: com
+   `anywhere` e sem piso, a coluna encolheria a uma letra por linha. */
+.tabela-pendencias th:nth-child(4), .tabela-pendencias td:nth-child(4) { white-space: normal; }
+.tabela-pendencias .onde { min-width: 11ch; max-width: 17ch; overflow-wrap: anywhere; }
+.tabela-cartao.lista.tabela-pendencias .recorte { max-width: 17ch; }
+/* A categoria encabeça o caso concreto: rótulo pequeno em versalete sobre a
+   frase que se lê. */
+.tabela-pendencias .tarefa { display: flex; flex-direction: column; gap: 2px; }
+.tabela-pendencias .rotulo-tipo {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tinta-dica);
+}
+.tabela-pendencias .rotulo-tipo.mono { letter-spacing: 0; text-transform: none; }
+.tabela-pendencias .tarefa > strong { font-weight: 600; font-size: 14px; }
+
+/* ---------- kanban ----------
+   Cinco colunas nao cabem em 1024px por mais que se aperte: 5 x 200px ja passa
+   da area util. Em vez de espremer o cartao ate ninguem o ler, o quadro rola
+   dentro de si - a pagina continua sem rolagem horizontal, que e o que quebra
+   a leitura de tudo o mais. */
+/* `position: relative` para que qualquer descendente absoluto seja recortado
+   aqui, e nao vazando para a rolagem da pagina. */
+.rolagem-quadro { position: relative; overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
+.quadro {
+  display: grid; grid-template-columns: repeat(5, minmax(200px, 1fr));
+  gap: 12px; align-items: start;
+}
+.coluna {
+  background: var(--divisor); border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao); padding: 11px; min-height: 300px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.coluna h3 {
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 1px 3px 0;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--tinta-media);
+}
+.coluna h3 .contador { background: var(--cartao); border: 1px solid var(--borda); }
+/* Alvo do arraste: a coluna inteira muda de cor e a borda vira tracejada. Um
+   `outline` fino nao se ve enquanto o cartao esta preso ao cursor. */
+/* O tracejado passou de um azul proprio (#7fb0d1) para o --acento: o alvo tem
+   de se ler com o cartao preso ao cursor e meio por cima dele, e a borda fraca
+   competia com a do cartao arrastado. O fundo ja era o --acento-claro em outro
+   hexadecimal. */
+/* E o fundo passa de --acento-claro para --info-borda porque --acento-claro
+   ficava em 1,01:1 contra o --divisor da coluna em repouso: o alvo do arraste
+   MUDAVA DE COR sem mudar de valor, e quem estava com o cartão preso ao cursor
+   não via diferença nenhuma além do tracejado. Uma rung inteira abaixo, 1,44. */
+.coluna.destino { background: var(--info-borda); border: 1px dashed var(--acento); }
+.lista-cartoes { display: flex; flex-direction: column; gap: 9px; min-height: 44px; }
+/* Coluna vazia diz que esta vazia, e o aviso some sozinho quando o primeiro
+   cartao cai ali: `:empty` responde ao DOM, e o kanban move cartao por JS sem
+   recarregar a pagina. Um bloco de verdade no HTML ficaria para tras. */
+.lista-cartoes:empty::after {
+  content: "Nada nesta coluna";
+  display: block; padding: 20px 10px;
+  border: 1px dashed var(--borda); border-radius: var(--raio-aviso);
+  text-align: center; font-size: 13px; color: var(--tinta-dica);
+}
+
+.cartao-kanban {
+  background: var(--cartao); border: 1px solid var(--borda);
+  /* `#b9c3cb` continua literal de proposito, e e a UNICA cor de interface que
+     continua: ela nao pertence a paleta, e sim a AUSENCIA da cor do tipo de
+     processo, que vem do banco (`tipo_processo.cor_hex`). Como token ela
+     passaria a ser oferecida a quem desenha a proxima tela, e o que ela diz e
+     "este registro nao tem cor" — o que so faz sentido aqui. O valor tambem
+     estava escrito no template (`cartao_kanban.html`); agora mora so aqui, e o
+     template omite o `style` quando nao ha cor. */
+  border-left: 4px solid var(--cor-tipo, #9fadbb);
+  border-radius: var(--raio-aviso); padding: 10px 11px; cursor: grab;
+  box-shadow: var(--sombra); font-size: 13px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.cartao-kanban:hover { border-color: var(--borda-hover); box-shadow: var(--sombra-hover); }
+.cartao-kanban .topo { display: flex; align-items: center; gap: 7px; }
+/* O NUP e a peca larga do cartao; ele encolhe primeiro, e o `title` guarda o
+   numero inteiro. */
+.cartao-kanban .topo .mono {
+  font-size: 12px; color: var(--tinta-fraca);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cartao-kanban .topo .selo { margin-left: auto; font-size: 11px; padding: 3px 6px; }
+.cartao-kanban .titulo { font-weight: 600; font-size: 14px; display: block; }
+/* O menu "mover para…" do cartao. E um <details> pelo mesmo motivo do seletor
+   de modulo: abre sem JavaScript, e fecha sozinho. Fica discreto ate ser
+   pedido — o quadro e denso, e cinco botoes por cartao o triplicariam de
+   altura —, mas o `summary` e focavel: e por ele que o teclado entra. Os
+   botoes empilham, porque a coluna tem ~200px e quatro rotulos lado a lado nao
+   cabem; `compacto` para nao competir com o titulo do cartao. */
+.cartao-kanban details.mover > summary {
+  cursor: pointer; font-size: 12px; color: var(--tinta-dica); list-style: none;
+  padding: 2px 0; user-select: none;
+}
+.cartao-kanban details.mover > summary::-webkit-details-marker { display: none; }
+.cartao-kanban details.mover > summary::before { content: "\2192\00a0"; }
+.cartao-kanban details.mover > summary:hover,
+.cartao-kanban details.mover[open] > summary { color: var(--acento); }
+.cartao-kanban details.mover form {
+  display: flex; flex-direction: column; gap: 5px; margin-top: 6px;
+}
+.cartao-kanban details.mover form button { width: 100%; text-align: left; }
+/* O quadro vazio: o mesmo `.vazio` das listas, so que fora de tabela e com a
+   largura da tela. Aparece no lugar do quadro, nao acima dele — cinco colunas
+   em branco embaixo de "nenhum processo" e a mesma informacao duas vezes. */
+.quadro-vazio { max-width: 640px; }
+.cartao-kanban .titulo a { color: var(--tinta); }
+.cartao-kanban .titulo a:hover { color: var(--acento); text-decoration: none; }
+.cartao-kanban .meta {
+  color: var(--tinta-dica); font-size: 12px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.cartao-kanban .meta .ponto { color: var(--ponto); }
+.cartao-kanban .atrasado { color: var(--erro); font-weight: 600; }
+
+/* ---------- troca parcial: os tres estados ----------
+   Carregando, deu certo, nao deu — para o pedaco de tela que muda sem recarga.
+   Sao cinco usos: os quatro `hx-get` do modulo de EPI e o arrastar do kanban, e
+   por isso o bloco fica aqui, logo abaixo do kanban, e nao repartido entre a
+   secao de aviso e a do quadro: as regras so se leem juntas.
+
+   Uma tela que troca um pedaco de si sem sinal nenhum e a causa classica de "o
+   sistema nao fez nada" quando ele fez — e, pior, de "o sistema fez" quando ele
+   nao fez, que era o que acontecia no seletor de tamanho: o saldo ANTIGO
+   continuava na tela ao lado do tamanho novo.
+
+   Quem aciona e o tratador global de `base.html`, sem marcacao nenhuma no
+   template: `hx-indicator` em cada `hx-get` obrigaria quem escrever o proximo a
+   lembrar, e e justamente a omissao que se esta consertando. */
+
+/* CARREGANDO — o alvo da troca, enquanto a resposta nao chega. Apaga em vez de
+   sumir: sumir moveria a pagina embaixo do cursor de quem esta clicando. */
+[data-carregando] { opacity: .45; transition: opacity .12s ease-out; }
+[data-carregando]::after {
+  content: "atualizando…";
+  display: block;
+  padding: 4px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--tinta-fraca);
+}
+
+/* DEU CERTO — um realce curto no pedaco que acabou de mudar. Sem ele, a troca
+   bem-sucedida e indistinguivel de nada ter acontecido, e e por isso que a
+   pessoa clica de novo. Quem nao aceita movimento recebe o contorno: a
+   informacao e "este trecho e novo", e ela nao pode depender da animacao. */
+@keyframes csso-realce { from { background: #fbecc4; } to { background: transparent; } }
+.recem-trocado, .recem-movido { animation: csso-realce 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .recem-trocado, .recem-movido { animation: none; outline: 2px solid var(--alerta); }
+}
+
+/* NAO DEU — a caixa que o tratador global escreve DENTRO do proprio alvo, e nao
+   numa faixa no topo da pagina: o motivo tem de aparecer onde a pessoa estava
+   olhando quando acionou a troca. Vem depois de `.aviso` na folha porque tem a
+   mesma especificidade (0,1,0) e precisa vencer a margem dela. */
+.falha-htmx { margin: 6px 0 0; }
+
+/* O ALVO DA TROCA PASSOU A PODER SER UM GRUPO DE LINHAS. A grade de presenca
+   troca a linha inteira a cada lancamento — e nao a celula —, porque lancar um
+   dia recalcula horas, frequencia e situacao, que moram em outras tres colunas;
+   o alvo e o `<tbody>` daquela linha, um por linha.
+
+   DUAS COISAS DO BLOCO ACIMA NAO ATRAVESSAM A FRONTEIRA DA TABELA, e as duas
+   foram medidas no navegador antes de virarem regra:
+
+   1. O `::after` de bloco nao tem onde morar dentro de `<tbody>`/`<tr>`: o CSS
+      embrulha conteudo de bloco ali numa CELULA ANONIMA, e o "atualizando..."
+      apareceria como uma coluna a mais no fim da linha, empurrando a tabela
+      enquanto a resposta nao chega.
+   2. `opacity` E IGNORADA em grupo de linhas. Medido: com `[data-carregando]`
+      casando (`elemento.matches` deu `true`), `getComputedStyle(tbody).opacity`
+      devolveu **1**, enquanto num `<div>` com o mesmo atributo devolveu 0,45.
+      O estado de carregando ficaria sem sinal nenhum — que e exatamente o
+      defeito que o tratador global existe para fechar.
+
+   O que sobra e o que a tabela aceita: fundo recuado no grupo de linhas (a
+   celula e transparente, entao ele aparece atraves dela — medido) e a tinta da
+   linha caindo um degrau. Mesma leitura de "apaga em vez de sumir", e mesmo
+   par de contraste que a folha ja usa em painel recuado: --tinta-dica sobre
+   --superficie-fraca, 4,89:1.
+
+   O realce de "deu certo" (`csso-realce`) anima `background`, entao ele
+   atravessa a fronteira sozinho e continua valendo. */
+tr[data-carregando]::after, tbody[data-carregando]::after { content: none; }
+tbody[data-carregando], tr[data-carregando] { background: var(--superficie-fraca); }
+tbody[data-carregando] td, tr[data-carregando] td { color: var(--tinta-dica); }
+
+/* A recusa DE REGRA, dentro da celula que a produziu. Nao e a mesma coisa que
+   `.falha-htmx`: aquela e falha de rede ou de permissao, escrita pelo tratador
+   global; esta e o servico respondendo "informe as horas deste dia" em HTTP 200,
+   com o motivo que ele sabe dizer e com o que foi digitado ainda no campo. Sai
+   estreita porque mora numa celula de grade, ao lado de outras quatro. */
+.recusa-na-celula {
+  margin: 6px 0 0; padding: 7px 9px 7px 22px; font-size: 12px; line-height: 1.35;
+}
+.recusa-na-celula::before { left: 9px; top: 12px; width: 6px; height: 6px; }
+
+/* O cartao do kanban enquanto o POST do arrasto esta no ar. */
+.cartao-kanban.movendo { opacity: .5; }
+
+/* ---------- abas ---------- */
+.abas { display: flex; gap: 4px; border-bottom: 1px solid var(--borda); margin-bottom: 16px; }
+.abas a {
+  padding: 8px 14px; border: 1px solid transparent; border-bottom: none;
+  border-radius: var(--raio) var(--raio) 0 0; color: var(--tinta-fraca);
+  font-size: 14px;
+}
+.abas a.ativa { background: var(--cartao); border-color: var(--borda); color: var(--tinta); font-weight: 600; }
+/* Contagem na aba: diz de fora quantos anexos ou pareceres ha, sem abrir. */
+/* Mesmo #8494a0 do grafico de meses, mesma reprovacao (3,12:1) e mesma
+   correcao: a conta na aba e o numero que decide se vale a pena abri-la. */
+.abas .conta { font-family: var(--mono); font-weight: 500; font-size: 11px; color: var(--tinta-dica); margin-left: 5px; }
+.abas a.ativa .conta { color: var(--acento); }
+
+/* ---------- pre-visualizacao do parecer ----------
+   Continua em Times: a previa imita o .docx que sai assinado, nao a interface. */
+.previa {
+  background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio-cartao);
+  padding: 26px 30px; font-family: "Times New Roman", Georgia, serif; font-size: 13px;
+  line-height: 1.45; box-shadow: var(--sombra);
+}
+.previa .cabecalho {
+  position: static; display: block; padding: 0; min-height: 0; border: 0; background: none;
+  text-align: center; font-size: 12px; line-height: 1.35; margin-bottom: 14px;
+}
+.previa .cabecalho strong { display: block; }
+/* O `#333` da moldura da tabela nao vira token pelo mesmo motivo que a fonte
+   aqui e Times: a previa imita o .docx que sai assinado, e nao a interface.
+   Puxar --borda para ca faria o documento herdar o cinza do sistema e deixar de
+   parecer com o papel que ele reproduz. */
+.previa table { border: 1px solid #333; }
+.previa th, .previa td { border: 1px solid #333; padding: 4px 6px; font-size: 12px; background: none; }
+.previa .assinatura { text-align: center; margin-top: 26px; }
+.previa .linha-titulo { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 12px; }
+/* Moldura da previa: fundo cinza em volta do papel branco, para a folha se ler
+   como folha. Some na impressao - ver o bloco @media print. */
+.moldura-previa { padding: 18px; background: var(--borda-fraca); }
+.moldura-previa .previa { box-shadow: var(--sombra-hover); }
+
+/* ---------- validacao lateral ----------
+   O mockup troca o simbolo por um ponto colorido. Aqui o simbolo fica: numa
+   lista de pendencias, ✓ e ✗ dizem o que o ponto so diz por cor, e essa lista e
+   exatamente a que decide se o parecer sai. O que se aproveita do desenho e o
+   resto - cor no texto do bloqueio, respiro entre itens, alinhamento pendurado. */
+.checklist-validacao { list-style: none; padding: 0; margin: 0 0 14px; font-size: 14px; }
+.checklist-validacao li {
+  padding: 0 0 0 20px; margin-bottom: 8px; position: relative; line-height: 1.45;
+}
+.checklist-validacao li:last-child { margin-bottom: 0; }
+.checklist-validacao li::before {
+  position: absolute; left: 0; top: 0; font-weight: 700;
+}
+.checklist-validacao .sim { color: var(--tinta-fraca); }
+.checklist-validacao .sim::before { content: "✓"; color: var(--ok); }
+.checklist-validacao .nao { color: var(--erro); }
+.checklist-validacao .nao::before { content: "✗"; color: var(--erro); }
+.checklist-validacao .aviso-item { color: var(--alerta-texto); }
+.checklist-validacao .aviso-item::before { content: "⚠"; color: var(--alerta); }
+/* A acao que fecha o parecer mora logo abaixo da lista de pendencias e ocupa a
+   largura do cartao: e a decisao da tela, nao mais um botao de formulario. */
+.checklist-validacao + .acoes { flex-direction: column; align-items: stretch; margin-top: 0; }
+.checklist-validacao + .acoes > form { display: flex; }
+.checklist-validacao + .acoes > form > button { flex: 1; }
+.checklist-validacao + .acoes > .pilula { justify-content: center; text-align: center; }
+
+/* ---------- dicionario de tags ----------
+   A tela do modelo existe para o confronto: de um lado o marcador que esta
+   escrito no .docx, do outro o campo do sistema que o alimenta. O marcador sai
+   com as chaves e em mono porque e assim que ele esta no Word - quem confere
+   compara o chip com o documento aberto ao lado, e nao um nome com outro. */
+.marcador-docx {
+  display: inline-block; padding: 3px 8px; border-radius: var(--raio-item);
+  background: var(--divisor); border: 1px solid var(--borda);
+  font-family: var(--mono); font-size: 13px; color: var(--tinta-media);
+  white-space: nowrap;
+}
+/* Marcador que esta no arquivo e nao tem linha no mapa: sairia impresso como
+   `{{ nome }}` no papel, e por isso ele e vermelho ja no chip. */
+.marcador-docx.sem-mapa {
+  background: var(--erro-fundo); border-color: var(--erro-borda); color: var(--erro);
+}
+/* Linha do mapa cujo marcador nao existe no arquivo: so aviso - pode ter sido
+   deixada para o proximo layout. */
+.marcador-docx.sem-arquivo {
+  background: var(--alerta-fundo); border-color: var(--alerta-borda); color: var(--alerta-texto);
+}
+.mapa-tags td { vertical-align: middle; }
+/* A coluna do campo comeca com a seta: o par se le da esquerda para a direita,
+   e sem ela as duas colunas parecem dois dados independentes da mesma linha. */
+.mapa-tags .para { display: flex; align-items: center; gap: 7px; }
+.mapa-tags .para > select, .mapa-tags .para > .campo-fixo { flex: 1; min-width: 0; }
+.mapa-tags .campo-fixo { font-size: 14px; }
+.mapa-tags .codigo-campo { font-family: var(--mono); font-size: 12px; color: var(--tinta-dica); }
+/* Fileira de chips de marcador solto (os que o arquivo tem e o mapa nao). */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+
+/* ---------- linha do tempo ---------- */
+.linha-tempo {
+  list-style: none; margin: 0; padding: 0 0 0 17px;
+  border-left: 1px solid var(--borda);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.linha-tempo li { padding: 0; position: relative; font-size: 14px; line-height: 1.45; }
+/* O anel branco separa o ponto da linha: sem ele os dois se somam e o evento
+   parece um engrossamento do fio. */
+.linha-tempo li::before {
+  content: ""; position: absolute; left: -22px; top: 5px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--acento); border: 2px solid var(--cartao);
+}
+.linha-tempo li.nada::before { display: none; }
+.linha-tempo .quando { color: var(--tinta-dica); font-size: 12px; font-family: var(--mono); }
+
+/* ---------- telas sem casca: login, primeiro acesso, trocar senha ----------
+   Nao ha lateral porque nao ha para onde navegar. No lugar dela vem um
+   cabecalho escuro de 58px que so carrega a marca - e o "sair", quando ha
+   sessao: na troca de senha a pessoa esta logada e pode desistir. */
+.cabecalho-marca {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 58px; padding: 0 22px;
+  background: var(--lateral); color: #fff;
+}
+.cabecalho-marca .marca-sigla { width: 28px; height: 28px; }
+.cabecalho-marca .nome { font-size: 14px; font-weight: 700; }
+.cabecalho-marca .sair { margin-left: auto; color: var(--lateral-texto-fraco); }
+.cabecalho-marca .sair:hover { color: #fff; }
+.cabecalho-marca :focus-visible { outline-color: var(--lateral-acento); }
+
+/* O cartao do desenho tem 706px. O login fica mais estreito porque sao dois
+   campos: na largura dos outros dois ele viraria uma faixa vazia com dois
+   inputs perdidos no meio. */
+.tela-auxiliar { width: 100%; max-width: 706px; margin: 6vh auto 0; }
+.tela-auxiliar.estreita { max-width: 420px; }
+.tela-auxiliar .cartao { padding: 34px 40px; }
+.tela-auxiliar h1 { font-size: 22px; margin: 0 0 5px; }
+.tela-auxiliar .sub { font-size: 14px; margin: 0 0 20px; }
+/* Acao unica da tela: ocupa a largura do cartao em vez de ficar um botao
+   pequeno encostado a esquerda de um formulario inteiro. */
+.botao.largo, button.largo { width: 100%; }
+
+/* ---------- atalhos de teclado ----------
+   A lista que o `?` abre. `<kbd>` com o desenho de tecla: fundo, fio e a fonte
+   mono — e o unico lugar do sistema em que uma tecla e citada como tecla. */
+kbd {
+  display: inline-block; padding: 1px 6px; font: 12px/1.4 var(--mono);
+  color: var(--tinta); background: var(--superficie-fraca);
+  border: 1px solid var(--borda); border-bottom-width: 2px; border-radius: 4px;
+}
+.lista-atalhos { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; margin: 0 0 12px; }
+.lista-atalhos dt { margin: 0; white-space: nowrap; }
+.lista-atalhos dd { margin: 0; font-size: 14px; }
+
+/* ---------- forca da senha ----------
+   A barra mede a MESMA politica que o servidor aplica (`politica_de_senha`, em
+   app/servicos/autenticacao.py): tamanho minimo, mistura de letras e numeros e
+   a lista de senhas triviais. Sem JavaScript ela nao aparece - barra que nao
+   mede nada e enfeite, e enfeite aqui e mentira sobre o que sera aceito. */
+.forca-senha { display: flex; align-items: center; gap: 9px; margin-top: 7px; }
+/* `display` de autor vence o `[hidden]` da folha do navegador: sem estas duas
+   linhas a barra aparece vazia com o campo vazio - e sem JavaScript ela nunca
+   sairia da tela, que e justamente o contrario do combinado. */
+.forca-senha[hidden], .erro-campo[hidden] { display: none; }
+.forca-senha .trilho { flex: 1; height: 4px; border-radius: 999px; background: var(--divisor); }
+.forca-senha .trilho > span {
+  display: block; height: 100%; border-radius: 999px;
+  width: calc(var(--v, 0) * 1%); background: var(--erro);
+}
+.forca-senha .rotulo { font-size: 13px; font-weight: 600; color: var(--erro); white-space: nowrap; }
+.forca-senha[data-nivel="2"] .trilho > span { background: var(--alerta); }
+.forca-senha[data-nivel="2"] .rotulo { color: var(--alerta-texto); }
+.forca-senha[data-nivel="3"] .trilho > span { background: var(--ok); }
+.forca-senha[data-nivel="3"] .rotulo { color: var(--ok); }
+
+/* ---------- tela de erro ----------
+   O erro diz por que e qual e a saida, nao so que falhou. O circulo vermelho
+   ao lado do titulo e o que faz a tela ser reconhecida como recusa antes de
+   qualquer palavra ser lida. */
+.cartao-erro { max-width: 640px; margin: 2vh auto 0; padding: 28px 30px; }
+.topo-erro { display: flex; align-items: center; gap: 13px; margin-bottom: 12px; }
+.topo-erro h1 { font-size: 22px; margin: 0; }
+.sinal-erro {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: 50%; background: var(--erro-fundo); border: 1px solid var(--erro-borda);
+}
+.sinal-erro::before {
+  content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--erro);
+}
+.cartao-erro .motivo { font-size: 14px; line-height: 1.5; margin: 0 0 14px; color: var(--tinta-media); }
+.cartao-erro .acoes { margin-top: 18px; }
+
+/* ---------- passos numerados ---------- */
+ol.passos { margin: 0 0 14px; padding-left: 20px; font-size: 14px; color: var(--tinta-media); }
+ol.passos li { margin-bottom: 6px; }
+
+/* ---------- checklist do processo ----------
+   O item feito continua legivel, so recua para o cinza: riscar e apagar sao
+   coisas diferentes, e a lista e prova de instrucao. */
+.lista-checklist { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lista-checklist li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.lista-checklist li form { display: flex; margin: 0; }
+.lista-checklist .marcador { font-size: 14px; }
+.lista-checklist .descricao { flex: 1; min-width: 0; }
+.lista-checklist li.feito .descricao { color: var(--tinta-dica); text-decoration: line-through; }
+
+/* ---------- agrupamento colapsavel ---------- */
+.grupo { border-bottom: 1px solid var(--borda); }
+.grupo > summary {
+  cursor: pointer; padding: 9px 12px; background: var(--divisor);
+  font-weight: 600; font-size: 14px; list-style-position: inside;
+}
+.grupo > summary:hover { background: var(--borda); }
+details > summary { cursor: pointer; }
+
+/* Todo numero que se le em voz alta ou se confere digito a digito sai em mono:
+   NUP, numero de laudo, protocolo, data, SIAPE, chave de validacao. */
+.mono { font-family: var(--mono); font-size: 13px; }
+.discreto { color: var(--tinta-fraca); font-size: 13px; }
+.nada { color: var(--tinta-fraca); font-style: italic; padding: 12px 0; }
+/* Segunda informacao da celula, embaixo da primeira (a base legal sob a data de
+   fim do adicional). */
+.quebra { display: block; }
+/* Maiuscula inicial sem mexer no texto. O filtro `capitalize` do Jinja resolve a
+   primeira letra e destroi o resto - "IN 15/2022" vira "in 15/2022" -, e as
+   frases que chegam do servidor comecam em minuscula porque sao continuacao de
+   outra. Aqui quem levanta a inicial e a folha, e o texto continua intacto para
+   quem le com leitor de tela ou copia. */
+.inicial-maiuscula::first-letter { text-transform: uppercase; }
+
+/* ---------- cabecalho apertado ----------
+   Entre 900 e 1180px a trilha, as acoes da tela, a busca, o sino e o usuario
+   dividem a mesma linha de 62px. A busca e a unica peca que encolhe sem perder
+   funcao, entao ela encolhe primeiro; o nome do usuario sai por ultimo, porque
+   o avatar continua identificando a sessao. */
+@media (max-width: 1200px) {
+  .busca { flex-basis: 180px; }
+  /* Duas colunas de conteudo pedem ~820px de area util; abaixo disso a segunda
+     coluna nao cabe sem espremer a primeira, e o formulario do parecer e o
+     primeiro a sofrer. */
+  .lado-a-lado, .lado-a-lado.principal, .lado-a-lado.igual, .lado-a-lado.editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 1040px) {
+  .usuario .nome { display: none; }
+}
+
+/* ---------- janela estreita ----------
+   A lateral e fixa em 252px enquanto houver largura para ela; abaixo disso vira
+   faixa no topo, porque 252px de 700px seria mais de um terco da tela. */
+@media (max-width: 900px) {
+  body { flex-direction: column; }
+  .lateral {
+    position: static; width: auto; height: auto; flex: none;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px;
+    padding: 14px 16px;
+  }
+  .lateral .menu { flex-direction: row; flex-wrap: wrap; }
+  .lateral .menu .rotulo-secao { width: 100%; padding-bottom: 2px; }
+  .lateral .menu-base { padding-top: 10px; }
+  .rodape-lateral { grid-column: 1 / -1; }
+  .cabecalho { padding: 0 16px; flex-wrap: wrap; }
+  .conteudo { padding: 18px 16px 28px; }
+  .faixa-alerta { padding: 8px 16px; }
+  .busca { flex-basis: 160px; }
+  .usuario .nome { display: none; }
+  .grafico-meses { gap: 4px; }
+  .lista-linhas > * { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .cabecalho-pagina .ao-lado { margin-left: 0; }
+  /* Numa janela estreita os 22px de respiro em volta do popup viram largura
+     roubada do formulario, que e a unica coisa que ha para ler ali. */
+  dialog.popup { padding: 10px; }
+}
+
+/* ---------- alto contraste do Windows ----------
+   `forced-colors: active` e o modo de alto contraste do Windows 11, e ele EXISTE
+   nas maquinas do setor. Nele o sistema operacional substitui toda cor de autor
+   por uma paleta propria: `background-color` de qualquer elemento vira `Canvas`,
+   `color` vira `CanvasText`, e a folha inteira perde o direito de escolher.
+
+   O que isso quebra aqui e exatamente o dispositivo que este sistema usa para o
+   estado NAO depender so de cor: o ponto de 6px da `.pilula` e o `.ponto-estado`
+   sao `background: currentColor` — viram Canvas, ou seja, somem —, e o
+   preenchimento das barras de `.progresso` e `.medidor` vira da mesma cor do
+   trilho, o que apaga o numero desenhado. A pilula continua com o rotulo escrito
+   ao lado (a politica de texto salva o essencial), mas o ponto que fazia a
+   leitura periferica e a barra que fazia a comparacao visual deixam de existir.
+
+   O argumento e o mesmo do `print-color-adjust: exact` do bloco de impressao,
+   escrito ali embaixo: ha desenho que carrega informacao e nao pode ser
+   normalizado junto com a decoracao. A saida tambem e a mesma forma de escape —
+   redeclarar com as PALAVRAS-CHAVE de cor de sistema, que sao as unicas que o
+   modo respeita: `CanvasText` e `Highlight` mapeiam para a paleta que a pessoa
+   escolheu, entao a regra continua sendo dela e nao nossa.
+
+   `prefers-reduced-motion` ja esta tratado mais acima, na secao dos tres estados
+   da troca parcial. */
+@media (forced-colors: active) {
+  /* O ponto do estado, de volta. `CanvasText` e a tinta do tema escolhido:
+     desenha em qualquer um dos esquemas do Windows, inclusive nos invertidos. */
+  .pilula::before, .ponto-estado, .aviso::before { background: CanvasText; }
+  /* A barra preenchida contra o trilho. Sem o `border` no trilho os dois ficam
+     do mesmo Canvas e a barra some por igualdade de fundo, nao por cor errada. */
+  .progresso .trilho, .medidor .trilho { border: 1px solid CanvasText; }
+  .progresso .trilho > span, .medidor .trilho > span,
+  .progresso.completo .trilho > span, .progresso.abaixo .trilho > span {
+    background: CanvasText;
+  }
+  /* "Voce esta aqui", nos quatro lugares em que ele e uma chapa de cor: item
+     ativo da lateral, ficha de filtro em uso, aba aberta e lado ativo do
+     alternador. Achatados todos para Canvas, as quatro telas passam a dizer que
+     nao ha nada selecionado — e a lista recortada volta a parecer a lista
+     inteira, que e o mesmo defeito que o cartao de filtros fechado tinha de
+     evitar. `Highlight`/`HighlightText` sao o par que o proprio sistema usa para
+     selecao. */
+  .menu a.ativo, .ficha-filtro.ativa, .abas a.ativa, .alternador > .ativo {
+    background: Highlight; color: HighlightText; border-color: Highlight;
+  }
+  /* O anel de foco tambem e cor de autor, e sem isto ele cai no contorno padrao
+     do sistema — que existe, mas e mais fino do que os 2px que a folha escolheu
+     justamente porque a navegacao por teclado e o caso que se esta servindo. */
+  :focus-visible { outline-color: Highlight; }
+}
+
+/* ---------- so no papel ----------
+   O que existe para ser assinado a caneta e nao tem o que fazer na tela: as
+   linhas de "separou / conferiu / data" da guia de entrega. `display: none`
+   aqui, e o bloco de impressao (abaixo) o liga. A ordem importa pelo mesmo
+   motivo que o `@media print` e o ultimo da folha. */
+.so-papel { display: none; }
+
+/* ---------- impressao ----------
+   A previa do parecer e impressa. Sem isto a lateral escura vira uma faixa de
+   252px em branco na esquerda de toda folha.
+
+   E o parecer nao e o unico papel: `epis_requisicao_guia.html` tem botao proprio
+   de imprimir e e a guia de entrega que vai ao balcao, com uma tabela de sete
+   colunas. O setor tambem imprime comprovante e ficha. O que segue existe
+   porque, ate aqui, o que o papel devia levar era justamente o que se perdia.
+
+   ESTE BLOCO E O ULTIMO DA FOLHA, E TEM DE CONTINUAR SENDO. `@media print` nao
+   desliga as faixas de largura: o Chrome monta a pagina impressa na medida do
+   PAPEL, e uma A4 com 14mm de margem da ~688px de area — abaixo dos 900px. As
+   duas faixas acima entram junto, e como `.lateral` tem a mesma especificidade
+   nos dois lugares (0,1,0) quem vence e quem vem depois. Com o bloco no meio da
+   folha, a regra de 900px devolvia `display: grid` e `padding: 14px 16px` a
+   lateral que o papel acabara de desmontar. Colapsar `.lado-a-lado` em uma
+   coluna, que vem da faixa de 1200px, e o que se quer no papel e continua
+   valendo. */
+@page {
+  /* A4 retrato e 14mm: sem `@page` a margem era a do navegador (12,7mm no
+     Chrome, variavel no resto), e a tabela de sete colunas da guia cabia ou nao
+     conforme a maquina de quem imprimiu. */
+  size: A4;
+  margin: 14mm;
+}
+@media print {
+  .so-papel { display: block; }
+  .assinaturas-guia {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
+    margin: 28px 0 0; padding-top: 6px; break-inside: avoid;
+  }
+  .assinaturas-guia > div { display: flex; flex-direction: column; gap: 28px; }
+  .assinaturas-guia dt { font-size: 10pt; color: #000; margin: 0; }
+  .assinaturas-guia dd { margin: 0; border-bottom: 1px solid #000; min-height: 1.2em; }
+
+  body { display: block; background: #fff; }
+  .cabecalho, .cabecalho-marca, .faixa-alerta, .rodape { display: none; }
+  .conteudo { padding: 0; }
+  .cartao, .previa, .tabela-cartao { border: 0; box-shadow: none; }
+  /* A moldura cinza existe para a previa se ler como folha na tela; no papel
+     ela seria uma tarja cinza em volta do documento. */
+  .moldura-previa { padding: 0; background: none; }
+  .moldura-previa .previa { box-shadow: none; }
+  /* Alternador de visao, abas e botoeira sao interface, nao documento. O
+     cabecalho de cartao fica: ele carrega o titulo da secao. */
+  .alternador, .abas, .acoes { display: none; }
+  /* Interface que faltava esconder: quem imprimia /processos levava junto um
+     cartao com seis <select> vazios no alto da folha, e cada linha da lista saia
+     com a gaveta "Gerir". Nada disso e documento. */
+  .filtros, .paginacao, .acoes-linha, .busca, .acoes-lote { display: none; }
+  /* O (i) e o botao que abre a gaveta em camada. O CONTEUDO deles ja nao sai
+     (sao `dialog.popup`, escondido logo abaixo); o que faltava era o gatilho —
+     sem isto, cada titulo da ficha impressa levaria junto um circulo com um "i"
+     que no papel nao abre coisa nenhuma, e cada linha da tabela um botao
+     "acoes". E o lembrete que anda com esta regra: o que o (i) guarda NAO chega
+     ao papel. Paragrafo que o documento impresso precisa nao pertence a um (i) —
+     e por isso o aviso da guia de entrega continua escrito na tela. */
+  .info-abre, .abre-gaveta { display: none; }
+  /* A barra de lote precisa das TRES classes, pelo mesmo motivo do
+     `!important` do popup logo abaixo: `.acoes-lote.flutuante.tem-selecao` la em
+     cima e (0,3,0) e venceria a linha acima, que e (0,1,0). Repetir a
+     especificidade e preferivel ao `!important` quando ela cabe — e aqui cabe,
+     porque o bloco de impressao ja e o ultimo da folha e ganha por ordem. Com
+     tres linhas marcadas e um Ctrl+P, sem isto um cartao de cinco seletores
+     sairia grudado atravessando a lista impressa. */
+  .acoes-lote.flutuante.tem-selecao { display: none; }
+  /* O popup de cadastro tambem nao e documento, e ele e o unico bloco de
+     interface que o servidor pode devolver JA ABERTO: a gravacao recusada volta
+     com `[open]` escrito. Sem o `!important` a regra de `[open]` la de cima
+     (0,2,1) venceria esta (0,1,0) e um formulario em branco sairia por cima da
+     lista — e quem imprime uma lista imprime depois de tentar cadastrar. */
+  dialog.popup { display: none !important; }
+  .cabecalho-cartao { border-bottom: 1px solid var(--borda); }
+
+  /* O PAPEL ANDA UMA RUNG PARA BAIXO NA MESMA RAMPA. A escala de interface subiu
+     meio pixel em vários tamanhos ao perder os meios pixels (12,5 virou 13, 13,5
+     virou 14 — ver a seção "escala tipográfica"). Na tela isso é legibilidade
+     ganha; no papel é largura gasta, e ali a área útil é de ~688px numa A4 com
+     14mm. A guia de entrega tem SETE colunas, e meio pixel por coluna é o que
+     empurra a última para fora — a última é "Decisão", que é o motivo da recusa
+     e é justamente o que a guia existe para levar ao balcão. Não há tamanho novo
+     aqui: cada peça anda um degrau da rampa que já existe. */
+  body { font-size: 14px; }
+  .tabela-cartao.lista th, .cartao.liso > table th { font-size: 11px; }
+  .tabela-cartao.lista td, .cartao.liso > table td,
+  table th, table td, dl.tabela-dados > dd { font-size: 13px; }
+
+  /* O defeito que cortava a informacao. Na tela `overflow: auto` e a saida certa
+     — a tabela larga rola dentro do cartao em vez de esticar a pagina. No papel
+     nao existe rolagem: o que passa da caixa e simplesmente CORTADO e some, sem
+     reticencia e sem aviso. Na guia de entrega quem cai e a ultima coluna, e a
+     ultima coluna e "Decisao" — o motivo da recusa, que e o que a guia existe
+     para levar ao balcao. */
+  .cartao.liso, .tabela-cartao, .rolagem-quadro { overflow: visible; }
+
+  /* O teto de altura e o cabecalho grudado sao os dois da TELA, e no papel os
+     dois viram defeito. O teto e o pior: `max-height: calc(100vh - 160px)` numa
+     folha A4 vira ~50mm de altura, e o resto da lista some sem aviso - o mesmo
+     corte silencioso que o `overflow` acima acabou de desfazer, por outra porta.
+     E `position: sticky` num <thead> impede o navegador de REPETIR o cabecalho
+     na pagina 2, que e justamente o que o <thead> veio trazer para a guia de
+     entrega: sete colunas de numeros sem nome no alto da segunda folha era o
+     defeito, e ele nao esta no @media print - esta na falta do <thead>.
+     O fio de `inset` sai junto: no papel a borda de `collapse` e pintada
+     normalmente, e as duas somadas dobrariam a espessura da linha. */
+  .tabela-cartao.lista { max-height: none; }
+  .tabela-cartao.lista thead { position: static; }
+  .tabela-cartao.lista thead th { box-shadow: none; }
+  thead { display: table-header-group; }
+
+  /* Quebra de pagina. `avoid` no cartao vale para o cartao que e um bloco (o
+     contexto congelado, o parecer da analise, o aviso): parti-lo ao meio separa
+     o equipamento da decisao. O cartao que E uma tabela volta a `auto` de
+     proposito — uma guia de trinta itens tem de atravessar a folha, e forcar
+     tudo numa pagina so gastaria uma pagina em branco antes de o navegador
+     quebrar assim mesmo. O que nao se parte ali e a LINHA. */
+  .cartao { break-inside: avoid; }
+  .cartao.liso, .tabela-cartao { break-inside: auto; }
+  tr, .aviso, .aviso-legal, .vazio, .kpi,
+  dl.tabela-dados > dt, dl.tabela-dados > dd { break-inside: avoid; }
+  /* Titulo no pe da folha e titulo orfao: a secao que ele anuncia comeca na
+     pagina seguinte e ele deixa de anunciar coisa nenhuma. */
+  h1, h2, h3, .cabecalho-cartao, .titulo-cartao { break-after: avoid; }
+
+  /* O navegador descarta fundo por padrao ao imprimir. A pilula sobrevive — ela
+     mantem a borda e a cor do texto —, mas o ponto de 6px e `background:
+     currentColor`, e e justamente ele que faz o estado nao depender so de cor.
+     Sem fundo, numa impressora monocromatica, "recusado" e "entregue" saem com
+     o mesmo desenho. Vale o mesmo para o selo, o contador e as quatro naturezas
+     do aviso. */
+  .pilula, .selo, .aviso, .aviso-legal, .kpi, .contador {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* A folha precisa se identificar. `.rodape` e escondido e `.rodape-lateral`
+     mora dentro da lateral, tambem escondida — entao a guia de entrega, que
+     circula FORA do sistema, saia sem orgao, sem sistema e sem versao: papel de
+     conferencia de balcao que ninguem consegue rastrear depois. Nao ha
+     `@page { @bottom-center }` que o Chrome renderize, entao a alternativa real
+     era nao identificar a folha. A lateral perde tudo menos o rodape, e o
+     rodape deixa de ser coluna escura para virar uma linha no alto da primeira
+     pagina — que e onde ele esta no documento (`base.html:86`). */
+  .lateral > *:not(.rodape-lateral) { display: none; }
+  .lateral {
+    position: static; display: block; width: auto; height: auto;
+    flex: none; padding: 0; background: none; overflow: visible;
+  }
+  .rodape-lateral {
+    margin: 0 0 12px; padding: 0 0 7px;
+    border-top: 0; border-bottom: 1px solid var(--borda);
+    flex-direction: row; flex-wrap: wrap; gap: 10px;
+    font-size: 11px; color: var(--tinta-fraca);
+  }
+  .rodape-lateral .versao { color: var(--tinta-fraca); }
+}

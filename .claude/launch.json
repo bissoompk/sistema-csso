@@ -1,0 +1,28 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "csso",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.principal:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8765"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "csso-teste",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-c",
+        "import os, pathlib, sys; env = pathlib.Path('dados-teste/.env').resolve(); sys.exit(f'Ambiente de teste nao montado: falta {env}. Rode RECRIAR-TESTE.bat.') if not env.is_file() else None; os.environ['CSSO_ENV_FILE'] = str(env); os.environ['CSSO_ABRIR_NAVEGADOR'] = 'false'; import uvicorn; uvicorn.run('app.principal:app', host='127.0.0.1', port=8766)"
+      ],
+      "port": 8766
+    }
+  ]
+}

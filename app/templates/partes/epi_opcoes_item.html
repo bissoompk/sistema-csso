@@ -1,0 +1,136 @@
+{% import "partes/macros.html" as ui with context %}
+
+{# O que só se sabe depois de escolher o item: quantidade padrão, tamanhos e os
+   lotes. Vem por HTMX porque recarregar a página inteira a cada troca de item
+   perderia o servidor já escolhido — e no balcão a pessoa está esperando. #}
+
+{# `digitado` só existe quando a página do balcão remonta o bloco depois de uma
+   recusa; a rota HTMX que serve este fragmento na troca de item não o manda, e
+   ali o certo é mesmo o padrão do catálogo. #}
+{% set d = digitado|default({}) %}
+
+{% if not item %}
+<p class="discreto">Escolha o item para ver tamanhos, lotes e quantidade padrão.</p>
+{% else %}
+
+<div class="linha-campos">
+  <div class="campo">
+    <label for="quantidade">Quantidade</label>
+    <input id="quantidade" name="quantidade" inputmode="numeric" required
+           value="{{ d.get('quantidade') or item.quantidade_padrao }}"
+           aria-describedby="dica-quantidade">
+    <span class="dica" id="dica-quantidade">
+      Padrão do catálogo: {{ item.quantidade_padrao }} {{ item.unidade_medida|lower }}.
+      Máximo: {{ item.regra_de_quantidade }}.</span>
+  </div>
+
+  <div class="campo">
+    <label for="tamanho">Tamanho</label>
+    {% if item.lista_de_tamanhos %}
+    <select id="tamanho" name="tamanho">
+      <option value="">—</option>
+      {% for t in item.lista_de_tamanhos %}
+      <option value="{{ t }}"{{ ' selected' if d.get('tamanho') == t }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <input id="tamanho" name="tamanho" value="{{ d.get('tamanho') or '' }}"
+           placeholder="não se aplica">
+    {% endif %}
+  </div>
+
+  <div class="campo">
+    <label for="data_evento">Data da entrega</label>
+    <input id="data_evento" type="date" name="data_evento"
+           value="{{ d.get('data_evento') or hoje.isoformat() }}"
+           max="{{ hoje.isoformat() }}" aria-describedby="dica-data">
+    <span class="dica" id="dica-data">Não aceita data futura: a ficha registra o
+      que aconteceu, e ela é append-only.</span>
+  </div>
+</div>
+
+{# RN-25 na tela. O lote com CA vencido NÃO some da lista: ele continua com
+   saldo físico e fica indisponível, com o motivo escrito ao lado. Sumir seria
+   repetir o defeito do legado — saldo mudando sem rastro — e deixaria quem
+   opera procurando defeito no sistema. #}
+<div class="campo">
+  <label for="entrada_id">Lote de estoque</label>
+  <select id="entrada_id" name="entrada_id" aria-describedby="dica-lote">
+    <option value="">Sem lote — entrega de balcão</option>
+    {% for l in lotes %}
+    <option value="{{ l.entrada.id }}" {% if not l.pode_sair %}disabled{% endif %}
+      {{- ' selected' if d.get('entrada_id') and d.get('entrada_id')|string == l.entrada.id|string }}>
+      {{ l.rotulo }}{% if l.impedimento %} — INDISPONÍVEL: {{ l.impedimento }}
+      {%- elif l.saldo <= 0 %} — sem saldo{% endif %}</option>
+    {% endfor %}
+  </select>
+  <span class="dica" id="dica-lote">
+    {%- if lotes -%}
+    O CA que bloqueia a entrega é o <strong>do lote</strong>, não o do catálogo:
+    um lote antigo pode estar vencido enquanto o cadastro já aponta para o CA
+    renovado.
+    {%- else -%}
+    Nenhum lote cadastrado para este item: dê entrada dele em
+    <a href="/epis/estoque">/epis/estoque</a>. Sem lote, o CA conferido é o do
+    catálogo; confira a etiqueta do equipamento antes de entregar.
+    {%- endif -%}
+  </span>
+</div>
+
+{% if lotes %}
+<div class="tabela-cartao lista">
+  <table>
+    <thead>
+      {# "Disponível" é a mesma coluna de conferência do estoque — compara-se o
+         saldo de um lote com o do lote de baixo para decidir de qual tirar —, e
+         por isso `.numerico` e não `.mono`. "Empenho" fica em `.mono`: é
+         CÓDIGO, não número que se soma. #}
+      <tr><th scope="col">Lote</th><th scope="col">Tamanho</th><th scope="col">CA</th><th scope="col">Validade</th><th scope="col">Empenho</th>
+        <th class="numerico" scope="col">Disponível</th><th scope="col">Situação</th></tr>
+    </thead>
+    {% for l in lotes %}
+    <tr>
+      <td class="mono">{{ l.entrada.lote or '—' }}</td>
+      <td>{{ l.entrada.tamanho or '—' }}</td>
+      <td class="mono">{{ l.entrada.numero_ca or '—' }}</td>
+      <td>{{ l.entrada.validade_ca|data or '—' }}
+        {{ ui.pilula_ca(l.entrada.validade_ca, hoje, item.exige_ca) }}</td>
+      <td class="mono">{{ l.entrada.empenho or '—' }}</td>
+      <td class="numerico">{{ l.saldo }}</td>
+      <td>{{ ui.pilula_lote(l.impedimento, l.saldo) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if item.exige_ca and (item.validade_ca is none or item.validade_ca < hoje) %}
+<div class="aviso aviso-erro">
+  <strong>O CA de referência deste item está vencido ou não informado no
+    catálogo.</strong> Havendo lote, o que decide é o CA do lote; não havendo, a
+  entrega será recusada — pela NR-6, EPI sem CA válido não é EPI.
+</div>
+{% endif %}
+
+{% if item.exige_treinamento %}
+<div class="aviso aviso-alerta">
+  <strong>Este item exige treinamento comprovado.</strong> O cruzamento
+  automático depende do módulo de Treinamentos; até lá, confira antes de
+  entregar.
+</div>
+{% endif %}
+
+{% if item.quantidade_maxima is not none %}
+<div class="campo">
+  <label for="justificativa_excecao">Justificativa da exceção ao máximo</label>
+  <textarea id="justificativa_excecao" name="justificativa_excecao" rows="2"
+            aria-describedby="dica-excecao"
+            placeholder="Só preencha se o máximo já tiver sido atingido.">{{ d.get('justificativa_excecao') or '' }}</textarea>
+  <span class="dica" id="dica-excecao">
+    O máximo é {{ item.regra_de_quantidade }}, contado pelo que a
+    <strong>ficha</strong> registra. Estourar não é bloqueio duro: é bloqueio até
+    que alguém escreva a justificativa — e ela fica registrada com o seu nome.</span>
+</div>
+{% endif %}
+
+{% endif %}

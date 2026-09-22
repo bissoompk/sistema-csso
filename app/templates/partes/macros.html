@@ -1,0 +1,1220 @@
+{# Vocabulário de marcação das telas do Processos SEI.
+
+   Mora num macro, e não num filtro Python, porque é decisão de apresentação:
+   qual natureza (ok / info / alerta / erro / neutra) cada estado veste. A regra
+   de negócio continua sendo a máquina de estados em `app/modelos/estados.py`;
+   aqui só se escolhe a cor e o ponto que a tornam legíveis. #}
+
+{# A leitura das naturezas:
+   - erro    o processo parou por decisão contrária, ou está sendo contestado;
+   - alerta  a bola está com outra pessoa — anexo, inspeção, assinatura, PROGEP;
+   - info    o trabalho está andando aqui dentro;
+   - ok      acabou;
+   - neutra  ainda não entrou no fluxo, ou saiu dele sem decisão de mérito. #}
+{% set NATUREZA_ESTADO = {
+  'NAO_INICIADO': '',
+  'RECEBIDO': 'info',
+  'EM_TRIAGEM': 'info',
+  'PENDENTE_DOCUMENTO': 'alerta',
+  'AGUARDANDO_INSPECAO': 'alerta',
+  'INSPECIONADO': 'info',
+  'AGUARDANDO_QUANTIFICACAO': 'alerta',
+  'LAUDO_EM_ELABORACAO': 'info',
+  'LAUDO_EMITIDO': 'info',
+  'PARECER_EM_ELABORACAO': 'info',
+  'PARECER_PRONTO_P_ASSINATURA': 'alerta',
+  'PARECER_ASSINADO': 'info',
+  'INSERIDO_NO_SEI': 'info',
+  'DEVOLVIDO_A_PROGEP': 'alerta',
+  'CONCLUIDO': 'ok',
+  'INDEFERIDO_TECNICAMENTE': 'erro',
+  'ARQUIVADO': '',
+  'SOBRESTADO': 'alerta',
+  'EM_RECURSO': 'erro'
+} %}
+
+{% macro pilula_estado(codigo) %}
+<span class="pilula {{ NATUREZA_ESTADO.get(codigo, '') }}">{{ codigo|estado }}</span>
+{%- endmacro %}
+
+{# Só o ponto colorido do estado, para onde não cabe a pílula inteira — é o caso
+   do cartão do kanban, em que a coluna já diz o grupo e sobra dizer o estado
+   exato. O `title` carrega o rótulo, porque cor sozinha não é informação. #}
+{% macro ponto_estado(codigo) %}
+<span class="ponto-estado {{ NATUREZA_ESTADO.get(codigo, '') }}"
+      title="{{ codigo|estado }}"><span class="oculto">{{ codigo|estado }}</span></span>
+{%- endmacro %}
+
+{# "Somente leitura", no canto do cabeçalho da página, quando a tela abre mas não
+   deixa escrever. Sete telas de três módulos escreviam esta pílula à mão, todas
+   as sete idênticas — foi o único padrão que atravessou os lotes sem se deformar,
+   e é justamente por isso que ele merece morar aqui antes de a oitava tela
+   inventar a oitava grafia.
+
+   `verbo` é o que a permissão libera ("editar", "decidir pedido", "escrever no
+   razão"): dizer *o que* falta poder fazer é o que separa um aviso de um
+   bloqueio mudo.
+
+   O nome da permissão sai TAMBÉM em texto para leitor de tela, e não só no
+   `title`: `title` não é anunciado de forma confiável e nunca aparece em toque —
+   quem abre a tela num tablet via a pílula cinza e não tinha como saber o que
+   pedir a quem administra. É o mesmo par de `ponto_estado` logo acima. #}
+{% macro pilula_somente_leitura(permissao, verbo='editar') %}
+<span class="pilula" title="{{ verbo }} exige a permissão {{ permissao }}"
+      >somente leitura<span class="oculto"> — {{ verbo }} exige a permissão {{ permissao }}</span></span>
+{%- endmacro %}
+
+{% set ROTULO_SITUACAO_PARECER = {
+  'RASCUNHO': 'Rascunho',
+  'EM_REVISAO': 'Em revisão',
+  'RESERVADO': 'Reservado',
+  'EMITIDO': 'Emitido',
+  'ASSINADO': 'Assinado',
+  'ANULADO': 'Anulado'
+} %}
+{% set NATUREZA_SITUACAO_PARECER = {
+  'RASCUNHO': '',
+  'EM_REVISAO': 'info',
+  'RESERVADO': 'alerta',
+  'EMITIDO': 'ok',
+  'ASSINADO': 'ok',
+  'ANULADO': 'erro'
+} %}
+
+{% macro pilula_parecer(situacao) %}
+<span class="pilula {{ NATUREZA_SITUACAO_PARECER.get(situacao, '') }}"
+      title="{{ situacao }}">{{ ROTULO_SITUACAO_PARECER.get(situacao, situacao) }}</span>
+{%- endmacro %}
+
+{# Situação do laudo. Duas só: o laudo vale, ou foi superado por outro. Não há
+   "vencido" — o laudo não tem prazo de validade (IN 15/2022, art. 10, §3º), e
+   uma terceira pílula aqui seria a porta de entrada dessa invenção. #}
+{% macro pilula_laudo(status) %}
+{%- if status == 'SUPERADO' -%}
+<span class="pilula alerta">superado</span>
+{%- else -%}
+<span class="pilula ok">vigente</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Máquina B — o direito concedido. A leitura das naturezas segue a mesma regra
+   da máquina do processo: alerta quando o direito parou e espera decisão de
+   fora (afastamento, reavaliação), ok quando está em vigor, neutra quando ainda
+   não começou (proposto) ou já terminou (cessado). #}
+{% set ROTULO_DIREITO = {
+  'PROPOSTO': 'proposto',
+  'VIGENTE': 'vigente',
+  'SUSPENSO': 'suspenso',
+  'EM_REAVALIACAO': 'em reavaliação',
+  'ALTERADO': 'alterado',
+  'CESSADO': 'cessado'
+} %}
+{% set NATUREZA_DIREITO = {
+  'PROPOSTO': '',
+  'VIGENTE': 'ok',
+  'SUSPENSO': 'alerta',
+  'EM_REAVALIACAO': 'alerta',
+  'ALTERADO': 'info',
+  'CESSADO': ''
+} %}
+
+{% macro pilula_direito(estado) %}
+<span class="pilula {{ NATUREZA_DIREITO.get(estado, '') }}">{{ ROTULO_DIREITO.get(estado, estado) }}</span>
+{%- endmacro %}
+
+{# Situação funcional do servidor. Não é máquina de estados — é o campo
+   `situacao` do cadastro —, mas a leitura das naturezas segue a mesma regra das
+   outras: ok quando a pessoa está em exercício; alerta quando ela está fora e
+   pode voltar, que é justamente quando "onde ela trabalha" — de que o adicional
+   depende — deixa de ser óbvio; neutra quando o vínculo acabou. #}
+{% set ROTULO_SITUACAO_SERVIDOR = {
+  'ATIVO': 'ativo',
+  'CEDIDO': 'cedido',
+  'LICENCA': 'licença',
+  'APOSENTADO': 'aposentado',
+  'EXONERADO': 'exonerado'
+} %}
+{% set NATUREZA_SITUACAO_SERVIDOR = {
+  'ATIVO': 'ok',
+  'CEDIDO': 'alerta',
+  'LICENCA': 'alerta',
+  'APOSENTADO': '',
+  'EXONERADO': ''
+} %}
+
+{% macro pilula_situacao_servidor(situacao) %}
+<span class="pilula {{ NATUREZA_SITUACAO_SERVIDOR.get(situacao, '') }}"
+      title="{{ situacao }}">{{ ROTULO_SITUACAO_SERVIDOR.get(situacao, (situacao or '—')|lower) }}</span>
+{%- endmacro %}
+
+{# ===================================================================
+   Módulo Certificados e Treinamentos
+   =================================================================== #}
+
+{# Máquina da TURMA. A leitura das naturezas é a mesma das outras máquinas:
+   neutra enquanto a turma só existe na agenda; info quando ela está recebendo
+   gente; alerta enquanto está acontecendo — é o único momento em que a turma
+   pede trabalho todo dia; ok quando terminou; erro quando não vai acontecer.
+
+   Os rótulos vivem aqui, e não em `ROTULO_TURMA`, porque aquele mapa é ASCII
+   (é lido também por mensagem de serviço e por trilha de auditoria) e a tela
+   escreve "Concluída" com acento. #}
+{% set ROTULO_TURMA_TELA = {
+  'PLANEJADA': 'Planejada',
+  'INSCRICOES_ABERTAS': 'Inscrições abertas',
+  'EM_ANDAMENTO': 'Em andamento',
+  'CONCLUIDA': 'Concluída',
+  'CANCELADA': 'Cancelada'
+} %}
+{% set NATUREZA_TURMA = {
+  'PLANEJADA': '',
+  'INSCRICOES_ABERTAS': 'info',
+  'EM_ANDAMENTO': 'alerta',
+  'CONCLUIDA': 'ok',
+  'CANCELADA': 'erro'
+} %}
+
+{% macro pilula_turma(situacao) %}
+<span class="pilula {{ NATUREZA_TURMA.get(situacao, '') }}"
+      title="{{ situacao }}">{{ ROTULO_TURMA_TELA.get(situacao, situacao) }}</span>
+{%- endmacro %}
+
+{# O verbo do passo, e não o nome do estado de destino: quem clica quer
+   "concluir a turma", não "passar para concluída" — o segundo é como o banco
+   chama o resultado. Voltar para PLANEJADA vindo de INSCRIÇÕES ABERTAS é fechar
+   as inscrições sem cancelar a turma, e é assim que o botão tem de se ler:
+   "Passar para planejada" faria parecer que a turma anda para trás. #}
+{% set ACAO_TURMA = {
+  'PLANEJADA': 'Fechar inscrições',
+  'INSCRICOES_ABERTAS': 'Abrir inscrições',
+  'EM_ANDAMENTO': 'Iniciar turma',
+  'CONCLUIDA': 'Concluir turma',
+  'CANCELADA': 'Cancelar turma'
+} %}
+
+{# Máquina da INSCRIÇÃO. PRESENTE e AUSENTE são derivados do lançamento e ainda
+   não são resultado — ficam em info e alerta; APROVADO e REPROVADO são o
+   resultado, e é neles que a emissão se apoia. Cancelada é erro pelo mesmo
+   motivo que reprovado: as duas fecham a porta do certificado. #}
+{% set ROTULO_INSCRICAO_TELA = {
+  'AGUARDANDO_EMAIL': 'Aguardando e-mail',
+  'INSCRITA': 'Inscrita',
+  'CONFIRMADA': 'Confirmada',
+  'PRESENTE': 'Presente',
+  'AUSENTE': 'Ausente',
+  'APROVADO': 'Aprovado',
+  'REPROVADO': 'Reprovado',
+  'CANCELADA': 'Cancelada'
+} %}
+{% set NATUREZA_INSCRICAO = {
+  'AGUARDANDO_EMAIL': 'alerta',
+  'INSCRITA': '',
+  'CONFIRMADA': 'info',
+  'PRESENTE': 'info',
+  'AUSENTE': 'alerta',
+  'APROVADO': 'ok',
+  'REPROVADO': 'erro',
+  'CANCELADA': 'erro'
+} %}
+
+{% macro pilula_inscricao(situacao) %}
+<span class="pilula {{ NATUREZA_INSCRICAO.get(situacao, '') }}"
+      title="{{ situacao }}">{{ ROTULO_INSCRICAO_TELA.get(situacao, situacao) }}</span>
+{%- endmacro %}
+
+{# Situação pública do certificado: o que a validação por chave responde.
+   Vencido é estado, calculado agora — nunca congelado, senão o papel apareceria
+   como válido para sempre. Anulado prevalece sobre vencido: o anulado nunca
+   valeu, e dizer "vencido" sugeriria que um dia valeu. #}
+{% macro pilula_certificado(publica) %}
+{%- if publica == 'ANULADO' -%}
+<span class="pilula erro">Anulado</span>
+{%- elif publica == 'VENCIDO' -%}
+<span class="pilula alerta">Vencido</span>
+{%- else -%}
+<span class="pilula ok">Válido</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Versão do modelo de certificado. A superada vai em ALERTA, e não em neutra:
+   publicar a v2 não move o ponteiro do treinamento, e é justamente o rótulo
+   desta pílula que decide com qual layout o certificado sai. Em cinza ela se
+   lia como "versão antiga, tanto faz" — e não tanto faz. #}
+{% macro pilula_versao(vigente) %}
+{%- if vigente -%}
+<span class="pilula ok">vigente</span>
+{%- else -%}
+<span class="pilula alerta">superada</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Sim/não de catálogo. O "não" continua escrito: uma pílula só para o "sim"
+   faria a coluna virar uma fileira de vazios, e vazio não é resposta.
+
+   **O "não" é NEUTRO, e é aqui que fica escrito por quê.** Item de catálogo
+   inativo é uma escolha de quem administra: a bota saiu de linha, a categoria
+   não se usa mais, o motivo de recusa foi aposentado. Não há nada a consertar, e
+   uma pílula vermelha em toda linha desligada de todo catálogo faria a tela
+   parecer cheia de defeito. O único "não" que é vermelho no sistema é a conta de
+   usuário inativa (`usuarios.html`), e ali a diferença é real: conta inativa é
+   um BLOQUEIO — alguém tenta entrar e não consegue —, não uma escolha de
+   inventário. As cinco telas de catálogo escreviam esta pílula à mão, cada uma
+   na sua rodada, e a divergência entre elas era só falta de um lugar onde a
+   distinção estivesse dita. #}
+{% macro pilula_sim_nao(valor, sim='sim', nao='não') %}
+{%- if valor -%}
+<span class="pilula ok">{{ sim }}</span>
+{%- else -%}
+<span class="pilula sem-ponto">{{ nao }}</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Abas de uma tela que reúne catálogos irmãos. O `href` é a própria rota: sem
+   JavaScript, cada aba é uma página, e o link continua funcionando em nova
+   guia — que é como se compara dois catálogos lado a lado. #}
+{% macro abas(itens, atual) %}
+<nav class="abas" aria-label="Catálogos do módulo">
+  {%- for caminho, rotulo in itens %}
+  <a href="{{ caminho }}" class="{{ 'ativa' if caminho == atual }}"
+     {% if caminho == atual %}aria-current="page"{% endif %}>{{ rotulo }}</a>
+  {%- endfor %}
+</nav>
+{% endmacro %}
+
+{# ===================================================================
+   Indicadores — a distribuição em barras
+   =================================================================== #}
+
+{# Uma distribuição, em barras, com a supressão da RN-19 já embutida.
+
+   **Mora aqui porque estava em três lugares e as três já divergiam.** As cópias
+   de `/relatorios` e de `/epis/relatorios` suprimiam; a do painel entregava a
+   contagem crua, e sob `processo.ver`, permissão mais larga que o
+   `indicador.ver` das outras duas. Quem lia as duas telas não tinha como saber
+   qual das duas regras valia — e essa é a pior forma de uma regra de privacidade
+   falhar, porque cada tela, olhada sozinha, parecia certa.
+
+   **A entrada é sempre a saída de `suprimir` (`app/rotas/relatorios.py`)**: um
+   dicionário de texto, em que a célula suprimida já chegou como "—". O macro não
+   decide supressão nenhuma — decidir aqui seria a terceira implementação da
+   regra, agora em Jinja, e ela divergiria da de Python no primeiro conserto.
+
+   **A célula suprimida não ganha barra.** Uma barrinha curta seria pior que o
+   número: afirmaria "é pouco", que é justamente o que a supressão existe para
+   não deixar deduzir. Por isso ela entra na ordenação com peso -1 e cai para o
+   fim, sem revelar posição nenhuma — e ordenar por valor direto não serve porque
+   os valores são texto, e em texto "9" vem depois de "31".
+
+   `notas` é o rótulo secundário que o indicador de EPI pendura na célula
+   (quantidade entregue, já atrelada à supressão em `epi_indicadores._atrelar`).
+   Vazio nas demais telas: parâmetro com default não obriga ninguém a passá-lo. #}
+{% macro distribuicao(dados, limiar, vazio, notas={}) %}
+{%- if dados -%}
+  {%- set ordenado = [] -%}
+  {%- for nome, valor in dados.items() -%}
+    {%- set _ = ordenado.append(((valor|int if valor.isdigit() else -1), nome, valor)) -%}
+  {%- endfor -%}
+  {%- set pico = (ordenado|map(attribute='0')|max) -%}
+<div class="medidor">
+  {% for _peso, nome, valor in ordenado|sort(reverse=true) %}
+  <div class="faixa">
+    <div class="rotulo">
+      <span>{{ nome }}{% if notas.get(nome) %}<span class="discreto"> · {{ notas[nome] }}</span>{% endif %}</span>
+      {% if valor.isdigit() %}
+      <span class="quanto">{{ valor }}</span>
+      {% else %}
+      <span class="quanto" title="menos de {{ limiar }} servidores — célula suprimida (RN-19)"
+            >{{ valor }}</span>
+      {% endif %}
+    </div>
+    <div class="trilho"><span style="--v:{{ (valor|int * 100 // pico) if valor.isdigit() and pico > 0 else 0 }}"></span></div>
+  </div>
+  {% endfor %}
+</div>
+{%- else -%}
+{# `.vazio` e nao `.nada`: num cartão de indicador a ausência de barra É a
+   leitura — "não houve entrega no exercício" é o resultado, não uma lista curta
+   —, e em itálico de uma linha ela some no meio dos parágrafos do cartão. #}
+<div class="vazio"><strong>{{ vazio }}</strong></div>
+{%- endif -%}
+{% endmacro %}
+
+{# ===================================================================
+   Módulo Gestão de EPI
+   =================================================================== #}
+
+{# O estado do CA. É a única informação do catálogo com consequência jurídica
+   direta: pela NR-6 o CA é o que constitui o equipamento como EPI, então um CA
+   vencido não é papel atrasado — é equipamento que deixou de ser proteção. Vai
+   em vermelho, e o "sem validade" vai em alerta e não em cinza, porque "não
+   sei" também não é "está válido" (RN-25). #}
+{% macro pilula_ca(validade, hoje, exige=true) %}
+{%- if not exige -%}
+<span class="pilula sem-ponto">dispensa CA</span>
+{%- elif validade is none -%}
+<span class="pilula alerta">validade não informada</span>
+{%- elif validade < hoje -%}
+<span class="pilula erro" title="{{ validade|data }}">CA vencido</span>
+{%- elif (validade - hoje).days <= 60 -%}
+<span class="pilula alerta" title="{{ validade|data }}">vence em {{ (validade - hoje).days }} dia(s)</span>
+{%- else -%}
+<span class="pilula ok" title="{{ validade|data }}">válido</span>
+{%- endif -%}
+{% endmacro %}
+
+{# O que aconteceu na linha da ficha. Entrega é o fato comum e vai em neutra;
+   estorno vai em erro porque é a linha que declara que outra não vale; devolução
+   e substituição são fatos posteriores que não desfazem a entrega, e por isso
+   info. Descarte é alerta: o equipamento saiu de circulação e alguém precisa
+   saber por quê. #}
+{% set ROTULO_FICHA = {
+  'ENTREGA': 'entrega',
+  'DEVOLUCAO': 'devolução',
+  'SUBSTITUICAO': 'substituição',
+  'DESCARTE': 'descarte',
+  'ESTORNO': 'estorno'
+} %}
+{% set NATUREZA_FICHA = {
+  'ENTREGA': '',
+  'DEVOLUCAO': 'info',
+  'SUBSTITUICAO': 'info',
+  'DESCARTE': 'alerta',
+  'ESTORNO': 'erro'
+} %}
+
+{% macro pilula_ficha(tipo) %}
+<span class="pilula {{ NATUREZA_FICHA.get(tipo, '') }}"
+      title="{{ tipo }}">{{ ROTULO_FICHA.get(tipo, (tipo or '')|lower) }}</span>
+{%- endmacro %}
+
+{# A janela da decisão 8, dita em uma pílula. Vai em ALERTA e não em neutra: a
+   entrega existe e a prova não, e quem lê a ficha precisa perceber isso sem
+   procurar. Em cinza ela se leria como "detalhe de acabamento" — e é
+   justamente a diferença entre uma entrega que se sustenta numa fiscalização e
+   uma que não. #}
+{% macro pilula_comprovante(anexo) %}
+{%- if anexo -%}
+<span class="pilula ok" title="SHA-256 {{ anexo.sha256 }}">
+  comprovante · {{ anexo.sha256[:12] }}</span>
+{%- else -%}
+<span class="pilula alerta"
+      title="a entrega está registrada, mas o papel assinado ainda não foi digitalizado e anexado">
+  sem comprovante</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Troca devida (RN-32). Importa além do inventário: um EPI com troca vencida
+   NÃO sustenta a alegação de que o agente nocivo está neutralizado — o que
+   torna esta etiqueta um dado do parecer, e não um lembrete de almoxarifado. #}
+{% macro pilula_troca(previsao, hoje) %}
+{%- if previsao is none -%}
+{%- elif previsao < hoje -%}
+<span class="pilula erro" title="prevista para {{ previsao|data }}">troca vencida</span>
+{%- elif (previsao - hoje).days <= 30 -%}
+<span class="pilula alerta" title="prevista para {{ previsao|data }}">troca em {{ (previsao - hoje).days }} dia(s)</span>
+{%- endif -%}
+{% endmacro %}
+
+{# A situação de um lote de estoque, dita em uma pílula: pode sair, sem saldo, ou
+   o impedimento escrito por extenso.
+
+   **Estava em três arquivos, com a marcação copiada letra por letra** — a
+   tabela do estoque, o bloco de opções do balcão e o saldo por tamanho da
+   requisição. As três respondem exatamente a mesma pergunta sobre o mesmo lote,
+   e bastava uma delas mudar de rótulo para quem opera ver duas respostas
+   diferentes na mesma sessão de trabalho — sem que nada no sistema acusasse a
+   divergência, porque não havia nada ligando as três.
+
+   O impedimento vai em ERRO e não em alerta: pela NR-6 o CA é o que constitui o
+   equipamento como EPI, então o lote impedido não é papel atrasado — é
+   patrimônio que não é proteção. "Sem saldo" é neutro porque não é defeito: é o
+   lote que acabou, e acabar é o destino normal de um lote.
+
+   `quanto` é o número que decide entre "pode sair" e "sem saldo", e ele muda com
+   a tela: no estoque é o FÍSICO (a coluna existe para ser conferida contra a
+   prateleira), nas telas de saída é o DISPONÍVEL (o que outros pedidos já
+   prometeram não pode ser prometido de novo). Por isso ele entra por parâmetro
+   em vez de o macro escolher: escolher aqui seria decidir, num lugar só, uma
+   coisa que legitimamente difere nos dois. #}
+{% macro pilula_lote(impedimento, quanto) %}
+{%- if impedimento -%}
+<span class="pilula erro">{{ impedimento }}</span>
+{%- elif quanto <= 0 -%}
+<span class="pilula">sem saldo</span>
+{%- else -%}
+<span class="pilula ok">pode sair</span>
+{%- endif -%}
+{% endmacro %}
+
+{# O movimento do livro razão. A leitura das naturezas:
+
+   - entrada  ok: o lote chegou, e é o que o estoque existe para receber;
+   - saída    neutra: é a rotina — entregar é o destino normal do EPI;
+   - devolução info: fato posterior que não desfaz a entrega, e repõe saldo;
+   - descarte alerta: patrimônio saiu de circulação por decisão, e alguém
+     precisa saber por quê;
+   - ajuste   erro, e é o único que merece: ele declara que o número que o
+     sistema mostrava não batia com a prateleira. Em cinza se leria como
+     "acerto de rotina" — e um ajuste que passa despercebido é a divergência
+     que ninguém investigou. #}
+{% set ROTULO_MOVIMENTO = {
+  'ENTRADA': 'entrada',
+  'SAIDA': 'saída',
+  'DEVOLUCAO': 'devolução',
+  'DESCARTE': 'descarte',
+  'AJUSTE': 'ajuste'
+} %}
+{% set NATUREZA_MOVIMENTO = {
+  'ENTRADA': 'ok',
+  'SAIDA': '',
+  'DEVOLUCAO': 'info',
+  'DESCARTE': 'alerta',
+  'AJUSTE': 'erro'
+} %}
+
+{% macro pilula_movimento(tipo) %}
+<span class="pilula {{ NATUREZA_MOVIMENTO.get(tipo, '') }}"
+      title="{{ tipo }}">{{ ROTULO_MOVIMENTO.get(tipo, (tipo or '')|lower) }}</span>
+{%- endmacro %}
+
+{# Máquina C — o envelope da requisição de EPI. A leitura das naturezas segue a
+   regra das outras máquinas: neutra enquanto o pedido só existe em digitação;
+   alerta quando a bola está com o SESMT e ninguém pegou (enviada) ou quando o
+   equipamento ainda deve sair (analisada, em atendimento); info enquanto o
+   trabalho está andando aqui dentro; ok quando o pedido foi atendido; erro
+   quando a resposta foi negativa.
+
+   Cancelada vai em neutra e não em erro, e a diferença importa: indeferir é
+   decisão de mérito ("o item não é devido"), cancelar é desistência. Pintar as
+   duas de vermelho seria repetir na tela a confusão que a RN-27 desfaz no
+   banco — e que estragava o relatório de recusas do legado. #}
+{% set NATUREZA_EPI_REQUISICAO = {
+  'RASCUNHO': '',
+  'ENVIADA': 'alerta',
+  'EM_ANALISE': 'info',
+  'ANALISADA': 'alerta',
+  'EM_ATENDIMENTO': 'info',
+  'ATENDIDA': 'ok',
+  'INDEFERIDA': 'erro',
+  'CANCELADA': ''
+} %}
+
+{% macro pilula_requisicao(estado, rotulos) %}
+<span class="pilula {{ NATUREZA_EPI_REQUISICAO.get(estado, '') }}">{{ rotulos.get(estado, estado) }}</span>
+{%- endmacro %}
+
+{# Máquina D — a linha do pedido, onde a decisão acontece. Aprovado vai em
+   ALERTA e não em ok: aprovação é promessa, e enquanto o equipamento não saiu o
+   pedido ainda deve alguma coisa a alguém. Ok fica para ENTREGUE, que é o único
+   estado em que a pessoa está com a bota na mão. #}
+{% set NATUREZA_EPI_ITEM = {
+  'SOLICITADO': '',
+  'APROVADO': 'alerta',
+  'RESERVADO': 'info',
+  'SEM_ESTOQUE': 'alerta',
+  'ENTREGUE': 'ok',
+  'RECUSADO': 'erro',
+  'CANCELADO': ''
+} %}
+
+{% macro pilula_item_requisicao(estado, rotulos) %}
+<span class="pilula {{ NATUREZA_EPI_ITEM.get(estado, '') }}">{{ rotulos.get(estado, estado) }}</span>
+{%- endmacro %}
+
+{# Urgência. Só aparece quando é urgente: uma pílula "normal" em toda linha da
+   fila viraria ruído e faria a urgente deixar de saltar aos olhos — que é a
+   única coisa que ela existe para fazer. #}
+{% macro pilula_urgencia(urgencia, justificativa='') %}
+{%- if urgencia == 'URGENTE' -%}
+<span class="pilula erro" title="{{ justificativa or 'urgência declarada no pedido' }}">urgente</span>
+{%- endif -%}
+{% endmacro %}
+
+{# ===================================================================
+   Base compartilhada — Demandas
+   =================================================================== #}
+
+{# Máquina H — a demanda que chegou por fora do SEI. A leitura das naturezas é a
+   mesma das outras máquinas, e aqui ela tem uma consequência prática: ABERTA vai
+   em ALERTA, e não em neutra. Nas outras máquinas o primeiro estado é neutro
+   porque nada foi prometido ainda (rascunho de pedido, turma na agenda); aqui o
+   primeiro estado significa que **alguém pediu alguma coisa e ninguém pegou** —
+   que é exatamente o estado que esta funcionalidade existe para tirar da caixa
+   de e-mail. Em cinza ele se leria como "sem novidade".
+
+   `atrasada` não entra nesta pílula: quem diz o vermelho do prazo é a coluna do
+   prazo, com o selo, pelo mesmo desenho de /pendencias — duas marcas vermelhas
+   na mesma linha para o mesmo fato fariam procurar dois problemas. #}
+{% set NATUREZA_DEMANDA = {
+  'ABERTA': 'alerta',
+  'EM_ANDAMENTO': 'info',
+  'ENCERRADA': 'ok'
+} %}
+
+{% macro pilula_demanda(estado, rotulos) %}
+<span class="pilula {{ NATUREZA_DEMANDA.get(estado, '') }}">{{ rotulos.get(estado, estado) }}</span>
+{%- endmacro %}
+
+{# O desfecho — o que esta funcionalidade existe para não deixar em branco.
+
+   As quatro naturezas dizem coisas diferentes de propósito, e nenhuma delas é
+   "erro": SEM_PROVIDÊNCIA é uma decisão legítima e escrita, não um defeito, e
+   pintá-la de vermelho ensinaria a evitá-la — empurrando de volta para o
+   silêncio o único desfecho que hoje já acontece calado.
+
+   · resolvida       ok      — acabou aqui dentro;
+   · virou processo  info    — o trabalho continua, noutro lugar, e há link;
+   · encaminhada     alerta  — a bola está com outro setor, e ninguém daqui
+                               controla o relógio;
+   · sem providência neutra  — decisão tomada, com motivo escrito. #}
+{% set NATUREZA_DESFECHO = {
+  'RESOLVIDA': 'ok',
+  'VIROU_PROCESSO': 'info',
+  'ENCAMINHADA': 'alerta',
+  'SEM_PROVIDENCIA': ''
+} %}
+
+{% macro pilula_desfecho(desfecho, rotulos) %}
+{%- if desfecho -%}
+<span class="pilula {{ NATUREZA_DESFECHO.get(desfecho, '') }}"
+      title="{{ desfecho }}">{{ rotulos.get(desfecho, desfecho) }}</span>
+{%- endif -%}
+{% endmacro %}
+
+{# ===================================================================
+   Carga legada — importação e reconciliação
+   =================================================================== #}
+
+{# Classificação da linha da planilha (`importacao_planilha.classificar`). A
+   leitura das naturezas segue a mesma regra das máquinas de estado: ok quando a
+   linha entra inteira; alerta quando ela entra com furo declarado ao lado — é o
+   caso que pede conferência, e é por ele que a tela existe; neutra para a
+   reserva, que não é erro nem trabalho: é número que existe e nunca teve
+   conteúdo. O código cru fica no `title` porque é ele que aparece na planilha e
+   no relatório de quem confere. #}
+{% set NATUREZA_CLASSIFICACAO = {
+  'COMPLETA': 'ok',
+  'PARCIAL': 'alerta',
+  'RESERVA': ''
+} %}
+
+{% macro pilula_classificacao(classificacao) %}
+<span class="pilula {{ NATUREZA_CLASSIFICACAO.get(classificacao, '') }}"
+      title="{{ classificacao }}">{{ (classificacao or '')|lower }}</span>
+{%- endmacro %}
+
+{# Simulação × aplicação. Não é enfeite: a mesma tela sai das duas rotas, e o
+   que separa "nada foi gravado" de "está no banco" é só esta pílula. Por isso a
+   simulação vai em alerta e não em neutra — quem lê precisa perceber, sem
+   procurar, que o trabalho ainda não terminou. #}
+{% macro pilula_carga(aplicado) %}
+{%- if aplicado -%}
+<span class="pilula ok">aplicada</span>
+{%- else -%}
+<span class="pilula alerta">simulação — nada foi gravado</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Dias no estado com o SLA ao lado. O SLA aparece só quando o prazo estourou:
+   antes disso ele é ruído, depois é a explicação do vermelho. #}
+{% macro selo_dias(resumo) %}
+{%- if resumo.atrasado -%}
+<span class="selo erro" title="{{ resumo.dias_no_estado }} dias neste estado; o SLA da coluna é de {{ resumo.sla }} dias">
+  {{ resumo.dias_no_estado }}d · SLA {{ resumo.sla }}d</span>
+{%- else -%}
+<span class="selo" title="dias neste estado">{{ resumo.dias_no_estado }}d</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Barra de progresso do checklist. Sem itens não desenha nada: uma barra vazia
+   afirmaria que há checklist e que ele está zerado. #}
+{% macro progresso_checklist(feitos, total) %}
+{%- if total -%}
+<span class="progresso {{ 'completo' if feitos == total }}">
+  <span class="trilho"><span style="--v:{{ (feitos * 100 // total) }}"></span></span>
+  <span class="quanto">{{ feitos }}/{{ total }}</span>
+</span>
+{%- endif -%}
+{% endmacro %}
+
+{# ===================================================================
+   Popup de cadastro — o padrão de toda tela que cria registro novo
+   ===================================================================
+
+   **O que entra aqui.** Só o formulário que CRIA registro novo e que estava
+   aberto ocupando a tela da lista. Não entra edição em linha (em
+   `catalogo_lista.html` e em `assinaturas.html` o formulário aberto na linha É o
+   recurso: escondê-lo atrás de um clique tiraria da vista exatamente o que a
+   pessoa veio conferir), não entra ação de trâmite (aprovar, concluir, superar),
+   e não entra página dedicada — `/processos/novo`, o editor do parecer e as três
+   telas sem casca são a tela inteira de propósito.
+
+   **O que a tela ganha, e o buraco que não pode ficar.** A tela da lista passa a
+   ser só a lista. Em /servidores eram ~380px de formulário logo abaixo da
+   tabela, e a nota que explica Unidade × UORG — que se lê JUNTO com a tabela,
+   porque é a coluna UORG que engana quem a supõe uma sigla da Unidade — ficava
+   depois dele; agora ela encosta na tabela, que é onde ela serve. Em /usuarios
+   eram dois cartões lado a lado entre a tabela de contas e a lista de
+   habilitados a subscrever laudo, que subiu uma tela inteira. Onde o cadastro
+   saiu, ou o bloco seguinte encosta no anterior, ou entra o botão que o abre
+   (o "Atestar habilitação" foi para dentro do cartão de habilitados, ao lado do
+   art. 10, §2º que é o que se lê antes de atestar).
+
+   -------------------------------------------------------------------
+   DUAS MANEIRAS DE ABRIR, E É A SEGUNDA QUE NÃO PODE FALTAR
+   -------------------------------------------------------------------
+   `showModal()` é a boa: camada de topo, `Esc`, foco preso dentro e devolvido ao
+   botão na saída. Mas `showModal()` é JavaScript, e um `<dialog>` sem `open` é
+   `display: none` — se o popup dependesse só dele, desligar o JavaScript não
+   deixaria o cadastro feio: deixaria **impossível**, e a tela não teria nem o
+   formulário empurrado que ela tinha antes.
+
+   Por isso o botão continua sendo um LINK para o `id` do diálogo, e a folha abre
+   o diálogo em `:target` (`csso.css`, seção "popup de cadastro"). Sem
+   JavaScript o popup abre, preenche, envia e fecha; o que se perde ali é o
+   `Esc`, o foco preso e a volta automática do foco — e é por isso que o "×" e o
+   "Cancelar" são links visíveis, e não só um gesto de teclado. Com JavaScript,
+   `base.html` intercepta o mesmo link e chama `showModal()`: a marcação é uma
+   só, e nenhuma tela precisa saber qual dos dois caminhos está valendo.
+
+   -------------------------------------------------------------------
+   A GRAVAÇÃO RECUSADA VOLTA COM O POPUP ABERTO
+   -------------------------------------------------------------------
+   Este é o requisito que decidiu a técnica, e não uma consequência dela. Sete
+   formulários grandes passaram, na 1.27.0, a devolver o que foi digitado quando
+   a gravação é recusada (padrão `digitado`, `processos.py:246-258`). Um popup
+   que fechasse no erro desfaria a correção com juros: o formulário some da tela
+   E leva o que foi digitado junto.
+
+   A rota recusa **renderizando a própria tela de novo** (nunca redirecionando —
+   o redirecionamento não tem como carregar o digitado), com `aberto=true`, o
+   `erro` e o `digitado`. `aberto` escreve o atributo `open` no `<dialog>`, e a
+   folha desenha `[open]` igual a `:target`: o popup reabre visível **sem
+   JavaScript nenhum**. Havendo JavaScript, `base.html` promove esse `[open]` a
+   `showModal()` no carregamento, para a reabertura ganhar a modalidade de
+   verdade — camada de topo e foco preso — que o atributo sozinho não dá.
+
+   Do lado da rota isso é sempre a mesma forma, e ela já existe em cinco
+   arquivos: um `_tela_*(request, s, usuario, *, erro=None, digitado=None)`
+   privado que monta a página, e a rota GET reduzida a chamá-lo. `digitado` não
+   pode ser parâmetro da rota GET — é dicionário, e o FastAPI o leria como
+   parâmetro de query. Ver `servidores._tela_lista`, `laudos._tela_lista`,
+   `usuarios._tela_lista`, `catalogos._tela` e `treinamentos._tela_assinaturas`.
+
+   O erro sai DENTRO do popup, acima dos campos, e o template zera o `erro` que
+   a casca desenharia como faixa no topo (`{% set erro = none %}`, logo abaixo):
+   a mesma recusa escrita nos dois lugares faz procurar dois problemas.
+   O foco no primeiro campo com problema é `autofocus` no campo, condicionado à
+   reabertura — `{{ ' autofocus' if aberto }}` —, que funciona nos dois caminhos:
+   sozinho o navegador o foca no carregamento, e `showModal()` respeita o mesmo
+   atributo quando promove o diálogo.
+
+   -------------------------------------------------------------------
+   COMO SE USA — as duas chamadas, e nada além delas
+   -------------------------------------------------------------------
+   O verbo do botão e o do título têm de ser o mesmo ("Cadastrar servidor" nos
+   dois, nunca "Novo" no botão e "Cadastrar servidor" no título): quem clicou
+   precisa reconhecer onde chegou. Como o botão mora em `acoes_cabecalho` e o
+   popup em `conteudo`, o texto vai num `{% set %}` no topo do template — que o
+   Jinja enxerga dos dois blocos — para não haver duas grafias a manter.
+
+     {% set CADASTRAR = 'Cadastrar servidor' %}
+
+     -- o preâmbulo da recusa. Estas quatro linhas são o padrão e vão IGUAIS em
+     -- toda tela que tenha um cadastro só: `recusado` decide se o popup reabre,
+     -- e as duas últimas desviam o erro da faixa da casca para dentro dele.
+     {% set d = digitado or {} %}
+     {% set recusado = true if (erro and d) else false %}
+     {% set erro_cadastro = erro if recusado else none %}
+     {% set erro = none if recusado else erro %}
+
+     {% block acoes_cabecalho %}
+     {{ ui.botao_cadastro('novo-servidor', CADASTRAR) }}
+     {% endblock %}
+
+     {% block conteudo %}
+     ...a lista...
+     {% call ui.popup_cadastro('novo-servidor', CADASTRAR, '/servidores',
+                               CADASTRAR, aberto=recusado, erro=erro_cadastro,
+                               nota='o SIAPE é a chave') %}
+       ...os campos, com `value="{{ d.get('siape') or '' }}"`, `ui.sel(...)` no
+       <option> e `{{ ' autofocus' if recusado }}` no campo do problema...
+     {% endcall %}
+     {% endblock %}
+
+   Numa tela com MAIS DE UM cadastro (/usuarios tem três) o `digitado` traz uma
+   FORMA e o preâmbulo vira um `erro_<forma>` por popup, com
+   `aberto=(forma == 'conta')`. O discriminador é o mesmo de `epi_requisicoes`;
+   sem ele a recusa de um cadastro reabriria os outros dois com campos trocados.
+
+   O `<dialog>` fica FORA de `.tela`, como último filho do bloco `conteudo`: ele
+   é camada, não bloco da coluna, e dentro da pilha ele participaria do `gap`.
+
+   `alvo` é o `id` do diálogo e o destino do link — um por tela, ou um por
+   cadastro quando a tela oferece mais de um (/usuarios oferece três).
+   `nota` é a mesma linha fraca que os cartões de cadastro traziam ao lado do
+   título; vazia, não sai nada. `enctype` só para quem manda arquivo.
+
+   Nota de rodapé do formulário (a de /usuarios sobre a senha provisória, a de
+   /laudos sobre não haver validade) entra no corpo, no fim do `{% call %}`,
+   como `<p class="discreto rodape-cartao sem-margem">`: dentro do popup ela é
+   lida ANTES do botão, que é onde ela serve.
+
+   -------------------------------------------------------------------
+   `largo` — A SEGUNDA LARGURA, E SÃO DUAS
+   -------------------------------------------------------------------
+   A caixa nasce com 720px, que é onde `minmax(180px, 1fr)` cabe três campos por
+   linha — a medida do cadastro de PESSOA, o formulário para o qual este padrão
+   nasceu. Os de compra pública passam disso: a linha da nota fiscal do estoque
+   tem cinco (nota, valor, fornecedor, CNPJ, contato) e a de identificação do
+   catálogo de EPI também. Cinco campos em três colunas não ficam apertados:
+   quebram em 3+2 e DOBRAM a altura da linha — dentro da única coisa de que o
+   popup não dispõe, que é altura, porque o corpo rola em 577px numa tela de 768.
+
+   `largo=true` quando a linha mais larga passar de três campos E o corpo não
+   couber. As duas condições, nesta ordem, porque não é a contagem que decide:
+   quatro campos quebram 3+1 e acrescentam uma fileira de um campo só, o que às
+   vezes cabe assim mesmo — o "atestar habilitação" de /usuarios tem quatro e
+   cabe inteiro (466px de conteúdo, medido a 1366×768). Cinco quebram 3+2, e aí
+   não cabe: o teste de invariante cobra a variante a partir de cinco, e abaixo
+   disso quem decide é a medida na tela, não o macro.
+
+   É BOOLEANO, E NÃO UM NÚMERO. Foi largura escrita em `style=` na tela que
+   produziu a deriva de 120px que a auditoria de ergonomia fechou; um terceiro
+   valor recomeça a mesma coisa por outro caminho, só que agora com a bênção do
+   macro. Os dois números e o porquê de cada um estão em `csso.css`, seção
+   "popup de cadastro". E se nem a larga couber, a resposta é PÁGINA DEDICADA
+   (`/processos/novo` é o precedente), e não uma terceira largura: formulário que
+   não cabe em 1062 por 577 não é popup que ficou pequeno, é formulário que não
+   devia estar em popup. #}
+{% macro botao_cadastro(alvo, rotulo, classe='') %}
+<a class="botao {{ classe }}" href="#{{ alvo }}" data-abre-popup>{{ rotulo }}</a>
+{%- endmacro %}
+
+{# O `selected` de um <option> quando o valor bate com o que foi digitado — a
+   outra metade do padrão `digitado`, a que vive no template. Devolver texto é
+   `value="{{ d.get('nome') or '' }}"` e não tem segredo; devolver a ESCOLHA de
+   um <select> é comparar um id inteiro com a string que veio do formulário, e
+   cada tela que escreveu isso à mão escreveu de um jeito.
+
+   `escolhido not in (none, '')` e não `if escolhido`: o id 0 não existe no
+   sistema hoje, mas no dia em que existir um "0" seria falso e a escolha se
+   perderia justamente na recusa, que é quando ela mais custa. #}
+{%- macro sel(escolhido, valor) -%}
+{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{%- endmacro %}
+
+{# `classe_botao` é o único acréscimo à assinatura desde que o padrão nasceu, e
+   ele tem motivo: o popup deixou de servir só ao CADASTRO. Na ficha do pedido de
+   EPI as dez ações de trâmite passaram a morar aqui dentro, e três delas são
+   destrutivas — indeferir, cancelar, excluir o rascunho. Sem o parâmetro, o
+   botão que apaga um pedido de verdade sairia com a mesma cor do que grava um
+   servidor novo, e a cor do botão é o último sinal antes do clique. Vazio,
+   continua sendo o botão primário de sempre. #}
+{% macro popup_cadastro(alvo, titulo, acao, rotulo_botao, aberto=false, erro='', nota='', enctype='', largo=false, classe_botao='') %}
+{# `aria-labelledby` e não `aria-label`: o nome do diálogo é o título que está
+   escrito nele, e dois textos para a mesma coisa divergem no primeiro conserto.
+   `role` não vai escrito — `<dialog>` já é `dialog` —, e `aria-modal` também
+   não: `showModal()` o implica, e escrevê-lo à mão faria o caminho sem
+   JavaScript, que é NÃO modal, afirmar uma modalidade que ali não existe. #}
+<dialog class="popup" id="{{ alvo }}" aria-labelledby="{{ alvo }}-titulo"{{ ' open' if aberto }}>
+  <form class="popup-caixa{{ ' larga' if largo }}" method="post" action="{{ acao }}"
+        {%- if enctype %} enctype="{{ enctype }}"{% endif %}>
+    <div class="popup-topo">
+      <div class="popup-titulo">
+        <h2 id="{{ alvo }}-titulo">{{ titulo }}</h2>
+        {%- if nota %}<span class="nota">{{ nota }}</span>{% endif %}
+      </div>
+      {# `#sem-popup` é uma âncora que não existe em documento nenhum, e é isso
+         que ela faz: sem elemento correspondente o `:target` deixa de casar (o
+         popup fecha) e o navegador não rola para lugar nenhum — o que `href="#"`
+         faria, jogando quem fechou o cadastro para o topo da lista. Com
+         JavaScript o clique é interceptado e vira `close()`. #}
+      <a class="popup-fechar" href="#sem-popup" data-fecha-popup
+         aria-label="Fechar “{{ titulo }}” sem gravar"><span aria-hidden="true">×</span></a>
+    </div>
+    <div class="popup-corpo">
+      {%- if erro %}
+      <div class="aviso aviso-erro" role="alert">{{ erro }}</div>
+      {%- endif %}
+      {{ caller() }}
+    </div>
+    <div class="acoes popup-acoes">
+      <button type="submit"{% if classe_botao %} class="{{ classe_botao }}"{% endif %}>{{ rotulo_botao }}</button>
+      <a class="botao secundario" href="#sem-popup" data-fecha-popup>Cancelar</a>
+    </div>
+  </form>
+</dialog>
+{%- endmacro %}
+
+{# ===================================================================
+   O (i) — A EXPLICAÇÃO QUE SAI DA TELA SEM SAIR DO SISTEMA
+   ===================================================================
+
+   **O que motivou.** O sistema tinha 227 parágrafos longos, 88 `.dica` e 99
+   `.aviso` em 64 telas; as fichas mais pesadas carregavam mais de 3.000
+   caracteres de prosa cada. Nenhum parágrafo estava errado — vários são a única
+   documentação escrita de uma regra do setor —, e é justamente por isso que
+   apagá-los não era opção. O que estava errado era eles estarem TODOS na tela ao
+   mesmo tempo, com o mesmo peso, entre a pessoa e o botão.
+
+   -------------------------------------------------------------------
+   A LINHA QUE DIVIDE — e ela não é sobre tamanho de texto
+   -------------------------------------------------------------------
+   **VAI PARA O (i): o que EXPLICA.** Por que a regra existe, o que a norma diz,
+   o que o campo significa, o que o legado fazia de errado, o fundamento legal.
+   Texto que se lê uma vez e depois se sabe.
+
+   **FICA NA TELA: o que MUDA A DECISÃO** que a pessoa está prestes a tomar, no
+   momento em que ela vai tomá-la. "Consome o número da sequência e não volta",
+   "este lote tem CA vencido e não pode sair" (RN-25), "ao marcar esta exceção
+   você a assina com o seu nome" (RN-26), "rascunho não tem protocolo e ninguém
+   no SESMT viu". Esconder isso atrás de um clique é o mesmo que apagar — e é
+   assim que alguém aprova o que não devia.
+
+   O teste, na dúvida: *se a pessoa nunca abrir este (i), ela pode tomar uma
+   decisão errada?* Se sim, fica na tela.
+
+   **E o terceiro caso, que é o mais fácil de errar: o que sai no PAPEL.** O
+   conteúdo do (i) não é impresso (`dialog.popup` some no `@media print`). Antes
+   de mover um parágrafo para cá, confira se ele é necessário no documento — a
+   guia de entrega (`epis_requisicao_guia.html`) circula FORA do sistema e o
+   aviso "esta guia não é a prova de entrega" tem de ir com ela. Texto que o
+   papel precisa não pertence a um (i).
+
+   -------------------------------------------------------------------
+   POR QUE ELE REUSA O <dialog>, E POR QUE NÃO É O MESMO POPUP
+   -------------------------------------------------------------------
+   O mecanismo é o de `popup_cadastro`, inteiro e sem uma segunda invenção: o
+   gatilho é um LINK para o `id` do diálogo, a folha o abre em `:target` (funciona
+   sem JavaScript nenhum), e `base.html` promove o clique a `showModal()` quando
+   há script — de onde vêm a camada de topo, o `Esc`, o foco preso e a devolução
+   do foco ao gatilho. Nada disso precisou ser reescrito: o `<dialog>` carrega a
+   classe `popup`, que é a que aquele bloco delegado procura.
+
+   O que MUDA é tudo o que o (i) não é:
+
+   - **Não tem formulário nem gravação.** A caixa é um `<div>`, e não um
+     `<form>`: um `<form>` sem `action` que envolvesse prosa entraria na conta de
+     "formulários da tela" de qualquer varredura futura e prometeria um envio que
+     não existe.
+   - **Aparece dezenas de vezes na mesma página.** Daí o gatilho ser 24px e não
+     um botão, e daí a caixa ter a medida de uma COLUNA DE TEXTO (560px) e não a
+     de um formulário de três campos (720px): 520px úteis a 14px são ~72
+     caracteres por linha, que é a medida em que prosa se lê. Isto não é a
+     "terceira largura" que a seção `largo` proíbe — aquela regra é sobre a
+     largura de um formulário derivar em `style=` na tela, e aqui não há
+     formulário nenhum para derivar.
+   - **Nunca volta aberto do servidor.** Não há recusa, então não há `aberto=`:
+     as varreduras que contam `<dialog ... open>` continuam contando só popup de
+     cadastro.
+
+   **A classe é `popup popup-info`, e o modificador não é enfeite.** `popup_cadastro`
+   continua sendo o único macro que escreve `<dialog class="popup"` exato, e há
+   teste de integração que se apoia nisso para provar que a entrada de lote NÃO
+   voltou a ser popup (`test_a_lista_do_estoque_manda_o_cadastro_para_a_pagina_dedicada`).
+   Um (i) na mesma tela, se herdasse a classe crua, faria aquele teste acusar um
+   defeito que não existe — ou, pior, seria "consertado" afrouxando-o.
+
+   -------------------------------------------------------------------
+   ACESSIBILIDADE — ele é um controle, não um enfeite
+   -------------------------------------------------------------------
+   - É um `<a href>`: alcançável por Tab, acionável por Enter, e o anel de foco
+     global já o desenha. Não é um `<span title>` — `title` não é anunciado de
+     forma confiável e não existe em toque.
+   - **Nome acessível "Sobre: <assunto>"**, no `aria-label`. O "i" visível é
+     `aria-hidden`: uma letra solta não nomeia coisa nenhuma, e vinte controles
+     chamados "i" na mesma página são vinte controles indistinguíveis na lista de
+     links de um leitor de tela. `assunto` é o mesmo texto do `<h2>` de dentro,
+     escrito uma vez e usado nos dois lugares.
+   - **Nenhum `<label>` novo.** O sistema está em 386 rótulos e zero órfãos, com
+     varredura cobrando (`test_acessibilidade_templates`); este macro não escreve
+     rótulo nenhum, e o `<h2>` de dentro é quem nomeia o diálogo por
+     `aria-labelledby`.
+   - **Nenhum glifo em SVG.** São exatamente três no sistema, e há teste contando;
+     o "i" é a letra latina, que existe na Public Sans e sobrevive ao alto
+     contraste, ao papel e ao Firefox.
+   - **Alvo de 24×24px** — medido, não escolhido: é o mínimo do WCAG 2.2 SC 2.5.8
+     (Target Size, nível AA). O "×" do popup de cadastro tem 30px porque é um só
+     por tela; um (i) de 30px repetido vinte vezes numa ficha passaria a competir
+     com o conteúdo que ele explica. Abaixo de 24 não se acerta com o polegar, e
+     um (i) de 12px é o defeito clássico deste componente.
+   - **O foco volta ao (i) que o abriu**, pelos três caminhos ("×", "Fechar" e
+     `Esc`), porque quem faz isso é o `fechar()` de `base.html` e ele vale para
+     todo `dialog.popup`.
+   - **Duas saídas visíveis**, e não só o `Esc`: sem JavaScript o `Esc` não existe,
+     e depois de rolar uma explicação longa o "×" ficou lá em cima.
+
+   -------------------------------------------------------------------
+   COMO SE USA
+   -------------------------------------------------------------------
+     {% call ui.info('rn26-excesso', 'o máximo por item e a exceção da RN-26') %}
+       <p>O máximo deste item é contado pelo que a ficha registra…</p>
+     {% endcall %}
+
+   `alvo` vira o `id` (`info-<alvo>`) e o destino do link: tem de ser ÚNICO no
+   documento, e dentro de laço precisa carregar o id da linha
+   (`'lote-ajuste-' ~ l.entrada.id`). Dois (i) com o mesmo `alvo` fazem o
+   `:target` casar com o primeiro e o segundo deixa de abrir sem JavaScript.
+
+   `assunto` é um sintagma nominal em minúscula ("a supressão da RN-19", "por que
+   a reserva não é movimento"), e não uma frase: ele é lido como "Sobre: …".
+
+   **NÃO SE PÕE UM (i) DENTRO DE UM POPUP**, e isto é limite do mecanismo, não
+   gosto. Dois `<dialog>` aninhados quebram os dois caminhos: sem JavaScript o
+   `:target` casa com UM elemento por vez, então abrir o de dentro fecha o de
+   fora; com JavaScript, o `Esc` de `base.html` fecha o PRIMEIRO
+   `dialog.popup[open]` na ordem do documento, que é o de fora — e o de dentro
+   fica na tela sobre uma página que já se destravou. Dentro de um popup a
+   explicação simplesmente FICA escrita: ela já está atrás de um clique, que é
+   tudo o que o (i) existe para fazer.
+
+   **Onde chamar.** O macro emite DOIS elementos irmãos — o gatilho e a camada —,
+   então ele precisa de contexto de FLUXO: dentro de `<div>`, `<td>`, `<li>`,
+   `.titulo-cartao`, `.cabecalho-cartao` ou `.campo`. Nunca dentro de `<p>` nem
+   de `<label>`, onde um `<dialog>` é marcação inválida. Fechado, o `<dialog>` é
+   `display: none` e não participa de `gap` nenhum; aberto, é `position: fixed` e
+   sai do fluxo — por isso ele pode ficar ao lado do que explica, e não no fim da
+   página como o popup de cadastro precisa ficar. #}
+{% macro info(alvo, assunto) %}
+<a class="info-abre" href="#info-{{ alvo }}" data-abre-popup
+   aria-label="Sobre: {{ assunto }}"><span aria-hidden="true">i</span></a>
+<dialog class="popup popup-info" id="info-{{ alvo }}"
+        aria-labelledby="info-{{ alvo }}-titulo">
+  <div class="popup-caixa popup-caixa-info">
+    <div class="popup-topo">
+      <div class="popup-titulo">
+        <h2 id="info-{{ alvo }}-titulo">{{ assunto }}</h2>
+      </div>
+      <a class="popup-fechar" href="#sem-popup" data-fecha-popup
+         aria-label="Fechar “{{ assunto }}”"><span aria-hidden="true">×</span></a>
+    </div>
+    {# `tabindex="-1"` para o corpo poder RECEBER o foco sem entrar na ordem do
+       Tab. É onde `base.html` põe o foco ao abrir um popup sem campo nenhum —
+       que é sempre o caso aqui. Sem isso `showModal()` foca o primeiro focável,
+       que é o "×": o diálogo abriria com o foco no botão de fechá-lo, e quem lê
+       por leitor de tela ouviria "Fechar" no lugar da explicação que pediu.
+
+       NÃO é `autofocus`: um documento só pode ter um, e esta ficha tem oito (i).
+       Quem decide o foco é o lugar único, em `base.html`. #}
+    <div class="popup-corpo" tabindex="-1">{{ caller() }}</div>
+    <div class="acoes popup-acoes">
+      <a class="botao secundario" href="#sem-popup" data-fecha-popup>Fechar</a>
+    </div>
+  </div>
+</dialog>
+{%- endmacro %}
+
+{# ===================================================================
+   A GAVETA DA LINHA, QUE VIROU CAMADA
+   ===================================================================
+   O irmão do `popup_cadastro` para o caso que ele não cobre: um botão que abre
+   VÁRIOS formulários irmãos — as ações de uma linha de tabela. `popup_cadastro`
+   É um `<form>`, e formulário não se aninha; aqui a caixa é um `<div>` e cada
+   ação lá dentro continua sendo o seu próprio `<form method="post">`.
+
+   **De onde veio.** Era `<details class="acoes-linha">`, a gaveta que abre na
+   própria célula. A gaveta já resolvia metade do problema — nada aparece antes
+   de alguém pedir —, mas resolvia dentro de uma coluna de ~190px: seis
+   formulários com rótulo, dica e parágrafo espremidos na última célula da
+   tabela, empurrando as linhas de baixo para longe. A camada dá a esses mesmos
+   formulários a largura da coluna de conteúdo e tira a lista de baixo do caminho.
+
+   **E ela NÃO cobra um clique a mais.** Este é o ponto que decidiu a forma:
+   abrir a gaveta custava um clique e o formulário estava lá; abrir a camada
+   custa um clique e o formulário está lá. Se cada AÇÃO da linha virasse o seu
+   próprio popup — botão na célula, popup atrás dele — seriam dois cliques por
+   ação em vez de um, e numa ficha em que se decide item a item isso é um clique
+   a mais por item, para sempre. É por isso que o que virou camada foi a GAVETA,
+   e não cada ação dentro dela.
+
+   `aberto` é o que reabre a gaveta da linha que voltou recusada — o mesmo papel
+   que o atributo `open` do `<details>` tinha, e alimentado pelo mesmo
+   `digitado.forma`.
+
+   **A classe é `popup popup-gaveta`**, pelo mesmo motivo do `popup-info`: o
+   `<dialog class="popup"` exato continua sendo assinatura do popup de CADASTRO,
+   e há teste de integração apoiado nisso.
+
+   -------------------------------------------------------------------
+   COMO SE USA — e os dois macros irmãos, para não escolher errado
+   -------------------------------------------------------------------
+     {% call ui.popup_gaveta('acoes-item-' ~ i.id, 'ações',
+                             'Ações · ' ~ i.item.nome,
+                             nota=..., aberto=(true if dl else false)) %}
+       ...um `<form method="post">` por ação, com `hx-post` se for o caso...
+     {% endcall %}
+
+   `alvo` é o `id` do diálogo E o destino do link; dentro de laço tem de carregar
+   o id da linha. `rotulo` é o que fica na célula ("ações"); `titulo` é o que a
+   pessoa lê ao chegar, e por isso ele nomeia a LINHA — a camada cobre a tabela, e
+   sem o nome do item ela não diz sobre qual linha se está decidindo. Nasce
+   `largo=true` porque a razão de ela existir é largura.
+
+   Os três, e quando cada um:
+     · `botao_cadastro` + `popup_cadastro` → UM formulário. A caixa É o `<form>`,
+       e vem com o botão de gravar, o "Cancelar" e o `erro`/`digitado` da recusa.
+     · `popup_gaveta`                      → VÁRIOS formulários irmãos. Formulário
+       não se aninha, então aqui a caixa é um `<div>` e cada ação traz o seu.
+     · `info`                              → NENHUM formulário: só prosa. #}
+{% macro popup_gaveta(alvo, rotulo, titulo, nota='', aberto=false, largo=true) %}
+<a class="botao secundario compacto abre-gaveta" href="#{{ alvo }}"
+   data-abre-popup>{{ rotulo }}</a>
+<dialog class="popup popup-gaveta" id="{{ alvo }}"
+        aria-labelledby="{{ alvo }}-titulo"{{ ' open' if aberto }}>
+  <div class="popup-caixa{{ ' larga' if largo }}">
+    <div class="popup-topo">
+      <div class="popup-titulo">
+        <h2 id="{{ alvo }}-titulo">{{ titulo }}</h2>
+        {%- if nota %}<span class="nota">{{ nota }}</span>{% endif %}
+      </div>
+      <a class="popup-fechar" href="#sem-popup" data-fecha-popup
+         aria-label="Fechar “{{ titulo }}”"><span aria-hidden="true">×</span></a>
+    </div>
+    <div class="popup-corpo acoes-empilhadas">{{ caller() }}</div>
+  </div>
+</dialog>
+{%- endmacro %}
+
+{# ===================================================================
+   O ESTADO VAZIO DE UMA LISTA — a linha que sobra quando não sobrou nada
+   ===================================================================
+   O critério é o da folha (`csso.css`, seção "estado vazio") e não se
+   inventa um segundo aqui: `.vazio` quando a ausência tem consequência ou
+   quando quem lê vai perguntar "e agora?"; `.nada` quando não há o que
+   explicar. Este macro cobre só o primeiro caso, e cobre a forma dele —
+   `<tr><td colspan>` com a caixa tracejada dentro.
+
+   As DUAS partes são obrigatórias porque são coisas diferentes, e é a
+   segunda que faz o trabalho:
+
+   - `fato` é o que não há. "Nenhum processo encontrado."
+   - `saida` é o que fazer a respeito, e ela muda com o tipo de lista:
+       · lista FILTRADA → **onde a busca olhou**. Quem não lê isso refaz a
+         mesma busca com o mesmo termo, ou conclui que o registro não
+         existe. O molde é `laudos.html`: "A busca olha número SIAPE,
+         unidade e subscritor."
+       · tela de PRIMEIRO USO → **o próximo passo, nomeando o botão**. O
+         botão que resolve mora em `acoes_cabecalho`, no canto superior
+         direito, a ~900px do texto que a pessoa está lendo; sem nomeá-lo
+         a tela não diz por onde começar.
+
+   Existe como macro, e não como três linhas copiadas, porque a divergência
+   entre `.vazio` e `.nada` aconteceu sozinha duas vezes — 24/56 numa
+   auditoria, 35/48 na seguinte —, e o que ela produz é a mesma pergunta
+   respondida de dois jeitos em telas irmãs.
+
+   `colunas` é o `colspan`, e tem de bater com o cabeçalho da tabela: um
+   número a menos deixa a caixa apertada numa coluna e o resto da linha
+   vazio ao lado. #}
+{# O seletor de motivo de recusa, num macro só: ele aparece no indeferimento do
+   envelope de EPI e na recusa de cada item, e duas cópias divergiriam no dia em
+   que alguém acrescentasse um campo a uma delas.
+
+   A lista vem por parâmetro, e não do contexto: macro que lê variável global é
+   macro que só funciona numa tela, e este seletor é o desenho que o §9 manda
+   valer em toda tela de análise.
+
+   Mora AQUI, e não em `epis_requisicao_ficha.html`, onde nasceu: a recusa de
+   item passou a viver em `partes/itens_do_pedido.html`, que as rotas renderizam
+   sozinho na troca parcial, e macro definido no template da página não existe
+   quando o fragmento é montado fora dela.
+
+   Quem pinta o texto do motivo escolhido é o script delegado no fim de
+   `epis_requisicao_ficha.html` — delegado no documento, e por isso ele continua
+   valendo para os `<select>` que a troca parcial acabou de inserir. #}
+{% macro seletor_de_motivo(prefixo, campo, catalogo_de_motivos) %}
+<div class="campo">
+  <label for="{{ prefixo }}-motivo">Motivo do catálogo</label>
+  <select id="{{ prefixo }}-motivo" name="{{ campo }}" required class="seletor-motivo"
+          data-alvo="{{ prefixo }}-texto" data-complemento="{{ prefixo }}-complemento">
+    <option value="">—</option>
+    {% for m in catalogo_de_motivos %}
+    <option value="{{ m.id }}" data-texto="{{ m.texto }}"
+            data-base="{{ m.base_normativa or '' }}"
+            data-exige="{{ '1' if m.exige_complemento else '' }}">{{ m.rotulo }}</option>
+    {% endfor %}
+  </select>
+  <p class="dica texto-literal" id="{{ prefixo }}-texto">Escolha o motivo para ler
+    o texto que vai sair para o requerente.</p>
+</div>
+<div class="campo" id="{{ prefixo }}-complemento">
+  <label for="{{ prefixo }}-compl">Complemento</label>
+  <textarea id="{{ prefixo }}-compl" name="complemento" rows="2"
+            aria-describedby="{{ prefixo }}-dica-compl"></textarea>
+  <span class="dica" id="{{ prefixo }}-dica-compl">Obrigatório quando o motivo do
+    catálogo exige: sem ele a negativa não diz à pessoa o que fazer a seguir.</span>
+</div>
+{% endmacro %}
+
+{% macro vazio_de_lista(fato, saida, colunas=1) %}
+<tr><td colspan="{{ colunas }}">
+  <div class="vazio">
+    <strong>{{ fato }}</strong>
+    <span>{{ saida }}</span>
+  </div>
+</td></tr>
+{%- endmacro %}
+
+{# ===================================================================
+   A PAGINAÇÃO — quantas páginas há, e como chegar à última
+   ===================================================================
+   Mora aqui porque, quando isto foi escrito, o sistema tinha DUAS listas
+   paginadas e já duas grafias diferentes; passando para dez, a terceira
+   variante nasceria sozinha. O que o macro fixa é o que a lista tem de
+   dizer, e não só como ela fica.
+
+   **Ela DIZ a escala, e é essa a correção.** A grafia anterior escrevia
+   `página 3` e nada mais. Quem lê "página 3" não sabe se está no meio ou
+   no fim, e a única forma de chegar ao fim de 745 processos era clicar
+   catorze vezes em "próxima". `página 3 de 15` custa uma divisão sobre
+   números que já estão no contexto — o `total` é o mesmo que decide se
+   esta linha aparece.
+
+   **A faixa (`101–150 de 745`) é a segunda metade da resposta.** Quem
+   confere uma lista contra papel precisa saber em que registro a página
+   começa; sem isso, "página 3 de 15" não diz onde se estava. O último
+   número da última página é o `total`, e não `pagina × por_pagina`.
+
+   **Primeira e última existem porque a lista é ordenada por alguma coisa
+   que importa nas duas pontas** — o processo mais antigo e o mais novo, o
+   primeiro e o último nome do alfabeto. Sem elas, uma das duas pontas
+   fica a catorze cliques.
+
+   `caminho` é a rota (`/servidores`); `consulta` é a query string que
+   reproduz o filtro, JÁ SEM `pagina=` — quem a monta é a tela, porque
+   cada lista tem os seus. Vazia, o link sai só com `?pagina=`.
+
+   NÃO SERVE À `/auditoria`, e isso é decisão e não esquecimento: aquela
+   consulta é por limite e deslocamento, sem contagem, e contar doze mil
+   eventos a cada abertura da trilha sairia caro a troco de um número.
+   Lá "próxima" existe sempre e pode abrir vazia, e a tela diz isso por
+   escrito. Um macro que exige `total` não tem o que fazer ali. #}
+{% macro paginacao(pagina, por_pagina, total, caminho, consulta='') %}
+{%- if total > por_pagina -%}
+{%- set paginas = (total + por_pagina - 1) // por_pagina -%}
+{%- set primeiro = (pagina - 1) * por_pagina + 1 -%}
+{%- set ultimo = [pagina * por_pagina, total]|min -%}
+{%- set prefixo = caminho ~ '?' ~ (consulta ~ '&' if consulta else '') -%}
+<nav class="paginacao" aria-label="Paginação da lista">
+  <span class="discreto">página {{ pagina }} de {{ paginas }}
+    <span class="ponto" aria-hidden="true">·</span>
+    <span class="mono">{{ primeiro }}–{{ ultimo }}</span> de
+    <span class="mono">{{ total }}</span></span>
+  <span class="acoes">
+    {%- if pagina > 1 %}
+    <a class="botao secundario compacto" href="{{ prefixo }}pagina=1"
+       aria-label="Primeira página">« primeira</a>
+    <a class="botao secundario compacto" href="{{ prefixo }}pagina={{ pagina - 1 }}"
+       rel="prev">‹ anterior</a>
+    {%- endif %}
+    {%- if pagina < paginas %}
+    <a class="botao secundario compacto" href="{{ prefixo }}pagina={{ pagina + 1 }}"
+       rel="next">próxima ›</a>
+    <a class="botao secundario compacto" href="{{ prefixo }}pagina={{ paginas }}"
+       aria-label="Última página">última »</a>
+    {%- endif %}
+  </span>
+</nav>
+{%- endif -%}
+{% endmacro %}

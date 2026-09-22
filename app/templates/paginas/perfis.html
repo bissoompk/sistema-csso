@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{# A matriz é de TODOS os módulos: perfil e permissão não pertencem ao adicional
+   ocupacional, o adicional só os usa — que é a definição da base. Por isso o
+   primeiro nível é declarado aqui, como `/modulos` faz com o dele: sem isto a
+   trilha herdaria "Processos SEI", e dizer "Processos SEI / Matriz de perfis"
+   seria falso.
+
+   Não vira item de menu de propósito: é tela de consulta que se abre com o
+   perfil na mão, e a porta de entrada é o link de /usuarios — pendurá-la na
+   lateral ao lado de "Usuários" duplicaria o mesmo caminho. #}
+{% set trilha_raiz = 'Base compartilhada' %}
+{% block titulo %}Perfis · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Matriz de perfis</span>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Matriz de perfis</h1>
+      <p class="sub">Negado por padrão. A checagem acontece em três camadas: rota,
+        serviço e repositório — nenhuma delas confia nas outras.</p>
+    </div>
+    <div class="ao-lado">
+      <span class="contador">{{ perfis|length }} perfis</span>
+    </div>
+  </div>
+
+  {% for p in perfis %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>{{ p.nome }}</h2>
+      <span class="mono discreto">{{ p.codigo }}</span>
+      <span class="nota a-direita">{{ p.permissoes|length }} permissões</span>
+    </div>
+    {% if p.base_normativa %}<p class="discreto">{{ p.base_normativa }}</p>{% endif %}
+    <div class="fileira">
+      {% for perm in p.permissoes|sort(attribute='codigo') %}
+      {# `parecer.assinar` sai em alerta porque é a única permissão do sistema
+         que não basta sozinha: sem habilitação técnica vigente ela não assina
+         nada, e quem concede o perfil precisa ver isso aqui. #}
+      <span class="pilula sem-ponto {{ 'alerta' if perm.codigo == 'parecer.assinar' }}"
+            title="{{ perm.descricao or perm.codigo }}">{{ perm.codigo }}</span>
+      {% else %}
+      <span class="discreto">Nenhuma permissão — o perfil existe e não abre nada.</span>
+      {% endfor %}
+    </div>
+    {% if 'parecer.assinar' in p.permissoes|map(attribute='codigo')|list %}
+    <p class="discreto rodape-cartao sem-margem">
+      <code>parecer.assinar</code> só funciona somada a habilitação técnica vigente
+      (IN 15/2022, art. 10, §2º, I) — a permissão sozinha não basta, e o banco
+      recusa por trigger.
+    </p>
+    {% endif %}
+  </section>
+  {% else %}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Nenhum perfil cadastrado</strong>
+      <span>Sem perfil ninguém abre nada: o sistema nega por padrão.</span>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+{% endblock %}

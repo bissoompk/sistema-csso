@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block titulo %}Reconciliação da migração · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Reconciliação</span>{% endblock %}
+
+{% block acoes_cabecalho %}
+<a class="botao secundario" href="/importar">Voltar à importação</a>
+{% if usuario.pode('exportar') %}
+<a class="botao secundario" data-baixar="Exportando…" href="/importar/reconciliacao.csv">Exportar CSV</a>
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set secoes = reconciliacao.como_secoes() %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Reconciliação da migração</h1>
+      <p class="sub">Os cinco relatórios da Fase 4 · {{ reconciliacao.total }} achado(s).
+        Nenhum deles resolve nada sozinho — a decisão é sua.</p>
+    </div>
+  </div>
+
+  {# Os cinco números primeiro, cada um levando à lista que o compõe. Aqui o
+     zero é a boa notícia e por isso sai em verde: com cinco cartões cinzas era
+     preciso ler os cinco números para saber se ainda sobrou trabalho. #}
+  <div class="grade grade-kpi">
+    {% for titulo, descricao, achados in secoes %}
+    <a class="kpi {{ 'perigo' if achados else 'ok' }}" href="#achado-{{ loop.index }}">
+      <div class="rotulo">{{ titulo }}</div>
+      <div class="medida"><span class="valor">{{ achados|length }}</span></div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% for titulo, descricao, achados in secoes %}
+  <section class="cartao liso" id="achado-{{ loop.index }}">
+    <div class="cabecalho-cartao">
+      <h2>{{ titulo }}</h2>
+      <span class="contador {{ 'erro' if achados else 'ok' }}">{{ achados|length }}</span>
+    </div>
+    <div class="corpo">
+      <p class="discreto sem-margem inicial-maiuscula">{{ descricao }}</p>
+    </div>
+    {% if achados %}
+    {# A referência é o que se digita no SEI depois, então sai em mono e inteira.
+       O detalhe já vem do serviço dizendo O QUE difere — "marco 12/03/2024 ×
+       portaria 01/04/2024", e não "datas divergem" —, e é ele que decide o que
+       fazer; por isso ocupa a coluna larga. #}
+    <table>
+      <thead>
+        <tr><th scope="col">Referência</th><th scope="col">O que foi encontrado</th><th scope="col"></th></tr>
+      </thead>
+      {% for a in achados %}
+      <tr>
+        <td class="mono">{{ a.referencia }}</td>
+        <td>{{ a.detalhe }}</td>
+        <td>
+          {%- if a.processo_id %}<a href="/processos/{{ a.processo_id }}">abrir processo</a>{% endif %}
+          {%- if a.parecer_id %} <a href="/pareceres/{{ a.parecer_id }}">abrir parecer</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="corpo">
+      <div class="vazio">
+        <strong>Nada a reconciliar aqui</strong>
+        <span>Este relatório não encontrou nenhum caso na carga atual.</span>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Rejeitados na carga</h2>
+      <span class="contador {{ 'erro' if rejeitadas else 'ok' }}">{{ rejeitadas|length }}</span>
+    </div>
+    <div class="corpo">
+      <p class="discreto sem-margem">Nada foi descartado em silêncio. O
+        <code>payload</code> bruto é expurgado 90 dias após o encerramento da
+        migração (RN-23) — depois disso, o motivo continua, o dado original não.</p>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Origem</th><th scope="col">Referência</th><th scope="col">Motivo</th><th scope="col">Expurgo</th></tr>
+      </thead>
+      {% for r in rejeitadas %}
+      <tr><td>{{ r.origem }}</td><td class="mono">{{ r.ref }}</td>
+          <td>{{ r.motivo }}</td>
+          <td class="mono discreto">{{ r.expurgar_apos|data }}</td></tr>
+      {% else %}<tr><td colspan="4" class="nada">Nada rejeitado.</td></tr>{% endfor %}
+    </table>
+  </section>
+
+</div>
+{% endblock %}

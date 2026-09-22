@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# A fila dos pedidos de EPI.
+
+   Três coisas que esta tela existe para mostrar, e que a planilha do legado não
+   mostrava:
+
+   1. **O protocolo e o prazo, lado a lado.** No legado o pedido era um e-mail:
+      não tinha número, não tinha data de entrada e não tinha como alguém dizer
+      há quanto tempo ele estava parado. Aqui as duas coisas são colunas.
+   2. **A contagem por estado é o próprio filtro.** Cada número em cima leva às
+      linhas dele — número que não se pode abrir é número que ninguém confere.
+   3. **A busca não é oráculo.** Protocolo e SIAPE acham para todo mundo; nome e
+      e-mail só acham para quem já podia ler aquele nome (RN-19). E CPF não acha
+      nada, porque o sistema não guarda CPF em campo nenhum — a tela diz isso em
+      vez de responder "nada encontrado", que faria a pessoa concluir que o
+      pedido não existe. #}
+
+{% block titulo %}Requisições de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Fila</span>{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if pode_requisitar %}
+<a class="botao" href="/epis/requisicoes/nova">Nova requisição</a>
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Requisições de EPI</h1>
+      <p class="sub">O pedido formal, com protocolo consumido no envio, contexto
+        congelado e decisão <strong>item a item</strong> — aprova-se a luva e
+        recusa-se o respirador do mesmo pedido.</p>
+    </div>
+    {% if not pode_analisar %}
+    <div class="ao-lado">
+      {{ ui.pilula_somente_leitura('epi.analisar', 'decidir pedido') }}
+    </div>
+    {% endif %}
+  </div>
+
+  {# A contagem por estado que o §9 pede, e cada número é o próprio filtro:
+     contagem que não se pode abrir vira número que ninguém confere contra a
+     lista. O estado sem nenhum pedido continua na fileira, zerado — some-lo
+     esconderia que a coluna existe, e "não há" é resposta.
+
+     A busca mora na MESMA fileira, como `filtro-inline`, e não mais num
+     `<form class="busca">` no canto do cabeçalho da página: aquela classe é a
+     busca GLOBAL do sistema, a do cabeçalho de 62px que atravessa módulos.
+     Emprestá-la para filtrar esta lista dava a duas coisas diferentes a mesma
+     aparência — e é aqui, ao lado das fichas, que se vê que o texto digitado e o
+     estado escolhido se somam no mesmo recorte. #}
+  <div class="fileira">
+    <span class="rotulo-grupo">Por estado</span>
+    <a class="ficha-filtro {{ 'ativa' if not estado }}"
+       href="/epis/requisicoes{{ '?q=' ~ q|urlencode if q }}">
+      Todas <span class="contador">{{ resumo.values()|sum }}</span></a>
+    {% for codigo, nome in rotulos.items() %}
+    <a class="ficha-filtro {{ 'ativa' if estado == codigo }}"
+       href="/epis/requisicoes?estado={{ codigo }}{{ '&q=' ~ q|urlencode if q }}">
+      {{ nome }} <span class="contador">{{ resumo.get(codigo, 0) }}</span></a>
+    {% endfor %}
+    <form method="get" action="/epis/requisicoes" class="filtro-inline" role="search">
+      {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+      {# rótulo, e não `aria-label`: os dois juntos disputam o nome acessível do
+         campo, e o rótulo ainda foca o campo quando alguém clica nele #}
+      <label class="oculto" for="f-busca">Buscar por protocolo, nome, SIAPE ou
+        e-mail — nunca por CPF</label>
+      <input id="f-busca" type="search" name="q" value="{{ q }}"
+             placeholder="Protocolo, nome, SIAPE ou e-mail">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Protocolo · envio</th><th scope="col">Requerente</th><th scope="col">Campus · unidade</th>
+          <th scope="col">Itens</th><th scope="col">Estado</th><th scope="col">Parado há</th><th scope="col"></th>
+        </tr>
+      </thead>
+      {% for r in linhas %}
+      {% set quem = identificar(r) %}
+      <tr>
+        <td><a class="mono" href="/epis/requisicoes/{{ r.id }}">{{ r.identificacao }}</a>
+          <span class="quebra discreto mono">{{ r.enviada_em|momento or 'não enviada' }}</span>
+          {{ ui.pilula_urgencia(r.urgencia, r.justificativa_urgencia or '') }}</td>
+        <td class="nome">
+          {% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+          {% else %}{{ quem.nome }}{% endif %}
+          <span class="quebra discreto">{{ r.cargo_snapshot or 'cargo não congelado (rascunho)' }}</span></td>
+        <td><span class="recorte" title="{{ r.unidade.nome_extenso if r.unidade else '' }}">
+            {%- if r.unidade %}{{ r.unidade.campus.sigla }} · {{ r.unidade.nome_extenso }}
+            {%- else %}—{% endif -%}</span></td>
+        <td class="mono">{{ r.itens|length }}
+          {% set entregues = r.itens|selectattr('estado', 'equalto', 'ENTREGUE')|list|length %}
+          {% if entregues %}<span class="quebra discreto">{{ entregues }} entregue(s)</span>{% endif %}</td>
+        <td>{{ ui.pilula_requisicao(r.estado, rotulos) }}</td>
+        {# dias no estado calculado agora, nunca gravado: dias parados é estado,
+           e estado gravado é estado que envelhece em silêncio #}
+        <td class="mono">{{ dias.get(r.id, 0) }}d</td>
+        <td><a class="botao secundario compacto" href="/epis/requisicoes/{{ r.id }}">Abrir</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">
+        <div class="vazio">
+          <strong>Nenhuma requisição neste filtro.</strong>
+          <span>O pedido de EPI que não passa por aqui está num e-mail: sem
+            protocolo, sem prazo e sem trilha.</span>
+        </div>
+      </td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {# O segundo parágrafo saiu inteiro da tela e não foi para o (i): "protocolo,
+     nome, SIAPE ou e-mail" já é o `placeholder` e o rótulo do próprio campo de
+     busca, a dois blocos daqui — repeti-lo no rodapé era a terceira cópia. O que
+     ele acrescentava, o "nunca CPF", entrou no (i) abaixo, onde também está o
+     motivo. #}
+  <div class="aviso aviso-info">
+    <strong>Quem analisa não é quem requisita (RN-28).</strong> O sistema recusa a
+    análise do próprio pedido, sem exceção.
+    {% call ui.info('rn28-e-busca', 'a RN-28, e o que a busca desta fila aceita') %}
+      <p>Gravar “analisado por X” num pedido de X produziria a aparência de um
+        controle que não houve — e é a aparência de controle, e não a falta dele,
+        que uma fiscalização encontra e não aceita.</p>
+      <p>Quem trabalha no SESMT e precisa do próprio EPI continua atendido pela
+        <a href="/epis/entregas/nova">entrega avulsa de balcão</a>, que registra a
+        ficha, o lote, o CA e o comprovante assinado do mesmo jeito.</p>
+      <p>A busca desta fila aceita protocolo, nome, SIAPE e e-mail —
+        <strong>nunca CPF</strong>: não há coluna de CPF em lugar nenhum deste
+        módulo, e uma busca que aceitasse o número ensinaria a digitá-lo.
+        Protocolo e SIAPE acham para todo mundo; nome e e-mail só acham para quem
+        já podia ler aquele nome, senão o filtro viraria oráculo (RN-19).</p>
+    {% endcall %}
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# A guia de entrega: o papel que vai ao balcão junto com o pedido.
+
+   Sai do **congelado** — protocolo, lotação e cargo do envio, e o texto da
+   recusa como ele foi decidido —, nunca do cadastro de hoje: quem imprimir em
+   março a guia de um pedido de novembro tem de ler novembro (RN-15, RN-27).
+
+   É HTML e não .docx de propósito. A guia é papel de conferência de balcão: ela
+   diz o que foi aprovado, em que quantidade e o que foi negado com que
+   fundamento, para que a pessoa que separa o material não precise abrir o
+   sistema. O documento **assinado** deste módulo continua sendo o comprovante da
+   ficha, que sai do modelo .docx com hash conferido — dois documentos assinados
+   para o mesmo fato é como um deles deixa de valer.
+
+   O `@media print` do `csso.css` já esconde lateral, cabeçalho e botões: o que
+   sobra na folha é o documento. #}
+
+{% set quem = identificar(requisicao) %}
+
+{% block titulo %}Guia de entrega {{ requisicao.identificacao }} · CSSO{% endblock %}
+{% block trilha %}
+{# mono como em toda trilha que carrega um código: o protocolo é número que se
+   confere dígito a dígito, e na ficha ao lado ele já sai assim #}
+<a class="mono" href="/epis/requisicoes/{{ requisicao.id }}">{{ requisicao.identificacao }}</a>
+<span class="atual" aria-current="page">Guia de entrega</span>
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Guia de entrega de EPI</h1>
+      <p class="identificacao">
+        <span class="mono">{{ requisicao.identificacao }}</span>
+        <span class="ponto">·</span>
+        <span>{{ rotulo_finalidade }}</span>
+        <span class="ponto">·</span>
+        <span>impressa em <span class="mono">{{ hoje|data }}</span></span>
+      </p>
+    </div>
+    <div class="ao-lado acoes">
+      <button type="button" class="secundario" data-imprimir>Imprimir</button>
+    </div>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao"><h2>Quem recebe</h2></div>
+    <dl class="tabela-dados">
+      <dt>Servidor</dt>
+      <dd>{% if quem.nominal %}{{ quem.nome }}
+        <span class="discreto">· SIAPE <span class="mono">{{ quem.siape }}</span></span>
+        {% else %}<span class="mono discreto">{{ quem.nome }}</span>
+        <span class="discreto">· identificação suprimida (RN-19)</span>{% endif %}</dd>
+
+      <dt>Cargo e função</dt>
+      <dd>{{ requisicao.cargo_snapshot or '—' }}
+        {%- if requisicao.funcao_snapshot %} · {{ requisicao.funcao_snapshot }}{% endif %}</dd>
+
+      <dt>Unidade</dt>
+      <dd>{% if requisicao.unidade %}{{ requisicao.unidade.campus.sigla }} ·
+        {{ requisicao.unidade.nome_extenso }}{% else %}—{% endif %}</dd>
+
+      <dt>Chefia</dt>
+      <dd>{{ identificar(requisicao.chefia).nome }}</dd>
+
+      <dt>Enviado em</dt>
+      <dd class="mono">{{ requisicao.enviada_em|momento or '—' }}</dd>
+
+      <dt>Analisado por</dt>
+      <dd>{{ nomes.get(requisicao.analisado_por, '—') }}
+        <span class="discreto mono">{{ requisicao.analisado_em|momento or '' }}</span></dd>
+
+      {# A pílula, e não o rótulo solto: é o mesmo estado que a fila e a ficha
+         mostram, e a guia circula FORA do sistema — quem a lê no balcão não tem
+         a tela ao lado para conferir. O ponto de 6px sobrevive ao papel desde
+         que o `@media print` passou a pedir `print-color-adjust: exact` nas
+         pílulas; sem ele, numa impressora monocromática, "atendida" e
+         "indeferida" sairiam com o mesmo desenho. #}
+      <dt>Situação</dt>
+      <dd>{{ ui.pilula_requisicao(requisicao.estado, rotulos) }}</dd>
+    </dl>
+  </section>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>O que foi decidido</h2>
+      <span class="contador">{{ itens|length }}</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Equipamento</th><th scope="col">Tam.</th><th scope="col">Pedido</th><th scope="col">Aprovado</th>
+          <th scope="col">Entregue</th><th scope="col">A entregar</th><th scope="col">Decisão</th></tr>
+      </thead>
+      {% for i in itens %}
+      <tr>
+        <td class="nome">{{ i.item.nome }}
+          {% if i.item.modelo %}<span class="discreto"> · {{ i.item.modelo }}</span>{% endif %}
+          <span class="quebra discreto">CA {{ i.item.numero_ca or '—' }}</span></td>
+        <td>{{ i.tamanho or '—' }}</td>
+        <td class="mono">{{ i.quantidade_solicitada }}</td>
+        <td class="mono">{{ i.quantidade_aprovada if i.quantidade_aprovada is not none else '—' }}</td>
+        <td class="mono">{{ i.quantidade_entregue }}</td>
+        <td class="mono">{{ i.quantidade_devida }}</td>
+        <td>{{ ui.pilula_item_requisicao(i.estado, rotulos_item) }}
+          {% if i.texto_recusa_snapshot %}
+          <span class="quebra texto-literal">{{ i.texto_recusa_snapshot }}</span>
+          {% if i.complemento_recusa %}
+          <span class="quebra">{{ i.complemento_recusa }}</span>{% endif %}
+          {% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="nada">Nenhum item.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  {# Só no papel. A guia é folha de conferência de balcão e saía sem uma linha
+     para quem separou o material e quem conferiu — o papel voltava sem dizer
+     por que mãos passou. Na tela o bloco não existe (`.so-papel`): aqui não há
+     o que assinar, e duas linhas em branco só poluiriam a ficha. Continua
+     NÃO sendo a prova de entrega — o aviso logo abaixo diz isso, e vale no
+     papel também. #}
+  <dl class="so-papel assinaturas-guia" aria-hidden="true">
+    <div><dt>Separou</dt><dd>&nbsp;</dd></div>
+    <div><dt>Conferiu</dt><dd>&nbsp;</dd></div>
+    <div><dt>Data</dt><dd>____ / ____ / ________</dd></div>
+  </dl>
+
+  {% if requisicao.parecer_analise %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao"><h2>Parecer da análise</h2></div>
+    <div class="corpo"><p class="texto-literal">{{ requisicao.parecer_analise }}</p></div>
+  </section>
+  {% endif %}
+
+  <div class="aviso aviso-alerta">
+    <p><strong>Esta guia não é a prova de entrega.</strong> A prova é o
+      comprovante da ficha, assinado pelo servidor no ato e digitalizado depois:
+      é ele que uma fiscalização pede, e é ele que sai do modelo com hash
+      conferido. Esta folha serve para separar o material e conferir o que foi
+      decidido.</p>
+  </div>
+
+</div>
+{% endblock %}

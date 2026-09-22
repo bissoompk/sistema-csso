@@ -1,0 +1,40 @@
+{# Quem vai receber o equipamento. Fragmento HTMX: a busca troca só esta lista, e
+   não a página — recarregar tudo perderia o que já foi digitado ao lado.
+
+   A regra da busca é a de `/servidores`, e por LINHA: o SIAPE acha para todo
+   mundo, o nome só acha para quem já podia ler aquele nome. Um filtro que
+   casasse por nome para quem vê `SRV-xxxx` devolveria UMA linha e amarraria o
+   nome ao código da sessão — a ligação exata que a RN-19 existe para impedir.
+
+   SERVE A DUAS TELAS, E POR ISSO O RÓTULO ENTRA POR PARÂMETRO. Ele nasceu para
+   `/epis/requisicoes/nova` e o balcão (`/epis/entregas/nova`) montava um
+   `<select>` com o cadastro INTEIRO — 975 opções num seletor nativo, com fila de
+   pé, e as primeiras letras não funcionam quando a identificação está suprimida
+   e o rótulo começa com `SRV-`. A pergunta que as duas telas fazem é a mesma; o
+   que muda é a palavra ("quem vai usar" no pedido, "quem recebe" no balcão) e a
+   nota de rodapé, que no pedido carrega a RN-28. Um segundo fragmento com a
+   marcação copiada seria a quinta cópia de uma regra de privacidade — e a cópia
+   que esquece é sempre a que ninguém compara. #}
+
+{% set rotulo = rotulo|default('Quem vai usar o equipamento') %}
+<label for="servidor_id">{{ rotulo }}</label>
+{# `escolhido` só existe quando a página monta o fragmento — a rota HTMX da busca
+   o serve solto, e ali não há escolha a preservar. #}
+{% set marcado = escolhido|default(none) %}
+<select id="servidor_id" name="servidor_id" required size="1">
+  <option value="">—</option>
+  {% for sv in servidores %}
+  {% set quem = identificar(sv) %}
+  <option value="{{ sv.id }}"
+    {{- ' selected' if marcado not in (none, '') and marcado|string == sv.id|string }}>{{ quem.com_siape }}</option>
+  {% endfor %}
+</select>
+<span class="dica">
+  {%- if q and not servidores -%}
+  Nada encontrado para “{{ q }}”. O SIAPE acha sempre; o nome só acha para quem
+  tem permissão de ler identificação nominal (RN-19).
+  {%- else -%}
+  {{ servidores|length }} servidor(es) na lista.
+  {%- if nota|default('') %} {{ nota }}{% endif -%}
+  {%- endif -%}
+</span>
