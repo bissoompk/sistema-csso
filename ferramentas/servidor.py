@@ -40,7 +40,30 @@ def principal() -> int:
         print(f"Abra http://127.0.0.1:{porta}/ no navegador ou rode PARAR.bat antes.")
         return 1
 
-    url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{porta}/"
+    tls: dict[str, str] = {}
+    if cfg.tls_ativo:
+        certificado = cfg.caminho(cfg.tls_certificado)
+        chave = cfg.caminho(cfg.tls_chave)
+        # Recusar aqui, com a frase certa, e nao deixar o uvicorn morrer com um
+        # `FileNotFoundError` do modulo ssl: quem le a janela e quem instalou,
+        # e o que ele precisa saber e qual arquivo e qual comando.
+        for rotulo, arquivo in (("CSSO_TLS_CERTIFICADO", certificado), ("CSSO_TLS_CHAVE", chave)):
+            if not arquivo.is_file():
+                print(f"{rotulo} aponta para {arquivo}, que nao existe.")
+                print("Gere com: python -m ferramentas.certificado_tls <IP-desta-maquina>")
+                print("ou esvazie as duas variaveis no .env para voltar ao http.")
+                return 1
+        tls = {"ssl_certfile": str(certificado), "ssl_keyfile": str(chave)}
+    esquema = "https" if tls else "http"
+    # Com TLS o endereco anunciado nao pode ser 127.0.0.1: o certificado vale
+    # para o IP/nome da rede, e o navegador recusaria o proprio link que a
+    # janela manda abrir.
+    local = "127.0.0.1" if host == "0.0.0.0" else host
+    if tls:
+        from app.servicos import tls as servico_tls
+
+        local = servico_tls.primeiro_nome(cfg.caminho(cfg.tls_certificado)) or local
+    url = f"{esquema}://{local}:{porta}/"
     print(f"Sistema CSSO v{VERSAO}")
     print(f"Banco:  {cfg.caminho_banco}")
     if cfg.log_acesso:
@@ -49,6 +72,8 @@ def principal() -> int:
         # precisa saber onde procurar antes de precisar procurar.
         print(f"Acesso: {cfg.caminho(cfg.dir_logs) / 'acesso.log'} ({cfg.log_retencao_dias} dias)")
     print(f"Ligado em {host}:{porta}")
+    if tls:
+        print(f"HTTPS:  {cfg.caminho(cfg.tls_certificado)}")
     if host not in SO_LOOPBACK:
         # Ligar em 0.0.0.0 nao e "abrir para a rede do setor": e aceitar de
         # QUALQUER endereco que consiga rotear ate esta maquina. Quem estreita
@@ -68,7 +93,7 @@ def principal() -> int:
             daemon=True,
         ).start()
 
-    uvicorn.run("app.principal:app", host=host, port=porta, log_level="warning")
+    uvicorn.run("app.principal:app", host=host, port=porta, log_level="warning", **tls)
     return 0
 
 

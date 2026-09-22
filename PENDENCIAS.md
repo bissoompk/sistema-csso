@@ -440,29 +440,23 @@ que valiam **já na máquina do setor** foram corrigidos na 1.31.0. O que resta:
 - Contrato de operador, se houver terceiro (arts. 39, 46, 33-36).
 - Plano de resposta a incidente escrito (art. 48). Hoje existe uma frase.
 
-**Lacunas técnicas que sobraram, por ordem de peso:**
-- **Conversão de PDF dentro da requisição** (`servicos/pdf.py:113`): a transação
-  segura o lock de escrita desde a resolução do cookie, e o LibreOffice leva
-  segundos. Medido: uma retenção de 900 ms já derruba a 3ª pessoa com "database is
-  locked". Com uma pessoa só ninguém percebe; com a equipe inteira, é o primeiro a
-  aparecer.
-- **`/auditoria` recalcula a cadeia inteira a cada abertura**: 43 ms a 1.292
-  eventos, 2.743 ms a 50.292 — estoura os 5 s por volta de 90 mil. A importação
-  do Trello sozinha gerou 7.634.
-- **Nenhum cabeçalho de segurança** (medido: só `content-length` e
-  `content-type`), e **não há HTTPS** — o sistema não usa CDN, então uma CSP
-  restritiva é barata.
-- **O `Secure` do cookie é decidido por `cfg.host`.** Com `CSSO_HOST=0.0.0.0` — que
-  é o que o `LEIA-ME.txt` manda fazer, dizendo que "nenhuma linha de código muda" —
-  o cookie sai `Secure` sem haver TLS, e **ninguém consegue entrar**: o login
-  parece dar certo e devolve à tela de entrada, sem mensagem. Foi reproduzido.
-- Retenção de `sessao` (90 dias, com IP) está escrita e não implementada; não há
-  registro de acesso HTTP nenhum; `GET /config/exportar-tudo` é GET com efeito
-  colateral e, com `SameSite=lax`, uma página externa pode fazer o navegador de
-  quem tem `exportar` gerar o pacote.
-- **Edição paralela do mesmo parecer perde dado em silêncio** (recuperável pela
-  trilha). Numeração, máquina de estados de EPI e cadeia de auditoria **não
-  quebram** sob concorrência — só ficam lentas.
+**Lacunas técnicas: fechadas** (situação em 22/09/2026, 1.43.0). A lista que
+estava aqui foi escrita antes da 1.32.0 e ficou para trás:
+- PDF fora da transação, cabeçalhos de segurança e CSP, `Secure` do cookie pelo
+  esquema da requisição, registro de acesso HTTP e `exportar-tudo` como POST:
+  **1.32.0**;
+- `/auditoria` conferindo só a janela exibida, com o passe completo fora da
+  requisição: **resolvido** (`auditoria.janela_integra`);
+- **HTTPS** (AC do setor restrita por nome), **edição simultânea do parecer**
+  (trava de versão, com o que não foi gravado devolvido à pessoa) e **retenção
+  de `sessao`** cumprida pelo mecanismo: **1.43.0**.
+
+**O que o HTTPS ainda pede de você**, porque é implantação e não código (passo a
+passo em `docs/HTTPS_NA_REDE.md`):
+- gerar o certificado na máquina do setor e instalar a raiz em cada estação (ou
+  pedir ao TI que distribua por GPO);
+- emendar o ROPA §6, item 2 ("a conexão não é criptografada"), com a data em que
+  o HTTPS entrou.
 
 ## O que a passada de rebranding deixou encaminhado
 

@@ -10,7 +10,7 @@ from datetime import date, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import obter_config
@@ -218,7 +218,33 @@ def autenticar(
         )
     )
     s.flush()
+    expurgar_sessoes(s, agora)
     return usuario, token
+
+
+def expurgar_sessoes(s: Session, agora=None) -> int:
+    """Apaga as sessoes expiradas ha mais do que o prazo da politica. Devolve quantas.
+
+    `docs/POLITICA_RETENCAO.md` da a `sessao` 90 dias apos expirar, eliminacao —
+    por causa do IP que a linha guarda. Ate a 1.42.2 o prazo era so declarado: a
+    tabela crescia um registro por login, com IP, para sempre. O prazo e o mesmo
+    `log_retencao_dias` do registro de acesso, e nao um campo proprio, porque os
+    dois guardam o MESMO IP e dois prazos para o mesmo dado seria politica que se
+    contradiz.
+
+    Conta a partir de `expira_em`, e nao de `criada_em`: sessao revogada no meio
+    do caminho ainda e evidencia de quem entrou de onde, e o prazo da politica
+    corre a partir do fim da validade.
+
+    Roda em dois lugares: no `lifespan` e a cada login. O login ja escreve (a
+    sessao nova), entao o expurgo nao toma lock que ele nao tomaria; e e o login
+    que faz a tabela crescer, entao e ele que a poda — sem depender de o servidor
+    ser reiniciado, que na maquina do setor pode nao acontecer por meses.
+    """
+    limite = (agora or agora_utc()) - timedelta(days=obter_config().log_retencao_dias)
+    apagadas = s.execute(delete(Sessao).where(Sessao.expira_em < limite)).rowcount
+    s.flush()
+    return apagadas or 0
 
 
 def sessao_valida(s: Session, token: str | None) -> Sessao | None:

@@ -15,6 +15,7 @@ from app.modelos import (
     AgenteNocivo,
     AutoridadeDestinataria,
     Exposicao,
+    HistoricoEvento,
     LaudoTecnico,
     ParecerPosto,
     ParecerTecnico,
@@ -204,6 +205,20 @@ def editor(
     mensagem: str | None = None,
     erro: str | None = None,
 ):
+    return _desenhar_editor(request, s, usuario, parecer_id, mensagem, erro)
+
+
+def _desenhar_editor(
+    request: Request,
+    s: SessaoDep,
+    usuario: UsuarioDep,
+    parecer_id: int,
+    mensagem: str | None = None,
+    erro: str | None = None,
+    nao_gravado: list[tuple[str, str]] | None = None,
+):
+    """O editor, com o que a rota GET nao pode receber por query string: o que a
+    pessoa enviou e foi recusado por conflito de versao (`nao_gravado`)."""
     usuario.exigir("parecer.ver")
     # A MESMA resposta para "não existe" e "fora do seu escopo", pela disciplina
     # que `/anexos/{id}` fixou na 1.31.0 e `/processos/{id}` repete: distinguir
@@ -250,10 +265,81 @@ def editor(
         epi_alega=servico.EPI_ALEGA_NEUTRALIZACAO,
         mensagem=mensagem,
         erro=erro,
+        nao_gravado=nao_gravado or [],
         # o botão "Gerar PDF" diz antes do clique se o PDF sai nesta máquina
         pdf_disponivel=servico_pdf.disponivel(),
         AVISO_SEM_PDF=AVISO_SEM_PDF,
         **_catalogos(s),
+    )
+
+
+# Os campos que a pessoa escreve (e nao escolhe numa lista), com o rotulo da
+# tela. Sao os que doem perder: um `<select>` se refaz em um clique, uma
+# recomendacao de tres paragrafos nao.
+_CAMPOS_ESCRITOS = (
+    ("texto_recomendacao", "Recomendação"),
+    ("texto_alteracao", "Texto de alteração"),
+    ("texto_reavaliacao", "Texto de reavaliação"),
+    ("justificativa_marco", "Justificativa do marco inicial"),
+    ("numero", "Número"),
+    ("data_emissao", "Data de emissão"),
+    ("data_marco_inicial", "Data do marco inicial"),
+    ("horas_semanais_fonte", "Horas semanais (fonte)"),
+)
+
+
+def _como_texto(valor) -> str:
+    if valor is None:
+        return ""
+    if isinstance(valor, date):
+        return valor.isoformat()
+    return str(valor)
+
+
+def _nao_gravado(parecer: ParecerTecnico, dados) -> list[tuple[str, str]]:
+    """O que a pessoa enviou e difere do que esta gravado agora, para reaplicar.
+
+    Compara com o gravado ATUAL, e nao com o que ela tinha lido: o que importa
+    para quem vai reaplicar e o que falta na tela que ela tem na frente.
+    """
+    saida = []
+    for campo, rotulo in _CAMPOS_ESCRITOS:
+        if campo not in dados:
+            continue
+        enviado = str(dados.get(campo) or "").strip()
+        gravado = _como_texto(getattr(parecer, campo)).strip()
+        if enviado and enviado != gravado:
+            saida.append((rotulo, enviado))
+    return saida
+
+
+def _frase_do_conflito(s, parecer: ParecerTecnico, usuario) -> str:
+    """Quem salvou por ultimo, e quando — a pergunta que a pessoa faria em seguida."""
+    ultimo = s.execute(
+        select(HistoricoEvento)
+        .where(
+            HistoricoEvento.entidade == "parecer_tecnico",
+            HistoricoEvento.entidade_id == parecer.id,
+        )
+        .order_by(HistoricoEvento.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if ultimo is None:
+        quem = "Este parecer foi salvo por outra tela"
+    elif ultimo.usuario_id == usuario.id:
+        quem = (
+            "Você mesmo salvou este parecer em outra aba "
+            f"({datas_br.local_formatado(ultimo.ocorrido_em)})"
+        )
+    else:
+        quem = (
+            f"{ultimo.usuario_nome} salvou este parecer em "
+            f"{datas_br.local_formatado(ultimo.ocorrido_em)}"
+        )
+    return (
+        f"{quem} enquanto você editava. Nada do que você enviou foi gravado, para "
+        "não apagar o que foi salvo antes. A tela mostra a versão atual; o que você "
+        "tinha escrito está no quadro “Não gravado”, para conferir e reaplicar."
     )
 
 
@@ -286,6 +372,26 @@ async def salvar(
         )
 
     dados = await request.form()
+
+    # Trava otimista. O formulario leva a `versao` que estava gravada quando a
+    # tela foi desenhada; se o banco ja esta em outra, alguem salvou no meio do
+    # caminho e gravar agora apagaria o que essa pessoa escreveu — sem erro,
+    # sem aviso, com as duas achando que o texto delas valeu. A comparacao e
+    # segura sem `UPDATE ... WHERE versao = ?` porque toda transacao aqui abre
+    # com `BEGIN IMMEDIATE`: dois salvamentos simultaneos ja chegam em fila.
+    # Formulario sem o campo (cliente antigo, teste que posta direto) passa como
+    # antes: a trava protege a tela, nao inventa recusa para quem nao a conhece.
+    versao_lida = _int_ou_none(dados.get("versao_lida"))
+    if versao_lida is not None and versao_lida != parecer.versao:
+        return _desenhar_editor(
+            request,
+            s,
+            usuario,
+            parecer_id,
+            erro=_frase_do_conflito(s, parecer, usuario),
+            nao_gravado=_nao_gravado(parecer, dados),
+        )
+
     antes = {
         campo: getattr(parecer, campo)
         for campo in (

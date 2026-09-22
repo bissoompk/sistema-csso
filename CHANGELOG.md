@@ -2,6 +2,83 @@
 
 Formato: o que mudou e o que ficou pendente, a cada entrega.
 
+## [1.43.0] — 2026-09-22
+
+### Blindar a rede do setor: HTTPS, edição simultânea e retenção de sessão
+O sistema atende a rede do setor desde a 1.32.0. Das lacunas que a auditoria de
+prontidão deixou para essa situação, três seguiam abertas. Esta versão fecha as
+três. (O `/auditoria` recalculando a cadeia inteira, que o `PENDENCIAS.md` ainda
+listava, já tinha sido resolvido: a tela confere só a janela exibida.)
+
+#### HTTPS servido pelo próprio sistema, com uma AC do setor restrita por nome
+Senha e cookie de sessão viajavam em claro pela rede. Agora, com
+`CSSO_TLS_CERTIFICADO` e `CSSO_TLS_CHAVE` preenchidos, o uvicorn fala TLS na
+própria porta. `python -m ferramentas.certificado_tls <IP>` cria os arquivos.
+
+**Uma AC, e não um certificado autoassinado.** O autoassinado põe o aviso
+vermelho em toda estação, todo dia, e ensina a equipe a clicar em "continuar
+mesmo assim", que é exatamente o gesto de que um ataque na rede precisa. A raiz
+é instalada uma vez por estação (`certutil -addstore -f Root ca.crt`, ou GPO).
+Renovar reaproveita a AC, e as estações não precisam de nada.
+
+**Restrita por nome (Name Constraints crítica).** Instalar uma raiz é dizer ao
+navegador "confie em tudo que esta chave assinar". Sem restrição, quem copiasse
+`ca.key` forjaria o HTTPS de qualquer site nas estações. **O primeiro desenho
+tinha esse buraco, e foi o teste que o pegou:** a restrição vale *por tipo* de
+nome (RFC 5280 §4.2.1.10), então uma AC que só permitia o IP `10.0.73.198` não
+dizia nada sobre nomes DNS, e assinava `banco.exemplo` sem objeção. Agora o tipo
+não pedido é fechado com um nome que não existe (`invalid`, `0.0.0.0/32`). O
+teste forja certificados com a chave da AC, nos quatro cruzamentos IP/DNS, e
+exige que o OpenSSL recuse cada um num handshake de verdade.
+
+Um segundo defeito apareceu só no sistema real, e não no teste: com a folha
+contendo apenas o IP, o OpenSSL conferia o CN `127.0.0.1` **como se fosse nome
+DNS** contra a restrição, e recusava o próprio certificado legítimo
+("permitted subtree violation"). A folha saiu sem CN, já que os navegadores
+ignoram o CN há anos e o nome vale pelo SAN. Ganhou teste próprio, com só IP e
+só nome.
+
+O `cookie_seguro=auto` já acerta sozinho: o esquema da requisição passa a ser
+`https`, o cookie sai `Secure` e o HSTS da 1.32.0 passa a valer. Conferido de
+ponta a ponta no ambiente de teste: `http://` na porta TLS não responde, cliente
+sem a raiz é recusado, e o login entrega `Secure` e `strict-transport-security`.
+
+O aviso "senha e sessão viajam em claro" deixa de aparecer quando há TLS. No
+lugar dele entram três avisos: TLS pela metade (só uma das duas variáveis),
+arquivo ausente e certificado vencendo em 30 dias ou já vencido. A folha dura
+397 dias, o teto dos navegadores. Passo a passo em `docs/HTTPS_NA_REDE.md`,
+com a tabela dos erros do navegador e o que cada um quer dizer.
+
+`dados/tls/` entrou no `.gitignore`: tem a chave da AC.
+
+#### Duas pessoas no mesmo parecer: quem salva por último não apaga mais quem salvou antes
+O formulário do parecer leva a `versao` que estava gravada quando a tela foi
+desenhada, e a rota recusa se o banco já está em outra. Antes, o segundo
+salvamento gravava por cima e o texto do primeiro sumia em silêncio, com as
+duas pessoas achando que o delas valeu.
+
+**A recusa diz quem salvou e quando** ("Técnica de Teste salvou este parecer em
+22/09/2026 14:03"), ou "Você mesmo… em outra aba" quando é a própria pessoa.
+**E devolve o que ela tinha escrito** num quadro "Não gravado", com os campos
+de texto que diferem da versão atual, prontos para copiar. É isso que separa
+uma recusa de uma perda. A recusa não consome versão nem escreve na trilha.
+
+Não precisa de `UPDATE … WHERE versao = ?`: toda transação abre com `BEGIN
+IMMEDIATE`, então dois salvamentos simultâneos já chegam em fila, e a
+comparação dentro da transação é suficiente. Formulário sem o campo (cliente
+antigo, teste que posta direto) passa como antes.
+
+#### A retenção de `sessao` passa a ser cumprida, e não só declarada
+A política dá 90 dias após expirar, eliminação, por causa do IP que a linha
+guarda. Até aqui a tabela crescia um registro por login, com IP, para sempre.
+`autenticacao.expurgar_sessoes` apaga o que passou do prazo. Roda a cada login,
+porque é o login que faz a tabela crescer e a poda não pode depender de o
+servidor ser reiniciado, e também no `lifespan`. O prazo é o mesmo
+`log_retencao_dias` do registro de acesso, e não um campo próprio: os dois
+guardam o mesmo IP.
+
+**Suíte: verde, sem falhas** (no Linux de desenvolvimento).
+
 ## [1.42.2] — 2026-09-09
 
 ### O PDF nunca sairia nesta pasta, e o LibreOffice não reclamava

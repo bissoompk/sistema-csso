@@ -128,7 +128,8 @@ def url_base_validacao(s: Session) -> str:
     if parametro is not None and (parametro.valor or "").strip():
         return parametro.valor.strip().rstrip("/")
     cfg = obter_config()
-    return f"http://{cfg.host}:{cfg.porta}"
+    esquema = "https" if cfg.tls_ativo else "http"
+    return f"{esquema}://{cfg.host}:{cfg.porta}"
 
 
 def no_escopo(s: Session, usuario: UsuarioAtual, certificado_id: int) -> Certificado | None:

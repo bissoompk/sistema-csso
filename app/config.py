@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RAIZ = Path(__file__).resolve().parent.parent
 
-VERSAO = "1.42.2"
+VERSAO = "1.43.0"
 RODAPE_INSTITUCIONAL = "Sistema de apoio da CSSO. O processo oficial e o SEI."
 
 # Enderecos de ligacao que so a propria maquina alcanca. Nao decidem mais o
@@ -72,6 +72,15 @@ class Config(BaseSettings):
     # sabe nada sobre a conexao, e `CSSO_HOST=0.0.0.0` trancava todo mundo do
     # lado de fora.
     cookie_seguro: str = "auto"
+
+    # HTTPS servido pelo proprio sistema. Os dois vazios = http, como sempre foi.
+    # Preenchidos, o uvicorn fala TLS nesta porta (e so TLS: `http://` nela deixa
+    # de responder). Os arquivos saem de `python -m ferramentas.certificado_tls`,
+    # que cria a AC restrita do setor — o porque de ser AC, e restrita, esta em
+    # `app/servicos/tls.py`. Com TLS aqui, `cookie_seguro=auto` ja acerta sozinho:
+    # o esquema da requisicao passa a ser `https`.
+    tls_certificado: str = ""
+    tls_chave: str = ""
 
     banco_url: str = "sqlite+pysqlite:///dados/csso.db"
 
@@ -183,6 +192,10 @@ class Config(BaseSettings):
         self.caminho_banco.parent.mkdir(parents=True, exist_ok=True)
 
     @property
+    def tls_ativo(self) -> bool:
+        return bool(self.tls_certificado.strip() and self.tls_chave.strip())
+
+    @property
     def inseguro(self) -> list[str]:
         """Avisos de configuracao exibidos no /saude e no boot."""
         avisos: list[str] = []
@@ -213,11 +226,22 @@ class Config(BaseSettings):
                 "CSSO_COOKIE_SEGURO=nao: o cookie de sessao vai sem o atributo "
                 "Secure mesmo havendo HTTPS."
             )
-        if self.host not in SO_LOOPBACK:
+        if bool(self.tls_certificado.strip()) != bool(self.tls_chave.strip()):
+            avisos.append(
+                "So um de CSSO_TLS_CERTIFICADO e CSSO_TLS_CHAVE esta preenchido: o "
+                "sistema continua em http. Preencha os dois, ou nenhum."
+            )
+        if self.tls_ativo:
+            from app.servicos import tls
+
+            avisos.extend(
+                tls.avisos(self.caminho(self.tls_certificado), self.caminho(self.tls_chave))
+            )
+        elif self.host not in SO_LOOPBACK:
             avisos.append(
                 f"O sistema esta ligado em {self.host} - a porta e alcancavel por "
-                "outras maquinas. Sem TLS num proxy a frente, senha e sessao "
-                "viajam em claro na rede. Veja entrada/implantacao/01_REDE_DO_SETOR.md."
+                "outras maquinas. Sem TLS, senha e sessao viajam em claro na rede. "
+                "Ligue o HTTPS: veja docs/HTTPS_NA_REDE.md."
             )
         alvo = str(self.caminho_banco).lower()
         for nuvem in ("onedrive", "dropbox", "google drive", "\\meu drive"):

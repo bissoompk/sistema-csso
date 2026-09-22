@@ -1,6 +1,6 @@
 [project]
 name = "csso"
-version = "1.42.2"
+version = "1.43.0"
 description = "Sistema de Gestao da CSSO/Sisa (UFVJM) - Modulo Adicional Ocupacional"
 requires-python = ">=3.12,<3.13"
 dependencies = [

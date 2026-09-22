@@ -108,6 +108,23 @@
       <form method="post" action="/pareceres/{{ parecer.id }}"
             data-rascunho-local="parecer-{{ parecer.id }}"
             data-rascunho-versao="{{ parecer.versao }}">
+        {# A trava contra salvar por cima de quem salvou antes: a rota compara com
+           a versão gravada e recusa se mudou. Oculto de propósito — o rascunho
+           local ignora `hidden`, então ele nunca repõe uma versão velha. #}
+        <input type="hidden" name="versao_lida" value="{{ parecer.versao }}">
+        {% if nao_gravado %}
+        <div class="aviso aviso-alerta" role="alert" id="nao-gravado">
+          <p><strong>Não gravado.</strong> O que você tinha escrito, e que difere da
+            versão atual. Copie o que ainda valer para o campo correspondente e salve.</p>
+          {% for rotulo, valor in nao_gravado %}
+          <div class="campo">
+            <label for="nao-gravado-{{ loop.index }}">{{ rotulo }}</label>
+            <textarea id="nao-gravado-{{ loop.index }}" readonly
+                      rows="{{ 2 if valor|length < 120 else 6 }}">{{ valor }}</textarea>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
         <fieldset class="campos"{{ ' disabled' if congelado }}>
         <div class="pilha">
 

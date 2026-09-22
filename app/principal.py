@@ -53,6 +53,7 @@ from app.rotas import (
     validacao as rota_validacao,
 )
 from app.rotas.api import RecusaDaApi, recusa_em_json
+from app.servicos.autenticacao import expurgar_sessoes
 from app.servicos.rbac import PermissaoNegada
 from app.servicos.sementes import semear
 from app.web import pagina
@@ -78,6 +79,9 @@ async def ciclo_de_vida(app: FastAPI):
     # seeds sao idempotentes: catalogos, perfis e permissoes ficam sempre em dia
     with sessao() as s:
         semear(s)
+        # a retencao de `sessao` tambem roda a cada login; aqui cobre a
+        # instalacao que ficou meses sem ninguem entrar
+        expurgar_sessoes(s)
 
     ok, detalhe = integridade_ok(engine)
     if not ok:  # pragma: no cover
