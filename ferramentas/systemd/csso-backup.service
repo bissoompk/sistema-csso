@@ -1,0 +1,17 @@
+# Backup cifrado, disparado pelo csso-backup.timer. Modelo: ver csso.service.
+[Unit]
+Description=Backup cifrado do Sistema CSSO
+After=csso.service
+
+[Service]
+Type=oneshot
+User=%USUARIO%
+Group=%USUARIO%
+WorkingDirectory=%PASTA%
+Environment=CSSO_ENV_FILE=%PASTA%/dados-teste/.env
+ExecStart=%PASTA%/.venv/bin/python -m ferramentas.backup_cli backup
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%PASTA%

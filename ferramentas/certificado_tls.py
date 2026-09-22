@@ -86,7 +86,13 @@ def principal(argv: list[str] | None = None) -> int:
     print(f"  CSSO_TLS_CERTIFICADO={relativo}/{tls.ARQ_CERT}")
     print(f"  CSSO_TLS_CHAVE={relativo}/{tls.ARQ_CHAVE}")
     print()
+    # A porta sai do .env que ESTA valendo agora (CSSO_ENV_FILE, ou o da raiz).
+    # Gerar o certificado do ambiente de teste com o .env da raiz em vigor
+    # imprimia a porta do sistema de verdade — endereco que nao abre nada.
+    from app.config import caminho_env_file
+
     print(f"Endereço para as estações: https://{emissao.nomes[0]}:{cfg.porta}/")
+    print(f"(porta lida de {caminho_env_file()})")
     return 0
 
 

@@ -1,0 +1,49 @@
+# Sistema CSSO como servico do systemd (Linux).
+#
+# Modelo: troque %PASTA% e %USUARIO% e instale. O passo a passo esta em
+# docs/SERVIDOR_LINUX.md — inclusive o comando que faz a troca sozinho.
+#
+# O interpretador e o do .venv, DIRETO, e nao `uv run`: este processo fica de
+# pe por meses, e `uv run` reconfere o ambiente a cada chamada. Uma
+# reinstalacao feita por outra janela (um `uv sync` depois de mexer na versao)
+# troca arquivos dentro do .venv que este servidor ainda vai importar, e ele
+# morre no meio do expediente sem erro que se leia. E o mesmo argumento que
+# esta escrito no SERVIR-TESTE-NA-REDE.bat, e aconteceu no Windows.
+
+[Unit]
+Description=Sistema CSSO (CSSO/Sisa UFVJM)
+Documentation=file://%PASTA%/docs/SERVIDOR_LINUX.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%USUARIO%
+Group=%USUARIO%
+WorkingDirectory=%PASTA%
+Environment=CSSO_ENV_FILE=%PASTA%/dados-teste/.env
+Environment=CSSO_ABRIR_NAVEGADOR=false
+ExecStart=%PASTA%/.venv/bin/python -m ferramentas.servidor
+Restart=on-failure
+RestartSec=5s
+# A saida do servidor vai para o journal (journalctl -u csso). O registro de
+# acesso continua em dados-teste/logs/acesso.log, com a rotacao de 90 dias que
+# a politica de retencao exige — journal e diagnostico, nao e aquele registro.
+StandardOutput=journal
+StandardError=journal
+
+# Endurecimento. O sistema so precisa escrever dentro da propria pasta.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%PASTA%
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

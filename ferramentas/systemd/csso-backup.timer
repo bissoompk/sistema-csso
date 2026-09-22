@@ -1,0 +1,13 @@
+# Backup diario. `Persistent=true` faz o backup perdido rodar assim que a
+# maquina volta — numa maquina que dorme, um horario fixo sozinho simplesmente
+# nao acontece, e ninguem descobre ate precisar do backup.
+[Unit]
+Description=Backup diario do Sistema CSSO
+
+[Timer]
+OnCalendar=*-*-* 22:30:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
