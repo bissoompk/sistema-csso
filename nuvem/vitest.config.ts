@@ -8,6 +8,11 @@
  */
 import { defineConfig } from "vitest/config";
 
+// Um modelo por EXECUÇÃO, e não um nome fixo: duas suítes rodando ao mesmo
+// tempo (dois terminais, dois agentes) derrubavam o modelo uma da outra no
+// meio da clonagem. O nome vai para os workers pelo `env` abaixo.
+process.env.CSSO_MODELO ??= `csso_modelo_${process.pid}`;
+
 export default defineConfig({
   test: {
     include: ["testes/**/*.test.ts"],
@@ -20,6 +25,7 @@ export default defineConfig({
       CSSO_CHAVE_SECRETA: "chave-de-teste-nao-e-segredo",
       CSSO_AMBIENTE: "teste",
       CSSO_COOKIE_SEGURO: "auto",
+      CSSO_MODELO: process.env.CSSO_MODELO,
     },
   },
 });

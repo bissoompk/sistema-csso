@@ -11,7 +11,7 @@ import * as esquema from "../src/db/esquema/index.js";
 import { migrarBanco } from "../src/db/migrar.js";
 import { semear } from "../src/servicos/sementes.js";
 
-export const MODELO = "csso_modelo";
+export const MODELO = process.env.CSSO_MODELO ?? "csso_modelo";
 
 /** O Postgres dos testes: o servidor do `.env`, sem o nome do banco. */
 export function urlServidor(banco = "postgres"): string {
@@ -40,7 +40,19 @@ export default async function preparar(): Promise<() => Promise<void>> {
     await sql.end({ timeout: 5 });
   }
   return async () => {
-    // o modelo fica: é útil para inspecionar depois de uma falha, e é
-    // recriado na próxima execução de qualquer forma
+    // o modelo é desta execução só: fica para trás se não for apagado
+    const adm = postgres(urlServidor(), { max: 1, prepare: false, onnotice: () => {} });
+    try {
+      await adm.unsafe(`DROP DATABASE IF EXISTS ${MODELO} WITH (FORCE)`);
+      // clones que um arquivo não apagou (falha no meio, afterAll que não rodou)
+      const sufixo = MODELO.replace(/^csso_modelo_?/, "");
+      const sobras = await adm<{ datname: string }[]>`
+        SELECT datname FROM pg_database WHERE datname LIKE ${"csso_t_" + sufixo + "_%"}`;
+      for (const { datname } of sobras) {
+        await adm.unsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
+      }
+    } finally {
+      await adm.end({ timeout: 5 });
+    }
   };
 }

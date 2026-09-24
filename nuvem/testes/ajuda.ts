@@ -94,7 +94,7 @@ let _atual: string | null = null;
  * para ele. Chamado de novo, troca de banco (o anterior é apagado no fim).
  */
 export async function bancoLimpo(): Promise<AmbienteDeTeste> {
-  const nome = `csso_t_${randomBytes(6).toString("hex")}`;
+  const nome = `csso_t_${(process.env.CSSO_MODELO ?? "csso_modelo").replace(/^csso_modelo_?/, "")}_${randomBytes(6).toString("hex")}`;
   await clonarModelo(nome);
   const url = urlServidor(nome);
   await fecharBanco();
