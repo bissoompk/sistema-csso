@@ -220,6 +220,28 @@ repete, em uma linha, o comentário que está no código.
 - **`EVENTOS_DE_RECUSA` com literais** em `epi_indicadores.ts`: ler constante
   alheia no carregamento, num ciclo de import ESM, não tem garantia.
 - **CSV da exportação escrito à mão** (`;`, aspas mínimas, `\r\n`, BOM).
+- **Requisição: a escrita atualiza a linha e o objeto recebido**
+  (`src/servicos/epi_requisicao.ts`). O ORM do Python carregava relação sob
+  demanda (`linha.requisicao`, `requisicao.itens`) e dava flush depois; aqui o
+  serviço recarrega o que precisa e grava com UPDATE + `Object.assign`. Quem
+  guarda outra cópia da linha tem de relê-la.
+- **Campos vão no MESMO UPDATE da troca de estado** (`_mover`/`_mover_item`
+  com `campos`): o Postgres confere CHECK a cada UPDATE (`ck_req_protocolo`,
+  `ck_item_lote`), e o flush do Python gravava tudo junto. `liberar_reserva`
+  passou a gravar no banco na hora (no Python só mexia na memória).
+- **Reserva trava a linha do lote com `SELECT ... FOR UPDATE`** antes de ler
+  `disponivel` — o lugar do `BEGIN IMMEDIATE` do SQLite; duas reservas
+  simultâneas passam uma depois da outra (testado com duas conexões).
+- **Ficha da requisição e guia não dão `s.commit()` próprio**: a requisição
+  inteira é uma transação; a recusa que redesenha a tela usa SAVEPOINT
+  (`tentar()` na rota). `AutoanaliseProibida` (RN-28) continua chegando ao
+  `onError` como 403 com a mensagem inteira.
+- **Templates da requisição leem `dict` do Python por `dicionario()`**
+  (`src/dicionario.ts`, apelido `dic`); a rota registra o global
+  `sem_digitado` no lugar de `digitado or {}`. Tuplas viraram listas,
+  `{% with %}` virou `{% set %}`, `resumo.values()|sum` virou `total_resumo`.
+- **O teste de 50 protocolos simultâneos usa o ano 2031**: o banco do arquivo é
+  compartilhado e os outros testes esperam `EPI-AAAA-0001`.
 - **Testes**: banco limpo por teste (`beforeEach` → `bancoLimpo()`), como o
   fixture `banco` do pytest. Em `epi_adicional.test.ts` o ouvinte de mapper do
   SQLAlchemy virou um gatilho de banco que conta toda escrita em
