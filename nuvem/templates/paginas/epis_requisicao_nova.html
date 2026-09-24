@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# Abrir o pedido de EPI.
+
+   O que esta tela faz e o e-mail não fazia: transforma "preciso de luva" em
+   documento com contexto. Requerente, chefia, rotina de trabalho, riscos
+   declarados e urgência não são burocracia de formulário — são o que a pessoa
+   que vai DECIDIR precisa ler para fundamentar a decisão, e o que fica
+   congelado no envio para que a decisão continue defensável depois.
+
+   **O rascunho não consome protocolo** (RN-03). Quem o consome é o envio, e por
+   isso um formulário abandonado aqui não abre buraco na sequência — que é a
+   primeira pergunta que uma auditoria faz sobre numeração de documento. #}
+
+{% block titulo %}Nova requisição de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Nova requisição</span>{% endblock %}
+
+{# O que a pessoa digitou, devolvido pela rota quando a abertura é recusada.
+   Vazio na abertura da tela. Sem isto, uma urgência sem justificativa apagava a
+   rotina de trabalho e os riscos declarados — os dois textos longos daqui, e
+   justamente os que fundamentam a decisão de quem vai analisar. #}
+{% set d = digitado or {} %}
+{%- macro sel(escolhido, valor) -%}
+{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{%- endmacro %}
+
+{% block conteudo %}
+{# `.tela formulario`, como `/processos/novo`: a tela inteira É um formulário, e
+   passar de 860px faz o campo virar uma linha longa demais — o rótulo perde de
+   vista o próprio campo, e a rotina de trabalho e os riscos declarados, que são
+   os dois textos longos daqui, viram faixas de 1000px. O teto é da tela e não
+   do cartão para o `<h1>` não ficar órfão à esquerda de um cartão estreito. #}
+<div class="tela formulario">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Nova requisição de EPI</h1>
+      <p class="sub">O pedido nasce como <strong>rascunho</strong> e ainda não
+        tem protocolo: o número é consumido no envio, e rascunho abandonado não
+        gasta número.</p>
+    </div>
+    <div class="ao-lado">
+      <a class="botao secundario" href="/epis/requisicoes">Ver a fila</a>
+    </div>
+  </div>
+
+  <form method="post" action="/epis/requisicoes">
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Quem pede, e por quê</h2>
+        <span class="nota">tudo isto fica congelado no envio (RN-15)</span>
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo">
+          {# a busca troca só a lista: recarregar a página perderia a rotina de
+             trabalho e os riscos, que são os campos longos daqui #}
+          <label for="busca-servidor">Buscar servidor</label>
+          <input id="busca-servidor" type="search" name="q" value="{{ q }}"
+                 placeholder="Nome ou SIAPE"
+                 hx-get="/epis/requisicoes/servidores"
+                 hx-target="#lista-de-servidores"
+                 hx-trigger="keyup changed delay:300ms, search"
+                 hx-include="this"
+                 aria-describedby="dica-busca">
+          <span class="dica" id="dica-busca">O SIAPE acha sempre. O nome só acha
+            para quem tem permissão de ler identificação nominal — senão o filtro
+            viraria oráculo (RN-19).</span>
+        </div>
+
+        <div class="campo" id="lista-de-servidores">
+          {# `with` e não confiança no escopo: o mesmo fragmento é servido solto
+             pela rota HTMX da busca, onde não há nada escolhido. #}
+          {# `nota` vem da rota (`NOTA_SERVIDOR`), e não escrita aqui: a rota HTMX
+             da busca serve o mesmo fragmento e teria de repetir a frase. #}
+          {% with escolhido = d.get('servidor_id') %}
+          {% include "partes/epi_requisicao_servidores.html" %}
+          {% endwith %}
+        </div>
+
+        <div class="campo">
+          <label for="chefia_servidor_id">Chefia responsável <span class="discreto">(opcional)</span></label>
+          <select id="chefia_servidor_id" name="chefia_servidor_id">
+            <option value="">—</option>
+            {% for sv in servidores %}
+            {% set quem = identificar(sv) %}
+            <option value="{{ sv.id }}"{{ sel(d.get('chefia_servidor_id'), sv.id) }}>{{ quem.com_siape }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="finalidade">Finalidade</label>
+          <select id="finalidade" name="finalidade" required>
+            {% for codigo, rotulo in finalidades %}
+            <option value="{{ codigo }}"{{ sel(d.get('finalidade') or 'ROTINA', codigo) }}>{{ rotulo }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="campo">
+          <label for="urgencia">Urgência</label>
+          <select id="urgencia" name="urgencia" required>
+            {% for codigo, rotulo in urgencias %}
+            <option value="{{ codigo }}"{{ sel(d.get('urgencia'), codigo) }}>{{ rotulo }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="campo">
+          <label for="justificativa_urgencia">Justificativa da urgência</label>
+          <input id="justificativa_urgencia" name="justificativa_urgencia"
+                 value="{{ d.get('justificativa_urgencia') or '' }}"
+                 aria-describedby="dica-urgencia">
+          <span class="dica" id="dica-urgencia">Obrigatória quando o pedido é
+            urgente: sem ela “urgente” vira o padrão de todo mundo e deixa de
+            ordenar a fila.</span>
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="descricao_atividade">Rotina de trabalho</label>
+        <textarea id="descricao_atividade" name="descricao_atividade" rows="3"
+                  aria-describedby="dica-rotina"
+                  placeholder="Manipulação de reagentes no laboratório de análises clínicas">{{ d.get('descricao_atividade') or '' }}</textarea>
+        <span class="dica" id="dica-rotina">O que a pessoa faz, e não o que ela
+          tem. <strong>Nada sobre saúde, gestação, CID, diagnóstico ou
+          atestado</strong>: o sistema recusa o texto (RN-21; LGPD art. 11).</span>
+      </div>
+
+      <div class="campo">
+        <label for="riscos_declarados">Riscos declarados</label>
+        <textarea id="riscos_declarados" name="riscos_declarados" rows="3"
+                  aria-describedby="dica-riscos"
+                  placeholder="Contato com ácidos e solventes; respingo">{{ d.get('riscos_declarados') or '' }}</textarea>
+        <span class="dica" id="dica-riscos">É o que fundamenta a decisão de quem
+          analisa. Mesma regra do campo acima.</span>
+      </div>
+
+      <div class="acoes">
+        <button type="submit">Abrir rascunho</button>
+        {# `.acoes` é flex: o (i) entra como mais um item da fileira, ao lado do
+           botão e do texto. Fica escrito o que acontece a seguir; o que muda
+           depois do envio foi para o (i) — e continua escrito, em vermelho e na
+           tela, na ficha do rascunho, que é onde o botão de enviar mora. #}
+        <p class="discreto sem-margem">Aberto o rascunho, você acrescenta as
+          linhas de item na tela do pedido e envia.</p>
+        {% call ui.info('rascunho-e-documento', 'o que muda quando o rascunho é enviado') %}
+          <p>Enquanto for <strong>rascunho</strong>, tudo se edita: cabeçalho,
+            linhas de item, quantidades, justificativas. Ele não tem protocolo e
+            não gasta número da sequência (RN-03).</p>
+          <p>Depois do envio o pedido é <strong>documento</strong>, e documento se
+            corrige por cancelamento com motivo e pedido novo (RN-31) — as duas
+            linhas ficam na trilha, que é como se corrige sem rasura.</p>
+        {% endcall %}
+      </div>
+    </section>
+  </form>
+
+  {# A frase FICA: quem abre esta tela para pedir EPI a um terceirizado precisa
+     saber agora, e não depois de preencher sete campos, que o caminho não é
+     este. O fundamento e o encaminhamento foram para o (i). #}
+  <div class="aviso aviso-info">
+    <strong>A UFVJM não fornece EPI a terceirizado, nem a estudante, nem a
+      bolsista</strong> (decisões 3 e 7).
+    {% call ui.info('so-servidor', 'por que só há servidor no seletor, e como se dá o “não”') %}
+      <p>Só há servidor neste seletor porque só servidor entra no cadastro — e
+        mantê-lo fora é a decisão, não uma limitação do sistema.</p>
+      <p>Para o pessoal terceirizado a obrigação de fornecer EPI, pela NR-6, é da
+        <strong>empresa contratante</strong>.</p>
+      <p>O “não” que a portaria manda dar sai fundamentado pela
+        <a href="/epis/entregas/nova#recusa">recusa catalogada</a>, com o texto da
+        norma, congelado no ato e contável por motivo — e é a contagem por motivo
+        que instrui o ofício à contratada.</p>
+    {% endcall %}
+  </div>
+
+</div>
+{% endblock %}

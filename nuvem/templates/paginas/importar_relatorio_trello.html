@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Relatório do Trello · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Relatório do Trello</span>{% endblock %}
+
+{% block acoes_cabecalho %}
+<a class="botao secundario" href="/importar">Voltar à importação</a>
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Importação do Trello</h1>
+      <p class="identificacao">
+        {{ ui.pilula_carga(aplicado) }}
+        <span class="ponto">·</span>
+        <span>quadro exportado em JSON, com o feed <code>actions</code></span>
+      </p>
+    </div>
+  </div>
+
+  <div class="grade grade-kpi">
+    <div class="kpi">
+      <div class="rotulo">Cartões lidos</div>
+      <div class="medida"><span class="valor">{{ relatorio.cartoes }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Processos</div>
+      <div class="medida"><span class="valor">{{ relatorio.processos }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Eventos de histórico</div>
+      <div class="medida"><span class="valor">{{ relatorio.eventos }}</span>
+        <span class="nota">com a data original</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Anexos guardados</div>
+      <div class="medida"><span class="valor">{{ relatorio.anexos }}</span>
+        {% if relatorio.anexos_duplicados %}
+        <span class="nota">{{ relatorio.anexos_duplicados }} duplicado(s) ignorado(s)</span>
+        {% endif %}</div>
+    </div>
+    <div class="kpi {{ 'perigo' if relatorio.anexos_perdidos }}">
+      <div class="rotulo">Anexos não baixados</div>
+      <div class="medida"><span class="valor">{{ relatorio.anexos_perdidos|length }}</span>
+        <span class="nota">as URLs do Trello expiram</span></div>
+    </div>
+  </div>
+
+  {% if relatorio.anexos_perdidos %}
+  {# O aviso diz a consequência, e não só o número: a URL do Trello expira, e o
+     que não for buscado antes do corte deixa de existir em qualquer lugar. #}
+  <div class="aviso aviso-erro">
+    <p><strong>{{ relatorio.anexos_perdidos|length }} anexo(s) NÃO foram baixados.</strong>
+      A URL do Trello expira sozinha: passado o prazo, o arquivo não está aqui nem
+      lá. Busque estes antes do corte.</p>
+    <table>
+      <thead>
+        <tr><th scope="col">Arquivo</th><th scope="col">URL / motivo</th></tr>
+      </thead>
+      {% for nome, motivo in relatorio.anexos_perdidos %}
+      <tr><td>{{ nome }}</td><td class="mono discreto">{{ motivo }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% if relatorio.listas_desconhecidas %}
+  <div class="aviso aviso-erro">
+    <p><strong>Listas não mapeadas — nada foi chutado.</strong>
+      O cartão destas listas ficou sem estado: mapeie a lista no
+      de-para e reimporte, ou o estado terá de ser dado à mão, um a um.</p>
+    <span class="fileira">
+      {% for lista in relatorio.listas_desconhecidas %}
+      <span class="selo erro">{{ lista }}</span>{% endfor %}
+    </span>
+  </div>
+  {% endif %}
+
+  <div class="grade grade-2">
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Órfãos de processo</h2>
+        <span class="contador {{ 'alerta' if relatorio.orfaos_processo else 'ok' }}"
+              >{{ relatorio.orfaos_processo|length }}</span>
+      </div>
+      <div class="corpo">
+        <p class="discreto sem-margem">Cartão sem NUP no texto: precisa do número
+          real para virar processo.</p>
+      </div>
+      {% if relatorio.orfaos_processo %}
+      <table>
+        {% for nome in relatorio.orfaos_processo %}<tr><td>{{ nome }}</td></tr>{% endfor %}
+      </table>
+      {% else %}
+      <div class="corpo">
+        <div class="vazio">
+          <strong>Nenhum órfão</strong>
+          <span>Nenhum cartão desta carga entrou sem NUP.</span>
+        </div>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Laudos candidatos extraídos de anexos</h2>
+        <span class="contador">{{ relatorio.laudos_candidatos|length }}</span>
+      </div>
+      <div class="corpo">
+        <p class="discreto sem-margem">Reconstituídos do nome do arquivo —
+          conferir antes de vincular.</p>
+      </div>
+      <table>
+        <thead>
+          <tr><th scope="col">Anexo</th><th scope="col">Laudo candidato</th></tr>
+        </thead>
+        {% for c in relatorio.laudos_candidatos %}
+        <tr><td>{{ c.anexo }}</td><td class="mono">{{ c.laudo_candidato }}</td></tr>
+        {% else %}<tr><td colspan="2" class="nada">Nenhum.</td></tr>{% endfor %}
+      </table>
+    </section>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Conflito de numeração</h2>
+      <span class="contador {{ 'erro' if relatorio.conflitos_numeracao else 'ok' }}"
+            >{{ relatorio.conflitos_numeracao|length }}</span>
+    </div>
+    <div class="corpo">
+      <p class="discreto sem-margem">Exposto, nunca resolvido automaticamente: o
+        título do cartão aponta um número de parecer, e é preciso decidir caso a
+        caso se é o mesmo da planilha.</p>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Cartão</th><th scope="col">Candidato</th><th scope="col">NUP</th></tr>
+      </thead>
+      {% for c in relatorio.conflitos_numeracao %}
+      <tr><td>{{ c.cartao }}</td><td class="mono">{{ c.parecer_candidato }}</td>
+          <td>{% if c.nup %}<span class="mono">{{ c.nup }}</span>
+              {% else %}<span class="discreto">sem NUP</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="3" class="nada">Nenhum.</td></tr>{% endfor %}
+    </table>
+  </section>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Rejeitados</h2>
+      <span class="contador {{ 'erro' if relatorio.rejeitados else 'ok' }}"
+            >{{ relatorio.rejeitados|length }}</span>
+      <span class="nota">nada foi descartado em silêncio</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Referência</th><th scope="col">Motivo</th></tr>
+      </thead>
+      {% for ref, motivo in relatorio.rejeitados %}
+      <tr><td class="mono">{{ ref }}</td><td>{{ motivo }}</td></tr>
+      {% else %}<tr><td colspan="2" class="nada">Nenhum.</td></tr>{% endfor %}
+    </table>
+  </section>
+
+</div>
+{% endblock %}

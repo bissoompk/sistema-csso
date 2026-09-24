@@ -1,0 +1,8 @@
+{#- A marca do sistema CSSO/Sisa. Um caminho só, `evenodd`, `currentColor`: a
+    folha e a faixa são FURO, não peça branca, então o mesmo desenho serve na
+    lateral escura (chapa branca), sobre papel (chapa azul) e no preto e branco
+    da impressora. O `viewBox` de 24 é o tamanho mínimo de uso — nenhuma aresta
+    cai abaixo de um pixel ali. O argumento inteiro está em `csso.css`, seção
+    "a marca do sistema"; não repetir aqui é de propósito, para não haver duas
+    versões da mesma justificativa. -#}
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M4.4 0h15.2A4.4 4.4 0 0 1 24 4.4v15.2a4.4 4.4 0 0 1-4.4 4.4H4.4A4.4 4.4 0 0 1 0 19.6V4.4A4.4 4.4 0 0 1 4.4 0Zm2.1 4.5V19.5h11V9.1L12.9 4.5H6.5Zm2.15 5.6h6.7v1.2h-6.7v-1.2Zm0 3.4h6.7v3.6h-6.7v-3.6Z"/></svg>

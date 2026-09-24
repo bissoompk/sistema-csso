@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Servidor · CSSO{% endblock %}
+
+{# Terceiro nível da trilha em mono nos dois casos: SIAPE e código opaco são
+   números que se conferem dígito a dígito, e nenhum dos dois é o nome — que
+   nesta trilha não caberia sem vazar para quem não pode lê-lo. #}
+{% block trilha %}
+{%- set quem = identificar(servidor) -%}
+<span class="atual mono" aria-current="page">
+  {%- if quem.nominal %}SIAPE {{ quem.siape }}{% else %}{{ quem.nome }}{% endif -%}
+</span>
+{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set EDITAR_ID = 'Editar identificação' %}
+{% set REGISTRAR = 'Registrar mudança' %}
+
+{% block acoes_cabecalho %}
+<button type="button" class="secundario" data-imprimir>Imprimir</button>
+{% if usuario.pode('processo.editar') %}
+{% if identificar(servidor).nominal %}
+{{ ui.botao_cadastro('editar-identificacao', EDITAR_ID, 'secundario') }}{% endif %}
+{{ ui.botao_cadastro('registrar-mudanca', REGISTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set quem = identificar(servidor) %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1 class="{{ 'mono' if not quem.nominal }}">{{ quem.nome }}</h1>
+      <p class="identificacao">
+        {% if quem.nominal %}<span class="mono">SIAPE {{ quem.siape }}</span>
+        {% else %}<span class="discreto">identificação suprimida (RN-19)</span>{% endif %}
+        <span class="ponto">·</span>
+        <span>{{ servidor.cargo.nome if servidor.cargo else 'cargo não informado' }}</span>
+        <span class="ponto">·</span>
+        <span>{{ servidor.unidade.nome_extenso if servidor.unidade else 'unidade não informada' }}</span>
+        {% if postos_atuais %}
+        <span class="ponto">·</span>
+        <span>{{ postos_atuais|map(attribute='nome')|join(' / ') }}</span>{% endif %}
+        {{ ui.pilula_situacao_servidor(servidor.situacao) }}
+      </p>
+    </div>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Lotação e cargo</h2>
+      <span class="contador">{{ lotacoes|length }}</span>
+      {# Como a linha do tempo funciona é explicação — lê-se uma vez e depois se
+         sabe. O que muda decisão é a lista de inconsistências logo abaixo, que
+         continua na tela. #}
+      {% call ui.info('linha-do-tempo', 'por que a lotação não se sobrescreve') %}
+        <p>Nada é sobrescrito: cada alteração <strong>fecha o período anterior</strong>
+          na véspera e abre um novo, sem lacuna e sem sobreposição. É essa linha do
+          tempo que responde "onde a pessoa estava na data do fato" — a pergunta de
+          que o parecer depende para dizer a que exposição ela esteve submetida.</p>
+        <p>Por isso unidade, UORG, postos e cargo mudam <strong>pelo histórico</strong>,
+          e não pelo cartão de identificação: corrigir o valor atual apagaria o
+          passado que sustenta os pareceres já emitidos.</p>
+      {% endcall %}
+    </div>
+
+    {% if inconsistencias %}
+    <div class="corpo">
+      <div class="aviso aviso-erro">
+        <strong>Linha do tempo inconsistente:</strong>
+        <ul>{% for p in inconsistencias %}<li>{{ p }}</li>{% endfor %}</ul>
+        <p>Enquanto houver lacuna ou sobreposição, o período que o parecer usa
+          como lotação da data do fato pode não ser o certo.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if lotacoes %}
+    <table>
+      <thead>
+        <tr><th scope="col">Período</th><th scope="col">Unidade</th><th scope="col">UORG</th><th scope="col">Postos de trabalho</th>
+            <th scope="col">Cargo</th><th scope="col">Função</th><th scope="col">Documento</th></tr>
+      </thead>
+      {% for l in lotacoes %}
+      <tr>
+        <td>
+          <span class="mono">{{ l.vigencia_inicio|data }} —
+            {%- if not l.aberta %} {{ l.vigencia_fim|data }}{% endif %}</span>
+          {% if l.aberta %}<span class="pilula ok">atual</span>{% endif %}
+        </td>
+        <td><span class="recorte" title="{{ l.unidade.nome_extenso if l.unidade else '' }}">
+            {{- l.unidade.nome_extenso if l.unidade else '—' -}}</span></td>
+        {# Só o código; o `uorg_bruto` inteiro fica no `title`. Ver /servidores. #}
+        <td class="mono">
+          {%- if l.uorg %}<span title="{{ l.uorg.uorg_bruto }}">
+            {{- l.uorg.codigo_uorg or l.uorg.sigla or l.uorg.nome_oficial -}}</span>
+          {%- else %}—{% endif %}</td>
+        <td>
+          {%- for p in l.postos %}<span class="quebra">{{ p.nome }}</span>
+          {%- else %}<span class="discreto">—</span>{% endfor %}
+        </td>
+        <td>{{ l.cargo.nome if l.cargo else '—' }}</td>
+        <td>{{ l.funcao or '—' }}</td>
+        <td class="discreto">{{ l.documento or '—' }}
+          {% if l.observacao %}<span class="quebra">{{ l.observacao }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="corpo">
+      <div class="vazio">
+        <strong>Sem histórico de lotação</strong>
+        <span>Sem período aberto o parecer não sabe dizer onde a pessoa estava
+          na data do fato — registre a lotação abaixo.</span>
+      </div>
+    </div>
+    {% endif %}
+
+  </section>
+
+  <div class="lado-a-lado igual">
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Processos</h2>
+        <span class="contador">{{ processos|length }}</span>
+      </div>
+      {% if processos %}
+      <table>
+        <thead>
+          <tr><th scope="col">NUP</th><th scope="col">Estado</th><th scope="col">Autuação</th></tr>
+        </thead>
+        {% for p in processos %}
+        <tr>
+          <td><a class="mono" href="/processos/{{ p.id }}">{{ p.nup }}</a></td>
+          <td>{{ ui.pilula_estado(p.estado_tecnico) }}</td>
+          <td class="mono">{{ p.data_autuacao|data or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="corpo">
+        <div class="vazio">
+          <strong>Nenhum processo</strong>
+          <span>Nada foi autuado para esta pessoa — nem adicional, nem reavaliação.</span>
+        </div>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Pareceres</h2>
+        <span class="contador">{{ pareceres|length }}</span>
+      </div>
+      {% if pareceres %}
+      <table>
+        <thead>
+          <tr><th scope="col">Nº</th><th scope="col">Situação</th><th scope="col">Emissão</th><th scope="col">Laudo</th></tr>
+        </thead>
+        {% for p in pareceres %}
+        <tr>
+          <td><a class="mono" href="/pareceres/{{ p.id }}">{{ p.numero }}/{{ p.ano }}</a></td>
+          <td>{{ ui.pilula_parecer(p.situacao) }}</td>
+          <td class="mono">{{ p.data_emissao|data or '—' }}</td>
+          <td>
+            {%- if p.laudo %}<a class="mono" href="/laudos/{{ p.laudo_id }}">{{ p.laudo.numero_siape }}</a>
+            {%- else %}<span class="discreto">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="corpo">
+        <div class="vazio">
+          <strong>Nenhum parecer</strong>
+          <span>É o parecer técnico que informa o direito; sem ele não há adicional
+            a propor.</span>
+        </div>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Adicionais</h2>
+      <span class="contador">{{ vigencias|length }}</span>
+      <span class="nota">o parecer informa, a portaria concede</span>
+      {% call ui.info('acumulo-adicional', 'a máquina do direito e a proibição de acúmulo') %}
+        <p>No máximo um adicional <strong>vigente</strong> por servidor: insalubridade,
+          periculosidade, irradiação ionizante e gratificação por raios X não se
+          acumulam (IN 15/2022, art. 4º). Entre insalubridade e periculosidade a opção
+          é do servidor (Lei 8.112/90, art. 68, §1º).</p>
+        <p>São dois atos, e é por isso que a coluna de estado existe: o parecer
+          técnico <strong>informa</strong> o direito — e o adicional nasce
+          <em>proposto</em> —; quem o <strong>concede</strong> é a portaria da PROGEP,
+          e só aí ele passa a <em>vigente</em>.</p>
+      {% endcall %}
+    </div>
+    {% if vigencias %}
+    <table>
+      <thead>
+        <tr><th scope="col">Estado</th><th scope="col">Tipo</th><th scope="col">Percentual</th><th scope="col">Portaria de concessão</th>
+            <th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Base da suspensão</th></tr>
+      </thead>
+      {% for v in vigencias %}
+      <tr>
+        <td>{{ ui.pilula_direito(v.estado) }}</td>
+        <td>{{ v.tipo_adicional.nome }}</td>
+        <td class="mono">{{ v.percentual.rotulo if v.percentual else '—' }}</td>
+        <td><span class="recorte" title="{{ v.portaria_concessao or '' }}">
+            {{- v.portaria_concessao or '—' -}}</span></td>
+        <td class="mono">{{ v.data_inicio|data or '—' }}</td>
+        <td class="mono">{{ v.data_fim|data or '—' }}</td>
+        <td class="discreto">{{ v.motivo_suspensao or '' }} {{ v.base_legal_suspensao or '' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="corpo">
+      <div class="vazio">
+        <strong>Nenhum adicional registrado</strong>
+        <span>Nem proposto, nem vigente, nem cessado: esta pessoa nunca teve
+          adicional ocupacional neste sistema.</span>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  {# A ficha de EPI aparece aqui, e não só em /epis/fichas, porque é a mesma
+     pessoa: obrigar a trocar de tela para ver o EPI dela é o tipo de
+     fragmentação que a base compartilhada existe para evitar. O que entra é o
+     resumo — as últimas entregas e o que falta de prova —, e o detalhe fica na
+     tela do módulo, que é onde se imprime, anexa e estorna. #}
+  {% if epi_visivel %}
+  <section class="cartao liso" id="epi">
+    <div class="cabecalho-cartao">
+      <h2>EPI recebido</h2>
+      <span class="contador {{ 'alerta' if epi_pendentes }}">{{ epi_total }}</span>
+      <span class="nota">a ficha é prova legal de entrega: CA e lote congelados no ato</span>
+      <a class="a-direita" href="/epis/fichas/{{ servidor.id }}">Ver a ficha completa →</a>
+    </div>
+    {% if epi_linhas %}
+    <table>
+      <thead>
+        <tr><th scope="col">Data</th><th scope="col">Evento</th><th scope="col">Equipamento</th><th scope="col">CA congelado</th>
+          <th scope="col">Qtd.</th><th scope="col">Comprovante</th></tr>
+      </thead>
+      {% for l in epi_linhas %}
+      {% set r = l.registro %}
+      <tr>
+        <td class="mono">{{ r.data_evento|data }}</td>
+        <td>{{ ui.pilula_ficha(r.tipo) }}
+          {% if l.estornado %}<span class="pilula erro">estornado</span>{% endif %}</td>
+        <td>{{ r.nome_epi_snapshot }}
+          <span class="quebra discreto">{{ r.categoria_snapshot }}</span></td>
+        <td class="mono">{{ r.numero_ca_snapshot or '—' }}
+          {{ ui.pilula_troca(r.previsao_troca, hoje) }}</td>
+        <td class="mono">{{ r.quantidade }}</td>
+        <td>{% if r.tipo == 'ESTORNO' or l.estornado %}<span class="discreto">—</span>
+          {%- else %}{{ ui.pilula_comprovante(l.comprovante) }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="corpo">
+      <div class="vazio">
+        <strong>Nenhum EPI entregue por este sistema</strong>
+        <span>Enquanto não houver linha aqui, a prova de que o equipamento foi
+          entregue mora fora do sistema — ou não existe.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if epi_pendentes %}
+    <div class="corpo">
+      <p class="discreto sem-margem">
+        <strong>{{ epi_pendentes }} entrega(s) com registro e sem comprovante
+          assinado.</strong> O papel é assinado no ato e digitalizado depois; até
+        lá a entrega não está completa.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+</div>
+
+{# Daqui para baixo é camada, e não bloco da coluna: os diálogos ficam FORA de
+   `.tela` para não entrarem no `gap` da pilha. #}
+{% if usuario.pode('processo.editar') %}
+
+{# RN-19: o formulário devolvia nome e SIAPE em `value=` para qualquer um com
+   `processo.editar` — inclusive a secretaria, de quem a lista ao lado esconde
+   exatamente esses dois campos. Corrigir a identificação pressupõe lê-la, então
+   o popup inteiro pede `exposicao.ver`; a rota confere de novo, porque esconder
+   formulário não é guarda nenhuma. #}
+{% if quem.nominal %}
+{% call ui.popup_cadastro('editar-identificacao', EDITAR_ID,
+                          '/servidores/' ~ servidor.id, 'Salvar identificação',
+                          nota='unidade, UORG, postos e cargo mudam pelo histórico, com data') %}
+  <div class="linha-campos">
+    <div class="campo codigo"><label for="id-siape">SIAPE</label>
+      {# mesmo par de `servidores.html`, e sem `maxlength` pelo mesmo motivo:
+         o navegador recusa sete dígitos errados antes do POST, e não corta
+         em silêncio o que foi colado com pontuação. #}
+      <input id="id-siape" name="siape" value="{{ quem.siape }}" required
+             inputmode="numeric" pattern="[0-9]{7}"></div>
+    <div class="campo"><label for="id-nome">Nome</label>
+      <input id="id-nome" name="nome" value="{{ quem.nome }}" required></div>
+    <div class="campo"><label for="id-situacao">Situação</label>
+      <select id="id-situacao" name="situacao">
+        {% for st in situacoes %}
+        <option value="{{ st }}" {% if servidor.situacao == st %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select></div>
+  </div>
+  <div class="campo"><label for="id-email">E-mail institucional</label>
+    <input id="id-email" name="email" type="email" value="{{ servidor.email or '' }}"></div>
+{% endcall %}
+{% endif %}
+
+{% call ui.popup_cadastro('registrar-mudanca', REGISTRAR,
+                          '/servidores/' ~ servidor.id ~ '/lotacao', REGISTRAR,
+                          nota='abre um período novo; o anterior fecha na véspera') %}
+  <div class="linha-campos">
+    <div class="campo"><label for="lot-data">A partir de</label>
+      <input id="lot-data" name="a_partir_de" type="date"
+             value="{{ hoje.isoformat() }}" required aria-describedby="dica-a-partir">
+      <span class="dica" id="dica-a-partir">O período anterior é encerrado na véspera.</span></div>
+    <div class="campo"><label for="sel-unidade">Unidade</label>
+      <select name="unidade_uorg_id" id="sel-unidade"><option value="">—</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}" {% if servidor.unidade_uorg_id == u.id %}selected{% endif %}>
+          {{ u.nome_extenso }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="lot-uorg">UORG</label>
+      <select id="lot-uorg" name="uorg_id"><option value="">— usar a Unidade —</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}" {% if servidor.uorg_id == u.id %}selected{% endif %}>
+          {{ u.uorg_bruto }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <div class="campo">
+    <label for="sel-posto">Postos de trabalho</label>
+    {% set atuais = postos_atuais|map(attribute='id')|list %}
+    <select name="posto_id" id="sel-posto" multiple size="5" aria-describedby="dica-posto">
+      {% for p in postos %}
+      <option value="{{ p.id }}" data-unidade="{{ p.unidade_uorg_id }}"
+        {% if p.id in atuais %}selected{% endif %}>{{ p.nome }}</option>{% endfor %}
+    </select>
+    <span class="dica" id="dica-posto">Ctrl para marcar mais de um; a lista mostra
+      só os postos da unidade escolhida.</span>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="lot-cargo">Cargo</label>
+      <select id="lot-cargo" name="cargo_id"><option value="">—</option>
+        {% for c in cargos %}
+        <option value="{{ c.id }}" {% if servidor.cargo_id == c.id %}selected{% endif %}>
+          {{ c.nome }}</option>{% endfor %}
+      </select>
+      {% if not cargos %}
+      <span class="dica">nenhum cadastrado —
+        <a href="/catalogos/cargos">cadastre um cargo</a></span>
+      {% endif %}
+    </div>
+    <div class="campo"><label for="lot-funcao">Função</label>
+      <input id="lot-funcao" name="funcao" value="{{ servidor.funcao or '' }}"></div>
+    <div class="campo"><label for="lot-doc">Documento que sustenta a mudança</label>
+      <input id="lot-doc" name="documento"
+             placeholder="PORTARIA/FAMED Nº 35, DE 17 DE SETEMBRO DE 2024"></div>
+  </div>
+  <div class="campo"><label for="lot-obs">Observação</label>
+    <input id="lot-obs" name="observacao"></div>
+  {# FICA escrito, e fica dentro do popup: é lido antes do botão, que é onde
+     serve — quem espera "editar" e recebe "acrescentar período" precisa saber
+     disso ANTES de gravar, não depois. #}
+  <p class="discreto rodape-cartao sem-margem">Para corrigir data ou destino, registre
+    um novo período: a linha do tempo não se reescreve.</p>
+{% endcall %}
+
+<script nonce="{{ nonce() }}">
+// filtra os postos pela unidade escolhida: posto pertence a uma unidade
+(function () {
+  const unidade = document.getElementById('sel-unidade');
+  const posto = document.getElementById('sel-posto');
+  if (!unidade || !posto) return;
+  const todos = Array.from(posto.options).map(o => ({ o, un: o.dataset.unidade || '' }));
+  function filtrar() {
+    const alvo = unidade.value;
+    posto.innerHTML = '';
+    todos.forEach(function (item) {
+      if (!item.un || !alvo || item.un === alvo) posto.appendChild(item.o);
+    });
+  }
+  unidade.addEventListener('change', filtrar);
+  filtrar();
+})();
+</script>
+{% endif %}
+{% endblock %}

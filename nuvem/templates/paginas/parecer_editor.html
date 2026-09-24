@@ -1,0 +1,709 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Parecer {{ parecer.numero }}/{{ parecer.ano }} · CSSO{% endblock %}
+
+{# Terceiro nível da trilha: o processo (pelo NUP, em mono) e depois o parecer.
+   `/pareceres/{id}` não é item de menu, então o segundo nível vem daqui. #}
+{% block trilha %}
+{% if parecer.processo %}
+<a class="mono" href="/processos/{{ parecer.processo.id }}">{{ parecer.processo.nup }}</a>
+{% endif %}
+<span class="atual" aria-current="page">Parecer {{ parecer.numero or '—' }}/{{ parecer.ano }}</span>
+{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if parecer.numero %}
+<a class="botao secundario" href="/pareceres/{{ parecer.id }}/docx"
+   data-baixar="Gerando o DOCX…">Gerar DOCX</a>
+{# Sem LibreOffice o botão entrega o .docx com o aviso dentro da resposta,
+   e ninguém lia o aviso: a pessoa clicava em PDF, esperava e recebia um Word.
+   A condição é conhecida ANTES do clique (`pdf.disponivel()`), então o botão
+   diz. O link continua o mesmo — a rota já degrada com elegância. #}
+{% if pdf_disponivel %}
+{# `data-baixar`: o LibreOffice leva segundos, e o link não dava retorno nenhum
+   — a pessoa clicava de novo. Ver `csso.js`, bloco 4. #}
+<a class="botao secundario" href="/pareceres/{{ parecer.id }}/pdf"
+   data-baixar="Gerando o PDF…">Gerar PDF</a>
+{% else %}
+<a class="botao secundario" href="/pareceres/{{ parecer.id }}/pdf"
+   title="{{ AVISO_SEM_PDF }}">Gerar PDF <span class="nota">indisponível — sai o .docx</span></a>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{# ===================================================================
+   POR QUE O FORMULÁRIO PRINCIPAL NÃO VIROU CAMADA — e o resto virou
+   ===================================================================
+   Esta tela é um EDITOR, e a distinção não é de gosto. Nas outras telas o
+   formulário é uma ação que se pede a uma lista; aqui ele É o documento que
+   está sendo redigido, e a coluna da direita existe para ser lida AO MESMO
+   TEMPO que ele: a Validação diz o que ainda falta enquanto se preenche, e a
+   Pré-visualização mostra o que vai sair no .docx a cada campo escrito. Pôr o
+   editor numa camada modal cobriria as duas — a pessoa passaria a redigir um
+   documento sem ver nem o que falta nem o que sai. `lado-a-lado editor` existe
+   por causa desse par.
+
+   O que virou camada foi tudo o que ORBITA o editor e não se lê junto com ele:
+   acrescentar exposição, remover exposição, avaliar o EPI de um agente,
+   cadastrar a portaria, emitir e anular. Nenhum desses precisa da prévia ao
+   lado, e todos são "um botão com um formulário aberto embaixo", que é
+   exatamente o que o pedido do dono descreve.
+
+   O verbo do botão e o do título de cada camada num lugar só — ver
+   `popup_cadastro` em `partes/macros.html`. #}
+{% set NOVA_EXPOSICAO = 'Adicionar exposição' %}
+{% set CADASTRAR_PORTARIA = 'Cadastrar portaria' %}
+{% set EMITIR = 'Emitir (consome número)' %}
+{% set ANULAR = 'Anular parecer' %}
+{# Emitido, assinado ou anulado: o conteúdo está congelado (RN-14), e a tela
+   tem de PARECER congelada. Só o número recebia `disabled`; o resto continuava
+   editável, sem botão de salvar — e Enter em qualquer campo submetia o
+   formulário para receber a recusa "Parecer emitido é imutável". A mensagem
+   estava certa; a tela mentia ao parecer editável. Um `<fieldset disabled>`
+   em volta dos campos desliga todos de uma vez, inclusive o Enter. #}
+{% set congelado = parecer.situacao in ('EMITIDO','ASSINADO','ANULADO') %}
+
+{% block conteudo %}
+<div class="tela">
+
+  {# A âncora era a volta de quem descia até a confirmação de emissão e desistia.
+     A confirmação virou camada e o "Cancelar" dela não rola a página — mas o id
+     fica: `/pareceres/{id}#topo-do-parecer` está em links já salvos, e âncora que
+     some não avisa. #}
+  <div class="cabecalho-pagina" id="topo-do-parecer">
+    <div class="titulo">
+      <h1>Parecer técnico {{ parecer.numero or '—' }}/{{ parecer.ano }}</h1>
+      <p class="identificacao">
+        {{ ui.pilula_parecer(parecer.situacao) }}
+        {% if parecer.processo %}
+        <span>processo <a class="mono" href="/processos/{{ parecer.processo.id }}">{{ parecer.processo.nup }}</a></span>
+        {% endif %}
+        {% if parecer.modelo_arquivo %}
+        <span class="ponto">·</span>
+        <span>modelo <span class="mono">{{ parecer.modelo_arquivo }}</span></span>{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <div class="lado-a-lado editor">
+    <div class="pilha">
+
+      {% if congelado %}
+      <div class="aviso aviso-info">
+        {% if parecer.situacao == 'ANULADO' %}
+        <strong>Parecer anulado.</strong> O conteúdo fica preservado como saiu,
+        para a trilha; nada aqui se edita.
+        {% else %}
+        <strong>Conteúdo congelado na emissão (RN-14).</strong> Parecer emitido é
+        imutável: para corrigir, anule e crie uma versão nova — a reemissão
+        recebe outro número.
+        {% endif %}
+      </div>
+      {% endif %}
+      {# `data-rascunho-local`: o que for digitado aqui e não salvo sobrevive à
+         recarga que as camadas ao lado provocam (acrescentar exposição,
+         cadastrar portaria, avaliar EPI). A versão é a trava — o servidor a
+         incrementa a cada salvamento, e um rascunho de versão velha não se
+         sobrepõe ao que foi gravado depois. Ver `csso.js`, bloco 2. #}
+      <form method="post" action="/pareceres/{{ parecer.id }}"
+            data-rascunho-local="parecer-{{ parecer.id }}"
+            data-rascunho-versao="{{ parecer.versao }}">
+        {# A trava contra salvar por cima de quem salvou antes: a rota compara com
+           a versão gravada e recusa se mudou. Oculto de propósito — o rascunho
+           local ignora `hidden`, então ele nunca repõe uma versão velha. #}
+        <input type="hidden" name="versao_lida" value="{{ parecer.versao }}">
+        {% if nao_gravado %}
+        <div class="aviso aviso-alerta" role="alert" id="nao-gravado">
+          <p><strong>Não gravado.</strong> O que você tinha escrito, e que difere da
+            versão atual. Copie o que ainda valer para o campo correspondente e salve.</p>
+          {% for rotulo, valor in nao_gravado %}
+          <div class="campo">
+            <label for="nao-gravado-{{ loop.index }}">{{ rotulo }}</label>
+            <textarea id="nao-gravado-{{ loop.index }}" readonly
+                      rows="{{ 2 if valor|length < 120 else 6 }}">{{ valor }}</textarea>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <fieldset class="campos"{{ ' disabled' if congelado }}>
+        <div class="pilha">
+
+          <section class="cartao">
+            <div class="titulo-cartao"><h2>Identificação</h2>
+              {% call ui.info('numeracao-do-parecer', 'como o número do parecer é atribuído') %}
+                <p>Deixe o número em branco para o sistema atribuir o próximo da
+                  sequência <strong>na emissão</strong> — nunca <code>MAX+1</code>, e
+                  nunca no rascunho: o número só é consumido quando o documento passa
+                  a existir.</p>
+                <p>Preencha à mão apenas para continuar uma numeração que começou fora
+                  do sistema. O número digitado é conferido contra os já usados no ano,
+                  e a lista deles fica escrita neste cartão justamente para isso.</p>
+                <p>Depois de emitido o número não se edita, e anular não o devolve: a
+                  reemissão recebe outro, para dois documentos diferentes nunca
+                  circularem com a mesma identificação.</p>
+              {% endcall %}
+            </div>
+            <div class="linha-campos">
+              <div class="campo"><label for="pa-numero">Nº</label>
+                {% if parecer.situacao in ('EMITIDO','ASSINADO','ANULADO') %}
+                <input id="pa-numero" value="{{ parecer.numero }}" class="mono" disabled>
+                {% else %}
+                <input id="pa-numero" name="numero" type="number" min="1" max="9999" class="mono"
+                       value="{{ parecer.numero or '' }}" placeholder="automático"
+                       aria-describedby="dica-numero">
+                <span class="dica" id="dica-numero">Em branco, o sistema atribui o próximo
+                  da sequência na emissão.</span>
+                {% endif %}
+              </div>
+              <div class="campo"><label for="pa-ano">Ano</label>
+                <input id="pa-ano" name="ano" type="number" class="mono" value="{{ parecer.ano }}" min="2000" max="2100"></div>
+              <div class="campo"><label for="pa-data-emissao">Data de emissão</label>
+                <input id="pa-data-emissao" name="data_emissao" type="date" class="mono"
+                       value="{{ parecer.data_emissao.isoformat() if parecer.data_emissao else '' }}"></div>
+            </div>
+            {% if numeros_usados %}
+            <p class="discreto">Números já usados em {{ parecer.ano }}:
+              <span class="mono">{{ numeros_usados|join(', ') }}</span></p>
+            {% endif %}
+
+            <div class="linha-campos">
+              <div class="campo"><label for="pa-setor-emissor">Setor emissor</label>
+                <select id="pa-setor-emissor" name="setor_emissor_id">
+                  {% for se in setores %}
+                  <option value="{{ se.id }}" {% if parecer.setor_emissor_id == se.id %}selected{% endif %}>
+                    {{ se.sigla_composta }}</option>{% endfor %}
+                </select></div>
+              <div class="campo"><label for="pa-modelo">Modelo</label>
+                <select id="pa-modelo" name="modelo_arquivo">
+                  <option value="modelo_parecer_v1.docx"
+                    {% if parecer.modelo_arquivo != 'modelo_parecer_v2.docx' %}selected{% endif %}>v1 (rótulo original)</option>
+                  <option value="modelo_parecer_v2.docx"
+                    {% if parecer.modelo_arquivo == 'modelo_parecer_v2.docx' %}selected{% endif %}>v2 (rótulo corrigido)</option>
+                </select></div>
+            </div>
+          </section>
+
+          <section class="cartao">
+            <div class="titulo-cartao"><h2>Objeto</h2></div>
+            <div class="linha-campos">
+              <div class="campo"><label for="pa-tipo-adicional">Tipo de adicional</label>
+                <select id="pa-tipo-adicional" name="tipo_adicional_id">
+                  <option value="">—</option>
+                  {% for t in tipos_adicional %}
+                  <option value="{{ t.id }}" {% if parecer.tipo_adicional_id == t.id %}selected{% endif %}>
+                    {{ t.nome }}</option>{% endfor %}
+                </select></div>
+              <div class="campo"><label for="pa-movimento">Movimento</label>
+                <select id="pa-movimento" name="tipo_movimento_id"><option value="">—</option>
+                  {% for m in movimentos %}
+                  <option value="{{ m.id }}" {% if parecer.tipo_movimento_id == m.id %}selected{% endif %}>
+                    {{ m.nome }}</option>{% endfor %}
+                </select></div>
+            </div>
+            <div class="campo"><label for="pa-laudo">Laudo técnico
+                <span class="discreto">— 1 laudo sustenta N pareceres</span></label>
+              <select id="pa-laudo" name="laudo_id"><option value="">—</option>
+                {% for l in laudos %}
+                <option value="{{ l.id }}" {% if parecer.laudo_id == l.id %}selected{% endif %}>
+                  {{ l.numero_siape }} — {{ l.unidade.nome_extenso if l.unidade }}{% if l.status == 'SUPERADO' %} (superado){% endif %}
+                </option>{% endfor %}
+              </select></div>
+            <div class="linha-campos">
+              <div class="campo"><label for="pa-unidade">Unidade <span class="discreto">(nome no corpo do parecer)</span></label>
+                <select id="pa-unidade" name="unidade_uorg_id"><option value="">—</option>
+                  {% for u in unidades %}
+                  <option value="{{ u.id }}" {% if parecer.unidade_uorg_id == u.id %}selected{% endif %}>
+                    {{ u.nome_extenso }}</option>{% endfor %}
+                </select></div>
+              <div class="campo"><label for="pa-uorg">UORG <span class="discreto">(código de lotação no SIAPE)</span></label>
+                <select id="pa-uorg" name="uorg_id"><option value="">— usar a Unidade —</option>
+                  {% for u in unidades %}
+                  <option value="{{ u.id }}" {% if parecer.uorg_id == u.id %}selected{% endif %}>
+                    {{ u.uorg_bruto }}</option>{% endfor %}
+                </select></div>
+            </div>
+            <div class="campo"><label for="pa-postos">Postos de trabalho
+                <span class="discreto">(Ctrl para múltiplos; a ordem é a de seleção)</span></label>
+              <select id="pa-postos" name="posto_id" multiple size="5">
+                {% set atuais = parecer.postos|map(attribute='posto_trabalho_id')|list %}
+                {% for p in postos %}
+                <option value="{{ p.id }}" {% if p.id in atuais %}selected{% endif %}>
+                  {{ p.nome }} — {{ p.unidade.sigla or p.unidade.nome_extenso }}</option>{% endfor %}
+              </select></div>
+          </section>
+
+          <section class="cartao">
+            <div class="titulo-cartao"><h2>Marco inicial</h2>
+              {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO')
+                    and usuario.pode('parecer.editar') %}
+              {# O botão mora AQUI, ao lado do seletor que ele alimenta, e não num
+                 cartão próprio no fim da coluna: cadastrar a portaria é o desvio de
+                 quem não achou a dela na lista, e o desvio pertence ao lugar de onde
+                 se sai. #}
+              {{ ui.botao_cadastro('cadastrar-portaria', CADASTRAR_PORTARIA,
+                                   'secundario compacto a-direita') }}
+              {% endif %}
+            </div>
+            <div class="linha-campos">
+              <div class="campo"><label for="pa-portaria">Portaria de localização</label>
+                <select id="pa-portaria" name="portaria_id"><option value="">—</option>
+                  {% for pt in portarias %}
+                  <option value="{{ pt.id }}" {% if parecer.portaria_id == pt.id %}selected{% endif %}>
+                    {{ pt.texto_original }}</option>{% endfor %}
+                </select>
+                {% if not portarias %}
+                <span class="dica">nenhuma cadastrada — use “{{ CADASTRAR_PORTARIA }}”,
+                  no alto deste cartão</span>
+                {% endif %}
+              </div>
+              <div class="campo"><label for="pa-tipo-marco">Tipo de marco</label>
+                <select id="pa-tipo-marco" name="tipo_marco_id"><option value="">—</option>
+                  {% for mk in marcos %}
+                  <option value="{{ mk.id }}" {% if parecer.tipo_marco_id == mk.id %}selected{% endif %}>
+                    {{ mk.rotulo }}</option>{% endfor %}
+                </select></div>
+              <div class="campo"><label for="pa-data-marco">Data do marco</label>
+                <input id="pa-data-marco" name="data_marco_inicial" type="date" class="mono"
+                       value="{{ parecer.data_marco_inicial.isoformat() if parecer.data_marco_inicial else '' }}"></div>
+            </div>
+            <div class="campo"><label for="pa-justificativa-marco">Justificativa
+                <span class="discreto">(obrigatória se o marco não for a portaria)</span></label>
+              <input id="pa-justificativa-marco" name="justificativa_marco"
+                     value="{{ parecer.justificativa_marco or '' }}"></div>
+          </section>
+
+          <section class="cartao">
+            <div class="titulo-cartao"><h2>Textos</h2></div>
+            <div class="campo"><label for="pa-recomendacao-modelo">Modelo de recomendação</label>
+              <select id="pa-recomendacao-modelo" name="recomendacao_modelo">
+                <option value="">— manter o texto atual —</option>
+                {% for r in recomendacoes %}<option value="{{ r.codigo }}">{{ r.codigo }}</option>{% endfor %}
+              </select></div>
+            <div class="campo"><label for="pa-texto-recomendacao">Recomendação
+                {% if parecer.texto_recomendacao_literal %}
+                <span class="pilula alerta">literal (migrado)</span>{% endif %}</label>
+              <textarea id="pa-texto-recomendacao"
+                        name="texto_recomendacao">{{ parecer.texto_recomendacao or '' }}</textarea></div>
+            <div class="campo"><label for="pa-texto-alteracao">Alteração</label>
+              <textarea id="pa-texto-alteracao"
+                        name="texto_alteracao">{{ parecer.texto_alteracao or '' }}</textarea></div>
+            <div class="campo"><label for="pa-texto-reavaliacao">Reavaliação
+                <span class="discreto">(obrigatória para agente químico — RN-06)</span></label>
+              <textarea id="pa-texto-reavaliacao"
+                        name="texto_reavaliacao">{{ parecer.texto_reavaliacao or '' }}</textarea></div>
+          </section>
+
+          <section class="cartao">
+            <div class="titulo-cartao"><h2>Assinatura e destinatário</h2></div>
+            <div class="linha-campos">
+              <div class="campo"><label for="pa-signatario">Subscritor</label>
+                <select id="pa-signatario" name="signatario_id"><option value="">—</option>
+                  {% for sg in signatarios %}
+                  <option value="{{ sg.id }}" {% if parecer.signatario_id == sg.id %}selected{% endif %}>
+                    {{ sg.nome }} — {{ sg.titulo_assinatura }}</option>{% endfor %}
+                </select>
+                {% if parecer.signatario %}
+                <span class="dica">SIAPE <span class="mono">{{ parecer.signatario.siape }}</span> ·
+                  ✓ habilitado (IN 15/2022, art. 10, §2º, I)</span>{% endif %}
+              </div>
+              <div class="campo"><label for="pa-destinatario">Destinatário</label>
+                <select id="pa-destinatario" name="destinatario_id"><option value="">—</option>
+                  {% for d in destinatarios %}
+                  <option value="{{ d.id }}" {% if parecer.destinatario_id == d.id %}selected{% endif %}>
+                    {{ d.nome }}</option>{% endfor %}
+                </select></div>
+            </div>
+
+            {% if parecer.tipo_adicional and parecer.tipo_adicional.codigo in ('RAIOS_X','IRRADIACAO_IONIZANTE') %}
+            <h3>Radiológicos (RN-22)</h3>
+            <div class="linha-campos">
+              <div class="campo"><label for="pa-horas-fonte">Horas semanais junto à fonte</label>
+                <input id="pa-horas-fonte" name="horas_semanais_fonte" type="number" step="0.5" class="mono"
+                       value="{{ parecer.horas_semanais_fonte or '' }}"></div>
+              <div class="campo"><label for="pa-area-radiologica">Área radiológica</label>
+                <select id="pa-area-radiologica" name="area_radiologica">
+                  <option value="">—</option>
+                  <option value="CONTROLADA" {% if parecer.area_radiologica == 'CONTROLADA' %}selected{% endif %}>Controlada</option>
+                  <option value="SUPERVISIONADA" {% if parecer.area_radiologica == 'SUPERVISIONADA' %}selected{% endif %}>Supervisionada</option>
+                </select></div>
+            </div>
+            {% endif %}
+
+            {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') %}
+            <div class="acoes">
+              <button type="submit">Salvar rascunho</button>
+              <p class="discreto">Salvar não consome número nem congela nada: o parecer só
+                 vira documento na emissão.</p>
+            </div>
+            {% endif %}
+          </section>
+
+        </div>
+        </fieldset>
+      </form>
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Exposições</h2>
+          <span class="contador">{{ parecer.exposicoes|length }}</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th scope="col">Agente</th><th scope="col">Risco</th><th scope="col">Percentual</th><th scope="col">Classificação</th><th scope="col"></th></tr>
+          </thead>
+          {% for e in parecer.exposicoes %}
+          <tr>
+            <td>{{ e.agente_nocivo.descricao }}{% if e.principal %} <span class="pilula ok">principal</span>{% endif %}</td>
+            <td>{{ e.agente_nocivo.tipo_risco.nome }}</td>
+            <td class="mono">{{ e.percentual.rotulo }}</td>
+            <td>{{ e.classificacao_exposicao or '—' }}
+              {% if e.classificacao_exposicao %}
+                <span class="pilula {{ 'ok' if e.classificacao_origem == 'CALCULADA' else 'alerta' }}">{{
+                  'medida' if e.classificacao_origem == 'CALCULADA' else 'informada' }}</span>
+              {% endif %}
+              {% if e.excecao_art9_par_unico %}<span class="pilula alerta">art. 9º p.ú.</span>{% endif %}</td>
+            <td>{% if parecer.situacao not in ('EMITIDO','ASSINADO') %}
+              {# "remover" era um clique só, e apagava mais do que a linha que se
+                 vê: horas, jornada, classificação, exceção do art. 9º e a
+                 avaliação de EPI inteira — que é trabalho de outra pessoa e não
+                 tem cópia. Era `<details class="acoes-linha">`, a gaveta que abre
+                 na própria célula; virou `popup_gaveta` pelo motivo escrito no
+                 macro: a gaveta resolvia dentro de uma coluna estreita, e a lista
+                 de baixo era empurrada para longe. A ação continua a UM clique
+                 depois de aberta, e o que ela leva junto está escrito no ponto da
+                 escolha, não num "tem certeza?" que ninguém lê. #}
+              {% call ui.popup_gaveta('acoes-exposicao-' ~ e.id, 'remover',
+                                      'Remover ' ~ e.agente_nocivo.descricao,
+                                      nota='do parecer ' ~ (parecer.numero or '—') ~ '/' ~ parecer.ano) %}
+                <div class="aviso aviso-erro">
+                  <p>Some do parecer, e o que some com ela não
+                    volta: as horas e a jornada declaradas, a classificação
+                    {% if e.classificacao_origem == 'CALCULADA' %}medida{% else %}informada{% endif %},
+                    a fundamentação{% if e.excecao_art9_par_unico %}, a exceção do
+                    art. 9º, parágrafo único{% endif %}
+                    {%- if epi.get(e.id) %} e <strong>a avaliação de EPI deste
+                    agente</strong>, com a justificativa técnica de quem a
+                    escreveu{% endif %}.</p>
+                  <p class="discreto">Se o agente estava errado, a saída é
+                    acrescentar a exposição certa — o parecer ainda é rascunho e
+                    aceita as duas até a emissão.</p>
+                </div>
+                <form method="post" action="/pareceres/{{ parecer.id }}/exposicoes/{{ e.id }}/excluir">
+                  <div class="acoes">
+                    <button type="submit" class="perigo compacto">Remover
+                      {{ e.agente_nocivo.descricao }}</button>
+                  </div>
+                </form>
+              {% endcall %}{% endif %}</td>
+          </tr>
+          {#
+            §7 do desenho de EPI. O painel fica ao lado da exposição — e não numa
+            tela separada — porque a pergunta que ele responde só existe aqui: se
+            o EPI neutraliza ESTE agente. E ele DIZ o que não sustenta, em vez de
+            mostrar duas datas e esperar que quem lê faça a comparação de cabeça.
+          #}
+          {% set pe = epi.get(e.id) %}
+          {% if pe %}
+          <tr class="linha-epi">
+            <td colspan="5">
+              <div class="titulo-cartao">
+                <h4>EPI recebido até {{ pe.referencia|data }}</h4>
+                {# A coluna "Sustenta?" FICA — é ela que muda a decisão. O porquê
+                   normativo dela, que se lê uma vez, vai para o (i). #}
+                {% call ui.info('epi-sustenta-' ~ e.id,
+                                'quando o EPI sustenta alegação de neutralização') %}
+                  <p>A validade do CA e a troca prevista são lidas <strong>na data da
+                    avaliação</strong>, não na de hoje: um CA que valia naquele dia e
+                    venceu depois não desmente o parecer.</p>
+                  <p>EPI com CA vencido na data da avaliação, ou com troca vencida
+                    (RN-32), <strong>não sustenta</strong> alegação de neutralização: sem
+                    Certificado de Aprovação vigente o equipamento não é EPI (NR-6), e
+                    passada a vida útil ninguém pode afirmar o que a pessoa estava
+                    usando. Entrega registrada não é proteção comprovada.</p>
+                  {% if not pe.pode_neutralizar %}
+                  <p>E para <strong>periculosidade</strong> o EPI não cessa nada: a
+                    insalubridade é exposição gradual a agente que o EPI pode barrar
+                    abaixo do limite de tolerância; a periculosidade é risco de acidente
+                    — inflamável, explosivo, energia elétrica, radiação ionizante — e o
+                    equipamento reduz a consequência, não a existência do risco
+                    (IN SGP/SEDGG/ME 15/2022; Lei 8.112/90, art. 68, §2º).</p>
+                  {% endif %}
+                {% endcall %}
+              </div>
+
+              {% if pe.entregas %}
+              <table>
+                <thead>
+                  <tr><th scope="col">Equipamento</th><th scope="col">CA</th><th scope="col">Validade do CA</th>
+                      <th scope="col">Troca prevista</th><th scope="col">Entregue em</th><th scope="col">Sustenta?</th></tr>
+                </thead>
+                {% for f in pe.entregas %}
+                <tr>
+                  <td>{{ f.quantidade }} × {{ f.epi }}</td>
+                  <td class="mono">{{ f.numero_ca or '—' }}</td>
+                  <td class="mono">{{ f.validade_ca|data or '—' }}</td>
+                  <td class="mono">{{ f.previsao_troca|data or '—' }}</td>
+                  <td class="mono">{{ f.entregue_em|data }}</td>
+                  <td>{% if f.sustenta_neutralizacao %}<span class="pilula ok">sim</span>
+                      {% else %}<span class="pilula alerta">não</span>{% endif %}</td>
+                </tr>
+                {% if f.ressalvas %}
+                <tr><td colspan="6" class="discreto">Não sustenta neutralização porque
+                  {{ f.ressalvas|join('; e ') }}.</td></tr>
+                {% endif %}
+                {% endfor %}
+              </table>
+              {% else %}
+              <p class="nada">Nenhuma entrega de EPI registrada para
+                {{ identificar(parecer.servidor).nome }} até essa data.</p>
+              {% endif %}
+
+              {% if not pe.pode_neutralizar %}
+              {# FICA: sem esta linha, quem procurar "neutraliza" no seletor e não
+                 achar conclui que a lista está quebrada. O fundamento — por que EPI
+                 não cessa periculosidade — está no (i) do cabeçalho deste painel. #}
+              <div class="aviso aviso-alerta">
+                <strong>EPI não cessa periculosidade.</strong> Para este adicional o
+                sistema só aceita <span class="mono">NAO_AVALIADO</span> ou
+                <span class="mono">NAO_NEUTRALIZA</span>.
+              </div>
+              {% endif %}
+
+              {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO')
+                    and usuario.pode('parecer.editar') %}
+              <form method="post"
+                    action="/pareceres/{{ parecer.id }}/exposicoes/{{ e.id }}/epi">
+                {# Os `id` levam o da exposição: este formulário se repete uma vez
+                   por linha da tabela, e `id` duplicado na mesma página é pior do
+                   que `id` nenhum — o rótulo passa a apontar para o campo da
+                   primeira linha, e quem clica no da terceira foca a errada. #}
+                <div class="linha-campos">
+                  <div class="campo"><label for="epi-neutraliza-{{ e.id }}">O EPI neutraliza este agente?</label>
+                    <select id="epi-neutraliza-{{ e.id }}" name="epi_neutraliza">
+                      {% for v in epi_valores %}
+                      {% if pe.pode_neutralizar or v not in epi_alega %}
+                      <option value="{{ v }}" {% if e.epi_neutraliza == v %}selected{% endif %}>
+                        {{ v.replace('_', ' ')|lower }}</option>
+                      {% endif %}{% endfor %}
+                    </select></div>
+                  <div class="campo"><label for="epi-justificativa-{{ e.id }}">Justificativa técnica</label>
+                    <input id="epi-justificativa-{{ e.id }}" name="justificativa_epi"
+                           value="{{ e.justificativa_epi or '' }}"
+                           placeholder="Qual EPI, com que CA vigente na data, e por que leva o agente abaixo do limite de tolerância"></div>
+                  <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+                    <button type="submit" class="secundario">Registrar avaliação</button></div>
+                </div>
+                <p class="discreto">Alegar neutralização reduz ou cessa o direito de
+                  alguém: exige justificativa por escrito e habilitação técnica vigente
+                  (RN-01). Quem entrega o EPI não decide isso — o adicional só muda por
+                  parecer.</p>
+              </form>
+              {% else %}
+              <p class="discreto">Avaliação de EPI:
+                <span class="mono">{{ e.epi_neutraliza }}</span>
+                {% if e.epi_avaliado_em %} em {{ e.epi_avaliado_em|data }}{% endif %}
+                {% if e.justificativa_epi %} — {{ e.justificativa_epi }}{% endif %}</p>
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% else %}<tr><td colspan="5" class="nada">Nenhuma exposição.</td></tr>{% endfor %}
+        </table>
+
+        {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') %}
+        <div class="corpo">
+          <div class="acoes">
+            {{ ui.botao_cadastro('nova-exposicao', NOVA_EXPOSICAO, 'secundario') }}
+          </div>
+        </div>
+        {% endif %}
+      </section>
+
+    </div>
+
+    <div class="pilha">
+      <section class="cartao">
+        <div class="titulo-cartao">
+          <h2>Validação</h2>
+          {% call ui.info('quem-assina-o-parecer', 'quem pode subscrever e o que a emissão congela') %}
+            <p>Quem assina é <strong>subscritor habilitado</strong>: médico do trabalho,
+              ou engenheiro/arquiteto de segurança do trabalho (IN 15/2022, art. 10,
+              §2º, I). O bloqueio não é só desta tela — ele existe também no serviço de
+              emissão, e a habilitação é que confere, não o cargo.</p>
+            <p>A emissão consome o próximo número da sequência e <strong>congela</strong>
+              o conteúdo do parecer: a partir dela, corrigir o catálogo não muda o que já
+              saiu, e o documento se reimprime idêntico (RN-14 e RN-15).</p>
+          {% endcall %}
+          {% set travas = validacao.faltantes|length + validacao.bloqueios|length %}
+          {% if travas %}
+          <span class="contador erro a-direita">{{ travas }} bloqueio(s)</span>
+          {% else %}<span class="contador ok a-direita">pronto para emitir</span>{% endif %}
+        </div>
+        <ul class="checklist-validacao">
+          {% if validacao.ok %}<li class="sim">Pronto para emitir</li>{% endif %}
+          {% for f in validacao.faltantes %}<li class="nao">falta: {{ f }}</li>{% endfor %}
+          {% for b in validacao.bloqueios %}<li class="nao">{{ b }}</li>{% endfor %}
+          {% for a in validacao.avisos %}<li class="aviso-item">{{ a }}</li>{% endfor %}
+        </ul>
+
+        <div class="acoes">
+          {% if parecer.situacao in ('RASCUNHO','EM_REVISAO') and usuario.pode('parecer.emitir') %}
+          {% if validacao.ok %}
+          {# Pronto para emitir: o botão de destaque ABRE a confirmação, e não
+             executa. Consumir número é irreversível (anular não devolve o número),
+             e era um clique só. Quando há trava o botão continua sendo o botão
+             DESABILITADO com os motivos escritos ao lado, na lista acima: essa é a
+             disciplina desta tela e não se troca por um (i). #}
+          {{ ui.botao_cadastro('emitir-parecer', EMITIR ~ '…') }}
+          {% else %}
+          <button type="button" disabled>{{ EMITIR }}</button>
+          {% endif %}
+          {% endif %}
+          {% if parecer.situacao == 'EMITIDO' %}
+            {% if usuario.pode('parecer.assinar') and pode_assinar %}
+            <form method="post" action="/pareceres/{{ parecer.id }}/assinar">
+              <button type="submit">Marcar como assinado</button></form>
+            {% else %}
+            <span class="pilula alerta">Encaminhe para assinatura — você não subscreve laudo</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% if parecer.situacao in ('EMITIDO','ASSINADO') and usuario.pode('parecer.anular') %}
+        <div class="rodape-cartao">
+          <div class="acoes">
+            {{ ui.botao_cadastro('anular-parecer', ANULAR, 'perigo-discreto') }}
+          </div>
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Pré-visualização</h2>
+          <span class="nota">é o que sai no .docx</span>
+        </div>
+        <div class="moldura-previa">
+          {% include "partes/previa_parecer.html" with context %}
+        </div>
+      </section>
+    </div>
+  </div>
+
+</div>
+
+{# ===================================================================
+   As camadas do editor. Ficam FORA de `.tela` — e, sobretudo, fora do
+   `<form>` do parecer: `popup_cadastro` É um `<form>`, e formulário não se
+   aninha. Foi por isso que "cadastrar a portaria" não pôde ficar no cartão do
+   marco inicial, onde o BOTÃO dela mora.
+   =================================================================== #}
+{% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') %}
+{% call ui.popup_cadastro('nova-exposicao', NOVA_EXPOSICAO,
+                          '/pareceres/' ~ parecer.id ~ '/exposicoes', NOVA_EXPOSICAO,
+                          nota='com horas informadas a classificação é calculada; sem medição, escolha-a (art. 9º)') %}
+  <div class="linha-campos">
+    <div class="campo"><label for="nx-agente">Agente nocivo</label>
+      <select id="nx-agente" name="agente_nocivo_id" required>
+        {% for a in agentes %}<option value="{{ a.id }}">{{ a.descricao }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="nx-percentual">Percentual</label>
+      <select id="nx-percentual" name="percentual_id" required>
+        {% for pc in percentuais %}
+        <option value="{{ pc.id }}">{{ pc.tipo_adicional.codigo }} · {{ pc.rotulo }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="nx-classificacao">Classificação (art. 9º)</label>
+      <select id="nx-classificacao" name="classificacao">
+        <option value="">— calcular pelas horas —</option>
+        <option value="EVENTUAL">Eventual</option>
+        <option value="HABITUAL">Habitual</option>
+        <option value="PERMANENTE">Permanente</option>
+      </select></div>
+    <div class="campo"><label for="nx-horas">Horas de exposição/mês</label>
+      <input id="nx-horas" name="horas_exposicao_mensais" type="number" step="0.5" class="mono"></div>
+    <div class="campo"><label for="nx-jornada">Jornada mensal (h)</label>
+      <input id="nx-jornada" name="jornada_mensal_horas" type="number" step="0.5" class="mono"></div>
+    <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+      <label class="discreto"><input type="checkbox" name="principal" value="1"> principal</label></div>
+  </div>
+  {# FICA, e fica aqui dentro: é o que decide entre digitar as horas e escolher a
+     classificação, e a decisão acontece nesta caixa, agora. #}
+  <div class="aviso aviso-info">
+    Se você informar as horas, a classificação é calculada por elas e a
+    medição prevalece — é o critério do art. 9º. Sem medição de jornada,
+    escolha a classificação; o parecer registra que ela foi informada, não
+    medida, e a etiqueta acompanha a exposição até o documento.
+  </div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="excecao_art9" value="1">
+      invocar a exceção do art. 9º, parágrafo único</label>
+    <input name="justificativa_art9" aria-label="Justificativa da exceção do art. 9º, parágrafo único"
+           placeholder="Anexo/tabela da NR-15 ou NR-16 que dispensa a habitualidade"></div>
+{% endcall %}
+{% endif %}
+
+{% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') and usuario.pode('parecer.editar') %}
+{% call ui.popup_cadastro('cadastrar-portaria', CADASTRAR_PORTARIA,
+                          '/pareceres/' ~ parecer.id ~ '/portaria', 'Cadastrar e vincular',
+                          nota='fica no catálogo e já entra selecionada neste parecer') %}
+  {# `pt-` e não `pa-`: esta camada é outro formulário na mesma página, e
+     `numero` já é o nome do campo do parecer. #}
+  <div class="campo"><label for="pt-texto">Texto da portaria, como está no documento</label>
+    <input id="pt-texto" name="texto_original" required
+           placeholder="PORTARIA/FAMED Nº 35, DE 17 DE SETEMBRO DE 2024"
+           aria-describedby="dica-portaria">
+    <span class="dica" id="dica-portaria">Número e data são lidos do próprio texto. 001,
+      01 e 1 são a mesma portaria; o texto literal é preservado como veio.</span></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="pt-unidade">Unidade emissora</label>
+      <select id="pt-unidade" name="unidade_emissora_id" required>
+        {% for u in unidades_emissoras %}
+        <option value="{{ u.id }}">{{ u.sigla or u.nome_extenso }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="pt-numero">Nº (vazio = extrair do texto)</label>
+      <input id="pt-numero" name="numero" class="mono"></div>
+    <div class="campo"><label for="pt-publicacao">Publicação (vazio = extrair)</label>
+      <input id="pt-publicacao" name="data_publicacao" type="date" class="mono"></div>
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if parecer.situacao in ('RASCUNHO','EM_REVISAO')
+      and usuario.pode('parecer.emitir') and validacao.ok %}
+{# A confirmação da emissão. Não é um "tem certeza?": ela nomeia o que vai sair,
+   o que fica congelado e o que a anulação não desfaz. #}
+{% call ui.popup_cadastro('emitir-parecer', 'Emitir o parecer',
+                          '/pareceres/' ~ parecer.id ~ '/emitir',
+                          'Emitir e consumir o número') %}
+  <div class="aviso aviso-alerta">
+    <p><strong>A emissão consome o próximo número da sequência de
+      {{ parecer.ano }}, e o número não volta.</strong>
+      Anular depois não o libera: a reemissão recebe outro, para dois
+      documentos diferentes nunca circularem com a mesma identificação.</p>
+    <p>No mesmo ato o conteúdo é <strong>congelado</strong>: corrigir o
+      catálogo amanhã não muda o que saiu, e o documento se reimprime
+      idêntico (RN-14 e RN-15). Parecer emitido é imutável — a correção é
+      anular e criar versão nova.</p>
+    {% if validacao.avisos %}
+    <p>Sai com {{ validacao.avisos|length }} aviso(s) — aviso não é
+      bloqueio, e eles estão listados na Validação.</p>
+    {% endif %}
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if parecer.situacao in ('EMITIDO','ASSINADO') and usuario.pode('parecer.anular') %}
+{% call ui.popup_cadastro('anular-parecer', ANULAR,
+                          '/pareceres/' ~ parecer.id ~ '/anular', 'Anular',
+                          classe_botao='perigo') %}
+  <div class="aviso aviso-erro">
+    <p><strong>Anular não devolve o número</strong>: a reemissão recebe outro, para
+      dois documentos diferentes nunca circularem com a mesma identificação.</p>
+    <p>Parecer emitido é imutável — a correção é anular e criar versão nova.</p>
+  </div>
+  <div class="campo"><label for="anular-motivo">Motivo da anulação (obrigatório)</label>
+    <input id="anular-motivo" name="motivo" required></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

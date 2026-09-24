@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# O extrato de um lote: o livro razão, linha a linha, com o saldo acumulado.
+
+   Esta é a tela que responde "por que o saldo é esse". No legado a resposta não
+   existia: `Qtd_Estoque` era uma célula, e o número anterior morria a cada
+   gravação. Aqui cada linha diz o que aconteceu, quando, por ordem de quem e —
+   no ajuste e no descarte — por quê.
+
+   A tabela é append-only por trava de banco. Não há botão de editar nem de
+   apagar nesta página, e isso não é acabamento que faltou: é o que a tabela é. #}
+
+{% block titulo %}Extrato do lote · CSSO{% endblock %}
+{% block trilha %}
+<a href="/epis/estoque">Estoque</a>
+<span class="atual" aria-current="page">Lote
+  <span class="mono">{{ entrada.lote or entrada.id }}</span></span>
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ item.nome }}{% if entrada.tamanho %} · tam. {{ entrada.tamanho }}{% endif %}</h1>
+      {# `.identificacao` como em toda ficha do sistema: lote e empenho são
+         códigos que se conferem dígito a dígito, e o separador é do componente
+         — em `.sub` eram pontos digitados no meio de uma frase. #}
+      <p class="identificacao">
+        <span>Lote <span class="mono">{{ entrada.lote or 'sem número' }}</span></span>
+        <span class="ponto">·</span>
+        <span>entrada em <span class="mono">{{ entrada.data_entrada|data }}</span></span>
+        <span class="ponto">·</span>
+        <span>{{ entrada.fornecedor_nome or 'fornecedor não informado' }}</span>
+        {%- if entrada.empenho %}
+        <span class="ponto">·</span>
+        <span>empenho <span class="mono">{{ entrada.empenho }}</span></span>{% endif %}
+      </p>
+    </div>
+    <div class="ao-lado">
+      <a class="botao secundario" href="/epis/estoque">Voltar ao estoque</a>
+    </div>
+  </div>
+
+  <div class="tira-medidas">
+    <div class="medida">
+      <span class="rotulo">Recebido</span>
+      <span class="valor">{{ entrada.quantidade_recebida }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Físico (soma do razão)</span>
+      <span class="valor">{{ fisico }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Reservado</span>
+      <span class="valor">{{ reservado }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">Disponível</span>
+      <span class="valor">{{ fisico - reservado }}</span>
+    </div>
+    <span class="traco"></span>
+    <div class="medida">
+      <span class="rotulo">CA {{ entrada.numero_ca or '—' }}</span>
+      <span class="valor ausente">{{ entrada.validade_ca|data or 'sem validade' }}
+        {{ ui.pilula_ca(entrada.validade_ca, hoje, item.exige_ca) }}</span>
+    </div>
+  </div>
+
+  {% if impedimento %}
+  <div class="aviso aviso-erro">
+    <strong>Este lote não pode ser entregue:</strong> {{ impedimento }}.
+    O saldo continua existindo — é patrimônio, e sair do estoque é
+    <strong>descarte com motivo</strong>, não desaparecimento automático.
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr>
+          {# Quantidade e saldo em `.numerico`: este é o extrato que se lê de cima
+             a baixo para achar o movimento que desencontrou o físico da nota, e o
+             `+3` de uma linha tem de cair na mesma coluna de dígitos que o `-12`
+             da seguinte. #}
+          <th scope="col">Quando</th><th scope="col">Movimento</th>
+          <th class="numerico" scope="col">Quantidade</th><th class="numerico" scope="col">Saldo depois</th>
+          <th scope="col">Motivo</th><th scope="col">Vínculo</th><th scope="col">Registrou</th>
+        </tr>
+      </thead>
+      {% for l in linhas %}
+      {% set m = l.movimento %}
+      <tr>
+        <td>{{ m.ocorrido_em|momento }}
+          <span class="quebra discreto mono">nº {{ m.id }}</span></td>
+        <td>{{ ui.pilula_movimento(m.tipo) }}</td>
+        <td class="numerico">{{ '%+d'|format(m.quantidade) }}</td>
+        <td class="numerico">{{ l.saldo_depois }}</td>
+        {# O motivo é texto livre gravado no ato, e o razão é append-only: as
+           linhas antigas trazem "entrega ao SIAPE 3010077" e "devolução do
+           SIAPE 3010077" e não podem ser reescritas. Então a supressão é na
+           LEITURA, como a da trilha e a da pendência na 1.35.0 — é a única
+           metade que alcança o que já está gravado. Escrever passou a
+           referenciar `servidor #{id}` na entrega e na devolução, e daqui em
+           diante o `texto_livre` é rede de segurança do histórico.
+
+           **Sem `sobre=`, de propósito.** O terceiro argumento de `texto_livre`
+           é quem o titular seria, e aqui não há um: o extrato é do LOTE, e um
+           lote atende dezenas de pessoas — o mesmo motivo pelo qual esta tela
+           não grava `acesso_dado_sensivel`
+           (`test_o_extrato_do_lote_nao_grava`). Sem "sobre quem", a decisão cai
+           em `pode_ver_nominal(usuario, None)`, que é o lado seguro: só quem vê
+           nome de qualquer pessoa lê a frase. Resolver o `sobre` linha a linha
+           pelo `ficha_registro_id` daria ao titular a própria linha e custaria
+           uma consulta por movimento — e o que ele leria de volta é
+           "entrega ao servidor #12", que não lhe diz nada que a ficha dele já
+           não diga melhor. Preço alto por informação nenhuma. #}
+        <td class="discreto">{{ texto_livre(m.motivo) or '—' }}</td>
+        <td class="discreto">
+          {%- if m.ficha_registro_id %}
+          <a href="/epis/fichas/registros/{{ m.ficha_registro_id }}">ficha nº {{ m.ficha_registro_id }}</a>
+          {%- else %}—{% endif -%}
+        </td>
+        <td class="discreto">{{ nomes.get(m.registrado_por, 'sistema') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">
+        <div class="vazio">
+          <strong>Nenhum movimento neste lote.</strong>
+          <span>Um lote sem sequer a linha de entrada é sinal de gravação feita
+            por fora do serviço: o saldo dele é zero, e a quantidade recebida diz
+            outra coisa.</span>
+        </div>
+      </td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {% if fisico != entrada.quantidade_recebida %}
+  <div class="aviso aviso-info">
+    O lote recebeu <strong>{{ entrada.quantidade_recebida }}</strong> e tem
+    <strong>{{ fisico }}</strong> em estoque. A diferença está acima, movimento a
+    movimento — que é exatamente o que a coluna de saldo do sistema antigo não
+    conseguia mostrar.
+  </div>
+  {% endif %}
+
+  {% if entrada.observacao %}
+  <section class="cartao">
+    <h2>Observação</h2>
+    <p class="discreto texto-literal">{{ entrada.observacao }}</p>
+  </section>
+  {% endif %}
+
+  {% if not entrada.ativo %}
+  <div class="aviso aviso-alerta">
+    <strong>Lote inativado:</strong> {{ entrada.motivo_inativacao or 'sem motivo registrado' }}.
+    Ele sai da lista de entrega e continua no estoque, porque o saldo continua
+    existindo (RN-31: lote não se exclui).
+  </div>
+  {% endif %}
+
+  <div class="aviso aviso-info">
+    <p><strong>Esta tabela é append-only.</strong> O banco recusa
+      <code>UPDATE</code> e <code>DELETE</code> nela, como na trilha de auditoria
+      e na ficha de EPI. Corrigir um erro de contagem é
+      <strong>ajuste</strong>: linha nova, com a contagem física, o motivo e o
+      nome de quem contou. A linha errada continua aqui — é o que permite
+      reconstruir o saldo de qualquer dia do passado.</p>
+  </div>
+
+</div>
+{% endblock %}

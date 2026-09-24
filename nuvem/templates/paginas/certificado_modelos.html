@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Modelos de certificado · CSSO{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set CADASTRAR = 'Cadastrar modelo' %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
+   abertura da tela — e é a presença dele que reabre o popup. #}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{{ ui.botao_cadastro('novo-modelo', CADASTRAR) }}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Modelos de certificado</h1>
+      <p class="sub">
+        {%- if itens %}{{ itens|length }} modelo(s). {% endif -%}
+        O certificado é um <code>.docx</code> desenhado no Word, guardado em
+        <code>app/templates/certificados/</code>.</p>
+      {% call ui.info('dicionario-de-tags', 'o que liga o .docx ao dado do sistema') %}
+        <p>O que liga o marcador do documento ao dado do sistema é o
+          <strong>dicionário de tags</strong>, que é dado e não código: trocar o layout
+          não pede alteração de programa.</p>
+        <p>O dicionário de cada modelo está na ficha dele — abra o modelo na coluna
+          <em>Modelo</em> para ver, conferir contra o arquivo e mapear o que faltar.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr><th scope="col">Modelo</th><th scope="col">Treinamento</th><th scope="col">Arquivo <code>.docx</code></th>
+          <th scope="col">Orientação</th><th scope="col">Tags no mapa</th><th scope="col">Versão</th></tr>
+    </thead>
+    {% for m in itens %}
+    <tr>
+      <td class="nome"><a href="/treinamentos/modelos/{{ m.id }}">{{ m.nome }}</a></td>
+      {# Modelo sem treinamento serve a qualquer curso: dizer "—" faria parecer
+         falta de cadastro, quando é justamente o caso mais útil. #}
+      <td>{% if m.treinamento %}{{ m.treinamento.nome }}
+          {% else %}<span class="pilula sem-ponto"
+                          title="serve a qualquer treinamento">genérico</span>{% endif %}</td>
+      <td class="mono">{{ m.arquivo }}</td>
+      <td>{{ m.orientacao|capitalize }}</td>
+      <td><span class="contador">{{ m.tags|length }}</span></td>
+      <td><span class="selo">v{{ m.versao }}</span> {{ ui.pilula_versao(m.vigente) }}</td>
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhum modelo cadastrado ainda.',
+         'O modelo é o .docx com os marcadores que a emissão preenche — sem um
+          vigente, emitir certificado é recusado com a turma inteira já
+          realizada. Use “' ~ CADASTRAR ~ '”, no canto superior direito.', 6) }}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna — dentro da pilha ele
+   participaria do `gap` dela. #}
+{% call ui.popup_cadastro('novo-modelo', CADASTRAR, '/treinamentos/modelos',
+                          CADASTRAR, aberto=recusado, erro=erro_cadastro,
+                          nota='o dicionário de tags se monta depois, na ficha') %}
+  {# O nome é o que a recusa de duplicata cita ("'X' já existe — publique uma
+     nova versão"), e é nele que o foco cai na reabertura. #}
+  <div class="campo {{ 'com-erro' if recusado }}">
+    <label for="modelo-nome">Nome do modelo</label>
+    <input id="modelo-nome" name="nome" required placeholder="Certificado padrão CSSO"
+           value="{{ d.get('nome') or '' }}"{{ ' autofocus' if recusado }}></div>
+  <div class="linha-campos">
+    <div class="campo codigo"><label for="modelo-arquivo">Arquivo .docx</label>
+      <input id="modelo-arquivo" name="arquivo" required
+             value="{{ d.get('arquivo') or '' }}"
+             placeholder="certificado_padrao.docx" aria-describedby="dica-arquivo">
+      <span class="dica" id="dica-arquivo">Só o nome, dentro de
+        <code>app/templates/certificados/</code>. Pode ser cadastrado antes de o
+        arquivo estar lá — a ficha avisa enquanto ele não existe.</span></div>
+    <div class="campo"><label for="modelo-orientacao">Orientação</label>
+      <select id="modelo-orientacao" name="orientacao">
+        {% for o in orientacoes %}<option value="{{ o }}"{{ ui.sel(d.get('orientacao'), o) }}>{{ o|capitalize }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <div class="campo"><label for="modelo-treinamento">Treinamento</label>
+    <select id="modelo-treinamento" name="treinamento_id">
+      <option value="">genérico — serve a qualquer treinamento</option>
+      {% for t in treinamentos %}<option value="{{ t.id }}"{{ ui.sel(d.get('treinamento_id'), t.id) }}>{{ t.nome }}</option>{% endfor %}
+    </select></div>
+  <div class="campo"><label for="modelo-observacao">Observação</label>
+    <input id="modelo-observacao" name="observacao"
+           value="{{ d.get('observacao') or '' }}"></div>
+{% endcall %}
+{% endblock %}

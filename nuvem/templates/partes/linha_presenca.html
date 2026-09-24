@@ -1,0 +1,161 @@
+{% import "partes/macros.html" as ui with context %}
+{# ===================================================================
+   UMA LINHA DA GRADE DE PRESENÇA — e o alvo da troca parcial
+   ===================================================================
+   Este arquivo é o mesmo HTML nos dois caminhos: `turma_ficha.html` o
+   inclui uma vez por inscrito ao desenhar a aba, e as rotas de presença e
+   de nota o devolvem sozinho quando quem chamou foi o HTMX. Um arquivo só,
+   e não um bloco no template mais um HTML montado na rota, pelo mesmo
+   motivo de `partes/epi_requisicao_opcoes.html`: duas grafias do mesmo
+   pedaço divergem no primeiro conserto, e a que diverge é sempre a que
+   quase ninguém vê.
+
+   **POR QUE A LINHA INTEIRA, E NÃO A CÉLULA.** Turma de 30 pessoas × 5
+   dias = 150 lançamentos, e até aqui cada um era um `<form method="post">`
+   e uma recarga de página inteira: 150 voltas ao topo de uma grade de 30
+   linhas, sem âncora e sem devolver o foco. Trocar só a célula clicada
+   seria mais barato e estaria ERRADO: lançar um dia recalcula as horas, a
+   frequência e a situação da linha, que estão em outras três colunas. O
+   defeito que sairia dali é o mesmo que o seletor de tamanho tinha antes da
+   1.27.0 — número velho na tela ao lado da escolha nova, e quem lê acredita
+   no número. A linha é a menor coisa que muda por inteiro.
+
+   **A INFRAESTRUTURA É A QUE JÁ EXISTE.** Nenhum `hx-indicator`, nenhuma
+   classe de carregamento e nenhum tratador aqui: o bloco global de
+   `base.html` cuida dos três estados — apaga o alvo enquanto a resposta não
+   chega, realça o que acabou de mudar e escreve a falha DENTRO do alvo — e
+   vale para todo `hx-*` sem marcação nova. Foi ele que tornou isto barato.
+
+   **SEM JAVASCRIPT CONTINUA SENDO UM `<form method="post">`.** Os atributos
+   `hx-post`/`hx-target` são acréscimo: o `action` e o `method` continuam
+   escritos, e sem o htmx carregado o navegador envia o formulário e a rota
+   responde com o 303 de sempre. Nada do que existia foi trocado por script.
+
+   **A RECUSA NÃO É UM ERRO DE REDE.** "Informe as horas deste dia", "o
+   total passaria da carga da turma" e "a turma não está em andamento" são
+   respostas do serviço, não falhas: a rota devolve esta mesma linha com
+   `recusa` preenchido e HTTP 200, e o motivo sai escrito dentro da célula
+   que foi acionada — com o que foi digitado ainda no campo. Devolver 4xx
+   faria o tratador global escrever "não deu para atualizar este trecho" por
+   cima de um motivo que o sistema sabia dizer com todas as letras.
+
+   Contexto: `turma`, `linha` (LinhaDaGrade), `dias`, `pode_lancar`,
+   `retificando` e, opcionalmente, `recusa` (o texto) com `recusa_onde` (a
+   data ISO do dia recusado, ou `'nota'`). #}
+{# O ALVO É O `<tbody>` DA LINHA, com `innerHTML`, e isto foi MEDIDO no
+   navegador antes de ser escrito. Com `hx-target="closest tr"` e
+   `hx-swap="outerHTML"` a troca funciona e o realce de "deu certo" NÃO: no
+   `htmx:afterSwap` o `detail.target` é o `<tr>` ANTIGO, já desligado do
+   documento (`document.contains(alvo)` deu `false`), então o tratador global
+   escreve `.recem-trocado` num nó que ninguém vê. Sobrava a troca sem sinal de
+   que algo mudou — que é a causa clássica de "o sistema não fez nada" e de a
+   pessoa clicar de novo, exatamente o defeito que o tratador global existe para
+   fechar.
+
+   Com um `<tbody>` por linha (é HTML válido: uma tabela aceita vários, e o
+   `<thead>` continua sendo um só) o alvo sobrevive à troca, e os três estados
+   voltam a valer de graça: a opacidade do carregando, o realce do trocou e a
+   caixa de falha. #}
+{% set recusa_onde = recusa_onde | default(none) %}
+{% set recusa = recusa | default(none) %}
+{% set alvo_htmx = 'closest tbody' %}
+{# RN-19: a grade é a lista de chamada transcrita, e nomeia a mesma gente que a
+   aba de inscrições. A decisão é a de `turma_ficha.html` e vem de lá pelo
+   `include`; o `default` é o caminho da TROCA PARCIAL, onde `turmas._linha_trocada`
+   monta o fragmento sem `usuario` no contexto. `pode_lancar` é o que a rota
+   afirma ali, e ela só afirma depois de `presenca._exigir_lancamento` — ou seja,
+   quem recebe esta linha tem `turma.avaliar`, a mesma permissão que baixa a
+   folha de presença nominal em .docx. `false` no lugar apagaria o nome debaixo
+   do cursor de quem acabou de lançar a presença daquela pessoa. #}
+{% set pode_nominal = pode_nominal | default(pode_lancar) %}
+{% set quem = identificar(linha.inscricao.participante.servidor,
+                          vazio='identificação suprimida (RN-19)') %}
+{% set nominal = pode_nominal or quem.nominal %}
+<tr>
+  <td class="nome">
+    {%- if nominal %}{{ linha.inscricao.participante.nome_exibicao }}
+    <span class="quebra discreto mono">{{ linha.inscricao.participante.identificador_publico }}</span>
+    {%- else %}<span class="mono">{{ quem }}</span>{% endif %}
+  </td>
+  {% for dia in dias %}
+  {% set marca = linha.por_dia.get(dia) %}
+  <td>
+    {% if marca and marca.presente %}
+    <span class="pilula ok sem-ponto">{{ marca.horas }}h</span>
+    {% elif marca %}
+    <span class="pilula erro sem-ponto"
+          title="{{ marca.justificativa or 'sem justificativa' }}">falta</span>
+    {% else %}
+    <span class="discreto">—</span>
+    {% endif %}
+    {% if pode_lancar %}
+    <form method="post" action="/turmas/{{ turma.id }}/presencas" style="margin-top:5px"
+          hx-post="/turmas/{{ turma.id }}/presencas"
+          hx-target="{{ alvo_htmx }}" hx-swap="innerHTML">
+      <input type="hidden" name="inscricao_id" value="{{ linha.inscricao.id }}">
+      <input type="hidden" name="data" value="{{ dia.isoformat() }}">
+      {% if dias|length > 1 %}
+      {# na recusa o campo volta com o que foi digitado, e não com o que está
+         gravado: quem escreveu "8" e recebeu "passaria da carga" precisa ver o
+         8 para saber o que corrigir #}
+      <input class="campo-curto" name="horas" inputmode="decimal"
+             placeholder="h" aria-label="horas do dia {{ dia|data }}"
+             value="{{ digitado_horas if recusa_onde == dia.isoformat()
+                       else (marca.horas if marca and marca.presente else '') }}">
+      {% endif %}
+      {% if retificando %}
+      <input class="campo-medio" name="motivo" required placeholder="motivo"
+             aria-label="motivo da retificação">
+      {% endif %}
+      <button type="submit" name="presente" value="1" class="secundario marcador">presente</button>
+      <button type="submit" class="secundario marcador">falta</button>
+    </form>
+    {% endif %}
+    {% if recusa and recusa_onde == dia.isoformat() %}
+    <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
+    {% endif %}
+  </td>
+  {% endfor %}
+  <td class="mono">{{ linha.horas }}h</td>
+  {# A barra é colorida pela FREQUÊNCIA contra o mínimo da turma, e não pelo
+     resultado: quem vai reprovar só por nota tem frequência boa, e pintar a
+     barra de âmbar ali diria que faltou. Quem decide o resultado continua
+     sendo `avaliar`, na coluna Situação, com o motivo escrito. #}
+  {% set freq_baixa = linha.frequencia < turma.frequencia_minima_percentual %}
+  <td>
+    <span class="progresso vertical {{ 'abaixo' if freq_baixa }}">
+      <span class="quanto">{{ linha.frequencia }}%</span>
+      <span class="trilho"><span style="--v:{{ [(linha.frequencia|float)|round|int, 100]|min }}"></span></span>
+    </span>
+  </td>
+  <td>
+    <span class="mono">{{ linha.inscricao.nota_final if linha.inscricao.nota_final is not none else '—' }}</span>
+    {% if pode_lancar %}
+    <form method="post" action="/turmas/{{ turma.id }}/notas" style="margin-top:5px"
+          hx-post="/turmas/{{ turma.id }}/notas"
+          hx-target="{{ alvo_htmx }}" hx-swap="innerHTML">
+      <input type="hidden" name="inscricao_id" value="{{ linha.inscricao.id }}">
+      <input class="campo-curto" name="nota" inputmode="decimal" placeholder="0 a 10"
+             aria-label="nota de {{ linha.inscricao.participante.identificador_publico
+                                    if nominal else quem.nome }}"
+             value="{{ digitado_nota if recusa_onde == 'nota' else '' }}">
+      {% if retificando %}
+      <input class="campo-medio" name="motivo" required placeholder="motivo"
+             aria-label="motivo da retificação">
+      {% endif %}
+      <button type="submit" class="secundario marcador">salvar</button>
+      <button type="submit" name="apagar" value="1" class="secundario marcador"
+              title="campo em branco não apaga">apagar</button>
+    </form>
+    {% endif %}
+    {% if recusa and recusa_onde == 'nota' %}
+    <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
+    {% endif %}
+  </td>
+  <td>
+    {{ ui.pilula_inscricao(linha.inscricao.situacao) }}
+    {% if linha.avaliacao.motivos %}
+    <span class="quebra discreto">{{ linha.avaliacao.motivos|join('; ') }}</span>
+    {% endif %}
+  </td>
+</tr>

@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}{{ processo.nup }} · CSSO{% endblock %}
+{# o NUP em mono: número que se confere dígito a dígito nunca sai em texto corrido #}
+{% block trilha %}<span class="atual mono" aria-current="page">{{ processo.nup }}</span>{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if processo.url_permanente %}
+<a class="botao secundario" href="{{ processo.url_permanente }}" target="_blank" rel="noopener">Abrir no SEI ↗</a>
+{% endif %}
+{% if usuario.pode('parecer.criar') %}
+<a class="botao" href="/processos/{{ processo.id }}/parecer">Novo parecer</a>
+{% endif %}
+{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. Sete formulários estavam abertos nesta ficha ao mesmo
+   tempo, um por aba; agora cada um é a camada de um botão. #}
+{% set MOVER = 'Mover de estado' %}
+{% set SALVAR_LINK = 'Salvar link do SEI' %}
+{% set ENVIAR_ANEXO = 'Enviar anexo' %}
+{% set APLICAR_MODELO = 'Aplicar um modelo de checklist' %}
+{% set CRIAR_CHECKLIST = 'Criar checklist avulso' %}
+{% set COMENTAR = 'Comentar' %}
+
+{# O preâmbulo da recusa, no molde de `popup_cadastro`. Aqui o "digitado" é um
+   campo só — o comentário que a RN-21 recusou —, e é a presença dele que reabre
+   a camada com o texto dentro e o erro fora da faixa da casca. #}
+{% set recusa_comentario = true if (erro and comentario_digitado|default('', true)) else false %}
+{% set erro_comentario = erro if recusa_comentario else none %}
+{% set erro = none if recusa_comentario else erro %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ identificar(processo, vazio=processo.nup) }}</h1>
+      <p class="identificacao">
+        <span class="mono">{{ processo.nup }}</span>
+        <span class="ponto">·</span>
+        <span>{{ processo.tipo_processo.nome }}</span>
+        {{ ui.pilula_estado(processo.estado_tecnico) }}
+        {{ ui.selo_dias(resumo) }}
+      </p>
+    </div>
+  </div>
+
+  <nav class="abas">
+    {% set contagens = {'parecer': pareceres|length, 'anexos': anexos|length} %}
+    {% for chave, rotulo in [('dados','Dados'),('parecer','Parecer'),('anexos','Anexos'),
+                              ('checklist','Checklist'),('historico','Histórico')] %}
+    <a href="/processos/{{ processo.id }}?aba={{ chave }}" class="{{ 'ativa' if aba == chave }}">{{ rotulo }}
+      {%- if chave in contagens %}<span class="conta">{{ contagens[chave] }}</span>{% endif %}
+      {%- if chave == 'checklist' and resumo.checklist_total %}
+        <span class="conta">{{ resumo.checklist_feitos }}/{{ resumo.checklist_total }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+
+{% if aba == 'dados' %}
+  <div class="lado-a-lado igual">
+    <div class="pilha">
+      <section class="cartao liso">
+        <div class="cabecalho-cartao"><h2>Identificação</h2></div>
+        <dl class="tabela-dados">
+          <dt>NUP</dt>
+          <dd><span class="mono">{{ processo.nup }}</span>
+            {% if processo.nup_dv_dispensado %}<span class="pilula alerta">DV dispensado</span>{% endif %}</dd>
+
+          <dt>Servidor</dt>
+          {% set quem = identificar(processo) %}
+          <dd>
+            {% if quem.nominal %}
+              {{ quem.nome }}
+              <span class="discreto">· SIAPE <span class="mono">{{ quem.siape }}</span></span>
+            {% elif quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+              <span class="discreto">· identificação suprimida (sem exposicao.ver)</span>
+            {% else %}—{% endif %}
+          </dd>
+
+          <dt>Unidade</dt>
+          <dd>{{ processo.unidade.nome_extenso if processo.unidade else '—' }}</dd>
+
+          <dt>Responsável</dt>
+          <dd>{{ processo.responsavel.nome if processo.responsavel else '—' }}</dd>
+
+          <dt>Autuação</dt>
+          <dd class="mono">{{ processo.data_autuacao|data or '—' }}</dd>
+
+          <dt>Solicitação no SEST</dt>
+          <dd class="mono">{{ processo.data_solicitacao_sest|data or '—' }}</dd>
+
+          <dt>Prazo</dt>
+          <dd class="mono">{{ processo.prazo|data or '—' }}</dd>
+
+          <dt>Observações</dt>
+          <dd>{{ processo.observacoes or '—' }}</dd>
+        </dl>
+      </section>
+    </div>
+
+    <div class="pilha">
+      <section class="cartao">
+        <div class="titulo-cartao">
+          <h2>Estado técnico</h2>
+          {{ ui.pilula_estado(processo.estado_tecnico) }}
+          {% if processo.estado_anterior %}
+          <span class="nota">sobrestado a partir de {{ processo.estado_anterior|estado }}</span>{% endif %}
+        </div>
+
+        {% if faltas_saida %}
+        {# O aviso diz a consequência, não só o fato: sem isso ele vira uma
+           lista de reclamações e ninguém entende por que o botão não funciona. #}
+        <div class="aviso aviso-erro">
+          <strong>Pendências para sair deste estado:</strong>
+          <ul>{% for f in faltas_saida %}<li>{{ f }}</li>{% endfor %}</ul>
+          <p>Enquanto elas existirem, a máquina de estados recusa a saída — o
+             processo volta para cá com o motivo, e nada é gravado.</p>
+        </div>
+        {% endif %}
+
+        {% if usuario.pode('processo.status') %}
+        <div class="acoes">
+          {{ ui.botao_cadastro('mover-estado', MOVER) }}
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="cartao">
+        <div class="titulo-cartao">
+          <h2>Caminho até o SEI</h2>
+          {# Os passos são procedimento — lê-se uma vez e depois se sabe —, e por
+             isso vão para o (i). A primeira frase FICA: quem não souber que não
+             há integração fica esperando o sistema fazer sozinho o que ninguém
+             vai fazer. #}
+          {% call ui.info('caminho-sei', 'o passo a passo dentro do SEI') %}
+            <ol class="passos">{% for passo in passos_sei %}<li>{{ passo }}</li>{% endfor %}</ol>
+            <p>O NUP fica escrito em <span class="mono">mono</span> no cartão para ser
+              copiado dígito a dígito. Depois de inserir o documento lá, guarde aqui o
+              link permanente: é ele que abre o processo no SEI a partir desta ficha.</p>
+          {% endcall %}
+        </div>
+        <p class="discreto">O sistema <strong>não</strong> conversa com o SEI: inserir o
+          documento é trabalho seu, lá.</p>
+        <p class="mono">NUP para copiar: {{ processo.nup }}</p>
+        <div class="acoes">
+          {{ ui.botao_cadastro('salvar-link-sei', SALVAR_LINK, 'secundario') }}
+        </div>
+      </section>
+    </div>
+  </div>
+
+{% elif aba == 'parecer' %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Pareceres deste processo</h2>
+      <span class="contador">{{ pareceres|length }}</span>
+      {% if usuario.pode('parecer.criar') %}
+      <a class="a-direita" href="/processos/{{ processo.id }}/parecer">Novo parecer</a>
+      {% endif %}
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Nº</th><th scope="col">Situação</th><th scope="col">Emissão</th><th scope="col">Laudo</th><th scope="col">Signatário</th><th scope="col"></th></tr>
+      </thead>
+      {% for p in pareceres %}
+      <tr>
+        <td class="mono">{{ p.numero }}/{{ p.ano }}</td>
+        <td>{{ ui.pilula_parecer(p.situacao) }}</td>
+        <td class="mono">{{ p.data_emissao|data or '—' }}</td>
+        <td class="mono">{{ p.laudo.numero_siape if p.laudo else '—' }}</td>
+        <td>{{ p.signatario.nome if p.signatario else '—' }}</td>
+        <td><a href="/pareceres/{{ p.id }}">abrir</a></td>
+      </tr>
+      {% else %}<tr><td colspan="6" class="nada">Nenhum parecer.</td></tr>{% endfor %}
+    </table>
+  </section>
+
+{% elif aba == 'anexos' %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Anexos</h2>
+      <span class="contador">{{ anexos|length }}</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Arquivo</th><th scope="col">Categoria</th><th scope="col">Acesso</th><th scope="col">SHA-256</th><th scope="col">Enviado</th></tr>
+      </thead>
+      {% for a in anexos %}
+      <tr>
+        <td><a href="/anexos/{{ a.id }}">{{ a.nome_original }}</a></td>
+        <td>{{ a.categoria }}</td>
+        <td>{% if a.nivel_acesso == 'RESTRITO' %}<span class="pilula alerta">restrito</span>
+            {% else %}<span class="discreto">{{ a.nivel_acesso|lower }}</span>{% endif %}</td>
+        <td class="mono discreto">{{ a.sha256[:12] }}…</td>
+        <td class="discreto mono">{{ a.enviado_em|momento }}</td>
+      </tr>
+      {% else %}<tr><td colspan="5" class="nada">Sem anexos.</td></tr>{% endfor %}
+    </table>
+    {% if usuario.pode('anexo.enviar') %}
+    <div class="corpo">
+      <div class="acoes">
+        {{ ui.botao_cadastro('enviar-anexo', ENVIAR_ANEXO) }}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+{% elif aba == 'checklist' %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Checklists</h2>
+      {% if resumo.checklist_total %}
+      <span class="contador {{ 'ok' if resumo.checklist_feitos == resumo.checklist_total else 'alerta' }}">
+        {{ resumo.checklist_feitos }} de {{ resumo.checklist_total }}</span>
+      {% endif %}
+    </div>
+    {% for c in checklists %}
+    <h3>{{ c.nome }}</h3>
+    <ul class="lista-checklist">
+      {% for item in c.itens %}
+      <li class="{{ 'feito' if item.concluido }}">
+        <form method="post" action="/checklist-item/{{ item.id }}">
+          {# Eram `☐` e `☑`, e a diferença entre os dois é um traço fino dentro
+             de um alvo de 26px que se clica item a item. Em SVG a marca tem
+             largura de traço declarada, herda `currentColor` e sobrevive ao
+             alto contraste — e o rótulo deixa de ser só o `title`: quem lê por
+             leitor de tela ouve "Marcar como feito", não "botão". O terceiro e
+             último glifo que vira SVG; a política do sistema continua sendo
+             texto inequívoco em todo o resto. #}
+          <button type="submit" class="secundario marcador"
+                  title="{{ 'Desmarcar' if item.concluido else 'Marcar como feito' }}">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true">
+              <rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2"/>
+              {%- if item.concluido %}<path d="m4.9 8.2 2.2 2.3 4.1-4.7"/>{% endif %}
+            </svg>
+            <span class="oculto">{{ 'Desmarcar' if item.concluido else 'Marcar como feito' }}</span>
+          </button>
+        </form>
+        <span class="descricao">{{ item.descricao }}</span>
+        {% if item.concluido %}<span class="discreto mono">{{ item.concluido_em|momento }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    {# `.vazio`, e não `.nada`: é o mesmo caso de `laudo_ficha.html` — lista de
+       um cartão da ficha, vazia, com consequência —, e as duas telas o
+       resolviam com pesos visuais muito diferentes. #}
+    <div class="vazio">
+      <strong>Sem checklist.</strong>
+      <span>O checklist é a prova de que a instrução foi seguida; sem ele, o que
+        foi conferido neste processo não fica registrado em lugar nenhum.</span>
+    </div>
+    {% endfor %}
+
+    {% if usuario.pode('processo.editar') %}
+    <div class="corpo">
+      <div class="acoes">
+        {% if modelos_checklist %}
+        {{ ui.botao_cadastro('aplicar-modelo-checklist', APLICAR_MODELO, 'secundario') }}
+        {% endif %}
+        {{ ui.botao_cadastro('novo-checklist', CRIAR_CHECKLIST) }}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  {% if pendencias_do_processo %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Pendências abertas deste processo</h2>
+      <span class="contador">{{ pendencias_do_processo|length }}</span>
+      <a class="a-direita" href="/pendencias">Ver todas</a>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Tarefa</th><th scope="col">Prazo</th></tr>
+      </thead>
+      {% for p in pendencias_do_processo %}
+      {# A descricao da pendencia e da mesma familia da trilha: texto livre com
+         nome dentro ("...entregue a Fulano em 14/08/2026"). Aqui a tela sabe de
+         quem e o processo, entao o titular continua lendo a propria tarefa. #}
+      <tr><td>{{ texto_livre(p.descricao, processo) }}</td>
+          <td>{% if p.atrasada() %}<span class="selo erro">{{ p.prazo|data }}</span>
+              {% else %}<span class="mono">{{ p.prazo|data or '—' }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+{% else %}
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Histórico</h2>
+      {% if usuario.pode('processo.editar') %}
+      {{ ui.botao_cadastro('novo-comentario', COMENTAR, 'secundario compacto a-direita') }}
+      {% endif %}
+    </div>
+    <ul class="linha-tempo">
+      {% for e in eventos %}
+      <li>
+        {# Texto livre gravado no ato: passa por `texto_livre` pela mesma razao
+           da ficha da requisicao. `sobre=processo` mantem o titular lendo a
+           historia do proprio processo. #}
+        <strong>{{ e.tipo_evento|evento }}</strong> — {{ texto_livre(e.descricao, processo) }}
+        <div class="quando">{{ e.ocorrido_em|momento }} · {{ e.usuario_nome }}
+          {% if e.origem != 'SISTEMA' %}· origem {{ e.origem }}{% endif %}</div>
+      </li>
+      {% else %}<li class="nada">Sem eventos.</li>{% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+</div>
+
+{# ===================================================================
+   As camadas. Ficam FORA de `.tela` — o diálogo é camada, não bloco da coluna,
+   e dentro da pilha ele participaria do `gap`. Cada uma sai só na aba que a
+   oferece, pelo mesmo motivo que o botão sai: um popup sem o botão que o abre é
+   marcação morta, e o inverso é um botão que não faz nada.
+   =================================================================== #}
+{% if aba == 'dados' %}
+{% if usuario.pode('processo.status') %}
+{% call ui.popup_cadastro('mover-estado', MOVER,
+                          '/processos/' ~ processo.id ~ '/estado', 'Mover',
+                          nota='a máquina de estados confere os requisitos de saída') %}
+  <div class="linha-campos">
+    <div class="campo"><label for="mover-destino">Mover para</label>
+      <select id="mover-destino" name="destino" required>
+        {% if processo.estado_tecnico == 'SOBRESTADO' %}
+        <option value="__voltar__">Voltar ao estado anterior</option>{% endif %}
+        {# `|estado` e nao `rotulos[d]`: aquele mapa e o ASCII da trilha
+           de auditoria, e quem escreve na tela e o filtro. #}
+        {% for d in destinos %}<option value="{{ d }}">{{ d|estado }}</option>{% endfor %}
+        <option value="SOBRESTADO">Sobrestar</option>
+      </select></div>
+    <div class="campo"><label for="mover-inciso">Inciso do art. 11
+        <span class="discreto">(só para indeferimento técnico)</span></label>
+      <select id="mover-inciso" name="inciso_art11"><option value="">—</option>
+        {% for k, v in incisos.items() %}<option value="{{ k }}">{{ k }} — {{ v }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <div class="campo"><label for="mover-comentario">Comentário</label>
+    <input id="mover-comentario" name="comentario" placeholder="Fica registrado na auditoria"></div>
+  {% if faltas_saida %}
+  {# A mesma lista que está no cartão, repetida aqui de propósito: a camada cobre
+     o cartão, e quem abriu "Mover de estado" deixaria de ver justamente o que
+     vai fazer a máquina recusar. #}
+  <div class="aviso aviso-erro">
+    <strong>Pendências para sair deste estado:</strong>
+    <ul>{% for f in faltas_saida %}<li>{{ f }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+{% endcall %}
+{% endif %}
+
+{% call ui.popup_cadastro('salvar-link-sei', SALVAR_LINK,
+                          '/processos/' ~ processo.id ~ '/sei', 'Salvar link',
+                          nota='o endereço permanente do processo no SEI') %}
+  <div class="campo"><label for="sei-url">Link permanente no SEI</label>
+    <input id="sei-url" name="url_permanente" value="{{ processo.url_permanente or '' }}"
+           placeholder="https://sei.ufvjm.edu.br/…"></div>
+{% endcall %}
+{% endif %}
+
+{% if aba == 'anexos' and usuario.pode('anexo.enviar') %}
+{% call ui.popup_cadastro('enviar-anexo', ENVIAR_ANEXO,
+                          '/processos/' ~ processo.id ~ '/anexos', 'Enviar',
+                          enctype='multipart/form-data',
+                          nota='o SHA-256 é calculado no envio e a duplicata é reaproveitada') %}
+  <div class="linha-campos">
+    <div class="campo"><label for="anexo-arquivo">Arquivo</label>
+      <input id="anexo-arquivo" type="file" name="arquivo" required></div>
+    <div class="campo"><label for="anexo-categoria">Categoria</label>
+      <select id="anexo-categoria" name="categoria">{% for c in categorias %}<option>{{ c }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="anexo-sei">Nº do documento SEI</label>
+      <input id="anexo-sei" name="numero_documento_sei" class="mono"></div>
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if aba == 'checklist' and usuario.pode('processo.editar') %}
+{% if modelos_checklist %}
+{% call ui.popup_cadastro('aplicar-modelo-checklist', APLICAR_MODELO,
+                          '/processos/' ~ processo.id ~ '/checklist-modelo',
+                          'Aplicar modelo',
+                          nota='os itens do modelo entram como um checklist novo') %}
+  <div class="campo"><label for="chk-modelo">Modelo</label>
+    <select id="chk-modelo" name="modelo_id" required>
+      {% for m in modelos_checklist %}
+      <option value="{{ m.id }}">{{ m.nome }} ({{ m.lista_de_itens|length }} itens)</option>
+      {% endfor %}
+    </select></div>
+{% endcall %}
+{% endif %}
+
+{% call ui.popup_cadastro('novo-checklist', CRIAR_CHECKLIST,
+                          '/processos/' ~ processo.id ~ '/checklist', 'Criar checklist') %}
+  <div class="campo"><label for="chk-nome">Nome do checklist</label>
+    <input id="chk-nome" name="nome" required></div>
+  <div class="campo"><label for="chk-itens">Itens (um por linha)</label>
+    <textarea id="chk-itens" name="itens"></textarea></div>
+{% endcall %}
+{% endif %}
+
+{% if aba not in ('dados', 'parecer', 'anexos', 'checklist')
+      and usuario.pode('processo.editar') %}
+{# O texto recusado pela RN-21 volta para dentro do campo, e a camada reabre com
+   ele: a recusa é da frase, não do trabalho de escrevê-la, e é daqui que a
+   pessoa reescreve descrevendo o agente e o ambiente em vez da pessoa. #}
+{% call ui.popup_cadastro('novo-comentario', COMENTAR,
+                          '/processos/' ~ processo.id ~ '/comentario', COMENTAR,
+                          aberto=recusa_comentario, erro=erro_comentario,
+                          nota='vira linha de auditoria, e auditoria não guarda dado de saúde') %}
+  <div class="campo {{ 'com-erro' if recusa_comentario }}">
+    <label for="novo-comentario-texto">Comentário</label>
+    <input id="novo-comentario-texto" name="comentario" required
+           value="{{ comentario_digitado|default('', true) }}"
+           {{- ' autofocus' if recusa_comentario }}
+           aria-describedby="dica-comentario">
+    <span class="dica atencao" id="dica-comentario">Nunca registre estado de saúde, CID,
+      diagnóstico ou gestação (RN-21).</span></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

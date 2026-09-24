@@ -1,0 +1,522 @@
+{% import "partes/macros.html" as ui with context %}
+{# ===================================================================
+   OS ITENS DO PEDIDO — e o alvo da troca parcial da ficha
+   ===================================================================
+   Este arquivo é o mesmo HTML nos dois caminhos: `epis_requisicao_ficha.html`
+   o inclui ao desenhar a ficha, e as rotas de decisão e de reserva o devolvem
+   sozinho quando quem chamou foi o HTMX. Um arquivo só, e não um bloco no
+   template mais um HTML montado na rota, pelo mesmo motivo de
+   `partes/epi_requisicao_opcoes.html`: duas grafias do mesmo pedaço divergem
+   no primeiro conserto.
+
+   **POR QUE A SEÇÃO INTEIRA, E NÃO A LINHA.** Um pedido de dez itens custava
+   dez recargas de página para ser aprovado — seis formulários por linha
+   (aprovar, recusar, cancelar, reservar, sem estoque, soltar reserva), um POST
+   e uma volta ao topo cada. Trocar só a `<tr>` seria mais barato e deixaria
+   mentindo a pílula "N sem decisão" do cabeçalho desta seção, que conta as
+   linhas ainda pendentes: número velho na tela ao lado da decisão que acabou
+   de ser tomada é o defeito que a 1.27.0 fechou no seletor de tamanho. O
+   cabeçalho está aqui dentro, então ele vem recalculado junto — sem troca fora
+   de banda e sem um segundo fragmento para manter.
+
+   **A ENTREGA NÃO ENTRA NISTO, e é decisão.** Entregar muda o estado do PEDIDO
+   (ANALISADA → EM_ATENDIMENTO → ATENDIDA), escreve na trilha e abre a
+   pendência do comprovante assinado — três coisas que moram FORA desta seção,
+   no cartão de trâmite, na linha do tempo e no sino. Trocar só esta seção
+   deixaria as três dizendo o de antes. Ela continua sendo um POST com recarga,
+   que é o que mantém a tela inteira verdadeira.
+
+   **A INFRAESTRUTURA É A QUE JÁ EXISTE**: o tratador global de `base.html`
+   apaga o alvo enquanto a resposta não chega, realça o que mudou e escreve a
+   falha dentro do alvo. Nenhum `hx-indicator` aqui.
+
+   **`innerHTML`, E NÃO `outerHTML` — medido no navegador.** A `<section
+   id="itens-do-pedido">` fica no template da página e é este arquivo que
+   preenche o miolo dela. Com `outerHTML` a troca funciona e o realce de "deu
+   certo" NÃO: no `htmx:afterSwap` o `detail.target` é o elemento ANTIGO, já
+   desligado do documento (`document.contains(alvo)` deu `false`), e o tratador
+   global acaba realçando um nó que ninguém vê. Sobrava a troca sem sinal de que
+   algo mudou — a causa clássica de "o sistema não fez nada" e de a pessoa
+   clicar de novo. Com `innerHTML` o alvo sobrevive à troca e os três estados
+   voltam a valer de graça.
+
+   **SEM JAVASCRIPT CONTINUA SENDO UM `<form method="post">`**: `action` e
+   `method` continuam escritos, e a rota responde o 303 de sempre quando o
+   cabeçalho `HX-Request` não vem.
+
+   `recusa` é a recusa de REGRA do serviço, devolvida em HTTP 200 e escrita no
+   topo da seção — e não em 4xx, que faria o tratador global escrever "não deu
+   para atualizar este trecho" por cima de um motivo que o sistema sabe dizer
+   com todas as letras. #}
+{% set recusa = recusa | default(none) %}
+{# O `digitado` da tela, com a FORMA de qual dos vinte formulários o texto
+   voltou — é ele que reabre a gaveta da linha recusada com o que foi escrito.
+   Redeclarado aqui, e não herdado do template da página, porque este fragmento
+   também é renderizado sozinho pelas rotas; incluído pela ficha, `digitado` já
+   está no contexto e o valor é o mesmo. #}
+{% set d = digitado or {} %}
+    <div class="cabecalho-cartao">
+      <h2>Itens do pedido</h2>
+      <span class="contador">{{ itens|length }}</span>
+      {% set pendentes = itens|rejectattr('decidido')|list %}
+      {% if requisicao.estado == 'EM_ANALISE' and pendentes %}
+      <span class="pilula alerta">{{ pendentes|length }} sem decisão</span>
+      {% endif %}
+    </div>
+    {% if recusa %}
+    {# A recusa de REGRA do serviço, na troca parcial: HTTP 200 com o motivo
+       escrito aqui, no topo da lista que a pessoa estava olhando. Sem
+       JavaScript ela continua saindo na faixa da casca, como sempre. #}
+    <div class="corpo">
+      <div class="aviso aviso-erro" role="alert">{{ recusa }}</div>
+    </div>
+    {% endif %}
+    <table>
+      {# Pedido, Aprovado e Entregue vão em `.numerico` pelo mesmo motivo das
+         quatro colunas do estoque: são as que se conferem de cima a baixo — "o
+         que pedi bate com o que saiu?" —, e numa coluna à esquerda `2` e `12`
+         não terminam no mesmo lugar. O `<thead>` fecha as seis tabelas que
+         faltavam: sem ele o cabeçalho não gruda ao rolar e não se repete na
+         página 2 da guia de entrega, que é o papel que circula no balcão. #}
+      <thead>
+        <tr>
+          <th scope="col">Equipamento</th><th scope="col">Tamanho</th>
+          <th class="numerico" scope="col">Pedido</th>
+          <th class="numerico" scope="col">Aprovado</th>
+          <th class="numerico" scope="col">Entregue</th>
+          <th scope="col">Estado</th><th scope="col">Decisão</th><th scope="col"></th>
+        </tr>
+      </thead>
+      {% for i in itens %}
+      <tr>
+        <td class="nome">{{ i.item.nome }}
+          {% if i.item.modelo %}<span class="discreto"> · {{ i.item.modelo }}</span>{% endif %}
+          <span class="quebra discreto">{{ i.item.categoria.nome }} ·
+            CA {{ i.item.numero_ca or '—' }}</span>
+          {% if i.justificativa %}
+          <span class="quebra discreto texto-literal">{{ i.justificativa }}</span>{% endif %}
+          {% if i.excedeu_maximo %}
+          <span class="quebra"><span class="pilula erro"
+            title="exceção da RN-26 autorizada por {{ nomes.get(i.autorizado_por, 'quem decidiu') }}">
+            máximo excedido · autorizado por {{ nomes.get(i.autorizado_por, '—') }}</span></span>
+          {% endif %}
+          {# A reserva vem ANTES da lista de candidatos: quando ela existe, ela é
+             a resposta — as outras linhas viram contexto. Reserva não é
+             movimento: as unidades continuam no saldo físico do lote e saíram
+             do disponível dos outros pedidos. #}
+          {% if i.estado == 'RESERVADO' and reservas.get(i.id) %}
+          <span class="quebra"><span class="pilula info">{{ i.quantidade_reservada }}
+            reservado(s) no lote {{ reservas[i.id].lote or 'sem número' }} ·
+            CA {{ reservas[i.id].numero_ca or '—' }}</span></span>
+          {% endif %}
+          {# O lote candidato ao lado do item (§9): saldo e CA são o que separa
+             uma aprovação que vira equipamento na mão da pessoa de uma que vai
+             ficar esperando compra. CA vencido é etiqueta vermelha aqui também —
+             RN-25 vale em TODA tela onde o lote aparece. #}
+          {% for l in lotes.get(i.id, []) %}
+          <span class="quebra discreto mono">lote {{ l.entrada.lote or '—' }}
+            {%- if l.entrada.tamanho %} · tam. {{ l.entrada.tamanho }}{% endif %}
+            · CA {{ l.entrada.numero_ca or '—' }} · {{ l.saldo }} disponível
+            {{- ' · ' ~ l.impedimento if l.impedimento }}</span>
+          {% if l.impedimento %}{{ ui.pilula_ca(l.entrada.validade_ca, hoje, i.item.exige_ca) }}{% endif %}
+          {% else %}
+          {% if i.estado in ('APROVADO', 'SEM_ESTOQUE') %}
+          <span class="quebra"><span class="pilula alerta">sem lote deste item no
+            estoque</span></span>
+          {% endif %}
+          {% endfor %}</td>
+        <td>{{ i.tamanho or '—' }}</td>
+        <td class="numerico">{{ i.quantidade_solicitada }}</td>
+        <td class="numerico">{{ i.quantidade_aprovada if i.quantidade_aprovada is not none else '—' }}</td>
+        <td class="numerico">{{ i.quantidade_entregue }}
+          {% if i.quantidade_devida %}
+          <span class="quebra discreto">devendo {{ i.quantidade_devida }}</span>{% endif %}</td>
+        <td>{{ ui.pilula_item_requisicao(i.estado, rotulos_item) }}</td>
+        <td>
+          {% if i.motivo_recusa %}
+          <strong>{{ i.motivo_recusa.rotulo }}</strong>
+          <span class="quebra discreto mono">{{ i.motivo_recusa.codigo }}</span>
+          {# o texto CONGELADO na decisão, e não o do catálogo de hoje: editar o
+             catálogo amanhã não reescreve a negativa que a pessoa recebeu #}
+          <span class="quebra texto-literal">{{ i.texto_recusa_snapshot }}</span>
+          {% if i.complemento_recusa %}
+          <span class="quebra">{{ i.complemento_recusa }}</span>{% endif %}
+          {% elif i.decidido_por %}
+          <span class="discreto">{{ nomes.get(i.decidido_por, '—') }}</span>
+          <span class="quebra discreto mono">{{ i.decidido_em|momento }}</span>
+          {% else %}<span class="discreto">—</span>{% endif %}
+        </td>
+        <td>
+          {# A GAVETA DA LINHA VIROU CAMADA — e continua custando um clique.
+             Era um `<details class="acoes-linha">` que abria na própria célula:
+             até nove formulários, com rótulo, dica e parágrafo, espremidos nos
+             ~190px da última coluna da tabela, empurrando as linhas de baixo
+             para longe. `ui.popup_gaveta` dá aos MESMOS formulários a largura da
+             coluna de conteúdo e tira a lista do caminho.
+
+             **O clique é o mesmo.** Abrir a gaveta custava um; abrir a camada
+             custa um. O que NÃO foi feito, e de propósito, foi dar a cada ação o
+             seu próprio popup: seriam dois cliques por decisão em vez de um, e
+             numa ficha em que se decide item a item isso é +1 clique por item —
+             num pedido de cinco, cinco cliques a mais, toda vez.
+
+             `aberto` faz o mesmo que o `open` do `<details>` fazia: a linha que
+             voltou recusada reabre sozinha. O motivo está na faixa do topo e o
+             texto reescrito está aqui dentro — fechada, ela esconderia metade da
+             resposta. Vindo por troca parcial, `base.html` promove este `[open]`
+             a `showModal()` no `htmx:afterSwap`. #}
+          {% set dl = d if d.get('forma') == ('item-' ~ i.id) else {} %}
+          {% call ui.popup_gaveta('acoes-item-' ~ i.id, 'ações',
+                                  'Ações · ' ~ i.item.nome,
+                                  nota=(i.tamanho ~ ' · ' if i.tamanho else '')
+                                       ~ rotulos_item.get(i.estado, i.estado)|lower,
+                                  aberto=(true if dl else false)) %}
+
+              {% if editavel and pode_requisitar %}
+              <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}">
+                <h3>Editar a linha</h3>
+                <div class="linha-campos">
+                  <div class="campo">
+                    <label for="q-{{ i.id }}">Quantidade</label>
+                    <input id="q-{{ i.id }}" name="quantidade" inputmode="numeric"
+                           required value="{{ dl.get('quantidade', i.quantidade_solicitada) }}">
+                  </div>
+                  <div class="campo">
+                    <label for="t-{{ i.id }}">Tamanho</label>
+                    {% set tamanho_atual = dl.get('tamanho', i.tamanho) %}
+                    {% if i.item.lista_de_tamanhos %}
+                    <select id="t-{{ i.id }}" name="tamanho" required>
+                      {% for t in i.item.lista_de_tamanhos %}
+                      <option value="{{ t }}" {% if tamanho_atual == t %}selected{% endif %}>{{ t }}</option>
+                      {% endfor %}
+                    </select>
+                    {% else %}
+                    <input id="t-{{ i.id }}" name="tamanho" value="{{ tamanho_atual or '' }}"
+                           placeholder="não se aplica">
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="campo">
+                  <label for="j-{{ i.id }}">Justificativa
+                    {%- if i.item.exige_justificativa %}
+                    <span class="pilula alerta">obrigatória (RN-29)</span>{% endif %}</label>
+                  <textarea id="j-{{ i.id }}" name="justificativa" rows="2"
+                            {% if i.item.exige_justificativa %}required{% endif %}>{{ dl.get('justificativa', i.justificativa or '') }}</textarea>
+                </div>
+                <div class="acoes"><button type="submit" class="compacto">Salvar linha</button></div>
+              </form>
+
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/remover">
+                <h3>Remover a linha</h3>
+                <p class="discreto">Some do rascunho — e só do rascunho. Depois do
+                  envio a linha existe dentro de documento protocolado, e sair
+                  dele é cancelar com motivo.</p>
+                <div class="acoes">
+                  <button type="submit" class="perigo-discreto compacto">Remover</button>
+                </div>
+              </form>
+              {% endif %}
+
+              {% if requisicao.estado == 'EM_ANALISE' and pode_analisar
+                    and i.estado == 'SOLICITADO' %}
+              {# RN-26 na tela: a caixa de autorização e a justificativa moram
+                 AQUI, ao lado do botão de aprovar. Quando a janela estoura, o
+                 serviço devolve o recado e a pessoa está a um clique e uma frase
+                 de resolver — sem trocar de tela. Erro sem caminho de saída é o
+                 que faz o analista resolver o caso por fora do sistema. #}
+              {# `hx-post` ao lado do `action`, e não no lugar dele: sem
+                 JavaScript o navegador envia o formulário e a rota devolve o
+                 303 de sempre. O alvo é esta seção inteira porque a pílula
+                 "N sem decisão" do cabeçalho conta as linhas pendentes. #}
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/aprovar"
+                    hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/aprovar"
+                    hx-target="#itens-do-pedido" hx-swap="innerHTML">
+                <h3>Aprovar</h3>
+                <div class="campo">
+                  <label for="qa-{{ i.id }}">Quantidade aprovada</label>
+                  <input id="qa-{{ i.id }}" name="quantidade_aprovada" inputmode="numeric"
+                         value="{{ i.quantidade_solicitada }}" aria-describedby="dica-qa-{{ i.id }}">
+                  <span class="dica" id="dica-qa-{{ i.id }}">Foram pedidos
+                    {{ i.quantidade_solicitada }}. Aprovar mais do que se pediu o
+                    banco recusa; aprovar zero não é aprovar — se o item não vai
+                    sair, o caminho é recusar com motivo.</span>
+                </div>
+                <div class="campo">
+                  <label for="ja-{{ i.id }}">Justificativa da decisão</label>
+                  <textarea id="ja-{{ i.id }}" name="justificativa" rows="2"></textarea>
+                </div>
+                <label class="discreto" for="ex-{{ i.id }}">
+                  <input id="ex-{{ i.id }}" type="checkbox" name="autorizar_excesso" value="1">
+                  Autorizar a exceção ao máximo (RN-26)
+                </label>
+                <p class="discreto">O máximo deste item é
+                  <strong>{{ i.item.regra_de_quantidade }}</strong>, contado pelo
+                  que a <strong>ficha</strong> registra — aprovação é promessa,
+                  entrega é fato. Estourar não é bloqueio duro: marcando a caixa e
+                  escrevendo a justificativa acima, a aprovação passa e a
+                  <strong>exceção fica registrada com o seu nome</strong>, em
+                  evento próprio na trilha. É você que a assina.</p>
+                <div class="acoes"><button type="submit" class="compacto">Aprovar item</button></div>
+              </form>
+
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/recusar"
+                    hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/recusar"
+                    hx-target="#itens-do-pedido" hx-swap="innerHTML">
+                <h3>Recusar</h3>
+                <p class="discreto">A negativa sai <strong>congelada</strong>: o
+                  texto do motivo é copiado para a linha no ato, e editar o
+                  catálogo depois não reescreve o que a pessoa recebeu (RN-27).</p>
+                {{ ui.seletor_de_motivo('rec-' ~ i.id, 'motivo_id', motivos) }}
+                <div class="acoes">
+                  <button type="submit" class="perigo-discreto compacto">Recusar item</button>
+                </div>
+              </form>
+              {% endif %}
+
+              {% if not requisicao.encerrada and not i.decidido
+                    and i.quantidade_entregue == 0
+                    and (pode_requisitar or pode_analisar) %}
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/cancelar"
+                    hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/cancelar"
+                    hx-target="#itens-do-pedido" hx-swap="innerHTML">
+                <h3>Cancelar a linha</h3>
+                <p class="discreto">A linha sai do pedido <strong>sem virar
+                  recusa</strong>. Recusa é decisão técnica fundamentada (o item
+                  não é devido); cancelamento é desistência. Registrar
+                  desistência como recusa foi o que o legado fez, e por isso o
+                  relatório de recusas dele não valia nada.</p>
+                <div class="campo">
+                  <label for="mc-{{ i.id }}">Motivo</label>
+                  <input id="mc-{{ i.id }}" name="motivo" required
+                         placeholder="item pedido em duplicidade">
+                </div>
+                <div class="acoes">
+                  <button type="submit" class="perigo-discreto compacto">Cancelar linha</button>
+                </div>
+              </form>
+              {% endif %}
+
+              {# ---------------------------------------------------------
+                 A reserva — o almoxarifado, entre a decisão e o balcão
+                 --------------------------------------------------------- #}
+              {% set candidatos = lotes.get(i.id, []) %}
+              {% set disponiveis = candidatos|selectattr('pode_sair')|list %}
+              {% set no_atendimento = requisicao.estado in ('ANALISADA', 'EM_ATENDIMENTO') %}
+
+              {% if pode_estocar and no_atendimento
+                    and i.estado in ('APROVADO', 'SEM_ESTOQUE') %}
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/reservar"
+                    hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/reservar"
+                    hx-target="#itens-do-pedido" hx-swap="innerHTML">
+                <h3>Reservar lote</h3>
+                <p class="discreto">É a reserva que impede dois pedidos de
+                  prometerem o mesmo par de botas. Ela <strong>não</strong> é
+                  movimento: as unidades continuam no saldo físico do lote e saem
+                  do disponível dos outros pedidos (RN-24).</p>
+                <div class="linha-campos">
+                  <div class="campo">
+                    <label for="qr-{{ i.id }}">Quantidade</label>
+                    <input id="qr-{{ i.id }}" name="quantidade" inputmode="numeric"
+                           value="{{ i.quantidade_devida }}"
+                           aria-describedby="dica-qr-{{ i.id }}">
+                    <span class="dica" id="dica-qr-{{ i.id }}">Devendo
+                      {{ i.quantidade_devida }}. Reservar menos é legítimo:
+                      metade entregue hoje é metade de proteção que a pessoa
+                      passa a ter.</span>
+                  </div>
+                  <div class="campo">
+                    <label for="lr-{{ i.id }}">Lote</label>
+                    {# RN-25: o lote com CA vencido NÃO some da lista — continua
+                       com saldo físico, fica desabilitado e leva o motivo
+                       escrito ao lado. Sumir deixaria quem opera procurando
+                       defeito no sistema. #}
+                    <select id="lr-{{ i.id }}" name="entrada_id" required>
+                      <option value="">—</option>
+                      {% for l in candidatos %}
+                      <option value="{{ l.entrada.id }}" {% if not l.pode_sair %}disabled{% endif %}>
+                        {{ l.rotulo }}{% if l.impedimento %} — INDISPONÍVEL: {{ l.impedimento }}
+                        {%- elif l.saldo <= 0 %} — sem saldo{% endif %}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                {% for l in candidatos if l.impedimento %}
+                <p class="dica"><span class="pilula erro">CA vencido</span>
+                  Lote {{ l.entrada.lote or 'sem número' }}, {{ l.saldo }} em
+                  estoque: {{ l.impedimento }}. Pela NR-6 o Certificado de
+                  Aprovação é o que constitui o equipamento como EPI — prometer
+                  este lote é prometer proteção nenhuma.</p>
+                {% endfor %}
+                <div class="acoes">
+                  <button type="submit" class="compacto"
+                          {% if not disponiveis %}disabled{% endif %}>Reservar</button>
+                  {% if not disponiveis %}
+                  <span class="dica"><strong>Botão desabilitado:</strong>
+                    {% if candidatos %}nenhum lote deste item pode ser prometido
+                    hoje — os motivos estão acima.{% else %}não há lote deste item
+                    no estoque.{% endif %} O caminho é renovar o CA do lote ou dar
+                    entrada de lote novo em <a href="/epis/estoque">/epis/estoque</a>,
+                    e não prometer assim mesmo.</span>
+                  {% endif %}
+                </div>
+              </form>
+              {% endif %}
+
+              {% if pode_estocar and no_atendimento and i.estado == 'APROVADO' %}
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/sem-estoque"
+                    hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/sem-estoque"
+                    hx-target="#itens-do-pedido" hx-swap="innerHTML">
+                <h3>Marcar como sem estoque</h3>
+                <p class="discreto">O item é devido e a prateleira não tem. É
+                  recusado quando <strong>existe</strong> lote elegível com saldo:
+                  “sem estoque” com prateleira cheia entra no indicador de compras
+                  e vira pregão para item que já existia.</p>
+                <div class="campo">
+                  <label for="se-{{ i.id }}">Complemento</label>
+                  <input id="se-{{ i.id }}" name="complemento"
+                         placeholder="empenho 2026NE000456 em entrega para novembro">
+                </div>
+                <div class="acoes">
+                  <button type="submit" class="secundario compacto">Sem estoque</button>
+                </div>
+              </form>
+              {% endif %}
+
+              {% if pode_estocar and i.estado == 'RESERVADO' %}
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/soltar-reserva"
+                    hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/soltar-reserva"
+                    hx-target="#itens-do-pedido" hx-swap="innerHTML">
+                <h3>Soltar a reserva</h3>
+                <p class="discreto">As unidades voltam ao disponível e o item volta
+                  a esperar estoque. O motivo é obrigatório porque é o único
+                  registro que sobra: quem olhar daqui a duas semanas precisa saber
+                  se o lote foi descartado, se o CA venceu no intervalo ou se as
+                  unidades foram para um caso mais urgente.</p>
+                <div class="campo">
+                  <label for="sr-{{ i.id }}">Motivo</label>
+                  <input id="sr-{{ i.id }}" name="motivo" required
+                         placeholder="lote descartado por CA vencido sem renovação">
+                </div>
+                <div class="acoes">
+                  <button type="submit" class="perigo-discreto compacto">Soltar reserva</button>
+                </div>
+              </form>
+              {% endif %}
+
+              {% if i.estado in ('APROVADO', 'RESERVADO') and pode_entregar
+                    and no_atendimento %}
+              {% set reserva = reservas.get(i.id) %}
+              {# SEM `hx-post`, e é decisão: entregar muda o estado do PEDIDO
+                 (ANALISADA → EM_ATENDIMENTO → ATENDIDA), escreve na trilha e
+                 abre a pendência do comprovante assinado — três coisas que
+                 moram fora desta seção. Trocar só a lista deixaria o cartão de
+                 trâmite, a linha do tempo e o sino dizendo o de antes. Aqui a
+                 recarga é o que mantém a tela verdadeira. #}
+              <form method="post"
+                    action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/entregar">
+                <h3>Entregar</h3>
+                <p class="discreto">Grava a linha da ficha, baixa o lote no livro
+                  razão e abre a pendência do comprovante assinado — a mesma
+                  entrega da fatia 2, e não uma segunda. O CA do lote é conferido
+                  <strong>de novo, na data da entrega</strong>: ele pode ter
+                  vencido entre a reserva e o balcão (RN-25).</p>
+                <div class="linha-campos">
+                  <div class="campo">
+                    <label for="qe-{{ i.id }}">Quantidade</label>
+                    <input id="qe-{{ i.id }}" name="quantidade" inputmode="numeric"
+                           value="{{ i.quantidade_reservada if reserva else i.quantidade_devida }}">
+                  </div>
+                  <div class="campo">
+                    <label for="lote-{{ i.id }}">Lote</label>
+                    {% if reserva %}
+                    {# reservado: o lote está decidido, e trocá-lo no balcão
+                       deixaria a promessa de pé sobre um saldo que ninguém mais
+                       vai buscar. Quem precisa trocar solta a reserva e reserva
+                       no lote certo — dois atos, dois registros. #}
+                    <input type="hidden" name="entrada_id" value="{{ reserva.id }}">
+                    <p class="dica" id="lote-{{ i.id }}"><strong>Lote
+                      {{ reserva.lote or 'sem número' }}</strong> ·
+                      CA {{ reserva.numero_ca or '—' }} ·
+                      {{ reserva.validade_ca|data or 'sem validade' }}
+                      {{ ui.pilula_ca(reserva.validade_ca, hoje, i.item.exige_ca) }}
+                      {% if reservas_impedidas.get(i.id) %}
+                      <span class="quebra"><span class="pilula erro">não pode
+                        sair</span> {{ reservas_impedidas[i.id] }}</span>
+                      {% endif %}
+                      <span class="quebra">Reservado para este pedido. Para sair de
+                        outro lote, solte a reserva com motivo e reserve no
+                        certo.</span></p>
+                    {% else %}
+                    {# RN-25: o lote com CA vencido NÃO some da lista — ele
+                       continua com saldo físico, fica indisponível e leva o
+                       motivo escrito ao lado. Sumir deixaria quem opera
+                       procurando defeito no sistema. #}
+                    <select id="lote-{{ i.id }}" name="entrada_id">
+                      <option value="">Sem lote — entrega de balcão</option>
+                      {% for l in candidatos %}
+                      <option value="{{ l.entrada.id }}" {% if not l.pode_sair %}disabled{% endif %}>
+                        {{ l.rotulo }}{% if l.impedimento %} — INDISPONÍVEL: {{ l.impedimento }}
+                        {%- elif l.saldo <= 0 %} — sem saldo{% endif %}</option>
+                      {% endfor %}
+                    </select>
+                    {% endif %}
+                  </div>
+                </div>
+                {% for l in candidatos if l.impedimento %}
+                <p class="dica"><span class="pilula erro">CA vencido</span>
+                  Lote {{ l.entrada.lote or 'sem número' }}, {{ l.saldo }} em
+                  estoque: {{ l.impedimento }}. Pela NR-6 o Certificado de
+                  Aprovação é o que constitui o equipamento como EPI — entregar
+                  assim significa não ter entregado proteção nenhuma.</p>
+                {% endfor %}
+                <div class="campo">
+                  <label for="obs-{{ i.id }}">Observação</label>
+                  <input id="obs-{{ i.id }}" name="observacao"
+                         aria-describedby="dica-obs-{{ i.id }}">
+                  <span class="dica" id="dica-obs-{{ i.id }}">Sai impressa no
+                    comprovante. Nada sobre a saúde de quem recebe (RN-21).</span>
+                </div>
+                <div class="acoes">
+                  {% set travado = (reserva and reservas_impedidas.get(i.id)) or
+                                   (not reserva and not disponiveis and candidatos) %}
+                  <button type="submit" class="compacto"
+                          {% if travado %}disabled{% endif %}>Entregar</button>
+                  {% if travado %}
+                  <span class="dica"><strong>Botão desabilitado:</strong>
+                    {% if reserva %}o lote reservado não pode sair hoje — o motivo
+                    está ao lado do lote. Solte a reserva com motivo e reserve
+                    noutro lote, ou renove o CA{% else %}nenhum lote deste item
+                    pode sair hoje — os motivos estão acima. O caminho é renovar o
+                    CA do lote ou dar entrada de lote novo em
+                    <a href="/epis/estoque">/epis/estoque</a>{% endif %}, e não
+                    entregar assim mesmo.</span>
+                  {% endif %}
+                </div>
+              </form>
+              {% endif %}
+
+              {% if requisicao.encerrada %}
+              <p class="discreto">Pedido encerrado em
+                {{ rotulos.get(requisicao.estado, requisicao.estado)|lower }}: não
+                há mais o que decidir nem o que entregar por aqui.</p>
+              {% endif %}
+          {% endcall %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8">
+        <div class="vazio">
+          <strong>Nenhum item no pedido.</strong>
+          <span>Um envelope vazio ocuparia protocolo e fila sem pedir nada — o
+            envio recusa.</span>
+        </div>
+      </td></tr>
+      {% endfor %}
+    </table>

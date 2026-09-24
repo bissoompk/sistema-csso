@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Servidores · CSSO{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só: o `set` de topo é visto
+   dos dois blocos, e assim não há como o botão dizer "Novo" e a pessoa chegar
+   num diálogo chamado outra coisa. #}
+{% set CADASTRAR = 'Cadastrar servidor' %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio
+   na abertura da tela — e é a presença dele que reabre o popup. #}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set postos_marcados = d.get('posto_id') or [] %}
+{# O erro desvia para dentro do popup e SOME da faixa da casca: a mesma recusa
+   escrita duas vezes na mesma tela faz procurar dois problemas. #}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('processo.criar') %}
+{{ ui.botao_cadastro('novo-servidor', CADASTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Servidores</h1>
+      {# `recorte.total` e nao `servidores|length`: `servidores` agora e UMA
+         PÁGINA, e contar a página diria "50 servidores cadastrados" num cadastro
+         de 975. Quando há mais de uma página o subtítulo diz as duas coisas — o
+         que se está vendo e o que existe —, porque é a diferença entre as duas
+         que a paginação introduz. #}
+      <p class="sub">A chave é o SIAPE — nunca o nome.
+        {%- if busca %} {{ recorte.total }} resultado(s) para “{{ busca }}”.
+        {%- else %} {{ recorte.total }} servidor(es) cadastrado(s).{% endif %}
+        {%- if recorte.total > recorte.por_pagina %} Esta é uma página de
+        {{ servidores|length }}.{% endif %}</p>
+      {# Vale para LER a tabela, e não só para preencher o cadastro: é a coluna
+         UORG que engana quem supõe que ela é a Unidade abreviada. Explicação —
+         lê-se uma vez e depois se sabe —, e por isso vai para o (i); as duas
+         `.dica` dos campos correspondentes, no popup de cadastro, continuam
+         dizendo o que cada um é no instante da digitação. #}
+      {% call ui.info('unidade-e-uorg', 'a diferença entre Unidade e UORG') %}
+        <p>Unidade e UORG são campos <strong>diferentes</strong> no parecer e nem sempre
+          apontam para o mesmo nível: a Unidade é o lugar
+          (<code>Faculdade de Medicina de Diamantina</code>) e a UORG é o código de
+          lotação (<code>250 - FACULDADE DE MEDICINA DE DIAMANTINA</code>). Deixando a
+          UORG em branco, o parecer usa a própria Unidade.</p>
+        <p>Não há campo de CPF: a planilha atual não tem e o SIAPE basta.</p>
+      {% endcall %}
+    </div>
+    {% if not usuario.ve_dado_nominal %}
+    {# O aviso fica aqui, uma vez, e não repetido em cada linha: a coluna de
+       nome inteira em branco sem explicação é o que faz alguém concluir que o
+       cadastro está incompleto. #}
+    <div class="ao-lado">
+      <span class="pilula alerta"
+            title="RN-19: sem a permissão exposicao.ver o nome não é exibido; o código SRV-… identifica a pessoa dentro desta sessão">
+        identificação suprimida</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <form class="cartao filtros" method="get" action="/servidores">
+    <div class="linha-campos">
+      {# RN-19: sem `exposicao.ver` a busca não casa por nome — casar seria um
+         oráculo, e amarraria o nome ao código opaco. O rótulo diz o que a busca
+         faz de verdade: prometer nome e não achar é pior do que não prometer. #}
+      <div><label for="busca-servidores">
+          Buscar por {% if usuario.ve_dado_nominal %}nome ou {% endif %}SIAPE</label>
+        <input type="search" id="busca-servidores" name="q" value="{{ busca }}"
+               aria-describedby="dica-busca">
+        {% if not usuario.ve_dado_nominal %}
+        <span class="dica" id="dica-busca">Só por SIAPE: o nome está suprimido nesta
+          tela, e buscar por ele revelaria de quem é cada código.</span>
+        {% endif %}</div>
+    </div>
+    <div class="acoes">
+      <button type="submit">Buscar</button>
+      {% if busca %}<a class="botao secundario" href="/servidores">Limpar</a>{% endif %}
+    </div>
+  </form>
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Identificação</th><th scope="col">Nome</th><th scope="col">Cargo</th>
+          <th scope="col">Unidade</th><th scope="col">UORG</th><th scope="col">Situação</th>
+        </tr>
+      </thead>
+      {% for sv in servidores %}
+      {# RN-19 num lugar só: a tela não lê nome nem SIAPE do cadastro. Quando a
+         supressão vale, `nome` já vem como o código opaco da sessão. #}
+      {% set quem = identificar(sv) %}
+      <tr>
+        <td><a class="mono" href="/servidores/{{ sv.id }}">{{ quem.siape or quem.nome }}</a></td>
+        <td class="nome">
+          {%- if quem.nominal %}{{ quem.nome }}
+          {%- else %}<span class="discreto">—</span>{% endif %}</td>
+        <td><span class="recorte" title="{{ sv.cargo.nome if sv.cargo else '' }}">
+            {{- sv.cargo.nome if sv.cargo else '—' -}}</span></td>
+        <td><span class="recorte" title="{{ sv.unidade.nome_extenso if sv.unidade else '' }}">
+            {{- sv.unidade.nome_extenso if sv.unidade else '—' -}}</span></td>
+        {# Só o código na coluna, e o `uorg_bruto` inteiro no `title`: a UORG do
+           parecer é "250 - FACULDADE DE MEDICINA DE DIAMANTINA", que numa coluna
+           de tabela repete a Unidade ao lado e rouba a largura de todas as
+           outras. Sem código, mostra o que houver. #}
+        {% set uo = sv.uorg or sv.unidade %}
+        <td class="mono">
+          {%- if uo %}<span title="{{ uo.uorg_bruto }}">{{ uo.codigo_uorg or uo.sigla or uo.nome_oficial }}</span>
+          {%- else %}—{% endif %}</td>
+        <td>{{ ui.pilula_situacao_servidor(sv.situacao) }}</td>
+      </tr>
+      {% else %}
+      {# A saída muda com a permissão, e tem de mudar: para quem não vê nome, a
+         lista vazia depois de digitar um nome NÃO é "essa pessoa não existe" —
+         é a RN-19 funcionando. Sem dizê-lo, a conclusão natural é que o cadastro
+         está incompleto, e alguém recadastra quem já está lá. #}
+      {% if busca %}
+      {{ ui.vazio_de_lista(
+           'Nenhum servidor para “' ~ busca ~ '”.',
+           ('A busca olha SIAPE, nome e e-mail institucional.'
+            if usuario.ve_dado_nominal else
+            'A busca olha só o SIAPE nesta sessão: o nome está suprimido, e casar
+             por ele diria de quem é cada código SRV-… (RN-19). Procure pelo
+             SIAPE, que vem no processo do SEI.'), 6) }}
+      {% else %}
+      {{ ui.vazio_de_lista(
+           'Nenhum servidor cadastrado.',
+           'Sem servidor não há processo, laudo nem ficha de EPI — é ele que
+            ancora tudo o mais. Use “Cadastrar servidor”, no canto superior
+            direito; a chave é o SIAPE.', 6) }}
+      {% endif %}
+      {% endfor %}
+    </table>
+  </div>
+
+  {# A busca é o único filtro desta tela, então a query string que reproduz o
+     recorte é só ela — e ela tem de viajar junto, senão "próxima" devolveria a
+     lista inteira a partir da página 2. #}
+  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/servidores',
+                  ('q=' ~ busca|urlencode) if busca else '') }}
+
+</div>
+
+{% if usuario.pode('processo.criar') %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna — dentro da pilha
+   ele entraria no `gap` dela. #}
+{% call ui.popup_cadastro('novo-servidor', CADASTRAR, '/servidores', CADASTRAR,
+                          aberto=recusado, erro=erro_cadastro,
+                          nota='o SIAPE é a chave; nome e lotação podem ser corrigidos depois') %}
+  <div class="linha-campos">
+    <div class="campo codigo {{ 'com-erro' if recusado }}">
+      <label for="novo-siape">SIAPE</label>
+      {# O `autofocus` é condicional à reabertura, e não fixo: numa tela cuja
+         primeira ação é buscar, roubar o foco para o cadastro na abertura seria
+         pior. Na recusa ele é o campo do problema — o SIAPE é o único que esta
+         rota valida. #}
+      {# `pattern` e `inputmode`, e deliberadamente SEM `maxlength`: o navegador
+         recusa antes do POST o que a dica abaixo já promete — sete dígitos —, e
+         um POST recusado aqui custa uma recarga da lista inteira. `maxlength=7`
+         faria o oposto do que se quer: quem colasse `1.110.654` teria o número
+         cortado em `1.110.6` sem aviso nenhum, que é o defeito do CNPJ do
+         estoque. O servidor continua sendo a autoridade — o `ck_siape` do banco
+         e o validador Pydantic não saíram do lugar. #}
+      <input id="novo-siape" name="siape" required aria-describedby="dica-siape"
+             inputmode="numeric" pattern="[0-9]{7}"
+             value="{{ d.get('siape') or '' }}"{{ ' autofocus' if recusado }}>
+      <span class="dica" id="dica-siape">Sete dígitos, sem ponto nem traço.</span></div>
+    <div class="campo"><label for="novo-nome">Nome</label>
+      <input id="novo-nome" name="nome" required value="{{ d.get('nome') or '' }}"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="novo-cargo">Cargo</label>
+      <select id="novo-cargo" name="cargo_id"><option value="">—</option>
+        {% for c in cargos %}<option value="{{ c.id }}"{{ ui.sel(d.get('cargo_id'), c.id) }}>{{ c.nome }}</option>{% endfor %}</select>
+      {% if not cargos %}
+      <span class="dica">nenhum cadastrado —
+        <a href="/catalogos/cargos">cadastre um cargo</a></span>
+      {% endif %}
+    </div>
+    <div class="campo"><label for="nova-funcao">Função</label>
+      <input id="nova-funcao" name="funcao" value="{{ d.get('funcao') or '' }}"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="nova-unidade">Unidade</label>
+      <select name="unidade_uorg_id" id="nova-unidade" aria-describedby="dica-unidade">
+        <option value="">—</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}"{{ ui.sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}</select>
+      <span class="dica" id="dica-unidade">O nome que sai no corpo do parecer.</span></div>
+    <div class="campo"><label for="nova-uorg">UORG</label>
+      <select id="nova-uorg" name="uorg_id" aria-describedby="dica-uorg">
+        <option value="">— usar a Unidade —</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}"{{ ui.sel(d.get('uorg_id'), u.id) }}>{{ u.uorg_bruto }}</option>{% endfor %}</select>
+      <span class="dica" id="dica-uorg">O código de lotação no SIAPE.</span></div>
+  </div>
+  <div class="campo">
+    <label for="novos-postos">Postos de trabalho</label>
+    <select name="posto_id" id="novos-postos" multiple size="5"
+            aria-describedby="dica-postos">
+      {% for p in postos %}
+      <option value="{{ p.id }}" data-unidade="{{ p.unidade_uorg_id }}"
+              {{- ' selected' if p.id in postos_marcados }}>
+        {{ p.nome }} — {{ p.unidade.sigla or p.unidade.nome_extenso }}</option>{% endfor %}
+    </select>
+    <span class="dica" id="dica-postos">Ctrl para marcar mais de um; a lista mostra
+      só os postos da unidade escolhida.
+      {%- if not postos %} Nenhum cadastrado —
+      <a href="/catalogos/postos-trabalho">cadastre um posto</a>.{% endif %}</span>
+  </div>
+  <div class="campo"><label for="novo-email">E-mail institucional</label>
+    <input id="novo-email" name="email" type="email" value="{{ d.get('email') or '' }}"></div>
+{% endcall %}
+
+<script nonce="{{ nonce() }}">
+// mostra só os postos da unidade escolhida
+(function () {
+  const unidade = document.getElementById('nova-unidade');
+  const posto = document.getElementById('novos-postos');
+  if (!unidade || !posto) return;
+  const todos = Array.from(posto.options).map(o => ({ o, un: o.dataset.unidade || '' }));
+  function filtrar() {
+    const alvo = unidade.value;
+    posto.innerHTML = '';
+    todos.forEach(function (item) {
+      if (!item.un || !alvo || item.un === alvo) posto.appendChild(item.o);
+    });
+  }
+  unidade.addEventListener('change', filtrar);
+  filtrar();
+})();
+</script>
+{% endif %}
+{% endblock %}

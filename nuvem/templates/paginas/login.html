@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{# Sem lateral: ninguém navega nesta tela, e ela é anterior à sessão. A casca
+   entrega no lugar o cabeçalho escuro de 58px, só com a marca. #}
+{% set sem_casca = true %}
+{% block titulo %}Entrar · CSSO{% endblock %}
+{% block classe_conteudo %}tela-auxiliar estreita{% endblock %}
+{% block conteudo %}
+<div class="cartao">
+  <h1>Entrar</h1>
+  <p class="sub">Sistema de apoio da Coordenadoria de Segurança e Saúde Ocupacional.</p>
+  {# o erro é desenhado pelo layout, logo acima do cartão — não repetir aqui #}
+  {# A sessão que expirou é o único caso em que chegar aqui tem explicação, e
+     ela vai ESCRITA: sem isto, a pessoa que estava no meio de um envio via a
+     tela de login e só descobria depois que nada tinha sido gravado. #}
+  {% if aviso_sessao %}
+  <div class="aviso aviso-alerta" role="status">{{ aviso_sessao }}</div>
+  {% endif %}
+  <form method="post" action="/login">
+    <input type="hidden" name="proximo" value="{{ proximo }}">
+    <div class="campo">
+      <label for="login">E-mail</label>
+      {# não é type="email": o servidor ainda aceita o nome de usuário antigo, e
+         o navegador barraria quem digita por hábito antes de a troca assentar #}
+      {# o que foi digitado volta; a senha, logo abaixo, nunca — ver o comentário
+         da rota. Sem isto, todo erro de senha cobrava o e-mail institucional
+         inteiro de novo. #}
+      <input id="login" name="login" value="{{ login or '' }}"
+             autocomplete="username email"
+             inputmode="email" placeholder="nome@ufvjm.edu.br" autofocus required
+             aria-describedby="dica-login">
+      <span class="dica" id="dica-login">O e-mail institucional é a credencial de
+        entrada. O nome de usuário antigo continua valendo.</span>
+    </div>
+    <div class="campo">
+      <label for="senha">Senha</label>
+      <input id="senha" name="senha" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="acoes"><button type="submit" class="largo">Entrar</button></div>
+  </form>
+  <p class="discreto rodape-cartao sem-margem">Tentativas malsucedidas seguidas
+    bloqueiam a conta por alguns minutos. Senha esquecida se resolve com quem
+    administra o sistema — não há redefinição por e-mail.</p>
+</div>
+{% endblock %}

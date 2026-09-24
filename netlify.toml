@@ -1,0 +1,20 @@
+# O Sistema CSSO na nuvem (Netlify + Supabase). O código fica em `nuvem/`;
+# o sistema Python da raiz continua sendo o da rede do setor e não é
+# publicado aqui.
+[build]
+  base = "nuvem"
+  publish = "public"
+  # migra o banco do Supabase e semeia os catálogos antes de publicar:
+  # se a migração falhar, a publicação falha e a versão anterior continua no ar
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  # os templates são lidos do disco pela função em tempo de execução
+  included_files = ["templates/**", "modelos-docx/**"]
+  # o Nunjucks carrega o `chokidar` opcionalmente; empacotado, o esbuild tropeça
+  external_node_modules = ["nunjucks"]

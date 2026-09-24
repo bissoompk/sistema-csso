@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# Dar entrada num lote de EPI.
+
+   **Por que é página, e não o popup que toda tela de lista ganhou na 1.28.0.**
+   São dezenove campos. Mesmo na variante larga do `popup_cadastro` — a de
+   1062px, que existe justamente para a linha de cinco da compra pública — o
+   corpo pedia 864px contra os 577 visíveis num 1366x768, que é a tela do setor:
+   uma tela e meia de rolagem dentro da única coisa de que um diálogo não dispõe,
+   que é altura. O próprio `macros.html` escreve a saída no fim da seção `largo`:
+   formulário que não cabe em 1062 por 577 não é popup que ficou pequeno, é
+   formulário que não devia estar em popup. O que o dono pediu continua feito —
+   `/epis/estoque` voltou a ser só a lista.
+
+   **A ordem dos campos é a dos papéis em cima da mesa, e não a das colunas do
+   banco.** Quem digita isto tem duas coisas na mão e alterna entre elas: a caixa
+   que chegou, com a etiqueta do equipamento colada nela, e o par nota
+   fiscal/empenho. Eram quatro linhas que embaralhavam as duas leituras — o CA
+   entre o tamanho e o pregão, o valor unitário entre a nota e o fornecedor —, e
+   cada troca de assunto custava largar um papel e pegar o outro. Agora são dois
+   cartões, um por papel, e dentro de cada um a ordem é a de quem lê aquele
+   papel de cima para baixo.
+
+   A caixa vem primeiro por dois motivos: é dela que sai o item do catálogo, que
+   é o único campo sem o qual a rota não passa da primeira linha, e é dela que
+   sai o CA — o par número/validade que decide se este lote pode ser entregue, e
+   o assunto do aviso que se lê ANTES de digitar. #}
+
+{% block titulo %}Dar entrada em lote · CSSO{% endblock %}
+{# terceiro nível: os dois primeiros ("Gestão de EPI" e "Estoque") o
+   `modulos.py` já escreve, e é dele que sai o caminho de volta com a permissão
+   conferida — `epi.ver`, que todo perfil com `epi.estoque` tem. #}
+{% block trilha %}<span class="atual" aria-current="page">Dar entrada em lote</span>{% endblock %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
+   abertura da tela. São dezenove campos transcritos papel a papel: uma validade
+   de CA mal digitada apagava pregão, empenho, nota, fornecedor, CNPJ e valor, e
+   a conferência recomeçava do zero. Conquista da 1.27.0, e a mudança de casa não
+   pode desfazê-la. #}
+{% set d = digitado or {} %}
+
+{# O erro sai na faixa do topo da área útil, que a casca desenha logo acima do
+   título — numa página que É o formulário, aquele é o lugar onde ele se lê, e
+   repeti-lo aqui dentro faria procurar dois problemas. O que a tela acrescenta é
+   APONTAR: a rota diz qual campo produziu a recusa, e as duas marcas abaixo o
+   pintam de vermelho e põem o foco nele. Sem elas, "Data de entrada inválida" no
+   alto de dezenove campos manda procurar em dezenove. #}
+{%- macro erro_em(nome) -%}{{- ' com-erro' if campo_com_erro == nome -}}{%- endmacro %}
+{%- macro foco_em(nome) -%}{{- ' autofocus' if campo_com_erro == nome -}}{%- endmacro %}
+
+{% block conteudo %}
+{# `.tela` e não `.tela formulario`: os 860px do teto de formulário existem para
+   o campo de texto longo não virar uma linha que o rótulo perde de vista, e aqui
+   não há nenhum — são códigos curtos que se conferem dígito a dígito, e a linha
+   da nota fiscal tem cinco. Na coluna inteira (1062px a 1366) os cinco entram
+   numa fileira só; a 860 quebrariam em 3+2, que é exatamente o defeito que tirou
+   este formulário do popup. #}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Dar entrada em lote</h1>
+      <p class="sub">Grava a linha da compra pública e o primeiro movimento do
+        livro razão, na mesma transação. Daí em diante o saldo é a soma do
+        razão — a quantidade recebida nunca mais muda.</p>
+    </div>
+    <div class="ao-lado">
+      <a class="botao secundario" href="/epis/estoque">Ver o estoque</a>
+    </div>
+  </div>
+
+  <form method="post" action="/epis/estoque">
+
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>A caixa que chegou</h2>
+        <span class="nota">o que se lê na etiqueta do equipamento</span>
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo{{ erro_em('item_id') }}">
+          <label for="item_id">Item do catálogo</label>
+          <select id="item_id" name="item_id" required{{ foco_em('item_id') }}>
+            <option value="">—</option>
+            {% for i in itens %}
+            <option value="{{ i.id }}"{{ ui.sel(d.get('item_id'), i.id) }}>{{ i.nome }}{% if i.modelo %} · {{ i.modelo }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="campo{{ erro_em('quantidade_recebida') }}">
+          <label for="quantidade_recebida">Quantidade recebida</label>
+          <input id="quantidade_recebida" name="quantidade_recebida" required
+                 inputmode="numeric"{{ foco_em('quantidade_recebida') }}
+                 value="{{ d.get('quantidade_recebida') or '' }}"
+                 aria-describedby="dica-qtd">
+          <span class="dica" id="dica-qtd">É o que a nota fiscal entregou. Nunca
+            mais muda: daqui em diante o saldo é a soma do razão.</span>
+        </div>
+        <div class="campo">
+          <label for="tamanho">Tamanho</label>
+          <input id="tamanho" name="tamanho" value="{{ d.get('tamanho') or '' }}"
+                 aria-describedby="dica-tamanho">
+          <span class="dica" id="dica-tamanho">Escrito igual ao do catálogo do
+            item: é por ele que a entrega encontra o lote.</span>
+        </div>
+        <div class="campo{{ erro_em('data_entrada') }}">
+          <label for="data_entrada">Data de entrada</label>
+          <input id="data_entrada" type="date" name="data_entrada"
+                 {{- foco_em('data_entrada') }}
+                 value="{{ d.get('data_entrada') or hoje.isoformat() }}"
+                 max="{{ hoje.isoformat() }}">
+        </div>
+      </div>
+
+      {# Encostado nos quatro campos que ele governa, e não no alto da página: o
+         aviso só serve se for lido ANTES de copiar o número. #}
+      {# OS DOIS FATOS FICAM, e é o caso mais claro de texto que não pode ir para
+         trás de um clique: um manda de onde copiar o número (e copiar do lugar
+         errado grava um lote que não é este), o outro impede que alguém desista
+         de registrar um lote vencido — e lote não registrado é patrimônio que o
+         sistema não sabe que existe. Para o (i) foi só o fundamento normativo. #}
+      <div class="aviso aviso-alerta">
+        <strong>O CA que bloqueia a entrega é o desta caixa, não o do
+          catálogo.</strong> Copie o número e a validade da etiqueta do
+        equipamento. Lote com CA já vencido <strong>é aceito</strong> — ele
+        existe e é patrimônio; o que ele não pode é sair.
+        {% call ui.info('ca-do-lote', 'por que o CA do lote é o que decide, e por que o vencido entra') %}
+          <p>Um lote de 2023 pode estar vencido enquanto o cadastro do item já
+            aponta para o CA renovado. Quem decide se este lote pode sair é o CA
+            <strong>desta caixa</strong>, e não o de referência do catálogo — por
+            isso o número e a validade se copiam da etiqueta.</p>
+          <p>Pela <strong>NR-6</strong> o Certificado de Aprovação é o que
+            constitui o equipamento como EPI: passado ele, o que está na
+            prateleira é patrimônio, não proteção.</p>
+          <p>Registrar o lote vencido mesmo assim é o certo: ele está na
+            prateleira, o inventário o cobra, e alguém vai ter de renovar o CA ou
+            dar baixa nele. A tela do estoque o mostra em vermelho, com o saldo
+            preso, até que uma das duas coisas aconteça — e nenhuma delas o
+            sistema faz sozinho.</p>
+        {% endcall %}
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo codigo">
+          <label for="numero_ca">Número do CA do lote</label>
+          {# `inputmode` e o MESMO exemplo do catálogo (`epis_catalogo.html`): o
+             campo é o mesmo número, e dois exemplos diferentes para o mesmo
+             campo ensinam duas coisas. #}
+          <input id="numero_ca" name="numero_ca" placeholder="12345"
+                 inputmode="numeric" value="{{ d.get('numero_ca') or '' }}"></div>
+        <div class="campo{{ erro_em('validade_ca') }}">
+          <label for="validade_ca">Validade do CA</label>
+          <input id="validade_ca" type="date" name="validade_ca"
+                 {{- foco_em('validade_ca') }}
+                 value="{{ d.get('validade_ca') or '' }}"
+                 aria-describedby="dica-validade-lote">
+          <span class="dica atencao" id="dica-validade-lote">Sem ela o lote não
+            sai: “não sei” não é “está válido”.</span></div>
+        <div class="campo{{ erro_em('data_fabricacao') }}">
+          <label for="data_fabricacao">Fabricação</label>
+          <input id="data_fabricacao" type="date" name="data_fabricacao"
+                 {{- foco_em('data_fabricacao') }}
+                 value="{{ d.get('data_fabricacao') or '' }}"></div>
+        <div class="campo">
+          <label for="lote">Lote</label>
+          <input id="lote" name="lote" placeholder="L-2026-08"
+                 value="{{ d.get('lote') or '' }}"></div>
+      </div>
+    </section>
+
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>O papel da compra</h2>
+        <span class="nota">o que se lê no empenho e na nota fiscal</span>
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="pregao">Pregão</label>
+          <input id="pregao" name="pregao" placeholder="90012/2025"
+                 value="{{ d.get('pregao') or '' }}"></div>
+        <div class="campo">
+          <label for="item_pregao">Item do pregão</label>
+          <input id="item_pregao" name="item_pregao" placeholder="7"
+                 inputmode="numeric"
+                 value="{{ d.get('item_pregao') or '' }}"></div>
+        <div class="campo">
+          <label for="empenho">Empenho</label>
+          <input id="empenho" name="empenho" placeholder="2026NE000123"
+                 value="{{ d.get('empenho') or '' }}"
+                 aria-describedby="dica-empenho">
+          <span class="dica" id="dica-empenho">É por ele que a pergunta chega:
+            “esse capacete veio de qual empenho?”.</span></div>
+        <div class="campo{{ erro_em('quantidade_empenhada') }}">
+          <label for="quantidade_empenhada">Quantidade empenhada</label>
+          <input id="quantidade_empenhada" name="quantidade_empenhada"
+                 inputmode="numeric"{{ foco_em('quantidade_empenhada') }}
+                 value="{{ d.get('quantidade_empenhada') or '' }}"
+                 aria-describedby="dica-empenhada">
+          <span class="dica" id="dica-empenhada">Quanto o empenho previa. Receber
+            mais do que se empenhou é recusado.</span></div>
+      </div>
+
+      {# A linha de cinco: a que quebrava em 3+2 e dobrava de altura no popup.
+         Aqui ela é uma fileira só, e é a ordem em que a nota fiscal se lê —
+         número, preço, quem emitiu. #}
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="nota_fiscal">Nota fiscal</label>
+          <input id="nota_fiscal" name="nota_fiscal"
+                 value="{{ d.get('nota_fiscal') or '' }}"></div>
+        <div class="campo">
+          <label for="valor_unitario">Valor unitário (R$)</label>
+          {# `decimal` e não `numeric`: o teclado de `decimal` traz a vírgula, e a
+             vírgula é como se lê e se digita dinheiro em português — que é o que
+             o `placeholder` já promete e o `valor_decimal` do serviço já aceita.
+             `numeric` daria um teclado sem separador nenhum. #}
+          <input id="valor_unitario" name="valor_unitario" placeholder="12,50"
+                 inputmode="decimal"
+                 value="{{ d.get('valor_unitario') or '' }}"
+                 aria-describedby="dica-valor">
+          <span class="dica" id="dica-valor">Em branco quando não se sabe — zero
+            diria que custou nada.</span></div>
+        <div class="campo">
+          <label for="fornecedor_nome">Fornecedor</label>
+          <input id="fornecedor_nome" name="fornecedor_nome"
+                 value="{{ d.get('fornecedor_nome') or '' }}"></div>
+        {# Sem `maxlength`. Ele valia 14, o CNPJ da nota vem escrito
+           `12.345.678/0001-90` — 18 caracteres — e o campo cortava no décimo
+           quarto sem dizer nada: gravava-se `12.345.678/000`. Quem normaliza é
+           `servicos.epi_estoque.normalizar_cnpj`, que é onde a regra vale, e é
+           ele também que recusa por escrito a contagem errada. A promessa aqui
+           é a mesma que o NUP faz em `processo_novo.html`, e pelo mesmo motivo:
+           o servidor sabe acertar a pontuação. #}
+        <div class="campo codigo{{ erro_em('fornecedor_cnpj') }}">
+          <label for="fornecedor_cnpj">CNPJ</label>
+          <input id="fornecedor_cnpj" name="fornecedor_cnpj" inputmode="numeric"
+                 placeholder="12.345.678/0001-90"{{ foco_em('fornecedor_cnpj') }}
+                 value="{{ d.get('fornecedor_cnpj') or '' }}"
+                 aria-describedby="dica-cnpj">
+          <span class="dica" id="dica-cnpj">Cole da nota: ponto, barra e traço
+            são descartados sozinhos.</span></div>
+        <div class="campo">
+          <label for="fornecedor_contato">Contato do fornecedor</label>
+          <input id="fornecedor_contato" name="fornecedor_contato"
+                 value="{{ d.get('fornecedor_contato') or '' }}"
+                 aria-describedby="dica-contato">
+          <span class="dica" id="dica-contato">Canal da empresa — telefone ou
+            e-mail de vendas —, não o nome de um vendedor.</span></div>
+      </div>
+
+      <div class="campo">
+        <label for="observacao">Observação</label>
+        <textarea id="observacao" name="observacao" rows="2"
+                  aria-describedby="dica-observacao">{{ d.get('observacao') or '' }}</textarea>
+        <span class="dica atencao" id="dica-observacao">Nunca registre estado de
+          saúde, CID, diagnóstico ou gestação (RN-21).</span>
+      </div>
+
+      <div class="acoes">
+        <button type="submit">Dar entrada em lote</button>
+        <a class="botao secundario" href="/epis/estoque">Cancelar</a>
+        <p class="discreto">Grava a linha da compra e o primeiro movimento do
+          razão, na mesma transação. Se algum item de pedido estiver esperando
+          este equipamento, a tela avisa — reservar continua sendo ato de gente,
+          na ficha do pedido.</p>
+      </div>
+    </section>
+  </form>
+
+</div>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block titulo %}Novo processo · CSSO{% endblock %}
+{# terceiro nível da trilha: só a página sabe que aqui é "Novo processo" #}
+{% block trilha %}<span class="atual" aria-current="page">Novo processo</span>{% endblock %}
+
+{# A rota manda um `erro` só, e a casca o desenharia como faixa no topo da área
+   útil. Numa tela de cinco campos isso é o pior lugar: o usuário lê "não deu" e
+   tem de adivinhar qual campo. Aqui a mensagem é desviada para o campo de onde
+   ela veio — a de RN-21 se identifica pelo nome do campo, e todo o resto é NUP,
+   que é o único outro campo que a rota valida.
+
+   O nome pelo qual ela se identifica é o rótulo da tela, "observações". Era o
+   nome da coluna entre aspas, e mudou junto com a mensagem, que deixou de
+   falar como banco de dados com quem é engenheiro de segurança. #}
+{% set erro_observacoes = erro if erro and "campo observações" in erro else none %}
+{% set erro_nup = erro if erro and not erro_observacoes else none %}
+{% set erro = none %}
+{# O erro do DV vem do serviço em duas partes separadas por travessão: o fato e
+   a explicação. A divisão é dele; aqui só se dá a cada parte o peso certo. #}
+{% set partes_nup = erro_nup.split(' — ', 1) if erro_nup else [] %}
+
+{# O que a pessoa digitou, devolvido pela rota quando a gravação é recusada.
+   Vazio na abertura da tela. Sem isto, um dígito verificador divergente
+   apagava observação, tipo, servidor, unidade, data e a marca de dispensa —
+   e a segunda tentativa era digitada por inteiro. #}
+{% set d = digitado or {} %}
+{%- macro sel(escolhido, valor) -%}
+{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{%- endmacro %}
+
+{% block conteudo %}
+<div class="tela formulario">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Novo processo</h1>
+      <p class="sub">O número do processo é digitado — a v1 não integra com o SEI.</p>
+    </div>
+  </div>
+
+  <form class="cartao" method="post" action="/processos/novo">
+
+    <div class="campo codigo destaque {{ 'com-erro' if erro_nup }}">
+      <label for="nup">NUP</label>
+      {# `inputmode="numeric"` e nada além disso. O NUP tem 17 dígitos e nenhuma
+         letra, então num tablet o teclado certo é o numérico; `pattern` não
+         entra porque a dica ao lado promete que a pontuação é acertada no
+         servidor — um `pattern` aqui recusaria justamente a colagem que a
+         promessa convida a fazer. E a conferência do DV continua sendo do
+         servidor, que é onde a dispensa registrada em auditoria acontece. #}
+      {# `data-nup`: a MESMA conta do DV (`servicos/nup.py`) roda a cada tecla e
+         escreve o aviso ao lado — sem bloquear o envio. Ver `csso.js`, bloco 3. #}
+      <input id="nup" name="nup" value="{{ d.get('nup') or '' }}" required autofocus
+             data-nup inputmode="numeric" placeholder="23086.000000/0000-00"
+             aria-describedby="{{ 'erro-nup' if erro_nup else 'dica-nup' }}">
+      {% if erro_nup %}
+      <span class="erro-campo" id="erro-nup">
+        <strong class="fato">{{ partes_nup[0] }}</strong>
+        {%- if partes_nup|length > 1 %}
+        <span class="explicacao">{{ partes_nup[1] }}</span>{% endif %}
+      </span>
+      {% else %}
+      <span class="dica" id="dica-nup">Cole do SEI: pontuação, espaço e traço são
+        acertados sozinhos.</span>
+      {% endif %}
+    </div>
+
+    {# A dispensa mora dentro do aviso porque ela é a exceção, não uma opção do
+       formulário: quem marca precisa ler, na mesma caixa, o que a marca faz. #}
+    <div class="aviso aviso-alerta">
+      <label class="discreto" for="dispensar_dv">
+        <input type="checkbox" id="dispensar_dv" name="dispensar_dv" value="1"
+               {{- ' checked' if d.get('dispensar_dv') == '1' }}>
+        dígito verificador diverge, mas confirmei o número no SEI</label>
+      <p>A dispensa fica registrada na auditoria, com o seu nome e o número dispensado.
+         O formato continua obrigatório — o que se dispensa é só a conferência do DV.</p>
+    </div>
+
+    <div class="linha-campos">
+      <div class="campo"><label for="tipo">Tipo</label>
+        <select id="tipo" name="tipo_processo_id" required>
+          {% for t in tipos %}<option value="{{ t.id }}"{{ sel(d.get('tipo_processo_id'), t.id) }}>{{ t.nome }}</option>{% endfor %}
+        </select></div>
+      <div class="campo"><label for="data">Data de autuação</label>
+        <input id="data" name="data_autuacao" type="date" value="{{ d.get('data_autuacao') or '' }}"></div>
+    </div>
+
+    <div class="linha-campos">
+      <div class="campo"><label for="servidor">Servidor</label>
+        <select id="servidor" name="servidor_id" aria-describedby="dica-servidor">
+          <option value="">—</option>
+          {%- for sv in servidores %}{% set quem = identificar(sv) %}
+          <option value="{{ sv.id }}"{{ sel(d.get('servidor_id'), sv.id) }}>{{ quem.nome }}{% if quem.siape %} ({{ quem.siape }}){% endif %}</option>
+          {%- endfor %}
+        </select>
+        <span class="dica" id="dica-servidor">Confira pelo SIAPE, nunca pelo nome: homônimo
+          na UFVJM não é raridade.</span></div>
+      <div class="campo"><label for="unidade">Unidade / UORG</label>
+        <select id="unidade" name="unidade_uorg_id"><option value="">—</option>
+          {% for u in unidades %}<option value="{{ u.id }}"{{ sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
+        </select></div>
+    </div>
+
+    <div class="campo {{ 'com-erro' if erro_observacoes }}">
+      <label for="obs">Observações</label>
+      <textarea id="obs" name="observacoes" aria-describedby="dica-obs">{{ d.get('observacoes') or '' }}</textarea>
+      {% if erro_observacoes %}
+      <span class="erro-campo">{{ erro_observacoes }}</span>{% endif %}
+      <span class="dica atencao" id="dica-obs">Nunca registre estado de saúde, CID,
+        diagnóstico ou gestação (RN-21).</span>
+    </div>
+
+    <div class="acoes">
+      <button type="submit">Criar</button>
+      <a class="botao secundario" href="/processos">Cancelar</a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

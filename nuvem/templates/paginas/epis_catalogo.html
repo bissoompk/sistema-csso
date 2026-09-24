@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# O catálogo de EPI. A edição é em linha, pelo padrão do `form` por atributo:
+   um <form> vazio com `id` na primeira célula e cada campo apontando para ele
+   com `form="…"`. É o que permite editar a linha inteira sem aninhar formulário
+   em tabela, o que o HTML proíbe. Mesmo padrão de `catalogo_lista.html`. #}
+
+{% block titulo %}Catálogo de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Itens de EPI</span>{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set CADASTRAR = 'Cadastrar EPI' %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
+   abertura da tela — e é a presença dele que reabre o popup. #}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('epi.catalogo') %}
+{{ ui.botao_cadastro('novo-epi', CADASTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set editavel = usuario.pode('epi.catalogo') %}
+
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Catálogo de EPI</h1>
+      <p class="sub">
+        {#- `recorte.total`, e não `itens|length`: `itens` é a página. -#}
+        {%- if recorte.total %}{{ recorte.total }} item(ns)
+        {%- if recorte.total > recorte.por_pagina %}, {{ itens|length }} nesta
+        página{% endif %}. {% endif -%}
+        O que o setor fornece: categoria da NR-6, CA e sua validade, quantidade
+        padrão e máxima, e o que o item exige de quem o recebe.</p>
+    </div>
+    {% if not editavel %}
+    <div class="ao-lado">
+      {{ ui.pilula_somente_leitura('epi.catalogo') }}
+    </div>
+    {% endif %}
+  </div>
+
+  {{ ui.abas(abas, aba) }}
+
+  {# O aviso vem antes da tabela porque é a regra que o legado tinha no modelo e
+     não tinha no formulário — e regra que ninguém vê é regra que nunca rodou. #}
+  {# HESITEI AQUI, e o registro fica: o segundo parágrafo — "quem bloqueia é o CA
+     DO LOTE, não este" — desfaz um engano de leitura, e engano de leitura chega
+     perto de mudar decisão. Ficou no (i) porque a decisão que se toma NESTA tela
+     é digitar o CA de referência do pregão, e ela é a mesma sabendo ou não sabendo
+     como o bloqueio funciona. Onde o engano custaria caro é na entrada de lote e
+     na entrega, e nas duas o aviso continua na tela, em vermelho. #}
+  <div class="aviso aviso-alerta">
+    <strong>Validade do CA é a única linha deste catálogo com consequência
+      jurídica direta.</strong>
+    {% call ui.info('ca-do-catalogo', 'o que o CA deste cadastro é, e o que ele não bloqueia') %}
+      <p>Pela <strong>NR-6</strong>, o Certificado de Aprovação é o que constitui
+        o equipamento como EPI: entregar um com CA vencido significa que a
+        instituição não entregou proteção nenhuma.</p>
+      <p>O que bloqueia a entrega, quando o estoque existir, é o CA <strong>do
+        lote</strong> — um lote de 2023 pode estar vencido enquanto este cadastro
+        já aponta para o CA renovado.</p>
+      <p>O CA daqui é o <strong>de referência</strong>: é o que o pregão
+        especificou, e é o que a entrega de balcão sem lote confere quando não há
+        etiqueta para consultar.</p>
+    {% endcall %}
+  </div>
+
+  {# `com_ca_vencido` vem da ROTA, e não de um laço sobre `itens`: `itens` agora
+     é uma página, e um alerta de CA vencido que contasse só a página encolheria
+     ao virar de página. O argumento inteiro está na rota, onde a lista completa
+     ainda existe. #}
+  {% if com_ca_vencido %}
+  <div class="aviso aviso-erro">
+    <strong>{{ com_ca_vencido|length }} item(ns) ativo(s) com CA vencido ou sem
+      validade informada:</strong>
+    {% for i in com_ca_vencido %}{{ i.nome }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Item</th><th scope="col">Categoria (NR-6)</th><th scope="col">CA</th><th scope="col">Validade do CA</th>
+        <th scope="col">Padrão</th><th scope="col">Máxima</th><th scope="col">Período (meses)</th><th scope="col">Vida útil</th>
+        <th scope="col">Exige</th><th scope="col">Situação</th>{% if editavel %}<th scope="col"></th>{% endif %}
+      </tr>
+    </thead>
+    {% for i in itens %}
+    {% set id = 'f-epi-' ~ i.id %}
+    <tr>
+      {% if editavel %}
+      <td><form method="post" action="/epis/catalogo/{{ i.id }}" id="{{ id }}"></form>
+        <input form="{{ id }}" name="nome" value="{{ i.nome }}" required
+               aria-label="Nome do item {{ i.id }}"></td>
+      <td><select form="{{ id }}" name="categoria_id" required
+                  aria-label="Categoria NR-6 do item {{ i.id }}">
+          {% for c in categorias if c.ativo or c.id == i.categoria_id %}
+          <option value="{{ c.id }}" {% if i.categoria_id == c.id %}selected{% endif %}>{{ c.rotulo }}{% if not c.ativo %} (inativa){% endif %}</option>
+          {% endfor %}</select></td>
+      <td><input form="{{ id }}" name="numero_ca" value="{{ i.numero_ca or '' }}"
+                 inputmode="numeric"
+                 aria-label="Número do CA do item {{ i.id }}"></td>
+      <td><input form="{{ id }}" type="date" name="validade_ca"
+                 value="{{ i.validade_ca.isoformat() if i.validade_ca else '' }}"
+                 aria-label="Validade do CA do item {{ i.id }}">
+        {{ ui.pilula_ca(i.validade_ca, hoje, i.exige_ca) }}</td>
+      <td><input form="{{ id }}" name="quantidade_padrao" value="{{ i.quantidade_padrao }}"
+                 required inputmode="numeric"
+                 aria-label="Quantidade padrão do item {{ i.id }}"></td>
+      <td><input form="{{ id }}" name="quantidade_maxima" inputmode="numeric"
+                 value="{{ i.quantidade_maxima if i.quantidade_maxima is not none else '' }}"
+                 aria-label="Quantidade máxima do item {{ i.id }}"></td>
+      <td><input form="{{ id }}" name="periodo_maximo_meses" inputmode="numeric"
+                 value="{{ i.periodo_maximo_meses if i.periodo_maximo_meses is not none else '' }}"
+                 aria-label="Período da quantidade máxima do item {{ i.id }}, em meses"
+                 title="a máxima só vale com a janela: '2 por 12 meses' é regra, '2' não é nada"></td>
+      <td><input form="{{ id }}" name="vida_util_meses" inputmode="numeric"
+                 value="{{ i.vida_util_meses if i.vida_util_meses is not none else '' }}"
+                 aria-label="Vida útil do item {{ i.id }}, em meses"></td>
+      <td>
+        <label class="discreto"><input form="{{ id }}" type="checkbox" name="exige_ca" value="1"
+            {% if i.exige_ca %}checked{% endif %}> CA</label>
+        <label class="discreto"><input form="{{ id }}" type="checkbox" name="exige_justificativa" value="1"
+            {% if i.exige_justificativa %}checked{% endif %}> justificativa</label>
+        <label class="discreto"><input form="{{ id }}" type="checkbox" name="exige_treinamento" value="1"
+            {% if i.exige_treinamento %}checked{% endif %}> treinamento</label>
+      </td>
+      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
+            {% if i.ativo %}checked{% endif %}> ativo</label></td>
+      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button></td>
+      {% else %}
+      <td class="nome">{{ i.nome }}
+        {% if i.modelo %}<span class="quebra discreto">{{ i.marca or '' }} {{ i.modelo }}</span>{% endif %}</td>
+      <td>{{ i.categoria.rotulo }}</td>
+      <td class="mono">{{ i.numero_ca or '—' }}</td>
+      <td>{{ i.validade_ca|data or '—' }} {{ ui.pilula_ca(i.validade_ca, hoje, i.exige_ca) }}</td>
+      <td class="mono">{{ i.quantidade_padrao }}</td>
+      <td class="mono">{{ i.quantidade_maxima if i.quantidade_maxima is not none else '—' }}</td>
+      <td class="mono">{{ i.periodo_maximo_meses if i.periodo_maximo_meses is not none else '—' }}</td>
+      <td class="mono">{{ i.vida_util_meses ~ ' m' if i.vida_util_meses else '—' }}</td>
+      <td>
+        {% if i.exige_ca %}<span class="pilula info">CA</span>{% endif %}
+        {% if i.exige_justificativa %}<span class="pilula alerta">justificativa</span>{% endif %}
+        {% if i.exige_treinamento %}<span class="pilula alerta">treinamento</span>{% endif %}
+      </td>
+      <td>{{ ui.pilula_sim_nao(i.ativo, 'ativo', 'inativo') }}</td>
+      {% endif %}
+    </tr>
+    {% if editavel %}
+    {# A identificação comercial e os textos longos ficam numa segunda linha da
+       mesma linha de edição: na linha principal eles espremeriam as colunas que
+       governam a requisição, que são as que precisam ser lidas de relance. #}
+    <tr>
+      <td class="discreto">detalhe</td>
+      <td colspan="10">
+        <div class="linha-campos">
+          <div class="campo"><label for="{{ id }}-fab">Fabricante</label>
+            <input id="{{ id }}-fab" form="{{ id }}" name="fabricante" value="{{ i.fabricante or '' }}"></div>
+          <div class="campo"><label for="{{ id }}-marca">Marca</label>
+            <input id="{{ id }}-marca" form="{{ id }}" name="marca" value="{{ i.marca or '' }}"></div>
+          <div class="campo"><label for="{{ id }}-mod">Modelo</label>
+            <input id="{{ id }}-mod" form="{{ id }}" name="modelo" value="{{ i.modelo or '' }}"></div>
+          <div class="campo"><label for="{{ id }}-un">Unidade</label>
+            <input id="{{ id }}-un" form="{{ id }}" name="unidade_medida" list="unidades-epi"
+                   value="{{ i.unidade_medida }}"></div>
+          <div class="campo"><label for="{{ id }}-cat">CATMAT</label>
+            <input id="{{ id }}-cat" form="{{ id }}" name="codigo_catmat" value="{{ i.codigo_catmat or '' }}"></div>
+          <div class="campo"><label for="{{ id }}-eca">e-Campus</label>
+            <input id="{{ id }}-eca" form="{{ id }}" name="codigo_ecampus" value="{{ i.codigo_ecampus or '' }}"></div>
+        </div>
+        <div class="linha-campos">
+          <div class="campo"><label for="{{ id }}-tam">Tamanhos (um por linha)</label>
+            <textarea id="{{ id }}-tam" form="{{ id }}" name="tamanhos" rows="2">{{ i.tamanhos or '' }}</textarea></div>
+          <div class="campo"><label for="{{ id }}-nor">Normas (uma por linha)</label>
+            <textarea id="{{ id }}-nor" form="{{ id }}" name="normas" rows="2">{{ i.normas or '' }}</textarea></div>
+          <div class="campo"><label for="{{ id }}-desc">Descrição</label>
+            <textarea id="{{ id }}-desc" form="{{ id }}" name="descricao" rows="2">{{ i.descricao or '' }}</textarea></div>
+        </div>
+      </td>
+    </tr>
+    {% elif i.lista_de_tamanhos or i.lista_de_normas %}
+    <tr>
+      <td class="discreto">detalhe</td>
+      <td colspan="9" class="discreto">
+        {%- if i.lista_de_tamanhos %}Tamanhos: {{ i.lista_de_tamanhos|join(' · ') }}{% endif -%}
+        {%- if i.lista_de_tamanhos and i.lista_de_normas %} — {% endif -%}
+        {%- if i.lista_de_normas %}Normas: {{ i.lista_de_normas|join(' · ') }}{% endif -%}
+      </td>
+    </tr>
+    {% endif %}
+    {% else %}
+    {# Primeiro dia: a saída NOMEIA o botão. Ele mora em `acoes_cabecalho`, no
+       canto superior direito — a ~900px do texto que está sendo lido —, e uma
+       linha cinza em itálico no meio da tabela não diz por onde começar. #}
+    {{ ui.vazio_de_lista(
+         'Nenhum EPI cadastrado ainda.',
+         'O catálogo é o que os outros três blocos do módulo pressupõem: sem item
+          não há lote no estoque, linha de pedido nem entrega no balcão.'
+         ~ (' Use “' ~ CADASTRAR ~ '”, no canto superior direito.'
+            if editavel else ' Cadastrar item pede a permissão epi.catalogo.'),
+         11 if editavel else 10) }}
+    {% endfor %}
+  </table>
+  </div>
+
+  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/epis/catalogo') }}
+
+  {# Sugere sem impedir: a lista não é fechada no banco, e fechá-la travaria a
+     compra que vier em rolo ou em galão. #}
+  <datalist id="unidades-epi">
+    {% for u in unidades %}<option value="{{ u }}"></option>{% endfor %}
+  </datalist>
+
+  {# O achado central da engenharia reversa do legado, escrito na tela em que
+     ele importa: das 22 colunas de `EPI_Cadastro`, nove nunca apareceram no
+     formulário — e as que governam a requisição estavam entre elas. #}
+  <div class="aviso aviso-info">
+    <strong>Este catálogo não restringe o item por perfil de pessoa — de
+      propósito.</strong>
+    {% call ui.info('sem-perfis-permitidos', 'por que não há campo de perfis permitidos') %}
+      <p>O legado tinha <span class="mono">Perfis_Permitidos</span>, e o campo
+        misturava perfil de <em>sistema</em> (Admin, Técnico Administrativo) com
+        vínculo de <em>pessoa</em> (Docente, Terceirizado) numa coluna só.</p>
+      <p>Nenhum dos dois é o eixo certo: o que deve restringir um cinturão tipo
+        paraquedista é o <strong>risco do posto de trabalho</strong>, e não o
+        cargo de quem o pede.</p>
+      <p>Esse eixo depende do inventário de riscos por posto, que é o módulo PGR,
+        ainda previsto. Até lá a restrição é humana, na análise, com a recusa
+        fundamentada do catálogo de motivos — e não um substituto pior inventado
+        no meio-tempo.</p>
+    {% endcall %}
+  </div>
+
+</div>
+
+{% if editavel %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. A edição em linha da
+   tabela acima continua em linha — lá o formulário aberto É o item que se veio
+   conferir, e a auditoria elogiou justamente isso.
+
+   O `list="unidades-epi"` continua casando com o <datalist> que ficou dentro de
+   `.tela`: `list` referencia por `id` no documento inteiro, e não no ancestral
+   comum. Duplicar a lista aqui é que faria as duas divergirem. #}
+{% call ui.popup_cadastro('novo-epi', CADASTRAR, '/epis/catalogo', CADASTRAR,
+                          aberto=recusado, erro=erro_cadastro, largo=true,
+                          nota='nome e modelo juntos são a chave: é o modelo que distingue duas botas de mesmo nome') %}
+  <div class="linha-campos">
+    {# O nome é o que esta rota recusa em duas das suas guardas — em branco, e
+       homônimo com o mesmo modelo —, e é nele que o foco cai na reabertura. #}
+    <div class="campo {{ 'com-erro' if recusado }}"><label for="novo-nome">Nome</label>
+      <input id="novo-nome" name="nome" required placeholder="Luva de proteção química"
+             value="{{ d.get('nome') or '' }}"{{ ' autofocus' if recusado }}></div>
+    <div class="campo"><label for="nova-categoria">Categoria (NR-6)</label>
+      <select id="nova-categoria" name="categoria_id" required>
+        <option value="">—</option>
+        {% for c in categorias if c.ativo %}
+        <option value="{{ c.id }}"{{ ui.sel(d.get('categoria_id'), c.id) }}>{{ c.rotulo }}</option>
+        {% endfor %}</select></div>
+    <div class="campo"><label for="nova-unidade">Unidade de medida</label>
+      <input id="nova-unidade" name="unidade_medida" list="unidades-epi"
+             value="{{ d.get('unidade_medida') or 'UNIDADE' }}"></div>
+  </div>
+
+  <div class="linha-campos">
+    <div class="campo codigo"><label for="novo-ca">Número do CA</label>
+      <input id="novo-ca" name="numero_ca" placeholder="12345" inputmode="numeric"
+             aria-describedby="dica-ca"
+             value="{{ d.get('numero_ca') or '' }}">
+      <span class="dica" id="dica-ca">Obrigatório quando o item exige CA.</span></div>
+    <div class="campo"><label for="nova-validade-ca">Validade do CA</label>
+      <input id="nova-validade-ca" type="date" name="validade_ca"
+             value="{{ d.get('validade_ca') or '' }}"
+             aria-describedby="dica-validade-ca">
+      <span class="dica atencao" id="dica-validade-ca">EPI com CA vencido não se entrega.</span></div>
+    <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+      {# Na abertura nasce marcado, que é o caso comum; na reabertura vale o que
+         foi enviado — remarcar sozinho o que a pessoa acabou de desmarcar é
+         perder digitado do mesmo jeito, só que sem parecer. #}
+      <label class="discreto"><input type="checkbox" name="exige_ca" value="1"
+        {{- ' checked' if (d.get('exige_ca') == '1') or not recusado }}>
+        exige Certificado de Aprovação</label></div>
+  </div>
+
+  <div class="linha-campos">
+    <div class="campo"><label for="nova-padrao">Quantidade padrão</label>
+      <input id="nova-padrao" name="quantidade_padrao"
+             value="{{ d.get('quantidade_padrao') or 1 }}" required
+             inputmode="numeric" aria-describedby="dica-padrao">
+      <span class="dica" id="dica-padrao">Preenche o formulário da requisição.</span></div>
+    <div class="campo"><label for="nova-maxima">Quantidade máxima</label>
+      <input id="nova-maxima" name="quantidade_maxima" inputmode="numeric"
+             value="{{ d.get('quantidade_maxima') or '' }}"
+             aria-describedby="dica-maxima">
+      <span class="dica" id="dica-maxima">Em branco = sem máximo.</span></div>
+    <div class="campo"><label for="nova-janela">Período da máxima (meses)</label>
+      <input id="nova-janela" name="periodo_maximo_meses" inputmode="numeric"
+             value="{{ d.get('periodo_maximo_meses') or '' }}"
+             aria-describedby="dica-janela">
+      <span class="dica" id="dica-janela">Anda junto com a máxima: “2 por 12 meses” é regra,
+        “2” sozinho não é nada.</span></div>
+    <div class="campo"><label for="nova-vida">Vida útil (meses)</label>
+      <input id="nova-vida" name="vida_util_meses" inputmode="numeric"
+             value="{{ d.get('vida_util_meses') or '' }}"
+             aria-describedby="dica-vida">
+      <span class="dica" id="dica-vida">Vira a previsão de troca na ficha.</span></div>
+  </div>
+
+  <div class="linha-campos">
+    <div class="campo"><label for="novo-fabricante">Fabricante</label>
+      <input id="novo-fabricante" name="fabricante" value="{{ d.get('fabricante') or '' }}"></div>
+    <div class="campo"><label for="nova-marca">Marca</label>
+      <input id="nova-marca" name="marca" value="{{ d.get('marca') or '' }}"></div>
+    <div class="campo"><label for="novo-modelo">Modelo</label>
+      <input id="novo-modelo" name="modelo" value="{{ d.get('modelo') or '' }}"></div>
+    <div class="campo"><label for="novo-catmat">CATMAT</label>
+      <input id="novo-catmat" name="codigo_catmat" value="{{ d.get('codigo_catmat') or '' }}"></div>
+    <div class="campo"><label for="novo-ecampus">e-Campus</label>
+      <input id="novo-ecampus" name="codigo_ecampus" value="{{ d.get('codigo_ecampus') or '' }}"></div>
+  </div>
+
+  <div class="linha-campos">
+    <div class="campo"><label for="novos-tamanhos">Tamanhos (um por linha)</label>
+      <textarea id="novos-tamanhos" name="tamanhos" rows="3"
+placeholder="P&#10;M&#10;G">{{ d.get('tamanhos') or '' }}</textarea></div>
+    <div class="campo"><label for="novas-normas">Normas (uma por linha)</label>
+      <textarea id="novas-normas" name="normas" rows="3"
+placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ d.get('normas') or '' }}</textarea></div>
+    <div class="campo"><label for="nova-descricao">Descrição</label>
+      <textarea id="nova-descricao" name="descricao" rows="3">{{ d.get('descricao') or '' }}</textarea></div>
+  </div>
+
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="exige_justificativa" value="1"
+      {{- ' checked' if d.get('exige_justificativa') == '1' }}>
+      exige justificativa na requisição</label>
+    <label class="discreto"><input type="checkbox" name="exige_treinamento" value="1"
+      {{- ' checked' if d.get('exige_treinamento') == '1' }}>
+      exige treinamento comprovado</label>
+  </div>
+{% endcall %}
+{% endif %}
+{% endblock %}

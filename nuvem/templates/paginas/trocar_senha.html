@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "partes/senha.html" as senha with context %}
+{# Sem lateral, mas com "sair" no cabeçalho: a pessoa está logada e pode
+   desistir. #}
+{% set sem_casca = true %}
+{% block titulo %}Trocar senha · CSSO{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{# São três campos e a rota manda uma mensagem só: no topo, ela obriga a pessoa
+   a adivinhar qual dos três recusou. Cada mensagem volta para o campo de onde
+   veio; o que não for reconhecido continua sendo faixa, porque errar o campo é
+   pior do que não apontar nenhum. #}
+{% set erro_atual = erro if erro and 'atual' in erro else none %}
+{% set erro_conf = erro if erro and 'confirmação' in erro else none %}
+{% set erro_nova = erro if erro and erro.startswith('Senha fraca') else none %}
+{% set erro = none if (erro_atual or erro_conf or erro_nova) else erro %}
+
+{% block conteudo %}
+<div class="cartao">
+  <h1>Trocar senha</h1>
+  <p class="sub">
+    {%- if usuario.precisa_trocar_senha -%}
+    Sua senha é provisória e precisa ser trocada antes de continuar.
+    {%- else -%}
+    A senha nova passa a valer na hora; as sessões abertas continuam abertas.
+    {%- endif -%}
+  </p>
+
+  <form method="post" action="/trocar-senha">
+    <div class="campo {{ 'com-erro' if erro_atual }}">
+      <label for="atual">Senha atual</label>
+      <input id="atual" name="senha_atual" type="password" required autofocus
+             autocomplete="current-password">
+      {% if erro_atual %}<span class="erro-campo">{{ erro_atual }}</span>{% endif %}
+    </div>
+
+    <div class="campo {{ 'com-erro' if erro_nova }}">
+      <label for="nova">Nova senha</label>
+      <input id="nova" name="nova" type="password" required
+             autocomplete="new-password" aria-describedby="dica-nova">
+      {{ senha.barra('nova') }}
+      {% if erro_nova %}<span class="erro-campo">{{ erro_nova }}</span>{% endif %}
+      <span class="dica" id="dica-nova">Mínimo de 6 caracteres, misturando letras e
+        números.</span>
+    </div>
+
+    <div class="campo {{ 'com-erro' if erro_conf }}">
+      <label for="conf">Confirme a nova senha</label>
+      <input id="conf" name="confirmacao" type="password" required
+             autocomplete="new-password">
+      {{ senha.confere_com('nova', erro_conf) }}
+    </div>
+
+    <div class="acoes">
+      <button type="submit" class="{{ '' if not usuario.precisa_trocar_senha else 'largo' }}">Salvar</button>
+      {% if not usuario.precisa_trocar_senha %}
+      {# Quem veio por vontade própria precisa de volta, e a tela não tem menu.
+         `/modulos` abre para qualquer sessão — é a única saída que não corre o
+         risco de ser mais um 403. #}
+      <a class="botao secundario" href="/modulos">Cancelar</a>
+      {% endif %}
+    </div>
+  </form>
+
+  <p class="discreto rodape-cartao sem-margem">A conferência que vale é a do
+    servidor: a barra acima repete a mesma política, mas quem aceita ou recusa a
+    senha é ele.</p>
+</div>
+{{ senha.script() }}
+{% endblock %}

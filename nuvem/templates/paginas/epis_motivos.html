@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{% block titulo %}Motivos de recusa · Catálogo de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Motivos de recusa</span>{% endblock %}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set CADASTRAR = 'Cadastrar motivo de recusa' %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
+   abertura da tela — e é a presença dele que reabre o popup. #}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('epi.catalogo') %}
+{{ ui.botao_cadastro('novo-motivo', CADASTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set editavel = usuario.pode('epi.catalogo') %}
+
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Motivos de recusa</h1>
+      <p class="sub">{{ itens|length }} motivo(s). A negativa fundamentada,
+        citável e contável — o texto sai literal para quem pediu.</p>
+    </div>
+    {% if not editavel %}
+    <div class="ao-lado">
+      {{ ui.pilula_somente_leitura('epi.catalogo') }}
+    </div>
+    {% endif %}
+  </div>
+
+  {{ ui.abas(abas, aba) }}
+
+  {# Por que este catálogo existe, dito na tela: recusa em texto livre sai
+     diferente a cada vez, não cita norma e não se conta — e é a contagem por
+     motivo que permite ao setor mostrar o padrão dos pedidos que precisa
+     recusar, que é o insumo de uma conversa com a contratada. #}
+  {# As duas frases FICAM, e o registro da hesitação fica com elas: as duas
+     mudam o que se faz nesta tela. Quem não souber que o texto é congelado edita
+     um motivo achando que corrige negativas já emitidas; quem não souber que o
+     código não se edita procura o campo e conclui que a tela está quebrada. O
+     que foi para o (i) é o PORQUÊ de cada uma — que se lê uma vez. #}
+  <div class="aviso aviso-info">
+    <strong>Editar aqui não reescreve negativa já emitida</strong>, e o
+    <span class="mono">código</span> não se edita.
+    {% call ui.info('catalogo-congelado', 'por que o texto congela e por que o código é imutável') %}
+      <p>No ato da decisão, o texto vigente do motivo é <strong>copiado</strong>
+        para a linha do item recusado e fica congelado (RN-27). A negativa que a
+        pessoa recebeu é a que fica, mesmo que este catálogo mude depois — como
+        num ofício já expedido, que não se corrige reescrevendo o modelo.</p>
+      <p>O <span class="mono">código</span> é o que aparece no relatório de
+        recusas por motivo. Duas grafias do mesmo motivo fariam a contagem somar
+        errado, e a contagem por motivo é justamente o que permite ao setor
+        mostrar o padrão dos pedidos que precisa recusar — o insumo da conversa
+        com a contratada.</p>
+      <p>Este catálogo existe por isso: recusa em texto livre sai diferente a cada
+        vez, não cita norma e não se conta.</p>
+    {% endcall %}
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Código</th><th scope="col">Rótulo</th><th scope="col">Texto da negativa</th>
+        <th scope="col">Base normativa</th><th scope="col">Complemento</th><th scope="col">Situação</th>
+        {% if editavel %}<th scope="col"></th>{% endif %}
+      </tr>
+    </thead>
+    {% for m in itens %}
+    {% set id = 'f-motivo-' ~ m.id %}
+    <tr>
+      <td class="mono">{{ m.codigo }}
+        {% if editavel %}<form method="post" action="/epis/catalogo/motivos-recusa/{{ m.id }}" id="{{ id }}"></form>{% endif %}</td>
+      {% if editavel %}
+      <td><input form="{{ id }}" name="rotulo" value="{{ m.rotulo }}" required
+                 aria-label="Rótulo do motivo {{ m.codigo }}"></td>
+      <td><textarea form="{{ id }}" name="texto" rows="4" required
+                    aria-label="Texto da negativa do motivo {{ m.codigo }}">{{ m.texto }}</textarea></td>
+      <td><input form="{{ id }}" name="base_normativa" value="{{ m.base_normativa or '' }}"
+                 aria-label="Base normativa do motivo {{ m.codigo }}"></td>
+      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="exige_complemento" value="1"
+            {% if m.exige_complemento %}checked{% endif %}> exige</label></td>
+      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
+            {% if m.ativo %}checked{% endif %}> ativo</label></td>
+      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button></td>
+      {% else %}
+      <td class="nome">{{ m.rotulo }}</td>
+      <td><span class="texto-literal">{{ m.texto }}</span></td>
+      <td>{{ m.base_normativa or '—' }}</td>
+      <td>{{ ui.pilula_sim_nao(m.exige_complemento, 'exige', 'dispensa') }}</td>
+      <td>{{ ui.pilula_sim_nao(m.ativo, 'ativo', 'inativo') }}</td>
+      {% endif %}
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhum motivo de recusa cadastrado.',
+         'Recusar item de pedido exige escolher um motivo daqui, e o texto dele é
+          copiado congelado para a negativa (RN-27): sem nenhum, a análise não
+          consegue recusar nada.'
+         ~ (' Rode as sementes, ou use “' ~ CADASTRAR ~ '”, no canto superior
+             direito.' if editavel else ' Cadastrar pede a permissão
+             epi.catalogo.'),
+         7 if editavel else 6) }}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+
+{% if editavel %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. A edição em linha da
+   tabela acima continua em linha — lá o formulário aberto É o registro, e é o
+   texto da negativa que se veio conferir. #}
+{% call ui.popup_cadastro('novo-motivo', CADASTRAR,
+                          '/epis/catalogo/motivos-recusa', CADASTRAR,
+                          aberto=recusado, erro=erro_cadastro,
+                          nota='o código não é editável depois') %}
+  <div class="linha-campos">
+    {# O código é o campo que esta rota recusa — formato inválido e duplicata —,
+       e é nele que o foco cai na reabertura. #}
+    <div class="campo codigo {{ 'com-erro' if recusado }}">
+      <label for="novo-codigo">Código</label>
+      <input id="novo-codigo" name="codigo" required placeholder="SEM_EXPOSICAO"
+             value="{{ d.get('codigo') or '' }}"
+             aria-describedby="dica-codigo"{{ ' autofocus' if recusado }}>
+      <span class="dica" id="dica-codigo">Maiúsculas, números e sublinhado.</span></div>
+    <div class="campo"><label for="novo-rotulo">Rótulo</label>
+      <input id="novo-rotulo" name="rotulo" required placeholder="Sem exposição ao risco"
+             value="{{ d.get('rotulo') or '' }}"></div>
+    <div class="campo"><label for="nova-base">Base normativa</label>
+      <input id="nova-base" name="base_normativa" placeholder="NR-6"
+             value="{{ d.get('base_normativa') or '' }}"></div>
+  </div>
+  <div class="campo"><label for="novo-texto">Texto da negativa</label>
+    <textarea id="novo-texto" name="texto" rows="4" required
+              aria-describedby="dica-texto">{{ d.get('texto') or '' }}</textarea>
+    <span class="dica" id="dica-texto">Sai literal para quem pediu. Uma negativa que
+      encaminha vale mais que um “não”: diga o que a pessoa deve fazer.</span></div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="exige_complemento" value="1"
+      {{- ' checked' if d.get('exige_complemento') == '1' }}>
+      exige complemento escrito na hora da recusa</label></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

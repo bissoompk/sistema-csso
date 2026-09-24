@@ -1,0 +1,101 @@
+{# Barra de força da senha — o único JavaScript das telas auxiliares.
+
+   Ela existe porque mede a política de verdade: `politica_de_senha`, em
+   `app/servicos/autenticacao.py`, recusa senha curta, senha só de letras ou só
+   de números, e a lista de senhas triviais. A barra reproduz essas três
+   perguntas — nas mesmas palavras da mensagem do servidor — e nada além delas.
+   Não há escala de "entropia": o servidor não tem uma, e uma barra que
+   pontuasse o que o servidor não pontua estaria inventando um critério.
+
+   Sem JavaScript a barra não aparece (nasce com `hidden` e só o script a
+   revela). É de propósito: barra que não mede nada é enfeite, e enfeite aqui é
+   afirmação falsa sobre o que vai ser aceito.
+
+   A validação que vale continua sendo a do servidor — esta é o aviso prévio,
+   para a pessoa não descobrir o problema depois de submeter. #}
+
+{% macro barra(campo_id) %}
+<div class="forca-senha" data-forca-de="{{ campo_id }}" hidden>
+  <span class="trilho" aria-hidden="true"><span></span></span>
+  <span class="rotulo" role="status" aria-live="polite"></span>
+</div>
+{%- endmacro %}
+
+{# Erro de confirmação conferido enquanto se digita. Mesma regra do servidor
+   (`nova != confirmacao`), mesma marcação de campo com erro que o resto do
+   sistema usa.
+
+   Quando o servidor JÁ recusou, o mesmo elemento nasce visível com a mensagem
+   dele: são duas linhas vermelhas dizendo a mesma coisa se forem dois
+   elementos, e o script assume o controle na primeira tecla digitada. #}
+{% macro confere_com(campo_id, mensagem=none) %}
+<span class="erro-campo" data-confere-com="{{ campo_id }}"
+      {{ '' if mensagem else 'hidden' }}>{{ mensagem or 'As senhas não conferem' }}</span>
+{%- endmacro %}
+
+{% macro script() %}
+{# o `with context` do `{% import %}` nos dois chamadores é o que faz `request`
+   chegar aqui, e é dele que `nonce()` tira a marca desta resposta. #}
+<script nonce="{{ nonce() }}">
+(function () {
+  // Mesmos números e mesma lista do servidor, entregues pelo Jinja: reescrevê-los
+  // aqui criaria uma segunda política, que divergiria da primeira no dia em que
+  // alguém mexesse só num lado.
+  var politica = {{ POLITICA_SENHA|tojson }};
+  var triviais = Object.create(null);
+  politica.triviais.forEach(function (t) { triviais[t] = true; });
+
+  // Espelha `politica_de_senha`, na ordem dela: o primeiro problema da lista é
+  // o que a barra mostra, e é o mesmo que o servidor mostraria primeiro.
+  function problemas(senha) {
+    var lista = [];
+    if (senha.length < politica.minimo) {
+      lista.push('mínimo de ' + politica.minimo + ' caracteres');
+    }
+    // equivale a `senha.isalpha() or senha.isdigit()` — que em Python é falso
+    // para a senha vazia, daí a guarda
+    if (senha && (/^\p{L}+$/u.test(senha) || /^\p{Nd}+$/u.test(senha))) {
+      lista.push('misture letras e números');
+    }
+    if (triviais[senha.toLowerCase()]) { lista.push('senha trivial'); }
+    return lista;
+  }
+
+  document.querySelectorAll('.forca-senha[data-forca-de]').forEach(function (barra) {
+    var campo = document.getElementById(barra.dataset.forcaDe);
+    if (!campo) { return; }
+    var preenchimento = barra.querySelector('.trilho > span');
+    var rotulo = barra.querySelector('.rotulo');
+    function medir() {
+      var senha = campo.value;
+      barra.hidden = senha === '';
+      if (!senha) { return; }
+      var faltas = problemas(senha);
+      // Três degraus, e cada um é uma contagem de regras não atendidas — não
+      // uma nota. O último degrau diz "aceita pela política", e não "forte":
+      // a política é curta e a barra não vai fingir que ela é outra coisa.
+      var nivel = faltas.length === 0 ? 3 : (faltas.length === 1 ? 2 : 1);
+      barra.dataset.nivel = nivel;
+      preenchimento.style.setProperty('--v', nivel * 100 / 3);
+      rotulo.textContent = faltas.length ? faltas[0] : 'aceita pela política';
+    }
+    campo.addEventListener('input', medir);
+    medir();
+  });
+
+  document.querySelectorAll('[data-confere-com]').forEach(function (recado) {
+    var origem = document.getElementById(recado.dataset.confereCom);
+    var campo = recado.closest('.campo');
+    var entrada = campo && campo.querySelector('input');
+    if (!origem || !entrada) { return; }
+    function conferir() {
+      var diverge = entrada.value !== '' && entrada.value !== origem.value;
+      recado.hidden = !diverge;
+      campo.classList.toggle('com-erro', diverge);
+    }
+    entrada.addEventListener('input', conferir);
+    origem.addEventListener('input', conferir);
+  });
+})();
+</script>
+{%- endmacro %}

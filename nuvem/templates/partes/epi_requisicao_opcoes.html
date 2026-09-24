@@ -1,0 +1,87 @@
+{% import "partes/macros.html" as ui with context %}
+
+{# O que só se sabe depois de escolher o item: a quantidade padrão do catálogo,
+   os tamanhos cadastrados e — quando o catálogo exige — a justificativa.
+
+   A RN-29 aparece AQUI, no ato da escolha, e não no envio. Descobrir no `enviar`
+   que faltava a justificativa manda a pessoa de volta a uma linha que ela já
+   achava pronta, e o envio é o passo em que ela está com pressa. #}
+
+{# `digitado_item` só existe quando a ficha monta este bloco no servidor, depois
+   de uma gravação recusada: os três campos daqui não existem no HTML da página
+   que a pessoa carregou — eles chegam por este fragmento —, e sem devolvê-los a
+   recusa apagaria a justificativa da RN-29, que é a mais cara de reescrever.
+   No caminho normal (troca por HTMX) ele é indefinido e vale o padrão. #}
+{% set dg = digitado_item|default({}, true) %}
+
+{% if not item %}
+<p class="discreto">Escolha o equipamento para ver quantidade, tamanhos e saldo.</p>
+{% else %}
+
+<div class="linha-campos">
+  <div class="campo">
+    <label for="quantidade">Quantidade</label>
+    <input id="quantidade" name="quantidade" inputmode="numeric" required
+           value="{{ dg.get('quantidade') or item.quantidade_padrao }}" aria-describedby="dica-quantidade">
+    <span class="dica" id="dica-quantidade">
+      Padrão do catálogo: {{ item.quantidade_padrao }} {{ item.unidade_medida|lower }}.
+      Máximo: {{ item.regra_de_quantidade }} — contado pelo que a
+      <strong>ficha</strong> registra, não por pedidos aprovados (RN-26).</span>
+  </div>
+
+  <div class="campo">
+    <label for="tamanho">Tamanho</label>
+    {% if item.lista_de_tamanhos %}
+    {# ao escolher o tamanho, o saldo daquele tamanho: "40 luvas" não quer dizer
+       nada se são todas P #}
+    <select id="tamanho" name="tamanho" required
+            hx-get="/epis/requisicoes/item-saldo"
+            hx-target="#saldo-do-item"
+            hx-trigger="change"
+            hx-include="closest form">
+      <option value="">—</option>
+      {% for t in item.lista_de_tamanhos %}
+      <option value="{{ t }}" {% if dg.get('tamanho') == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <input id="tamanho" name="tamanho" placeholder="não se aplica" readonly>
+    {% endif %}
+  </div>
+</div>
+
+<div id="saldo-do-item">
+  {% include "partes/epi_requisicao_saldo.html" %}
+</div>
+
+{% if item.exige_justificativa %}
+{# RN-29: a justificativa é obrigatória porque o CATÁLOGO a exige neste item —
+   quem decidiu isso foi quem cadastrou a bota, e a linha do pedido tem de dizer
+   por que ESTE equipamento é necessário NESTE posto. #}
+<div class="campo">
+  <label for="justificativa">Justificativa <span class="pilula alerta">obrigatória para este item</span></label>
+  <textarea id="justificativa" name="justificativa" rows="2" required
+            aria-describedby="dica-justificativa">{{ dg.get('justificativa') or '' }}</textarea>
+  <span class="dica" id="dica-justificativa">O catálogo marca este item como
+    “exige justificativa”. Diga por que ele é necessário neste posto — o envio
+    recusa a linha sem isso (RN-29). Nada sobre a saúde de quem vai usar: o
+    sistema recusa o texto (RN-21).</span>
+</div>
+{% else %}
+<div class="campo">
+  <label for="justificativa">Justificativa <span class="discreto">(opcional)</span></label>
+  <textarea id="justificativa" name="justificativa" rows="2"
+            aria-describedby="dica-justificativa">{{ dg.get('justificativa') or '' }}</textarea>
+  <span class="dica" id="dica-justificativa">Ajuda quem vai analisar. Nada sobre
+    a saúde de quem vai usar: o sistema recusa o texto (RN-21).</span>
+</div>
+{% endif %}
+
+{% if item.exige_treinamento %}
+<div class="aviso aviso-alerta">
+  <strong>Este item exige treinamento comprovado.</strong> O cruzamento
+  automático depende do módulo de Treinamentos; até lá, quem analisar confere.
+</div>
+{% endif %}
+
+{% endif %}

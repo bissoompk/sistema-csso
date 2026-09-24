@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Importar · CSSO{% endblock %}
+
+{% block acoes_cabecalho %}
+<a class="botao secundario" href="/importar/reconciliacao">Relatórios de reconciliação</a>
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Importar dados legados</h1>
+      <p class="sub">Staging obrigatório, idempotente por origem, nada descartado
+        em silêncio.</p>
+    </div>
+  </div>
+
+  {# A ordem que a tela cobra, escrita antes do formulário. As duas primeiras
+     etapas acontecem aqui; as duas últimas, no relatório que o envio devolve —
+     e é por isso que "aplicar" está apagado: sem simular e revisar antes, ele
+     grava o que ninguém leu. #}
+  <div class="cartao etapas">
+    <span class="etapa aqui"><span class="n">1</span>Escolher o arquivo</span>
+    <span class="fio" aria-hidden="true"></span>
+    <span class="etapa aqui"><span class="n">2</span>Simular</span>
+    <span class="fio" aria-hidden="true"></span>
+    <span class="etapa"><span class="n">3</span>Revisar o relatório</span>
+    <span class="fio" aria-hidden="true"></span>
+    <span class="etapa"><span class="n">4</span>Aplicar</span>
+  </div>
+
+  <div class="grade grade-2">
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Planilha de pareceres</h2>
+        <span class="nota">.xlsx</span>
+        {# Os dois formulários FICAM abertos: esta tela É o envio, como o editor
+           do parecer é a redação. O que virou (i) foi a prosa que explica o
+           formato do arquivo — lê-se uma vez, e quem já mandou uma vez sabe. #}
+        {% call ui.info('formato-da-planilha', 'o que a planilha traz e como ela entra') %}
+          <p>As 25 colunas entram como <strong>texto</strong> na área de staging: nada
+            é convertido antes de alguém ler o relatório. A coluna Y — órfã, sem
+            cabeçalho — é preservada como veio.</p>
+          <p>A importação é idempotente por origem: mandar a mesma planilha duas vezes
+            não duplica o que já entrou.</p>
+        {% endcall %}
+      </div>
+      <form method="post" action="/importar/planilha" enctype="multipart/form-data">
+        <div class="zona-arquivo">
+          <label for="arq-planilha">Arquivo da planilha</label>
+          <input id="arq-planilha" type="file" name="arquivo" accept=".xlsx" required>
+          <span class="formato">.xlsx</span>
+        </div>
+        <label class="discreto"><input type="checkbox" name="aplicar" value="1">
+          aplicar de verdade (sem marcar, só simula)</label>
+        <div class="acoes"><button type="submit">Importar</button></div>
+      </form>
+    </section>
+
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Quadro do Trello</h2>
+        <span class="nota">JSON completo</span>
+        {% call ui.info('formato-do-trello', 'por que o JSON, e não o CSV') %}
+          <p>Use o JSON, não o CSV: só ele traz o feed <code>actions</code>, que
+            preserva as <strong>datas originais</strong> de cada cartão. Exportado em
+            CSV, o quadro chega sem histórico e tudo vira a data de hoje.</p>
+        {% endcall %}
+      </div>
+      {# FICA na tela, ao lado da caixa que a pessoa vai ou não marcar: sem marcar
+         o download, cada anexo entra no relatório de perdidos com a URL — e as
+         URLs do Trello expiram. É a decisão do clique, não explicação. #}
+      <p class="discreto">Sem marcar o download, cada anexo entra no relatório de
+         perdidos com a URL, para você buscar antes que expire.</p>
+      <form method="post" action="/importar/trello" enctype="multipart/form-data">
+        <div class="zona-arquivo">
+          <label for="arq-trello">Arquivo exportado do quadro</label>
+          <input id="arq-trello" type="file" name="arquivo" accept=".json" required>
+          <span class="formato">/b/&lt;id&gt;.json</span>
+        </div>
+        <label class="discreto"><input type="checkbox" name="aplicar" value="1">
+          aplicar de verdade (sem marcar, só simula)</label><br>
+        <label class="discreto"><input type="checkbox" name="baixar_anexos" value="1">
+          baixar os anexos agora <strong>(as URLs do Trello expiram)</strong></label>
+        <div class="acoes"><button type="submit">Importar</button></div>
+      </form>
+    </section>
+  </div>
+
+  {% if entrada %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Arquivos já em <code>entrada/</code></h2>
+      <span class="contador">{{ entrada|length }}</span>
+      <span class="nota">o envio acima grava aqui e importa o que você mandou</span>
+    </div>
+    <div class="fileira">
+      {% for nome in entrada %}<span class="selo">{{ nome }}</span>{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if candidatos %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Candidatos a número de parecer extraídos de títulos</h2>
+      <span class="contador alerta">{{ candidatos|length }}</span>
+    </div>
+    <div class="corpo">
+      <p class="discreto sem-margem">Nunca vinculados automaticamente — conferir
+        contra a planilha. O número saiu do texto do cartão, e o cartão foi
+        escrito à mão.</p>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Cartão</th><th scope="col">Candidato</th><th scope="col">Laudo candidato</th></tr>
+      </thead>
+      {% for c in candidatos %}
+      <tr><td>{{ c.nome }}</td><td class="mono">{{ c.parecer_candidato }}</td>
+          <td>{% if c.laudo_candidato %}<span class="mono">{{ c.laudo_candidato }}</span>
+              {% else %}<span class="discreto">—</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Rejeitados</h2>
+      <span class="contador {{ 'erro' if rejeitadas else 'ok' }}">{{ rejeitadas|length }}</span>
+    </div>
+    <div class="corpo">
+      <p class="discreto sem-margem">Nada foi descartado em silêncio: a linha que não
+        entrou fica aqui com o motivo. O <code>payload</code> bruto é expurgado 90 dias
+        após o encerramento da migração (RN-23).</p>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Origem</th><th scope="col">Referência</th><th scope="col">Motivo</th><th scope="col">Expurgo</th></tr>
+      </thead>
+      {% for r in rejeitadas %}
+      <tr><td>{{ r.origem }}</td><td class="mono">{{ r.ref }}</td>
+          <td>{{ r.motivo }}</td>
+          <td class="mono discreto">{{ r.expurgar_apos|data }}</td></tr>
+      {% else %}<tr><td colspan="4" class="nada">Nada rejeitado.</td></tr>{% endfor %}
+    </table>
+  </section>
+
+</div>
+{% endblock %}

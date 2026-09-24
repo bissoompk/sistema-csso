@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "partes/senha.html" as senha with context %}
+{% set sem_casca = true %}
+{% block titulo %}Primeiro acesso · CSSO{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{# A rota manda um `erro` só, e a casca o desenharia como faixa acima do cartão.
+   "Senha fraca: …" pertence ao campo de senha — lida no topo, ela obriga a
+   pessoa a adivinhar qual dos três campos recusou. O resto ("já existe usuário
+   cadastrado") é da tela inteira e fica onde está. #}
+{% set erro_senha = erro if erro and erro.startswith('Senha fraca') else none %}
+{% set erro = none if erro_senha else erro %}
+
+{% block conteudo %}
+<div class="cartao">
+  <h1>Primeiro acesso</h1>
+  <p class="sub">Cria a conta inicial com o perfil <strong>superintendente</strong>.</p>
+
+  {# O que hoje já estava escrito como subtítulo é aviso, e não descrição: é a
+     exceção do sistema inteiro à regra de que perfil só se concede com
+     permissão e ato normativo. #}
+  <div class="aviso aviso-info">
+    <p>É a <strong>única</strong> concessão de perfil feita sem
+      <code>perfil.conceder</code>. Ela fica registrada na auditoria com o ato
+      normativo pendente de substituição — quem assumir a superintendência
+      precisa trocar <code>BOOTSTRAP</code> pelo ato real em Usuários.</p>
+  </div>
+
+  <form method="post" action="/primeiro-acesso">
+    {# `nome` e `email` voltam preenchidos quando o servidor recusa; a senha,
+       nunca — devolvê-la poria o segredo em claro no HTML. #}
+    <div class="campo"><label for="nome">Nome completo</label>
+      <input id="nome" name="nome" value="{{ nome or '' }}" required autofocus
+             autocomplete="name"></div>
+
+    {# não pede nome de usuário: a entrada é pelo e-mail, e um segundo
+       identificador que ninguém volta a digitar só serve para ser esquecido #}
+    <div class="campo"><label for="email">E-mail institucional</label>
+      <input id="email" name="email" type="email" value="{{ email or '' }}"
+             placeholder="nome@ufvjm.edu.br"
+             required autocomplete="email" aria-describedby="dica-email">
+      <span class="dica" id="dica-email">É por ele que se entra. O nome de usuário
+        sai da parte antes do <code>@</code>, sozinho.</span></div>
+
+    <div class="campo {{ 'com-erro' if erro_senha }}">
+      <label for="senha">Senha</label>
+      <input id="senha" name="senha" type="password" required
+             autocomplete="new-password" aria-describedby="dica-senha">
+      {{ senha.barra('senha') }}
+      {% if erro_senha %}<span class="erro-campo">{{ erro_senha }}</span>{% endif %}
+      <span class="dica" id="dica-senha">Mínimo de 6 caracteres, misturando letras e
+        números. Ela nasce provisória: o sistema pede a troca na primeira entrada.
+        Não existe usuário <code>admin</code> com senha <code>admin</code>.</span>
+    </div>
+
+    <div class="acoes"><button type="submit" class="largo">Criar conta</button></div>
+  </form>
+</div>
+{{ senha.script() }}
+{% endblock %}

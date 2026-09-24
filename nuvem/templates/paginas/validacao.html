@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# Sem lateral: quem abre esta tela normalmente não tem conta neste sistema, e um
+   menu ofereceria treze telas que respondem "entre primeiro". A casca entrega no
+   lugar o cabeçalho escuro de 58px, só com a marca — o mesmo de `/login`. #}
+{% set sem_casca = true %}
+{% block titulo %}Validar certificado · CSSO{% endblock %}
+{# `tela-auxiliar` sem `estreita`: a resposta é uma lista de dados, e a coluna de
+   420px do login empilharia cada linha da `dl` em duas. #}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{% block conteudo %}
+
+<div class="cartao">
+  <h1>Validação de certificado</h1>
+  <p class="sub">Confirme se um certificado emitido pela CSSO é autêntico, pela
+    chave impressa nele. Esta página é aberta: não é preciso ter conta.</p>
+
+  <form method="post" action="/validar">
+    <div class="campo">
+      <label for="chave">Chave de validação</label>
+      <input id="chave" class="mono" name="chave" value="{{ digitada }}"
+             maxlength="40" autocapitalize="characters" autocomplete="off"
+             spellcheck="false" placeholder="CSSO-2026-K7QMX-3FTB9-H"
+             autofocus required aria-describedby="dica-chave">
+      <span class="dica" id="dica-chave">Ela está impressa no rodapé do
+        certificado e é o que o QR Code aponta. Maiúsculas e traços não importam.</span>
+    </div>
+    <div class="acoes"><button type="submit" class="largo">Validar</button></div>
+  </form>
+</div>
+
+{% if excedeu %}
+<div class="cartao">
+  <div class="aviso aviso-alerta" role="alert">
+    <p><strong>Consultas demais deste endereço.</strong> A página aceita até
+      {{ limite_curto }} consultas por minuto. Espere um minuto e tente de novo.</p>
+    <p>O limite existe para impedir que alguém descubra certificados testando
+      chaves ao acaso — não é um bloqueio à sua conferência.</p>
+  </div>
+</div>
+
+{% elif resposta and not resposta.encontrado %}
+<div class="cartao">
+  <div class="aviso aviso-erro" role="alert">
+    <p><strong>Não foi possível confirmar este certificado.</strong></p>
+    <p>A chave digitada não corresponde a nenhum certificado emitido pela CSSO.
+      Confira a digitação — os caracteres <span class="mono">O</span>,
+      <span class="mono">I</span>, <span class="mono">L</span> e
+      <span class="mono">U</span> não são usados nas chaves, então o que parece
+      um deles é <span class="mono">0</span>, <span class="mono">1</span> ou
+      outro caractere.</p>
+    <p>Se a digitação estiver correta e a resposta continuar esta, o documento
+      não foi emitido por este sistema. Fale com a CSSO antes de aceitá-lo.</p>
+  </div>
+</div>
+
+{% elif resposta %}
+<div class="cartao">
+  <div class="cabecalho-cartao">
+    <h2>Certificado <span class="mono">{{ resposta.numero }}</span></h2>
+    {{ ui.pilula_certificado(resposta.situacao) }}
+  </div>
+
+  {% if resposta.situacao == 'ANULADO' %}
+  <div class="aviso aviso-erro" role="alert">
+    <p><strong>Este certificado foi anulado pela CSSO.</strong> Ele existiu e foi
+      cancelado — não use como comprovação. O motivo da anulação não é público;
+      quem precisar dele deve procurar a CSSO.</p>
+  </div>
+  {% elif resposta.situacao == 'VENCIDO' %}
+  <div class="aviso aviso-alerta">
+    <p><strong>O certificado é autêntico e a validade expirou</strong> em
+      {{ resposta.vencimento|data }}. Vencido não é falso: o treinamento
+      aconteceu, e o que passou foi o prazo de reciclagem.</p>
+  </div>
+  {% else %}
+  <div class="aviso aviso-ok">
+    <p><strong>Certificado autêntico, emitido por este sistema.</strong></p>
+  </div>
+  {% endif %}
+
+  <dl class="tabela-dados">
+    <dt>Treinamento</dt>
+    <dd>{{ resposta.treinamento }}</dd>
+
+    {% if resposta.norma %}
+    <dt>Norma de referência</dt>
+    <dd>{{ resposta.norma }}</dd>
+    {% endif %}
+
+    <dt>Carga horária</dt>
+    <dd class="mono">{{ resposta.carga_horaria }} h</dd>
+
+    {# "Término", e não "conclusão": é o rótulo que o próprio .docx imprime
+       (`CAMPOS_CERTIFICADO.turma_data_fim`), e esta página existe para conferir
+       o papel — um rótulo diferente do documento faria duvidar de um certificado
+       autêntico. #}
+    <dt>Término do treinamento</dt>
+    <dd class="mono">{{ resposta.termino|data }}</dd>
+
+    <dt>Vencimento</dt>
+    <dd>
+      {% if resposta.vencimento %}<span class="mono">{{ resposta.vencimento|data }}</span>
+      <span class="discreto">({{ resposta.validade_meses }} meses)</span>
+      {% else %}<span class="selo">não expira</span>{% endif %}
+    </dd>
+
+    {% if resposta.instrutores %}
+    <dt>Instrutor(es)</dt>
+    <dd>{% for nome in resposta.instrutores %}{{ nome }}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>
+    {% endif %}
+
+    <dt>Emissor</dt>
+    <dd>{{ resposta.emissor }}</dd>
+
+    <dt>Participante</dt>
+    <dd class="mono">{{ resposta.identificador_participante }}</dd>
+
+    <dt>Chave</dt>
+    <dd class="mono">{{ resposta.chave }}</dd>
+  </dl>
+</div>
+
+<div class="cartao">
+  <h2>Confira o titular</h2>
+  <p class="sub">Esta página <strong>não mostra</strong> o nome de quem se formou.
+    Quem tem o certificado em mãos já o lê no papel; quem só tem a chave não pode
+    recebê-lo de presente. Digite o nome que consta no documento e o sistema
+    responde apenas <strong>confere</strong> ou <strong>não confere</strong>.</p>
+
+  <form method="post" action="/validar/{{ resposta.chave }}/conferir">
+    <div class="campo">
+      <label for="nome">Nome que consta no certificado</label>
+      <input id="nome" name="nome" value="{{ nome_digitado }}"
+             autocomplete="off" maxlength="200" required
+             aria-describedby="dica-nome">
+      <span class="dica" id="dica-nome">Acentos, maiúsculas e as partículas
+        (“de”, “da”, “dos”) não fazem diferença na comparação.</span>
+    </div>
+    <div class="acoes"><button type="submit" class="secundario">Conferir o nome</button></div>
+  </form>
+
+  {% if confere is true %}
+  <div class="aviso aviso-ok" role="status">
+    <p><strong>Confere.</strong> O nome digitado é o que consta neste certificado.</p>
+  </div>
+  {% elif confere is false %}
+  <div class="aviso aviso-alerta" role="status">
+    <p><strong>Não confere.</strong> O certificado é autêntico, mas o nome
+      digitado não é o que consta nele. Confira a grafia completa, como está
+      escrita no papel.</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="cartao">
+  <h2>O que esta página responde, e o que não responde</h2>
+  <ul>
+    <li><strong>Responde</strong> se o certificado foi emitido por este sistema,
+      qual treinamento, com que carga horária, quando foi concluído e se a
+      validade está corrente.</li>
+    <li><strong>Não responde</strong> o nome, o e-mail, o SIAPE, a lotação, a
+      nota nem a frequência de quem se formou, e não entrega o documento: a
+      segunda via sai apenas para o titular ou para a CSSO, dentro do sistema.</li>
+    <li>Uma chave não permite descobrir outra: elas são sorteadas, e há limite de
+      consultas por endereço de rede.</li>
+    <li>Dúvida que esta página não resolve é com a CSSO — inclusive a suspeita de
+      documento falsificado, que é o caso em que a resposta acima importa mais.</li>
+  </ul>
+</div>
+
+{% endblock %}

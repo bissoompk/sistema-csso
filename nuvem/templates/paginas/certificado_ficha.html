@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Certificado {{ certificado.rotulo }} · CSSO{% endblock %}
+{# o número do certificado em mono: número que se confere dígito a dígito nunca
+   sai em texto corrido — nem no h1, nem na trilha #}
+{% block trilha %}
+<span class="atual mono" aria-current="page">{{ certificado.rotulo }}</span>
+{% endblock %}
+
+{# O verbo do botão e o do título da camada num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set ANULAR = 'Anular certificado' %}
+
+{% block acoes_cabecalho %}
+<button type="button" class="secundario" data-imprimir>Imprimir</button>
+<a class="botao secundario" href="/certificados/{{ certificado.id }}/documento"
+   data-baixar="Gerando a segunda via…">Segunda via (.docx)</a>
+{% if usuario.pode('certificado.anular') and not certificado.anulado %}
+{# Anular exige motivo por escrito: o botão do cabeçalho ABRE a camada com o
+   formulário, não dispara nada sozinho. #}
+{{ ui.botao_cadastro('anular-certificado', ANULAR, 'perigo-discreto') }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set pode_anular = usuario.pode('certificado.anular') %}
+
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1 class="mono">{{ certificado.rotulo }}</h1>
+      <p class="identificacao">
+        <span>{{ contexto.participante_nome }}</span>
+        <span class="ponto">·</span>
+        <span>{{ contexto.treinamento_nome }}</span>
+        <span class="ponto">·</span>
+        <span class="mono">{{ contexto.turma_codigo }}</span>
+        {{ ui.pilula_certificado(situacao_publica) }}
+        {% if situacao_publica == 'VENCIDO' %}
+        <span class="selo alerta">venceu em {{ certificado.data_vencimento|data }}</span>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  {# O certificado emitido é imutável. Quando ele foi anulado, a tela abre por
+     aí: o documento continua existindo e continua consultável, mas a validação
+     pública responde "anulado" — e é isso que quem tem o papel na mão precisa
+     saber antes de qualquer outro dado. #}
+  {% if certificado.anulado %}
+  <div class="aviso aviso-erro">
+    <p><strong>Este certificado foi anulado.</strong>
+      {% if certificado.motivo_anulacao %}Motivo: {{ certificado.motivo_anulacao }}.{% endif %}</p>
+    <p>Anular não apaga: o documento continua consultável e a segunda via continua
+      saindo — quem precisa juntar ao processo o papel anulado precisa do papel. O que
+      muda é a resposta da página pública de validação.</p>
+    {% if substituto %}
+    <p>Foi substituído por
+      <a class="mono" href="/certificados/{{ substituto.id }}">{{ substituto.rotulo }}</a>,
+      emitido com número próprio: <strong>documento que circulou se anula e se reemite,
+      nunca se reescreve</strong>.</p>
+    {% else %}
+    {# "nenhum substituto registrado", e não "não houve reemissão": o vínculo só
+       existe quando a anulação declara o substituto, então a tela não pode
+       afirmar que ninguém reemitiu — ela sabe apenas que não foi apontado. #}
+    <p>Nenhum substituto está apontado neste certificado. Para reemitir, volte à turma
+      <span class="mono">{{ contexto.turma_codigo }}</span> e emita de novo: sai com
+      <strong>número próprio</strong> e o contexto de hoje.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="lado-a-lado igual">
+    <div class="pilha">
+
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>O documento</h2>
+          {{ ui.pilula_certificado(situacao_publica) }}
+        </div>
+        <dl class="tabela-dados">
+          <dt>Número</dt>
+          <dd class="mono">{{ certificado.rotulo }}</dd>
+
+          <dt>Chave de validação</dt>
+          <dd class="mono">{{ certificado.chave_validacao }}</dd>
+
+          <dt>Endereço público</dt>
+          <dd class="mono">{{ contexto.url_validacao }}</dd>
+
+          <dt>Emitido em</dt>
+          <dd class="mono">{{ certificado.data_emissao|data }}</dd>
+
+          <dt>Data base do vencimento</dt>
+          <dd class="mono">{{ certificado.data_base_vencimento|data }}</dd>
+
+          <dt>Vencimento</dt>
+          <dd>
+            {% if certificado.data_vencimento %}
+            <span class="mono">{{ certificado.data_vencimento|data }}</span>
+            <span class="discreto">({{ certificado.validade_meses_congelada }} meses)</span>
+            {% else %}<span class="selo">não expira</span>{% endif %}
+          </dd>
+
+          <dt>Modelo</dt>
+          <dd><span class="mono">{{ certificado.modelo_arquivo }}</span>
+            <span class="selo">v{{ contexto.modelo_versao }}</span></dd>
+
+          <dt>SHA-256 do modelo</dt>
+          <dd class="mono discreto">{{ certificado.modelo_sha256 or '—' }}</dd>
+
+          <dt>SHA-256 do texto</dt>
+          <dd class="mono discreto">{{ certificado.hash_conteudo or '—' }}</dd>
+        </dl>
+      </section>
+
+      <section class="cartao">
+        <div class="titulo-cartao"><h2>Segunda via</h2>
+          {% call ui.info('segunda-via', 'de onde a segunda via é reimpressa') %}
+            <p>Reimpressa <strong>do congelado</strong>, nunca do catálogo de hoje. Sai
+              idêntica à primeira, e o texto é conferido contra o SHA-256 da emissão —
+              é por isso que os dois <em>hashes</em> estão escritos no cartão do
+              documento.</p>
+            <p>Vale também para certificado anulado: o papel continua saindo, porque
+              quem precisa juntar ao processo o documento anulado precisa do documento.
+              O que muda é a resposta da página pública de validação.</p>
+          {% endcall %}
+        </div>
+        <div class="acoes">
+          <a class="botao secundario" href="/certificados/{{ certificado.id }}/documento">
+            Segunda via (.docx)</a>
+        </div>
+      </section>
+    </div>
+
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>O que foi congelado</h2>
+        <span class="nota">o que o papel diz, como valia no dia</span>
+      </div>
+      <dl class="tabela-dados">
+        <dt>Participante</dt>
+        <dd>{{ contexto.participante_nome }}
+          <span class="discreto mono">{{ contexto.participante_identificador }}</span></dd>
+
+        <dt>Vínculo</dt>
+        <dd>{{ contexto.participante_vinculo }}</dd>
+
+        {% if contexto.participante_siape %}
+        <dt>SIAPE</dt>
+        <dd class="mono">{{ contexto.participante_siape }}</dd>
+        {% endif %}
+
+        {% if contexto.participante_lotacao %}
+        <dt>Lotação na turma</dt>
+        <dd>{{ contexto.participante_lotacao }}</dd>
+        {% endif %}
+
+        <dt>Treinamento</dt>
+        <dd>{{ contexto.treinamento_nome }}</dd>
+
+        {% if contexto.treinamento_norma %}
+        <dt>Norma</dt>
+        <dd>{{ contexto.treinamento_norma }}</dd>
+        {% endif %}
+
+        <dt>Carga horária</dt>
+        <dd class="mono">{{ contexto.carga_horaria }}h</dd>
+
+        <dt>Período</dt>
+        <dd class="mono">{{ contexto.turma_data_inicio|data }}
+          {%- if contexto.turma_data_fim != contexto.turma_data_inicio %}
+          a {{ contexto.turma_data_fim|data }}{% endif %}</dd>
+
+        {% if contexto.turma_local %}
+        <dt>Local</dt>
+        <dd>{{ contexto.turma_local }}</dd>
+        {% endif %}
+
+        <dt>Frequência</dt>
+        <dd class="mono">{{ contexto.frequencia_percentual }}%</dd>
+
+        {% if contexto.nota_final is not none %}
+        <dt>Nota</dt>
+        <dd class="mono">{{ contexto.nota_final }}</dd>
+        {% endif %}
+
+        <dt>Instrutor(es)</dt>
+        <dd class="empilhada">
+          {% for i in contexto.instrutores %}
+          <span>{{ i.nome }}{% if i.titulo %} — {{ i.titulo }}{% endif %}
+            {%- if i.registro %} <span class="discreto mono">{{ i.registro }}</span>{% endif %}</span>
+          {% else %}
+          <span class="discreto">—</span>
+          {% endfor %}
+        </dd>
+
+        <dt>Emissor</dt>
+        <dd>{{ contexto.setor_sigla }} · {{ contexto.cidade }}</dd>
+      </dl>
+
+      {% if contexto.treinamento_conteudo %}
+      <div class="corpo">
+        <h3>Conteúdo programático congelado</h3>
+        <p class="discreto texto-literal sem-margem">{{ contexto.treinamento_conteudo }}</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ================= o dicionário congelado =================
+     Congelar só os valores não bastaria: editar este mapa depois faria a segunda
+     via sair com o nome do instrutor no campo do participante, sem erro nenhum e
+     sem ninguém perceber. #}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>O dicionário de tags congelado</h2>
+      <span class="contador">{{ contexto.mapa_tags|length }} marcadores</span>
+      <span class="nota">qual campo alimentou qual marcador, na emissão</span>
+    </div>
+    <table class="mapa-tags">
+      <thead>
+        <tr><th scope="col">Marcador no .docx</th><th scope="col">Campo do sistema</th><th scope="col">Vazio bloqueava</th></tr>
+      </thead>
+      {% for marcador, campo in contexto.mapa_tags|dictsort %}
+      <tr>
+        <td><span class="marcador-docx">{{ '{{' }} {{ marcador }} {{ '}}' }}</span></td>
+        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
+          <span class="campo-fixo">{{ campos[campo].rotulo if campo in campos else campo }}
+            <span class="quebra codigo-campo">{{ campo }}</span></span></span></td>
+        <td>{% if marcador in contexto.tags_obrigatorias %}
+            <span class="pilula sem-ponto">bloqueava</span>
+            {% else %}<span class="discreto">—</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="nada">Sem dicionário congelado.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Trilha</h2>
+      <span class="contador">{{ eventos|length }}</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Quando</th><th scope="col">Evento</th><th scope="col">Descrição</th><th scope="col">Quem</th></tr>
+      </thead>
+      {% for evento in eventos %}
+      <tr>
+        <td class="mono">{{ evento.ocorrido_em|momento }}</td>
+        {# sem `mono`: o mono da folha e para numero que se confere digito a
+           digito, e o que esta aqui deixou de ser codigo para ser frase. #}
+        <td>{{ evento.tipo_evento|evento }}</td>
+        {# `Certificado` tem `servidor_id` (denormalizado da inscricao), entao a
+           trilha do certificado sabe de quem e — e o titular le a propria. #}
+        <td>{{ texto_livre(evento.descricao, certificado) }}</td>
+        <td>{{ evento.usuario_nome }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="nada">Sem eventos.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+</div>
+
+{% if pode_anular and not certificado.anulado %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. O aviso vai DENTRO
+   dele — ele diz a consequência, e não o fato: quem lê precisa saber o que
+   acontece com o papel que já está na mão de alguém, e precisa saber disso no
+   instante em que escreve o motivo. #}
+{% call ui.popup_cadastro('anular-certificado', ANULAR,
+                          '/certificados/' ~ certificado.id ~ '/anular', ANULAR,
+                          classe_botao='perigo',
+                          nota='libera a reemissão, com número novo') %}
+  <div class="aviso aviso-erro">
+    <p><strong>O certificado emitido é imutável.</strong> Não há como corrigir este
+      documento: o que existe é anular e reemitir.</p>
+    <p>Anular <strong>não apaga</strong> — o número
+      <span class="mono">{{ certificado.rotulo }}</span> continua consultável e a
+      segunda via continua saindo. O que muda é a página pública de validação, que
+      passa a responder <strong>anulado</strong> para a chave
+      <span class="mono">{{ certificado.chave_validacao }}</span>.</p>
+    <p>É o que libera a reemissão: com este anulado,
+      <span class="mono">{{ contexto.turma_codigo }}</span> volta a emitir para o
+      mesmo inscrito, com <strong>número novo</strong> e o contexto de hoje.
+      Documento que circulou se anula e se reemite, nunca se reescreve.</p>
+  </div>
+  <div class="campo"><label for="motivo-anular">Motivo da anulação</label>
+    <input id="motivo-anular" name="motivo" required
+           placeholder="nome social, alteração civil, erro de digitação…"
+           aria-describedby="dica-motivo">
+    <span class="dica" id="dica-motivo">Fica registrado na trilha e é o que explica,
+      depois, por que existem dois números para a mesma pessoa e a mesma turma.</span></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block titulo %}Catálogos · CSSO{% endblock %}
+
+{% block conteudo %}
+{# A descrição de cada catálogo mora aqui, e não na rota, porque é texto de
+   apresentação: diz o que se decide ali dentro. O índice sem ela era uma lista
+   de onze nomes em que "Percentuais" e "Tipos de risco" não se distinguiam sem
+   abrir os dois. #}
+{% set DESCRICAO = {
+  'campi': 'Sigla, cidade e UF de cada campus — a sigla é o escopo dos perfis.',
+  'unidades-uorg': 'O nome que sai no corpo do parecer e o código de lotação do SIAPE.',
+  'postos-trabalho': 'Onde o servidor efetivamente trabalha; o posto pertence a uma unidade.',
+  'cargos': 'Cargos efetivos usados no cadastro do servidor e impressos no parecer.',
+  'agentes-nocivos': 'Químicos, biológicos e físicos, com o tipo de risco e a fundamentação.',
+  'tipos-risco': 'O que sai no campo “Tipo de risco” do parecer.',
+  'fundamentacoes-legais': 'O texto literal da norma, como ele é impresso.',
+  'percentuais': 'Grau e percentual por adicional — o valor é a lei; só o rótulo se edita.',
+  'textos-padrao': 'Recomendação, alteração e reavaliação, versionados a cada mudança.',
+  'portarias': 'Texto literal preservado; número e data extraídos do próprio texto.',
+  'checklists-modelo': 'As listas de instrução sugeridas por tipo de processo e estado.'
+} %}
+
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Catálogos</h1>
+      <p class="sub">O que o parecer usa como verdade: unidade, posto, cargo, agente,
+        norma e texto. {{ catalogos|length }} catálogos.</p>
+    </div>
+  </div>
+
+  <div class="grade grade-3">
+    {% for chave, rotulo in catalogos %}
+    <a class="cartao link" href="/catalogos/{{ chave }}">
+      <span class="titulo">{{ rotulo }}</span>
+      <span class="discreto">{{ DESCRICAO.get(chave, 'Catálogo do domínio.') }}</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  {# O que vale para os onze, e é o que faz a edição ser segura: mudar o
+     catálogo hoje não reescreve o que já saiu assinado. #}
+  <div class="aviso aviso-info">
+    <p>Editar um catálogo <strong>não muda parecer já emitido</strong>: o parecer
+      congela o conteúdo na emissão (RN-15) e reimprime a partir dele. Rascunho é
+      o contrário — ele segue o catálogo até ser emitido.</p>
+    <p>Texto padrão é o caso versionado de verdade: cada mudança cria a versão
+      seguinte e aposenta a anterior, sem apagá-la.</p>
+  </div>
+
+</div>
+{% endblock %}

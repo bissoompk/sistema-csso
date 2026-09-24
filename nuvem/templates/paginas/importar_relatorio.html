@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Relatório da importação · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Relatório da planilha</span>{% endblock %}
+
+{% block acoes_cabecalho %}
+<a class="botao secundario" href="/importar">Voltar à importação</a>
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Importação da planilha</h1>
+      <p class="identificacao">
+        <span class="mono">{{ relatorio.arquivo }}</span>
+        <span class="ponto">·</span>
+        {{ ui.pilula_carga(aplicado) }}
+      </p>
+    </div>
+  </div>
+
+  {# Os cinco números da carga, na fileira que o resto do sistema usa para
+     indicador. É o resumo que se confere contra a planilha aberta ao lado —
+     todos em mono, todos alinhados, para a comparação ser de olho e não de
+     cálculo. A cor só aparece quando o número não é zero: parcial em zero não
+     é bom nem ruim, é ausência. #}
+  {% set completas = relatorio.contar('COMPLETA') %}
+  {% set parciais = relatorio.contar('PARCIAL') %}
+  {% set reservas = relatorio.contar('RESERVA') %}
+  <div class="grade grade-kpi">
+    <div class="kpi">
+      <div class="rotulo">Linhas lidas</div>
+      <div class="medida"><span class="valor">{{ relatorio.total }}</span></div>
+    </div>
+    <div class="kpi {{ 'ok' if completas }}">
+      <div class="rotulo">Completas</div>
+      <div class="medida"><span class="valor">{{ completas }}</span>
+        <span class="nota">todas as colunas exigidas</span></div>
+    </div>
+    <div class="kpi {{ 'alerta' if parciais }}">
+      <div class="rotulo">Parciais</div>
+      <div class="medida"><span class="valor">{{ parciais }}</span>
+        <span class="nota">entram com o furo declarado</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Reservas</div>
+      <div class="medida"><span class="valor">{{ reservas }}</span>
+        <span class="nota">número sem conteúdo</span></div>
+    </div>
+    <div class="kpi {{ 'perigo' if relatorio.rejeitadas }}">
+      <div class="rotulo">Rejeitadas</div>
+      <div class="medida"><span class="valor">{{ relatorio.rejeitadas|length }}</span>
+        <span class="nota">não entraram</span></div>
+    </div>
+  </div>
+
+  {% if not aplicado %}
+  <div class="aviso aviso-alerta">
+    Esta é a simulação: o banco foi revertido ao fim da leitura e <strong>nada
+    foi gravado</strong>. Confira linha a linha o que está abaixo — sobretudo as
+    divergências, que são os casos em que a planilha diz duas coisas — e só então
+    reenvie o mesmo arquivo com <em>aplicar de verdade</em> marcado.
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr><th scope="col" class="numerico">Linha</th><th scope="col">Nº/Ano</th><th scope="col">Classificação</th><th scope="col">Ação</th>
+            <th scope="col">Pendências</th><th scope="col">Divergências</th></tr>
+      </thead>
+      {% for l in relatorio.linhas %}
+      <tr>
+        <td class="numerico">{{ l.linha }}</td>
+        <td class="mono">{{ l.numero }}/{{ l.ano }}</td>
+        <td>{{ ui.pilula_classificacao(l.classificacao) }}</td>
+        <td>{{ l.acao }}</td>
+        {# Pendência é dado que falta; divergência é dado que não bate com outro
+           dado. Cada motivo sai por extenso, um por linha: a frase inteira é a
+           informação — "marco 2024-03-12 diverge da portaria 2024-04-01" diz o
+           que conferir, e "1 divergência" não diz nada. #}
+        <td>
+          {%- if l.pendencias %}
+          <ul class="motivos erro">{% for p in l.pendencias %}<li>{{ p }}</li>{% endfor %}</ul>
+          {%- else %}<span class="discreto">—</span>{% endif %}</td>
+        <td>
+          {%- if l.divergencias %}
+          <ul class="motivos alerta">{% for d in l.divergencias %}<li>{{ d }}</li>{% endfor %}</ul>
+          {%- else %}<span class="discreto">—</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="nada">Nenhuma linha lida — a planilha não tinha
+          conteúdo além do cabeçalho.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {% if relatorio.rejeitadas %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Rejeitadas</h2>
+      <span class="contador erro">{{ relatorio.rejeitadas|length }}</span>
+      <span class="nota">não entraram nem como parcial</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th scope="col">Referência</th><th scope="col">Motivo</th></tr>
+      </thead>
+      {% for ref, motivo in relatorio.rejeitadas %}
+      <tr><td class="mono">{{ ref }}</td><td>{{ motivo }}</td></tr>{% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

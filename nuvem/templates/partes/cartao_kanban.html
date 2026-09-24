@@ -1,0 +1,52 @@
+{% import "partes/macros.html" as ui with context %}
+{% set p = r.processo %}
+{# A cor do tipo de processo entra como variável, não como propriedade: o
+   desenho da borda continua na folha, o template só informa o valor. E quando o
+   tipo não tem cor o `style` não sai: a cor da AUSÊNCIA é o `var(--cor-tipo, …)`
+   do `csso.css`, e escrevê-la aqui também era manter o mesmo cinza em dois
+   arquivos — dos quais só um seria corrigido no dia em que ele mudasse. #}
+<article class="cartao-kanban" draggable="true"
+         data-processo="{{ p.id }}"
+         {% if p.tipo_processo and p.tipo_processo.cor_hex %}
+         style="--cor-tipo: {{ p.tipo_processo.cor_hex }}"{% endif %}
+         id="cartao-{{ p.id }}">
+  <div class="topo">
+    {# A coluna já diz o grupo; o ponto diz o estado exato dentro dele. #}
+    {{ ui.ponto_estado(p.estado_tecnico) }}
+    <span class="mono" title="{{ p.nup }}">{{ p.nup }}</span>
+    <span class="selo {{ 'erro' if r.atrasado }}"
+          title="{{ r.dias_no_estado }} dias neste estado{% if r.atrasado %}; o SLA da coluna é de {{ r.sla }} dias{% endif %}">
+      {{ r.dias_no_estado }}d</span>
+  </div>
+  <span class="titulo">
+    <a href="/processos/{{ p.id }}">{{ identificar(p, vazio=p.nup) }}</a>
+  </span>
+  <div class="meta">
+    <span title="Estado técnico">{{ p.estado_tecnico|estado }}</span>
+    {% if p.prazo %}<span class="ponto">·</span><span title="Prazo" class="mono">{{ p.prazo|data }}</span>{% endif %}
+    {% if r.anexos %}<span class="ponto">·</span><span title="Anexos">{{ r.anexos }} anexo(s)</span>{% endif %}
+    {% if p.observacoes %}<span class="ponto">·</span><span title="Tem observações">obs.</span>{% endif %}
+  </div>
+  {{ ui.progresso_checklist(r.checklist_feitos, r.checklist_total) }}
+  {# Mover sem arrastar. O arrasto do HTML5 não existe no toque nem no teclado:
+     quem estava num tablet ou navegando por Tab precisava sair do quadro e
+     mover pela ficha. O menu é um `<form method="post">` comum com um botão
+     por coluna de destino — sem JavaScript ele submete e a rota devolve o
+     quadro inteiro; com JavaScript o script do quadro intercepta e o cartão
+     percorre o MESMO caminho do arrasto. A coluna atual fica de fora da lista:
+     "mover para onde já está" não é um movimento.
+
+     `coluna` vem da rota quando este cartão volta como fragmento; na página
+     inteira quem sabe a coluna é o laço de `kanban.html` (`codigo`). #}
+  {% set coluna_atual = coluna if coluna is defined else codigo %}
+  {% if usuario and usuario.pode('processo.status') %}
+  <details class="mover">
+    <summary>mover para…</summary>
+    <form method="post" action="/kanban/mover/{{ p.id }}" data-mover>
+      {% for destino, rotulo in COLUNAS_KANBAN if destino != coluna_atual %}
+      <button type="submit" name="coluna" value="{{ destino }}" class="secundario compacto">{{ rotulo }}</button>
+      {% endfor %}
+    </form>
+  </details>
+  {% endif %}
+</article>

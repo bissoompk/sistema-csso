@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Demandas · CSSO{% endblock %}
+
+{# Sem bloco `trilha`: /demandas é item da base em `app/modulos.py`, então os
+   dois níveis saem de lá — "Base compartilhada / Demandas". A demanda não é de
+   Processos SEI (metade delas nunca vira processo) nem de módulo nenhum: é
+   transversal por natureza, e é isso que a trilha tem de dizer. #}
+
+{# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. "Registrar demanda" nos três lugares: quem clicou
+   precisa reconhecer onde chegou. #}
+{% set CADASTRAR = 'Registrar demanda' %}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and d) else false %}
+{% set erro_cadastro = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{% if pode_escrever %}
+{{ ui.botao_cadastro('nova-demanda', CADASTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Demandas</h1>
+      <p class="sub">O que chegou por e-mail ou no balcão e ainda não é processo
+        SEI — com dono, com desfecho, e sem sumir.</p>
+      {% call ui.info('o-que-e-demanda', 'o que entra aqui, e o que não entra') %}
+        <p><strong>Entra o pedido que chegou por fora do SEI</strong> e precisa de
+          encaminhamento: o e-mail da chefia perguntando se o laboratório precisa de
+          laudo, a pessoa que apareceu no balcão com dúvida sobre EPI, o telefonema da
+          PROGEP. Parte disso vira processo depois; parte nunca vai virar — e as duas
+          precisam de resposta do mesmo jeito.</p>
+        <p><strong>Não entra processo SEI.</strong> Processo tem NUP, tem os dezenove
+          estados da instrução do adicional e tem prazo de norma: ele vive em
+          <a href="/processos">Processos</a>. Registrar aqui uma coisa que já é
+          processo produziria duas listas para o mesmo trabalho, e a conferência
+          entre elas seria manual para sempre.</p>
+        <p><strong>Também não é lista de tarefas.</strong> A tarefa que nasce de uma
+          regra do sistema — avaliação quantitativa, laudo superado, CA a vencer —
+          está em <a href="/pendencias">Pendências</a>, e continua nascendo sozinha.
+          A demanda é o registro de um pedido de alguém; a pendência é o trabalho que
+          uma regra cobra.</p>
+        <p><strong>O desfecho é obrigatório para encerrar</strong>, e é aí que está o
+          valor: resolvida, virou processo, encaminhada a outro setor, ou sem
+          providência com o motivo escrito. “Sem providência” é decisão legítima —
+          o que não pode é ela ser tomada por esquecimento.</p>
+      {% endcall %}
+    </div>
+    {# O mesmo par de visões do resto do sistema: é a mesma lista em duas
+       formas, então vive num controle só, e não em dois botões que parecem
+       ações. #}
+    <div class="ao-lado">
+      <div class="alternador">
+        <a class="{{ 'ativo' if not apenas_minhas }}"
+           href="/demandas{{ '?estado=' ~ filtro_estado if filtro_estado }}">Todas</a>
+        <a class="{{ 'ativo' if apenas_minhas }}"
+           href="/demandas?minhas=1{{ '&estado=' ~ filtro_estado if filtro_estado }}">Só as minhas</a>
+      </div>
+    </div>
+  </div>
+
+  {% if atrasadas %}
+  {# O atraso é a razão de o prazo existir. O aviso diz a consequência, e não só
+     o número — é a mesma faixa de /pendencias, porque é o mesmo fato: as duas
+     telas mostram a MESMA tarefa quando a demanda tem prazo. #}
+  <div class="aviso aviso-erro sem-ponto">
+    <p><strong>{{ atrasadas }} demanda(s) passaram do prazo.</strong> O prazo foi
+      prometido a quem pediu, e não a uma regra: vencido, ele não deixa de correr —
+      quem cobra é a pessoa do outro lado. As mesmas linhas estão no sino, em
+      <a href="/pendencias">Pendências</a>.</p>
+  </div>
+  {% endif %}
+
+  {# O recorte é de UMA dimensão — a situação —, então é fileira de fichas com
+     contagem, e a busca livre entra no `filtro-inline` ao lado. Mesma fileira de
+     /laudos, /certificados e da fila de EPI. A contagem sai da lista COMPLETA,
+     e não da filtrada: uma ficha "Encerradas (0)" que só diz zero porque o
+     filtro vigente já as excluiu não informa nada. #}
+  <div class="fileira">
+    <span class="rotulo-grupo">Situação</span>
+    {% for codigo, rotulo in visoes %}
+    <a class="ficha-filtro {{ 'ativa' if filtro_estado == codigo }}"
+       href="/demandas?estado={{ codigo }}{{ '&minhas=1' if apenas_minhas }}{{ '&q=' ~ q|urlencode if q }}">
+      {{ rotulo }} <span class="contador">
+        {%- if codigo -%}{{ contagem.get(codigo, 0) }}
+        {%- else -%}{{ contagem.get('ABERTA', 0) + contagem.get('EM_ANDAMENTO', 0) }}
+        {%- endif -%}</span></a>
+    {% endfor %}
+    <form method="get" action="/demandas" class="filtro-inline" role="search">
+      {% if filtro_estado %}
+      <input type="hidden" name="estado" value="{{ filtro_estado }}">{% endif %}
+      {% if apenas_minhas %}<input type="hidden" name="minhas" value="1">{% endif %}
+      <label class="oculto" for="f-demanda">Buscar pelo assunto da demanda</label>
+      {# A busca olha o ASSUNTO, e não quem pediu: casar por nome devolveria uma
+         linha e amarraria o nome ao código opaco da sessão para quem não pode
+         ver nome — o oráculo que a RN-19 fecha em /servidores. #}
+      <input id="f-demanda" type="search" name="q" value="{{ q }}"
+             placeholder="assunto da demanda">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Chegada</th><th scope="col">Assunto</th>
+          <th scope="col">Quem demandou</th><th scope="col">Responsável</th>
+          <th scope="col">Prazo</th><th scope="col">Situação</th>
+        </tr>
+      </thead>
+      {% for dm in demandas %}
+      <tr>
+        <td class="mono">{{ dm.data_chegada|data }}
+          <span class="discreto">{{ rotulo_canal.get(dm.canal, dm.canal) }}</span></td>
+        <td>
+          <a href="/demandas/{{ dm.id }}">{{ dm.assunto }}</a>
+          {%- if dm.desfecho %} {{ ui.pilula_desfecho(dm.desfecho, rotulo_desfecho) }}{% endif %}</td>
+        {# RN-19. Havendo vínculo com o cadastro, quem manda é `identificar(...)`
+           — é servidor, e a regra da casa vale igual aqui. Não havendo, sai o
+           texto livre, que é a única identificação que existe e não é de
+           servidor sob avaliação: é a chefia, o outro setor, alguém de fora. #}
+        <td>
+          <span class="recorte">
+            {%- if dm.servidor %}{{ identificar(dm.servidor) }}
+            {%- else %}{{ dm.solicitante_nome }}{% endif -%}</span>
+          {%- if dm.unidade %}<span class="discreto"> · {{ dm.unidade.sigla }}</span>{% endif %}</td>
+        <td>
+          {%- if dm.responsavel %}<span class="recorte" title="{{ dm.responsavel.nome }}">
+            {{- dm.responsavel.nome -}}</span>
+          {%- else %}<span class="discreto">sem dono</span>{% endif %}</td>
+        <td>
+          {% if dm.prazo and dm.atrasada(hoje) %}
+          <span class="selo erro" title="{{ (hoje - dm.prazo).days }} dia(s) de atraso">
+            {{ dm.prazo|data }}</span>
+          {% elif dm.prazo %}
+          <span class="mono">{{ dm.prazo|data }}</span>
+          {% else %}
+          <span class="discreto">sem prazo</span>
+          {% endif %}
+        </td>
+        <td>{{ ui.pilula_demanda(dm.estado, rotulo_estado_demanda) }}</td>
+      </tr>
+      {% else %}
+      {{ ui.vazio_de_lista(
+           'Nenhuma demanda nesta seleção.' if (q or filtro_estado or apenas_minhas)
+             else 'Nenhuma demanda registrada.',
+           ('Nada casa com “' ~ q ~ '”. A busca olha o assunto — nunca quem pediu.')
+             if q else
+           ('Registre a primeira em “' ~ CADASTRAR ~ '”, no canto superior direito: '
+            ~ 'é o e-mail que chegou hoje e ainda não virou nada.'),
+           6) }}
+      {% endfor %}
+    </table>
+  </div>
+
+  {# Os eixos do recorte viajam juntos na paginação: sem eles, "próxima"
+     devolveria a fila inteira a partir da página 2. #}
+  {% set eixos = [] %}
+  {% if filtro_estado %}{% set _ = eixos.append('estado=' ~ filtro_estado) %}{% endif %}
+  {% if apenas_minhas %}{% set _ = eixos.append('minhas=1') %}{% endif %}
+  {% if q %}{% set _ = eixos.append('q=' ~ q|urlencode) %}{% endif %}
+  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/demandas',
+                  eixos|join('&')) }}
+
+</div>
+
+{% if pode_escrever %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna.
+
+   Os padrões que fazem a entrada caber em trinta segundos estão nos `value=`
+   deste formulário e em `servicos/demandas.registrar`: data de hoje, canal mais
+   comum primeiro, responsável = quem está logado. Se registrar der trabalho, o
+   registro não acontece — e a lista vazia não é sinal de que não há demanda. #}
+{% call ui.popup_cadastro('nova-demanda', CADASTRAR, '/demandas', CADASTRAR,
+                          aberto=recusado, erro=erro_cadastro,
+                          nota='o que chegou e ainda não é processo') %}
+  <div class="campo">
+    <label for="assunto">Assunto</label>
+    <input id="assunto" name="assunto" required maxlength="160"
+           value="{{ d.get('assunto') or '' }}"{{ ' autofocus' if recusado }}
+           placeholder="Chefia da FAMED pergunta sobre laudo do laboratório"
+           aria-describedby="dica-assunto">
+    <span class="dica" id="dica-assunto">Uma linha — é ela que aparece na fila.</span>
+  </div>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="canal">Como chegou</label>
+      <select id="canal" name="canal">
+        {% for c in canais %}
+        <option value="{{ c }}"{{ ui.sel(d.get('canal'), c) }}>{{ rotulo_canal[c] }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo">
+      <label for="data_chegada">Data de chegada</label>
+      <input id="data_chegada" name="data_chegada" type="date"
+             value="{{ d.get('data_chegada') or hoje.isoformat() }}"></div>
+    <div class="campo">
+      <label for="prazo">Prazo (opcional)</label>
+      <input id="prazo" name="prazo" type="date" value="{{ d.get('prazo') or '' }}"
+             aria-describedby="dica-prazo">
+      {# Fica na tela, e não no (i): muda a decisão que a pessoa está tomando
+         agora — é a diferença entre a demanda cobrar e a demanda esperar. #}
+      <span class="dica" id="dica-prazo">Com prazo, a demanda entra no sino junto
+        das pendências e fica vermelha quando atrasa. Sem prazo, fica só nesta
+        lista.</span></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="solicitante_nome">Quem demandou</label>
+      <input id="solicitante_nome" name="solicitante_nome" required maxlength="160"
+             value="{{ d.get('solicitante_nome') or '' }}"
+             aria-describedby="dica-solicitante">
+      <span class="dica" id="dica-solicitante">Pode ser chefia, outro setor ou
+        alguém de fora — nome escrito basta.</span></div>
+    <div class="campo">
+      <label for="solicitante_servidor_id">Servidor do cadastro</label>
+      <select id="solicitante_servidor_id" name="solicitante_servidor_id"
+              aria-describedby="dica-vinculo">
+        <option value="">—</option>
+        {%- for sv in servidores %}{% set quem = identificar(sv) %}
+        <option value="{{ sv.id }}"{{ ui.sel(d.get('solicitante_servidor_id'), sv.id) }}>
+          {{- quem.nome }}{% if quem.siape %} ({{ quem.siape }}){% endif %}</option>
+        {%- endfor %}
+      </select>
+      <span class="dica" id="dica-vinculo">Opcional. Só quando quem pediu já está
+        no cadastro.</span></div>
+    <div class="campo">
+      <label for="solicitante_unidade_uorg_id">Unidade</label>
+      <select id="solicitante_unidade_uorg_id" name="solicitante_unidade_uorg_id">
+        <option value="">—</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}"{{ ui.sel(d.get('solicitante_unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>
+        {% endfor %}
+      </select></div>
+  </div>
+  <div class="campo">
+    <label for="descricao">O que foi pedido</label>
+    <textarea id="descricao" name="descricao" rows="3"
+              aria-describedby="dica-descricao">{{ d.get('descricao') or '' }}</textarea>
+    {# Fica na tela, e não no (i): é a recusa que a pessoa vai encontrar se
+       escrever a frase errada, e ela precisa saber ANTES de digitar. #}
+    <span class="dica" id="dica-descricao">Descreva o pedido e o ambiente, nunca a
+      condição de saúde de ninguém: estado de saúde, gestação, CID e diagnóstico
+      são recusados na gravação (RN-21; LGPD art. 11).</span>
+  </div>
+  <div class="campo">
+    <label for="responsavel_id">Responsável</label>
+    <select id="responsavel_id" name="responsavel_id">
+      <option value="">sem dono</option>
+      {% for p in pessoas %}
+      <option value="{{ p.id }}"
+              {{- ui.sel(d.get('responsavel_id') or usuario.id, p.id) }}>{{ p.nome }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endcall %}
+{% endif %}
+{% endblock %}

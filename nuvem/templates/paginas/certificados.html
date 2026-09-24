@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Certificados · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Certificados</h1>
+      <p class="sub">
+        {#- `recorte.total` é a seleção; `itens` virou a página. -#}
+        {%- if not recorte.total %}Nenhum certificado nesta seleção.
+        {%- else %}{{ recorte.total }} certificado(s) nesta seleção
+        {%- if recorte.total > recorte.por_pagina %}, {{ itens|length }} nesta
+        página{% endif %}.{% endif %}
+        O documento que circula, com a segunda via reimpressa do congelado.</p>
+      {# Explicação: lê-se uma vez e depois se sabe. O que muda decisão nesta tela
+         são as saídas de lista vazia, que dizem onde a busca olhou. #}
+      {% call ui.info('congelado-e-situacao', 'o congelado, e por que vencido não é congelado') %}
+        <p>Cada certificado guarda o <strong>contexto congelado</strong> do dia em que
+          foi emitido — conteúdo, instrutor, layout e até o dicionário de tags —, e é
+          dele que a segunda via é reimpressa. Mudar o catálogo depois não mexe em papel
+          que já saiu.</p>
+        <p>A emissão acontece na aba <strong>Emissão</strong> da turma, que é onde estão
+          a lista de quem está apto e o botão de emitir em lote — o certificado não
+          nasce nesta tela.</p>
+        <p><strong>Vencido</strong> e <strong>anulado</strong> são estado, calculados
+          agora: nenhum dos dois é congelado, senão o certificado apareceria como válido
+          para sempre. O filtro acima é pela situação gravada, então o vencido continua
+          listado entre os emitidos.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  <div class="fileira">
+    <span class="rotulo-grupo">Situação</span>
+    <a class="ficha-filtro {{ 'ativa' if not filtro_situacao }}" href="/certificados">Todos</a>
+    {% for codigo, rotulo in situacoes %}
+    <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
+       href="/certificados?situacao={{ codigo }}">{{ rotulo }}</a>
+    {% endfor %}
+    {# A busca é pela CHAVE, e não por nome: a lista autenticada já mostra o nome,
+       e a consulta por chave é o que o suporte faz quando alguém liga com o papel
+       na mão. #}
+    <form method="get" action="/certificados" class="filtro-inline">
+      {% if filtro_situacao %}
+      <input type="hidden" name="situacao" value="{{ filtro_situacao }}">{% endif %}
+      <label class="oculto" for="f-treinamento">Filtrar por treinamento</label>
+      <select id="f-treinamento" name="treinamento_id" data-envia-ao-mudar>
+        <option value="">Treinamento: todos</option>
+        {% for t in treinamentos %}
+        <option value="{{ t.id }}" {% if filtro_treinamento == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
+        {% endfor %}
+      </select>
+      <label class="oculto" for="f-chave">Chave de validação</label>
+      <input id="f-chave" class="mono" type="search" name="busca" value="{{ busca }}"
+             placeholder="CSSO-2026-K7QMX-3FTB9-H">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Nº</th><th scope="col">Participante</th><th scope="col">Treinamento</th><th scope="col">Emissão</th>
+        <th scope="col">Vencimento</th><th scope="col">Situação</th>
+      </tr>
+    </thead>
+    {% for c in itens %}
+    {% set congelado = c.contexto_congelado or {} %}
+    <tr>
+      <td><a class="mono" href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
+      {# O nome vem do congelado: é o que o papel diz. Renomear depois não muda
+         quem consta no documento que circulou. #}
+      <td class="nome">{{ congelado.get('participante_nome') or c.participante.nome_exibicao }}
+        <span class="quebra discreto mono">{{ c.participante.identificador_publico }}</span></td>
+      <td>{{ congelado.get('treinamento_nome') or c.treinamento.nome }}
+        {% if congelado.get('turma_codigo') %}
+        <span class="quebra discreto mono">{{ congelado.get('turma_codigo') }}</span>{% endif %}</td>
+      <td class="mono">{{ c.data_emissao|data }}</td>
+      <td>
+        {% if c.data_vencimento %}<span class="mono">{{ c.data_vencimento|data }}</span>
+        {% else %}<span class="selo">não expira</span>{% endif %}
+      </td>
+      <td>{{ ui.pilula_certificado(situacao_publica.get(c.id)) }}</td>
+    </tr>
+    {% else %}
+    {# A busca desta tela é por CHAVE EXATA, e é isso que a saída precisa dizer:
+       quem digitar o nome do participante aqui não acha nada e conclui que o
+       certificado não foi emitido. O certificado não nasce nesta tela — ele sai
+       da aba Emissão da turma —, então o próximo passo aponta para lá. #}
+    {% if busca %}
+    {{ ui.vazio_de_lista(
+         'Nenhum certificado com essa chave.',
+         'Este campo procura a chave de validação inteira e exata
+          (CSSO-2026-K7QMX-3FTB9-H), como ela vem impressa no papel — não o nome
+          de quem recebeu nem o número do certificado.', 6) }}
+    {% elif filtro_situacao or filtro_treinamento %}
+    {{ ui.vazio_de_lista(
+         'Nenhum certificado nesta seleção.',
+         'A ficha de situação e o seletor de treinamento valem ao mesmo tempo.
+          “Todos”, na fileira acima, desfaz o recorte.', 6) }}
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhum certificado emitido ainda.',
+         'O certificado não se cria aqui: ele sai da aba “Emissão” de uma turma
+          concluída, para quem foi aprovado. Esta tela é o registro do que já
+          circulou.', 6) }}
+    {% endif %}
+    {% endfor %}
+  </table>
+  </div>
+
+  {# Os três eixos do recorte viajam juntos na paginação — situação, treinamento
+     e chave —, senão "próxima" abriria a lista inteira. #}
+  {% set eixos = [] %}
+  {% if filtro_situacao %}{% set _ = eixos.append('situacao=' ~ filtro_situacao) %}{% endif %}
+  {% if filtro_treinamento %}{% set _ = eixos.append('treinamento_id=' ~ filtro_treinamento) %}{% endif %}
+  {% if busca %}{% set _ = eixos.append('busca=' ~ busca|urlencode) %}{% endif %}
+  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/certificados',
+                  eixos|join('&')) }}
+
+</div>
+{% endblock %}

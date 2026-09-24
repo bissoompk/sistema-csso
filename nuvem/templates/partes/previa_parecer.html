@@ -1,0 +1,114 @@
+{# O fac-simile do .docx — e SO o fac-simile. O documento que sai da casa nao
+   passa por aqui: `/pareceres/{id}/docx` e `/pdf` renderizam o modelo congelado
+   por `documento.renderizar(contexto.como_dicionario(), ...)`, que le
+   `nome_servidor` do contexto e nao toca neste arquivo. Por isso o PARECER
+   EMITIDO continua nominal, como tem de ser — parecer sem nome nao e parecer —,
+   e o que muda e so quem le a previa NA TELA.
+
+   Na tela a previa e uma tela como as outras, e sob `parecer.ver` ela abria com
+   nome e SIAPE para quem nao tem `exposicao.ver`. `c.nome_servidor` escapou da
+   guarda da RN-19 por se chamar diferente de `servidor.nome`; o campo mudou de
+   nome, o dado nao.
+
+   Quando o leitor PODE ler o nome, sai `c.nome_servidor` — o valor CONGELADO
+   (RN-15), e nao `identificar(parecer).nome`: a previa promete "e o que sai no
+   .docx", e o cadastro pode ter mudado depois da emissao. A identificacao so
+   decide SE mostra; o que mostra continua vindo do congelado. #}
+{% set servidor_do_parecer = identificar(parecer) %}
+<div class="previa">
+  <div class="cabecalho">
+    <strong>MINISTÉRIO DA EDUCAÇÃO</strong>
+    <span>Universidade Federal dos Vales do Jequitinhonha e Mucuri</span><br>
+    <span>Pró-Reitoria de Gestão de Pessoas</span><br>
+    <span>{{ c.nome_extenso_emissor }}</span><br>
+    <span>{{ c.endereco_emissor }}</span><br>
+    <span>{{ c.telefone_emissor }}</span>
+  </div>
+
+  <p class="mono discreto">LT Nº {{ c.numero_parecer }}/{{ c.ano }} &nbsp;&nbsp;&nbsp; IN 15/2022</p>
+
+  <div class="linha-titulo">
+    <span>Parecer técnico no {{ c.numero_parecer }}/{{ c.ano }} – {{ c.sigla_unidade_emissora }}</span>
+    <span>{{ c.cidade }}, {{ data_extenso }}</span>
+  </div>
+
+  <p>{{ c.tratamento_destinatario }}<br>
+     {{ c.pro_reitor }}<br>
+     {{ c.pro_reitor_cargo }}</p>
+
+  <p><strong>Assunto:</strong> Processo de adicional ocupacional</p>
+  <p>Prezada Pró-Reitora,</p>
+  <p>Encaminhamos, para ciência e devidas providências, o parecer técnico referente à
+     solicitação de {{ c.laudo_de }} do adicional ocupacional.</p>
+
+  {# Aqui NÃO entra `<thead>`, e é a única tabela do sistema em que isso é
+     decisão e não esquecimento. O `<th>` desta tabela é cabeçalho de LINHA — o
+     rótulo à esquerda do valor, como no .docx que ela imita —, e a tarja de
+     cima é o título da caixa, não uma linha de cabeçalho de colunas. Num
+     `<thead>` o navegador repetiria "IDENTIFICAÇÃO DO LOCAL AVALIADO" no alto
+     da página 2 de um parecer que atravessa a folha, anunciando uma seção que
+     terminou. `scope` continua sendo o que faz o leitor de tela ligar valor e
+     rótulo: `row` nos três rótulos, `colgroup` na tarja que cobre as duas
+     colunas. #}
+  <table>
+    <tr><th colspan="2" scope="colgroup" style="text-align:center">IDENTIFICAÇÃO DO LOCAL AVALIADO</th></tr>
+    <tr><th scope="row" style="width:34%">Unidade</th><td>{{ c.unidade }}</td></tr>
+    <tr><th scope="row">Posto de trabalho avaliado</th>
+        <td>{% for p in c.postos %}{{ p }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+    <tr><th scope="row">UORG</th><td>{{ c.uorg_bruto|title }}</td></tr>
+  </table>
+
+  <p>Tendo em vista os documentos constantes no presente processo, emitimos o seguinte parecer:</p>
+
+  <table>
+    <tr>
+      <td><strong>Nº do Laudo Técnico:</strong><br>Nº {{ c.numero_parecer }}/{{ c.ano }}</td>
+      <td><strong>Tipo do Laudo:</strong><br>{{ c.tipo_laudo }}</td>
+      <td><strong>Nº Processo:</strong><br>{{ c.numero_processo_sei }}</td>
+    </tr>
+    <tr>
+      <td><strong>Nome do Servidor:</strong><br>
+        {{ c.nome_servidor if servidor_do_parecer.nominal else servidor_do_parecer.nome }}</td>
+      {# A matricula vai junto, e por `texto_livre` para nao repetir o `SRV-xxxx`
+         na celula ao lado: suprimir o nome e publicar o SIAPE nao suprime nada —
+         o SIAPE e a chave, e e por ele que /servidores promete que se acha
+         alguem. #}
+      <td><strong>Matrícula:</strong><br>{{ texto_livre(c.matricula, parecer) }}</td>
+      <td><strong>Cargo:</strong><br>{{ c.cargo }}</td>
+    </tr>
+    <tr>
+      <td><strong>Função:</strong><br>{{ c.funcao }}</td>
+      <td colspan="2"><strong>Laudo Técnico para Concessão de Adicionais Ocupacionais:</strong><br>
+        Nº {{ c.laudo_siape }}</td>
+    </tr>
+    <tr>
+      <td><strong>Tipo de risco:</strong><br>{{ c.tipo_risco }}</td>
+      <td colspan="2"><strong>Agente nocivo à saúde:</strong><br>
+        {% for a in c.agentes_nocivos %}{{ a }}{% if not loop.last %}<br>{% endif %}{% endfor %}*</td>
+    </tr>
+    <tr>
+      <td><strong>Percentual aplicável</strong><br>{{ c.percentual_aplicavel }}</td>
+      <td colspan="2"><strong>Portaria de Localização:</strong><br>{{ c.portaria_localizacao }}</td>
+    </tr>
+    <tr>
+      <td colspan="3">
+        <strong>Fundamentação Legal</strong><br><br>
+        {{ c.fundamentacao_legal|replace('\n', '<br>')|safe }}*<br><br>
+        {% if c.alteracao %}{{ c.alteracao }}<br><br>{% endif %}
+        {% if c.reavaliacao %}{{ c.reavaliacao }}{% endif %}
+      </td>
+    </tr>
+    <tr><td colspan="3" class="discreto">
+      *É de responsabilidade do servidor e suas chefias (conforme Art. 17 da IN 15/2022) as
+      informações documentadas no “Formulário” que registra o tipo de trabalho e o tempo de
+      exposição ao risco.</td></tr>
+    <tr><td colspan="3"><strong>Recomendação</strong><br><br>{{ c.recomendacao_tecnica }}</td></tr>
+  </table>
+
+  <div class="assinatura">
+    _____________________________<br>
+    {{ c.assinante_nome }}<br>
+    Mat. SIAPE {{ c.assinante_matricula }}<br>
+    {{ c.assinante_titulo }}
+  </div>
+</div>

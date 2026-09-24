@@ -1,0 +1,39 @@
+{
+  "name": "csso-nuvem",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch ferramentas/servidor-local.ts",
+    "build": "node ferramentas/preparar-publicacao.mjs",
+    "db:gerar": "drizzle-kit generate",
+    "db:migrar": "tsx ferramentas/migrar.ts",
+    "db:semear": "tsx ferramentas/semear.ts",
+    "ambiente-teste": "tsx ferramentas/ambiente-teste.ts",
+    "tipos": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.1",
+    "docxtemplater": "^3.71.0",
+    "drizzle-orm": "^0.45.3",
+    "exceljs": "^4.4.0",
+    "hash-wasm": "^4.12.0",
+    "hono": "^4.13.9",
+    "nunjucks": "^3.2.4",
+    "pizzip": "^3.3.0",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@netlify/functions": "^6.0.0",
+    "@types/node": "^26.6.2",
+    "@types/nunjucks": "^3.2.6",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

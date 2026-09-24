@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}CSSO · Sisa/UFVJM{% endblock %}</title>
+  <link rel="stylesheet" href="/estaticos/css/csso.css">
+  {# O HTMX injeta, ao carregar, um `<style>` com as regras do
+     `.htmx-indicator` — e a CSP declara `style-src-elem 'self'`, então esse
+     elemento é recusado e vira uma violação no console de TODA tela. Medido
+     antes de desligar: `hx-indicator` não aparece em atributo nenhum dos 64
+     templates (só em três comentários que explicam por que ele não é usado) e
+     `csso.css` não tem nenhuma regra `.htmx-indicator`/`.htmx-request`. Os
+     três estados da troca parcial são desenhados por `[data-carregando]`, na
+     folha, pelo tratador global lá embaixo. Ou seja: essas regras não pintam
+     nada aqui — desligá-las tira uma violação de CSP e não tira comportamento.
+
+     Meta, e não `htmx.config.x = false` num script: a configuração precisa
+     valer ANTES de o htmx carregar, e um script antes dele seria um oitavo
+     script embutido para dizer uma linha. #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
+  <script src="/estaticos/htmx.min.js" defer></script>
+  {# Os comportamentos de tela que não cabem num `hx-*` — atalhos de teclado,
+     rascunho local, máscara do NUP, retorno do download. Arquivo estático, e
+     não mais um bloco embutido: `script-src 'self'` o autoriza sem `nonce`,
+     e o argumento de NÃO haver framework de front-end está no cabeçalho dele. #}
+  <script src="/estaticos/js/csso.js" defer></script>
+  {# As seis regras dos três estados da troca parcial ([data-carregando],
+     csso-realce, .recem-trocado/.recem-movido, .falha-htmx e
+     .cartao-kanban.movendo) nasceram aqui, num bloco de estilo inline, porque
+     `csso.css` estava sendo mexido em paralelo. Foram para a folha, logo abaixo
+     da seção do kanban, com o argumento junto. A casca não tem CSS próprio. #}
+  {# O que uma tela precisa pôr no <head> e a casca não sabe: a tela de bolso
+     liga aqui o manifesto, a folha própria e a cor da barra do celular. Vazio
+     em toda outra tela. #}
+  {% block cabeca %}{% endblock %}
+</head>
+<body>
+{# ===================================================================
+   O SALTO PARA O CONTEÚDO — o primeiro Tab de toda tela
+   ===================================================================
+   Contado numa tela com casca, na ordem em que o Tab passa: marca →
+   seletor de módulo → até 13 itens do menu do módulo → itens da base
+   compartilhada → trilha → ações da tela → busca → sino → engrenagem →
+   sair → **enfim** o conteúdo. São ~17 tabulações, e são as MESMAS 17 em
+   cada página: quem navega por teclado atravessa a lateral inteira a cada
+   troca de tela, e ela é idêntica todas as vezes.
+
+   É o PRIMEIRO filho do `<body>` porque a ordem do documento é a ordem do
+   foco, e "primeiro Tab" só é verdade aqui. Fica fora do `{% if
+   com_casca %}` de propósito: nas telas sem lateral ele custa uma linha e
+   continua honesto — há cabeçalho antes do conteúdo lá também.
+
+   `.salto` copia `.oculto` e volta à tela em `:focus`, e o
+   `:focus-visible` global já desenha o anel. O `tabindex="-1"` do `<main>`
+   não é enfeite: sem ele o clique no link move a rolagem mas NÃO move o
+   foco — `<main>` não é focável por natureza —, e o Tab seguinte voltaria
+   para o segundo item da lateral, que é exatamente o que o salto existe
+   para evitar. #}
+<a class="salto" href="#conteudo">Ir para o conteúdo</a>
+{# Login, primeiro acesso e trocar senha não têm lateral: ninguém navega nelas —
+   duas são anteriores à sessão e a terceira é um pedágio. Em vez de um segundo
+   layout (que duplicaria o <head>, o rodapé, as faixas e o Ctrl+K só para tirar
+   uma <aside>), a casca ganha um interruptor: a página declara `sem_casca` no
+   topo e recebe o cabeçalho escuro de 58px no lugar da lateral e da trilha.
+   Quem não declara nada continua com a casca inteira. #}
+{% set com_casca = usuario and not sem_casca %}
+{% if com_casca %}
+{# A navegação é uma lateral escura fixa: o menu horizontal já estava com onze
+   itens em duas barras, e cada módulo novo piorava. Na vertical há lugar para
+   crescer. #}
+<aside class="lateral">
+  {# A marca é a afordância universal de "voltar ao começo", e apontava para `/`,
+     que é o painel de Processos SEI e exige `processo.ver`: para o almoxarife
+     ela era um 403 em TODA tela. `/inicio` não é tela, é despachante — leva
+     cada um à primeira tela que abre para ele. #}
+  {# A marca do sistema: símbolo geométrico + logotipo. O símbolo é SVG embutido
+     (um caminho, `currentColor`, sem arquivo externo) e o argumento do desenho
+     está em `csso.css`, na seção "a marca do sistema". Aqui basta o que a
+     marcação decide: `aria-hidden` no símbolo porque quem nomeia o link é o
+     texto ao lado — um `<title>` no SVG faria o leitor de tela anunciar a marca
+     duas vezes.
+
+     ESPAÇO RESERVADO AO BRASÃO OFICIAL DA UFVJM. Ele entra AQUI, como primeiro
+     filho de `.marca`, à esquerda e separado por um fio — instituição primeiro,
+     sistema depois, que é a ordem do papel timbrado. A regra `.marca-brasao` já
+     existe e está dimensionada. A linha fica comentada porque o arquivo oficial
+     tem de vir de quem tem competência para aplicá-lo; inventar um brasão seria
+     falsificar identidade institucional, e é por isso que a marca acima é do
+     SISTEMA e não da universidade.
+     <img class="marca-brasao" src="/estaticos/img/brasao-ufvjm.svg" alt="" aria-hidden="true"> #}
+  <a class="marca" href="/inicio">
+    <span class="marca-sigla" aria-hidden="true">{% include 'partes/marca.svg' %}</span>
+    <span class="marca-texto"><strong>CSSO</strong><span>Sisa · UFVJM</span></span>
+  </a>
+
+  {# Continua sendo <details>/<summary>: abre sem JavaScript. O desenho mostra um
+     botão com "▾" — quem imita o botão é o CSS, o mecanismo é o do HTML. #}
+  {# O rótulo do seletor: dentro do módulo ele afirma onde a pessoa está; fora
+     dele (base, mapa, configuração) ele lembra de qual módulo ela veio, e quem
+     diz onde ela está é a trilha e o destaque, que caem no bloco de baixo. Sem
+     essa distinção o controle mentia: em `/modulos` nenhum módulo casa, o menu
+     caía num padrão fixo, e clicar em "Gestão de EPI" deixava escrito
+     "Processos SEI". #}
+  {% if modulo_ativo %}
+  <details class="seletor-modulo">
+    <summary title="Trocar de módulo">
+      <span class="rotulo-secao">{{ 'Módulo' if no_modulo else 'Voltar ao módulo' }}</span>
+      <span class="nome">{{ modulo_ativo.nome }}</span>
+    </summary>
+    <div class="lista-modulos">
+      {% for m in modulos %}
+      {% if m.disponivel %}
+      {# leva à primeira tela do módulo, não ao mapa: o controle chamado "Trocar
+         de módulo" tem de trocar de módulo. #}
+      <a href="{{ porta_de_entrada(m, usuario) }}"
+         class="{{ 'atual' if no_modulo and m.codigo == modulo_ativo.codigo }}">{{ m.nome }}</a>
+      {% else %}
+      <span class="em-breve" title="ainda não desenvolvido">{{ m.nome }}</span>
+      {% endif %}
+      {% endfor %}
+      <a class="mapa" href="/modulos">Ver os módulos →</a>
+    </div>
+  </details>
+  {% endif %}
+
+  {% if itens_modulo %}
+  <nav class="menu" aria-label="Telas de {{ modulo_ativo.nome }}">
+    {% for item in itens_modulo %}
+    <a href="{{ item.caminho }}" title="{{ item.descricao }}"
+       class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
+       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ item.rotulo }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if itens_base %}
+  <nav class="menu menu-base" aria-label="Base compartilhada entre os módulos">
+    <span class="rotulo-secao">Base compartilhada</span>
+    {% for item in itens_base %}
+    <a href="{{ item.caminho }}" title="{{ item.descricao }}"
+       class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
+       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ item.rotulo }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {# Rodapé institucional no fim da lateral: é identidade do sistema, não da
+     tela. Numa faixa embaixo da área útil ele cairia abaixo da dobra em toda
+     lista longa — que é exatamente onde ele estava. #}
+  <div class="rodape-lateral">
+    <span>{{ RODAPE }}</span>
+    <span class="versao">v{{ VERSAO }}{% if ambiente != 'local' %} · {{ ambiente }}{% endif %}</span>
+  </div>
+</aside>
+{% endif %}
+
+<div class="area">
+{% if not com_casca %}
+{# Cabeçalho da tela sem casca: só a marca, e o "sair" quando há sessão — na
+   troca de senha a pessoa está logada e pode desistir. Não é a lateral
+   encolhida: aqui não há para onde navegar, e um menu ofereceria saída de uma
+   tela que existe justamente para ser atravessada. #}
+<header class="cabecalho-marca">
+  <span class="marca-sigla" aria-hidden="true">{% include 'partes/marca.svg' %}</span>
+  <span class="nome">CSSO · Sisa/UFVJM</span>
+  {% if usuario %}<a class="sair" href="/sair">sair</a>{% endif %}
+</header>
+{% else %}
+  <header class="cabecalho">
+    {# Trilha de três níveis. Os dois primeiros o `modulos.py` sabe; o terceiro
+       ("Novo processo", o NUP da ficha) só a página sabe, e entra pelo bloco
+       `trilha`. Quem não preenche para no nome do item — o separador é gerado
+       pelo CSS entre irmãos, então não sobra barra solta no fim. #}
+    {# Em tela da base o primeiro nível não é o módulo: o seletor continua
+       mostrando o módulo de onde a pessoa veio, para não deixá-la sem caminho de
+       volta, mas a trilha não pode dizer que /servidores é de Processos SEI —
+       é ela quem diz onde a pessoa está de fato. #}
+    {# A tela que está ACIMA dos módulos declara o próprio primeiro nível: o mapa
+       em `/modulos` não é de Processos SEI, e dizer que é seria a mesma mentira
+       que o `na_base` já evita para as telas da base. #}
+    {% set na_base = item_ativo and item_ativo in itens_base %}
+    <nav class="trilha" aria-label="Trilha de navegação">
+      <a href="/modulos">{{ trilha_raiz or ('Base compartilhada' if na_base else (modulo_ativo.nome if no_modulo else 'Módulos')) }}</a>
+      {% if item_ativo %}<a href="{{ item_ativo.caminho }}">{{ item_ativo.rotulo }}</a>{% endif %}
+      {% block trilha %}{% endblock %}
+    </nav>
+    {# O caminho de volta de quem veio da fila de pendências. A tela-âncora
+       (processo, parecer, laudo, ficha de EPI, turma…) não sabia que a pessoa
+       tinha vindo de lá, e nenhuma delas oferecia a volta: era o botão do
+       navegador ou procurar "Pendências" na lateral — que, para quem opera só
+       o EPI, nem tem o item. `de=pendencias` viaja na âncora da fila; o link
+       só aparece para quem pode abrir a fila (o sino já decide isso). #}
+    {% if sino_visivel and request.query_params.get('de') == 'pendencias' %}
+    <a class="volta-origem" href="/pendencias">← voltar às pendências</a>
+    {% endif %}
+
+    <div class="acoes-cabecalho">
+      {# As ações da tela ficam à esquerda do bloco global para que busca, sino e
+         usuário não mudem de lugar de uma tela para a outra. #}
+      {% block acoes_cabecalho %}{% endblock %}
+      {# A caixa despejava em `/processos` e só sabia achar processo: quem
+         procurava uma pessoa sem processo recebia lista vazia e concluía que ela
+         não estava cadastrada, e quem não tem `processo.ver` não tinha caixa
+         nenhuma. Agora ela despeja em `/buscar`, que é um bloco por entidade —
+         servidor, processo, laudo, requisição de EPI, turma, certificado —, cada
+         bloco guardado pela permissão da SUA rota de destino. O almoxarife
+         ganhou `Ctrl+K`, e ninguém ganhou uma janela a mais: cada bloco só
+         mostra o que a tela dele já mostraria à mesma pessoa.
+
+         `busca_visivel` e não `usuario.pode(...)`: a decisão é de
+         `servicos.busca.pode_buscar`, porque a lista de blocos cresce com cada
+         módulo e a caixa tem de acompanhar sozinha. Quem não abre bloco nenhum
+         continua sem campo — campo que aceita o que a pessoa digitou e nunca
+         acha nada é a porta trancada do menu em forma de texto, só que mais
+         lenta de descobrir. #}
+      {% if busca_visivel %}
+      <form class="busca" action="/buscar" method="get" role="search">
+        <input type="search" name="q" id="busca-global"
+               aria-label="Buscar em todo o sistema: nome, SIAPE, NUP, laudo, protocolo, turma ou certificado"
+               title="Buscar em todo o sistema — nome, SIAPE, NUP, laudo, protocolo, turma, certificado (Ctrl+K)"
+               placeholder="Buscar: nome, SIAPE, NUP, laudo, protocolo…  Ctrl+K"
+               value="{{ busca or '' }}">
+      </form>
+      {% endif %}
+      {% if sino_visivel %}
+      {# O sino é um link para /pendencias: quem não pode abrir a tela não ganha
+         o link, e a contagem fica vermelha quando há atrasada. #}
+      <a class="sino {{ 'sino-atrasado' if sino_atrasadas }}" href="/pendencias"
+         title="{{ sino_abertas }} pendência(s) aberta(s){% if sino_atrasadas %}, {{ sino_atrasadas }} atrasada(s){% endif %}">
+        {# Era o emoji `🔔`, e emoji não é ícone de interface: no Windows ele
+           desenha em cores por uma fonte própria, ignora o `font-size: 15px` e
+           a `--tinta-fraca` que `.sino` pede, muda de desenho entre Chrome e
+           Firefox, sai colorido numa impressão monocromática e não sobrevive ao
+           alto contraste. O SVG embutido herda `currentColor`, mede o que se
+           mandar medir e não custa um pedido de rede.
+
+           A POLÍTICA DO SISTEMA CONTINUA SENDO TEXTO INEQUÍVOCO, e ela está
+           certa: "parecer", "laudo", "adicional de insalubridade" não têm
+           iconografia convencional, e ícone inventado precisa de legenda. Isto
+           aqui não é uma abertura — são três alvos de 32px ou menos onde não
+           cabe texto e onde o sistema JÁ usava ícone, só que mal. Nenhum outro
+           lugar, e nada de fonte de ícone.
+
+           `aria-hidden` porque quem nomeia o link é o texto oculto ao lado. #}
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none"
+             stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.9 6.6a4.1 4.1 0 0 1 8.2 0c0 2.6.6 3.7 1.2 4.4H2.7c.6-.7 1.2-1.8 1.2-4.4Z"/>
+          <path d="M6.4 13.1a1.7 1.7 0 0 0 3.2 0"/>
+        </svg>
+        <span class="oculto">Pendências</span>
+        {%- if sino_abertas %}<span class="contador">{{ sino_abertas }}</span>{% endif %}
+      </a>
+      {% endif %}
+      {% set partes = (usuario.nome|trim or '?').split() %}
+      <div class="usuario">
+        <span class="avatar" aria-hidden="true">{{ (partes[0][0] ~ (partes[-1][0] if partes|length > 1 else ''))|upper }}</span>
+        <span class="nome" title="{{ usuario.perfis|join(', ') }}">{{ usuario.nome }}</span>
+        {# A porta de `/config`. Ela não é item de menu, e o argumento continua
+           valendo — o que está lá não é módulo nem base, é o sistema: o setor
+           que assina, o SLA que pinta o vermelho de toda lista, o backup. Mas
+           "não ser de menu" virou "não ter entrada nenhuma": até aqui só chegava
+           quem digitasse a URL, e a tela de continuidade do negócio ficava
+           trancada por acidente. O bloco do usuário é onde ajuste de sistema
+           mora em todo lugar, e a permissão é a mesma que a rota exige.
+
+           A tupla é a de `rotas/configuracao.PERMISSOES_CONFIG`, e a igualdade é
+           o invariante: `backup.executar` entrou porque o `admin_ti`, que é o
+           único perfil que a tem, não tem `processo.ver` — quem faz backup não
+           alcançava a tela do backup. Divergir aqui volta a oferecer porta
+           trancada, ou a esconder porta aberta. #}
+        {% if usuario.pode('processo.ver') or usuario.pode('backup.executar') %}
+        {# Era o dingbat `⚙`. Ele não existe na Public Sans, então caía num
+           fallback do sistema e saía com peso e tamanho diferentes do vizinho
+           "sair", que está a 4px de distância. Mesmo argumento do sino, e o
+           mesmo desenho de 16px: um caminho por dente, `currentColor`. #}
+        <a class="engrenagem" href="/config" title="Configuração do sistema"
+           aria-label="Configuração do sistema">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none"
+               stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.3"/>
+            <path d="M8 1.3v1.8M8 12.9v1.8M14.7 8h-1.8M3.1 8H1.3M12.74 3.26l-1.28 1.28M4.54 11.46l-1.28 1.28M12.74 12.74l-1.28-1.28M4.54 4.54 3.26 3.26"/>
+          </svg></a>
+        {% endif %}
+        <a class="sair" href="/sair">sair</a>
+      </div>
+    </div>
+  </header>
+{% endif %}
+
+{% if avisos_config %}
+<div class="faixa-alerta">
+  {% for aviso in avisos_config %}<div>⚠ {{ aviso }}</div>{% endfor %}
+</div>
+{% endif %}
+
+{# A faixa não aparece na própria tela de troca: ali ela mandaria a pessoa para
+   onde ela já está, e o cartão já abre dizendo a mesma coisa. #}
+{% if com_casca and usuario.precisa_trocar_senha %}
+<div class="faixa-alerta">
+  <div>⚠ Sua senha é provisória. <a href="/trocar-senha">Troque agora</a>.</div>
+</div>
+{% endif %}
+
+  {# `class` continua sendo o PRIMEIRO atributo: `test_busca_global` recorta o
+     `<main>` por `<main class="conteudo…` para conferir o invariante só do
+     conteúdo, sem a lateral. O `id` e o `tabindex` são o destino do salto lá em
+     cima; a ordem dos atributos não muda nada para o navegador e muda tudo para
+     essa varredura. #}
+  <main class="conteudo {% block classe_conteudo %}{% endblock %}" id="conteudo" tabindex="-1">
+    {% if mensagem %}<div class="aviso aviso-ok">{{ mensagem }}</div>{% endif %}
+    {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+    {% block conteudo %}{% endblock %}
+  </main>
+
+{% if not com_casca %}
+{# Sem lateral não há onde pendurar o rodapé; aqui ele volta a ser faixa. #}
+<footer class="rodape">
+  <span>{{ RODAPE }}</span>
+  <span class="versao">v{{ VERSAO }}{% if ambiente != 'local' %} · {{ ambiente }}{% endif %}</span>
+</footer>
+{% endif %}
+</div>
+
+{# A lista de atalhos. `?` a abre de qualquer tela (fora de campo de texto);
+   três atalhos sem lista são folclore, com lista são recurso. É um <dialog>
+   como os popups, pelo mesmo motivo: `Esc` fecha e o foco fica preso. Só
+   existe com casca — nas telas sem lateral não há lista para filtrar nem
+   botão de "novo". #}
+{% if com_casca %}
+<dialog class="popup popup-info" id="atalhos-do-teclado" aria-labelledby="atalhos-titulo">
+  <div class="popup-caixa popup-caixa-info">
+    <div class="popup-topo">
+      <div class="popup-titulo"><h2 id="atalhos-titulo">Atalhos de teclado</h2></div>
+      <a class="popup-fechar" href="#sem-popup" data-fecha-atalhos
+         aria-label="Fechar a lista de atalhos"><span aria-hidden="true">×</span></a>
+    </div>
+    <div class="popup-corpo" tabindex="-1">
+      <dl class="lista-atalhos">
+        <dt><kbd>Ctrl</kbd> + <kbd>K</kbd></dt><dd>busca em todo o sistema (ou o filtro da lista, onde há um)</dd>
+        <dt><kbd>/</kbd></dt><dd>filtro da lista desta tela; sem lista, a busca global</dd>
+        <dt><kbd>n</kbd></dt><dd>o botão de <em>novo</em> desta tela — o primeiro das ações no alto, à direita</dd>
+        <dt><kbd>Esc</kbd></dt><dd>num campo de busca com texto, limpa; vazio, solta o foco; num popup, fecha</dd>
+        <dt><kbd>?</kbd></dt><dd>esta lista</dd>
+      </dl>
+      <p class="discreto">Fora de campo de texto. Dentro de um campo, <kbd>/</kbd> e <kbd>n</kbd> são letras.</p>
+    </div>
+    <div class="acoes popup-acoes">
+      <a class="botao secundario" href="#sem-popup" data-fecha-atalhos>Fechar</a>
+    </div>
+  </div>
+</dialog>
+{% endif %}
+
+{# `nonce` é a marca desta resposta, escrita pelo middleware de cabeçalhos e
+   repetida no `script-src` da CSP. É o que permite a política NÃO ter
+   `'unsafe-inline'`: script injetado numa página não adivinha a marca do
+   minuto, e sem ela o navegador se recusa a executá-lo. Toda tag `<script>`
+   embutida do sistema — são sete — carrega esta linha; a que nascer sem ela
+   simplesmente não roda, o que é o modo certo de falhar. #}
+<script nonce="{{ nonce() }}">
+// Ctrl+K (ou Cmd+K) foca a busca de qualquer tela.
+document.addEventListener('keydown', function (e) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    var alvo = document.getElementById('busca-processos')
+            || document.getElementById('busca-global');
+    if (!alvo) return;
+    e.preventDefault();
+    // A busca da LISTA passou a morar dentro de um <details> (o cartão de
+    // filtros de /processos, fechado por padrão), e campo dentro de <details>
+    // fechado não é renderizado — `focus()` nele não move o foco de lugar
+    // nenhum, e o atalho anunciado no próprio rótulo do campo deixaria de
+    // funcionar sem nenhum sinal. Abrir a gaveta antes é o que mantém a
+    // promessa; `closest` sobe quantos níveis houver e não faz nada onde não
+    // há gaveta, que é o caso da busca global do cabeçalho.
+    var gaveta = alvo.closest && alvo.closest('details');
+    if (gaveta) gaveta.open = true;
+    alvo.focus();
+    alvo.select();
+  }
+});
+
+// ---------------------------------------------------------------------
+// Popup de cadastro — a promoção a modal de verdade.
+//
+// O popup NÃO depende deste bloco para existir: o botão é um link para o `id`
+// do <dialog> e a folha o abre em `:target`; a gravação recusada volta com
+// `open` escrito pelo servidor. Sem JavaScript o cadastro abre, preenche, envia
+// e fecha. O que só `showModal()` dá — e que nenhuma folha de estilo tem como
+// dar — é a camada de topo, o `Esc` e o foco preso dentro do diálogo enquanto
+// ele está aberto. A quarta coisa que se espera de um modal, o foco voltando ao
+// botão que o abriu, `showModal()` promete e aqui não entregou; quem a faz é o
+// `fechar()` mais abaixo, e o porquê está escrito lá. É disso que trata o bloco.
+//
+// É delegado no documento, e não um par de `addEventListener` por popup, pelo
+// mesmo motivo do tratador global do HTMX logo abaixo: com um script por tela, a
+// próxima tela nasce sem `Esc` e ninguém percebe até alguém tentar.
+// ---------------------------------------------------------------------
+(function () {
+  var quemAbriu = null;
+
+  // O botão que abre um dado diálogo — é para ele que o foco volta quando o
+  // popup fecha. Sem isto o foco reaparece no começo do documento e quem navega
+  // por teclado é devolvido à lateral, longe de onde estava.
+  function gatilhoDe(dialogo) {
+    return document.querySelector('a[data-abre-popup][href="#' + dialogo.id + '"]');
+  }
+
+  // A âncora vem da URL, e URL é entrada: `%` solto faz `decodeURIComponent`
+  // lançar, e uma exceção aqui levaria junto todo este bloco — o sistema
+  // ficaria sem `Esc` e sem foco preso por causa de um endereço torto.
+  function idDaAncora(hash) {
+    try { return decodeURIComponent(hash.slice(1)); } catch (e) { return hash.slice(1); }
+  }
+
+  // O QUARTO REQUISITO DE DIÁLOGO MODAL, e o único que faltava. O foco entra no
+  // popup, o `Esc` fecha e o foco não escapa enquanto ele está aberto; o que não
+  // acontecia é o foco VOLTAR ao botão. Quem fecha por teclado era devolvido ao
+  // começo do documento, e quem lê por leitor de tela perdia o lugar.
+  //
+  // Isto já estava escrito, e escrito no evento `close` do próprio <dialog>, que
+  // é onde a especificação o coloca — inclusive porque o `Esc` fecha sem passar
+  // por clique nenhum. Medido no navegador, esse evento NÃO CHEGA: tratador no
+  // diálogo, na captura do documento e em `onclose`, com `close()` na mesma
+  // tarefa e em `setTimeout`, nenhum dos três disparou (Chrome 148 e 151; o
+  // `toggle` de um <details>, que é tarefa enfileirada do mesmo jeito, disparou
+  // no mesmo teste, então não era instrumentação). Requisito de acessibilidade
+  // pendurado em evento que não dispara é pior do que requisito nenhum: está no
+  // código, lê-se como resolvido, e na tela não existe.
+  //
+  // Então quem devolve o foco é `fechar()`, e todo caminho que fecha o popup com
+  // JavaScript passa por ele — o clique no "×"/"Cancelar" e o `Esc`. É o mesmo
+  // motivo de o bloco inteiro ser delegado no documento: caminho que não passa
+  // pelo lugar único nasce sem o comportamento e ninguém percebe.
+  function fechar(dialogo) {
+    if (!dialogo || !dialogo.open) return false;
+    dialogo.close();
+    var gatilho = quemAbriu;
+    quemAbriu = null;
+    // `document.contains`: o gatilho pode ter saído do documento entre abrir e
+    // fechar (é um bloco que o HTMX troca em quatro telas), e focar elemento
+    // solto não move o foco de lugar nenhum — deixá-lo onde está é honesto.
+    if (gatilho && document.contains(gatilho)) gatilho.focus();
+    return true;
+  }
+
+  function abrir(dialogo, gatilho) {
+    if (!dialogo || typeof dialogo.showModal !== 'function') return false;
+    quemAbriu = gatilho || gatilhoDe(dialogo);
+    // `[open]` sem `showModal()` é diálogo NÃO modal: aparece, mas sem camada de
+    // topo e sem foco preso. Fechar e reabrir é o que promove o que o servidor
+    // escreveu — e é por isso que a rota não precisa saber se há JavaScript.
+    // `close()` cru, e não `fechar()`: aqui ninguém fechou nada, o diálogo
+    // continua na tela, e devolver o foco ao botão no meio da promoção tiraria o
+    // foco do campo com problema que a recusa acabou de marcar.
+    if (dialogo.open) dialogo.close();
+    dialogo.showModal();
+    // `showModal()` foca o primeiro focável do diálogo, e o primeiro focável é o
+    // "×" — um cadastro que abre com o foco no botão de fechar convida a
+    // fechá-lo. Havendo `autofocus` (é o que a recusa escreve, no campo do
+    // problema), ele já venceu e não se mexe em nada; não havendo, o foco vai
+    // para o primeiro campo, que é onde a pessoa ia digitar de qualquer forma.
+    //
+    // O popup do (i) não tem campo nenhum — ele é prosa —, e ali o primeiro
+    // focável continuaria sendo o "×": quem abre uma explicação por teclado ou
+    // por leitor de tela ouviria "Fechar" no lugar do texto que pediu. Por isso
+    // o corpo dele carrega `tabindex="-1"` e entra como último recurso desta
+    // mesma escolha: primeiro o campo com problema, depois o primeiro campo,
+    // depois o corpo. Fora do (i) a linha não faz nada, porque só ele marca o
+    // corpo como focável.
+    if (!dialogo.querySelector('[autofocus]')) {
+      var primeiro = dialogo.querySelector(
+        '.popup-corpo input, .popup-corpo select, .popup-corpo textarea')
+        || dialogo.querySelector('.popup-corpo[tabindex]');
+      if (primeiro) primeiro.focus();
+    }
+    return true;
+  }
+
+  document.addEventListener('click', function (evt) {
+    if (!evt.target.closest) return;
+    var abre = evt.target.closest('a[data-abre-popup]');
+    if (abre) {
+      var alvo = document.getElementById(idDaAncora(abre.hash));
+      // só engole o clique quando o diálogo de fato abriu: falhando, o link
+      // continua sendo um link e `:target` faz o trabalho.
+      if (alvo && abrir(alvo, abre)) evt.preventDefault();
+      return;
+    }
+    var fecha = evt.target.closest('[data-fecha-popup]');
+    // só engole o clique quando havia diálogo aberto por script para fechar;
+    // não havendo, o "×" continua sendo o link para `#sem-popup` que sustenta o
+    // fechamento sem JavaScript.
+    if (fecha && fechar(fecha.closest('dialog.popup'))) evt.preventDefault();
+  });
+
+  // O `Esc` fecha sem passar por clique nenhum, e é o gesto de quem está no
+  // teclado — justamente quem mais perde com o foco largado. Fechando nós
+  // mesmos, o foco volta pelo mesmo caminho do "×"; o fechamento nativo que
+  // viria depois encontra o diálogo já fechado e não faz mais nada.
+  document.addEventListener('keydown', function (evt) {
+    if (evt.key === 'Escape') fechar(document.querySelector('dialog.popup[open]'));
+  });
+
+  // A GRAVAÇÃO RECUSADA, e só ela. A rota devolveu a tela com o popup `[open]`,
+  // os campos preenchidos e o erro dentro dele; `[open]` sozinho é diálogo não
+  // modal, e promover aqui devolve ao reaberto o `Esc` e o foco preso do popup
+  // que a pessoa tinha acabado de usar. `showModal()` respeita o `autofocus` do
+  // campo com problema, que é onde o foco precisa cair.
+  //
+  // O popup aberto pela ÂNCORA (URL colada, "voltar" do navegador) NÃO se
+  // promove, e a tentação de promovê-lo custou um defeito: `close()` não
+  // desfaz o `:target`, e trocar a âncora por `replaceState` também não — o
+  // `:target` só se reavalia em navegação de fragmento de verdade. O diálogo
+  // ficava na tela depois de fechado. Deixado como `:target`, ele não está
+  // `open`, o tratador de clique acima não engole o link, o navegador navega
+  // para `#sem-popup` e a folha o fecha — que é exatamente o caminho de quem
+  // não tem JavaScript, e esse funciona.
+  var recusado = document.querySelector('dialog.popup[open]');
+  if (recusado) abrir(recusado, null);
+
+  // A MESMA RECUSA, QUANDO ELA VOLTA POR TROCA PARCIAL.
+  //
+  // A gaveta de ações de uma linha virou camada (`ui.popup_gaveta`), e na ficha
+  // do pedido essa camada mora DENTRO de `#itens-do-pedido` — o alvo que o HTMX
+  // troca por `innerHTML`. Ou seja: o diálogo que a pessoa tem aberto é removido
+  // do documento pela própria troca (o navegador o fecha ao removê-lo, e a
+  // camada de topo vai junto), e o que entra no lugar é um diálogo NOVO, com o
+  // `open` que a rota escreveu para reabrir a gaveta da linha recusada.
+  //
+  // `open` sozinho é diálogo não modal: ele aparece — a folha desenha `[open]`
+  // igual a `:target`, que é o caminho de quem não tem JavaScript — mas sem foco
+  // preso. Promovê-lo aqui devolve ao reaberto exatamente o que ele tinha um
+  // instante antes de a troca acontecer. É o mesmo `abrir()` da recusa de página
+  // inteira, três linhas acima, pela mesma razão.
+  //
+  // `htmx:afterSwap` e não `afterRequest`: antes da troca o diálogo novo ainda
+  // não existe no documento.
+  //
+  // O `:modal` é a guarda que impede o efeito colateral: um popup que JÁ é modal
+  // não foi trazido por esta troca, e promovê-lo de novo seria fechá-lo e
+  // reabri-lo — perdendo o campo em que o foco estava e a rolagem do corpo. Em
+  // `try`, porque `:modal` é seletor recente e `matches` LANÇA no que não o
+  // conhece; ali o pior caso é o do parágrafo acima, que já é o que se quer.
+  function ehModal(dialogo) {
+    try { return dialogo.matches(':modal'); } catch (e) { return false; }
+  }
+
+  document.body.addEventListener('htmx:afterSwap', function () {
+    var reaberto = document.querySelector('dialog.popup[open]');
+    if (reaberto && !ehModal(reaberto)) abrir(reaberto, null);
+  });
+})();
+
+// ---------------------------------------------------------------------
+// Os dois gestos que eram atributo `on*=` no HTML.
+//
+// Eram três: `onchange="this.form.submit()"` nos seletores de treinamento de
+// /certificados e de /turmas, e `onclick="window.print()"` no botão de imprimir
+// a guia de EPI. Saíram porque atributo de evento é a única forma de script
+// embutido que o `nonce` da CSP NÃO alcança: manter os três obrigaria a
+// política a carregar `script-src-attr 'unsafe-inline'`, e é por atributo que
+// a injeção em HTML passa. Três atributos valem menos que a cláusula.
+//
+// Delegado no documento, e não um `addEventListener` por elemento, pelo mesmo
+// motivo dos dois blocos acima: com um script por tela, a próxima tela nasce
+// sem o comportamento e ninguém percebe. Aqui o contrato é o atributo `data-`:
+// quem quiser um seletor que filtra sozinho escreve `data-envia-ao-mudar`, e
+// quem quiser um botão de imprimir escreve `data-imprimir`.
+//
+// Sem JavaScript nada disto piora: o `onchange` também era JavaScript, e os
+// dois formulários continuam tendo botão de enviar.
+// ---------------------------------------------------------------------
+document.addEventListener('change', function (evt) {
+  var campo = evt.target.closest && evt.target.closest('[data-envia-ao-mudar]');
+  if (campo && campo.form) campo.form.submit();
+});
+
+document.addEventListener('click', function (evt) {
+  if (evt.target.closest && evt.target.closest('[data-imprimir]')) window.print();
+});
+
+// ---------------------------------------------------------------------
+// Retorno das trocas parciais do HTMX — os três estados, uma vez só.
+//
+// São quatro os usos de HTMX no sistema (item do balcão, item do pedido,
+// tamanho/saldo, busca de servidor) e nenhum deles tinha indicação de
+// carregamento nem tratador de erro: um 4xx ou 5xx simplesmente não trocava o
+// fragmento, e o bloco continuava mostrando o conteúdo ANTERIOR. No seletor de
+// tamanho isso é pior do que não mostrar nada — o saldo do tamanho velho fica na
+// tela contradizendo o tamanho recém-escolhido, e quem lê acredita no número.
+//
+// O tratamento é global e não por elemento de propósito: `hx-indicator` em cada
+// um dos quatro obrigaria quem escrever o quinto a lembrar, e é justamente a
+// omissão que se está consertando. Vale para todo `hx-get` que existir daqui em
+// diante, sem nenhuma marcação nova no template.
+// ---------------------------------------------------------------------
+(function () {
+  function alvoDe(evt) {
+    var d = evt.detail || {};
+    return d.target || d.elt || null;
+  }
+
+  document.body.addEventListener('htmx:beforeRequest', function (evt) {
+    var alvo = alvoDe(evt);
+    if (alvo && alvo.setAttribute) alvo.setAttribute('data-carregando', '');
+  });
+
+  ['htmx:afterRequest', 'htmx:afterSwap', 'htmx:responseError', 'htmx:sendError']
+    .forEach(function (nome) {
+      document.body.addEventListener(nome, function (evt) {
+        var alvo = alvoDe(evt);
+        if (alvo && alvo.removeAttribute) alvo.removeAttribute('data-carregando');
+      });
+    });
+
+  // DEU CERTO: um realce curto no trecho que acabou de mudar. Sem ele, a troca
+  // bem-sucedida é indistinguível de nada ter acontecido — e é justamente por
+  // isso que a pessoa clica de novo. `htmx-settling` não serve: htmx o retira
+  // depois de 20 ms, antes de a animação ser vista.
+  document.body.addEventListener('htmx:afterSwap', function (evt) {
+    var alvo = alvoDe(evt);
+    if (!alvo || !alvo.classList) return;
+    alvo.classList.remove('recem-trocado');
+    void alvo.offsetWidth;  // reinicia a animação quando a troca se repete
+    alvo.classList.add('recem-trocado');
+    setTimeout(function () { alvo.classList.remove('recem-trocado'); }, 1400);
+  });
+
+  function falhar(evt, titulo, saida) {
+    var alvo = alvoDe(evt);
+    if (!alvo || !alvo.insertAdjacentHTML) return;
+    var anterior = alvo.querySelector('.falha-htmx');
+    if (anterior) anterior.remove();
+    // A recusa é escrita DENTRO do alvo — o pedaço da tela que a pessoa estava
+    // olhando quando acionou a troca —, e não numa faixa no topo da página.
+    alvo.insertAdjacentHTML(
+      'beforeend',
+      '<div class="aviso aviso-erro falha-htmx" role="alert">' +
+      '<strong>' + titulo + '</strong> ' + saida + '</div>'
+    );
+  }
+
+  document.body.addEventListener('htmx:responseError', function (evt) {
+    var codigo = (evt.detail && evt.detail.xhr) ? evt.detail.xhr.status : 0;
+    falhar(
+      evt,
+      'Não deu para atualizar este trecho (erro ' + codigo + ').',
+      codigo === 403
+        ? 'Você não tem permissão para esta consulta. O que está escrito aqui é o de antes da sua escolha — não use este número.'
+        : 'O que está escrito aqui é o de <strong>antes</strong> da sua escolha, ' +
+          'e por isso não vale. Recarregue a página (F5) e escolha de novo.'
+    );
+  });
+
+  document.body.addEventListener('htmx:sendError', function (evt) {
+    falhar(
+      evt,
+      'O sistema não respondeu.',
+      'Nada foi consultado, e o que está escrito aqui é o de <strong>antes</strong> ' +
+      'da sua escolha. Confira se o sistema ainda está no ar e recarregue a página (F5).'
+    );
+  });
+})();
+</script>
+</body>
+</html>

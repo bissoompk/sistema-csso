@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{# A busca global. Um bloco por entidade, e cada bloco guardado pela permissão
+   que a ROTA DE DESTINO exige — o mesmo desenho de `pendencias.html`, onde a
+   âncora só vira link para quem a rota deixa entrar. Quem decide quais blocos
+   rodam é `servicos/busca.py`; aqui a permissão reaparece apenas nos LINKS de
+   cada linha, porque o servidor tem duas telas de destino e o almoxarife abre
+   só uma delas.
+
+   `/buscar` não é item de menu nem tela de módulo: ela atravessa todos. Sem
+   declarar o primeiro nível, a trilha herdaria o módulo de onde a pessoa veio e
+   afirmaria que a busca é dele.
+
+   RN-19: nenhuma linha imprime `servidor.nome` — tudo passa por `identificar()`,
+   que é o que a varredura de templates cobra. E o casamento por nome já foi
+   decidido no serviço: quem não pode ler aquele nome não recebe a linha, porque
+   receber UMA linha é o que amarraria o nome ao `SRV-xxxx` da sessão. #}
+{% set trilha_raiz = 'Busca' %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Busca · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Resultados</span>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Busca</h1>
+      {% if cobertura %}
+      <p class="sub">Procura em tudo o que a sua conta abre, e só nisso. Cada
+        resultado leva à tela em que ele se trabalha.</p>
+      {% call ui.info('alcance-da-busca', 'o que a busca alcança, e o que não') %}
+        <p><strong>A busca não é uma janela a mais.</strong> Ela procura só nos
+          cadastros que a sua conta já abre, e o nome de um servidor só casa quando
+          você pode ler aquele nome (RN-19) — do contrário, receber uma única linha
+          amarraria o nome ao código <code>SRV-xxxx</code> da sua sessão, que é
+          exatamente a ligação que a supressão existe para impedir.</p>
+        <p>O SIAPE e as chaves de documento (NUP, laudo, protocolo, turma,
+          certificado) valem para quem abre a tela correspondente.</p>
+        <p><strong>CPF não.</strong> O sistema não armazena CPF em campo nenhum
+          (RN-21) — servidor se identifica por SIAPE.</p>
+      {% endcall %}
+      {% else %}
+      <p class="sub">Sua conta não abre nenhum dos cadastros que a busca cobre.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fileira">
+    <span class="rotulo-grupo">Procurar</span>
+    <form method="get" action="/buscar" class="filtro-inline" role="search">
+      <label class="oculto" for="f-busca">Buscar em todo o sistema</label>
+      <input id="f-busca" type="search" name="q" value="{{ q }}" autofocus
+             placeholder="Nome, SIAPE, NUP, laudo, protocolo, turma, certificado…">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  {# Onze dígitos seguidos. O sistema não armazena CPF em campo nenhum (RN-21), e
+     responder "nada encontrado" deixaria a pessoa concluindo que o registro não
+     existe, quando o que não existe é a busca. #}
+  {% if recado_cpf %}
+  <div class="aviso aviso-alerta" role="alert">{{ recado_cpf }}</div>
+  {% endif %}
+
+  {% if not cobertura %}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Não há o que buscar com as suas permissões.</strong>
+      <span>A busca cobre servidor, processo, laudo, requisição de EPI, turma e
+        certificado — e sua conta não abre nenhuma dessas telas. É restrição de
+        perfil, não falha do sistema: fale com quem concede perfil.</span>
+    </div>
+  </div>
+
+  {% elif not termo %}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Digite o que você está procurando.</strong>
+      <span>A busca cobre {{ cobertura|join(', ') }}. Nunca CPF — o sistema não o
+        armazena em campo nenhum.</span>
+    </div>
+  </div>
+
+  {% elif not recado_cpf %}
+  {% set achou = blocos|selectattr('itens')|list %}
+
+  {% if not achou %}
+  {# O vazio útil: diz ONDE se procurou, e nomeia só o que ESTA pessoa vê. O
+     bloco que ficou de fora não é mencionado em lugar nenhum — nomeá-lo já
+     seria dizer que existe alguma coisa que ela não pode ver, e "não achei" e
+     "você não pode ver" têm de ser indistinguíveis de fora. #}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Nada encontrado para “{{ termo }}”.</strong>
+      <span>Procurei em {{ cobertura|join(', ') }}. Confira a grafia, ou tente a chave
+        em vez do nome — SIAPE, NUP, número do laudo, protocolo.</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% for bloco in blocos %}
+  {% if bloco.itens %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>{{ bloco.rotulo }}</h2>
+      <span class="contador">{{ bloco.itens|length }}{% if bloco.ha_mais %}+{% endif %}</span>
+      {% if bloco.ver_todos %}
+      <a class="a-direita" href="{{ bloco.ver_todos }}">ver todos →</a>
+      {% endif %}
+    </div>
+
+    {% if bloco.codigo == 'servidor' %}
+    <table>
+      <thead>
+        <tr><th scope="col">Servidor</th><th scope="col">Unidade</th><th scope="col"></th></tr>
+      </thead>
+      {% for sv in bloco.itens %}
+      {% set quem = identificar(sv) %}
+      <tr>
+        <td class="nome">{{ quem.nome }}
+          {% if quem.nominal and quem.siape %}
+          <span class="quebra discreto mono">SIAPE {{ quem.siape }}</span>{% endif %}</td>
+        <td>{{ sv.unidade.nome_extenso if sv.unidade else '—' }}</td>
+        {# As duas portas do servidor. Cada uma aparece só para quem a rota deixa
+           entrar: `/servidores/{id}` exige `processo.ver` e `/epis/fichas/{id}`
+           exige `epi.ficha`. Foi assim que a ficha de EPI deixou de mandar o
+           almoxarife para o 403. #}
+        <td>
+          {% if usuario.pode('processo.ver') %}
+          <a class="botao secundario compacto" href="/servidores/{{ sv.id }}">cadastro</a>
+          {% endif %}
+          {% if usuario.pode('epi.ficha') %}
+          <a class="botao secundario compacto" href="/epis/fichas/{{ sv.id }}">ficha de EPI</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% elif bloco.codigo == 'processo' %}
+    <table>
+      <thead>
+        <tr><th scope="col">NUP</th><th scope="col">Servidor</th><th scope="col">Estado</th><th scope="col"></th></tr>
+      </thead>
+      {% for p in bloco.itens %}
+      <tr>
+        <td class="mono"><a href="/processos/{{ p.id }}">{{ p.nup }}</a>
+          {% if p.origem_repositorio %}
+          <span class="quebra discreto">cadastro histórico</span>{% endif %}</td>
+        <td>{{ identificar(p.servidor) }}</td>
+        <td><span class="pilula">{{ p.estado_tecnico|estado }}</span></td>
+        <td><a class="botao secundario compacto" href="/processos/{{ p.id }}">abrir</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% elif bloco.codigo == 'laudo' %}
+    <table>
+      <thead>
+        <tr><th scope="col">Número</th><th scope="col">Unidade</th><th scope="col">Situação</th><th scope="col"></th></tr>
+      </thead>
+      {% for l in bloco.itens %}
+      <tr>
+        <td class="mono"><a href="/laudos/{{ l.id }}">{{ l.numero_siape }}</a></td>
+        <td>{{ l.unidade.nome_extenso if l.unidade else '—' }}</td>
+        <td><span class="pilula">{{ 'vigente' if l.status == 'VIGENTE' else 'superado' }}</span></td>
+        <td><a class="botao secundario compacto" href="/laudos/{{ l.id }}">abrir</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% elif bloco.codigo == 'requisicao' %}
+    <table>
+      <thead>
+        <tr><th scope="col">Protocolo</th><th scope="col">Servidor</th><th scope="col">Estado</th><th scope="col"></th></tr>
+      </thead>
+      {% for r in bloco.itens %}
+      <tr>
+        <td class="mono">
+          <a href="/epis/requisicoes/{{ r.id }}">{{ r.protocolo or 'sem protocolo' }}</a></td>
+        <td>{{ identificar(r.servidor) }}</td>
+        <td><span class="pilula">{{ rotulos_requisicao.get(r.estado, r.estado) }}</span></td>
+        <td><a class="botao secundario compacto"
+               href="/epis/requisicoes/{{ r.id }}">abrir</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% elif bloco.codigo == 'turma' %}
+    <table>
+      <thead>
+        <tr><th scope="col">Código</th><th scope="col">Treinamento</th><th scope="col">Período</th><th scope="col"></th></tr>
+      </thead>
+      {% for t in bloco.itens %}
+      <tr>
+        <td class="mono"><a href="/turmas/{{ t.id }}">{{ t.codigo }}</a></td>
+        <td>{{ t.treinamento.nome if t.treinamento else '—' }}</td>
+        <td class="mono">{{ t.data_inicio|data }} — {{ t.data_fim|data }}</td>
+        <td><a class="botao secundario compacto" href="/turmas/{{ t.id }}">abrir</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% elif bloco.codigo == 'certificado' %}
+    <table>
+      <thead>
+        <tr><th scope="col">Número</th><th scope="col">Treinamento</th><th scope="col">Emissão</th><th scope="col"></th></tr>
+      </thead>
+      {% for c in bloco.itens %}
+      <tr>
+        <td class="mono"><a href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
+        <td>{{ c.treinamento.nome if c.treinamento else '—' }}</td>
+        <td class="mono">{{ c.data_emissao|data }}</td>
+        <td><a class="botao secundario compacto" href="/certificados/{{ c.id }}">abrir</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if bloco.ha_mais %}
+    <div class="corpo">
+      <p class="discreto sem-margem">Há mais resultados do que cabem aqui.
+        {% if bloco.ver_todos %}<a href="{{ bloco.ver_todos }}">Abra a lista completa</a>
+        {%- else %}Refine o termo{% endif %} para ver o resto.</p>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+
+</div>
+{% endblock %}

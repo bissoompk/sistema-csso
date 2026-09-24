@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{# O outro fim de `/epis/fichas/minha`: a conta que não tem titular de quem falar.
+
+   Tela, e não 403: a permissão está concedida e a rota abre — o que falta é a
+   ligação entre a conta e o cadastro de servidor. Devolver 403 aqui faria o menu
+   oferecer porta trancada a quem tem `epi.ver`, que é o defeito que
+   `test_link_no_menu_sempre_abre` existe para impedir. #}
+
+{% block titulo %}Minha ficha de EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Minha ficha de EPI</span>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Minha ficha de EPI</h1>
+      <p class="sub">A prova de entrega do que <em>você</em> recebeu: CA e lote
+        congelados no ato, com o comprovante assinado de cada linha.</p>
+    </div>
+  </div>
+
+  <div class="aviso aviso-alerta">
+    <p><strong>Sua conta não está ligada a um cadastro de servidor.</strong>
+      A ficha de EPI é do servidor, não da conta — sem essa ligação o sistema não
+      tem de quem mostrar a ficha, e não é o caso de dizer que ela está vazia.</p>
+    <p>A ligação conta&nbsp;↔&nbsp;servidor é feita em <strong>Usuários</strong>, por
+      quem tem <code>usuario.criar_conta</code>. Peça informando o seu SIAPE.</p>
+  </div>
+
+  <div class="aviso aviso-info">
+    <p><strong>Ler a própria ficha não exige <code>epi.ficha</code> e não fica
+      registrado.</strong> É o acesso do titular ao que é dele (LGPD art. 18, II).
+      <code>epi.ficha</code> é outra coisa: a permissão de ler a ficha das outras
+      pessoas — e essa leitura entra em <code>acesso_dado_sensivel</code> (RN-23).</p>
+  </div>
+
+</div>
+{% endblock %}

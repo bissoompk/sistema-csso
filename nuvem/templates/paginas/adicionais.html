@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Adicionais · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Adicionais concedidos</h1>
+      <p class="sub">Quantos adicionais estão vigentes hoje e com base em qual laudo.
+        {%- if recorte.total > recorte.por_pagina %}
+        {{ vigencias|length }} de {{ recorte.total }} nesta seleção — esta é uma
+        página.{% endif %}</p>
+      {# Norma: lê-se uma vez e depois se sabe. O que muda decisão nesta tela é a
+         lista de lacunas da RN-09, logo abaixo, que continua em faixa vermelha. #}
+      {% call ui.info('acumulo-e-opcao', 'a proibição de acúmulo e a opção do servidor') %}
+        <p>No máximo <strong>um</strong> adicional vigente por servidor: insalubridade,
+          periculosidade, irradiação ionizante e gratificação por raios X não se
+          acumulam (IN 15/2022, art. 4º).</p>
+        <p>Entre insalubridade e periculosidade a opção é do servidor (Lei 8.112/90,
+          art. 68, §1º) e precisa estar anexada <strong>antes</strong> da troca — é o
+          documento dela que sustenta a cessação de um e a proposta do outro.</p>
+        <p>A suspensão por afastamento legal (Lei 8.112/90, art. 69, p.ú.) é registrada
+          como <code>AFASTAMENTO_LEGAL</code> com a base legal; o motivo pessoal nunca
+          entra no sistema (RN-21).</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {# A máquina do direito desenhada como ela é: PROPOSTO entra, VIGENTE é o
+     meio, e dela saem os quatro fins. Cada ficha é um filtro que a URL sabe
+     reproduzir — continua sendo GET, sem JavaScript. #}
+  <div class="fileira maquina">
+    <span class="rotulo-grupo">Estados</span>
+    <a class="ficha-filtro {{ 'ativa' if not filtro_estado }}" href="/adicionais">Todos</a>
+    <span class="separador" aria-hidden="true">|</span>
+    <a class="ficha-filtro {{ 'ativa' if filtro_estado == 'PROPOSTO' }}"
+       href="/adicionais?estado=PROPOSTO">Proposto</a>
+    <span class="seta" aria-hidden="true">→</span>
+    <a class="ficha-filtro {{ 'ativa' if filtro_estado == 'VIGENTE' }}"
+       href="/adicionais?estado=VIGENTE">Vigente</a>
+    <span class="seta" aria-hidden="true">→</span>
+    {% for codigo, rotulo in [('SUSPENSO','Suspenso'), ('EM_REAVALIACAO','Em reavaliação'),
+                              ('ALTERADO','Alterado'), ('CESSADO','Cessado')] %}
+    <a class="ficha-filtro {{ 'ativa' if filtro_estado == codigo }}"
+       href="/adicionais?estado={{ codigo }}">{{ rotulo }}</a>
+    {% endfor %}
+  </div>
+
+  {% if lacunas %}
+  <div class="aviso aviso-erro">
+    <strong>Linha do tempo inconsistente (RN-09):</strong>
+    <ul>
+      {% for servidor_id, problemas in lacunas.items() %}
+        {% for p in problemas %}<li>servidor #{{ servidor_id }}: {{ p }}</li>{% endfor %}
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Servidor</th><th scope="col">Estado</th><th scope="col">Tipo</th><th scope="col">%</th><th scope="col">Laudo</th>
+        <th scope="col">Portaria de concessão</th><th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Ações</th>
+      </tr>
+    </thead>
+    {% for v in vigencias %}
+    <tr>
+      {% set quem = identificar(v) %}
+      <td class="nome">
+        {% if quem.nominal %}
+          <a href="/servidores/{{ v.servidor_id }}">{{ quem.nome }}</a>
+        {% else %}<span class="mono discreto">{{ quem.nome }}</span>{% endif %}
+      </td>
+      <td>{{ ui.pilula_direito(v.estado) }}</td>
+      <td>{{ v.tipo_adicional.nome if v.tipo_adicional }}</td>
+      <td class="mono">{{ v.percentual.rotulo if v.percentual }}</td>
+      <td>
+        {% if v.parecer and v.parecer.laudo %}
+        <a class="mono" href="/laudos/{{ v.parecer.laudo_id }}">{{ v.parecer.laudo.numero_siape }}</a>
+        {% else %}<span class="discreto">—</span>{% endif %}
+      </td>
+      <td><span class="recorte" title="{{ v.portaria_concessao or '' }}">
+          {{- v.portaria_concessao or 'aguarda portaria' -}}</span></td>
+      <td class="mono">{{ v.data_inicio|data or '—' }}</td>
+      <td>
+        <span class="mono">{{ v.data_fim|data or '—' }}</span>
+        {% if v.base_legal_suspensao %}
+        <span class="discreto quebra">{{ v.base_legal_suspensao }}</span>{% endif %}
+      </td>
+      <td>
+        {% if usuario.pode('parecer.emitir') %}
+        {# Um controle por linha, e não três: com quatro ações abertas lado a
+           lado a coluna ficava mais alta que a linha inteira. Era
+           `<details class="acoes-linha">`, a gaveta que abre na própria célula;
+           virou a camada de `ui.popup_gaveta` pelo motivo escrito no macro — a
+           gaveta resolvia dentro de uma coluna de ~190px, com quatro formulários
+           de rótulo, campo e parágrafo espremidos ali, empurrando as linhas de
+           baixo. A camada dá a esses mesmos formulários a largura da coluna de
+           conteúdo, e não cobra um clique a mais: o que virou camada foi a
+           GAVETA, não cada ação dentro dela.
+
+           O título da camada nomeia a LINHA — sem ele, seis camadas iguais não
+           dizem sobre qual adicional se está decidindo. #}
+        {% call ui.popup_gaveta('gerir-adicional-' ~ v.id, 'Gerir',
+                                'Gerir o adicional de ' ~ quem.nome,
+                                nota=ui.ROTULO_DIREITO.get(v.estado, v.estado)
+                                     ~ ' · ' ~ (v.tipo_adicional.nome if v.tipo_adicional else '—')) %}
+            {% if v.estado == 'PROPOSTO' %}
+            <form method="post" action="/adicionais/{{ v.id }}/conceder">
+              <h3>Conceder o direito</h3>
+              <p class="discreto">O parecer informa; o direito só existe depois da portaria
+                 de concessão da PROGEP.</p>
+              <div class="campo"><label for="portaria-{{ v.id }}">Portaria de concessão</label>
+                <input id="portaria-{{ v.id }}" name="portaria_concessao"
+                       placeholder="PORTARIA/PROGEP Nº …" required></div>
+              <div class="campo"><label for="dt-portaria-{{ v.id }}">Data da portaria</label>
+                <input id="dt-portaria-{{ v.id }}" name="data_portaria" type="date" required></div>
+              <div class="campo"><label for="efeito-{{ v.id }}">Efeito financeiro a partir de</label>
+                <input id="efeito-{{ v.id }}" name="data_inicio" type="date" required
+                       value="{{ v.parecer.data_marco_inicial.isoformat() if v.parecer and v.parecer.data_marco_inicial else '' }}"></div>
+              <div class="acoes"><button type="submit" class="compacto">Conceder</button></div>
+            </form>
+            {% elif v.estado == 'VIGENTE' %}
+            <form method="post" action="/adicionais/{{ v.id }}/suspender">
+              <h3>Suspender</h3>
+              <div class="campo"><label for="susp-motivo-{{ v.id }}">Motivo</label>
+                <select id="susp-motivo-{{ v.id }}" name="motivo">
+                  {% for codigo, rotulo in motivos.items() %}
+                  <option value="{{ codigo }}">{{ rotulo }}</option>{% endfor %}
+                </select></div>
+              <div class="campo"><label for="base-{{ v.id }}">Base legal</label>
+                <input id="base-{{ v.id }}" name="base_legal"
+                       placeholder="Lei 8.112/90, art. 69, p.ú."></div>
+              <div class="acoes"><button type="submit" class="secundario compacto">Suspender</button></div>
+            </form>
+            <form method="post" action="/adicionais/{{ v.id }}/alterar">
+              <h3>Alterar percentual</h3>
+              <div class="campo"><label for="perc-{{ v.id }}">Novo percentual</label>
+                <select id="perc-{{ v.id }}" name="percentual_id">
+                  {% for p in percentuais %}
+                  <option value="{{ p.id }}">{{ p.tipo_adicional.codigo }} · {{ p.rotulo }}</option>{% endfor %}
+                </select></div>
+              <div class="campo"><label for="alt-motivo-{{ v.id }}">Motivo</label>
+                <input id="alt-motivo-{{ v.id }}" name="motivo" required></div>
+              <div class="acoes"><button type="submit" class="secundario compacto">Alterar</button></div>
+            </form>
+            {% elif v.estado in ('SUSPENSO','EM_REAVALIACAO','ALTERADO') %}
+            <form method="post" action="/adicionais/{{ v.id }}/retomar">
+              <h3>Retomar</h3>
+              <div class="campo"><label for="retomar-{{ v.id }}">Vigente a partir de</label>
+                <input id="retomar-{{ v.id }}" name="data_inicio" type="date" required></div>
+              <div class="acoes"><button type="submit" class="secundario compacto">Retomar</button></div>
+            </form>
+            {% endif %}
+            {% if v.estado != 'CESSADO' %}
+            <form method="post" action="/adicionais/{{ v.id }}/cessar">
+              <h3>Cessar</h3>
+              <div class="campo"><label for="fim-{{ v.id }}">Data de término</label>
+                <input id="fim-{{ v.id }}" name="data_fim" type="date" required></div>
+              <div class="campo"><label for="cessar-motivo-{{ v.id }}">Motivo</label>
+                <select id="cessar-motivo-{{ v.id }}" name="motivo">
+                  {% for codigo, rotulo in motivos.items() %}
+                  <option value="{{ codigo }}">{{ rotulo }}</option>{% endfor %}
+                </select></div>
+              <div class="acoes"><button type="submit" class="perigo compacto">Cessar</button></div>
+            </form>
+            {% endif %}
+        {% endcall %}
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="nada">Nenhum adicional registrado.</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+
+  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/adicionais',
+                  ('estado=' ~ filtro_estado) if filtro_estado else '') }}
+
+  {% if propostas_possiveis and usuario.pode('parecer.emitir') %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Pareceres emitidos sem direito registrado</h2>
+      <span class="contador">{{ propostas_possiveis|length }}</span>
+      <span class="nota">proponha aqui para acompanhar até a portaria</span>
+    </div>
+    <div class="lista-linhas dupla">
+      {% for p in propostas_possiveis %}
+      <div>
+        <a class="mono" href="/pareceres/{{ p.id }}">{{ p.numero }}/{{ p.ano }}</a>
+        {%- set quem = identificar(p) %}
+        <span class="recorte">
+          {%- if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
+          {%- else %}{{ quem.nome }}{% endif %}
+          {% if p.laudo %}<span class="onde"><span class="ponto">·</span>
+            <span class="mono">{{ p.laudo.numero_siape }}</span></span>{% endif %}</span>
+        <form method="post" action="/adicionais/propor/{{ p.id }}">
+          <button type="submit" class="secundario compacto">Propor direito</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

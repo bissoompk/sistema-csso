@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}{{ modelo.rotulo }} · Modelos · CSSO{% endblock %}
+{% block trilha %}
+<span class="atual" aria-current="page">{{ modelo.nome }}
+  <span class="mono">v{{ modelo.versao }}</span></span>
+{% endblock %}
+
+{# O verbo do botão e o do título da camada num lugar só — ver `popup_cadastro`
+   em `partes/macros.html`. #}
+{% set PUBLICAR = 'Publicar nova versão' %}
+{% set MAPEAR = 'Mapear marcador' %}
+{% set EDITAR_MODELO = 'Editar o modelo' %}
+
+{% block acoes_cabecalho %}
+{% if modelo.vigente %}
+{# Publicar uma versão clona o dicionário inteiro e aposenta esta: o botão do
+   cabeçalho ABRE a camada que explica isso, e não dispara nada sozinho. #}
+{{ ui.botao_cadastro('publicar-versao', PUBLICAR, 'secundario') }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ modelo.nome }}</h1>
+      <p class="identificacao">
+        <span class="selo">v{{ modelo.versao }}</span>
+        {{ ui.pilula_versao(modelo.vigente) }}
+        <span class="ponto">·</span>
+        <span class="mono">{{ modelo.arquivo }}</span>
+        <span class="ponto">·</span>
+        <span>{{ modelo.orientacao|capitalize }}</span>
+        <span class="ponto">·</span>
+        <span>{% if modelo.treinamento %}{{ modelo.treinamento.nome }}
+          {%- else %}serve a qualquer treinamento{% endif %}</span>
+      </p>
+    </div>
+  </div>
+
+  {# Superada não é "versão antiga": é o layout com que saíram os certificados
+     emitidos enquanto ela valia. O aviso diz a consequência de mexer, que é o
+     que a pessoa precisa saber antes de procurar o botão que não existe. #}
+  {% if not modelo.vigente %}
+  <div class="aviso aviso-alerta">
+    <p><strong>Esta versão foi superada e não se edita.</strong> Ela é o layout dos
+      certificados que saíram enquanto ela valia — reescrevê-la mudaria papel que já
+      circulou.</p>
+    <p>Publicar a v{{ modelo.versao + 1 }} <strong>não move o ponteiro do
+      treinamento</strong>: quem aponta para cá continua apontando, e o catálogo
+      mostra <em>(superada)</em> no seletor até alguém trocar.</p>
+  </div>
+  {% endif %}
+
+  {# ================= o confronto =================
+     É a razão de a tela existir: de um lado o marcador que está escrito no
+     .docx, do outro o campo do sistema que o alimenta. Vem primeiro e ocupa a
+     largura inteira porque é o que se vem conferir aqui; os dados do próprio
+     modelo, que quase nunca mudam, ficam abaixo. #}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Dicionário de tags</h2>
+      {# O que é marcador e o que é campo se aprende uma vez. O que MUDA decisão —
+         quantos marcadores estão sem mapa, e que a emissão é recusada enquanto
+         houver um — continua em faixa, logo abaixo. #}
+      {% call ui.info('o-que-e-o-dicionario', 'o que liga o .docx ao dado do sistema') %}
+        <p><code>{{ '{{' }} marcador {{ '}}' }}</code> é o que está escrito no
+          <code>.docx</code>; o campo é o dado do sistema que o alimenta. A lista de
+          campos é fechada — campo desconhecido é recusado, nunca chutado.</p>
+        <p>O dicionário é <strong>dado, e não código</strong>: trocar o layout do
+          certificado não pede alteração de programa. É ele que a emissão congela,
+          junto com os valores, para a segunda via não sair com o nome do instrutor no
+          campo do participante.</p>
+      {% endcall %}
+      <span class="contador" title="linhas no dicionário">{{ modelo.tags|length }} no mapa</span>
+      {% if not conferencia.arquivo_encontrado %}
+      <span class="pilula alerta">arquivo ausente</span>
+      {% else %}
+      <span class="contador" title="marcadores lidos do .docx">
+        {{ conferencia.marcadores|length }} no arquivo</span>
+      {% if conferencia.sem_mapa %}
+      <span class="contador erro">{{ conferencia.sem_mapa|length }} sem mapa</span>{% endif %}
+      {% if conferencia.sem_marcador %}
+      <span class="contador alerta">{{ conferencia.sem_marcador|length }} fora do arquivo</span>{% endif %}
+      {% if conferencia.ok %}<span class="contador ok">o mapa cobre o arquivo</span>{% endif %}
+      {% endif %}
+    </div>
+
+    <div class="corpo">
+      {% if not conferencia.arquivo_encontrado %}
+      <div class="aviso aviso-alerta">
+        <p>Não achei <code>{{ modelo.arquivo }}</code> em
+          <code>app/templates/certificados/</code>, ou ele não abre como <code>.docx</code>.
+          Enquanto isso <strong>não dá para conferir os marcadores</strong>, e a emissão
+          com este modelo é recusada.</p>
+      </div>
+      {% else %}
+      {% if conferencia.sem_mapa %}
+      <div class="aviso aviso-erro">
+        <p><strong>{{ conferencia.sem_mapa|length }} marcador(es) do arquivo sem linha no
+          mapa.</strong> Isso sairia impresso no papel, com as chaves e tudo — mapeie
+          antes de emitir. Enquanto houver um, a emissão com este modelo é recusada.</p>
+        <div class="chips">
+          {% for m in conferencia.sem_mapa %}
+          <span class="marcador-docx sem-mapa">{{ '{{' }} {{ m }} {{ '}}' }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if conferencia.sem_marcador %}
+      <div class="aviso aviso-alerta">
+        <p><strong>{{ conferencia.sem_marcador|length }} linha(s) do mapa sem marcador no
+          arquivo.</strong> Só um aviso: a linha pode ter sido deixada para o próximo
+          layout. O que ela alimenta simplesmente não é impresso.</p>
+        <div class="chips">
+          {% for m in conferencia.sem_marcador %}
+          <span class="marcador-docx sem-arquivo">{{ '{{' }} {{ m }} {{ '}}' }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if conferencia.ok and not conferencia.sem_marcador %}
+      <div class="aviso aviso-ok">
+        Todo marcador do arquivo tem linha no mapa, e toda linha do mapa existe no
+        arquivo. {{ conferencia.marcadores|length }} marcador(es) conferido(s).
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+
+    <table class="mapa-tags">
+      <thead>
+        <tr><th scope="col">Marcador no .docx</th><th scope="col">Campo do sistema</th><th scope="col">Ordem</th>
+            <th scope="col">Vazio bloqueia</th><th scope="col">No arquivo</th>
+            {% if modelo.vigente %}<th scope="col"></th><th scope="col"></th>{% endif %}</tr>
+      </thead>
+      {% for tag in modelo.tags %}
+      {% set fid = 'f-tag-' ~ tag.id %}
+      {% set fora = conferencia.arquivo_encontrado and tag.marcador not in conferencia.marcadores %}
+      <tr>
+        <td>
+          <span class="marcador-docx {{ 'sem-arquivo' if fora }}">{{ '{{' }} {{ tag.marcador }} {{ '}}' }}</span>
+          {% if modelo.vigente %}
+          <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/{{ tag.id }}" id="{{ fid }}"></form>
+          {% endif %}</td>
+        {% if modelo.vigente %}
+        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
+          <select form="{{ fid }}" name="campo" aria-label="Campo que alimenta {{ tag.marcador }}">
+            {% for grupo, lista in campos_por_grupo.items() %}
+            <optgroup label="{{ grupo }}">
+              {% for codigo, campo in lista %}
+              <option value="{{ codigo }}" {% if tag.campo == codigo %}selected{% endif %}>{{ campo.rotulo }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select></span></td>
+        <td><input class="campo-curto" form="{{ fid }}" name="ordem" value="{{ tag.ordem }}"
+                   aria-label="Ordem de {{ tag.marcador }}"></td>
+        <td><label class="discreto"><input form="{{ fid }}" type="checkbox" name="obrigatorio" value="1"
+            {% if tag.obrigatorio %}checked{% endif %}> bloqueia</label></td>
+        {% else %}
+        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
+          <span class="campo-fixo">{{ campos[tag.campo].rotulo if tag.campo in campos else tag.campo }}
+            <span class="quebra codigo-campo">{{ tag.campo }}</span></span></span></td>
+        <td class="mono">{{ tag.ordem }}</td>
+        <td>{{ ui.pilula_sim_nao(tag.obrigatorio, 'bloqueia', 'não bloqueia') }}</td>
+        {% endif %}
+        <td>{% if not conferencia.arquivo_encontrado %}<span class="discreto">—</span>
+            {% elif fora %}<span class="pilula alerta">não</span>
+            {% else %}<span class="pilula ok">sim</span>{% endif %}</td>
+        {% if modelo.vigente %}
+        <td><button form="{{ fid }}" type="submit" class="secundario marcador">salvar</button></td>
+        <td><button form="{{ fid }}" type="submit" name="remover" value="1"
+                    class="perigo marcador">remover</button></td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 7 if modelo.vigente else 5 }}" class="nada">
+        O mapa está vazio — o certificado sairia em branco.</td></tr>
+      {% endfor %}
+    </table>
+
+    {% if modelo.vigente %}
+    <div class="corpo">
+      <div class="acoes">
+        {{ ui.botao_cadastro('mapear-marcador', MAPEAR) }}
+      </div>
+      {% if conferencia.sem_mapa %}
+      {# Sem as chaves, de propósito: aqui o nome é para ser copiado para o campo
+         da camada, e as chaves são recusadas pelo validador do marcador. FICA na
+         tela: é a lista de trabalho de quem abriu esta ficha, e a faixa vermelha
+         acima já disse que a emissão está travada enquanto ela não esvaziar. #}
+      <p class="discreto sem-margem">Lidos do arquivo e ainda sem mapa — copie o nome
+        para o campo <em>Marcador no .docx</em>, em “{{ MAPEAR }}”:</p>
+      <div class="chips">
+        {% for m in conferencia.sem_mapa %}
+        <span class="marcador-docx sem-mapa">{{ m }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="cartao liso" id="versoes">
+    <div class="cabecalho-cartao">
+      <h2>O modelo</h2>
+      <span class="nota">o layout muda; o certificado emitido, não</span>
+      {% if modelo.vigente %}
+      {{ ui.botao_cadastro('editar-modelo', EDITAR_MODELO, 'secundario compacto a-direita') }}
+      {% endif %}
+    </div>
+    <dl class="tabela-dados">
+      <dt>Nome</dt><dd>{{ modelo.nome }}</dd>
+      <dt>Arquivo <code>.docx</code></dt><dd class="mono">{{ modelo.arquivo }}</dd>
+      <dt>Orientação</dt><dd>{{ modelo.orientacao|capitalize }}</dd>
+      <dt>Treinamento</dt>
+      <dd>{% if modelo.treinamento %}{{ modelo.treinamento.nome }}
+          {%- else %}genérico — serve a qualquer treinamento{% endif %}</dd>
+      <dt>Observação</dt><dd>{{ modelo.observacao or '—' }}</dd>
+    </dl>
+    {% if not modelo.vigente %}
+    {# FICA: quem abre uma versão superada e não acha os botões precisa saber que
+       a ausência deles é regra, e por onde seguir. #}
+    <div class="corpo">
+      <p class="discreto sem-margem">
+        Versão superada não publica outra versão nem se edita. Para seguir, abra a
+        versão vigente deste modelo em <a href="/treinamentos/modelos">Modelos</a> e
+        publique a próxima a partir dela.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+
+{% if modelo.vigente %}
+{# Daqui para baixo é camada, e não bloco da coluna. #}
+{% call ui.popup_cadastro('mapear-marcador', MAPEAR,
+                          '/treinamentos/modelos/' ~ modelo.id ~ '/tags', MAPEAR,
+                          nota='uma linha do dicionário: o marcador e o campo que o alimenta') %}
+  <div class="linha-campos">
+    <div class="campo codigo"><label for="novo-marcador">Marcador no .docx</label>
+      <input id="novo-marcador" name="marcador" required placeholder="nome_do_participante"
+             aria-describedby="dica-marcador">
+      <span class="dica" id="dica-marcador">Sem as chaves: só o nome de dentro
+        delas.</span></div>
+    <div class="campo"><label for="novo-campo">Campo do sistema</label>
+      <select id="novo-campo" name="campo" required>
+        {% for grupo, lista in campos_por_grupo.items() %}
+        <optgroup label="{{ grupo }}">
+          {% for codigo, campo in lista %}
+          <option value="{{ codigo }}">{{ campo.rotulo }} — ex.: {{ campo.exemplo }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select></div>
+    <div class="campo"><label for="nova-ordem">Ordem</label>
+      <input id="nova-ordem" name="ordem" value="{{ modelo.tags|length + 1 }}"></div>
+  </div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="obrigatorio" value="1" checked>
+      vazio neste campo bloqueia a emissão</label></div>
+{% endcall %}
+
+{% call ui.popup_cadastro('editar-modelo', EDITAR_MODELO,
+                          '/treinamentos/modelos/' ~ modelo.id, 'Salvar modelo',
+                          nota='vale da v' ~ modelo.versao ~ ' em diante; papel já emitido não muda') %}
+  <div class="campo"><label for="nome">Nome</label>
+    <input id="nome" name="nome" value="{{ modelo.nome }}" required></div>
+  <div class="linha-campos">
+    <div class="campo codigo"><label for="arquivo">Arquivo .docx</label>
+      <input id="arquivo" name="arquivo" value="{{ modelo.arquivo }}" required></div>
+    <div class="campo"><label for="orientacao">Orientação</label>
+      <select id="orientacao" name="orientacao">
+        {% for o in orientacoes %}
+        <option value="{{ o }}" {% if modelo.orientacao == o %}selected{% endif %}>{{ o|capitalize }}</option>
+        {% endfor %}
+      </select></div>
+  </div>
+  <div class="campo"><label for="treinamento_id">Treinamento</label>
+    <select id="treinamento_id" name="treinamento_id">
+      <option value="">genérico — serve a qualquer treinamento</option>
+      {% for t in treinamentos %}
+      <option value="{{ t.id }}" {% if modelo.treinamento_id == t.id %}selected{% endif %}>{{ t.nome }}</option>
+      {% endfor %}
+    </select></div>
+  <div class="campo"><label for="observacao">Observação</label>
+    <input id="observacao" name="observacao" value="{{ modelo.observacao or '' }}"></div>
+{% endcall %}
+
+{% call ui.popup_cadastro('publicar-versao', PUBLICAR,
+                          '/treinamentos/modelos/' ~ modelo.id ~ '/versao', PUBLICAR,
+                          nota='v' ~ modelo.versao ~ ' → v' ~ (modelo.versao + 1)) %}
+  {# FICA, e fica aqui: a surpresa deste botão é o ponteiro que NÃO se move, e
+     quem publica precisa saber disso antes — não depois de o certificado sair com
+     o layout velho. #}
+  <div class="aviso aviso-alerta">
+    <p>Publicar a v{{ modelo.versao + 1 }} <strong>aposenta esta versão e não move o
+      ponteiro de nenhum treinamento</strong>: o catálogo continua apontando para a
+      v{{ modelo.versao }}, marcada <em>(superada)</em> no seletor, até alguém trocar
+      lá. Enquanto isso, o certificado sai com o layout de hoje.</p>
+    <p class="discreto">Clona o modelo e o dicionário inteiro para a versão seguinte.
+      O mapa vai junto de propósito: redigitar trinta linhas é como se troca o nome do
+      instrutor pelo do participante.</p>
+  </div>
+{% endcall %}
+{% endif %}
+{% endblock %}

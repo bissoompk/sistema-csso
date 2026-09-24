@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Painel · CSSO{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if usuario.pode('processo.criar') %}<a class="botao" href="/processos/novo">Novo processo</a>{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Painel</h1>
+      <p class="sub">Processos SEI · exercício {{ exercicio }} · o processo oficial continua sendo o SEI</p>
+    </div>
+  </div>
+
+  {% if precisa_de_perfil_operacional %}
+  <section class="cartao destaque">
+    <h2>Próximo passo: conceder o perfil operacional</h2>
+    <p>
+      Sua conta é <strong>superintendente</strong>: ela governa o acesso
+      (Resolução Consu 11/2026, art. 11, IX), mas de propósito <strong>não</strong>
+      cria processo, não emite parecer e não gerencia catálogos.
+    </p>
+    <p>
+      Para operar o módulo, conceda a alguém — inclusive a você mesmo, como
+      delegação temporária — o perfil <code>coordenador_csso</code>, informando o
+      ato normativo que autoriza. A concessão fica registrada na auditoria.
+    </p>
+    <div class="acoes"><a class="botao" href="/usuarios">Ir para Usuários »</a></div>
+  </section>
+  {% endif %}
+
+  {# A fileira de indicadores: rótulo em cima, número em mono embaixo. O de SLA
+     estourado pinta o cartão inteiro — é o único da fileira que pede ação. #}
+  <div class="grade grade-kpi">
+    <div class="kpi">
+      <div class="rotulo">Em andamento</div>
+      <div class="medida"><span class="valor">{{ kpis.em_andamento }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Aguardando</div>
+      <div class="medida"><span class="valor">{{ kpis.aguardando }}</span>
+        <span class="nota">laudo, documento ou SEI</span></div>
+    </div>
+    <div class="kpi {% if kpis.atrasados %}perigo{% endif %}">
+      <div class="rotulo">Acima do SLA</div>
+      <div class="medida"><span class="valor">{{ kpis.atrasados }}</span>
+        {% if kpis.atrasados %}<span class="nota"><a href="/processos?atrasados=1">ver a fila</a></span>{% endif %}</div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Concluídos em {{ exercicio }}</div>
+      <div class="medida"><span class="valor">{{ kpis.concluidos_no_exercicio }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Dias médios até a emissão</div>
+      <div class="medida">
+        <span class="valor">{{ kpis.tempo_medio_emissao if kpis.tempo_medio_emissao is not none else '—' }}</span>
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Subscritores habilitados</div>
+      <div class="medida"><span class="valor">{{ kpis.subscritores_habilitados }}</span>
+        <span class="nota">IN 15/2022,<br>art. 10, §2º, I</span></div>
+    </div>
+  </div>
+
+  <div class="lado-a-lado principal">
+    <div class="pilha">
+      {# Fila de trabalho: a linha inteira é o link para o processo.
+
+         O contador é o TOTAL da fila, não o tamanho da lista exibida: ele já foi
+         `precisam_de_voce|length`, que nunca passava de oito, e "Ver todos"
+         abria um recorte de outro critério. Quando a lista está
+         cortada, a tela diz que está — "8 de 23" é honesto; "8" sozinho, com 23
+         atrás, não é. #}
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Precisam de você hoje</h2>
+          <span class="contador">
+            {%- if total_precisam > precisam_de_voce|length -%}
+            {{ precisam_de_voce|length }} de {{ total_precisam }}
+            {%- else -%}{{ total_precisam }}{%- endif -%}</span>
+          <a class="a-direita" href="{{ fila_precisam }}">Ver todos</a>
+        </div>
+        {% if precisam_de_voce %}
+        <div class="lista-linhas">
+          {% for r in precisam_de_voce %}
+          <a href="/processos/{{ r.processo.id }}">
+            <span class="quem">
+              <strong>{{ identificar(r.processo, vazio=r.processo.nup) }}</strong>
+              <span class="onde">
+                <span class="mono">{{ r.processo.nup }}</span>
+                <span class="ponto">·</span>
+                <span class="recorte">{{ r.processo.unidade.nome_extenso if r.processo.unidade else 'sem unidade' }}</span>
+              </span>
+            </span>
+            {{ ui.pilula_estado(r.processo.estado_tecnico) }}
+            {{ ui.selo_dias(r) }}
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="corpo">
+          <div class="vazio">
+            <strong>Nada pendente.</strong>
+            <span>Bom sinal: aqui a ausência é a resposta, e não uma lista que
+              ainda não carregou.</span>
+          </div>
+        </div>
+        {% endif %}
+      </section>
+
+      {# Doze meses em silhueta. O número continua escrito em cima de cada barra:
+         nada se perde em relação à tabela de doze células que havia aqui, e a
+         forma do ano — que a tabela escondia — passa a ser visível. #}
+      <section class="cartao">
+        <div class="titulo-cartao">
+          <h2>Pareceres emitidos por mês</h2>
+          <span class="nota">{{ exercicio }} · {{ por_mes.values()|sum }} no exercício</span>
+        </div>
+        {% set pico = por_mes.values()|max %}
+        <div class="grafico-meses">
+          {% for mes in range(1, 13) %}
+          {% set quanto = por_mes[mes] %}
+          <div class="mes {{ 'sem-dado' if not quanto }}">
+            <span class="quanto">{{ quanto or '—' }}</span>
+            <div class="barra" style="--v:{{ (quanto * 100 // pico) if pico else 0 }}"></div>
+            <span class="nome">{{ ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][mes - 1] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+
+    <div class="pilha">
+      {# Este cartão já entregou contagem crua, e sob `processo.ver` —
+         permissão mais larga que o `indicador.ver` de `/relatorios`, onde a mesma
+         família de medida já saía suprimida. A tela é de entrada, não de
+         indicador: quem abre o sistema de manhã não tem por que ser a porta dos
+         fundos da RN-19. Agora a supressão é a mesma função de `/relatorios`
+         (`suprimir`) e o desenho é o mesmo macro. #}
+      <section class="cartao">
+        <div class="titulo-cartao"><h2>Distribuição por tipo de risco</h2>
+          {% if not usuario.ve_dado_nominal and por_risco %}
+          {# O traço na célula é o que se vê; por que ele está lá se lê uma vez. #}
+          {% call ui.info('supressao-do-painel', 'por que algumas células saem como traço') %}
+            <p>Célula com menos de {{ limiar }} servidores aparece como
+              <span class="mono">—</span> para quem não tem <code>exposicao.ver</code>
+              (RN-19): num grupo pequeno, a contagem sozinha já identifica a pessoa.</p>
+            <p>É a mesma supressão de <em>Relatórios</em>, com a mesma função e o mesmo
+              limiar — a tela de entrada não pode ser a porta dos fundos da regra.</p>
+          {% endcall %}
+          {% endif %}
+        </div>
+        {{ ui.distribuicao(por_risco, limiar, 'Sem exposições registradas.') }}
+      </section>
+
+      {% if laudos_sem_conferencia %}
+      <section class="cartao liso">
+        <div class="cabecalho-cartao">
+          <h2>Laudos sem conferência</h2>
+          <span class="contador">{{ laudos_sem_conferencia|length }}</span>
+          {% call ui.info('fila-nao-vencimento', 'por que esta fila não é vencimento') %}
+            <p>Fila de trabalho, não vencimento: o laudo não tem prazo de validade
+              (IN 15/2022, art. 10, §3º), então nada aqui está vencido — está apenas há
+              mais de 24 meses sem alguém conferir se ainda descreve o local.</p>
+            <p>Registrar a conferência não altera o laudo: só data o último olhar.</p>
+          {% endcall %}
+        </div>
+        <div class="lista-linhas dupla">
+          {% for laudo in laudos_sem_conferencia[:10] %}
+          <a href="/laudos/{{ laudo.id }}">
+            <span class="mono">{{ laudo.numero_siape }}</span>
+            <span class="recorte">{{ laudo.unidade.nome_extenso if laudo.unidade else '—' }}</span>
+            <span class="selo">{{ laudo.data_ultima_conferencia|data or 'nunca' }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="cartao">
+        <div class="titulo-cartao">
+          <h2>Últimos eventos</h2>
+          {% if usuario.pode('auditoria.ver') %}<a class="a-direita" href="/auditoria">Auditoria</a>{% endif %}
+        </div>
+        <ul class="linha-tempo">
+          {% for evento in eventos %}
+          <li>
+            {# Sem `sobre`: "Ultimos eventos" atravessa todas as entidades do
+               sistema, entao nao ha um titular a quem perguntar — e o painel e
+               a tela que mais gente abre, que foi o que ja fez dele o pior caso
+               da supressao estatistica. #}
+            <strong>{{ evento.tipo_evento|evento }}</strong> — {{ texto_livre(evento.descricao) }}
+            <div class="quando">{{ evento.ocorrido_em|momento }} · {{ evento.usuario_nome }}</div>
+          </li>
+          {% else %}<li class="nada">Sem eventos.</li>{% endfor %}
+        </ul>
+      </section>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

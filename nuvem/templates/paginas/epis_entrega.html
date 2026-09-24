@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+
+{# O balcão: registrar a entrega de um EPI a um servidor.
+
+   Duas coisas moram na mesma tela de propósito. Em cima, a entrega — o caso
+   comum. Embaixo, a recusa fundamentada, que é o mesmo atendimento terminando de
+   outro jeito: quem chega pedindo EPI para terceirizado, estudante ou bolsista
+   recebe um "não" que cita a norma e encaminha. Separar em duas telas faria a
+   recusa depender de alguém lembrar que ela existe — e é justamente a contagem
+   dessas recusas que permite revisar a política com número em vez de impressão. #}
+
+{% block titulo %}Entregar EPI · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Nova entrega</span>{% endblock %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Dois
+   dicionários, porque a tela tem dois formulários independentes e ambos têm um
+   campo `item_id`: um só apagaria a escolha do outro. Vazios na abertura. #}
+{% set d = digitado or {} %}
+{% set r = digitado_recusa or {} %}
+{%- macro sel(escolhido, valor) -%}
+{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{%- endmacro %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Registrar entrega de EPI</h1>
+      <p class="sub">O que for gravado aqui vira linha da ficha do servidor,
+        com o CA e o lote congelados no ato — e a ficha não se edita depois.</p>
+    </div>
+  </div>
+
+  {# FICA INTEIRO O QUE MUDA A DECISÃO: que gravar aqui não encerra o
+     atendimento, e os três passos que faltam. Quem não ler isto agora vai embora
+     achando que terminou — é o caso exemplar de texto que não pode ir para trás
+     de um clique. O (i) leva só o que explica por que o papel é a prova. #}
+  <div class="aviso aviso-alerta">
+    <strong>A entrega termina no papel assinado, não neste formulário.</strong>
+    Gravado o registro, imprima o comprovante, colha a assinatura do servidor no
+    ato e anexe o digitalizado à ficha. Enquanto ele não vier, a entrega consta
+    como <strong>pendente de comprovante</strong> — tem registro e não tem prova.
+    {% call ui.info('o-papel-e-a-prova', 'por que o papel assinado é a prova, e não o registro') %}
+      <p>O registro desta tela é a afirmação da instituição de que entregou. A
+        <strong>prova</strong> é o papel que a pessoa assinou no ato, digitalizado
+        e anexado com o SHA-256 do arquivo.</p>
+      <p>Numa fiscalização, é o assinado que se pede: um sistema pode afirmar
+        qualquer coisa sobre si mesmo, e a assinatura de quem recebeu é o único
+        elemento que não veio de dentro dele.</p>
+      <p>Cada entrega sem comprovante abre uma pendência com dono e prazo, que
+        aparece no sino — não é uma lacuna que fica esperando alguém reparar
+        nela.</p>
+    {% endcall %}
+  </div>
+
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>A entrega</h2>
+      <span class="nota">EPI é só para servidor com SIAPE — ver a recusa abaixo</span>
+    </div>
+
+    <form method="post" action="/epis/entregas">
+      <div class="linha-campos">
+        {# ===============================================================
+           O SELETOR DE 975 OPÇÕES, E O QUE O SUBSTITUI
+           ===============================================================
+           Aqui havia um `<select>` com o cadastro INTEIRO. Com o banco de hoje
+           (um servidor) isso não custava nada; com a importação que está em
+           `entrada/` — 975 linhas de planilha —, escolher no balcão, com fila
+           de pé, vira rolar uma lista de 975 nomes num seletor nativo. Torcer
+           para acertar digitando as primeiras letras também não resolve: quando
+           a identificação está suprimida o rótulo começa com `SRV-`, e as
+           primeiras letras são iguais para todo mundo.
+
+           A busca no servidor já existia, testada, com a RN-19 aplicada por
+           linha — e servia UMA tela. Este é o mesmo fragmento de
+           `/epis/requisicoes/nova`; o que muda é o rótulo, que entra por
+           parâmetro. Segundo o comentário da própria rota, este é "o formulário
+           de maior repetição do sistema".
+
+           SEM JAVASCRIPT NADA SE PERDE: o `<select>` continua completo dentro
+           do fragmento, e o campo de busca simplesmente não faz nada. A busca é
+           uma REDUÇÃO da lista, nunca um requisito para chegar até ela. #}
+        <div class="campo">
+          <label for="busca-servidor">Buscar servidor</label>
+          <input id="busca-servidor" type="search" name="q" value=""
+                 placeholder="Nome ou SIAPE"
+                 hx-get="/epis/entregas/servidores"
+                 hx-target="#lista-de-servidores"
+                 hx-trigger="keyup changed delay:300ms, search"
+                 hx-include="this"
+                 aria-describedby="dica-busca-servidor">
+          <span class="dica" id="dica-busca-servidor">O SIAPE acha sempre. O nome
+            só acha para quem tem permissão de ler identificação nominal — senão
+            o filtro viraria oráculo (RN-19).</span>
+        </div>
+
+        <div class="campo" id="lista-de-servidores">
+          {# `with` e não confiança no escopo: o mesmo fragmento é servido solto
+             pela rota HTMX da busca, onde não há nada escolhido. #}
+          {% with escolhido = servidor_escolhido.id if servidor_escolhido else none,
+                  rotulo = 'Quem recebe' %}
+          {% include "partes/epi_requisicao_servidores.html" %}
+          {% endwith %}
+        </div>
+
+        <div class="campo">
+          <label for="item_id">Equipamento</label>
+          {# Ao trocar o item, o bloco abaixo é recarregado sozinho: tamanhos,
+             lotes e quantidade padrão dependem dele, e recarregar a página
+             inteira perderia o servidor já escolhido. #}
+          <select id="item_id" name="item_id" required
+                  hx-get="/epis/entregas/opcoes"
+                  hx-target="#opcoes-do-item"
+                  hx-trigger="change"
+                  hx-include="this">
+            <option value="">—</option>
+            {% for i in itens %}
+            <option value="{{ i.id }}" {% if item and item.id == i.id %}selected{% endif %}>
+              {{ i.nome }}{% if i.modelo %} · {{ i.modelo }}{% endif %}
+              — CA {{ i.numero_ca or '—' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div id="opcoes-do-item">
+        {% include "partes/epi_opcoes_item.html" %}
+      </div>
+
+      <div class="campo">
+        <label for="observacao">Observação</label>
+        <textarea id="observacao" name="observacao" rows="2"
+                  aria-describedby="dica-observacao">{{ d.get('observacao') or '' }}</textarea>
+        <span class="dica" id="dica-observacao">Sai impressa no comprovante.
+          Não escreva nada sobre a saúde de quem recebe: o sistema recusa
+          (RN-21).</span>
+      </div>
+
+      <div class="acoes">
+        <button type="submit">Registrar entrega</button>
+        <p class="discreto">Grava a linha da ficha, baixa o lote no livro razão e
+          abre a pendência do comprovante — tudo na mesma transação.</p>
+      </div>
+    </form>
+  </section>
+
+  <section class="cartao" id="recusa">
+    <div class="titulo-cartao">
+      <h2>Recusa fundamentada</h2>
+      {# DOIS (i) neste cartão, e eles respondem perguntas diferentes: um é a
+         política (a quem o setor não fornece, e por quê), o outro é o
+         CATÁLOGO — o texto exato que cada motivo faz sair para quem pediu.
+         O segundo é o caso literal de "informação exemplificativa do item":
+         era uma lista de rodapé com o texto integral de todos os motivos,
+         aberta na tela abaixo de um formulário que já tinha o seletor deles. #}
+      {% call ui.info('politica-de-vinculo', 'a quem o setor não fornece EPI, e por quê') %}
+        <p>A UFVJM <strong>não fornece EPI a terceirizado, nem a estudante, nem a
+          bolsista</strong> (decisões 3 e 7). Para o terceirizado a obrigação,
+          pela NR-6, é da empresa contratante.</p>
+        <p>O sistema não detecta isso sozinho — quem não é servidor não está no
+          cadastro, e mantê-lo fora é a decisão. O que ele garante é que a
+          negativa, uma vez tomada por gente, saia com o texto da norma e fique na
+          trilha, contável por motivo.</p>
+        <p>O texto do motivo é <strong>congelado no ato</strong>: editar o
+          catálogo depois não reescreve a negativa que o requerente já recebeu
+          (RN-27).</p>
+      {% endcall %}
+      {% call ui.info('catalogo-de-motivos', 'o que cada motivo do catálogo faz sair para quem pediu') %}
+        {% if motivos %}
+        <div class="lista-linhas simples">
+          {% for m in motivos %}
+          <div>
+            <strong>{{ m.rotulo }}</strong>
+            <span class="discreto mono">{{ m.codigo }}</span>
+            {# alerta e não o `pilula_sim_nao` do catálogo: lá a coluna responde
+               "exige / dispensa" e o "sim" é só um fato; aqui ela só aparece
+               quando exige, e é um aviso de que a escolha do motivo ainda vai
+               cobrar uma frase escrita na hora #}
+            {% if m.exige_complemento %}<span class="pilula alerta">exige complemento</span>{% endif %}
+            <p class="discreto texto-literal">{{ m.texto }}</p>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="vazio">
+          <strong>Nenhum motivo cadastrado.</strong>
+          <span>Sem catálogo, a recusa volta a ser texto livre — sai diferente a
+            cada vez, não cita norma e não se conta.</span>
+        </div>
+        {% endif %}
+      {% endcall %}
+      <span class="nota">o “não” que cita a norma, sai igual todas as vezes e é contável</span>
+    </div>
+
+    <form method="post" action="/epis/entregas/recusa">
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="motivo_id">Motivo</label>
+          {# a recusa recusada volta com o foco aqui: é o único campo que a rota
+             cobra antes de qualquer outra coisa, e a faixa vermelha fica no topo
+             da tela, longe deste cartão #}
+          <select id="motivo_id" name="motivo_id" required
+                  {%- if foco_na_recusa %} autofocus{% endif %}>
+            <option value="">—</option>
+            {% for m in motivos %}
+            <option value="{{ m.id }}"{{ sel(r.get('motivo_id'), m.id) }}>{{ m.rotulo }}{% if m.base_normativa %}
+              ({{ m.base_normativa }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="campo">
+          <label for="a_quem">A quem se dirige</label>
+          <input id="a_quem" name="a_quem" required value="{{ r.get('a_quem') or '' }}"
+                 placeholder="chefia da unidade X, em nome da equipe terceirizada"
+                 aria-describedby="dica-a-quem">
+          <span class="dica" id="dica-a-quem">Sem nome de pessoa que não esteja no
+            cadastro — descreva o pedido, não o indivíduo.</span>
+        </div>
+        <div class="campo">
+          <label for="unidade_recusa">Unidade</label>
+          <input id="unidade_recusa" name="unidade" value="{{ r.get('unidade') or '' }}"
+                 placeholder="FAMED">
+        </div>
+        <div class="campo">
+          <label for="item_recusado">Item pedido</label>
+          <select id="item_recusado" name="item_id">
+            <option value="">—</option>
+            {% for i in itens %}
+            <option value="{{ i.id }}"{{ sel(r.get('item_id'), i.id) }}>{{ i.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="campo">
+        <label for="complemento">Complemento</label>
+        <textarea id="complemento" name="complemento" rows="2"
+                  aria-describedby="dica-complemento">{{ r.get('complemento') or '' }}</textarea>
+        <span class="dica" id="dica-complemento">Obrigatório quando o motivo do
+          catálogo exige.</span>
+      </div>
+      <div class="acoes"><button type="submit" class="secundario">Registrar recusa</button></div>
+    </form>
+    {# O rodapé "O que cada motivo diz" foi INTEIRO para o (i) do título deste
+       cartão. Ele listava, abertos na tela, o texto integral de todos os motivos
+       do catálogo — a referência que se consulta uma vez, embaixo de um
+       formulário que já tem o seletor deles. O estado vazio foi junto, e junto
+       foi o argumento de por que ele fica fora da `.lista-linhas`: ali dentro
+       herdaria a grade e o fio de uma linha e se leria como mais um item. #}
+  </section>
+
+</div>
+{% endblock %}
