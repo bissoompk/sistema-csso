@@ -18,7 +18,8 @@
    este usuário enxerga é a única saída que o sistema já garante que abre — é o
    mesmo invariante que impede o menu de mentir. Não havendo nenhum, sobra o
    mapa dos módulos, que não exige permissão nenhuma. #}
-{% set saidas = itens_modulo + itens_base %}
+{# `+` de listas no JS concatena TEXTO: `concat` é a soma de listas do Python. #}
+{% set saidas = (itens_modulo or []).concat(itens_base or []) %}
 {% set destino = saidas[0] if saidas else none %}
 
 {% block conteudo %}

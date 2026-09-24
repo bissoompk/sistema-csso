@@ -37,10 +37,26 @@ async function telaDeErro(c: Ctx, titulo: string, detalhe: string, codigo: strin
     if (cache !== undefined) {
       usuario = cache;
     } else {
-      usuario = await obterBanco().transaction(async (tx) => {
-        c.set("tx", tx);
-        return usuarioOpcional(c);
-      });
+      // A transação da requisição ainda está aberta aqui (o `onError` e o
+      // `notFound` rodam dentro do middleware que a abriu): pedir OUTRA ao
+      // banco com `CSSO_POOL_MAX=1` — o padrão da função do Netlify — travava
+      // para sempre esperando a conexão que a própria requisição segura. Lê-se
+      // num SAVEPOINT da transação corrente; se ela já estiver abortada (erro
+      // de SQL), o savepoint falha e a tela sai sem casca, como previsto.
+      const atual = c.get("tx");
+      usuario = atual
+        ? await atual.transaction(async (sp) => {
+            c.set("tx", sp);
+            try {
+              return await usuarioOpcional(c);
+            } finally {
+              c.set("tx", atual);
+            }
+          })
+        : await obterBanco().transaction(async (tx) => {
+            c.set("tx", tx);
+            return usuarioOpcional(c);
+          });
     }
   } catch {
     usuario = null;

@@ -253,9 +253,10 @@
         {%- if sino_abertas %}<span class="contador">{{ sino_abertas }}</span>{% endif %}
       </a>
       {% endif %}
-      {% set partes = (usuario.nome|trim or '?').split() %}
+      {# `.split()` do Python sem argumento corta em qualquer branco; no JS é a regex. #}
+      {% set partes = (usuario.nome|trim or '?').split(r/\s+/) %}
       <div class="usuario">
-        <span class="avatar" aria-hidden="true">{{ (partes[0][0] ~ (partes[-1][0] if partes|length > 1 else ''))|upper }}</span>
+        <span class="avatar" aria-hidden="true">{{ ((partes|first)[0] ~ ((partes|last)[0] if partes|length > 1 else ''))|upper }}</span>
         <span class="nome" title="{{ usuario.perfis|join(', ') }}">{{ usuario.nome }}</span>
         {# A porta de `/config`. Ela não é item de menu, e o argumento continua
            valendo — o que está lá não é módulo nem base, é o sistema: o setor

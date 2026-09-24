@@ -8,7 +8,7 @@
    "Senha fraca: …" pertence ao campo de senha — lida no topo, ela obriga a
    pessoa a adivinhar qual dos três campos recusou. O resto ("já existe usuário
    cadastrado") é da tela inteira e fica onde está. #}
-{% set erro_senha = erro if erro and erro.startswith('Senha fraca') else none %}
+{% set erro_senha = erro if erro and erro.startsWith('Senha fraca') else none %}
 {% set erro = none if erro_senha else erro %}
 
 {% block conteudo %}

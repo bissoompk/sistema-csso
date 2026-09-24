@@ -21,6 +21,10 @@ import { obterConfig, RODAPE_INSTITUCIONAL, VERSAO } from "./config.js";
 import { cookieSeguro } from "./nucleo/seguranca.js";
 import { getCookie, setCookie } from "hono/cookie";
 import type { UsuarioAtual } from "./servicos/rbac.js";
+import { COLUNAS_KANBAN } from "./dominio/estados.js";
+import * as datas_br from "./servicos/datas_br.js";
+import { rotulo_evento } from "./servicos/auditoria.js";
+import * as identificacao from "./servicos/identificacao.js";
 
 /**
  * Onde estão os templates. Na função do Netlify o código vira um bundle em
@@ -125,6 +129,73 @@ global("range", (a: number, b?: number, passo = 1) => {
   for (let i = ini; passo > 0 ? i < fim : i > fim; i += passo) r.push(i);
   return r;
 });
+
+// O quadro do kanban é constante de apresentação, não contexto de tela.
+global("COLUNAS_KANBAN", COLUNAS_KANBAN);
+// `(fim - inicio).days` do Jinja sobre duas `date`: aqui as datas são texto
+// 'AAAA-MM-DD' (RN-18), e a subtração vira esta função (`partes/macros.html`).
+global("dias_entre", (inicio: string | null, fim: string | null): number | null => {
+  if (!inicio || !fim) return null;
+  const dia = (s: string) => Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
+  return Math.round((dia(String(fim)) - dia(String(inicio))) / 86_400_000);
+});
+// ---------------------------------------------------------------------
+// Datas, evento e RN-19 (porte do núcleo B)
+// ---------------------------------------------------------------------
+// `date` chega como 'AAAA-MM-DD' e é formatada sem passar por fuso (RN-18);
+// `timestamptz` chega como `Date` e é exibido em America/Sao_Paulo.
+filtro("data", (d: unknown) => {
+  const dia = datas_br.comoData(d);
+  return dia ? datas_br.numerica(dia) : "";
+});
+filtro("data_extenso", (d: unknown) => {
+  const dia = datas_br.comoData(d);
+  return dia ? datas_br.por_extenso(dia) : "";
+});
+filtro("momento", (m: Date | string | null | undefined) => datas_br.local_formatado(m ?? null));
+// O tipo de evento é chave de banco; o rótulo mora em `auditoria.ROTULO_EVENTO`.
+filtro("evento", (codigo: string | null | undefined) => rotulo_evento(codigo));
+
+/** Os kwargs do Nunjucks chegam como último argumento, marcado `__keywords`. */
+function separarKwargs(args: unknown[]): [unknown[], Record<string, unknown>] {
+  const ultimo = args[args.length - 1] as Record<string, unknown> | undefined;
+  if (ultimo && typeof ultimo === "object" && (ultimo as { __keywords?: boolean }).__keywords) {
+    const { __keywords: _k, ...kw } = ultimo;
+    return [args.slice(0, -1), kw];
+  }
+  return [args, {}];
+}
+
+/**
+ * RN-19 no template sem a tela carregar nada: `usuario` e `request` já estão
+ * no contexto de toda página e fragmento (Nunjucks chama global com
+ * `this.ctx` = contexto). Sem `usuario`, o lado seguro — código opaco.
+ */
+global("identificar", function (this: { ctx: Record<string, any> }, ...args: unknown[]) {
+  const [pos, kw] = separarKwargs(args);
+  const vazio = (kw.vazio ?? pos[1] ?? identificacao.SEM_SERVIDOR) as string;
+  return identificacao.identificar(
+    pos[0] as identificacao.AlvoIdentificavel,
+    this.ctx?.usuario ?? null,
+    identificacao.semente_de(this.ctx?.request),
+    { vazio },
+  );
+});
+
+/** A irmã de `identificar` para a frase que o sistema gravou (trilha, pendência). */
+global("texto_livre", function (this: { ctx: Record<string, any> }, ...args: unknown[]) {
+  const [pos, kw] = separarKwargs(args);
+  return identificacao.texto_livre(pos[0] as string | null, this.ctx?.usuario ?? null, {
+    sobre: (kw.sobre ?? pos[1]) as identificacao.AlvoIdentificavel,
+    vazio: (kw.vazio ?? pos[2] ?? identificacao.SEM_SERVIDOR) as string,
+  });
+});
+
+// Os outros globais que o `web.py` registrava moram no módulo dono deles, que os
+// registra ao ser carregado — `web.ts` não os importa para não fechar ciclo de
+// importação (esses módulos dependem de `web.ts`, ou dependem de quem depende):
+//   - `porta_de_entrada` ............ `src/modulos.ts`
+//   - `POLITICA_SENHA` .............. `src/servicos/autenticacao.ts`
 
 /**
  * O `request` que os templates enxergam. Só o que eles de fato leem:

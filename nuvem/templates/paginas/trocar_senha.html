@@ -12,7 +12,7 @@
    pior do que não apontar nenhum. #}
 {% set erro_atual = erro if erro and 'atual' in erro else none %}
 {% set erro_conf = erro if erro and 'confirmação' in erro else none %}
-{% set erro_nova = erro if erro and erro.startswith('Senha fraca') else none %}
+{% set erro_nova = erro if erro and erro.startsWith('Senha fraca') else none %}
 {% set erro = none if (erro_atual or erro_conf or erro_nova) else erro %}
 
 {% block conteudo %}

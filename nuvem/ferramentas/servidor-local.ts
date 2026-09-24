@@ -16,7 +16,10 @@ const { obterApp } = await import("../src/app.js");
 const porta = Number(process.env.PORTA ?? 8766);
 const raiz = new Hono();
 raiz.use("/estaticos/*", serveStatic({ root: "./public" }));
-raiz.route("/", obterApp() as unknown as Hono);
+// `fetch` do app inteiro, e não `raiz.route(...)`: montado como sub-app, o
+// `notFound` do app (a tela de 404 com a casca) era trocado pelo 404 cru da raiz.
+const app = obterApp();
+raiz.all("*", (c) => app.fetch(c.req.raw, c.env));
 serve({ fetch: raiz.fetch, port: porta }, () => {
   console.log(`CSSO (nuvem) em http://localhost:${porta}`);
 });

@@ -9,7 +9,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { type AnyPgColumn, check, date, foreignKey, jsonb, text, timestamp } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, check, customType, date, foreignKey, text, timestamp } from 'drizzle-orm/pg-core';
 
 /**
  * Agora, em UTC, sem fracao de segundo.
@@ -52,8 +52,26 @@ export const DataPura = (nome: string) => date(nome, { mode: 'string' });
  *    espacos. O que se le NAO e o texto que se gravou — o digest tem de ser
  *    calculado sobre uma serializacao canonica feita em codigo (chaves
  *    ordenadas), nunca sobre o texto devolvido pelo banco.
+ *
+ * 3. (Achado no porte da auditoria.) O `jsonb()` do Drizzle NAO serve com o
+ *    postgres.js: o driver ja devolve o jsonb parseado, e o Drizzle faz
+ *    `JSON.parse` de novo em todo valor que for string. O texto `'50.00'`
+ *    gravado como string JSON voltava como o numero `50`, `'1110654'` como
+ *    inteiro, `'true'` como booleano — exatamente o defeito que o Python
+ *    corrigiu no `JSONTexto` dele, e que quebraria a cadeia de
+ *    `historico_evento` com alarme falso de adulteracao. O tipo abaixo grava
+ *    com `JSON.stringify` (o serializador de json do postgres.js e
+ *    transparente sob o Drizzle) e le SEM reparsear: no nivel de cima quem
+ *    parseou foi o driver; dentro de relacao (`with:`), o Drizzle parseia a
+ *    linha agregada inteira uma vez. O DDL e o mesmo `jsonb`.
  */
-export const JSONTexto = <T = unknown>(nome: string) => jsonb(nome).$type<T>();
+const jsonbFiel = customType<{ data: unknown; driverData: unknown }>({
+  dataType: () => 'jsonb',
+  toDriver: (valor) => JSON.stringify(valor),
+  fromDriver: (valor) => valor,
+});
+
+export const JSONTexto = <T = unknown>(nome: string) => jsonbFiel(nome).$type<T>();
 
 /** O Python declarava `Inet` sobre TEXT; continua texto (o valor vem do proxy). */
 export const Inet = (nome: string) => text(nome);
