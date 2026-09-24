@@ -32,14 +32,13 @@ import * as datas_br from "../servicos/datas_br.js";
 import { normalizar_decimal } from "../servicos/presenca.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { COM_TAGS } from "../servicos/turma.js";
-import { pagina, redirecionar } from "../web.js";
+import { pagina, redirecionar, salvar_com_diff } from "../web.js";
 import {
   data_iso,
   erro as _erro,
   id_opcional,
   marcado,
   recados,
-  salvar_com_diff,
   texto_ou_nulo,
   volta as _volta,
   vista_assinatura,
@@ -247,10 +246,8 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
   if (problema) return _erro(c, CATALOGO, problema);
   return salvar_com_diff(
     c,
-    tx,
     usuario,
     tabela_treinamento,
-    "treinamento",
     treinamento_id,
     {
       nome: nome_limpo,
@@ -392,10 +389,8 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
   }
   return salvar_com_diff(
     c,
-    tx,
     usuario,
     tabela_modelo,
-    "certificado_modelo",
     modelo_id,
     {
       nome: nome_limpo,
@@ -533,10 +528,8 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/:tag_id{[0-9]+}`, async (c) => {
   if (!Object.hasOwn(certificado.CAMPOS_CERTIFICADO, campo)) return _erro(c, volta, `Campo desconhecido: '${campo}'.`);
   return salvar_com_diff(
     c,
-    tx,
     usuario,
     tabela_tag,
-    "certificado_modelo_tag",
     tag_id,
     { campo, ordem: _inteiro(f.texto("ordem"), 1) || tag.ordem, obrigatorio: marcado(f.texto("obrigatorio")) },
     { permissao: "treinamento.gerenciar", rotulo: "Mapa de tags", volta },
@@ -679,10 +672,8 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
   if (campos === null) return _erro(c, ASSINATURAS, problema);
   return salvar_com_diff(
     c,
-    tx,
     usuario,
     tabela_assinatura,
-    "assinatura_instrutor",
     Number(c.req.param("assinatura_id")),
     {
       ...campos,

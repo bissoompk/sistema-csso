@@ -743,9 +743,7 @@ describe("permissões", () => {
     expect((await cliente.get("/epis/catalogo")).text).toContain("somente leitura");
   });
 
-  // TODO(porte): `/processos`, `/laudos` e `/auditoria` ainda são esqueletos
-  // (agentes Processos e Base) e respondem 404. Religar quando existirem.
-  it.skip("o almoxarife não abre processo, laudo nem auditoria", async () => {
+  it("o almoxarife não abre processo, laudo nem auditoria", async () => {
     await entrar(cliente, "almoxarife_sesmt");
     expect((await cliente.get("/processos")).status).toBe(403);
     expect((await cliente.get("/laudos")).status).toBe(403);
@@ -760,8 +758,7 @@ describe("permissões", () => {
     await _entregar(cliente, cenario, entrada.id, 2);
     const registro = (await _registros())[0]!;
 
-    // TODO(porte): `/pendencias` (agente Base) ainda não tem rota; religar
-    // `expect((await cliente.get("/pendencias")).status).toBe(200)` quando existir.
+    expect((await cliente.get("/pendencias")).status).toBe(200);
     const salto = await cliente.get(`${FICHAS}/registros/${registro.id}`, { seguir: false });
     expect(salto.status).toBe(303);
     expect((await cliente.get(`${FICHAS}/${cenario.servidor}`)).status).toBe(200);

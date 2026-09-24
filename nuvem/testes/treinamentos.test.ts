@@ -11,25 +11,15 @@ import * as e from "../src/db/esquema/index.js";
 import { AssinaturaInstrutor, CertificadoModelo, Treinamento } from "../src/dominio/treinamento.js";
 import * as modulos from "../src/modulos.js";
 import type { Banco } from "../src/db/cliente.js";
-import postgres from "postgres";
 import { bancoLimpo, contas, entrar, type Cliente, type Resposta } from "./ajuda";
-import { urlServidor } from "./modelo.js";
 
 let amb = await bancoLimpo();
 let db: Banco = amb.db;
 let cliente: Cliente = amb.cliente;
 
 beforeEach(async () => {
-  const anterior = amb.nome;
+  // o banco do teste anterior é apagado no fim da execução (`testes/ajuda.ts`)
   amb = await bancoLimpo();
-  // o banco do teste anterior sai já: deixar ~60 para o afterAll estourava o
-  // tempo do gancho
-  const admin = postgres(urlServidor(), { max: 1, prepare: false, onnotice: () => {} });
-  try {
-    await admin.unsafe(`DROP DATABASE IF EXISTS ${anterior} WITH (FORCE)`);
-  } finally {
-    await admin.end({ timeout: 5 });
-  }
   db = amb.db;
   cliente = amb.cliente;
   await contas(db);

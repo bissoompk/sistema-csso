@@ -15,7 +15,8 @@
  *     });
  *
  * Cada arquivo ganha um banco `csso_t_<aleatório>` clonado de `csso_modelo`
- * (migrado e semeado pelo `globalSetup`), e o banco é apagado no `afterAll`.
+ * (migrado e semeado pelo `globalSetup`); os clones são apagados todos juntos
+ * no fim da execução (teardown do `globalSetup` — ver o porquê em `bancoLimpo`).
  * Os arquivos rodam em paralelo; os testes DENTRO de um arquivo compartilham o
  * banco — quem precisa de banco virgem por teste chama `bancoLimpo()` de novo
  * dentro do teste (é barato) ou usa `contas()` com logins únicos.
@@ -61,7 +62,14 @@ async function comAdmin<T>(f: (sql: postgres.Sql) => Promise<T>): Promise<T> {
 async function clonarModelo(nome: string): Promise<void> {
   for (let tentativa = 0; ; tentativa++) {
     try {
-      await comAdmin((sql) => sql.unsafe(`CREATE DATABASE ${nome} TEMPLATE ${MODELO}`));
+      await comAdmin(async (sql) => {
+        await sql.unsafe(`CREATE DATABASE ${nome} TEMPLATE ${MODELO}`);
+        // Banco descartável: o COMMIT não espera o fsync do WAL. Com a suíte
+        // inteira escrevendo, a espera pelo disco (WalSync) era o que mais
+        // pesava; perder as últimas transações numa queda do servidor não
+        // importa para um banco que é apagado no fim. Só vale para este clone.
+        await sql.unsafe(`ALTER DATABASE ${nome} SET synchronous_commit = off`);
+      });
       return;
     } catch (erro) {
       const msg = String((erro as Error).message);
@@ -90,40 +98,63 @@ export interface AmbienteDeTeste {
 let _atual: string | null = null;
 
 /**
- * Banco novo clonado do modelo; aponta `DATABASE_URL` e o cliente do Drizzle
- * para ele. Chamado de novo, troca de banco (o anterior é apagado no fim).
+ * Devolve o banco do arquivo ao estado do modelo, no lugar (ver `RETRATO` em
+ * `testes/modelo.ts`). Falso quando o esquema foi mexido: aí quem chama clona.
+ */
+async function restaurar(nome: string): Promise<boolean> {
+  const sql = postgres(urlServidor(nome), { max: 1, prepare: false, onnotice: () => {} });
+  try {
+    // conexão que o teste abriu por conta própria (concorrência, restauração)
+    // seguraria trava: o `DROP ... WITH (FORCE)` de antes também as derrubava
+    await sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+               WHERE datname = ${nome} AND pid <> pg_backend_pid()`;
+    const [linha] = await sql<{ ok: boolean }[]>`SELECT _csso_modelo.restaurar() AS ok`;
+    return linha?.ok === true;
+  } catch {
+    return false;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+/**
+ * Banco virgem (o estado do modelo: migrado e semeado); aponta `DATABASE_URL` e
+ * o cliente do Drizzle para ele.
+ *
+ * A primeira chamada do arquivo clona o modelo; as seguintes RESTAURAM esse
+ * mesmo banco no lugar (dezenas de ms) em vez de clonar outro — e o nome não
+ * muda. Só se um teste mexeu no esquema é que se clona um novo. O cliente
+ * anterior é fechado (quem guardou o `db` antigo não deve mais usá-lo — como
+ * antes). Os clones são apagados todos juntos no fim da execução, no teardown
+ * de `testes/modelo.ts`: todo `DROP DATABASE` força um CHECKPOINT, e fazê-los
+ * durante a suíte travava os outros arquivos.
  */
 export async function bancoLimpo(): Promise<AmbienteDeTeste> {
-  const nome = `csso_t_${(process.env.CSSO_MODELO ?? "csso_modelo").replace(/^csso_modelo_?/, "")}_${randomBytes(6).toString("hex")}`;
-  await clonarModelo(nome);
-  const url = urlServidor(nome);
   await fecharBanco();
+  let nome = _atual !== null && (await restaurar(_atual)) ? _atual : null;
+  if (nome === null) {
+    nome = `csso_t_${(process.env.CSSO_MODELO ?? "csso_modelo").replace(/^csso_modelo_?/, "")}_${randomBytes(6).toString("hex")}`;
+    await clonarModelo(nome);
+  }
+  const url = urlServidor(nome);
   process.env.DATABASE_URL = url;
   redefinirConfig();
   const db = obterBanco(url);
   const primeiro = _atual === null;
   _atual = nome;
-  const criados = [nome];
   if (primeiro) {
     try {
       afterAll(async () => {
         await fecharBanco();
-        for (const n of _todos) {
-          await comAdmin((sql) => sql.unsafe(`DROP DATABASE IF EXISTS ${n} WITH (FORCE)`)).catch(() => {});
-        }
-        // arquivo com banco novo por teste chega a dezenas de clones, e cada
-        // DROP ... FORCE custa ~1 s com outras suítes rodando: 60 s não bastam
-      }, 600_000);
+      }, 60_000);
     } catch {
       // chamado fora da coleta (dentro de um teste): o afterAll já foi
       // registrado pela primeira chamada, ou quem chamou limpa por conta própria
     }
   }
-  _todos.push(...criados);
   const app = obterApp();
   return { db, app, cliente: new Cliente(app), novoCliente: (origem?: string) => new Cliente(app, origem), nome, url };
 }
-const _todos: string[] = [];
 
 /** Roda `f` numa transação curta e confirma (o `with mod_banco.sessao() as s: ...; s.commit()`). */
 export async function naTransacao<T>(f: (tx: Executor) => Promise<T>): Promise<T> {

@@ -54,7 +54,7 @@ const TURMA = {
   frequencia_minima_percentual: "75",
 };
 
-// o primeiro banco registra o `afterAll` que apaga todos os deste arquivo
+// o primeiro banco é clonado; os seguintes restauram o mesmo (testes/ajuda.ts)
 let { db, novoCliente } = await bancoLimpo();
 let cliente: Cliente;
 

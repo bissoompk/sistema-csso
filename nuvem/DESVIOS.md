@@ -46,8 +46,13 @@ repete, em uma linha, o comentário que está no código.
 - **Ambiente de teste** (`ferramentas/ambiente-teste.ts`): não há pasta
   `dados-teste/` nem `.env` descartável; o ambiente é o banco do `.env`,
   recriado (DROP SCHEMA) — e por isso recusa banco fora de localhost sem
-  `--permitir-remoto`. As oito contas compartilham um hash (mesma senha). Só a
-  base é povoada por enquanto (ver o TODO no cabeçalho do arquivo).
+  `--permitir-remoto`. As oito contas compartilham um hash (mesma senha).
+  Povoa tudo o que o Python povoa, na mesma ordem (base → Processos →
+  Treinamentos → EPI → Demandas → envelhecer pendências): o resumo impresso é
+  o mesmo número a número, e as 73 tabelas e os tipos de evento da trilha saem
+  com as mesmas contagens do `ambiente_teste_cli.py` (conferido na integração).
+  O resumo não tem mais as chaves `contas`/`habilitacoes`, que o Python não
+  imprime.
 - **Tela de erro lê o usuário num SAVEPOINT da transação da requisição**
   (`src/app.ts`), em vez de abrir outra transação: com `CSSO_POOL_MAX=1` a
   segunda transação esperava para sempre a conexão da primeira.
@@ -177,8 +182,6 @@ repete, em uma linha, o comentário que está no código.
   `if` e não itera nada); `rejectattr(..., 'in', ...)` e `map(attribute=0)`
   viraram laços; `.get(k, d)` virou `(x[k] or d)`; `x is true` virou
   `x === true` (o Nunjucks não tem o teste `true`).
-- **`salvar_com_diff` duplicado** em `src/rotas/treinamento_vistas.ts` (TODO:
-  trocar pelo de `web.ts` quando existir).
 
 ## Gestão de EPI (ficha, comprovante, estoque, catálogo, requisição, indicadores)
 
@@ -205,8 +208,6 @@ repete, em uma linha, o comentário que está no código.
   obrigatório ausente em formulário do catálogo é recusado com a mensagem
   escrita, e não com o 422 do `Form(...)`. O `File(...)`/`Form(...)` obrigatórios
   da ficha (comprovante, estorno) continuam respondendo 422.
-- **`salvar_com_diff` duplicado** em `src/rotas/epis.ts` (TODO: trocar pelo de
-  `web.ts` quando existir).
 - **Decimal vira texto**: `epi_estoque.valor_decimal` devolve string (o
   `str(Decimal)`); aceita só dígitos com uma vírgula ou ponto (o `Decimal`
   aceitava `1e3`, `NaN`, `Infinity`). `valor_em_estoque` e o custo por empenho
@@ -214,9 +215,8 @@ repete, em uma linha, o comentário que está no código.
   dá o `:.2f` arredondando metade para o par, como o Decimal.
 - **`atualizar_lote` faz UPDATE e também atualiza o objeto recebido** (o
   `setattr` do Python).
-- **Supressão RN-19 dos relatórios duplicada em `src/rotas/epi_indicadores.ts`**
-  (`suprimir`, `suprimir_aninhado`, constantes; TODO: importar de
-  `src/rotas/relatorios.ts` quando o Processos o portar).
+- **Supressão RN-19**: `src/rotas/epi_indicadores.ts` reexporta a de
+  `src/rotas/relatorios.ts` (uma cópia só da regra de privacidade).
 - **`EVENTOS_DE_RECUSA` com literais** em `epi_indicadores.ts`: ler constante
   alheia no carregamento, num ciclo de import ESM, não tem garantia.
 - **CSV da exportação escrito à mão** (`;`, aspas mínimas, `\r\n`, BOM).
@@ -294,9 +294,6 @@ repete, em uma linha, o comentário que está no código.
   mutavam o objeto fazem UPDATE e também atualizam o objeto recebido.
 - **`alterar_lotacao` com data inválida** volta à ficha com a recusa escrita
   (o `date.fromisoformat` do Python dava 500).
-- **`salvar_com_diff`** mora em `src/rotas/catalogos.ts` (exportado), e não em
-  `web.ts`: é a única tela da base que o usa, e mexer em `web.ts` agora
-  arriscaria os outros trechos. (O EPI tem uma cópia; unificar depois.)
 - **Templates**: `for ... if` do Jinja não existe no Nunjucks — a rota entrega
   a lista já filtrada (`vigentes_por_usuario` em /usuarios, `titulo_catalogo` em
   /catalogos). `editavel` vai no contexto da rota porque o macro do Nunjucks
@@ -376,3 +373,102 @@ repete, em uma linha, o comentário que está no código.
 - **`/pendencias`**: `atrasada(hoje)` vai como método no objeto e
   `(hoje - prazo).days` virou `dias_entre(prazo, hoje)`; `TELA_DA_ANCORA.get`
   virou indexação.
+
+## Busca global, API, app e tela de bolso (`/buscar`, `/api/v1`, `/app`, `/celular`, `/sw.js`)
+
+- **Busca de turma com `ILIKE`** (`src/servicos/busca.ts`): o `LIKE` do SQLite
+  ignorava a caixa (`tur-2026` achava `TUR-2026-0007`); o do Postgres não. O
+  laudo segue com `LIKE` (o número só tem dígitos e pontuação).
+- **Blocos da busca em sequência**, não em paralelo: a transação da requisição
+  é uma conexão só. Os itens do bloco de servidor e de requisição são relidos
+  com as relações que o template lê (`unidade`, `servidor`); o do certificado
+  ganha `rotulo` (o `@property` do modelo).
+- **`achou` da busca vem da rota**: o `blocos|selectattr('itens')` do Jinja
+  dependia de lista vazia ser falsa, e o `selectattr` registrado em `web.ts`
+  usa `Boolean(v)` (lista vazia é verdadeira no JS). O template lê `achou`
+  pronto. (O filtro em si não foi mexido: é compartilhado.)
+- **Forma do corpo da API sem Pydantic** (`src/esquemas/api.ts`): leitores
+  pequenos no modo "lax" do Pydantic (inteiro aceita `"5"`, booleano aceita
+  `"true"`/`1`, data `AAAA-MM-DD`), com as mensagens do Pydantic v2
+  (`servidor_id: Field required`). JSON quebrado vira o mesmo 422
+  `{erro: "O envio não tem a forma esperada.", motivos: ["corpo: JSON decode error"]}`.
+  `app/esquemas/validadores.py` não foi portado: nenhuma rota o usa.
+- **Recusa da API desfaz a transação lançando** `RecusaDaApi` (o
+  `s.rollback()` + `raise` do Python); o `s.commit()` do caminho feliz é o
+  COMMIT do middleware. Na leitura da ficha, a linha de `acesso_dado_sensivel`
+  vai no mesmo COMMIT da resposta (no Python, commit logo após gravar).
+- **Ordem das guardas do POST**: `X-Requested-With` primeiro, depois sessão,
+  depois forma do corpo — a ordem das dependências do FastAPI.
+- **`POST /api/v1/turmas/{id}/presencas`** devolve a grade relida do banco
+  (`no_escopo` de novo); a recusa pega `RegraViolada` e `TransicaoInvalida`
+  (os `ValueError` do Python). Horas inválidas: `para_decimal` devolve `null`
+  em vez de lançar.
+- **"Hoje" da API** (data futura da entrega, CA/troca vencidos da ficha,
+  pendência atrasada) é `datas_br.hoje()` (America/Sao_Paulo), não o
+  `date.today()` do processo.
+- **`/api/v1/pendencias`**: o nome do responsável é lido numa consulta só por
+  `responsavel_id` (sem relação preguiçosa `p.responsavel`).
+- **`/app` e `/sw.js` leem o arquivo do bundle da função**: na nuvem `public/`
+  vai para o CDN e não está no disco da função. `netlify.toml` (raiz do repo)
+  passou a incluir `public/estaticos/app/index.html` e
+  `public/estaticos/js/sw.js` em `included_files`; a pasta é achada como a de
+  templates (`CSSO_ESTATICOS`, `public/estaticos`, `nuvem/public/estaticos`,
+  relativa ao módulo — `pastaDeEstaticos()` em `src/rotas/aplicativo.ts`). Os
+  assets do bundle (`/estaticos/app/assets/…`) seguem no CDN. `/sw.js`
+  responde `application/javascript; charset=utf-8`.
+- **`/app/{resto:path}`** virou `/app/*` (Hono). O teste que trocava
+  `aplicativo.ENTRADA` usa `_definir_entrada()`.
+- **`celular.html`**: `usuario.nome.split()[0]` virou
+  `usuario.nome.trim().split(' ')[0]` (o `split()` sem argumento do JS não
+  quebra nada).
+- **Testes que faziam monkeypatch** (`identificacao.pode_ver_nominal`,
+  `pendencias.pode_ver`) provam o mesmo pelo banco do teste: o perfil do
+  coordenador perde `exposicao.ver`/`epi.ficha`; uma conta sem perfil
+  nenhum pede as pendências. Os assets de `/estaticos/` são conferidos no
+  disco (`public/`), não por GET no app — na nuvem eles não passam por ele.
+
+## Integração (ambiente de teste, dívidas cruzadas, suíte, publicação)
+
+- **`uq_parecer` passou a valer só para parecer numerado** (`numero > 0`;
+  migração `0001_parecer_rascunhos_sem_numero`). CORRIGE um defeito que o
+  Python também tem: o rascunho nasce com número 0 (o número só é consumido na
+  emissão, RN-03) e o UNIQUE(numero, ano) deixava existir UM rascunho por ano
+  no sistema inteiro — com um rascunho aberto, `GET /processos/{id}/parecer` de
+  qualquer outro processo dava 500 (IntegrityError), no Python e aqui (o
+  ambiente de teste já nasce com um rascunho). O número emitido continua único
+  por ano. **Levar a mesma correção ao Python.**
+- **`.docx` de parecer incompleto responde 422** (`/pareceres/{id}/docx` e
+  `/pdf`), com a frase de `DadosIncompletos` (o que falta). CORRIGE defeito do
+  Python, onde o `ValueError` não tinha tratador e a resposta era 500 (ex.: o
+  `.docx` de um rascunho recém-aberto).
+- **`salvar_com_diff` mora em `src/web.ts`**, como o `web.salvar_com_diff` do
+  Python; as três cópias (base, EPI, treinamentos) viraram import. A entidade
+  da trilha é o nome da tabela; coluna `numeric` que muda só a grafia ('8.0' →
+  '8') não vira diferença (no Python o `Decimal` comparava igual).
+- **Métodos de `dict`/`str` do Python dentro do template** (`src/web.ts`,
+  mudança GLOBAL): o `memberLookup` do Nunjucks supre `get/items/keys/values`
+  para objeto simples e `Map` que não tenham o membro, e
+  `upper/lower/strip/startswith/endswith` para texto. Antes, rota que esquecia
+  o `dicionario()` dava 500 só no ramo do template que lia o método.
+- **`{{ dicionario }}` sai como o `str(dict)` do Python** (`reprPython` no
+  `suppressValue`), e não `[object Object]` — o caso era `valor_novo` jsonb de
+  `EPI_ITEM_RECUSADO` na `/auditoria`. Lista continua saindo como o Nunjucks a
+  escreve.
+- **`selectattr`/`rejectattr` sem teste e `default(x, y, true)`** usam a verdade
+  do Jinja (lista/dict vazios são falsos), como o compilador já fazia com `if`.
+- **Testes: o banco do arquivo é restaurado no lugar, não clonado de novo**
+  (`testes/ajuda.ts`, `testes/modelo.ts`). O modelo guarda um retrato de si
+  (esquema `_csso_modelo`: cópia das tabelas semeadas, estado das sequências,
+  impressão digital do esquema); `bancoLimpo()` a partir da segunda chamada
+  apaga os dados de `public` e recoloca o retrato com os gatilhos desligados
+  (`session_replication_role = replica`), e o NOME do banco não muda. Se um
+  teste mexeu no esquema, clona-se um novo, como antes. Os clones são apagados
+  todos no teardown (todo `DROP DATABASE` força um CHECKPOINT, que com a suíte
+  inteira escrevendo levava segundos e travava os outros arquivos), e o clone
+  roda com `synchronous_commit = off`. A suíte foi de ~9 min para ~3 min.
+  Consequência: quem guardou o `nome`/`url` de um banco anterior do mesmo
+  arquivo vê o banco restaurado (o `db` antigo já não servia antes).
+- **`netlify serve`/`netlify dev` acrescentam `.netlify` ao `.gitignore` da
+  RAIZ do repositório** (o `nuvem/.gitignore` já o tem). A integração desfez a
+  mudança; quem rodar o CLI localmente vai vê-la de novo.
+

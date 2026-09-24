@@ -7,9 +7,7 @@ import { asc, eq } from "drizzle-orm";
 import type { Executor } from "../src/db/cliente.js";
 import * as e from "../src/db/esquema/index.js";
 import * as datas_br from "../src/servicos/datas_br.js";
-import postgres from "postgres";
 import { bancoLimpo, type AmbienteDeTeste, type Cliente, type Resposta } from "./ajuda.js";
-import { urlServidor } from "./modelo.js";
 
 export const FICHAS = "/epis/fichas";
 export const ENTREGAS = "/epis/entregas";
@@ -134,21 +132,8 @@ export async function virar_o_titular(db: Executor, servidor_id: number, login =
 }
 
 /**
- * Banco novo por teste, apagando JÁ o do teste anterior — e não no `afterAll`
- * de `ajuda.ts`: dezenas de DROP no fim estouravam o prazo do gancho quando a
- * máquina estava carregada (outros arquivos rodando junto).
+ * Banco virgem por teste (o do arquivo, restaurado no lugar — `testes/ajuda.ts`).
  */
-let _anterior: string | null = null;
 export async function bancoPorTeste(): Promise<AmbienteDeTeste> {
-  const amb = await bancoLimpo();
-  if (_anterior) {
-    const admin = postgres(urlServidor(), { max: 1, prepare: false, onnotice: () => {} });
-    try {
-      await admin.unsafe(`DROP DATABASE IF EXISTS ${_anterior} WITH (FORCE)`);
-    } finally {
-      await admin.end({ timeout: 5 });
-    }
-  }
-  _anterior = amb.nome;
-  return amb;
+  return bancoLimpo();
 }

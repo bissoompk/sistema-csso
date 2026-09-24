@@ -388,7 +388,9 @@ describe("conferir o encadeamento (Q-2)", () => {
         const p = path.join(dir, nome);
         if (statSync(p).isDirectory()) varrer(p);
         else if (p.endsWith(".ts") && !p.endsWith(path.join("servicos", "auditoria.ts"))) {
-          if (/\bcadeia_integra\s*\(/.test(readFileSync(p, "utf8"))) infratores.push(p);
+          // só código conta (o Python varria a AST): comentário que cita a função não é chamada
+          const codigo = readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+          if (/\bcadeia_integra\s*\(/.test(codigo)) infratores.push(p);
         }
       }
     };

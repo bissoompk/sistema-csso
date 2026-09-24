@@ -35,7 +35,7 @@
   </nav>
 
   <section id="tela-inicio" data-tela="inicio">
-    <h1>Olá, <span data-eu-nome>{{ usuario.nome.split()[0] }}</span></h1>
+    <h1>Olá, <span data-eu-nome>{{ usuario.nome.trim().split(' ')[0] }}</span></h1>
     {% if not pode_entregar and not pode_chamada %}
     <div class="vazio">
       <strong>Esta tela ainda não tem trabalho para você.</strong>

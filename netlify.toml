@@ -14,7 +14,10 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  # os templates são lidos do disco pela função em tempo de execução
-  included_files = ["templates/**", "modelos-docx/**"]
+  # os templates são lidos do disco pela função em tempo de execução; o
+  # `index.html` do app (`/app`) e o service worker (`/sw.js`) também: `public/`
+  # vai para o CDN e não está no disco da função, e as duas rotas exigem
+  # cabeçalho próprio (sessão no `/app`; escopo na raiz no `/sw.js`)
+  included_files = ["templates/**", "modelos-docx/**", "public/estaticos/app/index.html", "public/estaticos/js/sw.js"]
   # o Nunjucks carrega o `chokidar` opcionalmente; empacotado, o esbuild tropeça
   external_node_modules = ["nunjucks"]

@@ -792,3 +792,36 @@ describe("o painel de EPI do editor", () => {
     void and;
   });
 });
+
+// =====================================================================
+// Integração: dois defeitos que o Python também tem (DESVIOS.md, Integração)
+// =====================================================================
+describe("rascunho sem número", () => {
+  it("dois processos podem ter rascunho no mesmo ano (uq_parecer só para parecer numerado)", async () => {
+    const [cliente, primeiro] = await abrir_rascunho();
+    const { nup_dv } = await import("../src/servicos/nup.js");
+    const nup = `23086.000100/2024-${nup_dv("230860001002024")}`;
+    const outro = await cliente.post("/processos/novo", { nup, tipo_processo_id: "1" }, { seguir: false });
+    expect(outro.status, outro.text.slice(0, 300)).toBe(303);
+    const segundo = await cliente.get(`${outro.location}/parecer`, { seguir: false });
+    expect(segundo.status).toBe(303);
+    expect(segundo.location).toMatch(/^\/pareceres\/\d+$/);
+    expect(segundo.location).not.toBe(primeiro);
+    const rascunhos = await db.select().from(e.parecer_tecnico).where(eq(e.parecer_tecnico.numero, 0));
+    expect(rascunhos).toHaveLength(2);
+    // o número EMITIDO continua único no ano
+    await expect(
+      db.insert(e.parecer_tecnico).values([
+        { numero: 7, ano: 2031, situacao: "RESERVADO" },
+        { numero: 7, ano: 2031, situacao: "RESERVADO" },
+      ] as never),
+    ).rejects.toThrow();
+  });
+
+  it("o .docx de rascunho incompleto é recusado com o que falta, e não 500", async () => {
+    const [cliente, caminho] = await abrir_rascunho();
+    const r = await cliente.get(`${caminho}/docx`, { seguir: false });
+    expect(r.status).toBe(422);
+    expect(r.text).toContain("Faltam dados obrigatorios");
+  });
+});

@@ -15,9 +15,7 @@ import * as e from "../src/db/esquema/index.js";
 import { redefinirConfig } from "../src/config.js";
 import { somar_dias } from "../src/dominio/datas.js";
 import { ROTULO_EVENTO } from "../src/servicos/auditoria.js";
-import postgres from "postgres";
 import { bancoLimpo, contas, entrar, type AmbienteDeTeste, type Campos, type Cliente, type Resposta } from "./ajuda";
-import { urlServidor } from "./modelo.js";
 import { DAQUI_A_UM_ANO, HOJE } from "./ajuda_epi_requisicao";
 
 const FILA = "/epis/requisicoes";
@@ -30,22 +28,9 @@ await bancoLimpo();
 interface Amb extends AmbienteDeTeste {
   contas: Record<string, [string, string]>;
 }
-let anterior: string | null = null;
-/**
- * Banco novo por teste; o do teste anterior é apagado JÁ, e não no `afterAll`
- * de `ajuda.ts`: quarenta e tantos DROP no fim estouravam o prazo do gancho.
- */
+/** Banco virgem por teste (restaurado no lugar — `testes/ajuda.ts`). */
 async function novo(): Promise<Amb> {
   const amb = await bancoLimpo();
-  if (anterior) {
-    const admin = postgres(urlServidor(), { max: 1, prepare: false, onnotice: () => {} });
-    try {
-      await admin.unsafe(`DROP DATABASE IF EXISTS ${anterior} WITH (FORCE)`);
-    } finally {
-      await admin.end({ timeout: 5 });
-    }
-  }
-  anterior = amb.nome;
   return { ...amb, contas: await contas(amb.db) };
 }
 async function como(amb: Amb, perfil: string): Promise<Cliente> {

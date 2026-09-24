@@ -16,21 +16,12 @@
  * congelado, máquinas de estado e a cadeia de auditoria moram nos serviços.
  * Onde não há serviço, imita-se a rota — inclusive o `auditoria.registrar`.
  *
- * TODO(porte): o Python povoa MUITO mais do que a base. Fica para quando os
- * serviços dos módulos estiverem portados (cada item abaixo depende deles):
- *   - portarias de localização e laudos (L1, L2, L3), laudo superado
- *     (`processo.marcar_laudo_superado`, cascata da RN-11);
- *   - processos em cada coluna do kanban, três fora do SLA (`servicos/processo`,
- *     `servicos/nup`), pareceres emitidos/assinados (`servicos/parecer`,
- *     `servicos/documento`), direito concedido (`servicos/direito`), anexos
- *     (`servicos/anexos`, PDF_FALSO);
- *   - EPI: itens, entradas de estoque, entregas e fichas, requisições em vários
- *     estados (`epi_estoque`, `epi_ficha`, `epi_requisicao`);
- *   - treinamentos, modelo de certificado com tags, assinaturas, turmas,
- *     inscrições, presença e certificados emitidos (`turma`, `participante`,
- *     `presenca`, `emissao_certificado`);
- *   - as sete demandas em todos os desfechos (`servicos/demandas`);
- *   - envelhecer pendências para o sino ter atrasadas (`servicos/pendencias`).
+ * **Ordem** (a do Python, e não é estilo): base (contas, organização,
+ * servidores, habilitações) → Processos (portarias, laudos, processos,
+ * pareceres, L2 superado) → Treinamentos e certificados → EPI → Demandas (a
+ * demanda 5 aponta para o processo `nup_de(100002, ano)`) → envelhecer
+ * pendências (roda depois que TODOS os módulos abriram as suas: são as duas
+ * primeiras no prazo que envelhecem).
  */
 import { pathToFileURL } from "node:url";
 import { carregarEnvLocal } from "./env-local.js";
@@ -126,7 +117,6 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
       ato_normativo: "Ato de teste — ambiente descartável",
     });
   }
-  resumo.contas = CONTAS.length;
 
   const atual = async (login: string) => {
     const [conta] = await tx.select().from(e.usuario).where(eq(e.usuario.login, login));
@@ -219,7 +209,20 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
       vigencia_inicio: "2020-01-01",
     });
   }
-  resumo.habilitacoes = habilitacoes.length;
+
+  // -----------------------------------------------------------------
+  // Os módulos, na ordem do Python (ver o cabeçalho).
+  // -----------------------------------------------------------------
+  const { povoar_processos, envelhecer_pendencias } = await import("./povoar/processos.js");
+  const { povoar_treinamentos } = await import("./povoar/treinamentos.js");
+  const { povoar_epi } = await import("./povoar/epi.js");
+  const { povoar_demandas } = await import("./povoar/demandas.js");
+  const ctx = { atual, resumo };
+  await povoar_processos(tx, ctx);
+  await povoar_treinamentos(tx, ctx);
+  await povoar_epi(tx, ctx);
+  await povoar_demandas(tx, ctx);
+  await envelhecer_pendencias(tx, ctx);
 
   return resumo;
 }
@@ -283,8 +286,6 @@ async function principal(argv: string[]): Promise<number> {
     console.log(`    ${login.padEnd(14)} ${perfil.padEnd(22)} ${nome}`);
   }
   console.log();
-  console.log("  Ainda NÃO povoado (serviços dos módulos por portar): processos, pareceres,");
-  console.log("  laudos, EPI, treinamentos, demandas, pendências — ver o TODO no cabeçalho.");
   console.log("=".repeat(66));
   return 0;
 }

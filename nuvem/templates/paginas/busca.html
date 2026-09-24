@@ -3,7 +3,7 @@
 {# A busca global. Um bloco por entidade, e cada bloco guardado pela permissão
    que a ROTA DE DESTINO exige — o mesmo desenho de `pendencias.html`, onde a
    âncora só vira link para quem a rota deixa entrar. Quem decide quais blocos
-   rodam é `servicos/busca.py`; aqui a permissão reaparece apenas nos LINKS de
+   rodam é `servicos/busca.ts`; aqui a permissão reaparece apenas nos LINKS de
    cada linha, porque o servidor tem duas telas de destino e o almoxarife abre
    só uma delas.
 
@@ -83,8 +83,8 @@
   </div>
 
   {% elif not recado_cpf %}
-  {% set achou = blocos|selectattr('itens')|list %}
-
+  {# `achou` vem da rota: o `selectattr` portado não conhece a verdade do Jinja
+     (lista vazia é falsa), e a conta sai de lá #}
   {% if not achou %}
   {# O vazio útil: diz ONDE se procurou, e nomeia só o que ESTA pessoa vê. O
      bloco que ficou de fora não é mencionado em lugar nenhum — nomeá-lo já

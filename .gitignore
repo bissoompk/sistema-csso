@@ -50,3 +50,6 @@ desktop.ini
 
 # configuracao local do Claude Code desta maquina
 .claude/settings.local.json
+
+# ---- nuvem (Netlify) ----------------------------------------------------
+.netlify/

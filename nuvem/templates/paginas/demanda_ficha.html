@@ -29,7 +29,7 @@
    condição de o popup ser escrito lá embaixo. #}
 {% set recusado = true if (erro and d) else false %}
 {% set no_popup = recusado and pode_escrever and aberta
-                  and forma in ('encaminhar', 'encerrar') %}
+                  and forma in ['encaminhar', 'encerrar'] %}
 {% set erro_encaminhar = erro if (no_popup and forma == 'encaminhar') else none %}
 {% set erro_encerrar = erro if (no_popup and forma == 'encerrar') else none %}
 {% set erro = none if no_popup else erro %}

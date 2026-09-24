@@ -17,10 +17,26 @@ describe("ambiente de teste", () => {
     expect(bancoLocal("isto não é url")).toBe(false);
   });
 
-  it("povoa contas, servidores e habilitações, e toda conta entra com a senha impressa", async () => {
+  it("povoa como o Python (mesmo resumo), e toda conta entra com a senha impressa", async () => {
     const { db, novoCliente } = await bancoLimpo();
     const resumo = await naTransacao((tx) => povoar(tx));
-    expect(resumo).toEqual({ contas: CONTAS.length, servidores: SERVIDORES.length, habilitacoes: 3 });
+    // O resumo que `ferramentas/ambiente_teste_cli.py` imprime, número a número.
+    expect(resumo).toEqual({
+      adicionais_vigentes: 2,
+      certificados: 2,
+      demandas: 7,
+      epi_fichas: 5,
+      epi_itens: 9,
+      epi_lotes: 7,
+      epi_requisicoes: 9,
+      laudos: 3,
+      pareceres: 3,
+      pendencias: 20,
+      pendencias_atrasadas: 5,
+      processos: 11,
+      servidores: SERVIDORES.length,
+      turmas: 5,
+    });
 
     const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.login, "servidor"));
     const [adelaide] = await db.select().from(e.servidor).where(eq(e.servidor.siape, "3010011"));

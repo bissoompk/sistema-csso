@@ -23,7 +23,10 @@ import { getCookie, setCookie } from "hono/cookie";
 import type { UsuarioAtual } from "./servicos/rbac.js";
 import { COLUNAS_KANBAN, ROTULO_ESTADO_TELA } from "./dominio/estados.js";
 import * as datas_br from "./servicos/datas_br.js";
+import * as auditoria from "./servicos/auditoria.js";
 import { rotulo_evento } from "./servicos/auditoria.js";
+import { eq, getTableColumns, getTableName } from "drizzle-orm";
+import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import * as identificacao from "./servicos/identificacao.js";
 
 /**
@@ -130,6 +133,79 @@ function verdade(v: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------
+// Métodos de `dict` e `str` do Python chamados dentro do template.
+// ---------------------------------------------------------------------
+// `d.get(k, padrao)`, `d.items()`, `d.values()|sum`, `d.keys()`: os templates
+// vieram do Jinja e chamam os métodos do dicionário. A rota que lembra de
+// embrulhar com `dicionario()` (`src/dicionario.ts`) funciona; a que esquece
+// dava 500 ("Unable to call `d["get"]`, which is undefined") só na tela, e só
+// no ramo que lê. Aqui o `memberLookup` do Nunjucks — por onde passa todo
+// `x.y` do template — supre o método de dict para objeto SIMPLES e `Map` que
+// não tenham o membro, e `upper/lower/strip/startswith/endswith` para texto.
+// Chave de verdade com esses nomes continua valendo (só entra se faltar).
+{
+  const R = nunjucks.runtime as any;
+  const original = R.memberLookup;
+  const simples = (o: unknown): o is Record<string, unknown> => {
+    if (!o || typeof o !== "object") return false;
+    const proto = Object.getPrototypeOf(o);
+    return proto === Object.prototype || proto === null;
+  };
+  const DE_DICT: Record<string, (o: any) => (...a: any[]) => unknown> = {
+    get: (o) => (k: unknown, padrao: unknown = null) =>
+      o instanceof Map ? (o.has(k) ? o.get(k) : padrao) : Object.hasOwn(o, String(k)) ? o[String(k)] : padrao,
+    items: (o) => () => (o instanceof Map ? [...o.entries()] : Object.entries(o)),
+    keys: (o) => () => (o instanceof Map ? [...o.keys()] : Object.keys(o)),
+    values: (o) => () => (o instanceof Map ? [...o.values()] : Object.values(o)),
+  };
+  const DE_STR: Record<string, (s: string) => (...a: any[]) => unknown> = {
+    upper: (s) => () => s.toUpperCase(),
+    lower: (s) => () => s.toLowerCase(),
+    strip: (s) => () => s.trim(),
+    startswith: (s) => (p: string) => s.startsWith(p),
+    endswith: (s) => (p: string) => s.endsWith(p),
+  };
+  R.memberLookup = function (obj: any, val: any) {
+    if (typeof val === "string") {
+      if (obj instanceof Map && (val === "items" || val === "keys" || val === "values")) return DE_DICT[val]!(obj);
+      if (simples(obj) && obj[val] === undefined && Object.hasOwn(DE_DICT, val)) return DE_DICT[val]!(obj);
+      if (typeof obj === "string" && Object.hasOwn(DE_STR, val)) return DE_STR[val]!(obj);
+    }
+    return original(obj, val);
+  };
+}
+
+// ---------------------------------------------------------------------
+// `{{ dicionario }}` sai como o Jinja o escrevia (`str(dict)`), e não
+// "[object Object]". Acontece com valor jsonb da trilha (`valor_novo` de
+// EPI_ITEM_RECUSADO é um objeto) na tela de auditoria. Só objeto SIMPLES:
+// lista continua saindo como o Nunjucks a escreve.
+// ---------------------------------------------------------------------
+export function reprPython(v: unknown): string {
+  if (v === null || v === undefined) return "None";
+  if (v === true) return "True";
+  if (v === false) return "False";
+  if (typeof v === "string") return `'${v.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+  if (Array.isArray(v)) return `[${v.map(reprPython).join(", ")}]`;
+  if (typeof v === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(v))) {
+    return `{${Object.entries(v as Record<string, unknown>)
+      .map(([k, x]) => `${reprPython(k)}: ${reprPython(x)}`)
+      .join(", ")}}`;
+  }
+  return String(v);
+}
+{
+  const R = nunjucks.runtime as any;
+  const original = R.suppressValue;
+  R.suppressValue = function (val: unknown, autoescape: boolean) {
+    if (val && typeof val === "object" && !Array.isArray(val) && [Object.prototype, null].includes(Object.getPrototypeOf(val))) {
+      val = reprPython(val);
+    }
+    return original(val, autoescape);
+  };
+}
+
+// ---------------------------------------------------------------------
 // Compatibilidade Jinja -> Nunjucks: filtros que o Jinja tem e o Nunjucks não
 // ---------------------------------------------------------------------
 ambiente.addFilter("tojson", (v: unknown) =>
@@ -149,24 +225,30 @@ ambiente.addFilter("items", (obj: Record<string, unknown> | Map<unknown, unknown
 ambiente.addFilter("selectattr", (lista: any[], attr: string, teste?: string, valor?: unknown) =>
   (lista ?? []).filter((x) => {
     const v = x?.[attr];
-    if (teste === undefined) return Boolean(v);
+    if (teste === undefined) return verdade(v);
     if (teste === "equalto" || teste === "eq" || teste === "==") return v === valor;
     if (teste === "ne" || teste === "!=") return v !== valor;
     if (teste === "none") return v === null || v === undefined;
     if (teste === "in") return Array.isArray(valor) ? valor.includes(v) : false;
-    return Boolean(v);
+    return verdade(v);
   }),
 );
 ambiente.addFilter("rejectattr", (lista: any[], attr: string, teste?: string, valor?: unknown) =>
   (lista ?? []).filter((x) => {
     const v = x?.[attr];
-    if (teste === undefined) return !v;
+    if (teste === undefined) return !verdade(v);
     if (teste === "equalto" || teste === "eq" || teste === "==") return v !== valor;
     if (teste === "none") return !(v === null || v === undefined);
     if (teste === "in") return Array.isArray(valor) ? !valor.includes(v) : true;
-    return !v;
+    return !verdade(v);
   }),
 );
+// `default(x, padrao, true)`: com o terceiro argumento, o Jinja troca todo valor
+// FALSO pela alternativa — e lista/dict vazios são falsos (o Nunjucks usava `||`).
+const padrao = (v: unknown, alternativa: unknown = "", booleano = false) =>
+  booleano ? (verdade(v) ? v : alternativa) : v !== undefined ? v : alternativa;
+ambiente.addFilter("default", padrao);
+ambiente.addFilter("d", padrao);
 ambiente.addFilter("map", (lista: any[], ...args: any[]) => {
   // Jinja: map(attribute='x') -> o Nunjucks passa kwargs como último objeto
   const ultimo = args[args.length - 1];
@@ -467,4 +549,70 @@ export function numeroDaPagina(c: Ctx): number {
 export function comMensagem(destino: string, mensagem: string, chave = "mensagem"): string {
   const sep = destino.includes("?") ? "&" : "?";
   return `${destino}${sep}${chave}=${encodeURIComponent(mensagem)}`;
+}
+
+// =====================================================================
+// Edição de catálogo
+// =====================================================================
+/** `Decimal('8.0') == Decimal('8')`: os dois textos são o mesmo número? */
+function mesmoDecimal(a: string, b: string): boolean {
+  const norm = (v: string) => {
+    const m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(v.trim());
+    if (!m || (!m[2] && !m[3])) return null;
+    const inteira = (m[2] || "0").replace(/^0+(?=\d)/, "");
+    const frac = (m[3] ?? "").replace(/0+$/, "");
+    const corpo = frac ? `${inteira}.${frac}` : inteira;
+    return corpo === "0" ? "0" : `${m[1] === "-" ? "-" : ""}${corpo}`;
+  };
+  const x = norm(a);
+  return x !== null && x === norm(b);
+}
+
+/**
+ * Edição de catálogo: exige a permissão, grava e audita campo a campo. O
+ * `web.salvar_com_diff` do Python.
+ *
+ * Vive aqui, e não em cada arquivo de rota, porque a regra é a mesma em todo
+ * catálogo do sistema — o que muda de um para outro é só a permissão exigida.
+ * Duplicar isto foi como o menu passou a mentir na 1.6.0 (e o porte tinha três
+ * cópias: base, EPI e treinamentos).
+ *
+ * A entidade da trilha é o nome da tabela (`modelo.__tablename__`). Coluna
+ * `numeric` chega como texto: '8.0' → '8' é o mesmo número e não vira
+ * diferença (no Python o `Decimal` comparava igual).
+ */
+export async function salvar_com_diff(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  tabela: PgTable,
+  registro_id: number,
+  campos: Record<string, unknown>,
+  d: { permissao: string; rotulo: string; volta: string },
+): Promise<Response> {
+  usuario.exigir(d.permissao);
+  const tx = c.get("tx");
+  const colunas = getTableColumns(tabela) as Record<string, PgColumn>;
+  const coluna_id = colunas["id"]!;
+  const [registro] = (await tx.select().from(tabela).where(eq(coluna_id, registro_id))) as Record<string, unknown>[];
+  if (!registro) return redirecionar(c, d.volta);
+  const antes: Record<string, unknown> = {};
+  const depois: Record<string, unknown> = {};
+  for (const [campo, valor] of Object.entries(campos)) {
+    const a = registro[campo] ?? null;
+    antes[campo] = a;
+    depois[campo] =
+      colunas[campo]?.columnType === "PgNumeric" && typeof a === "string" && typeof valor === "string" && mesmoDecimal(a, valor)
+        ? a
+        : valor;
+  }
+  await tx.update(tabela).set(campos as never).where(eq(coluna_id, registro_id));
+  await auditoria.registrar_diferencas(tx, {
+    entidade: getTableName(tabela),
+    entidade_id: registro_id,
+    antes,
+    depois,
+    usuario,
+  });
+  // codificado: `rotulo` chega ao `Location` dentro da mensagem
+  return redirecionar(c, comMensagem(d.volta, `${d.rotulo} atualizado.`));
 }

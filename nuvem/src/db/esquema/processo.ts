@@ -247,7 +247,13 @@ export const parecer_tecnico = pgTable(
   (t) => [
     // nome da migracao `a652091b8419`, que acrescentou a coluna
     foreignKey({ name: 'fk_parecer_uorg', columns: [t.uorg_id], foreignColumns: [unidade_uorg.id] }),
-    unique('uq_parecer').on(t.numero, t.ano),
+    // DESVIO (corrige defeito do Python): lá era UNIQUE(numero, ano), e todo
+    // rascunho nasce com número 0 (o número só é consumido na emissão, RN-03) —
+    // então só cabia UM rascunho por ano no sistema inteiro, e abrir o parecer
+    // de um segundo processo dava 500 (IntegrityError) no `GET
+    // /processos/{id}/parecer`. A unicidade que a RN-03 pede é a do número
+    // emitido: o índice vale só para `numero > 0`.
+    uniqueIndex('uq_parecer').on(t.numero, t.ano).where(sql`numero > 0`),
     check(
       'ck_situacao',
       sql.raw(

@@ -4,8 +4,7 @@
  * Porte de `test_politica_senha.py`, `test_login_robusto.py`,
  * `test_retencao_sessao.py`, das partes de autenticação (CA-12) de
  * `test_web_fluxo.py` e de `test_rotas_permissoes.py` (quem-sou-eu, sair).
- * Onde o Python usava `/kanban` ou `/processos` como "tela que exige sessão",
- * aqui entra `/modulos` — as telas dos módulos são portadas por outro trecho.
+ * As "telas que exigem sessão" são as do Python (`/kanban`, `/processos`).
  */
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -245,11 +244,11 @@ describe("login", () => {
     const token = cliente.cookies.get(autenticacao.COOKIE_SESSAO)!;
     await cliente.get("/sair", { seguir: false });
     expect(await autenticacao.sessao_valida(db, token)).toBeNull();
-    expect((await cliente.get("/modulos", { seguir: false })).status).toBe(303);
+    expect((await cliente.get("/kanban", { seguir: false })).status).toBe(303);
   });
 
   it("sem sessão, tela vai para o login", async () => {
-    const r = await novoCliente().get("/modulos", { seguir: false });
+    const r = await novoCliente().get("/kanban", { seguir: false });
     expect(r.status).toBe(303);
     expect(r.location).toContain("/login");
   });
@@ -298,17 +297,17 @@ describe("troca de senha e sessões", () => {
     const outra = novoCliente();
     await entrar(eu, "troca3");
     await entrar(outra, "troca3");
-    expect((await outra.get("/modulos")).status).toBe(200);
+    expect((await outra.get("/kanban")).status).toBe(200);
     const r = await eu.post(
       "/trocar-senha",
       { senha_atual: SENHA_TESTE, nova: "trocada2026", confirmacao: "trocada2026" },
       { seguir: false },
     );
     expect(r.status).toBe(303);
-    const caiu = await outra.get("/modulos", { seguir: false });
+    const caiu = await outra.get("/kanban", { seguir: false });
     expect(caiu.status).toBe(303);
     expect(caiu.location).toContain("/login");
-    expect((await eu.get("/modulos")).status).toBe(200);
+    expect((await eu.get("/kanban")).status).toBe(200);
   });
 
   it("o reset por administrador continua derrubando tudo", async () => {
@@ -325,9 +324,9 @@ describe("troca de senha e sessões", () => {
     const conta = await criarUsuario(db, { login: "revogada", perfis: ["coordenador_csso"] });
     const cliente = novoCliente();
     await entrar(cliente, "revogada");
-    expect((await cliente.get("/modulos")).status).toBe(200);
+    expect((await cliente.get("/kanban")).status).toBe(200);
     await naTransacao((tx) => autenticacao.revogar_do_usuario(tx, conta.id));
-    const r = await cliente.get("/modulos", { seguir: false });
+    const r = await cliente.get("/kanban", { seguir: false });
     expect(r.status).toBe(303);
     expect(r.location).toContain("/login");
   });
@@ -353,12 +352,12 @@ describe("troca de senha e sessões", () => {
   it("rotacionar a chave secreta derruba toda sessão aberta", async () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
-    expect((await cliente.get("/modulos")).status).toBe(200);
+    expect((await cliente.get("/kanban")).status).toBe(200);
     const original = process.env.CSSO_CHAVE_SECRETA;
     try {
       process.env.CSSO_CHAVE_SECRETA = "chave-rotacionada-depois-do-incidente";
       redefinirConfig();
-      const depois = await cliente.get("/modulos", { seguir: false });
+      const depois = await cliente.get("/kanban", { seguir: false });
       expect(depois.status).toBe(303);
       expect(depois.location).toContain("/login");
     } finally {
@@ -394,15 +393,15 @@ describe("bloqueio e sessão expirada", () => {
     await entrar(cliente, "coordenador_csso");
     await cliente.get("/sair");
     cliente.cookies.set(autenticacao.COOKIE_SESSAO, "sessao-que-nao-vale-mais");
-    const r = await cliente.get("/modulos?estado=EM_TRIAGEM&pagina=3", { seguir: false });
+    const r = await cliente.get("/processos?estado=EM_TRIAGEM&pagina=3", { seguir: false });
     expect(r.status).toBe(303);
     const destino = r.location!;
     expect(destino.startsWith("/login?")).toBe(true);
     expect(destino).toContain("motivo=sessao");
-    expect(destino).toContain("proximo=%2Fmodulos%3Festado%3DEM_TRIAGEM%26pagina%3D3");
+    expect(destino).toContain("proximo=%2Fprocessos%3Festado%3DEM_TRIAGEM%26pagina%3D3");
     const tela = await cliente.get(destino);
     expect(tela.text).toContain("Sua sessão expirou");
-    expect(tela.text).toContain('value="/modulos?estado=EM_TRIAGEM&amp;pagina=3"');
+    expect(tela.text).toContain('value="/processos?estado=EM_TRIAGEM&amp;pagina=3"');
   });
 
   it("envio com sessão expirada diz que nada foi gravado (proximo = Referer)", async () => {
@@ -411,18 +410,18 @@ describe("bloqueio e sessão expirada", () => {
     const r = await cliente.post(
       "/trocar-senha",
       { senha_atual: "x", nova: "y", confirmacao: "y" },
-      { seguir: false, cabecalhos: { referer: "http://testserver/modulos?q=abc" } },
+      { seguir: false, cabecalhos: { referer: "http://testserver/kanban?q=abc" } },
     );
     expect(r.status).toBe(303);
     expect(r.location).toContain("motivo=envio");
-    expect(r.location).toContain("proximo=%2Fmodulos%3Fq%3Dabc");
+    expect(r.location).toContain("proximo=%2Fkanban%3Fq%3Dabc");
     const tela = await cliente.get(r.location!);
     expect(tela.text).toContain("não foi salvo");
   });
 
   it("chegar sem cookie nenhum não é sessão expirada", async () => {
     const cliente = novoCliente();
-    const r = await cliente.get("/modulos", { seguir: false });
+    const r = await cliente.get("/kanban", { seguir: false });
     expect(r.location).not.toContain("motivo=");
     const tela = await cliente.get(r.location!);
     expect(tela.text).not.toContain("sessão expirou");
@@ -491,6 +490,6 @@ describe("retenção de sessão", () => {
     const [vivas] = await db.select({ n: count() }).from(e.sessao);
     expect(Number(velhas!.n)).toBe(0);
     expect(Number(vivas!.n)).toBeGreaterThanOrEqual(1);
-    expect((await cliente.get("/modulos", { seguir: false })).status).toBe(200);
+    expect((await cliente.get("/kanban", { seguir: false })).status).toBe(200);
   });
 });

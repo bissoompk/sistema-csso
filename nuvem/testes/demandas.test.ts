@@ -23,7 +23,7 @@ const HOJE = hoje_iso();
 const NOME_SERVIDOR = "Marco Antônio Alves Schetino";
 const SIAPE = "1110654";
 
-// o primeiro `bancoLimpo` registra o afterAll que apaga todos os clones
+// o primeiro `bancoLimpo` clona o banco do arquivo; os seguintes o restauram
 let amb: AmbienteDeTeste = await bancoLimpo();
 let cliente: Cliente;
 
@@ -358,11 +358,10 @@ describe("prazo e sino", () => {
     const id = _id_da_criada(await _registrar({ prazo: somar_dias(HOJE, -3) }));
     expect(DemandaDominio.atrasada((await _gravada(id))!, HOJE)).toBe(true);
 
-    // a tela /pendencias é do porte de Processos; o sino do cabeçalho é daqui
     const lista = await cliente.get("/demandas");
     expect(lista.text).toContain('class="sino');
     const corpo = await cliente.get("/pendencias");
-    if (corpo.status === 404) return; // TODO(porte): /pendencias ainda não portada
+    expect(corpo.status).toBe(200);
     expect(corpo.text).toContain("Demanda com prazo a cumprir");
     // a âncora da fila carrega o caminho de volta (`?de=pendencias`)
     expect(corpo.text).toContain(`href="/demandas/${id}?de=pendencias"`);
@@ -488,25 +487,10 @@ describe("trilha", () => {
 describe("povoar_demandas", () => {
   it("cobre os três estados e os quatro desfechos, com a atrasada no sino", async () => {
     const { povoar } = await import("../ferramentas/ambiente-teste.js");
-    const { povoar_demandas, nup_de } = await import("../ferramentas/povoar/demandas.js");
-    const { carregar_usuario_atual } = await import("../src/servicos/rbac.js");
     const novo = await bancoLimpo();
-    await novo.db.transaction(async (tx) => {
-      await povoar(tx);
-      // o processo que a demanda 5 aponta (o povoamento de Processos o cria)
-      const [tipo] = await tx.select().from(e.tipo_processo).limit(1);
-      const [etapa] = await tx.select().from(e.fluxo_etapa).limit(1);
-      await tx.insert(e.processo).values({ nup: nup_de(100002, Number(HOJE.slice(0, 4))), tipo_processo_id: tipo!.id, etapa_id: etapa!.id });
-      const resumo: Record<string, number> = {};
-      await povoar_demandas(tx, {
-        resumo,
-        atual: async (login) => {
-          const [conta] = await tx.select().from(e.usuario).where(eq(e.usuario.login, login));
-          return carregar_usuario_atual(tx, conta!.id);
-        },
-      });
-      expect(resumo.demandas).toBe(7);
-    });
+    // `povoar` roda Processos antes de Demandas: o processo da demanda 5 existe
+    const resumo = await novo.db.transaction((tx) => povoar(tx));
+    expect(resumo.demandas).toBe(7);
     const todas = await novo.db.select().from(e.demanda);
     expect(new Set(todas.map((d) => d.estado))).toEqual(new Set(["ABERTA", "EM_ANDAMENTO", "ENCERRADA"]));
     expect(new Set(todas.map((d) => d.desfecho).filter(Boolean))).toEqual(

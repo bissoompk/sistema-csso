@@ -29,6 +29,7 @@ import type { UsuarioAtual } from "../servicos/rbac.js";
 import * as servico from "../servicos/epi_indicadores.js";
 import { hoje } from "../servicos/datas_br.js";
 import { marcarDownload, pagina } from "../web.js";
+import { LIMIAR_SUPRESSAO, MARCA_SUPRIMIDO, suprimir, suprimir_aninhado } from "./relatorios.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -39,92 +40,11 @@ export const EXPORTAR = "/epis/relatorios/exportar";
 // =====================================================================
 // Supressão da RN-19
 // =====================================================================
-// TODO(porte): duplicação de `app/rotas/relatorios.py` (`LIMIAR_SUPRESSAO`,
-// `MARCA_SUPRIMIDO`, `suprimir`, `suprimir_aninhado`), que é do agente de
-// Processos e ainda não foi portado para `src/rotas/relatorios.ts`. Quando
-// estiver, importar de lá e apagar esta cópia — duas cópias da regra de
-// privacidade divergiriam na primeira correção.
-export const LIMIAR_SUPRESSAO = 5;
-export const MARCA_SUPRIMIDO = "—";
-
-function _primarias(contagens: Record<string, number>): Set<string> {
-  return new Set(Object.entries(contagens).filter(([, v]) => v < LIMIAR_SUPRESSAO).map(([k]) => k));
-}
-
-/**
- * Nunca deixa sobrar UMA célula suprimida sozinha numa distribuição: com uma
- * só escondida, quem tiver o total a recupera por subtração.
- */
-function _com_secundaria(contagens: Record<string, number>, marcadas: Set<string>): Set<string> {
-  if (marcadas.size !== 1) return marcadas;
-  const sobreviventes = Object.keys(contagens).filter((k) => !marcadas.has(k));
-  if (!sobreviventes.length) return marcadas;
-  // `min(key=...)` do Python devolve o PRIMEIRO dos empatados
-  const vitima = sobreviventes.reduce((a, b) => (contagens[b]! < contagens[a]! ? b : a));
-  return new Set([...marcadas, vitima]);
-}
-
-function _formatar(contagens: Record<string, number>, marcadas: Set<string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(contagens).map(([k, v]) => [k, marcadas.has(k) ? MARCA_SUPRIMIDO : String(v)]));
-}
-
-/** Supressão primária (n<5) + secundária. */
-export function suprimir(contagens: Record<string, number>, pode_ver: boolean): Record<string, string> {
-  if (pode_ver) return Object.fromEntries(Object.entries(contagens).map(([k, v]) => [k, String(v)]));
-  return _formatar(contagens, _com_secundaria(contagens, _primarias(contagens)));
-}
-
-/** Um grupo e as células dele, já suprimidos de forma consistente. */
-export class LinhaAninhada {
-  constructor(
-    readonly rotulo: string,
-    readonly valor: string,
-    readonly folhas: readonly (readonly [string, string])[],
-  ) {
-    Object.freeze(this);
-  }
-  get suprimido(): boolean {
-    return this.valor === MARCA_SUPRIMIDO;
-  }
-}
-
-/**
- * Distribuição com margem: o total do grupo É a margem das células dele. Três
- * regras: secundária DENTRO do grupo; total suprimido não convive com folha
- * visível; nunca UM total sozinho (a vítima leva as folhas junto).
- */
-export function suprimir_aninhado(grupos: Record<string, Record<string, number>>, pode_ver: boolean): LinhaAninhada[] {
-  const totais: Record<string, number> = {};
-  for (const [rotulo, folhas] of Object.entries(grupos)) {
-    totais[rotulo] = Object.values(folhas).reduce((a, b) => a + b, 0);
-  }
-  if (pode_ver) {
-    return Object.keys(grupos).map(
-      (rotulo) =>
-        new LinhaAninhada(
-          rotulo,
-          String(totais[rotulo]),
-          Object.entries(grupos[rotulo]!).map(([k, v]) => [k, String(v)] as const),
-        ),
-    );
-  }
-  const marcadas: Record<string, Set<string>> = {};
-  for (const [rotulo, folhas] of Object.entries(grupos)) {
-    marcadas[rotulo] = _com_secundaria(folhas, _primarias(folhas));
-  }
-  // grupo de folha única: o total É a folha, então esconder só a folha não
-  // esconde nada
-  let marcados_grupo = _primarias(totais);
-  for (const [rotulo, m] of Object.entries(marcadas)) if (m.size === 1) marcados_grupo.add(rotulo);
-  marcados_grupo = _com_secundaria(totais, marcados_grupo);
-  for (const rotulo of marcados_grupo) marcadas[rotulo] = new Set(Object.keys(grupos[rotulo]!));
-
-  const formatados = _formatar(totais, marcados_grupo);
-  return Object.keys(grupos).map(
-    (rotulo) =>
-      new LinhaAninhada(rotulo, formatados[rotulo]!, Object.entries(_formatar(grupos[rotulo]!, marcadas[rotulo]!))),
-  );
-}
+// Mora em `src/rotas/relatorios.ts` (o `app/rotas/relatorios.py`): duas cópias
+// da regra de privacidade divergiriam na primeira correção. Reexportada porque
+// os testes do módulo a leem daqui, como no Python.
+export { LIMIAR_SUPRESSAO, MARCA_SUPRIMIDO, suprimir, suprimir_aninhado };
+export type { LinhaAninhada } from "./relatorios.js";
 
 // =====================================================================
 // Apoio

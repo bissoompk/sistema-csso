@@ -11,8 +11,8 @@
    escreveu motivo nenhum. Impressos como motivo, eles ocupam o lugar da
    explicação com uma palavra em inglês que não explica nada; sem eles, quem
    explica é o aviso abaixo. Todo `detalhe` escrito por uma rota daqui passa. #}
-{% set motivo = detalhe if detalhe not in ('Not Found', 'Forbidden', 'Unauthorized',
-                                           'Method Not Allowed') else none %}
+{% set motivo = detalhe if detalhe not in ['Not Found', 'Forbidden', 'Unauthorized',
+                                           'Method Not Allowed'] else none %}
 
 {# A saída não pode ser mais uma porta trancada. O primeiro item de menu que
    este usuário enxerga é a única saída que o sistema já garante que abre — é o

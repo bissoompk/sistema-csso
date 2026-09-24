@@ -778,8 +778,16 @@ async function _docx(c: Ctx, parecer: ParecerCompleto): Promise<[string, Uint8Ar
   );
   const armazenamento = obterArmazenamento();
   if (await armazenamento.existe(chave)) return [chave, await armazenamento.ler(chave)];
-  const info = await documento.renderizar(contexto, chave, parecer.modelo_arquivo);
-  return [chave, info.bytes];
+  try {
+    const info = await documento.renderizar(contexto, chave, parecer.modelo_arquivo);
+    return [chave, info.bytes];
+  } catch (erro) {
+    // DESVIO (corrige defeito do Python): o `.docx` de um rascunho incompleto
+    // levantava `DadosIncompletos` (um `ValueError` sem tratador) e a resposta
+    // era 500. A recusa é a mesma frase do serviço, com o que falta.
+    if (erro instanceof documento.DadosIncompletos) throw new ErroHttp(422, erro.message);
+    throw erro;
+  }
 }
 
 function _servir_docx(c: Ctx, chave: string, bytes: Uint8Array): Response {

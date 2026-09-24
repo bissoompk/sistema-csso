@@ -57,8 +57,8 @@ let db: Banco;
 let cliente: Cliente;
 let novoCliente: () => Cliente;
 
-// a primeira chamada, na coleta, registra o `afterAll` que apaga TODOS os
-// bancos que este arquivo criar
+// a primeira chamada, na coleta, clona o banco do arquivo e registra o
+// `afterAll` que fecha a conexão; as do `beforeEach` o restauram no lugar
 await bancoLimpo();
 
 beforeEach(async () => {

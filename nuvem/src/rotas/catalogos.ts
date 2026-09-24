@@ -7,8 +7,7 @@
  * tabela é o formulário e volta do banco intacta).
  */
 import { Hono } from "hono";
-import { and, asc, count, desc, eq, getTableName, ne } from "drizzle-orm";
-import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
+import { and, asc, count, desc, eq, ne } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { ErroHttp } from "../nucleo/erros.js";
 import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
@@ -37,7 +36,7 @@ import * as textos from "../servicos/textos.js";
 import { analisar_portaria } from "../servicos/importacao_planilha.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
-import { comMensagem, pagina, redirecionar } from "../web.js";
+import { comMensagem, pagina, redirecionar, salvar_com_diff } from "../web.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -97,36 +96,6 @@ function _data_iso(bruto: string): string {
   return bruto;
 }
 
-/**
- * Edição de catálogo: exige a permissão, grava e audita campo a campo. É o
- * `web.salvar_com_diff` do Python — a regra é a mesma em todo catálogo.
- * Editar é seguro para o que já saiu: o parecer emitido reimprime do conteúdo
- * congelado (RN-15).
- */
-export async function salvar_com_diff(
-  c: Ctx,
-  usuario: UsuarioAtual,
-  tabela: PgTable,
-  registro_id: number,
-  campos: Record<string, unknown>,
-  d: { permissao: string; rotulo: string; volta: string },
-) {
-  usuario.exigir(d.permissao);
-  const tx = c.get("tx");
-  const coluna_id = (tabela as unknown as Record<string, PgColumn>)["id"]!;
-  const [registro] = (await tx.select().from(tabela).where(eq(coluna_id, registro_id))) as Record<string, unknown>[];
-  if (!registro) return redirecionar(c, d.volta);
-  const antes = Object.fromEntries(Object.keys(campos).map((k) => [k, registro[k] ?? null]));
-  await tx.update(tabela).set(campos as never).where(eq(coluna_id, registro_id));
-  await auditoria.registrar_diferencas(tx, {
-    entidade: getTableName(tabela),
-    entidade_id: registro_id,
-    antes,
-    depois: campos,
-    usuario,
-  });
-  return _volta(c, d.volta, `${d.rotulo} atualizado.`);
-}
 
 const comUorg = <T extends typeof unidade_uorg.$inferSelect>(u: T) => ({ ...u, uorg_bruto: UnidadeUorg.uorg_bruto(u) });
 

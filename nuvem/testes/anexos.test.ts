@@ -206,9 +206,18 @@ describe("anexo_acesso: quem vê o dono baixa o anexo", () => {
   });
 
   it("resolvedor declarado, mas o módulo dono ainda não deu a porta: nega", async () => {
+    // Hoje todo módulo dono declara a sua porta ao ser carregado (e o app os
+    // carrega); a porta é retirada só durante o teste, para a regra do lado
+    // seguro continuar provada.
     const a = await anexo_de("certificado", 1, "CERTIFICADO");
-    const erro = await anexo_acesso.autorizar(db, quem(["certificado.ver"]), a).catch((e) => e);
-    expect(erro).toBeInstanceOf(anexo_acesso.DonoNaoDeclarado);
+    const guardada = anexo_acesso.PORTAS.certificado_no_escopo;
+    delete anexo_acesso.PORTAS.certificado_no_escopo;
+    try {
+      const erro = await anexo_acesso.autorizar(db, quem(["certificado.ver"]), a).catch((e) => e);
+      expect(erro).toBeInstanceOf(anexo_acesso.DonoNaoDeclarado);
+    } finally {
+      if (guardada) anexo_acesso.PORTAS.certificado_no_escopo = guardada;
+    }
   });
 
   it("a permissão do dono vem antes do banco (processo.ver)", async () => {

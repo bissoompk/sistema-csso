@@ -20,6 +20,9 @@ export default defineConfig({
     pool: "forks",
     testTimeout: 30_000,
     hookTimeout: 60_000,
+    // o teardown do `globalSetup` apaga TODOS os clones da execução (centenas:
+    // há arquivos com banco novo por teste) — ver `testes/ajuda.ts`
+    teardownTimeout: 600_000,
     env: {
       NODE_ENV: "test",
       CSSO_CHAVE_SECRETA: "chave-de-teste-nao-e-segredo",

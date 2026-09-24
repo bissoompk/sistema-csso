@@ -6,13 +6,10 @@
  * Aqui o registro do Drizzle é objeto simples, e estas funções devolvem o MESMO
  * objeto com as propriedades calculadas como getters — o template portado lê
  * igual, e ninguém recalcula regra no Nunjucks. Também mora aqui o recado das
- * rotas do módulo (`_aviso`, `_volta`, `_erro`) e o `salvar_com_diff` de
- * catálogo, que as três rotas repetiam no Python.
+ * rotas do módulo (`_aviso`, `_volta`, `_erro`). O `salvar_com_diff` de
+ * catálogo mora em `src/web.ts`.
  */
-import { eq } from "drizzle-orm";
-import type { PgTable } from "drizzle-orm/pg-core";
 import type { Ctx } from "../nucleo/contexto.js";
-import type { Executor } from "../db/cliente.js";
 import {
   AssinaturaInstrutor,
   Certificado,
@@ -22,9 +19,6 @@ import {
   Treinamento,
   Turma,
 } from "../dominio/treinamento.js";
-import * as auditoria from "../servicos/auditoria.js";
-import { comparar } from "../servicos/presenca.js";
-import type { UsuarioAtual } from "../servicos/rbac.js";
 import { redirecionar } from "../web.js";
 
 type Obj = Record<string, any>;
@@ -173,39 +167,3 @@ export function data_iso(valor: string): string | null {
   return valor.trim();
 }
 
-/**
- * Edição de catálogo: exige a permissão, grava e audita campo a campo. O
- * `web.salvar_com_diff` do Python.
- *
- * TODO(porte): `web.ts` ainda não tem `salvar_com_diff`; quando tiver (as
- * rotas de catálogo da Base também o usam), troque esta cópia pelo import.
- */
-export async function salvar_com_diff(
-  c: Ctx,
-  tx: Executor,
-  usuario: UsuarioAtual,
-  tabela: PgTable & { id: any },
-  nome_tabela: string,
-  registro_id: number,
-  campos: Record<string, unknown>,
-  d: { permissao: string; rotulo: string; volta: string },
-): Promise<Response> {
-  usuario.exigir(d.permissao);
-  const [registro] = (await tx.select().from(tabela as never).where(eq(tabela.id, registro_id))) as Obj[];
-  if (!registro) return redirecionar(c, d.volta);
-  const antes: Obj = {};
-  const depois: Obj = {};
-  for (const [campo, valor] of Object.entries(campos)) {
-    antes[campo] = registro[campo];
-    // `Decimal('8.0') == Decimal('8')`: número igual não é mudança
-    const a = registro[campo];
-    depois[campo] =
-      typeof a === "string" && typeof valor === "string" && /^-?\d+(\.\d+)?$/.test(a) && /^-?\d+(\.\d+)?$/.test(valor) &&
-      comparar(a, valor) === 0
-        ? a
-        : valor;
-  }
-  await tx.update(tabela).set(campos as never).where(eq(tabela.id, registro_id));
-  await auditoria.registrar_diferencas(tx, { entidade: nome_tabela, entidade_id: registro_id, antes, depois, usuario });
-  return volta(c, d.volta, `${d.rotulo} atualizado.`);
-}

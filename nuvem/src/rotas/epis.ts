@@ -21,7 +21,7 @@ import * as auditoria from "../servicos/auditoria.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as textos from "../servicos/textos.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
-import { comMensagem, numeroDaPagina, pagina, recortar, redirecionar } from "../web.js";
+import { comMensagem, numeroDaPagina, pagina, recortar, redirecionar, salvar_com_diff } from "../web.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -219,42 +219,6 @@ async function _categorias(tx: Executor) {
   return linhas.map((c) => ({ ...c, rotulo: EpiCategoria.rotulo(c) }));
 }
 
-/**
- * Edição de catálogo: exige a permissão, grava e audita campo a campo.
- *
- * TODO(porte): duplicação do `salvar_com_diff` de `app/web.py`, que `src/web.ts`
- * ainda não tem. Quando existir lá, trocar por ele.
- */
-async function salvar_com_diff(
-  c: Ctx,
-  usuario: UsuarioAtual,
-  tabela: typeof epi_item | typeof epi_categoria | typeof epi_motivo_recusa,
-  entidade: string,
-  registro_id: number,
-  campos: Record<string, unknown>,
-  d: { permissao: string; rotulo: string; volta: string },
-): Promise<Response> {
-  usuario.exigir(d.permissao);
-  const tx = c.get("tx");
-  const t = tabela as typeof epi_item;
-  const [registro] = (await tx.select().from(t).where(eq(t.id, registro_id))) as Record<string, unknown>[];
-  if (!registro) return redirecionar(c, d.volta);
-  const antes: Record<string, unknown> = {};
-  for (const campo of Object.keys(campos)) antes[campo] = registro[campo];
-  await tx
-    .update(t)
-    .set(campos as never)
-    .where(eq(t.id, registro_id));
-  await auditoria.registrar_diferencas(tx, {
-    entidade,
-    entidade_id: registro_id,
-    antes,
-    depois: { ...campos },
-    usuario,
-  });
-  return _volta(c, d.volta, `${d.rotulo} atualizado.`);
-}
-
 // =====================================================================
 // Itens de EPI
 // =====================================================================
@@ -365,7 +329,6 @@ rotas.post(`${CATEGORIAS}/:categoria_id{[0-9]+}`, async (c) => {
     c,
     usuario,
     epi_categoria,
-    "epi_categoria",
     Number(c.req.param("categoria_id")),
     {
       nome: f.texto("nome").trim(),
@@ -458,7 +421,6 @@ rotas.post(`${MOTIVOS}/:motivo_id{[0-9]+}`, async (c) => {
     c,
     usuario,
     epi_motivo_recusa,
-    "epi_motivo_recusa",
     Number(c.req.param("motivo_id")),
     {
       rotulo: f.texto("rotulo").trim(),
@@ -490,7 +452,7 @@ rotas.post(`${CATALOGO}/:item_id{[0-9]+}`, async (c) => {
     return _erro(c, CATALOGO, `Já existe outro item '${campos.nome}' com esse modelo.`);
   }
   campos.ativo = _marcado(f.texto("ativo"));
-  return salvar_com_diff(c, usuario, epi_item, "epi_item", item_id, campos, {
+  return salvar_com_diff(c, usuario, epi_item, item_id, campos, {
     permissao: "epi.catalogo",
     rotulo: "Item de EPI",
     volta: CATALOGO,
