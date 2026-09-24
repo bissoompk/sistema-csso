@@ -31,9 +31,6 @@
  *     `presenca`, `emissao_certificado`);
  *   - as sete demandas em todos os desfechos (`servicos/demandas`);
  *   - envelhecer pendências para o sino ter atrasadas (`servicos/pendencias`).
- * A lotação inicial dos servidores é gravada aqui imitando
- * `servidores.registrar_lotacao_inicial` (o serviço ainda não foi portado);
- * quando ele existir, troque o bloco pela chamada.
  */
 import { pathToFileURL } from "node:url";
 import { carregarEnvLocal } from "./env-local.js";
@@ -106,6 +103,7 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
   const autenticacao = await import("../src/servicos/autenticacao.js");
   const auditoria = await import("../src/servicos/auditoria.js");
   const rbac = await import("../src/servicos/rbac.js");
+  const servidores = await import("../src/servicos/servidores.js");
 
   const resumo: Record<string, number> = {};
 
@@ -179,27 +177,19 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
       descricao: `Servidor SIAPE ${siape} cadastrado.`,
       usuario: secretaria,
     });
-    // TODO(porte): `servidores.registrar_lotacao_inicial` quando for portado.
-    const [lotacao] = await tx
-      .insert(e.servidor_lotacao)
-      .values({
-        servidor_id: srv!.id,
-        unidade_uorg_id: srv!.unidade_uorg_id,
-        uorg_id: srv!.uorg_id,
-        cargo_id: srv!.cargo_id,
-        funcao: srv!.funcao,
-        vigencia_inicio: inicio_lotacao,
-        documento: "Portaria de teste",
-        registrado_por: secretaria.id,
-      })
-      .returning();
+    let postos: number[] = [];
     if (posto_nome) {
       const [posto] = await tx
         .select()
         .from(e.posto_trabalho)
         .where(and(eq(e.posto_trabalho.unidade_uorg_id, unidade!.id), eq(e.posto_trabalho.nome, posto_nome)));
-      await tx.insert(e.lotacao_posto).values({ lotacao_id: lotacao!.id, posto_trabalho_id: posto!.id, ordem: 1 });
+      postos = [posto!.id];
     }
+    await servidores.registrar_lotacao_inicial(tx, srv!, secretaria, {
+      inicio: inicio_lotacao,
+      documento: "Portaria de teste",
+      postos,
+    });
   }
   resumo.servidores = SERVIDORES.length;
 

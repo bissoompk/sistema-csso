@@ -11,7 +11,9 @@
 {# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
    abertura da tela — e é a presença dele que reabre o popup. #}
 {% set d = digitado or {} %}
-{% set recusado = true if (erro and d) else false %}
+{#- `digitado`, e não `d`: no JavaScript `{}` é verdadeiro, e a tela reabriria o
+   popup em toda recusa de edição em linha. -#}
+{% set recusado = true if (erro and digitado) else false %}
 {% set erro_cadastro = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
 
@@ -132,24 +134,24 @@
     <div class="campo codigo {{ 'com-erro' if recusado }}">
       <label for="novo-codigo">Código</label>
       <input id="novo-codigo" name="codigo" required placeholder="SEM_EXPOSICAO"
-             value="{{ d.get('codigo') or '' }}"
+             value="{{ d.codigo or '' }}"
              aria-describedby="dica-codigo"{{ ' autofocus' if recusado }}>
       <span class="dica" id="dica-codigo">Maiúsculas, números e sublinhado.</span></div>
     <div class="campo"><label for="novo-rotulo">Rótulo</label>
       <input id="novo-rotulo" name="rotulo" required placeholder="Sem exposição ao risco"
-             value="{{ d.get('rotulo') or '' }}"></div>
+             value="{{ d.rotulo or '' }}"></div>
     <div class="campo"><label for="nova-base">Base normativa</label>
       <input id="nova-base" name="base_normativa" placeholder="NR-6"
-             value="{{ d.get('base_normativa') or '' }}"></div>
+             value="{{ d.base_normativa or '' }}"></div>
   </div>
   <div class="campo"><label for="novo-texto">Texto da negativa</label>
     <textarea id="novo-texto" name="texto" rows="4" required
-              aria-describedby="dica-texto">{{ d.get('texto') or '' }}</textarea>
+              aria-describedby="dica-texto">{{ d.texto or '' }}</textarea>
     <span class="dica" id="dica-texto">Sai literal para quem pediu. Uma negativa que
       encaminha vale mais que um “não”: diga o que a pessoa deve fazer.</span></div>
   <div class="campo">
     <label class="discreto"><input type="checkbox" name="exige_complemento" value="1"
-      {{- ' checked' if d.get('exige_complemento') == '1' }}>
+      {{- ' checked' if d.exige_complemento == '1' }}>
       exige complemento escrito na hora da recusa</label></div>
 {% endcall %}
 {% endif %}

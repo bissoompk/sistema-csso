@@ -48,8 +48,8 @@
 
   <nav class="abas">
     {% set contagens = {'parecer': pareceres|length, 'anexos': anexos|length} %}
-    {% for chave, rotulo in [('dados','Dados'),('parecer','Parecer'),('anexos','Anexos'),
-                              ('checklist','Checklist'),('historico','Histórico')] %}
+    {% for chave, rotulo in [['dados','Dados'],['parecer','Parecer'],['anexos','Anexos'],
+                              ['checklist','Checklist'],['historico','Histórico']] %}
     <a href="/processos/{{ processo.id }}?aba={{ chave }}" class="{{ 'ativa' if aba == chave }}">{{ rotulo }}
       {%- if chave in contagens %}<span class="conta">{{ contagens[chave] }}</span>{% endif %}
       {%- if chave == 'checklist' and resumo.checklist_total %}
@@ -192,7 +192,7 @@
         <td>{{ a.categoria }}</td>
         <td>{% if a.nivel_acesso == 'RESTRITO' %}<span class="pilula alerta">restrito</span>
             {% else %}<span class="discreto">{{ a.nivel_acesso|lower }}</span>{% endif %}</td>
-        <td class="mono discreto">{{ a.sha256[:12] }}…</td>
+        <td class="mono discreto">{{ a.sha256.slice(0, 12) }}…</td>
         <td class="discreto mono">{{ a.enviado_em|momento }}</td>
       </tr>
       {% else %}<tr><td colspan="5" class="nada">Sem anexos.</td></tr>{% endfor %}
@@ -404,7 +404,7 @@
 {% endcall %}
 {% endif %}
 
-{% if aba not in ('dados', 'parecer', 'anexos', 'checklist')
+{% if aba not in ['dados', 'parecer', 'anexos', 'checklist']
       and usuario.pode('processo.editar') %}
 {# O texto recusado pela RN-21 volta para dentro do campo, e a camada reabre com
    ele: a recusa é da frase, não do trabalho de escrevê-la, e é daqui que a

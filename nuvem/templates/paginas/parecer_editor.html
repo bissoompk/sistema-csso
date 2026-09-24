@@ -61,7 +61,7 @@
    formulário para receber a recusa "Parecer emitido é imutável". A mensagem
    estava certa; a tela mentia ao parecer editável. Um `<fieldset disabled>`
    em volta dos campos desliga todos de uma vez, inclusive o Enter. #}
-{% set congelado = parecer.situacao in ('EMITIDO','ASSINADO','ANULADO') %}
+{% set congelado = parecer.situacao in ['EMITIDO','ASSINADO','ANULADO'] %}
 
 {% block conteudo %}
 <div class="tela">
@@ -145,7 +145,7 @@
             </div>
             <div class="linha-campos">
               <div class="campo"><label for="pa-numero">Nº</label>
-                {% if parecer.situacao in ('EMITIDO','ASSINADO','ANULADO') %}
+                {% if parecer.situacao in ['EMITIDO','ASSINADO','ANULADO'] %}
                 <input id="pa-numero" value="{{ parecer.numero }}" class="mono" disabled>
                 {% else %}
                 <input id="pa-numero" name="numero" type="number" min="1" max="9999" class="mono"
@@ -159,7 +159,7 @@
                 <input id="pa-ano" name="ano" type="number" class="mono" value="{{ parecer.ano }}" min="2000" max="2100"></div>
               <div class="campo"><label for="pa-data-emissao">Data de emissão</label>
                 <input id="pa-data-emissao" name="data_emissao" type="date" class="mono"
-                       value="{{ parecer.data_emissao.isoformat() if parecer.data_emissao else '' }}"></div>
+                       value="{{ parecer.data_emissao or '' }}"></div>
             </div>
             {% if numeros_usados %}
             <p class="discreto">Números já usados em {{ parecer.ano }}:
@@ -234,7 +234,7 @@
 
           <section class="cartao">
             <div class="titulo-cartao"><h2>Marco inicial</h2>
-              {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO')
+              {% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO']
                     and usuario.pode('parecer.editar') %}
               {# O botão mora AQUI, ao lado do seletor que ele alimenta, e não num
                  cartão próprio no fim da coluna: cadastrar a portaria é o desvio de
@@ -264,7 +264,7 @@
                 </select></div>
               <div class="campo"><label for="pa-data-marco">Data do marco</label>
                 <input id="pa-data-marco" name="data_marco_inicial" type="date" class="mono"
-                       value="{{ parecer.data_marco_inicial.isoformat() if parecer.data_marco_inicial else '' }}"></div>
+                       value="{{ parecer.data_marco_inicial or '' }}"></div>
             </div>
             <div class="campo"><label for="pa-justificativa-marco">Justificativa
                 <span class="discreto">(obrigatória se o marco não for a portaria)</span></label>
@@ -314,7 +314,7 @@
                 </select></div>
             </div>
 
-            {% if parecer.tipo_adicional and parecer.tipo_adicional.codigo in ('RAIOS_X','IRRADIACAO_IONIZANTE') %}
+            {% if parecer.tipo_adicional and parecer.tipo_adicional.codigo in ['RAIOS_X','IRRADIACAO_IONIZANTE'] %}
             <h3>Radiológicos (RN-22)</h3>
             <div class="linha-campos">
               <div class="campo"><label for="pa-horas-fonte">Horas semanais junto à fonte</label>
@@ -329,7 +329,7 @@
             </div>
             {% endif %}
 
-            {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') %}
+            {% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO'] %}
             <div class="acoes">
               <button type="submit">Salvar rascunho</button>
               <p class="discreto">Salvar não consome número nem congela nada: o parecer só
@@ -362,7 +362,7 @@
                   'medida' if e.classificacao_origem == 'CALCULADA' else 'informada' }}</span>
               {% endif %}
               {% if e.excecao_art9_par_unico %}<span class="pilula alerta">art. 9º p.ú.</span>{% endif %}</td>
-            <td>{% if parecer.situacao not in ('EMITIDO','ASSINADO') %}
+            <td>{% if parecer.situacao not in ['EMITIDO','ASSINADO'] %}
               {# "remover" era um clique só, e apagava mais do que a linha que se
                  vê: horas, jornada, classificação, exceção do art. 9º e a
                  avaliação de EPI inteira — que é trabalho de outra pessoa e não
@@ -469,7 +469,7 @@
               </div>
               {% endif %}
 
-              {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO')
+              {% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO']
                     and usuario.pode('parecer.editar') %}
               <form method="post"
                     action="/pareceres/{{ parecer.id }}/exposicoes/{{ e.id }}/epi">
@@ -483,7 +483,7 @@
                       {% for v in epi_valores %}
                       {% if pe.pode_neutralizar or v not in epi_alega %}
                       <option value="{{ v }}" {% if e.epi_neutraliza == v %}selected{% endif %}>
-                        {{ v.replace('_', ' ')|lower }}</option>
+                        {{ v.replaceAll('_', ' ')|lower }}</option>
                       {% endif %}{% endfor %}
                     </select></div>
                   <div class="campo"><label for="epi-justificativa-{{ e.id }}">Justificativa técnica</label>
@@ -510,7 +510,7 @@
           {% else %}<tr><td colspan="5" class="nada">Nenhuma exposição.</td></tr>{% endfor %}
         </table>
 
-        {% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') %}
+        {% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO'] %}
         <div class="corpo">
           <div class="acoes">
             {{ ui.botao_cadastro('nova-exposicao', NOVA_EXPOSICAO, 'secundario') }}
@@ -547,7 +547,7 @@
         </ul>
 
         <div class="acoes">
-          {% if parecer.situacao in ('RASCUNHO','EM_REVISAO') and usuario.pode('parecer.emitir') %}
+          {% if parecer.situacao in ['RASCUNHO','EM_REVISAO'] and usuario.pode('parecer.emitir') %}
           {% if validacao.ok %}
           {# Pronto para emitir: o botão de destaque ABRE a confirmação, e não
              executa. Consumir número é irreversível (anular não devolve o número),
@@ -568,7 +568,7 @@
             {% endif %}
           {% endif %}
         </div>
-        {% if parecer.situacao in ('EMITIDO','ASSINADO') and usuario.pode('parecer.anular') %}
+        {% if parecer.situacao in ['EMITIDO','ASSINADO'] and usuario.pode('parecer.anular') %}
         <div class="rodape-cartao">
           <div class="acoes">
             {{ ui.botao_cadastro('anular-parecer', ANULAR, 'perigo-discreto') }}
@@ -583,7 +583,7 @@
           <span class="nota">é o que sai no .docx</span>
         </div>
         <div class="moldura-previa">
-          {% include "partes/previa_parecer.html" with context %}
+          {% include "partes/previa_parecer.html" %}
         </div>
       </section>
     </div>
@@ -597,7 +597,7 @@
    aninha. Foi por isso que "cadastrar a portaria" não pôde ficar no cartão do
    marco inicial, onde o BOTÃO dela mora.
    =================================================================== #}
-{% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') %}
+{% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO'] %}
 {% call ui.popup_cadastro('nova-exposicao', NOVA_EXPOSICAO,
                           '/pareceres/' ~ parecer.id ~ '/exposicoes', NOVA_EXPOSICAO,
                           nota='com horas informadas a classificação é calculada; sem medição, escolha-a (art. 9º)') %}
@@ -643,7 +643,7 @@
 {% endcall %}
 {% endif %}
 
-{% if parecer.situacao not in ('EMITIDO','ASSINADO','ANULADO') and usuario.pode('parecer.editar') %}
+{% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO'] and usuario.pode('parecer.editar') %}
 {% call ui.popup_cadastro('cadastrar-portaria', CADASTRAR_PORTARIA,
                           '/pareceres/' ~ parecer.id ~ '/portaria', 'Cadastrar e vincular',
                           nota='fica no catálogo e já entra selecionada neste parecer') %}
@@ -669,7 +669,7 @@
 {% endcall %}
 {% endif %}
 
-{% if parecer.situacao in ('RASCUNHO','EM_REVISAO')
+{% if parecer.situacao in ['RASCUNHO','EM_REVISAO']
       and usuario.pode('parecer.emitir') and validacao.ok %}
 {# A confirmação da emissão. Não é um "tem certeza?": ela nomeia o que vai sair,
    o que fica congelado e o que a anulação não desfaz. #}
@@ -693,7 +693,7 @@
 {% endcall %}
 {% endif %}
 
-{% if parecer.situacao in ('EMITIDO','ASSINADO') and usuario.pode('parecer.anular') %}
+{% if parecer.situacao in ['EMITIDO','ASSINADO'] and usuario.pode('parecer.anular') %}
 {% call ui.popup_cadastro('anular-parecer', ANULAR,
                           '/pareceres/' ~ parecer.id ~ '/anular', 'Anular',
                           classe_botao='perigo') %}

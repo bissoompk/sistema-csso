@@ -41,8 +41,8 @@
     <a class="ficha-filtro {{ 'ativa' if filtro_estado == 'VIGENTE' }}"
        href="/adicionais?estado=VIGENTE">Vigente</a>
     <span class="seta" aria-hidden="true">→</span>
-    {% for codigo, rotulo in [('SUSPENSO','Suspenso'), ('EM_REAVALIACAO','Em reavaliação'),
-                              ('ALTERADO','Alterado'), ('CESSADO','Cessado')] %}
+    {% for codigo, rotulo in [['SUSPENSO','Suspenso'], ['EM_REAVALIACAO','Em reavaliação'],
+                              ['ALTERADO','Alterado'], ['CESSADO','Cessado']] %}
     <a class="ficha-filtro {{ 'ativa' if filtro_estado == codigo }}"
        href="/adicionais?estado={{ codigo }}">{{ rotulo }}</a>
     {% endfor %}
@@ -107,7 +107,7 @@
            dizem sobre qual adicional se está decidindo. #}
         {% call ui.popup_gaveta('gerir-adicional-' ~ v.id, 'Gerir',
                                 'Gerir o adicional de ' ~ quem.nome,
-                                nota=ui.ROTULO_DIREITO.get(v.estado, v.estado)
+                                nota=(ui.ROTULO_DIREITO[v.estado] or v.estado)
                                      ~ ' · ' ~ (v.tipo_adicional.nome if v.tipo_adicional else '—')) %}
             {% if v.estado == 'PROPOSTO' %}
             <form method="post" action="/adicionais/{{ v.id }}/conceder">
@@ -121,7 +121,7 @@
                 <input id="dt-portaria-{{ v.id }}" name="data_portaria" type="date" required></div>
               <div class="campo"><label for="efeito-{{ v.id }}">Efeito financeiro a partir de</label>
                 <input id="efeito-{{ v.id }}" name="data_inicio" type="date" required
-                       value="{{ v.parecer.data_marco_inicial.isoformat() if v.parecer and v.parecer.data_marco_inicial else '' }}"></div>
+                       value="{{ v.parecer.data_marco_inicial if v.parecer and v.parecer.data_marco_inicial else '' }}"></div>
               <div class="acoes"><button type="submit" class="compacto">Conceder</button></div>
             </form>
             {% elif v.estado == 'VIGENTE' %}
@@ -148,7 +148,7 @@
                 <input id="alt-motivo-{{ v.id }}" name="motivo" required></div>
               <div class="acoes"><button type="submit" class="secundario compacto">Alterar</button></div>
             </form>
-            {% elif v.estado in ('SUSPENSO','EM_REAVALIACAO','ALTERADO') %}
+            {% elif v.estado in ['SUSPENSO','EM_REAVALIACAO','ALTERADO'] %}
             <form method="post" action="/adicionais/{{ v.id }}/retomar">
               <h3>Retomar</h3>
               <div class="campo"><label for="retomar-{{ v.id }}">Vigente a partir de</label>

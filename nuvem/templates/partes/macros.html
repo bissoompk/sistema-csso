@@ -801,7 +801,11 @@
    sistema hoje, mas no dia em que existir um "0" seria falso e a escolha se
    perderia justamente na recusa, que é quando ela mais custa. #}
 {%- macro sel(escolhido, valor) -%}
-{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{#- Nunjucks: `!= none` (comparação frouxa do JavaScript, que casa `null` e
+    `undefined`) no lugar de `not in (none, '')`, porque a chave ausente chega
+    `undefined`, que o `in` não acha na lista; e `!==` porque `0 != ''` é falso
+    em JavaScript. -#}
+{{- ' selected' if escolhido != none and escolhido !== '' and escolhido|string == valor|string -}}
 {%- endmacro %}
 
 {# `classe_botao` é o único acréscimo à assinatura desde que o padrão nasceu, e

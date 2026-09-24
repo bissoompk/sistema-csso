@@ -17,7 +17,7 @@
   <div class="campo">
     <label for="quantidade">Quantidade</label>
     <input id="quantidade" name="quantidade" inputmode="numeric" required
-           value="{{ d.get('quantidade') or item.quantidade_padrao }}"
+           value="{{ d.quantidade or item.quantidade_padrao }}"
            aria-describedby="dica-quantidade">
     <span class="dica" id="dica-quantidade">
       Padrão do catálogo: {{ item.quantidade_padrao }} {{ item.unidade_medida|lower }}.
@@ -30,11 +30,11 @@
     <select id="tamanho" name="tamanho">
       <option value="">—</option>
       {% for t in item.lista_de_tamanhos %}
-      <option value="{{ t }}"{{ ' selected' if d.get('tamanho') == t }}>{{ t }}</option>
+      <option value="{{ t }}"{{ ' selected' if d.tamanho == t }}>{{ t }}</option>
       {% endfor %}
     </select>
     {% else %}
-    <input id="tamanho" name="tamanho" value="{{ d.get('tamanho') or '' }}"
+    <input id="tamanho" name="tamanho" value="{{ d.tamanho or '' }}"
            placeholder="não se aplica">
     {% endif %}
   </div>
@@ -42,8 +42,8 @@
   <div class="campo">
     <label for="data_evento">Data da entrega</label>
     <input id="data_evento" type="date" name="data_evento"
-           value="{{ d.get('data_evento') or hoje.isoformat() }}"
-           max="{{ hoje.isoformat() }}" aria-describedby="dica-data">
+           value="{{ d.data_evento or hoje }}"
+           max="{{ hoje }}" aria-describedby="dica-data">
     <span class="dica" id="dica-data">Não aceita data futura: a ficha registra o
       que aconteceu, e ela é append-only.</span>
   </div>
@@ -59,7 +59,7 @@
     <option value="">Sem lote — entrega de balcão</option>
     {% for l in lotes %}
     <option value="{{ l.entrada.id }}" {% if not l.pode_sair %}disabled{% endif %}
-      {{- ' selected' if d.get('entrada_id') and d.get('entrada_id')|string == l.entrada.id|string }}>
+      {{- ' selected' if d.entrada_id and d.entrada_id|string == l.entrada.id|string }}>
       {{ l.rotulo }}{% if l.impedimento %} — INDISPONÍVEL: {{ l.impedimento }}
       {%- elif l.saldo <= 0 %} — sem saldo{% endif %}</option>
     {% endfor %}
@@ -125,7 +125,7 @@
   <label for="justificativa_excecao">Justificativa da exceção ao máximo</label>
   <textarea id="justificativa_excecao" name="justificativa_excecao" rows="2"
             aria-describedby="dica-excecao"
-            placeholder="Só preencha se o máximo já tiver sido atingido.">{{ d.get('justificativa_excecao') or '' }}</textarea>
+            placeholder="Só preencha se o máximo já tiver sido atingido.">{{ d.justificativa_excecao or '' }}</textarea>
   <span class="dica" id="dica-excecao">
     O máximo é {{ item.regra_de_quantidade }}, contado pelo que a
     <strong>ficha</strong> registra. Estourar não é bloqueio duro: é bloqueio até

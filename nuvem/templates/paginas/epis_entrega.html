@@ -19,7 +19,7 @@
 {% set d = digitado or {} %}
 {% set r = digitado_recusa or {} %}
 {%- macro sel(escolhido, valor) -%}
-{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{{- ' selected' if escolhido is not none and escolhido != '' and escolhido|string == valor|string -}}
 {%- endmacro %}
 
 {% block conteudo %}
@@ -98,12 +98,11 @@
         </div>
 
         <div class="campo" id="lista-de-servidores">
-          {# `with` e não confiança no escopo: o mesmo fragmento é servido solto
+          {# `set` antes do include (o Nunjucks não tem `with`), e não confiança no escopo: o mesmo fragmento é servido solto
              pela rota HTMX da busca, onde não há nada escolhido. #}
-          {% with escolhido = servidor_escolhido.id if servidor_escolhido else none,
-                  rotulo = 'Quem recebe' %}
+          {% set escolhido = servidor_escolhido.id if servidor_escolhido else none %}
+          {% set rotulo = 'Quem recebe' %}
           {% include "partes/epi_requisicao_servidores.html" %}
-          {% endwith %}
         </div>
 
         <div class="campo">
@@ -133,7 +132,7 @@
       <div class="campo">
         <label for="observacao">Observação</label>
         <textarea id="observacao" name="observacao" rows="2"
-                  aria-describedby="dica-observacao">{{ d.get('observacao') or '' }}</textarea>
+                  aria-describedby="dica-observacao">{{ d.observacao or '' }}</textarea>
         <span class="dica" id="dica-observacao">Sai impressa no comprovante.
           Não escreva nada sobre a saúde de quem recebe: o sistema recusa
           (RN-21).</span>
@@ -206,14 +205,14 @@
                   {%- if foco_na_recusa %} autofocus{% endif %}>
             <option value="">—</option>
             {% for m in motivos %}
-            <option value="{{ m.id }}"{{ sel(r.get('motivo_id'), m.id) }}>{{ m.rotulo }}{% if m.base_normativa %}
+            <option value="{{ m.id }}"{{ sel(r.motivo_id, m.id) }}>{{ m.rotulo }}{% if m.base_normativa %}
               ({{ m.base_normativa }}){% endif %}</option>
             {% endfor %}
           </select>
         </div>
         <div class="campo">
           <label for="a_quem">A quem se dirige</label>
-          <input id="a_quem" name="a_quem" required value="{{ r.get('a_quem') or '' }}"
+          <input id="a_quem" name="a_quem" required value="{{ r.a_quem or '' }}"
                  placeholder="chefia da unidade X, em nome da equipe terceirizada"
                  aria-describedby="dica-a-quem">
           <span class="dica" id="dica-a-quem">Sem nome de pessoa que não esteja no
@@ -221,7 +220,7 @@
         </div>
         <div class="campo">
           <label for="unidade_recusa">Unidade</label>
-          <input id="unidade_recusa" name="unidade" value="{{ r.get('unidade') or '' }}"
+          <input id="unidade_recusa" name="unidade" value="{{ r.unidade or '' }}"
                  placeholder="FAMED">
         </div>
         <div class="campo">
@@ -229,7 +228,7 @@
           <select id="item_recusado" name="item_id">
             <option value="">—</option>
             {% for i in itens %}
-            <option value="{{ i.id }}"{{ sel(r.get('item_id'), i.id) }}>{{ i.nome }}</option>
+            <option value="{{ i.id }}"{{ sel(r.item_id, i.id) }}>{{ i.nome }}</option>
             {% endfor %}
           </select>
         </div>
@@ -237,7 +236,7 @@
       <div class="campo">
         <label for="complemento">Complemento</label>
         <textarea id="complemento" name="complemento" rows="2"
-                  aria-describedby="dica-complemento">{{ r.get('complemento') or '' }}</textarea>
+                  aria-describedby="dica-complemento">{{ r.complemento or '' }}</textarea>
         <span class="dica" id="dica-complemento">Obrigatório quando o motivo do
           catálogo exige.</span>
       </div>

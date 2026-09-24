@@ -44,9 +44,9 @@
      layout o certificado sai. O aviso vem antes da tabela porque, dentro da
      linha, a única pista era a palavra "(superada)" dentro de um <select>. #}
   {% set apontam_superada = [] %}
-  {% for t in itens if t.modelo_vigente and not t.modelo_vigente.vigente %}
-  {% set _ = apontam_superada.append(t) %}
-  {% endfor %}
+  {% for t in itens %}{% if t.modelo_vigente and not t.modelo_vigente.vigente %}
+  {% set _ = apontam_superada.push(t) %}
+  {% endif %}{% endfor %}
   {% if apontam_superada %}
   <div class="aviso aviso-alerta">
     <p><strong>{{ apontam_superada|length }} treinamento(s) apontam para uma versão
@@ -100,16 +100,16 @@
          inativo — fora dela, o navegador selecionaria "—" e salvar a linha
          apagaria o vínculo sem ninguém pedir. #}
       <td><select form="{{ id }}" name="modelo_vigente_id"><option value="">—</option>
-          {% for m in modelos if (m.treinamento_id is none or m.treinamento_id == t.id)
+          {% for m in modelos %}{% if (m.treinamento_id is none or m.treinamento_id == t.id)
                                  and (m.vigente or m.id == t.modelo_vigente_id) %}
           <option value="{{ m.id }}" {% if t.modelo_vigente_id == m.id %}selected{% endif %}>{{ m.rotulo }}{% if not m.vigente %} (superada){% endif %}</option>
-          {% endfor %}</select>
+          {% endif %}{% endfor %}</select>
         {%- if t.modelo_vigente and not t.modelo_vigente.vigente %}
         {{ ui.pilula_versao(false) }}{% endif %}</td>
       <td><select form="{{ id }}" name="instrutor_padrao_id"><option value="">—</option>
-          {% for i in instrutores if i.ativo or i.id == t.instrutor_padrao_id %}
+          {% for i in instrutores %}{% if i.ativo or i.id == t.instrutor_padrao_id %}
           <option value="{{ i.id }}" {% if t.instrutor_padrao_id == i.id %}selected{% endif %}>{{ i.nome_exibicao }}{% if not i.ativo %} (inativa){% endif %}</option>
-          {% endfor %}</select></td>
+          {% endif %}{% endfor %}</select></td>
       <td>
         <label class="discreto"><input form="{{ id }}" type="checkbox" name="obrigatorio" value="1"
             {% if t.obrigatorio %}checked{% endif %}> exigido por norma</label>
@@ -177,36 +177,36 @@
     <div class="campo codigo {{ 'com-erro' if recusado }}">
       <label for="novo-codigo">Código</label>
       <input id="novo-codigo" name="codigo" required placeholder="NR-35"
-             value="{{ d.get('codigo') or '' }}"
+             value="{{ d['codigo'] or '' }}"
              aria-describedby="dica-codigo"{{ ' autofocus' if recusado }}>
       <span class="dica" id="dica-codigo">Citado em ofício e em planilha do setor.</span></div>
     <div class="campo"><label for="novo-carga">Carga horária</label>
       <input id="novo-carga" name="carga_horaria_horas" required placeholder="8"
-             value="{{ d.get('carga_horaria_horas') or '' }}"></div>
+             value="{{ d['carga_horaria_horas'] or '' }}"></div>
     <div class="campo"><label for="nova-validade">Validade da reciclagem (meses)</label>
       <input id="nova-validade" name="validade_meses"
-             value="{{ d.get('validade_meses') or 0 }}" required
+             value="{{ d['validade_meses'] or 0 }}" required
              aria-describedby="dica-validade">
       <span class="dica" id="dica-validade">0 = não expira.</span></div>
   </div>
   <div class="campo"><label for="novo-nome">Nome (sai no certificado)</label>
     <input id="novo-nome" name="nome" required placeholder="Trabalho em Altura — NR-35"
-           value="{{ d.get('nome') or '' }}"
+           value="{{ d['nome'] or '' }}"
            aria-describedby="dica-nome">
     <span class="dica" id="dica-nome">Pode ser corrigido depois: o certificado congela o
       nome do dia em que saiu, como o parecer já faz com o cargo.</span></div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-norma">Norma de referência</label>
       <input id="nova-norma" name="norma_referencia" placeholder="NR-35"
-             value="{{ d.get('norma_referencia') or '' }}"></div>
+             value="{{ d['norma_referencia'] or '' }}"></div>
     <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
       <label class="discreto"><input type="checkbox" name="obrigatorio" value="1"
-        {{- ' checked' if d.get('obrigatorio') == '1' }}>
+        {{- ' checked' if d['obrigatorio'] == '1' }}>
         exigido por norma</label></div>
   </div>
   <div class="campo"><label for="novo-conteudo">Conteúdo programático (um tópico por linha)</label>
     <textarea id="novo-conteudo" name="conteudo_programatico" rows="4"
-placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de proteção individual">{{ d.get('conteudo_programatico') or '' }}</textarea></div>
+placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de proteção individual">{{ d['conteudo_programatico'] or '' }}</textarea></div>
 {% endcall %}
 {% endif %}
 {% endblock %}

@@ -21,7 +21,7 @@ import { obterConfig, RODAPE_INSTITUCIONAL, VERSAO } from "./config.js";
 import { cookieSeguro } from "./nucleo/seguranca.js";
 import { getCookie, setCookie } from "hono/cookie";
 import type { UsuarioAtual } from "./servicos/rbac.js";
-import { COLUNAS_KANBAN } from "./dominio/estados.js";
+import { COLUNAS_KANBAN, ROTULO_ESTADO_TELA } from "./dominio/estados.js";
 import * as datas_br from "./servicos/datas_br.js";
 import { rotulo_evento } from "./servicos/auditoria.js";
 import * as identificacao from "./servicos/identificacao.js";
@@ -42,10 +42,92 @@ function pastaDeTemplates(): string {
   return candidatos[1]!;
 }
 
+/**
+ * O que o Nunjucks aceita sem reclamar e avalia ERRADO — corrigido na leitura
+ * do arquivo, para nenhum template portado cair nisso calado:
+ *
+ * - `x in ('A', 'B')`: tupla não existe; `('A','B')` vira só `'B'` e o `in`
+ *   passa a testar substring. Reescrito para lista `['A', 'B']`.
+ */
+export function adaptarJinja(fonte: string): string {
+  return fonte.replace(/\bin\s*\(((?:\s*(?:'[^']*'|"[^"]*"|-?\d+)\s*,)+\s*(?:'[^']*'|"[^"]*"|-?\d+)?\s*)\)/g, "in [$1]");
+}
+
+class CarregadorJinja extends nunjucks.FileSystemLoader {
+  override getSource(nome: string) {
+    const fonte = super.getSource(nome);
+    if (fonte) fonte.src = adaptarJinja(fonte.src);
+    return fonte;
+  }
+}
+
 export const ambiente = new nunjucks.Environment(
-  new nunjucks.FileSystemLoader(pastaDeTemplates(), { noCache: process.env.NODE_ENV === "development" }),
+  new CarregadorJinja(pastaDeTemplates(), { noCache: process.env.NODE_ENV === "development" }),
   { autoescape: true, throwOnUndefined: false, trimBlocks: false, lstripBlocks: false },
 );
+
+// ---------------------------------------------------------------------
+// Verdade do Jinja: lista, dicionário e conjunto VAZIOS são falsos.
+// ---------------------------------------------------------------------
+// O Nunjucks compila `{% if x %}`, `a or b`, `not x` e `x if c` com a verdade
+// do JavaScript, em que `[]` e `{}` são verdadeiros. Os templates vieram do
+// Jinja e contam com `{% if pendencias %}` ser falso para lista vazia — sem
+// isto, "Nada pendente" nunca aparecia e a lista vazia desenhava a tabela.
+// Aqui a condição passa por `runtime.verdade`, que só muda o caso vazio:
+// array/Map/Set sem item e objeto SIMPLES sem chave (o `dicionario()` de
+// `src/dicionario.ts` incluído). `Date`, instância de classe e o resto seguem
+// a verdade de sempre. `a or b`/`a and b` devolvem o operando, como no Jinja.
+function verdade(v: unknown): boolean {
+  if (Array.isArray(v)) return v.length > 0;
+  if (v instanceof Map || v instanceof Set) return v.size > 0;
+  if (v && typeof v === "object") {
+    const proto = Object.getPrototypeOf(v);
+    if (proto === Object.prototype || proto === null) return Object.keys(v).length > 0;
+    if (v instanceof nunjucks.runtime.SafeString) return String(v).length > 0;
+  }
+  return Boolean(v);
+}
+(nunjucks.runtime as any).verdade = verdade;
+{
+  const C = (nunjucks as any).compiler.Compiler.prototype;
+  const nos = (nunjucks as any).nodes;
+  const embrulhar = (cond: any) => {
+    const n = Object.create(nos.Group.prototype);
+    Object.assign(n, { lineno: cond.lineno, colno: cond.colno, alvo: cond });
+    Object.defineProperty(n, "typename", { value: "Verdade" });
+    return n;
+  };
+  C.compileVerdade = function (this: any, node: any, frame: any) {
+    this._emit("runtime.verdade(");
+    this.compile(node.alvo, frame);
+    this._emit(")");
+  };
+  const compileIf = C.compileIf;
+  C.compileIf = function (this: any, node: any, frame: any, async: boolean) {
+    return compileIf.call(this, { body: node.body, else_: node.else_, cond: embrulhar(node.cond) }, frame, async);
+  };
+  const compileInlineIf = C.compileInlineIf;
+  C.compileInlineIf = function (this: any, node: any, frame: any) {
+    return compileInlineIf.call(this, { body: node.body, else_: node.else_, cond: embrulhar(node.cond) }, frame);
+  };
+  C.compileNot = function (this: any, node: any, frame: any) {
+    this._emit("!runtime.verdade(");
+    this.compile(node.target, frame);
+    this._emit(")");
+  };
+  const logico = (e: boolean) =>
+    function (this: any, node: any, frame: any) {
+      this._emit("(function(__a){return runtime.verdade(__a)?");
+      if (e) this._emit("(");
+      else this._emit("__a:(");
+      this.compile(node.right, frame);
+      this._emit(e ? "):__a})(" : ")})(");
+      this.compile(node.left, frame);
+      this._emit(")");
+    };
+  C.compileAnd = logico(true);
+  C.compileOr = logico(false);
+}
 
 // ---------------------------------------------------------------------
 // Compatibilidade Jinja -> Nunjucks: filtros que o Jinja tem e o Nunjucks não
@@ -71,6 +153,7 @@ ambiente.addFilter("selectattr", (lista: any[], attr: string, teste?: string, va
     if (teste === "equalto" || teste === "eq" || teste === "==") return v === valor;
     if (teste === "ne" || teste === "!=") return v !== valor;
     if (teste === "none") return v === null || v === undefined;
+    if (teste === "in") return Array.isArray(valor) ? valor.includes(v) : false;
     return Boolean(v);
   }),
 );
@@ -80,13 +163,15 @@ ambiente.addFilter("rejectattr", (lista: any[], attr: string, teste?: string, va
     if (teste === undefined) return !v;
     if (teste === "equalto" || teste === "eq" || teste === "==") return v !== valor;
     if (teste === "none") return !(v === null || v === undefined);
+    if (teste === "in") return Array.isArray(valor) ? !valor.includes(v) : true;
     return !v;
   }),
 );
 ambiente.addFilter("map", (lista: any[], ...args: any[]) => {
   // Jinja: map(attribute='x') -> o Nunjucks passa kwargs como último objeto
   const ultimo = args[args.length - 1];
-  const attr = typeof ultimo === "object" && ultimo?.attribute ? ultimo.attribute : args[0];
+  const attr =
+    typeof ultimo === "object" && ultimo !== null && "attribute" in ultimo ? ultimo.attribute : args[0];
   return (lista ?? []).map((x) => x?.[attr]);
 });
 ambiente.addFilter("max", (lista: number[]) => (lista?.length ? Math.max(...lista) : undefined));
@@ -104,7 +189,14 @@ ambiente.addFilter("format", (fmt: string, ...args: unknown[]) => {
 });
 
 // testes do Jinja que o Nunjucks não traz
+(ambiente as any).addTest("true", (v: unknown) => v === true);
+(ambiente as any).addTest("false", (v: unknown) => v === false);
 (ambiente as any).addTest("none", (v: unknown) => v === null || v === undefined);
+// O parser do Nunjucks lê `none` como o literal null, e `x is none` vira o teste
+// embutido `null` (=== null): o `none` acima nunca era chamado, e o atributo
+// ausente (undefined, onde o Python tinha None de `dict.get`) passava por
+// `is not none`. Mesma regra, sob o nome que o parser de fato procura.
+(ambiente as any).addTest("null", (v: unknown) => v === null || v === undefined);
 (ambiente as any).addTest("sameas", (v: unknown, outro: unknown) => v === outro);
 (ambiente as any).addTest("in", (v: unknown, col: unknown) =>
   Array.isArray(col) ? col.includes(v) : typeof col === "string" ? col.includes(String(v)) : col instanceof Set ? col.has(v) : false,
@@ -132,6 +224,10 @@ global("range", (a: number, b?: number, passo = 1) => {
 
 // O quadro do kanban é constante de apresentação, não contexto de tela.
 global("COLUNAS_KANBAN", COLUNAS_KANBAN);
+// O rótulo de TELA do estado do processo (o `filters["estado"]` do web.py).
+filtro("estado", (e: string | null | undefined) =>
+  e && Object.hasOwn(ROTULO_ESTADO_TELA, e) ? ROTULO_ESTADO_TELA[e] : (e ?? ""),
+);
 // `(fim - inicio).days` do Jinja sobre duas `date`: aqui as datas são texto
 // 'AAAA-MM-DD' (RN-18), e a subtração vira esta função (`partes/macros.html`).
 global("dias_entre", (inicio: string | null, fim: string | null): number | null => {

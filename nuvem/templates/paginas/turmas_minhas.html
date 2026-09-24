@@ -67,7 +67,7 @@
       </tr>
     </thead>
     {% for turma in abertas %}
-    {% set restantes = vagas_restantes.get(turma.id) %}
+    {% set restantes = vagas_restantes[turma.id] %}
     <tr>
       <td><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a></td>
       <td class="nome">{{ turma.treinamento.nome }}</td>
@@ -79,7 +79,7 @@
       {# "18 de 20" e não "2 livres": quem lê decide pela ocupação, e a fração diz
          as duas coisas de uma vez. Turma sem limite declarado não é turma com
          zero vaga, e a tela precisa da diferença. #}
-      <td><span class="selo">{{ inscritos.get(turma.id, 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% else %} · sem limite{% endif %}</span></td>
+      <td><span class="selo">{{ (inscritos[turma.id] or 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% else %} · sem limite{% endif %}</span></td>
       <td>
         {% if turma.id in ja_inscrito %}
         <span class="discreto">já inscrito</span>
@@ -128,13 +128,13 @@
         {%- if i.situacao == 'CANCELADA' and i.motivo_cancelamento %}
         <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}</td>
       <td>
-        {% if desistivel.get(i.id) and pode_pedir %}
+        {% if desistivel[i.id] and pode_pedir %}
         <form method="post" action="/turmas/{{ i.turma.id }}/desistir" class="filtro-inline">
           <label class="oculto" for="motivo-{{ i.id }}">Motivo da desistência em {{ i.turma.codigo }}</label>
           <input id="motivo-{{ i.id }}" name="motivo" placeholder="motivo (opcional)">
           <button type="submit" class="secundario compacto">Desistir</button>
         </form>
-        {% elif i.situacao in ('INSCRITA', 'CONFIRMADA') %}
+        {% elif i.situacao in ['INSCRITA', 'CONFIRMADA'] %}
         <span class="discreto">a turma já começou</span>
         {% else %}
         <span class="discreto">—</span>

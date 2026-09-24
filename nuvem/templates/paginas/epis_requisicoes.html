@@ -58,7 +58,7 @@
     <span class="rotulo-grupo">Por estado</span>
     <a class="ficha-filtro {{ 'ativa' if not estado }}"
        href="/epis/requisicoes{{ '?q=' ~ q|urlencode if q }}">
-      Todas <span class="contador">{{ resumo.values()|sum }}</span></a>
+      Todas <span class="contador">{{ total_resumo }}</span></a>
     {% for codigo, nome in rotulos.items() %}
     <a class="ficha-filtro {{ 'ativa' if estado == codigo }}"
        href="/epis/requisicoes?estado={{ codigo }}{{ '&q=' ~ q|urlencode if q }}">

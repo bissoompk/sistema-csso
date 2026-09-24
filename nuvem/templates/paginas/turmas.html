@@ -60,7 +60,7 @@
        href="/turmas{{ '?treinamento_id=' ~ filtro_treinamento if filtro_treinamento }}">Todas</a>
     {% for codigo, rotulo in situacoes %}
     <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
-       href="/turmas?situacao={{ codigo }}{{ treino_atual }}">{{ ui.ROTULO_TURMA_TELA.get(codigo, rotulo) }}</a>
+       href="/turmas?situacao={{ codigo }}{{ treino_atual }}">{{ (ui.ROTULO_TURMA_TELA[codigo] or rotulo) }}</a>
     {% endfor %}
     <form method="get" action="/turmas" class="filtro-inline">
       {% if filtro_situacao %}
@@ -94,7 +94,7 @@
           {{- turma.local or '—' -}}</span></td>
       <td>{{ turma.campus.sigla if turma.campus else '—' }}</td>
       {# "18 de 20" diz mais que "18": a vaga livre é a decisão de quem lê. #}
-      <td><span class="selo">{{ inscritos.get(turma.id, 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% endif %}</span></td>
+      <td><span class="selo">{{ (inscritos[turma.id] or 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% endif %}</span></td>
       <td>{{ ui.pilula_turma(turma.situacao) }}</td>
     </tr>
     {% else %}
@@ -142,61 +142,61 @@
     <select id="nova-treinamento" name="treinamento_id" required{{ ' autofocus' if recusado }}>
       <option value="">escolha o treinamento</option>
       {% for t in treinamentos %}
-      <option value="{{ t.id }}"{{ ui.sel(d.get('treinamento_id'), t.id) }}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas }}h)</option>
+      <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas }}h)</option>
       {% endfor %}
     </select></div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-inicio">Início</label>
       <input id="nova-inicio" type="date" name="data_inicio" required
-             value="{{ d.get('data_inicio') or '' }}"></div>
+             value="{{ d['data_inicio'] or '' }}"></div>
     <div class="campo"><label for="nova-fim">Término</label>
       <input id="nova-fim" type="date" name="data_fim" required
-             value="{{ d.get('data_fim') or '' }}"></div>
+             value="{{ d['data_fim'] or '' }}"></div>
     <div class="campo"><label for="nova-carga">Carga horária da turma</label>
       <input id="nova-carga" name="carga_horaria_horas" placeholder="usa a do catálogo"
-             value="{{ d.get('carga_horaria_horas') or '' }}"
+             value="{{ d['carga_horaria_horas'] or '' }}"
              aria-describedby="dica-carga">
       <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-local">Local</label>
       <input id="nova-local" name="local" placeholder="Auditório do Campus JK"
-             value="{{ d.get('local') or '' }}"></div>
+             value="{{ d['local'] or '' }}"></div>
     <div class="campo"><label for="nova-campus">Campus</label>
       <select id="nova-campus" name="campus_id"><option value="">—</option>
         {% for c in campi %}
-        <option value="{{ c.id }}"{{ ui.sel(d.get('campus_id'), c.id) }}>{{ c.nome }}</option>
+        <option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.nome }}</option>
         {% endfor %}
       </select></div>
     <div class="campo"><label for="nova-unidade">Unidade promotora</label>
       <select id="nova-unidade" name="unidade_promotora_id"><option value="">—</option>
         {% for u in unidades %}
-        <option value="{{ u.id }}"{{ ui.sel(d.get('unidade_promotora_id'), u.id) }}>{{ u.nome_extenso }}</option>
+        <option value="{{ u.id }}"{{ ui.sel(d['unidade_promotora_id'], u.id) }}>{{ u.nome_extenso }}</option>
         {% endfor %}
       </select></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-vagas">Vagas</label>
       <input id="nova-vagas" name="vagas" placeholder="sem limite"
-             value="{{ d.get('vagas') or '' }}"></div>
+             value="{{ d['vagas'] or '' }}"></div>
     <div class="campo"><label for="nova-ate">Inscrições até</label>
       <input id="nova-ate" type="date" name="inscricao_aberta_ate"
-             value="{{ d.get('inscricao_aberta_ate') or '' }}"></div>
+             value="{{ d['inscricao_aberta_ate'] or '' }}"></div>
     <div class="campo"><label for="nova-nota">Nota mínima (0 a 10)</label>
       <input id="nova-nota" name="nota_minima_aprovacao" placeholder="sem prova"
-             value="{{ d.get('nota_minima_aprovacao') or '' }}"></div>
+             value="{{ d['nota_minima_aprovacao'] or '' }}"></div>
     <div class="campo"><label for="nova-freq">Frequência mínima (%)</label>
       <input id="nova-freq" name="frequencia_minima_percentual"
-             value="{{ d.get('frequencia_minima_percentual') or 75 }}"></div>
+             value="{{ d['frequencia_minima_percentual'] or 75 }}"></div>
   </div>
   <div class="campo"><label for="nova-base">Data base do vencimento</label>
     <input id="nova-base" type="date" name="data_base_vencimento"
-           value="{{ d.get('data_base_vencimento') or '' }}"
+           value="{{ d['data_base_vencimento'] or '' }}"
            aria-describedby="dica-base">
     <span class="dica" id="dica-base">Vazio usa o término da turma. Preencha só quando a
       norma contar da avaliação prática, e não do fim do curso.</span></div>
   <div class="campo"><label for="nova-obs">Observações</label>
-    <textarea id="nova-obs" name="observacoes" rows="2">{{ d.get('observacoes') or '' }}</textarea></div>
+    <textarea id="nova-obs" name="observacoes" rows="2">{{ d['observacoes'] or '' }}</textarea></div>
 {% endcall %}
 {% endif %}
 {% endblock %}

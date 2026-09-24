@@ -43,9 +43,9 @@
   <details class="mover">
     <summary>mover para…</summary>
     <form method="post" action="/kanban/mover/{{ p.id }}" data-mover>
-      {% for destino, rotulo in COLUNAS_KANBAN if destino != coluna_atual %}
+      {% for destino, rotulo in COLUNAS_KANBAN %}{% if destino != coluna_atual %}
       <button type="submit" name="coluna" value="{{ destino }}" class="secundario compacto">{{ rotulo }}</button>
-      {% endfor %}
+      {% endif %}{% endfor %}
     </form>
   </details>
   {% endif %}

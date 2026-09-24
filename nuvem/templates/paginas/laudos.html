@@ -6,7 +6,7 @@
    em `partes/macros.html`. "Cadastrar laudo" e não "Novo laudo": o botão diz o
    que vai acontecer, e é ele que a pessoa reconhece no topo do diálogo. #}
 {% set CADASTRAR = 'Cadastrar laudo' %}
-{% set d = digitado or {} %}
+{% set d = digitado %}
 {% set recusado = true if (erro and d) else false %}
 {% set erro_cadastro = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
@@ -116,8 +116,8 @@
   {# Os dois eixos do recorte viajam juntos: a ficha de situação e a busca. Sem
      eles, "próxima" devolveria a fila inteira a partir da página 2. #}
   {% set eixos = [] %}
-  {% if filtro_situacao %}{% set _ = eixos.append('situacao=' ~ filtro_situacao) %}{% endif %}
-  {% if q %}{% set _ = eixos.append('q=' ~ q|urlencode) %}{% endif %}
+  {% if filtro_situacao %}{% set _ = eixos.push('situacao=' ~ filtro_situacao) %}{% endif %}
+  {% if q %}{% set _ = eixos.push('q=' ~ q|urlencode) %}{% endif %}
   {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/laudos',
                   eixos|join('&')) }}
 

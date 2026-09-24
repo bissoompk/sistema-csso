@@ -17,7 +17,7 @@
    que recusam renderizando a página de novo, e sem o discriminador a recusa de
    um reabriria o outro com campos trocados. #}
 {% set d = digitado or {} %}
-{% set forma = d.get('forma') %}
+{% set forma = d['forma'] %}
 {% set aberta = demanda.estado != 'ENCERRADA' %}
 
 {# O desvio do erro para dentro do popup só vale quando o popup EXISTE nesta
@@ -40,7 +40,7 @@
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>{{ demanda.assunto }}</h1>
-      <p class="sub">Chegou por <strong>{{ rotulo_canal.get(demanda.canal, demanda.canal) }}</strong>
+      <p class="sub">Chegou por <strong>{{ (rotulo_canal[demanda.canal] or demanda.canal) }}</strong>
         em {{ demanda.data_chegada|data }}
         {%- if demanda.prazo %}, com prazo para {{ demanda.prazo|data }}{% endif %}.</p>
     </div>
@@ -55,7 +55,7 @@
 
   {% if demanda.atrasada(hoje) %}
   <div class="aviso aviso-erro sem-ponto">
-    <p><strong>{{ (hoje - demanda.prazo).days }} dia(s) de atraso.</strong> O prazo
+    <p><strong>{{ dias_entre(demanda.prazo, hoje) }} dia(s) de atraso.</strong> O prazo
       foi prometido a quem pediu. Esta mesma linha está no sino, em
       <a href="/pendencias">Pendências</a>, e sai de lá quando a demanda for
       encerrada — com desfecho.</p>
@@ -192,18 +192,18 @@
     <div class="campo">
       <label for="para_quem">Para quem</label>
       <input id="para_quem" name="para_quem" required maxlength="160"
-             value="{{ dt.get('para_quem') or '' }}"
+             value="{{ dt['para_quem'] or '' }}"
              {{- ' autofocus' if erro_encaminhar }}
              placeholder="Engenharia de Segurança / PROGEP / chefia da FAMED"></div>
     <div class="campo">
       <label for="data_encaminhamento">Data</label>
       <input id="data_encaminhamento" name="data_encaminhamento" type="date"
-             value="{{ dt.get('data_encaminhamento') or hoje.isoformat() }}"></div>
+             value="{{ dt['data_encaminhamento'] or hoje }}"></div>
   </div>
   <div class="campo">
     <label for="pedido">O que foi pedido</label>
     <textarea id="pedido" name="pedido" rows="3" required
-              aria-describedby="dica-pedido">{{ dt.get('pedido') or '' }}</textarea>
+              aria-describedby="dica-pedido">{{ dt['pedido'] or '' }}</textarea>
     <span class="dica" id="dica-pedido">Obrigatório. Sem isso o encaminhamento é um
       carimbo de data — seis meses depois ninguém sabe o que se esperava de volta.
       Descreva o pedido, nunca a condição de saúde de ninguém (RN-21).</span>
@@ -226,14 +226,14 @@
     <select id="desfecho" name="desfecho" required{{ ' autofocus' if erro_encerrar }}>
       <option value="">—</option>
       {% for f in desfechos %}
-      <option value="{{ f }}"{{ ui.sel(de.get('desfecho'), f) }}>{{ rotulo_desfecho[f] }}</option>
+      <option value="{{ f }}"{{ ui.sel(de['desfecho'], f) }}>{{ rotulo_desfecho[f] }}</option>
       {% endfor %}
     </select>
   </div>
   <div class="campo">
     <label for="relato">O que foi feito, ou por que não houve providência</label>
     <textarea id="relato" name="relato" rows="3"
-              aria-describedby="dica-relato">{{ de.get('relato') or '' }}</textarea>
+              aria-describedby="dica-relato">{{ de['relato'] or '' }}</textarea>
     <span class="dica" id="dica-relato">Obrigatório em <em>resolvida</em> e em
       <em>sem providência</em>. “Não vamos fazer nada” é decisão legítima — o que
       não pode é ela ser tomada por esquecimento.</span>
@@ -241,7 +241,7 @@
   <div class="campo">
     <label for="nup">NUP do processo (só em “virou processo SEI”)</label>
     <input id="nup" name="nup" class="mono" inputmode="numeric"
-           value="{{ de.get('nup') or '' }}" placeholder="23086.000000/0000-00"
+           value="{{ de['nup'] or '' }}" placeholder="23086.000000/0000-00"
            aria-describedby="dica-nup">
     <span class="dica" id="dica-nup">O processo precisa já estar cadastrado em
       <a href="/processos">Processos</a>: é isso que faz a demanda virar um link
@@ -251,12 +251,12 @@
   <div class="linha-campos">
     <div class="campo">
       <label for="setor">Setor de destino (só em “encaminhada”)</label>
-      <input id="setor" name="setor" maxlength="160" value="{{ de.get('setor') or '' }}"
+      <input id="setor" name="setor" maxlength="160" value="{{ de['setor'] or '' }}"
              placeholder="PROGEP / SIASS / procuradoria"></div>
     <div class="campo">
       <label for="data_desfecho">Data do encaminhamento</label>
       <input id="data_desfecho" name="data_desfecho" type="date"
-             value="{{ de.get('data_desfecho') or hoje.isoformat() }}"></div>
+             value="{{ de['data_desfecho'] or hoje }}"></div>
   </div>
 {% endcall %}
 

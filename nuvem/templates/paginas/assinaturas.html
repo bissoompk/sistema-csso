@@ -68,7 +68,7 @@
         {% if a.imagem_anexo_id %}
         <span class="pilula sem-ponto" title="há imagem de rubrica anexada">rubrica</span>
         {% endif %}
-        {% if em_uso.get(a.id) %}
+        {% if em_uso[a.id] %}
         <span class="quebra discreto"
               title="treinamentos que a têm como instrutor padrão">
           instrutor padrão em {{ em_uso[a.id] }} treinamento(s)</span>
@@ -90,10 +90,10 @@
       </td>
       <td>
         <input form="{{ id }}" type="date" name="vigencia_inicio"
-               value="{{ a.vigencia_inicio.isoformat() }}" required
+               value="{{ a.vigencia_inicio }}" required
                aria-label="Início da vigência de {{ a.nome_exibicao }}">
         <input form="{{ id }}" type="date" name="vigencia_fim"
-               value="{{ a.vigencia_fim.isoformat() if a.vigencia_fim else '' }}"
+               value="{{ a.vigencia_fim if a.vigencia_fim else '' }}"
                aria-label="Fim da vigência de {{ a.nome_exibicao }} (vazio: sem termo)">
       </td>
       <td>{% if a.vigente_em(hoje) %}<span class="pilula ok">vigente</span>
@@ -127,38 +127,38 @@
     <select id="assin-servidor" name="servidor_id"{{ ' autofocus' if recusado }}>
       <option value="">— (marque “externo” abaixo se não for servidor)</option>
       {% for sv in servidores %}
-      <option value="{{ sv.id }}"{{ ui.sel(d.get('servidor_id'), sv.id) }}>{{ sv.nome }} · SIAPE {{ sv.siape }}</option>
+      <option value="{{ sv.id }}"{{ ui.sel(d['servidor_id'], sv.id) }}>{{ sv.nome }} · SIAPE {{ sv.siape }}</option>
       {% endfor %}
     </select></div>
   <div class="linha-campos">
     <div class="campo"><label for="assin-nome">Nome (só para externo)</label>
-      <input id="assin-nome" name="nome" value="{{ d.get('nome') or '' }}"></div>
+      <input id="assin-nome" name="nome" value="{{ d['nome'] or '' }}"></div>
     <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
       <label class="discreto"><input type="checkbox" name="externo" value="1"
-        {{- ' checked' if d.get('externo') == '1' }}>
+        {{- ' checked' if d['externo'] == '1' }}>
         instrutor externo</label></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="assin-titulo">Título de assinatura</label>
       <input id="assin-titulo" name="titulo" placeholder="Eng. Seg. do Trabalho"
-             value="{{ d.get('titulo') or '' }}"></div>
+             value="{{ d['titulo'] or '' }}"></div>
     <div class="campo"><label for="assin-conselho">Conselho</label>
       <input id="assin-conselho" name="conselho" maxlength="8" placeholder="CREA"
-             value="{{ d.get('conselho') or '' }}"></div>
+             value="{{ d['conselho'] or '' }}"></div>
     <div class="campo codigo"><label for="assin-registro">Registro</label>
       <input id="assin-registro" name="registro_conselho"
-             value="{{ d.get('registro_conselho') or '' }}"></div>
+             value="{{ d['registro_conselho'] or '' }}"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="assin-org">Organização</label>
       <input id="assin-org" name="organizacao" placeholder="UFVJM"
-             value="{{ d.get('organizacao') or '' }}"></div>
+             value="{{ d['organizacao'] or '' }}"></div>
     <div class="campo"><label for="assin-de">Vigência — início</label>
       <input id="assin-de" type="date" name="vigencia_inicio" required
-             value="{{ d.get('vigencia_inicio') or '' }}"></div>
+             value="{{ d['vigencia_inicio'] or '' }}"></div>
     <div class="campo"><label for="assin-ate">Vigência — fim</label>
       <input id="assin-ate" type="date" name="vigencia_fim"
-             value="{{ d.get('vigencia_fim') or '' }}"
+             value="{{ d['vigencia_fim'] or '' }}"
              aria-describedby="dica-vigencia">
       <span class="dica" id="dica-vigencia">Vazio: sem termo.</span></div>
   </div>

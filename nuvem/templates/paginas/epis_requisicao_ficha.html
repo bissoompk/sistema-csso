@@ -68,10 +68,10 @@
    discriminador, a justificativa recusada na linha 7 reapareceria dentro da
    linha 3 e do cartão de acrescentar — texto de outra pessoa, em campo de outro
    item, e sem nada dizendo de onde veio. #}
-{% set d = digitado or {} %}
+{% set d = digitado or sem_digitado %}
 {% set forma = d.get('forma') %}
 {%- macro sel(escolhido, valor) -%}
-{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{{- ' selected' if escolhido not in [none, ''] and escolhido|string == valor|string -}}
 {%- endmacro %}
 
 {# O preâmbulo da recusa, na forma que `popup_cadastro` documenta — só que aqui
@@ -80,13 +80,13 @@
    `item-{id}` fica de fora de propósito: aquela recusa reabre a gaveta da linha,
    dentro de `partes/itens_do_pedido.html`, e o motivo continua saindo na faixa
    da casca — que é onde ele já saía e onde a troca parcial também o escreve. #}
-{% set recusado = true if (erro and d) else false %}
-{% set no_popup = recusado and forma in ('cabecalho', 'item-novo') %}
+{% set recusado = true if (erro and d|length) else false %}
+{% set no_popup = recusado and forma in ['cabecalho', 'item-novo'] %}
 {% set erro_cabecalho = erro if (recusado and forma == 'cabecalho') else none %}
 {% set erro_item_novo = erro if (recusado and forma == 'item-novo') else none %}
 {% set erro = none if no_popup else erro %}
-{% set dc = d if forma == 'cabecalho' else {} %}
-{% set dn = d if forma == 'item-novo' else {} %}
+{% set dc = d if forma == 'cabecalho' else sem_digitado %}
+{% set dn = d if forma == 'item-novo' else sem_digitado %}
 
 {# O seletor de motivo de recusa MUDOU DE CASA: está em `partes/macros.html`,
    como `ui.seletor_de_motivo`. Ele nasceu aqui e continua servindo os dois usos
@@ -167,7 +167,7 @@
      Vai FORA das duas colunas e acima delas porque é a única informação desta
      tela que pede uma ação fora do sistema, e porque quem chega aqui pelo aviso
      do sino chega para ler exatamente isto. #}
-  {% if reservas %}
+  {% if reservas|length %}
   <div class="aviso aviso-info">
     <strong>{{ reservas|length }} item(ns) reservado(s): há EPI separado com o
       número deste pedido, esperando retirada.</strong>
@@ -343,14 +343,15 @@
          reservar lote, entregar. Sem dizê-lo, a tela ficava com um cartão de
          trâmite vazio justamente nos dois estados em que há mais trabalho a
          fazer. #}
+      {# (Nunjucks não encadeia `a if x else b if y else c` sem parênteses.) #}
       {% set passo =
            'enviar'       if requisicao.estado == 'RASCUNHO' and pode_requisitar
-      else 'pegar'        if requisicao.estado == 'ENVIADA' and pode_analisar
-      else 'concluir'     if requisicao.estado == 'EM_ANALISE' and pode_analisar
-      else 'reconsiderar' if requisicao.estado == 'INDEFERIDA' and pode_analisar
-      else 'itens'        if requisicao.estado in ('ANALISADA', 'EM_ATENDIMENTO')
+      else ('pegar'        if requisicao.estado == 'ENVIADA' and pode_analisar
+      else ('concluir'     if requisicao.estado == 'EM_ANALISE' and pode_analisar
+      else ('reconsiderar' if requisicao.estado == 'INDEFERIDA' and pode_analisar
+      else ('itens'        if requisicao.estado in ['ANALISADA', 'EM_ATENDIMENTO']
                              and (pode_estocar or pode_entregar)
-      else '' %}
+      else '')))) %}
 
       {% if passo %}
       <section class="cartao destaque" id="proximo-passo">
@@ -408,7 +409,7 @@
           {% endif %}
         </div>
 
-        {% if requisicao.estado in ('EM_ATENDIMENTO', 'ATENDIDA') %}
+        {% if requisicao.estado in ['EM_ATENDIMENTO', 'ATENDIDA'] %}
         {# O aviso encolheu para a linha que responde "por que não há botão aqui?"
            — que é a pergunta que ele existe para responder. O porquê de a
            transição ser do sistema, e não de alguém clicar, é explicação: (i). #}
@@ -749,9 +750,9 @@
      Na leitura normal `item_escolhido` é nulo e o próprio fragmento escreve a
      frase de antes da escolha. #}
   <div id="opcoes-do-item">
-    {% with item = item_escolhido, digitado_item = dn %}
+    {% set item = item_escolhido %}
+    {% set digitado_item = dn %}
     {% include "partes/epi_requisicao_opcoes.html" %}
-    {% endwith %}
   </div>
 {% endcall %}
 {% endif %}

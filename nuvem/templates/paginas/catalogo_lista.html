@@ -52,10 +52,9 @@
 {% set erro_cadastro = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
 
-{% macro titulo_do_catalogo() %}
-{%- for chave, rotulo in catalogos if chave == nome %}{{ rotulo }}
-{%- else %}{{ nome|replace('-', ' ')|capitalize }}{% endfor -%}
-{% endmacro %}
+{#- Nunjucks não tem o `for ... if` do Jinja: o rótulo do catálogo vem pronto
+    da rota (`titulo_catalogo`), com o mesmo recuo para o nome da URL. -#}
+{% macro titulo_do_catalogo() %}{{ titulo_catalogo }}{% endmacro %}
 
 {% block titulo %}{{ titulo_do_catalogo() }} · Catálogos · CSSO{% endblock %}
 {% block trilha %}
@@ -107,7 +106,7 @@
     <div class="titulo">
       <h1>{{ titulo_do_catalogo() }}</h1>
       <p class="sub">{{ itens|length }} registro(s).
-        {{- ' ' }}{{ NOTA.get(nome, 'Catálogo do domínio do adicional ocupacional.') }}</p>
+        {{- ' ' }}{{ NOTA[nome] or 'Catálogo do domínio do adicional ocupacional.' }}</p>
       {% if nome == 'percentuais' %}
       {# De onde vem o número é fundamento legal — lê-se uma vez. O que muda a
          edição está na tela: o campo do valor não é editável, e a coluna mostra
@@ -405,7 +404,7 @@
     <td>{{ p.unidade_emissora.sigla or p.unidade_emissora.nome_extenso }}</td>
     <td><input form="{{ id }}" name="numero" class="campo-curto mono" value="{{ p.numero }}" required aria-label="Número da portaria"></td>
     <td><input form="{{ id }}" name="data_publicacao" type="date"
-               value="{{ p.data_publicacao.isoformat() }}" required
+               value="{{ p.data_publicacao }}" required
                aria-label="Data de publicação da portaria"></td>
     {% else %}
     <td>{{ p.texto_original }}</td>
@@ -459,22 +458,22 @@
     <div class="linha-campos">
       <div class="campo"><label for="novo-sigla">Sigla</label>
         <input id="novo-sigla" name="sigla" required placeholder="DIA"
-               value="{{ d.get('sigla') or '' }}"></div>
+               value="{{ d['sigla'] or '' }}"></div>
       <div class="campo"><label for="novo-nome">Nome</label>
         <input id="novo-nome" name="nome" required placeholder="Campus JK / Diamantina"
-               value="{{ d.get('nome') or '' }}"></div>
+               value="{{ d['nome'] or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="nova-cidade">Cidade</label>
         <input id="nova-cidade" name="cidade" required placeholder="Diamantina"
-               value="{{ d.get('cidade') or '' }}"></div>
+               value="{{ d['cidade'] or '' }}"></div>
       <div class="campo"><label for="nova-uf">UF</label>
-        <input id="nova-uf" name="uf" value="{{ d.get('uf') or 'MG' }}" maxlength="2"></div>
+        <input id="nova-uf" name="uf" value="{{ d['uf'] or 'MG' }}" maxlength="2"></div>
     </div>
     <div class="campo">
       <label class="discreto" for="novo-avancado">
         <input id="novo-avancado" type="checkbox" name="avancado" value="1"
-          {{- ' checked' if d.get('avancado') == '1' }}> campus avançado</label>
+          {{- ' checked' if d['avancado'] == '1' }}> campus avançado</label>
     </div>
   {% endcall %}
 
@@ -487,43 +486,43 @@
       <div class="campo codigo {{ 'com-erro' if recusado }}">
         <label for="novo-codigo">Código UORG</label>
         <input id="novo-codigo" name="codigo_uorg" placeholder="250"
-               value="{{ d.get('codigo_uorg') or '' }}"{{ ' autofocus' if recusado }}
+               value="{{ d['codigo_uorg'] or '' }}"{{ ' autofocus' if recusado }}
                aria-describedby="dica-codigo">
         <span class="dica" id="dica-codigo">Vazio se a unidade não tiver código.</span></div>
       <div class="campo"><label for="nova-sigla-un">Sigla</label>
         <input id="nova-sigla-un" name="sigla" placeholder="FAMED"
-               value="{{ d.get('sigla') or '' }}"></div>
+               value="{{ d['sigla'] or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="novo-campus">Campus</label>
         <select id="novo-campus" name="campus_id" required>
-          {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d.get('campus_id'), c.id) }}>{{ c.sigla }} — {{ c.cidade }}</option>{% endfor %}
+          {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }} — {{ c.cidade }}</option>{% endfor %}
         </select></div>
       <div class="campo"><label for="novo-tipo">Tipo</label>
         <select id="novo-tipo" name="tipo" required>
-          {% for codigo, rotulo in tipos %}<option value="{{ codigo }}"{{ ui.sel(d.get('tipo'), codigo) }}>{{ rotulo }}</option>{% endfor %}
+          {% for codigo, rotulo in tipos %}<option value="{{ codigo }}"{{ ui.sel(d['tipo'], codigo) }}>{{ rotulo }}</option>{% endfor %}
         </select></div>
     </div>
     <div class="campo"><label for="novo-oficial">Nome oficial (como sai no UORG do parecer)</label>
       <input id="novo-oficial" name="nome_oficial" required
-             value="{{ d.get('nome_oficial') or '' }}"
+             value="{{ d['nome_oficial'] or '' }}"
              placeholder="FACULDADE DE MEDICINA DE DIAMANTINA" aria-describedby="dica-oficial">
       <span class="dica" id="dica-oficial">A caixa é preservada byte a byte — digite
         como aparece no SIAPE.</span></div>
     <div class="campo"><label for="novo-extenso">Nome no corpo do parecer</label>
       <input id="novo-extenso" name="nome_extenso" required
-             value="{{ d.get('nome_extenso') or '' }}"
+             value="{{ d['nome_extenso'] or '' }}"
              placeholder="Faculdade de Medicina de Diamantina"></div>
     <div class="linha-campos">
       <div class="campo"><label for="nova-pai">Unidade superior</label>
         <select id="nova-pai" name="unidade_pai_id"><option value="">—</option>
-          {% for u in itens %}<option value="{{ u.id }}"{{ ui.sel(d.get('unidade_pai_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
+          {% for u in itens %}<option value="{{ u.id }}"{{ ui.sel(d['unidade_pai_id'], u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
         </select></div>
       <div class="campo">
         <span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
         <label class="discreto" for="nova-emite">
           <input id="nova-emite" type="checkbox" name="emite_portaria" value="1"
-            {{- ' checked' if d.get('emite_portaria') == '1' }}>
+            {{- ' checked' if d['emite_portaria'] == '1' }}>
           emite portaria de localização</label></div>
     </div>
   {% endcall %}
@@ -535,7 +534,7 @@
     <div class="campo"><label for="posto-unidade">Unidade</label>
       <select id="posto-unidade" name="unidade_uorg_id" required>
         {% for u in unidades %}
-        <option value="{{ u.id }}"{{ ui.sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}{% if u.campus %} — {{ u.campus.sigla }}{% endif %}</option>
+        <option value="{{ u.id }}"{{ ui.sel(d['unidade_uorg_id'], u.id) }}>{{ u.nome_extenso }}{% if u.campus %} — {{ u.campus.sigla }}{% endif %}</option>
         {% endfor %}
       </select></div>
     <div class="linha-campos">
@@ -544,17 +543,17 @@
       <div class="campo {{ 'com-erro' if recusado }}">
         <label for="posto-nome">Nome do posto</label>
         <input id="posto-nome" name="nome" required
-               value="{{ d.get('nome') or '' }}"{{ ' autofocus' if recusado }}
+               value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}
                placeholder="Laboratório Escola de análises Clínicas (LEAC)"
                aria-describedby="dica-posto-nome">
         <span class="dica" id="dica-posto-nome">Sai no parecer exatamente como for
           digitado, inclusive a caixa.</span></div>
       <div class="campo"><label for="posto-sigla">Sigla</label>
         <input id="posto-sigla" name="sigla" placeholder="LEAC"
-               value="{{ d.get('sigla') or '' }}"></div>
+               value="{{ d['sigla'] or '' }}"></div>
     </div>
     <div class="campo"><label for="posto-descricao">Descrição</label>
-      <input id="posto-descricao" name="descricao" value="{{ d.get('descricao') or '' }}"></div>
+      <input id="posto-descricao" name="descricao" value="{{ d['descricao'] or '' }}"></div>
     <p class="discreto rodape-cartao sem-margem">“Laboratório de Química” pode existir em
       mais de uma unidade — o par (unidade, nome) é que precisa ser único.</p>
   {% endcall %}
@@ -568,20 +567,20 @@
     <div class="campo {{ 'com-erro' if recusado }}">
       <label for="port-texto">Texto original</label>
       <input id="port-texto" name="texto_original" required
-             value="{{ d.get('texto_original') or '' }}"{{ ' autofocus' if recusado }}
+             value="{{ d['texto_original'] or '' }}"{{ ' autofocus' if recusado }}
              placeholder="PORTARIA/FAMED Nº 35, DE 17 DE SETEMBRO DE 2024"
              aria-describedby="dica-port">
       <span class="dica" id="dica-port">Byte a byte como no documento.</span></div>
     <div class="linha-campos">
       <div class="campo"><label for="port-emissora">Unidade emissora</label>
         <select id="port-emissora" name="unidade_emissora_id" required>
-          {% for u in emissoras %}<option value="{{ u.id }}"{{ ui.sel(d.get('unidade_emissora_id'), u.id) }}>{{ u.sigla or u.nome_extenso }}</option>{% endfor %}
+          {% for u in emissoras %}<option value="{{ u.id }}"{{ ui.sel(d['unidade_emissora_id'], u.id) }}>{{ u.sigla or u.nome_extenso }}</option>{% endfor %}
         </select></div>
       <div class="campo codigo"><label for="port-numero">Número</label>
-        <input id="port-numero" name="numero" value="{{ d.get('numero') or '' }}"></div>
+        <input id="port-numero" name="numero" value="{{ d['numero'] or '' }}"></div>
       <div class="campo"><label for="port-data">Publicação</label>
         <input id="port-data" name="data_publicacao" type="date"
-               value="{{ d.get('data_publicacao') or '' }}"></div>
+               value="{{ d['data_publicacao'] or '' }}"></div>
     </div>
     <p class="discreto rodape-cartao sem-margem">001, 01 e 1 são a mesma portaria; o
       literal fica preservado.</p>
@@ -595,13 +594,13 @@
       <div class="campo"><label for="txt-categoria">Categoria</label>
         <select id="txt-categoria" name="categoria">
           {% for c in ['ALTERACAO','RECOMENDACAO','REAVALIACAO','RODAPE_RESPONSABILIDADE',
-                       'ASSUNTO','PREAMBULO','ENCERRAMENTO'] %}<option{{ ui.sel(d.get('categoria'), c) }}>{{ c }}</option>{% endfor %}
+                       'ASSUNTO','PREAMBULO','ENCERRAMENTO'] %}<option{{ ui.sel(d['categoria'], c) }}>{{ c }}</option>{% endfor %}
         </select></div>
       <div class="campo codigo"><label for="txt-codigo">Código</label>
-        <input id="txt-codigo" name="codigo" required value="{{ d.get('codigo') or '' }}"></div>
+        <input id="txt-codigo" name="codigo" required value="{{ d['codigo'] or '' }}"></div>
     </div>
     <div class="campo"><label for="txt-template">Template</label>
-      <textarea id="txt-template" name="template" required>{{ d.get('template') or '' }}</textarea></div>
+      <textarea id="txt-template" name="template" required>{{ d['template'] or '' }}</textarea></div>
   {% endcall %}
 
   {% elif nome == 'cargos' %}
@@ -611,9 +610,9 @@
       <div class="campo {{ 'com-erro' if recusado }}">
         <label for="cargo-nome">Nome do cargo</label>
         <input id="cargo-nome" name="nome" required placeholder="TECNICO DE LABORATORIO AREA"
-               value="{{ d.get('nome') or '' }}"{{ ' autofocus' if recusado }}></div>
+               value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}></div>
       <div class="campo codigo"><label for="cargo-codigo">Código SIAPE</label>
-        <input id="cargo-codigo" name="codigo_siape" value="{{ d.get('codigo_siape') or '' }}"></div>
+        <input id="cargo-codigo" name="codigo_siape" value="{{ d['codigo_siape'] or '' }}"></div>
     </div>
     <p class="discreto rodape-cartao sem-margem">
       O nome sai no parecer exatamente como for digitado, inclusive a caixa —
@@ -630,20 +629,20 @@
                             nota='nome já cadastrado atualiza o modelo em vez de duplicar') %}
     <div class="campo"><label for="chk-nome">Nome</label>
       <input id="chk-nome" name="nome" required placeholder="Instrução do adicional ocupacional"
-             value="{{ d.get('nome') or '' }}"></div>
+             value="{{ d['nome'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="chk-tipo">Tipo de processo</label>
         <select id="chk-tipo" name="tipo_processo_id"><option value="">qualquer</option>
-          {% for t in tipos_processo %}<option value="{{ t.id }}"{{ ui.sel(d.get('tipo_processo_id'), t.id) }}>{{ t.nome }}</option>{% endfor %}
+          {% for t in tipos_processo %}<option value="{{ t.id }}"{{ ui.sel(d['tipo_processo_id'], t.id) }}>{{ t.nome }}</option>{% endfor %}
         </select></div>
       <div class="campo"><label for="chk-estado">Sugerir no estado</label>
         <select id="chk-estado" name="estado_alvo"><option value="">qualquer</option>
-          {% for codigo in estados %}<option value="{{ codigo }}"{{ ui.sel(d.get('estado_alvo'), codigo) }}>{{ codigo|estado }}</option>{% endfor %}
+          {% for codigo in estados %}<option value="{{ codigo }}"{{ ui.sel(d['estado_alvo'], codigo) }}>{{ codigo|estado }}</option>{% endfor %}
         </select></div>
     </div>
     <div class="campo"><label for="chk-itens">Itens</label>
       <textarea id="chk-itens" name="itens" required aria-describedby="dica-chk"
-placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assinado por servidor e chefia&#10;Inspeção realizada&#10;Laudo vinculado">{{ d.get('itens') or '' }}</textarea>
+placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assinado por servidor e chefia&#10;Inspeção realizada&#10;Laudo vinculado">{{ d['itens'] or '' }}</textarea>
       <span class="dica" id="dica-chk">Um por linha, na ordem.</span></div>
   {% endcall %}
 
@@ -651,19 +650,19 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/agentes-nocivos',
                             ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro) %}
     <div class="campo"><label for="ag-descricao">Descrição</label>
-      <input id="ag-descricao" name="descricao" required value="{{ d.get('descricao') or '' }}"></div>
+      <input id="ag-descricao" name="descricao" required value="{{ d['descricao'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="ag-risco">Tipo de risco</label>
         <select id="ag-risco" name="tipo_risco_id" required>
-          {% for r in riscos %}<option value="{{ r.id }}"{{ ui.sel(d.get('tipo_risco_id'), r.id) }}>{{ r.nome }}</option>{% endfor %}</select></div>
+          {% for r in riscos %}<option value="{{ r.id }}"{{ ui.sel(d['tipo_risco_id'], r.id) }}>{{ r.nome }}</option>{% endfor %}</select></div>
       <div class="campo"><label for="ag-fund">Fundamentação</label>
         <select id="ag-fund" name="fundamentacao_id"><option value="">—</option>
-          {% for f in fundamentacoes %}<option value="{{ f.id }}"{{ ui.sel(d.get('fundamentacao_id'), f.id) }}>{{ f.codigo }}</option>{% endfor %}</select></div>
+          {% for f in fundamentacoes %}<option value="{{ f.id }}"{{ ui.sel(d['fundamentacao_id'], f.id) }}>{{ f.codigo }}</option>{% endfor %}</select></div>
     </div>
     <div class="campo">
       <label class="discreto" for="ag-quant">
         <input id="ag-quant" type="checkbox" name="exige_quantitativa" value="1"
-          {{- ' checked' if d.get('exige_quantitativa') == '1' }}>
+          {{- ' checked' if d['exige_quantitativa'] == '1' }}>
         exige avaliação quantitativa (RN-06)</label></div>
   {% endcall %}
   {% endif %}

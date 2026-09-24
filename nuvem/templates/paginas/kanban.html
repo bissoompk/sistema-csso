@@ -32,13 +32,13 @@
      escreve o que está aplicado por extenso, para a gaveta fechada nunca
      parecer "sem filtro". #}
   {% set aplicados = [] %}
-  {% if filtro.q %}{% set _ = aplicados.append('busca “' ~ filtro.q ~ '”') %}{% endif %}
-  {% for t in tipos if filtro.tipo and t.codigo == filtro.tipo %}
-  {% set _ = aplicados.append(t.nome) %}{% endfor %}
-  {% if filtro.exercicio %}{% set _ = aplicados.append('exercício ' ~ filtro.exercicio) %}{% endif %}
-  {% for u in responsaveis if filtro.responsavel_id and u.id == filtro.responsavel_id %}
-  {% set _ = aplicados.append(u.nome) %}{% endfor %}
-  {% if filtro.atrasados %}{% set _ = aplicados.append('só acima do SLA') %}{% endif %}
+  {% if filtro.q %}{% set _ = aplicados.push('busca “' ~ filtro.q ~ '”') %}{% endif %}
+  {% for t in tipos %}{% if filtro.tipo and t.codigo == filtro.tipo %}
+  {% set _ = aplicados.push(t.nome) %}{% endif %}{% endfor %}
+  {% if filtro.exercicio %}{% set _ = aplicados.push('exercício ' ~ filtro.exercicio) %}{% endif %}
+  {% for u in responsaveis %}{% if filtro.responsavel_id and u.id == filtro.responsavel_id %}
+  {% set _ = aplicados.push(u.nome) %}{% endif %}{% endfor %}
+  {% if filtro.atrasados %}{% set _ = aplicados.push('só acima do SLA') %}{% endif %}
 
   <details class="cartao filtros"{{ ' open' if aplicados }}>
     <summary>
@@ -100,7 +100,7 @@
      recorte aplicado, dizer onde o filtro olhou e como limpar; sem recorte,
      dizer por onde começar, nomeando o botão que resolve, que mora a ~900px
      do texto, no canto superior direito. #}
-  {% set total = resumos.values()|map('length')|sum %}
+  {% set total = total_cartoes %}
   {% if total == 0 %}
   <div class="vazio quadro-vazio">
     {% if aplicados or filtro.precisam or filtro.repositorio %}
@@ -122,6 +122,9 @@
       {% for codigo, rotulo in COLUNAS_KANBAN %}
       <section class="coluna" data-coluna="{{ codigo }}">
         <h3>{{ rotulo }} <span class="contador">{{ resumos[codigo]|length }}</span></h3>
+        {#- Nunjucks: a variável de um `for` com duas variáveis (`codigo, rotulo`) não
+            chega ao `include`; `coluna` é o nome que o cartão já lê. -#}
+        {%- set coluna = codigo %}
         <div class="lista-cartoes" id="coluna-{{ codigo }}">{% for r in resumos[codigo] %}{% include "partes/cartao_kanban.html" %}{% endfor %}</div>
       </section>
       {% endfor %}

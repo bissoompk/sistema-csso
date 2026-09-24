@@ -111,7 +111,9 @@ export async function bancoLimpo(): Promise<AmbienteDeTeste> {
         for (const n of _todos) {
           await comAdmin((sql) => sql.unsafe(`DROP DATABASE IF EXISTS ${n} WITH (FORCE)`)).catch(() => {});
         }
-      });
+        // arquivo com banco novo por teste chega a dezenas de clones, e cada
+        // DROP ... FORCE custa ~1 s com outras suítes rodando: 60 s não bastam
+      }, 600_000);
     } catch {
       // chamado fora da coleta (dentro de um teste): o afterAll já foi
       // registrado pela primeira chamada, ou quem chamou limpa por conta própria

@@ -11,7 +11,7 @@
    na abertura da tela — e é a presença dele que reabre o popup. #}
 {% set d = digitado or {} %}
 {% set recusado = true if (erro and d) else false %}
-{% set postos_marcados = d.get('posto_id') or [] %}
+{% set postos_marcados = d['posto_id'] or [] %}
 {# O erro desvia para dentro do popup e SOME da faixa da casca: a mesma recusa
    escrita duas vezes na mesma tela faz procurar dois problemas. #}
 {% set erro_cadastro = erro if recusado else none %}
@@ -170,35 +170,35 @@
          e o validador Pydantic não saíram do lugar. #}
       <input id="novo-siape" name="siape" required aria-describedby="dica-siape"
              inputmode="numeric" pattern="[0-9]{7}"
-             value="{{ d.get('siape') or '' }}"{{ ' autofocus' if recusado }}>
+             value="{{ d['siape'] or '' }}"{{ ' autofocus' if recusado }}>
       <span class="dica" id="dica-siape">Sete dígitos, sem ponto nem traço.</span></div>
     <div class="campo"><label for="novo-nome">Nome</label>
-      <input id="novo-nome" name="nome" required value="{{ d.get('nome') or '' }}"></div>
+      <input id="novo-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="novo-cargo">Cargo</label>
       <select id="novo-cargo" name="cargo_id"><option value="">—</option>
-        {% for c in cargos %}<option value="{{ c.id }}"{{ ui.sel(d.get('cargo_id'), c.id) }}>{{ c.nome }}</option>{% endfor %}</select>
+        {% for c in cargos %}<option value="{{ c.id }}"{{ ui.sel(d['cargo_id'], c.id) }}>{{ c.nome }}</option>{% endfor %}</select>
       {% if not cargos %}
       <span class="dica">nenhum cadastrado —
         <a href="/catalogos/cargos">cadastre um cargo</a></span>
       {% endif %}
     </div>
     <div class="campo"><label for="nova-funcao">Função</label>
-      <input id="nova-funcao" name="funcao" value="{{ d.get('funcao') or '' }}"></div>
+      <input id="nova-funcao" name="funcao" value="{{ d['funcao'] or '' }}"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-unidade">Unidade</label>
       <select name="unidade_uorg_id" id="nova-unidade" aria-describedby="dica-unidade">
         <option value="">—</option>
         {% for u in unidades %}
-        <option value="{{ u.id }}"{{ ui.sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}</select>
+        <option value="{{ u.id }}"{{ ui.sel(d['unidade_uorg_id'], u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}</select>
       <span class="dica" id="dica-unidade">O nome que sai no corpo do parecer.</span></div>
     <div class="campo"><label for="nova-uorg">UORG</label>
       <select id="nova-uorg" name="uorg_id" aria-describedby="dica-uorg">
         <option value="">— usar a Unidade —</option>
         {% for u in unidades %}
-        <option value="{{ u.id }}"{{ ui.sel(d.get('uorg_id'), u.id) }}>{{ u.uorg_bruto }}</option>{% endfor %}</select>
+        <option value="{{ u.id }}"{{ ui.sel(d['uorg_id'], u.id) }}>{{ u.uorg_bruto }}</option>{% endfor %}</select>
       <span class="dica" id="dica-uorg">O código de lotação no SIAPE.</span></div>
   </div>
   <div class="campo">
@@ -216,7 +216,7 @@
       <a href="/catalogos/postos-trabalho">cadastre um posto</a>.{% endif %}</span>
   </div>
   <div class="campo"><label for="novo-email">E-mail institucional</label>
-    <input id="novo-email" name="email" type="email" value="{{ d.get('email') or '' }}"></div>
+    <input id="novo-email" name="email" type="email" value="{{ d['email'] or '' }}"></div>
 {% endcall %}
 
 <script nonce="{{ nonce() }}">

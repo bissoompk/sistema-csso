@@ -1,0 +1,136 @@
+{
+  "id": "quadroCSSO",
+  "name": "Processos",
+  "lists": [
+    {"id": "l1", "name": "Não Iniciado"},
+    {"id": "l2", "name": "A fazer"},
+    {"id": "l3", "name": "Em andamento"},
+    {"id": "l4", "name": "Aguardando"},
+    {"id": "l5", "name": "Concluído 2025"},
+    {"id": "l6", "name": "Adicional Ocupacional"},
+    {"id": "l7", "name": "Adicional Ocupacional - Campus Avançados"},
+    {"id": "l8", "name": "Aposentadoria Especial = Concluídos"},
+    {"id": "l9", "name": "Lista que ninguém mapeou"}
+  ],
+  "cards": [
+    {
+      "id": "c001",
+      "name": "GENILTON DOS SANTOS",
+      "desc": "Processo SEI 23086.003498/2015-50 — adicional de insalubridade.",
+      "idList": "l2",
+      "closed": false,
+      "due": "2026-04-16T00:00:00.000Z",
+      "dueComplete": false,
+      "attachments": [
+        {"name": "Parecer_Tecnico_05-2026 (1234567).pdf", "url": "https://exemplo/a.pdf"}
+      ],
+      "checklists": [
+        {"name": "Instrução", "checkItems": [
+          {"name": "Portaria de localização", "state": "complete"},
+          {"name": "Formulário do art. 17", "state": "incomplete"}
+        ]}
+      ],
+      "customFieldItems": [{"value": {"text": "Done"}}]
+    },
+    {
+      "id": "c002",
+      "name": "MARCÍLIO COELHO FERREIRA 01-2025",
+      "desc": "23086.021284/2024-56",
+      "idList": "l5",
+      "closed": false,
+      "due": "2025-02-11T00:00:00.000Z",
+      "dueComplete": true,
+      "attachments": [{"name": "Laudo 26255-000.1102022.pdf", "url": "https://exemplo/b.pdf"}]
+    },
+    {
+      "id": "c003",
+      "name": "Christiane Rodrigues",
+      "desc": "NUP 23086.002365/2016-47",
+      "idList": "l3",
+      "closed": false
+    },
+    {
+      "id": "c004",
+      "name": "Sebastião Aparecido",
+      "desc": "sem número ainda",
+      "idList": "l6",
+      "closed": false
+    },
+    {
+      "id": "c005",
+      "name": "Servidor do Campus de Unaí",
+      "desc": "23086.005413/2026-21",
+      "idList": "l7",
+      "closed": false
+    },
+    {
+      "id": "c006",
+      "name": "Aposentadoria de fulano",
+      "desc": "23086.001198/2008-15",
+      "idList": "l8",
+      "closed": false
+    },
+    {
+      "id": "c007",
+      "name": "1-Modelo",
+      "desc": "cartão de modelo, não é processo",
+      "idList": "l6",
+      "closed": false
+    },
+    {
+      "id": "c008",
+      "name": "ADICIONAL DE INSALUBRIDADE ANTIGO",
+      "desc": "",
+      "idList": "l6",
+      "closed": false
+    },
+    {
+      "id": "c009",
+      "name": "Pessoal: Conversão de Tempo Especial em Comum - desativado",
+      "desc": "",
+      "idList": "l6",
+      "closed": false
+    },
+    {
+      "id": "c010",
+      "name": "Cartão perdido",
+      "desc": "23086.009245/2026-42",
+      "idList": "l9",
+      "closed": false
+    },
+    {
+      "id": "c011",
+      "name": "Processo arquivado",
+      "desc": "23086.008530/2026-46",
+      "idList": "l4",
+      "closed": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "a001",
+      "type": "createCard",
+      "date": "2021-02-03T13:05:00.000Z",
+      "memberCreator": {"fullName": "Fátima da Silva"},
+      "data": {"card": {"id": "c001"}, "list": {"name": "A fazer"}}
+    },
+    {
+      "id": "a002",
+      "type": "updateCard",
+      "date": "2024-08-12T18:20:00.000Z",
+      "memberCreator": {"fullName": "Fabrício Raimundi Andrade"},
+      "data": {
+        "card": {"id": "c001"},
+        "listBefore": {"name": "Não Iniciado"},
+        "listAfter": {"name": "A fazer"}
+      }
+    },
+    {
+      "id": "a003",
+      "type": "commentCard",
+      "date": "2026-04-16T10:00:00.000Z",
+      "memberCreator": {"fullName": "Fabrício Raimundi Andrade"},
+      "data": {"card": {"id": "c001"}, "text": "Parecer assinado nesta data."}
+    }
+  ]
+}

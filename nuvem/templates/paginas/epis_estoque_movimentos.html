@@ -98,7 +98,8 @@
         <td>{{ m.ocorrido_em|momento }}
           <span class="quebra discreto mono">nº {{ m.id }}</span></td>
         <td>{{ ui.pilula_movimento(m.tipo) }}</td>
-        <td class="numerico">{{ '%+d'|format(m.quantidade) }}</td>
+        <td class="numerico">{#- o `%+d` do Python: o sinal sempre à mostra -#}
+          {{ ('+' if m.quantidade >= 0 else '') ~ m.quantidade }}</td>
         <td class="numerico">{{ l.saldo_depois }}</td>
         {# O motivo é texto livre gravado no ato, e o razão é append-only: as
            linhas antigas trazem "entrega ao SIAPE 3010077" e "devolução do
@@ -125,7 +126,7 @@
           <a href="/epis/fichas/registros/{{ m.ficha_registro_id }}">ficha nº {{ m.ficha_registro_id }}</a>
           {%- else %}—{% endif -%}
         </td>
-        <td class="discreto">{{ nomes.get(m.registrado_por, 'sistema') }}</td>
+        <td class="discreto">{{ nomes[m.registrado_por] or 'sistema' }}</td>
       </tr>
       {% else %}
       <tr><td colspan="7">

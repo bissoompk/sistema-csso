@@ -11,7 +11,7 @@
 {% set CONCEDER_PERFIL = 'Conceder perfil' %}
 {% set ATESTAR = 'Atestar habilitação' %}
 {% set d = digitado or {} %}
-{% set forma = d.get('forma') %}
+{% set forma = d['forma'] %}
 {% set erro_conta = erro if forma == 'conta' else none %}
 {% set erro_perfil = erro if forma == 'perfil' else none %}
 {% set erro_habilitacao = erro if forma == 'habilitacao' else none %}
@@ -59,10 +59,9 @@
              `selectattr`. A lista se monta aqui para a linha poder dizer
              "sem perfil vigente" — conta sem perfil e conta com perfil vencido
              não são a mesma coisa, e a célula vazia dizia as duas. #}
-          {%- set vigentes = [] -%}
-          {%- for a in atribuicoes[u.id] if a.vigente_em(hoje) -%}
-            {%- set _ = vigentes.append(a) -%}
-          {%- endfor %}
+          {#- Nunjucks não tem o `for ... if` do Jinja: a rota entrega a lista
+              já filtrada pela vigência de hoje. -#}
+          {%- set vigentes = vigentes_por_usuario[u.id] or [] %}
           {% for a in vigentes %}
           {# O ato normativo fica no `title`: é ele que autoriza o perfil, e uma
              coluna a mais para ele deixaria a tabela ilegível. #}
@@ -205,17 +204,17 @@
                           aberto=(forma == 'conta'), erro=erro_conta,
                           nota='a conta nasce sem perfil nenhum') %}
   <div class="campo"><label for="conta-nome">Nome</label>
-    <input id="conta-nome" name="nome" required value="{{ d.get('nome') or '' }}"></div>
+    <input id="conta-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
   {# Login e e-mail são únicos no banco, e são os dois que a rota recusa; o foco
      cai no login, que é o que a recusa cita primeiro. #}
   <div class="campo {{ 'com-erro' if forma == 'conta' }}">
     <label for="conta-login">Login</label>
-    <input id="conta-login" name="login" required value="{{ d.get('login') or '' }}"
+    <input id="conta-login" name="login" required value="{{ d['login'] or '' }}"
            {{- ' autofocus' if forma == 'conta' }}></div>
   <div class="campo {{ 'com-erro' if forma == 'conta' }}">
     <label for="conta-email">E-mail</label>
     <input id="conta-email" name="email" type="email" required
-           value="{{ d.get('email') or '' }}"></div>
+           value="{{ d['email'] or '' }}"></div>
   <p class="discreto rodape-cartao sem-margem">A senha provisória aparece uma única
     vez, na faixa verde do topo da lista. Não existe <code>admin/admin</code>.</p>
 {% endcall %}
@@ -231,27 +230,27 @@
                           nota='a concessão vale a partir do início da vigência') %}
   <div class="campo"><label for="perf-usuario">Usuário</label>
     <select id="perf-usuario" name="usuario_alvo" required>
-      {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d.get('usuario_alvo'), u.id) }}>{{ u.nome }}</option>{% endfor %}</select></div>
+      {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d['usuario_alvo'], u.id) }}>{{ u.nome }}</option>{% endfor %}</select></div>
   <div class="linha-campos">
     <div class="campo"><label for="perf-perfil">Perfil</label>
       <select id="perf-perfil" name="perfil_id" required>
-        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d.get('perfil_id'), p.id) }}>{{ p.codigo }}</option>{% endfor %}</select></div>
+        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.codigo }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="perf-campus">Campus (escopo)</label>
       <select id="perf-campus" name="campus_id"><option value="">todos</option>
-        {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d.get('campus_id'), c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
+        {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="perf-inicio">Vigência início</label>
       <input id="perf-inicio" name="vigencia_inicio" type="date"
-             value="{{ d.get('vigencia_inicio') or '' }}"></div>
+             value="{{ d['vigencia_inicio'] or '' }}"></div>
     <div class="campo"><label for="perf-fim">Vigência fim</label>
       <input id="perf-fim" name="vigencia_fim" type="date"
-             value="{{ d.get('vigencia_fim') or '' }}"></div>
+             value="{{ d['vigencia_fim'] or '' }}"></div>
   </div>
   <div class="campo {{ 'com-erro' if forma == 'perfil' }}">
     <label for="perf-ato">Ato normativo (obrigatório)</label>
     <input id="perf-ato" name="ato_normativo" required
-           value="{{ d.get('ato_normativo') or '' }}"{{ ' autofocus' if forma == 'perfil' }}
+           value="{{ d['ato_normativo'] or '' }}"{{ ' autofocus' if forma == 'perfil' }}
            placeholder="Portaria Reitoria nº 1.553/2026" aria-describedby="dica-ato">
     <span class="dica" id="dica-ato">Sem o ato não há concessão: é ele que a
       auditoria guarda como autorização.</span></div>
@@ -264,13 +263,13 @@
                           nota='a habilitação confere, não o cargo (IN 15/2022, art. 10, §2º, I)') %}
   <div class="linha-campos">
     <div class="campo"><label for="hab-nome">Nome</label>
-      <input id="hab-nome" name="nome" required value="{{ d.get('nome') or '' }}"></div>
+      <input id="hab-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
     <div class="campo codigo"><label for="hab-siape">SIAPE</label>
       {# opcional (o profissional externo não tem SIAPE), e por isso só `pattern`
          e `inputmode`: o navegador não confere `pattern` em campo vazio, e
          confere nos sete dígitos de quem preencher. #}
       <input id="hab-siape" name="siape" inputmode="numeric" pattern="[0-9]{7}"
-             value="{{ d.get('siape') or '' }}"></div>
+             value="{{ d['siape'] or '' }}"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="hab-tipo">Habilitação</label>
@@ -279,36 +278,36 @@
              ('ENG_SEG_TRABALHO', 'Engenheiro de Segurança do Trabalho'),
              ('MED_TRABALHO', 'Médico do Trabalho'),
              ('ARQ_SEG_TRABALHO', 'Arquiteto de Segurança do Trabalho')] %}
-        <option value="{{ codigo }}"{{ ui.sel(d.get('habilitacao'), codigo) }}>{{ rotulo }}</option>
+        <option value="{{ codigo }}"{{ ui.sel(d['habilitacao'], codigo) }}>{{ rotulo }}</option>
         {%- endfor %}
       </select></div>
     <div class="campo"><label for="hab-titulo">Título na assinatura</label>
       <input id="hab-titulo" name="titulo_assinatura" required
-             value="{{ d.get('titulo_assinatura') or '' }}"
+             value="{{ d['titulo_assinatura'] or '' }}"
              placeholder="Eng. Seg. do Trabalho"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="hab-conta">Conta do sistema</label>
       <select id="hab-conta" name="usuario_alvo_id"><option value="">—</option>
-        {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d.get('usuario_alvo_id'), u.id) }}>{{ u.nome }}</option>{% endfor %}
+        {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d['usuario_alvo_id'], u.id) }}>{{ u.nome }}</option>{% endfor %}
       </select></div>
     <div class="campo"><label for="hab-conselho">Conselho</label>
       <input id="hab-conselho" name="conselho" placeholder="CREA"
-             value="{{ d.get('conselho') or '' }}"></div>
+             value="{{ d['conselho'] or '' }}"></div>
     <div class="campo codigo"><label for="hab-registro">Registro</label>
       <input id="hab-registro" name="registro_conselho"
-             value="{{ d.get('registro_conselho') or '' }}"></div>
+             value="{{ d['registro_conselho'] or '' }}"></div>
     <div class="campo"><label for="hab-inicio">Vigência início</label>
       <input id="hab-inicio" name="vigencia_inicio" type="date"
-             value="{{ d.get('vigencia_inicio') or '' }}"></div>
+             value="{{ d['vigencia_inicio'] or '' }}"></div>
   </div>
   <div class="campo {{ 'com-erro' if forma == 'habilitacao' }}">
     <label class="discreto" for="hab-externo">
       <input id="hab-externo" type="checkbox" name="externo" value="1"
-        {{- ' checked' if d.get('externo') == '1' }}>
+        {{- ' checked' if d['externo'] == '1' }}>
       profissional externo (art. 10, §5º)</label>
     <input name="justificativa_art10_par5" aria-label="Justificativa do art. 10, §5º"
-           value="{{ d.get('justificativa_art10_par5') or '' }}"
+           value="{{ d['justificativa_art10_par5'] or '' }}"
            {{- ' autofocus' if forma == 'habilitacao' }}
            placeholder="Justificativa do esgotamento das possibilidades de cooperação"
            aria-describedby="dica-externo">

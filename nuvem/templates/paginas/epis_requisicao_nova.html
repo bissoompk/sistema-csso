@@ -20,9 +20,9 @@
    Vazio na abertura da tela. Sem isto, uma urgência sem justificativa apagava a
    rotina de trabalho e os riscos declarados — os dois textos longos daqui, e
    justamente os que fundamentam a decisão de quem vai analisar. #}
-{% set d = digitado or {} %}
+{% set d = digitado or sem_digitado %}
 {%- macro sel(escolhido, valor) -%}
-{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{{- ' selected' if escolhido not in [none, ''] and escolhido|string == valor|string -}}
 {%- endmacro %}
 
 {% block conteudo %}
@@ -74,9 +74,8 @@
              pela rota HTMX da busca, onde não há nada escolhido. #}
           {# `nota` vem da rota (`NOTA_SERVIDOR`), e não escrita aqui: a rota HTMX
              da busca serve o mesmo fragmento e teria de repetir a frase. #}
-          {% with escolhido = d.get('servidor_id') %}
+          {% set escolhido = d.get('servidor_id') %}
           {% include "partes/epi_requisicao_servidores.html" %}
-          {% endwith %}
         </div>
 
         <div class="campo">

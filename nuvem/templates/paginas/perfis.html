@@ -35,7 +35,7 @@
     </div>
     {% if p.base_normativa %}<p class="discreto">{{ p.base_normativa }}</p>{% endif %}
     <div class="fileira">
-      {% for perm in p.permissoes|sort(attribute='codigo') %}
+      {% for perm in p.permissoes %}
       {# `parecer.assinar` sai em alerta porque é a única permissão do sistema
          que não basta sozinha: sem habilitação técnica vigente ela não assina
          nada, e quem concede o perfil precisa ver isso aqui. #}

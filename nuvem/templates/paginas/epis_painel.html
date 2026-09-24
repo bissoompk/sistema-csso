@@ -74,12 +74,12 @@
   <section class="cartao">
     <div class="titulo-cartao">
       <h2>Requisições por estado</h2>
-      <span class="nota">{{ p.requisicoes_por_estado.values()|sum }} no total</span>
+      <span class="nota">{{ p.total_por_estado }} no total</span>
     </div>
     <div class="fileira">
-      {% for codigo, nome in rotulos.items() %}
+      {% for codigo, nome in rotulos|items %}
       <a class="ficha-filtro" href="/epis/requisicoes?estado={{ codigo }}">
-        {{ nome }} <span class="contador">{{ p.requisicoes_por_estado.get(codigo, 0) }}</span></a>
+        {{ nome }} <span class="contador">{{ p.requisicoes_por_estado[codigo] or 0 }}</span></a>
       {% endfor %}
     </div>
   </section>
@@ -120,8 +120,8 @@
           <thead>
             <tr><th scope="col">Servidor</th><th scope="col">EPI</th><th scope="col">Entregue</th><th scope="col">Troca prevista</th><th scope="col"></th></tr>
           </thead>
-          {% for r in p.trocas_devidas[:10] %}
-          {% set quem = identificar(servidores.get(r.servidor_id)) %}
+          {% for r in p.trocas_devidas.slice(0, 10) %}
+          {% set quem = identificar(servidores[r.servidor_id]) %}
           <tr>
             <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
               {%- else %}{{ quem.nome }}{% endif %}</td>
@@ -168,7 +168,7 @@
           <thead>
             <tr><th scope="col">Pedido</th><th scope="col">EPI</th><th scope="col">Tamanho</th><th scope="col">Devido</th><th scope="col"></th></tr>
           </thead>
-          {% for i in p.esperando_estoque[:10] %}
+          {% for i in p.esperando_estoque.slice(0, 10) %}
           <tr>
             <td><a class="mono" href="/epis/requisicoes/{{ i.requisicao_id }}">{{ i.requisicao.identificacao }}</a></td>
             <td>{{ i.item.nome }}</td>
@@ -204,7 +204,7 @@
           <thead>
             <tr><th scope="col">Item · lote</th><th scope="col">Saldo</th><th scope="col">CA</th><th scope="col"></th></tr>
           </thead>
-          {% for lote in p.lotes_a_vencer[:10] %}
+          {% for lote in p.lotes_a_vencer.slice(0, 10) %}
           <tr>
             <td>{{ lote.entrada.item.nome }}
               <span class="quebra discreto mono">{{ lote.entrada.lote or 'sem número' }}</span></td>
@@ -239,8 +239,8 @@
           <thead>
             <tr><th scope="col">Data</th><th scope="col">EPI</th><th scope="col">Quantidade</th><th scope="col">Servidor</th></tr>
           </thead>
-          {% for r in p.entregas_do_mes[:8] %}
-          {% set quem = identificar(servidores.get(r.servidor_id)) %}
+          {% for r in p.entregas_do_mes.slice(0, 8) %}
+          {% set quem = identificar(servidores[r.servidor_id]) %}
           <tr>
             <td class="mono">{{ r.data_evento|data }}</td>
             <td>{{ r.nome_epi_snapshot }}</td>

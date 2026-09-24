@@ -84,7 +84,7 @@
           <select id="item_id" name="item_id" required{{ foco_em('item_id') }}>
             <option value="">—</option>
             {% for i in itens %}
-            <option value="{{ i.id }}"{{ ui.sel(d.get('item_id'), i.id) }}>{{ i.nome }}{% if i.modelo %} · {{ i.modelo }}{% endif %}</option>
+            <option value="{{ i.id }}"{{ ui.sel(d.item_id, i.id) }}>{{ i.nome }}{% if i.modelo %} · {{ i.modelo }}{% endif %}</option>
             {% endfor %}
           </select>
         </div>
@@ -92,14 +92,14 @@
           <label for="quantidade_recebida">Quantidade recebida</label>
           <input id="quantidade_recebida" name="quantidade_recebida" required
                  inputmode="numeric"{{ foco_em('quantidade_recebida') }}
-                 value="{{ d.get('quantidade_recebida') or '' }}"
+                 value="{{ d.quantidade_recebida or '' }}"
                  aria-describedby="dica-qtd">
           <span class="dica" id="dica-qtd">É o que a nota fiscal entregou. Nunca
             mais muda: daqui em diante o saldo é a soma do razão.</span>
         </div>
         <div class="campo">
           <label for="tamanho">Tamanho</label>
-          <input id="tamanho" name="tamanho" value="{{ d.get('tamanho') or '' }}"
+          <input id="tamanho" name="tamanho" value="{{ d.tamanho or '' }}"
                  aria-describedby="dica-tamanho">
           <span class="dica" id="dica-tamanho">Escrito igual ao do catálogo do
             item: é por ele que a entrega encontra o lote.</span>
@@ -108,8 +108,8 @@
           <label for="data_entrada">Data de entrada</label>
           <input id="data_entrada" type="date" name="data_entrada"
                  {{- foco_em('data_entrada') }}
-                 value="{{ d.get('data_entrada') or hoje.isoformat() }}"
-                 max="{{ hoje.isoformat() }}">
+                 value="{{ d.data_entrada or hoje }}"
+                 max="{{ hoje }}">
         </div>
       </div>
 
@@ -148,12 +148,12 @@
              campo é o mesmo número, e dois exemplos diferentes para o mesmo
              campo ensinam duas coisas. #}
           <input id="numero_ca" name="numero_ca" placeholder="12345"
-                 inputmode="numeric" value="{{ d.get('numero_ca') or '' }}"></div>
+                 inputmode="numeric" value="{{ d.numero_ca or '' }}"></div>
         <div class="campo{{ erro_em('validade_ca') }}">
           <label for="validade_ca">Validade do CA</label>
           <input id="validade_ca" type="date" name="validade_ca"
                  {{- foco_em('validade_ca') }}
-                 value="{{ d.get('validade_ca') or '' }}"
+                 value="{{ d.validade_ca or '' }}"
                  aria-describedby="dica-validade-lote">
           <span class="dica atencao" id="dica-validade-lote">Sem ela o lote não
             sai: “não sei” não é “está válido”.</span></div>
@@ -161,11 +161,11 @@
           <label for="data_fabricacao">Fabricação</label>
           <input id="data_fabricacao" type="date" name="data_fabricacao"
                  {{- foco_em('data_fabricacao') }}
-                 value="{{ d.get('data_fabricacao') or '' }}"></div>
+                 value="{{ d.data_fabricacao or '' }}"></div>
         <div class="campo">
           <label for="lote">Lote</label>
           <input id="lote" name="lote" placeholder="L-2026-08"
-                 value="{{ d.get('lote') or '' }}"></div>
+                 value="{{ d.lote or '' }}"></div>
       </div>
     </section>
 
@@ -179,16 +179,16 @@
         <div class="campo">
           <label for="pregao">Pregão</label>
           <input id="pregao" name="pregao" placeholder="90012/2025"
-                 value="{{ d.get('pregao') or '' }}"></div>
+                 value="{{ d.pregao or '' }}"></div>
         <div class="campo">
           <label for="item_pregao">Item do pregão</label>
           <input id="item_pregao" name="item_pregao" placeholder="7"
                  inputmode="numeric"
-                 value="{{ d.get('item_pregao') or '' }}"></div>
+                 value="{{ d.item_pregao or '' }}"></div>
         <div class="campo">
           <label for="empenho">Empenho</label>
           <input id="empenho" name="empenho" placeholder="2026NE000123"
-                 value="{{ d.get('empenho') or '' }}"
+                 value="{{ d.empenho or '' }}"
                  aria-describedby="dica-empenho">
           <span class="dica" id="dica-empenho">É por ele que a pergunta chega:
             “esse capacete veio de qual empenho?”.</span></div>
@@ -196,7 +196,7 @@
           <label for="quantidade_empenhada">Quantidade empenhada</label>
           <input id="quantidade_empenhada" name="quantidade_empenhada"
                  inputmode="numeric"{{ foco_em('quantidade_empenhada') }}
-                 value="{{ d.get('quantidade_empenhada') or '' }}"
+                 value="{{ d.quantidade_empenhada or '' }}"
                  aria-describedby="dica-empenhada">
           <span class="dica" id="dica-empenhada">Quanto o empenho previa. Receber
             mais do que se empenhou é recusado.</span></div>
@@ -209,7 +209,7 @@
         <div class="campo">
           <label for="nota_fiscal">Nota fiscal</label>
           <input id="nota_fiscal" name="nota_fiscal"
-                 value="{{ d.get('nota_fiscal') or '' }}"></div>
+                 value="{{ d.nota_fiscal or '' }}"></div>
         <div class="campo">
           <label for="valor_unitario">Valor unitário (R$)</label>
           {# `decimal` e não `numeric`: o teclado de `decimal` traz a vírgula, e a
@@ -218,14 +218,14 @@
              `numeric` daria um teclado sem separador nenhum. #}
           <input id="valor_unitario" name="valor_unitario" placeholder="12,50"
                  inputmode="decimal"
-                 value="{{ d.get('valor_unitario') or '' }}"
+                 value="{{ d.valor_unitario or '' }}"
                  aria-describedby="dica-valor">
           <span class="dica" id="dica-valor">Em branco quando não se sabe — zero
             diria que custou nada.</span></div>
         <div class="campo">
           <label for="fornecedor_nome">Fornecedor</label>
           <input id="fornecedor_nome" name="fornecedor_nome"
-                 value="{{ d.get('fornecedor_nome') or '' }}"></div>
+                 value="{{ d.fornecedor_nome or '' }}"></div>
         {# Sem `maxlength`. Ele valia 14, o CNPJ da nota vem escrito
            `12.345.678/0001-90` — 18 caracteres — e o campo cortava no décimo
            quarto sem dizer nada: gravava-se `12.345.678/000`. Quem normaliza é
@@ -237,14 +237,14 @@
           <label for="fornecedor_cnpj">CNPJ</label>
           <input id="fornecedor_cnpj" name="fornecedor_cnpj" inputmode="numeric"
                  placeholder="12.345.678/0001-90"{{ foco_em('fornecedor_cnpj') }}
-                 value="{{ d.get('fornecedor_cnpj') or '' }}"
+                 value="{{ d.fornecedor_cnpj or '' }}"
                  aria-describedby="dica-cnpj">
           <span class="dica" id="dica-cnpj">Cole da nota: ponto, barra e traço
             são descartados sozinhos.</span></div>
         <div class="campo">
           <label for="fornecedor_contato">Contato do fornecedor</label>
           <input id="fornecedor_contato" name="fornecedor_contato"
-                 value="{{ d.get('fornecedor_contato') or '' }}"
+                 value="{{ d.fornecedor_contato or '' }}"
                  aria-describedby="dica-contato">
           <span class="dica" id="dica-contato">Canal da empresa — telefone ou
             e-mail de vendas —, não o nome de um vendedor.</span></div>
@@ -253,7 +253,7 @@
       <div class="campo">
         <label for="observacao">Observação</label>
         <textarea id="observacao" name="observacao" rows="2"
-                  aria-describedby="dica-observacao">{{ d.get('observacao') or '' }}</textarea>
+                  aria-describedby="dica-observacao">{{ d.observacao or '' }}</textarea>
         <span class="dica atencao" id="dica-observacao">Nunca registre estado de
           saúde, CID, diagnóstico ou gestação (RN-21).</span>
       </div>

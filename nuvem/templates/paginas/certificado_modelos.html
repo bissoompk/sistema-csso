@@ -78,27 +78,27 @@
   <div class="campo {{ 'com-erro' if recusado }}">
     <label for="modelo-nome">Nome do modelo</label>
     <input id="modelo-nome" name="nome" required placeholder="Certificado padrão CSSO"
-           value="{{ d.get('nome') or '' }}"{{ ' autofocus' if recusado }}></div>
+           value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}></div>
   <div class="linha-campos">
     <div class="campo codigo"><label for="modelo-arquivo">Arquivo .docx</label>
       <input id="modelo-arquivo" name="arquivo" required
-             value="{{ d.get('arquivo') or '' }}"
+             value="{{ d['arquivo'] or '' }}"
              placeholder="certificado_padrao.docx" aria-describedby="dica-arquivo">
       <span class="dica" id="dica-arquivo">Só o nome, dentro de
         <code>app/templates/certificados/</code>. Pode ser cadastrado antes de o
         arquivo estar lá — a ficha avisa enquanto ele não existe.</span></div>
     <div class="campo"><label for="modelo-orientacao">Orientação</label>
       <select id="modelo-orientacao" name="orientacao">
-        {% for o in orientacoes %}<option value="{{ o }}"{{ ui.sel(d.get('orientacao'), o) }}>{{ o|capitalize }}</option>{% endfor %}
+        {% for o in orientacoes %}<option value="{{ o }}"{{ ui.sel(d['orientacao'], o) }}>{{ o|capitalize }}</option>{% endfor %}
       </select></div>
   </div>
   <div class="campo"><label for="modelo-treinamento">Treinamento</label>
     <select id="modelo-treinamento" name="treinamento_id">
       <option value="">genérico — serve a qualquer treinamento</option>
-      {% for t in treinamentos %}<option value="{{ t.id }}"{{ ui.sel(d.get('treinamento_id'), t.id) }}>{{ t.nome }}</option>{% endfor %}
+      {% for t in treinamentos %}<option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}>{{ t.nome }}</option>{% endfor %}
     </select></div>
   <div class="campo"><label for="modelo-observacao">Observação</label>
     <input id="modelo-observacao" name="observacao"
-           value="{{ d.get('observacao') or '' }}"></div>
+           value="{{ d['observacao'] or '' }}"></div>
 {% endcall %}
 {% endblock %}

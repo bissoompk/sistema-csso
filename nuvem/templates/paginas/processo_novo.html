@@ -17,15 +17,17 @@
 {% set erro = none %}
 {# O erro do DV vem do serviço em duas partes separadas por travessão: o fato e
    a explicação. A divisão é dele; aqui só se dá a cada parte o peso certo. #}
-{% set partes_nup = erro_nup.split(' — ', 1) if erro_nup else [] %}
+{# `split(' — ', 1)` do Python: no JS o limite CORTA o resto, então a explicação
+   é remontada com o que vem depois do primeiro travessão. #}
+{% set partes_nup = erro_nup.split(' — ') if erro_nup else [] %}
 
 {# O que a pessoa digitou, devolvido pela rota quando a gravação é recusada.
    Vazio na abertura da tela. Sem isto, um dígito verificador divergente
    apagava observação, tipo, servidor, unidade, data e a marca de dispensa —
    e a segunda tentativa era digitada por inteiro. #}
-{% set d = digitado or {} %}
+{% set d = digitado %}
 {%- macro sel(escolhido, valor) -%}
-{{- ' selected' if escolhido not in (none, '') and escolhido|string == valor|string -}}
+{{- ' selected' if escolhido != none and escolhido !== '' and escolhido|string == valor|string -}}
 {%- endmacro %}
 
 {% block conteudo %}
@@ -57,7 +59,7 @@
       <span class="erro-campo" id="erro-nup">
         <strong class="fato">{{ partes_nup[0] }}</strong>
         {%- if partes_nup|length > 1 %}
-        <span class="explicacao">{{ partes_nup[1] }}</span>{% endif %}
+        <span class="explicacao">{{ partes_nup.slice(1).join(' — ') }}</span>{% endif %}
       </span>
       {% else %}
       <span class="dica" id="dica-nup">Cole do SEI: pontuação, espaço e traço são

@@ -148,7 +148,7 @@
         {% if modelo.vigente %}
         <td><span class="para"><span class="seta" aria-hidden="true">→</span>
           <select form="{{ fid }}" name="campo" aria-label="Campo que alimenta {{ tag.marcador }}">
-            {% for grupo, lista in campos_por_grupo.items() %}
+            {% for grupo, lista in campos_por_grupo %}
             <optgroup label="{{ grupo }}">
               {% for codigo, campo in lista %}
               <option value="{{ codigo }}" {% if tag.campo == codigo %}selected{% endif %}>{{ campo.rotulo }}</option>
@@ -249,7 +249,7 @@
         delas.</span></div>
     <div class="campo"><label for="novo-campo">Campo do sistema</label>
       <select id="novo-campo" name="campo" required>
-        {% for grupo, lista in campos_por_grupo.items() %}
+        {% for grupo, lista in campos_por_grupo %}
         <optgroup label="{{ grupo }}">
           {% for codigo, campo in lista %}
           <option value="{{ codigo }}">{{ campo.rotulo }} — ex.: {{ campo.exemplo }}</option>

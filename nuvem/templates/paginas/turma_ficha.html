@@ -16,10 +16,12 @@
 {# O próximo passo da máquina, quando quem olha pode dá-lo. Cancelar fica de fora
    de propósito: exige motivo escrito e não é o passo natural da turma. O botão
    leva ao formulário, na aba Turma — não dispara nada sozinho. #}
-{% for codigo, rotulo in destinos if codigo != 'CANCELADA' and usuario.pode(permissao_por_destino[codigo]) %}
+{% set proximos = [] %}
+{% for codigo, rotulo in destinos %}{% if codigo != 'CANCELADA' and usuario.pode(permissao_por_destino[codigo]) %}{% set _ = proximos.push([codigo, rotulo]) %}{% endif %}{% endfor %}
+{% for codigo, rotulo in proximos %}
 {% if loop.first %}
 <a class="botao" href="/turmas/{{ turma.id }}?aba=turma#situacao">
-  {{- ui.ACAO_TURMA.get(codigo, 'Passar para ' ~ rotulo|lower) -}}</a>
+  {{- (ui.ACAO_TURMA[codigo] or 'Passar para ' ~ rotulo|lower) -}}</a>
 {% endif %}
 {% endfor %}
 {% endblock %}
@@ -41,7 +43,7 @@
 {% set pode_avaliar = usuario.pode('turma.avaliar') %}
 {# retificar mexe em resultado já comunicado: pede a mesma permissão de concluir #}
 {% set pode_lancar = pode_avaliar and (not retificando or usuario.pode('turma.concluir'))
-                     and turma.situacao in ('EM_ANDAMENTO', 'CONCLUIDA') %}
+                     and turma.situacao in ['EM_ANDAMENTO', 'CONCLUIDA'] %}
 {% set editavel = pode_editar and not turma.encerrada %}
 
 {# =====================================================================
@@ -174,7 +176,7 @@
          por que "concluir" ainda não aparece. #}
       <div class="fileira trilho-estado">
         {% set ordem = ['PLANEJADA', 'INSCRICOES_ABERTAS', 'EM_ANDAMENTO', 'CONCLUIDA'] %}
-        {% set posicao = ordem.index(turma.situacao) if turma.situacao in ordem else -1 %}
+        {% set posicao = ordem.indexOf(turma.situacao) if turma.situacao in ordem else -1 %}
         {% for passo in ordem %}
         {% if passo == turma.situacao %}{{ ui.pilula_turma(passo) }}
         {% else %}
@@ -209,8 +211,8 @@
         <form method="post" action="/turmas/{{ turma.id }}/situacao">
           <input type="hidden" name="destino" value="{{ codigo }}">
           <button type="submit" class="secundario"
-                  title="passa a turma para {{ ui.ROTULO_TURMA_TELA.get(codigo, rotulo)|lower }}">
-            {{- ui.ACAO_TURMA.get(codigo, 'Passar para ' ~ rotulo|lower) -}}</button>
+                  title="passa a turma para {{ (ui.ROTULO_TURMA_TELA[codigo] or rotulo)|lower }}">
+            {{- (ui.ACAO_TURMA[codigo] or 'Passar para ' ~ rotulo|lower) -}}</button>
         </form>
         {% endif %}
         {% endif %}
@@ -332,7 +334,7 @@
         {% endif %}</td>
       <td class="mono">
         {{- i.participante.identificador_publico if nominal else '—' -}}</td>
-      <td>{{ rotulo_vinculo.get(i.participante.vinculo, i.participante.vinculo) }}</td>
+      <td>{{ (rotulo_vinculo[i.participante.vinculo] or i.participante.vinculo) }}</td>
       <td><span class="recorte"
                 title="{{ (i.participante.email_exibicao or '') if nominal else '' }}">
           {{- (i.participante.email_exibicao or '—') if nominal else '—' -}}</span></td>
@@ -342,7 +344,7 @@
       <td class="discreto">{{ i.origem|lower }}</td>
       {% if pode_inscrever %}
       <td>
-        {% if i.situacao in ('INSCRITA', 'CONFIRMADA') %}
+        {% if i.situacao in ['INSCRITA', 'CONFIRMADA'] %}
         {# A gaveta que virou camada: os dois formulários da linha moravam numa
            célula de ~190px, e o campo de motivo do cancelamento saía com 140px de
            largura para uma frase. Ver `popup_gaveta` em `partes/macros.html` — a
@@ -354,7 +356,7 @@
         {% call ui.popup_gaveta('acoes-inscricao-' ~ i.id, 'ações',
                                 'Ações · ' ~ (i.participante.nome_exibicao
                                               if nominal else quem.nome),
-                                nota=ui.ROTULO_INSCRICAO_TELA.get(i.situacao, i.situacao)|lower) %}
+                                nota=(ui.ROTULO_INSCRICAO_TELA[i.situacao] or i.situacao)|lower) %}
           {% if i.situacao == 'INSCRITA' %}
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
             <h3>Confirmar a inscrição</h3>
@@ -448,7 +450,7 @@
           {%- if nominal %}{{ p.nome_exibicao }}
           {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
         <td class="mono">{{ p.identificador_publico if nominal else '—' }}</td>
-        <td>{{ rotulo_vinculo.get(p.vinculo, p.vinculo) }}</td>
+        <td>{{ (rotulo_vinculo[p.vinculo] or p.vinculo) }}</td>
         <td>
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
             <input type="hidden" name="participante_id" value="{{ p.id }}">
@@ -606,9 +608,9 @@
   <div class="cabecalho-cartao">
     <h2>Presença e notas</h2>
     <span class="contador">{{ dias|length }} dia(s)</span>
-    {% if contagem.get('APROVADO') or contagem.get('REPROVADO') %}
-    <span class="selo ok">{{ contagem.get('APROVADO', 0) }} aprovado(s)</span>
-    <span class="selo erro">{{ contagem.get('REPROVADO', 0) }} reprovado(s)</span>
+    {% if contagem['APROVADO'] or contagem['REPROVADO'] %}
+    <span class="selo ok">{{ (contagem['APROVADO'] or 0) }} aprovado(s)</span>
+    <span class="selo erro">{{ (contagem['REPROVADO'] or 0) }} reprovado(s)</span>
     {% endif %}
   </div>
 
@@ -698,16 +700,16 @@
       <form method="post" action="/turmas/{{ turma.id }}/presencas/dia">
         <h3>{{ dia|data }}</h3>
         <div class="linha-campos">
-          <div class="campo"><label for="horas-{{ dia.isoformat() }}">Horas</label>
-            <input id="horas-{{ dia.isoformat() }}" name="horas" inputmode="decimal"
+          <div class="campo"><label for="horas-{{ dia }}">Horas</label>
+            <input id="horas-{{ dia }}" name="horas" inputmode="decimal"
                    required placeholder="h"></div>
           {% if retificando %}
-          <div class="campo"><label for="motivo-dia-{{ dia.isoformat() }}">Motivo da retificação</label>
-            <input id="motivo-dia-{{ dia.isoformat() }}" name="motivo" required
+          <div class="campo"><label for="motivo-dia-{{ dia }}">Motivo da retificação</label>
+            <input id="motivo-dia-{{ dia }}" name="motivo" required
                    placeholder="por que a folha está sendo refeita"></div>
           {% endif %}
         </div>
-        <input type="hidden" name="data" value="{{ dia.isoformat() }}">
+        <input type="hidden" name="data" value="{{ dia }}">
         <div class="acoes"><button type="submit" class="secundario compacto">
           Lançar {{ dia|data }} para todos</button></div>
       </form>
@@ -732,7 +734,7 @@
   </div>
   {% endif %}
 
-  {% if turma.situacao not in ('EM_ANDAMENTO', 'CONCLUIDA') and pode_avaliar %}
+  {% if turma.situacao not in ['EM_ANDAMENTO', 'CONCLUIDA'] and pode_avaliar %}
   <div class="corpo">
     <div class="aviso aviso-alerta">
       <span class="mono">{{ turma.codigo }}</span> está
@@ -755,10 +757,10 @@
    certificado não volta, nem quando o documento é anulado depois. #}
 {% set aptos = [] %}
 {% for inscricao in inscricoes %}
-{% if inscricao.situacao not in ('CANCELADA', 'AGUARDANDO_EMAIL')
-      and not certificados.get(inscricao.id)
-      and aptidao.get(inscricao.id) and not aptidao.get(inscricao.id).bloqueios %}
-{% set _ = aptos.append(inscricao) %}
+{% if inscricao.situacao not in ['CANCELADA', 'AGUARDANDO_EMAIL']
+      and not certificados[inscricao.id]
+      and aptidao[inscricao.id] and not aptidao[inscricao.id].bloqueios %}
+{% set _ = aptos.push(inscricao) %}
 {% endif %}
 {% endfor %}
 
@@ -794,9 +796,9 @@
       </tr>
     </thead>
     {% for inscricao in inscricoes %}
-    {% if inscricao.situacao not in ('CANCELADA', 'AGUARDANDO_EMAIL') %}
-    {% set emitido = certificados.get(inscricao.id) %}
-    {% set apto = aptidao.get(inscricao.id) %}
+    {% if inscricao.situacao not in ['CANCELADA', 'AGUARDANDO_EMAIL'] %}
+    {% set emitido = certificados[inscricao.id] %}
+    {% set apto = aptidao[inscricao.id] %}
     {# a mesma decisão da aba de inscrições: é a mesma gente, uma aba ao lado #}
     {% set quem = identificar(inscricao.participante.servidor, vazio=SUPRIMIDO) %}
     {% set nominal = pode_nominal or quem.nominal %}
@@ -899,10 +901,10 @@
   <div class="linha-campos">
     <div class="campo"><label for="data_inicio">Início</label>
       <input id="data_inicio" type="date" name="data_inicio"
-             value="{{ turma.data_inicio.isoformat() }}" required></div>
+             value="{{ turma.data_inicio }}" required></div>
     <div class="campo"><label for="data_fim">Término</label>
       <input id="data_fim" type="date" name="data_fim"
-             value="{{ turma.data_fim.isoformat() }}" required></div>
+             value="{{ turma.data_fim }}" required></div>
     <div class="campo"><label for="carga">Carga horária da turma</label>
       <input id="carga" name="carga_horaria_horas"
              value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
@@ -933,7 +935,7 @@
              placeholder="sem limite"></div>
     <div class="campo"><label for="inscricao_aberta_ate">Inscrições até</label>
       <input id="inscricao_aberta_ate" type="date" name="inscricao_aberta_ate"
-             value="{{ turma.inscricao_aberta_ate.isoformat() if turma.inscricao_aberta_ate else '' }}"></div>
+             value="{{ turma.inscricao_aberta_ate if turma.inscricao_aberta_ate else '' }}"></div>
     <div class="campo"><label for="nota_minima_aprovacao">Nota mínima (0 a 10)</label>
       <input id="nota_minima_aprovacao" name="nota_minima_aprovacao"
              value="{{ turma.nota_minima_aprovacao if turma.nota_minima_aprovacao is not none else '' }}"
@@ -945,7 +947,7 @@
              value="{{ turma.frequencia_minima_percentual }}" required></div>
     <div class="campo"><label for="data_base_vencimento">Data base do vencimento</label>
       <input id="data_base_vencimento" type="date" name="data_base_vencimento"
-             value="{{ turma.data_base_vencimento.isoformat() if turma.data_base_vencimento else '' }}"
+             value="{{ turma.data_base_vencimento if turma.data_base_vencimento else '' }}"
              aria-describedby="dica-base">
       <span class="dica" id="dica-base">Vazio usa o término.</span></div>
   </div>
@@ -993,13 +995,16 @@
 {% endif %}
 {% endfor %}
 
-{% set concluivel = destinos and 'CONCLUIDA' in destinos|map(attribute=0)|list
+{% set destinos_codigos = [] %}
+{% for codigo, rotulo in destinos %}{% set _ = destinos_codigos.push(codigo) %}{% endfor %}
+{% set concluivel = destinos and 'CONCLUIDA' in destinos_codigos
                     and usuario.pode(permissao_por_destino['CONCLUIDA']) %}
 {% if concluivel %}
 {# A confirmação de concluir. Não é um "tem certeza?": ela conta quantos inscritos
    vão ser apurados e diz que a apuração grava resultado em cada um e que
    `CONCLUIDA` não tem saída. #}
-{% set apurados = inscricoes|rejectattr('situacao', 'in', ('CANCELADA', 'AGUARDANDO_EMAIL'))|list %}
+{% set apurados = [] %}
+{% for i in inscricoes %}{% if i.situacao not in ['CANCELADA', 'AGUARDANDO_EMAIL'] %}{% set _ = apurados.push(i) %}{% endif %}{% endfor %}
 {% call ui.popup_cadastro('concluir-turma',
                           'Concluir ' ~ turma.codigo,
                           '/turmas/' ~ turma.id ~ '/situacao',

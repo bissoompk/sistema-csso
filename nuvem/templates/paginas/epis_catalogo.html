@@ -16,7 +16,9 @@
 {# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
    abertura da tela — e é a presença dele que reabre o popup. #}
 {% set d = digitado or {} %}
-{% set recusado = true if (erro and d) else false %}
+{#- `digitado`, e não `d`: no JavaScript `{}` é verdadeiro, e a tela reabriria o
+   popup em toda recusa de edição em linha. -#}
+{% set recusado = true if (erro and digitado) else false %}
 {% set erro_cadastro = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
 
@@ -105,14 +107,14 @@
                aria-label="Nome do item {{ i.id }}"></td>
       <td><select form="{{ id }}" name="categoria_id" required
                   aria-label="Categoria NR-6 do item {{ i.id }}">
-          {% for c in categorias if c.ativo or c.id == i.categoria_id %}
+          {% for c in categorias %}{% if c.ativo or c.id == i.categoria_id %}
           <option value="{{ c.id }}" {% if i.categoria_id == c.id %}selected{% endif %}>{{ c.rotulo }}{% if not c.ativo %} (inativa){% endif %}</option>
-          {% endfor %}</select></td>
+          {% endif %}{% endfor %}</select></td>
       <td><input form="{{ id }}" name="numero_ca" value="{{ i.numero_ca or '' }}"
                  inputmode="numeric"
                  aria-label="Número do CA do item {{ i.id }}"></td>
       <td><input form="{{ id }}" type="date" name="validade_ca"
-                 value="{{ i.validade_ca.isoformat() if i.validade_ca else '' }}"
+                 value="{{ i.validade_ca or '' }}"
                  aria-label="Validade do CA do item {{ i.id }}">
         {{ ui.pilula_ca(i.validade_ca, hoje, i.exige_ca) }}</td>
       <td><input form="{{ id }}" name="quantidade_padrao" value="{{ i.quantidade_padrao }}"
@@ -260,27 +262,27 @@
        homônimo com o mesmo modelo —, e é nele que o foco cai na reabertura. #}
     <div class="campo {{ 'com-erro' if recusado }}"><label for="novo-nome">Nome</label>
       <input id="novo-nome" name="nome" required placeholder="Luva de proteção química"
-             value="{{ d.get('nome') or '' }}"{{ ' autofocus' if recusado }}></div>
+             value="{{ d.nome or '' }}"{{ ' autofocus' if recusado }}></div>
     <div class="campo"><label for="nova-categoria">Categoria (NR-6)</label>
       <select id="nova-categoria" name="categoria_id" required>
         <option value="">—</option>
-        {% for c in categorias if c.ativo %}
-        <option value="{{ c.id }}"{{ ui.sel(d.get('categoria_id'), c.id) }}>{{ c.rotulo }}</option>
-        {% endfor %}</select></div>
+        {% for c in categorias %}{% if c.ativo %}
+        <option value="{{ c.id }}"{{ ui.sel(d.categoria_id, c.id) }}>{{ c.rotulo }}</option>
+        {% endif %}{% endfor %}</select></div>
     <div class="campo"><label for="nova-unidade">Unidade de medida</label>
       <input id="nova-unidade" name="unidade_medida" list="unidades-epi"
-             value="{{ d.get('unidade_medida') or 'UNIDADE' }}"></div>
+             value="{{ d.unidade_medida or 'UNIDADE' }}"></div>
   </div>
 
   <div class="linha-campos">
     <div class="campo codigo"><label for="novo-ca">Número do CA</label>
       <input id="novo-ca" name="numero_ca" placeholder="12345" inputmode="numeric"
              aria-describedby="dica-ca"
-             value="{{ d.get('numero_ca') or '' }}">
+             value="{{ d.numero_ca or '' }}">
       <span class="dica" id="dica-ca">Obrigatório quando o item exige CA.</span></div>
     <div class="campo"><label for="nova-validade-ca">Validade do CA</label>
       <input id="nova-validade-ca" type="date" name="validade_ca"
-             value="{{ d.get('validade_ca') or '' }}"
+             value="{{ d.validade_ca or '' }}"
              aria-describedby="dica-validade-ca">
       <span class="dica atencao" id="dica-validade-ca">EPI com CA vencido não se entrega.</span></div>
     <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
@@ -288,64 +290,64 @@
          foi enviado — remarcar sozinho o que a pessoa acabou de desmarcar é
          perder digitado do mesmo jeito, só que sem parecer. #}
       <label class="discreto"><input type="checkbox" name="exige_ca" value="1"
-        {{- ' checked' if (d.get('exige_ca') == '1') or not recusado }}>
+        {{- ' checked' if (d.exige_ca == '1') or not recusado }}>
         exige Certificado de Aprovação</label></div>
   </div>
 
   <div class="linha-campos">
     <div class="campo"><label for="nova-padrao">Quantidade padrão</label>
       <input id="nova-padrao" name="quantidade_padrao"
-             value="{{ d.get('quantidade_padrao') or 1 }}" required
+             value="{{ d.quantidade_padrao or 1 }}" required
              inputmode="numeric" aria-describedby="dica-padrao">
       <span class="dica" id="dica-padrao">Preenche o formulário da requisição.</span></div>
     <div class="campo"><label for="nova-maxima">Quantidade máxima</label>
       <input id="nova-maxima" name="quantidade_maxima" inputmode="numeric"
-             value="{{ d.get('quantidade_maxima') or '' }}"
+             value="{{ d.quantidade_maxima or '' }}"
              aria-describedby="dica-maxima">
       <span class="dica" id="dica-maxima">Em branco = sem máximo.</span></div>
     <div class="campo"><label for="nova-janela">Período da máxima (meses)</label>
       <input id="nova-janela" name="periodo_maximo_meses" inputmode="numeric"
-             value="{{ d.get('periodo_maximo_meses') or '' }}"
+             value="{{ d.periodo_maximo_meses or '' }}"
              aria-describedby="dica-janela">
       <span class="dica" id="dica-janela">Anda junto com a máxima: “2 por 12 meses” é regra,
         “2” sozinho não é nada.</span></div>
     <div class="campo"><label for="nova-vida">Vida útil (meses)</label>
       <input id="nova-vida" name="vida_util_meses" inputmode="numeric"
-             value="{{ d.get('vida_util_meses') or '' }}"
+             value="{{ d.vida_util_meses or '' }}"
              aria-describedby="dica-vida">
       <span class="dica" id="dica-vida">Vira a previsão de troca na ficha.</span></div>
   </div>
 
   <div class="linha-campos">
     <div class="campo"><label for="novo-fabricante">Fabricante</label>
-      <input id="novo-fabricante" name="fabricante" value="{{ d.get('fabricante') or '' }}"></div>
+      <input id="novo-fabricante" name="fabricante" value="{{ d.fabricante or '' }}"></div>
     <div class="campo"><label for="nova-marca">Marca</label>
-      <input id="nova-marca" name="marca" value="{{ d.get('marca') or '' }}"></div>
+      <input id="nova-marca" name="marca" value="{{ d.marca or '' }}"></div>
     <div class="campo"><label for="novo-modelo">Modelo</label>
-      <input id="novo-modelo" name="modelo" value="{{ d.get('modelo') or '' }}"></div>
+      <input id="novo-modelo" name="modelo" value="{{ d.modelo or '' }}"></div>
     <div class="campo"><label for="novo-catmat">CATMAT</label>
-      <input id="novo-catmat" name="codigo_catmat" value="{{ d.get('codigo_catmat') or '' }}"></div>
+      <input id="novo-catmat" name="codigo_catmat" value="{{ d.codigo_catmat or '' }}"></div>
     <div class="campo"><label for="novo-ecampus">e-Campus</label>
-      <input id="novo-ecampus" name="codigo_ecampus" value="{{ d.get('codigo_ecampus') or '' }}"></div>
+      <input id="novo-ecampus" name="codigo_ecampus" value="{{ d.codigo_ecampus or '' }}"></div>
   </div>
 
   <div class="linha-campos">
     <div class="campo"><label for="novos-tamanhos">Tamanhos (um por linha)</label>
       <textarea id="novos-tamanhos" name="tamanhos" rows="3"
-placeholder="P&#10;M&#10;G">{{ d.get('tamanhos') or '' }}</textarea></div>
+placeholder="P&#10;M&#10;G">{{ d.tamanhos or '' }}</textarea></div>
     <div class="campo"><label for="novas-normas">Normas (uma por linha)</label>
       <textarea id="novas-normas" name="normas" rows="3"
-placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ d.get('normas') or '' }}</textarea></div>
+placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ d.normas or '' }}</textarea></div>
     <div class="campo"><label for="nova-descricao">Descrição</label>
-      <textarea id="nova-descricao" name="descricao" rows="3">{{ d.get('descricao') or '' }}</textarea></div>
+      <textarea id="nova-descricao" name="descricao" rows="3">{{ d.descricao or '' }}</textarea></div>
   </div>
 
   <div class="campo">
     <label class="discreto"><input type="checkbox" name="exige_justificativa" value="1"
-      {{- ' checked' if d.get('exige_justificativa') == '1' }}>
+      {{- ' checked' if d.exige_justificativa == '1' }}>
       exige justificativa na requisição</label>
     <label class="discreto"><input type="checkbox" name="exige_treinamento" value="1"
-      {{- ' checked' if d.get('exige_treinamento') == '1' }}>
+      {{- ' checked' if d.exige_treinamento == '1' }}>
       exige treinamento comprovado</label>
   </div>
 {% endcall %}

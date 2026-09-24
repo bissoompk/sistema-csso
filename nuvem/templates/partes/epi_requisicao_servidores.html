@@ -26,11 +26,11 @@
   {% for sv in servidores %}
   {% set quem = identificar(sv) %}
   <option value="{{ sv.id }}"
-    {{- ' selected' if marcado not in (none, '') and marcado|string == sv.id|string }}>{{ quem.com_siape }}</option>
+    {{- ' selected' if marcado not in [none, ''] and marcado|string == sv.id|string }}>{{ quem.com_siape }}</option>
   {% endfor %}
 </select>
 <span class="dica">
-  {%- if q and not servidores -%}
+  {%- if q and not servidores|length -%}
   Nada encontrado para “{{ q }}”. O SIAPE acha sempre; o nome só acha para quem
   tem permissão de ler identificação nominal (RN-19).
   {%- else -%}

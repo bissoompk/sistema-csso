@@ -12,7 +12,7 @@
 {# `atrasada` é método do modelo, e não atributo: não dá para filtrar com
    `selectattr`, e reescrever "prazo < hoje" aqui seria a regra em dois lugares. #}
 {%- set atrasadas = [] -%}
-{%- for p in pendencias if p.atrasada(hoje) -%}{%- set _ = atrasadas.append(p) -%}{%- endfor -%}
+{%- for p in pendencias -%}{%- if p.atrasada(hoje) -%}{%- set _ = atrasadas.push(p) -%}{%- endif -%}{%- endfor -%}
 <div class="tela">
 
   <div class="cabecalho-pagina">
@@ -105,7 +105,7 @@
           {%- else %}<span class="discreto">sem dono</span>{% endif %}</td>
         <td>
           {% if p.prazo and p.atrasada(hoje) %}
-          <span class="selo erro" title="{{ (hoje - p.prazo).days }} dia(s) de atraso">
+          <span class="selo erro" title="{{ dias_entre(p.prazo, hoje) }} dia(s) de atraso">
             {{ p.prazo|data }}</span>
           {% elif p.prazo %}
           <span class="mono">{{ p.prazo|data }}</span>
@@ -147,14 +147,14 @@
                aparece para quem pode agir, e é a mesma permissão que a aba
                nominal da ficha exige. #}
             {% set TELA_DA_ANCORA = {
-              'epi_ficha_registro': ('/epis/fichas/registros/', '', 'ficha de EPI', 'epi.ficha'),
-              'epi_entrada_estoque': ('/epis/estoque/', '/movimentos', 'extrato do lote', 'epi.ver'),
-              'epi_requisicao': ('/epis/requisicoes/', '', 'pedido de EPI', 'epi.ver'),
-              'demanda': ('/demandas/', '', 'demanda', 'demanda.ver'),
-              'turma': ('/turmas/', '?aba=inscricoes', 'inscrições da turma', 'turma.inscrever')
+              'epi_ficha_registro': ['/epis/fichas/registros/', '', 'ficha de EPI', 'epi.ficha'],
+              'epi_entrada_estoque': ['/epis/estoque/', '/movimentos', 'extrato do lote', 'epi.ver'],
+              'epi_requisicao': ['/epis/requisicoes/', '', 'pedido de EPI', 'epi.ver'],
+              'demanda': ['/demandas/', '', 'demanda', 'demanda.ver'],
+              'turma': ['/turmas/', '?aba=inscricoes', 'inscrições da turma', 'turma.inscrever']
             } %}
             {% if p.entidade %}
-            {% set ancora = TELA_DA_ANCORA.get(p.entidade) %}
+            {% set ancora = TELA_DA_ANCORA[p.entidade] %}
             {% if ancora and usuario.pode(ancora[3]) %}
             <a class="mono" href="{{ ancora[0] }}{{ p.entidade_id }}{{ ancora[1] }}{{ '&' if '?' in ancora[1] else '?' }}de=pendencias">{{ ancora[2] }}</a>
             {% else %}

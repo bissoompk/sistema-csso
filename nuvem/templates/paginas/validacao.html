@@ -141,11 +141,11 @@
     <div class="acoes"><button type="submit" class="secundario">Conferir o nome</button></div>
   </form>
 
-  {% if confere is true %}
+  {% if confere === true %}
   <div class="aviso aviso-ok" role="status">
     <p><strong>Confere.</strong> O nome digitado é o que consta neste certificado.</p>
   </div>
-  {% elif confere is false %}
+  {% elif confere === false %}
   <div class="aviso aviso-alerta" role="status">
     <p><strong>Não confere.</strong> O certificado é autêntico, mas o nome
       digitado não é o que consta nele. Confira a grafia completa, como está

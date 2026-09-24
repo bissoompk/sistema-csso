@@ -12,7 +12,7 @@
    que a pessoa carregou — eles chegam por este fragmento —, e sem devolvê-los a
    recusa apagaria a justificativa da RN-29, que é a mais cara de reescrever.
    No caminho normal (troca por HTMX) ele é indefinido e vale o padrão. #}
-{% set dg = digitado_item|default({}, true) %}
+{% set dg = digitado_item|default(sem_digitado, true) %}
 
 {% if not item %}
 <p class="discreto">Escolha o equipamento para ver quantidade, tamanhos e saldo.</p>
@@ -31,7 +31,7 @@
 
   <div class="campo">
     <label for="tamanho">Tamanho</label>
-    {% if item.lista_de_tamanhos %}
+    {% if item.lista_de_tamanhos|length %}
     {# ao escolher o tamanho, o saldo daquele tamanho: "40 luvas" não quer dizer
        nada se são todas P #}
     <select id="tamanho" name="tamanho" required

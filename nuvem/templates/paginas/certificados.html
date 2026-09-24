@@ -74,17 +74,17 @@
       <td><a class="mono" href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
       {# O nome vem do congelado: é o que o papel diz. Renomear depois não muda
          quem consta no documento que circulou. #}
-      <td class="nome">{{ congelado.get('participante_nome') or c.participante.nome_exibicao }}
+      <td class="nome">{{ congelado['participante_nome'] or c.participante.nome_exibicao }}
         <span class="quebra discreto mono">{{ c.participante.identificador_publico }}</span></td>
-      <td>{{ congelado.get('treinamento_nome') or c.treinamento.nome }}
-        {% if congelado.get('turma_codigo') %}
-        <span class="quebra discreto mono">{{ congelado.get('turma_codigo') }}</span>{% endif %}</td>
+      <td>{{ congelado['treinamento_nome'] or c.treinamento.nome }}
+        {% if congelado['turma_codigo'] %}
+        <span class="quebra discreto mono">{{ congelado['turma_codigo'] }}</span>{% endif %}</td>
       <td class="mono">{{ c.data_emissao|data }}</td>
       <td>
         {% if c.data_vencimento %}<span class="mono">{{ c.data_vencimento|data }}</span>
         {% else %}<span class="selo">não expira</span>{% endif %}
       </td>
-      <td>{{ ui.pilula_certificado(situacao_publica.get(c.id)) }}</td>
+      <td>{{ ui.pilula_certificado(situacao_publica[c.id]) }}</td>
     </tr>
     {% else %}
     {# A busca desta tela é por CHAVE EXATA, e é isso que a saída precisa dizer:
@@ -116,9 +116,9 @@
   {# Os três eixos do recorte viajam juntos na paginação — situação, treinamento
      e chave —, senão "próxima" abriria a lista inteira. #}
   {% set eixos = [] %}
-  {% if filtro_situacao %}{% set _ = eixos.append('situacao=' ~ filtro_situacao) %}{% endif %}
-  {% if filtro_treinamento %}{% set _ = eixos.append('treinamento_id=' ~ filtro_treinamento) %}{% endif %}
-  {% if busca %}{% set _ = eixos.append('busca=' ~ busca|urlencode) %}{% endif %}
+  {% if filtro_situacao %}{% set _ = eixos.push('situacao=' ~ filtro_situacao) %}{% endif %}
+  {% if filtro_treinamento %}{% set _ = eixos.push('treinamento_id=' ~ filtro_treinamento) %}{% endif %}
+  {% if busca %}{% set _ = eixos.push('busca=' ~ busca|urlencode) %}{% endif %}
   {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/certificados',
                   eixos|join('&')) }}
 

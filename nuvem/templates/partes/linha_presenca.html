@@ -78,7 +78,7 @@
     {%- else %}<span class="mono">{{ quem }}</span>{% endif %}
   </td>
   {% for dia in dias %}
-  {% set marca = linha.por_dia.get(dia) %}
+  {% set marca = linha.por_dia[dia] %}
   <td>
     {% if marca and marca.presente %}
     <span class="pilula ok sem-ponto">{{ marca.horas }}h</span>
@@ -93,14 +93,14 @@
           hx-post="/turmas/{{ turma.id }}/presencas"
           hx-target="{{ alvo_htmx }}" hx-swap="innerHTML">
       <input type="hidden" name="inscricao_id" value="{{ linha.inscricao.id }}">
-      <input type="hidden" name="data" value="{{ dia.isoformat() }}">
+      <input type="hidden" name="data" value="{{ dia }}">
       {% if dias|length > 1 %}
       {# na recusa o campo volta com o que foi digitado, e não com o que está
          gravado: quem escreveu "8" e recebeu "passaria da carga" precisa ver o
          8 para saber o que corrigir #}
       <input class="campo-curto" name="horas" inputmode="decimal"
              placeholder="h" aria-label="horas do dia {{ dia|data }}"
-             value="{{ digitado_horas if recusa_onde == dia.isoformat()
+             value="{{ digitado_horas if recusa_onde == dia
                        else (marca.horas if marca and marca.presente else '') }}">
       {% endif %}
       {% if retificando %}
@@ -111,7 +111,7 @@
       <button type="submit" class="secundario marcador">falta</button>
     </form>
     {% endif %}
-    {% if recusa and recusa_onde == dia.isoformat() %}
+    {% if recusa and recusa_onde == dia %}
     <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
     {% endif %}
   </td>
@@ -121,7 +121,7 @@
      resultado: quem vai reprovar só por nota tem frequência boa, e pintar a
      barra de âmbar ali diria que faltou. Quem decide o resultado continua
      sendo `avaliar`, na coluna Situação, com o motivo escrito. #}
-  {% set freq_baixa = linha.frequencia < turma.frequencia_minima_percentual %}
+  {% set freq_baixa = linha.frequencia_baixa %}
   <td>
     <span class="progresso vertical {{ 'abaixo' if freq_baixa }}">
       <span class="quanto">{{ linha.frequencia }}%</span>

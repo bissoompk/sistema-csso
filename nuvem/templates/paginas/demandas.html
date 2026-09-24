@@ -88,8 +88,8 @@
     <a class="ficha-filtro {{ 'ativa' if filtro_estado == codigo }}"
        href="/demandas?estado={{ codigo }}{{ '&minhas=1' if apenas_minhas }}{{ '&q=' ~ q|urlencode if q }}">
       {{ rotulo }} <span class="contador">
-        {%- if codigo -%}{{ contagem.get(codigo, 0) }}
-        {%- else -%}{{ contagem.get('ABERTA', 0) + contagem.get('EM_ANDAMENTO', 0) }}
+        {%- if codigo -%}{{ (contagem[codigo] or 0) }}
+        {%- else -%}{{ (contagem['ABERTA'] or 0) + (contagem['EM_ANDAMENTO'] or 0) }}
         {%- endif -%}</span></a>
     {% endfor %}
     <form method="get" action="/demandas" class="filtro-inline" role="search">
@@ -118,7 +118,7 @@
       {% for dm in demandas %}
       <tr>
         <td class="mono">{{ dm.data_chegada|data }}
-          <span class="discreto">{{ rotulo_canal.get(dm.canal, dm.canal) }}</span></td>
+          <span class="discreto">{{ (rotulo_canal[dm.canal] or dm.canal) }}</span></td>
         <td>
           <a href="/demandas/{{ dm.id }}">{{ dm.assunto }}</a>
           {%- if dm.desfecho %} {{ ui.pilula_desfecho(dm.desfecho, rotulo_desfecho) }}{% endif %}</td>
@@ -137,7 +137,7 @@
           {%- else %}<span class="discreto">sem dono</span>{% endif %}</td>
         <td>
           {% if dm.prazo and dm.atrasada(hoje) %}
-          <span class="selo erro" title="{{ (hoje - dm.prazo).days }} dia(s) de atraso">
+          <span class="selo erro" title="{{ dias_entre(dm.prazo, hoje) }} dia(s) de atraso">
             {{ dm.prazo|data }}</span>
           {% elif dm.prazo %}
           <span class="mono">{{ dm.prazo|data }}</span>
@@ -163,9 +163,9 @@
   {# Os eixos do recorte viajam juntos na paginação: sem eles, "próxima"
      devolveria a fila inteira a partir da página 2. #}
   {% set eixos = [] %}
-  {% if filtro_estado %}{% set _ = eixos.append('estado=' ~ filtro_estado) %}{% endif %}
-  {% if apenas_minhas %}{% set _ = eixos.append('minhas=1') %}{% endif %}
-  {% if q %}{% set _ = eixos.append('q=' ~ q|urlencode) %}{% endif %}
+  {% if filtro_estado %}{% set _ = eixos.push('estado=' ~ filtro_estado) %}{% endif %}
+  {% if apenas_minhas %}{% set _ = eixos.push('minhas=1') %}{% endif %}
+  {% if q %}{% set _ = eixos.push('q=' ~ q|urlencode) %}{% endif %}
   {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total, '/demandas',
                   eixos|join('&')) }}
 
@@ -184,7 +184,7 @@
   <div class="campo">
     <label for="assunto">Assunto</label>
     <input id="assunto" name="assunto" required maxlength="160"
-           value="{{ d.get('assunto') or '' }}"{{ ' autofocus' if recusado }}
+           value="{{ d['assunto'] or '' }}"{{ ' autofocus' if recusado }}
            placeholder="Chefia da FAMED pergunta sobre laudo do laboratório"
            aria-describedby="dica-assunto">
     <span class="dica" id="dica-assunto">Uma linha — é ela que aparece na fila.</span>
@@ -194,16 +194,16 @@
       <label for="canal">Como chegou</label>
       <select id="canal" name="canal">
         {% for c in canais %}
-        <option value="{{ c }}"{{ ui.sel(d.get('canal'), c) }}>{{ rotulo_canal[c] }}</option>
+        <option value="{{ c }}"{{ ui.sel(d['canal'], c) }}>{{ rotulo_canal[c] }}</option>
         {% endfor %}
       </select></div>
     <div class="campo">
       <label for="data_chegada">Data de chegada</label>
       <input id="data_chegada" name="data_chegada" type="date"
-             value="{{ d.get('data_chegada') or hoje.isoformat() }}"></div>
+             value="{{ d['data_chegada'] or hoje }}"></div>
     <div class="campo">
       <label for="prazo">Prazo (opcional)</label>
-      <input id="prazo" name="prazo" type="date" value="{{ d.get('prazo') or '' }}"
+      <input id="prazo" name="prazo" type="date" value="{{ d['prazo'] or '' }}"
              aria-describedby="dica-prazo">
       {# Fica na tela, e não no (i): muda a decisão que a pessoa está tomando
          agora — é a diferença entre a demanda cobrar e a demanda esperar. #}
@@ -215,7 +215,7 @@
     <div class="campo">
       <label for="solicitante_nome">Quem demandou</label>
       <input id="solicitante_nome" name="solicitante_nome" required maxlength="160"
-             value="{{ d.get('solicitante_nome') or '' }}"
+             value="{{ d['solicitante_nome'] or '' }}"
              aria-describedby="dica-solicitante">
       <span class="dica" id="dica-solicitante">Pode ser chefia, outro setor ou
         alguém de fora — nome escrito basta.</span></div>
@@ -225,7 +225,7 @@
               aria-describedby="dica-vinculo">
         <option value="">—</option>
         {%- for sv in servidores %}{% set quem = identificar(sv) %}
-        <option value="{{ sv.id }}"{{ ui.sel(d.get('solicitante_servidor_id'), sv.id) }}>
+        <option value="{{ sv.id }}"{{ ui.sel(d['solicitante_servidor_id'], sv.id) }}>
           {{- quem.nome }}{% if quem.siape %} ({{ quem.siape }}){% endif %}</option>
         {%- endfor %}
       </select>
@@ -236,14 +236,14 @@
       <select id="solicitante_unidade_uorg_id" name="solicitante_unidade_uorg_id">
         <option value="">—</option>
         {% for u in unidades %}
-        <option value="{{ u.id }}"{{ ui.sel(d.get('solicitante_unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>
+        <option value="{{ u.id }}"{{ ui.sel(d['solicitante_unidade_uorg_id'], u.id) }}>{{ u.nome_extenso }}</option>
         {% endfor %}
       </select></div>
   </div>
   <div class="campo">
     <label for="descricao">O que foi pedido</label>
     <textarea id="descricao" name="descricao" rows="3"
-              aria-describedby="dica-descricao">{{ d.get('descricao') or '' }}</textarea>
+              aria-describedby="dica-descricao">{{ d['descricao'] or '' }}</textarea>
     {# Fica na tela, e não no (i): é a recusa que a pessoa vai encontrar se
        escrever a frase errada, e ela precisa saber ANTES de digitar. #}
     <span class="dica" id="dica-descricao">Descreva o pedido e o ambiente, nunca a
@@ -256,7 +256,7 @@
       <option value="">sem dono</option>
       {% for p in pessoas %}
       <option value="{{ p.id }}"
-              {{- ui.sel(d.get('responsavel_id') or usuario.id, p.id) }}>{{ p.nome }}</option>
+              {{- ui.sel(d['responsavel_id'] or usuario.id, p.id) }}>{{ p.nome }}</option>
       {% endfor %}
     </select>
   </div>

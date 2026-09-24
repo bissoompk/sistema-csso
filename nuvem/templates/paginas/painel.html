@@ -171,7 +171,7 @@
           {% endcall %}
         </div>
         <div class="lista-linhas dupla">
-          {% for laudo in laudos_sem_conferencia[:10] %}
+          {% for laudo in laudos_sem_conferencia.slice(0, 10) %}
           <a href="/laudos/{{ laudo.id }}">
             <span class="mono">{{ laudo.numero_siape }}</span>
             <span class="recorte">{{ laudo.unidade.nome_extenso if laudo.unidade else '—' }}</span>

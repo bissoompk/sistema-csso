@@ -54,12 +54,12 @@
    Redeclarado aqui, e não herdado do template da página, porque este fragmento
    também é renderizado sozinho pelas rotas; incluído pela ficha, `digitado` já
    está no contexto e o valor é o mesmo. #}
-{% set d = digitado or {} %}
+{% set d = digitado or sem_digitado %}
     <div class="cabecalho-cartao">
       <h2>Itens do pedido</h2>
       <span class="contador">{{ itens|length }}</span>
       {% set pendentes = itens|rejectattr('decidido')|list %}
-      {% if requisicao.estado == 'EM_ANALISE' and pendentes %}
+      {% if requisicao.estado == 'EM_ANALISE' and pendentes|length %}
       <span class="pilula alerta">{{ pendentes|length }} sem decisão</span>
       {% endif %}
     </div>
@@ -120,7 +120,7 @@
             {{- ' · ' ~ l.impedimento if l.impedimento }}</span>
           {% if l.impedimento %}{{ ui.pilula_ca(l.entrada.validade_ca, hoje, i.item.exige_ca) }}{% endif %}
           {% else %}
-          {% if i.estado in ('APROVADO', 'SEM_ESTOQUE') %}
+          {% if i.estado in ['APROVADO', 'SEM_ESTOQUE'] %}
           <span class="quebra"><span class="pilula alerta">sem lote deste item no
             estoque</span></span>
           {% endif %}
@@ -165,12 +165,12 @@
              texto reescrito está aqui dentro — fechada, ela esconderia metade da
              resposta. Vindo por troca parcial, `base.html` promove este `[open]`
              a `showModal()` no `htmx:afterSwap`. #}
-          {% set dl = d if d.get('forma') == ('item-' ~ i.id) else {} %}
+          {% set dl = d if d.get('forma') == ('item-' ~ i.id) else sem_digitado %}
           {% call ui.popup_gaveta('acoes-item-' ~ i.id, 'ações',
                                   'Ações · ' ~ i.item.nome,
                                   nota=(i.tamanho ~ ' · ' if i.tamanho else '')
                                        ~ rotulos_item.get(i.estado, i.estado)|lower,
-                                  aberto=(true if dl else false)) %}
+                                  aberto=(true if dl|length else false)) %}
 
               {% if editavel and pode_requisitar %}
               <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}">
@@ -184,7 +184,7 @@
                   <div class="campo">
                     <label for="t-{{ i.id }}">Tamanho</label>
                     {% set tamanho_atual = dl.get('tamanho', i.tamanho) %}
-                    {% if i.item.lista_de_tamanhos %}
+                    {% if i.item.lista_de_tamanhos|length %}
                     <select id="t-{{ i.id }}" name="tamanho" required>
                       {% for t in i.item.lista_de_tamanhos %}
                       <option value="{{ t }}" {% if tamanho_atual == t %}selected{% endif %}>{{ t }}</option>
@@ -305,10 +305,10 @@
                  --------------------------------------------------------- #}
               {% set candidatos = lotes.get(i.id, []) %}
               {% set disponiveis = candidatos|selectattr('pode_sair')|list %}
-              {% set no_atendimento = requisicao.estado in ('ANALISADA', 'EM_ATENDIMENTO') %}
+              {% set no_atendimento = requisicao.estado in ['ANALISADA', 'EM_ATENDIMENTO'] %}
 
               {% if pode_estocar and no_atendimento
-                    and i.estado in ('APROVADO', 'SEM_ESTOQUE') %}
+                    and i.estado in ['APROVADO', 'SEM_ESTOQUE'] %}
               <form method="post"
                     action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/reservar"
                     hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/reservar"
@@ -345,19 +345,19 @@
                     </select>
                   </div>
                 </div>
-                {% for l in candidatos if l.impedimento %}
+                {% for l in candidatos %}{% if l.impedimento %}
                 <p class="dica"><span class="pilula erro">CA vencido</span>
                   Lote {{ l.entrada.lote or 'sem número' }}, {{ l.saldo }} em
                   estoque: {{ l.impedimento }}. Pela NR-6 o Certificado de
                   Aprovação é o que constitui o equipamento como EPI — prometer
                   este lote é prometer proteção nenhuma.</p>
-                {% endfor %}
+                {% endif %}{% endfor %}
                 <div class="acoes">
                   <button type="submit" class="compacto"
-                          {% if not disponiveis %}disabled{% endif %}>Reservar</button>
-                  {% if not disponiveis %}
+                          {% if not disponiveis|length %}disabled{% endif %}>Reservar</button>
+                  {% if not disponiveis|length %}
                   <span class="dica"><strong>Botão desabilitado:</strong>
-                    {% if candidatos %}nenhum lote deste item pode ser prometido
+                    {% if candidatos|length %}nenhum lote deste item pode ser prometido
                     hoje — os motivos estão acima.{% else %}não há lote deste item
                     no estoque.{% endif %} O caminho é renovar o CA do lote ou dar
                     entrada de lote novo em <a href="/epis/estoque">/epis/estoque</a>,
@@ -410,7 +410,7 @@
               </form>
               {% endif %}
 
-              {% if i.estado in ('APROVADO', 'RESERVADO') and pode_entregar
+              {% if i.estado in ['APROVADO', 'RESERVADO'] and pode_entregar
                     and no_atendimento %}
               {% set reserva = reservas.get(i.id) %}
               {# SEM `hx-post`, e é decisão: entregar muda o estado do PEDIDO
@@ -469,13 +469,13 @@
                     {% endif %}
                   </div>
                 </div>
-                {% for l in candidatos if l.impedimento %}
+                {% for l in candidatos %}{% if l.impedimento %}
                 <p class="dica"><span class="pilula erro">CA vencido</span>
                   Lote {{ l.entrada.lote or 'sem número' }}, {{ l.saldo }} em
                   estoque: {{ l.impedimento }}. Pela NR-6 o Certificado de
                   Aprovação é o que constitui o equipamento como EPI — entregar
                   assim significa não ter entregado proteção nenhuma.</p>
-                {% endfor %}
+                {% endif %}{% endfor %}
                 <div class="campo">
                   <label for="obs-{{ i.id }}">Observação</label>
                   <input id="obs-{{ i.id }}" name="observacao"
@@ -485,7 +485,7 @@
                 </div>
                 <div class="acoes">
                   {% set travado = (reserva and reservas_impedidas.get(i.id)) or
-                                   (not reserva and not disponiveis and candidatos) %}
+                                   (not reserva and not disponiveis|length and candidatos|length) %}
                   <button type="submit" class="compacto"
                           {% if travado %}disabled{% endif %}>Entregar</button>
                   {% if travado %}

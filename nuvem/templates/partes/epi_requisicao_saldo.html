@@ -20,10 +20,10 @@
 
 {% if not item %}
 {# nada a dizer antes da escolha do item #}
-{% elif item.lista_de_tamanhos and not tamanho %}
+{% elif item.lista_de_tamanhos|length and not tamanho %}
 <p class="discreto">Escolha o tamanho para ver o saldo daquele tamanho — o saldo
   somado do item não diz se existe o tamanho que a pessoa calça.</p>
-{% elif not lotes %}
+{% elif not lotes|length %}
 <div class="aviso aviso-alerta">
   <strong>Não há lote deste item{% if tamanho %} no tamanho {{ tamanho }}{% endif %}
     no estoque.</strong> O pedido pode ser enviado assim mesmo — pedir é declarar
@@ -31,7 +31,7 @@
   mesma coisa que você.
 </div>
 {% else %}
-{% set disponivel = lotes|selectattr('pode_sair')|sum(attribute='saldo') %}
+{% set disponivel = lotes|selectattr('pode_sair')|sum('saldo') %}
 <div class="tabela-cartao lista">
   <table>
     <thead>

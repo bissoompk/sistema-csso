@@ -133,17 +133,18 @@
       <span class="nota">caminhos desta instalação</span>
     </div>
     <dl class="tabela-dados">
-      <dt>Banco</dt><dd class="mono">{{ cfg.caminho_banco }}</dd>
-      <dt>Documentos</dt><dd class="mono">{{ cfg.caminho(cfg.dir_documentos) }}</dd>
-      <dt>Anexos</dt><dd class="mono">{{ cfg.caminho(cfg.dir_anexos) }}</dd>
-      <dt>Backup</dt><dd class="mono">{{ cfg.caminho(cfg.backup_destino) }}</dd>
+      <dt>Banco</dt><dd class="mono">{{ onde.banco }}</dd>
+      <dt>Documentos</dt><dd class="mono">{{ onde.documentos }}</dd>
+      <dt>Anexos</dt><dd class="mono">{{ onde.anexos }}</dd>
+      <dt>Backup</dt><dd class="mono">{{ onde.backup }}</dd>
+      <dt>Exportação</dt><dd class="mono">{{ onde.exportacao }}</dd>
       {# Onde RETIRAR o EPI reservado. Entra nesta lista, e não num cartão
          próprio, porque é da mesma natureza: parâmetro desta instalação, lido do
          .env e não editável por tela. Está aqui para ser DESCOBERTO — o sistema
          não tinha como saber a que porta mandar quem pediu EPI, e vazio a ficha
          do pedido diz isso em vez de inventar endereço. #}
       <dt>Retirada de EPI</dt>
-      <dd>{% if cfg.epi_local_retirada.strip() %}{{ cfg.epi_local_retirada }}
+      <dd>{% if cfg.epi_local_retirada|trim %}{{ cfg.epi_local_retirada }}
         {%- else %}<span class="discreto">não informado — a ficha do pedido diz
         que o local não está registrado, e a pessoa continua ligando para
         perguntar. Preencha <span class="mono">CSSO_EPI_LOCAL_RETIRADA</span> no
@@ -164,8 +165,8 @@
        a declarar o que produz. #}
     <div class="aviso-legal">
       As duas ações movem <strong>dados pessoais de servidores</strong>.
-      <strong>Nunca</strong> sincronize <code>dados/backups/</code>,
-      <code>dados/anexos/</code> ou <code>dados/documentos/</code> com nuvem pessoal ou de
+      <strong>Nunca</strong> copie os pacotes de <code>backups/</code> e
+      <code>exportacoes/</code>, nem os anexos, para nuvem pessoal ou de
       terceiros (LGPD arts. 33-36, 39 e 46). Qualquer destino em nuvem exige autorização
       formal da UFVJM e contrato de operador.
     </div>
@@ -233,9 +234,11 @@
                           'Fazer o backup agora',
                           nota='AES-256-GCM, com a senha desta instalação') %}
   <div class="aviso aviso-info">
-    <p><strong>Backup cifrado</strong> — um <code>.enc</code> com o banco
-      <strong>e</strong> os arquivos de <code>anexos/</code> e <code>documentos/</code>,
-      inclusive os comprovantes de EPI assinados.</p>
+    <p><strong>Backup cifrado</strong> — um <code>.enc</code> com o banco inteiro
+      (uma tabela por arquivo) <strong>e</strong> todos os anexos, inclusive os
+      comprovantes de EPI assinados, gravado no armazenamento privado desta
+      instalação. Os documentos gerados não vão: saem de novo do que o banco
+      congelou.</p>
     <p>AES-256-GCM: abre <strong>só</strong> com a senha de backup desta instalação.
       <strong>Backup sem a senha é lixo</strong> — guarde-a onde a instituição guarda
       segredo, não junto do arquivo.</p>
@@ -258,7 +261,7 @@
     <p>É assim de propósito — ele existe para o setor trabalhar amanhã sem este
       sistema, e um pacote que só este sistema abre não serviria a isso.</p>
     <p>Uma cópia fica em
-      <code class="mono">{{ cfg.caminho(cfg.backup_destino) }}</code> e <strong>não é
+      <code class="mono">{{ onde.exportacao }}</code> e <strong>não é
       apagada sozinha</strong>. Quem clica leva a base inteira embora.</p>
   </div>
 {% endcall %}

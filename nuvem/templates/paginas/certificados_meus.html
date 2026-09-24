@@ -61,15 +61,15 @@
       <td><a class="mono" href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
       {# do congelado: é o que o papel diz. Renomear o treinamento depois não muda
          o que está escrito no documento que já circulou. #}
-      <td>{{ congelado.get('treinamento_nome') or c.treinamento.nome }}
-        {% if congelado.get('turma_codigo') %}
-        <span class="quebra discreto mono">{{ congelado.get('turma_codigo') }}</span>{% endif %}</td>
+      <td>{{ congelado['treinamento_nome'] or c.treinamento.nome }}
+        {% if congelado['turma_codigo'] %}
+        <span class="quebra discreto mono">{{ congelado['turma_codigo'] }}</span>{% endif %}</td>
       <td class="mono">{{ c.data_base_vencimento|data }}</td>
       <td>
         {% if c.data_vencimento %}<span class="mono">{{ c.data_vencimento|data }}</span>
         {% else %}<span class="selo">não expira</span>{% endif %}
       </td>
-      <td>{{ ui.pilula_certificado(situacao_publica.get(c.id)) }}</td>
+      <td>{{ ui.pilula_certificado(situacao_publica[c.id]) }}</td>
       <td><a class="botao secundario compacto"
              href="/certificados/{{ c.id }}/documento">Segunda via (.docx)</a></td>
     </tr>

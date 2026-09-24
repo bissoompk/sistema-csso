@@ -34,7 +34,7 @@
     {% for chave, rotulo in catalogos %}
     <a class="cartao link" href="/catalogos/{{ chave }}">
       <span class="titulo">{{ rotulo }}</span>
-      <span class="discreto">{{ DESCRICAO.get(chave, 'Catálogo do domínio.') }}</span>
+      <span class="discreto">{{ DESCRICAO[chave] or 'Catálogo do domínio.' }}</span>
     </a>
     {% endfor %}
   </div>

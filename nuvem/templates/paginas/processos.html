@@ -112,16 +112,16 @@
         página ele fica fechado, e é ali que a lista recortada passaria a
         parecer a lista inteira. #}
   {% set aplicados = [] %}
-  {% if filtro.q %}{% set _ = aplicados.append('busca “' ~ filtro.q ~ '”') %}{% endif %}
-  {% if filtro.estado %}{% set _ = aplicados.append(filtro.estado|estado) %}{% endif %}
-  {% for t in tipos if filtro.tipo and t.codigo == filtro.tipo %}
-  {% set _ = aplicados.append(t.nome) %}{% endfor %}
-  {% for u in unidades if filtro.unidade_id and u.id == filtro.unidade_id %}
-  {% set _ = aplicados.append(u.nome_extenso) %}{% endfor %}
-  {% for u in responsaveis if filtro.responsavel_id and u.id == filtro.responsavel_id %}
-  {% set _ = aplicados.append(u.nome) %}{% endfor %}
+  {% if filtro.q %}{% set _ = aplicados.push('busca “' ~ filtro.q ~ '”') %}{% endif %}
+  {% if filtro.estado %}{% set _ = aplicados.push(filtro.estado|estado) %}{% endif %}
+  {% for t in tipos %}{% if filtro.tipo and t.codigo == filtro.tipo %}
+  {% set _ = aplicados.push(t.nome) %}{% endif %}{% endfor %}
+  {% for u in unidades %}{% if filtro.unidade_id and u.id == filtro.unidade_id %}
+  {% set _ = aplicados.push(u.nome_extenso) %}{% endif %}{% endfor %}
+  {% for u in responsaveis %}{% if filtro.responsavel_id and u.id == filtro.responsavel_id %}
+  {% set _ = aplicados.push(u.nome) %}{% endif %}{% endfor %}
   {% if filtro.agrupar %}
-  {% set _ = aplicados.append('agrupado por ' ~ chaves_agrupamento.get(filtro.agrupar, filtro.agrupar)|lower) %}
+  {% set _ = aplicados.push('agrupado por ' ~ chaves_agrupamento.get(filtro.agrupar, filtro.agrupar)|lower) %}
   {% endif %}
 
   <details class="cartao filtros"{{ ' open' if aplicados }}>
