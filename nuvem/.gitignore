@@ -1,2 +1,6 @@
+node_modules/
+.env
+.netlify/
+dist/
 # arquivos de desenvolvimento do armazenamento local (src/servicos/armazenamento.ts)
 .dados/
