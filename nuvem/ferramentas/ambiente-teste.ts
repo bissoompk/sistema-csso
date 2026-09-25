@@ -227,12 +227,27 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
   return resumo;
 }
 
-/** Apaga o banco inteiro (esquemas `public` e `drizzle`), migra e semeia. */
+/**
+ * Apaga os dados do sistema (as tabelas de `public` e o esquema `drizzle`),
+ * migra e semeia.
+ *
+ * Apaga as TABELAS, e não o esquema `public`: no Supabase o `public` vem com
+ * permissões para os papéis da plataforma que um `CREATE SCHEMA public` novo
+ * não teria.
+ */
 export async function recriar(url: string): Promise<void> {
   const postgres = (await import("postgres")).default;
   const sql = postgres(url, { max: 1, prepare: false, onnotice: () => {} });
   try {
-    await sql.unsafe("DROP SCHEMA IF EXISTS drizzle CASCADE; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");
+    await sql.unsafe(`
+      DROP SCHEMA IF EXISTS drizzle CASCADE;
+      DO $$
+      DECLARE t record;
+      BEGIN
+        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+          EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE', t.tablename);
+        END LOOP;
+      END $$;`);
   } finally {
     await sql.end({ timeout: 5 });
   }

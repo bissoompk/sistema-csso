@@ -244,3 +244,33 @@ DROP TRIGGER IF EXISTS trg_demanda_encaminhamento_sem_truncate ON demanda_encami
 CREATE TRIGGER trg_demanda_encaminhamento_sem_truncate
   BEFORE TRUNCATE ON demanda_encaminhamento
   FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('demanda_encaminhamento e append-only: TRUNCATE proibido.');
+
+
+-- =====================================================================
+-- A API de dados do Supabase fica FORA do sistema.
+--
+-- O Supabase publica toda tabela de `public` numa API REST (PostgREST) para
+-- os papeis `anon` e `authenticated`, e a chave `anon` e feita para ir no
+-- navegador. Sem isto, quem tivesse a chave leria a trilha, os servidores e
+-- as fichas direto, sem passar por login, RBAC nem RN-19. O sistema nao usa
+-- essa API: fala com o banco como `postgres`, dono das tabelas, e o dono
+-- passa por cima do RLS. Entao: RLS ligado sem politica nenhuma (a API nao
+-- enxerga linha) e os privilegios desses papeis revogados. No Postgres local,
+-- onde os papeis nao existem, a segunda parte nao faz nada.
+-- =====================================================================
+DO $$
+DECLARE t record;
+BEGIN
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+    REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+    REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon, authenticated;
+    -- o esquema continua visivel para a plataforma (painel, service_role)
+    GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+    GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+    GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+  END IF;
+END $$;
