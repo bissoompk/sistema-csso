@@ -291,6 +291,15 @@
   </header>
 {% endif %}
 
+{# A instalação de homologação vive na mesma nuvem que a de produção, com a
+   mesma cara: sem esta faixa, dado real de servidor entra no banco de teste
+   por engano (LGPD). Produção não mostra nada; local também não. #}
+{% if ambiente == 'homologacao' %}
+<div class="faixa-alerta">
+  <div>⚠ Ambiente de HOMOLOGAÇÃO — só dados de teste. Não cadastre dado real de servidor aqui.</div>
+</div>
+{% endif %}
+
 {% if avisos_config %}
 <div class="faixa-alerta">
   {% for aviso in avisos_config %}<div>⚠ {{ aviso }}</div>{% endfor %}

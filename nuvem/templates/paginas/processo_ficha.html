@@ -5,7 +5,8 @@
 {% block trilha %}<span class="atual mono" aria-current="page">{{ processo.nup }}</span>{% endblock %}
 
 {% block acoes_cabecalho %}
-{% if processo.url_permanente %}
+{# só http(s) vira link: o campo é digitado, e `javascript:` num href é script #}
+{% if processo.url_permanente and (processo.url_permanente.startsWith('https://') or processo.url_permanente.startsWith('http://')) %}
 <a class="botao secundario" href="{{ processo.url_permanente }}" target="_blank" rel="noopener">Abrir no SEI ↗</a>
 {% endif %}
 {% if usuario.pode('parecer.criar') %}

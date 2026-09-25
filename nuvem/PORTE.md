@@ -6,9 +6,10 @@ no **Supabase Postgres** e os arquivos no **Supabase Storage**. O sistema
 Python da raiz do repositório continua existindo e continua sendo a
 referência de regra: este porte **não reinventa regra nenhuma**, traduz.
 
-> **Só dados de teste.** Esta instalação é homologação/demonstração. Dado real
-> de servidor da UFVJM não entra aqui (`docs/SERVIDOR_LINUX.md`, ROPA,
-> `POLITICA_RETENCAO.md` §5).
+> **Dados reais desde a decisão de 24/09/2026**, com a autorização formal da
+> UFVJM, o encarregado (DPO) e o contrato com os operadores ainda pendentes —
+> ver `docs/ROPA_NUVEM.md` (o que mudou em relação ao ROPA do sistema Python e
+> o que falta providenciar). Até 24/09/2026 esta instalação era só de teste.
 
 ## Mapa: Python → TypeScript
 

@@ -269,3 +269,72 @@ export function identificador_opaco(servidor_id: number | null | undefined, seme
   const h = createHash("sha256").update(`${semente}:${servidor_id ?? "None"}`, "utf8").digest("hex");
   return `SRV-${h.slice(0, 4)}`;
 }
+
+// ---------------------------------------------------------------------
+// CPF digitado em campo livre (revisão de privacidade, 25/09/2026)
+// ---------------------------------------------------------------------
+/**
+ * O que fica no lugar do CPF. Nenhum dígito: o sistema não guarda CPF (RN-21;
+ * ROPA §4.5), nem parcial — a máscara `***.456.789-**` do Portal da
+ * Transparência guarda seis dígitos para desempatar homônimo publicado, e aqui
+ * não há o que desempatar. O ROPA §6 já recusa máscara parcial de matrícula;
+ * de CPF, com mais razão.
+ */
+export const CPF_MASCARADO = "***.***.***-**";
+
+// 123.456.789-09 (e as variações sem um dos separadores). Os olhares em volta
+// impedem casar dentro de número maior (NUP, chave de NF-e, CNPJ) e dentro de
+// palavra — um SHA-256 em hexadecimal tem, de vez em quando, onze dígitos
+// seguidos que "conferem", e hash não pode mudar um byte.
+const RE_CPF = /(?<![\p{L}\p{N}_./-])(\d{3})(\.?)(\d{3})(\.?)(\d{3})(-?)(\d{2})(?![\p{L}\p{N}_])/gu;
+
+/** Os dois dígitos verificadores do CPF conferem. */
+export function cpf_valido(onze: string): boolean {
+  if (!/^\d{11}$/.test(onze) || /^(\d)\1{10}$/.test(onze)) return false;
+  const d = [...onze].map(Number);
+  for (const n of [9, 10]) {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += d[i]! * (n + 1 - i);
+    const dv = ((soma * 10) % 11) % 10;
+    if (dv !== d[n]) return false;
+  }
+  return true;
+}
+
+/**
+ * Troca todo CPF de dentro do texto por `CPF_MASCARADO`.
+ *
+ * - Com a pontuação inteira (`123.456.789-09`), mascara sempre, com dígito
+ *   verificador certo ou não: a forma é inconfundível, e CPF digitado errado
+ *   continua sendo CPF de alguém.
+ * - Sem a pontuação inteira (`12345678909`, `123456789-09`), só quando os
+ *   dígitos verificadores conferem — onze dígitos seguidos também são telefone
+ *   com DDD, e a conferência erra 1 vez em 100 em vez de sempre.
+ *
+ * Por que mascarar em vez de recusar (a RN-21 do Python RECUSA a palavra
+ * "cpf"): a recusa precisa de tela que devolva o formulário, e isso existe só
+ * nos campos que a RN-21 já filtra. Esta proteção vale na ENTRADA de todo
+ * formulário, de toda chamada da API e de toda importação, inclusive nos campos
+ * que nunca tiveram filtro (observações, motivos, justificativas, nomes de
+ * arquivo) — e ali a única saída que não perde o resto do texto é mascarar.
+ * O Python não detectava o NÚMERO em lugar nenhum; ver DESVIOS.md.
+ */
+export function mascarar_cpf(texto: string): string {
+  if (texto.length < 11) return texto;
+  return texto.replace(RE_CPF, (inteiro, a, p1, b, p2, c, h, dv) => {
+    const formatado = p1 === "." && p2 === "." && h === "-";
+    return formatado || cpf_valido(`${a}${b}${c}${dv}`) ? CPF_MASCARADO : inteiro;
+  });
+}
+
+/** `mascarar_cpf` em toda string de uma estrutura (corpo JSON, quadro do Trello). */
+export function mascarar_cpf_em<T>(valor: T): T {
+  if (typeof valor === "string") return mascarar_cpf(valor) as T;
+  if (Array.isArray(valor)) return valor.map((v) => mascarar_cpf_em(v)) as T;
+  if (valor && typeof valor === "object" && Object.getPrototypeOf(valor) === Object.prototype) {
+    const saida: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(valor as Record<string, unknown>)) saida[k] = mascarar_cpf_em(v);
+    return saida as T;
+  }
+  return valor;
+}

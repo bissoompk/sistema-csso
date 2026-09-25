@@ -172,3 +172,40 @@ export function identificar(
   // que é o lado seguro do erro.
   return new Identificacao(false, textos.identificador_opaco(servidor_id, semente), "", servidor_id);
 }
+
+// Campos cujo valor, sozinho, identifica o servidor. A lista é curta de
+// propósito: "antes → depois" de estado, prazo ou percentual é o que a
+// conferência da trilha precisa, e não diz de quem é.
+const CAMPOS_NOMINAIS_DA_TRILHA = new Set([
+  "nome",
+  "siape",
+  "email",
+  "nome_servidor_snapshot",
+  "siape_snapshot",
+  "solicitante_nome",
+]);
+
+/**
+ * RN-19 no "antes → depois" da trilha (revisão de privacidade, 25/09/2026).
+ *
+ * `texto_livre` já suprimia a DESCRIÇÃO do evento para quem não lê nome — mas o
+ * valor gravado ao lado ia inteiro, e o registro da ficha de EPI grava ali o
+ * retrato da linha (`{'servidor': 'Fulano', 'siape': '...'}`). `admin_ti` tem
+ * `auditoria.ver` e não tem permissão nominal: lia nome e SIAPE de toda
+ * entrega. O Python tem o mesmo buraco (`auditoria.html`).
+ *
+ * Suprime o valor que é objeto/lista (retrato de linha) e o de campo nominal;
+ * o resto (estado, data, percentual) passa, porque é o que a conferência lê.
+ * Não reescreve nada: o valor gravado entra no digest da cadeia.
+ */
+export function valor_da_trilha(
+  valor: unknown,
+  campo: string | null | undefined,
+  usuario: UsuarioAtual | null | undefined,
+): unknown {
+  if (valor === null || valor === undefined || valor === "") return valor;
+  if (usuario?.ve_dado_nominal) return valor;
+  if (typeof valor === "object") return TEXTO_SUPRIMIDO;
+  if (campo && CAMPOS_NOMINAIS_DA_TRILHA.has(campo)) return TEXTO_SUPRIMIDO;
+  return valor;
+}

@@ -170,7 +170,7 @@
       terceiros (LGPD arts. 33-36, 39 e 46). Qualquer destino em nuvem exige autorização
       formal da UFVJM e contrato de operador.
     </div>
-    {% if usuario.pode('backup.executar') or usuario.pode('exportar') %}
+    {% if usuario.pode('backup.executar') or pode_exportar_tudo %}
     {# As duas ações passaram a ser CAMADA, e não por poluição: elas movem a base
        inteira, e o texto que diz o que cada uma produz precisava ser lido ANTES
        do clique. Estava embaixo dos dois botões, num rodapé que se lê depois —
@@ -179,7 +179,7 @@
       {% if usuario.pode('backup.executar') %}
       {{ ui.botao_cadastro('fazer-backup', BACKUP) }}
       {% endif %}
-      {% if usuario.pode('exportar') %}
+      {% if pode_exportar_tudo %}
       {{ ui.botao_cadastro('exportar-tudo', EXPORTAR, 'secundario') }}
       {% endif %}
     </div>
@@ -246,7 +246,7 @@
 {% endcall %}
 {% endif %}
 
-{% if usuario.pode('exportar') %}
+{% if pode_exportar_tudo %}
 {# `popup_cadastro`, e não um link: a rota é POST desde a 1.31.0, e o porquê está
    escrito em `rotas/configuracao.py`. Um link aqui daria 405 — e a caixa é um
    `<form method="post">`, que é exatamente o que ela precisa ser. #}

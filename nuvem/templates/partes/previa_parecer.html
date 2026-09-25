@@ -93,7 +93,7 @@
     <tr>
       <td colspan="3">
         <strong>Fundamentação Legal</strong><br><br>
-        {{ c.fundamentacao_legal|replace('\n', '<br>')|safe }}*<br><br>
+        {{ c.fundamentacao_legal|escape|nl2br }}*<br><br>
         {% if c.alteracao %}{{ c.alteracao }}<br><br>{% endif %}
         {% if c.reavaliacao %}{{ c.reavaliacao }}{% endif %}
       </td>

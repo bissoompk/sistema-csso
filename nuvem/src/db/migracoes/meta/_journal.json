@@ -15,6 +15,27 @@
       "when": 1790281025974,
       "tag": "0001_parecer_rascunhos_sem_numero",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790295702112,
+      "tag": "0002_instalacao_e_rotinas",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790295973890,
+      "tag": "0003_limite_login_ip",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790296675186,
+      "tag": "0004_registro_acesso",
+      "breakpoints": true
     }
   ]
 }

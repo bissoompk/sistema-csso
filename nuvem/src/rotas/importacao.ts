@@ -23,6 +23,7 @@ import * as importacao_trello from "../servicos/importacao_trello.js";
 import * as servico_reconciliacao from "../servicos/reconciliacao.js";
 import { recontar_sequencia } from "../servicos/numeracao.js";
 import { linha_csv } from "./relatorios.js";
+import * as textos from "../servicos/textos.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -89,7 +90,9 @@ rotas.post("/importar/trello", async (c) => {
   const aplicar = f.texto("aplicar") === "1";
   let dados: Record<string, unknown>;
   try {
-    dados = JSON.parse(new TextDecoder().decode(conteudo));
+    // CPF escrito em cartão/comentário não chega ao staging, ao processo nem
+    // ao `migracao_rejeitada.payload` (revisão de privacidade, 25/09/2026)
+    dados = textos.mascarar_cpf_em(JSON.parse(new TextDecoder().decode(conteudo)));
   } catch {
     throw new ErroHttp(422, "O arquivo não é um JSON válido do quadro do Trello.");
   }

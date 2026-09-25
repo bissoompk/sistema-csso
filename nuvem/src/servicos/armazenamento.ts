@@ -12,7 +12,7 @@
  * A chave é um caminho relativo com `/` (ex.: `anexos/ab/abcdef...`). Nada que
  * venha de fora vira chave sem passar por `conferirChave`.
  */
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { obterConfig } from "../config.js";
 
@@ -23,8 +23,21 @@ export interface Armazenamento {
   ler(chave: string): Promise<Uint8Array>;
   existe(chave: string): Promise<boolean>;
   remover(chave: string): Promise<void>;
+  /**
+   * Os arquivos diretamente sob `prefixo` (um nível, sem subpastas), em ordem
+   * de nome. Só a retenção de backups lista (`servicos/rotinas.ts`): o resto
+   * do sistema sempre sabe a chave que quer.
+   */
+  listar(prefixo: string): Promise<ItemArmazenado[]>;
   /** URL temporária para o navegador baixar direto (só no Storage). */
   urlAssinada?(chave: string, segundos: number, nomeDownload?: string): Promise<string>;
+}
+
+export interface ItemArmazenado {
+  /** a chave completa (`prefixo/nome`) */
+  chave: string;
+  nome: string;
+  tamanho: number | null;
 }
 
 export class ArquivoAusente extends Error {
@@ -84,6 +97,24 @@ export class ArmazenamentoLocal implements Armazenamento {
   async remover(chave: string): Promise<void> {
     await rm(this.caminho(chave), { force: true });
   }
+
+  async listar(prefixo: string): Promise<ItemArmazenado[]> {
+    const pasta = this.caminho(prefixo);
+    let entradas;
+    try {
+      entradas = await readdir(pasta, { withFileTypes: true });
+    } catch (erro) {
+      if ((erro as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw erro;
+    }
+    const itens: ItemArmazenado[] = [];
+    for (const e of entradas) {
+      if (!e.isFile()) continue;
+      const { size } = await stat(path.join(pasta, e.name));
+      itens.push({ chave: `${prefixo}/${e.name}`, nome: e.name, tamanho: size });
+    }
+    return itens.sort((a, b) => a.nome.localeCompare(b.nome));
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -113,8 +144,17 @@ export class ArmazenamentoSupabase implements Armazenamento {
     if (!this.bucketPronto) {
       const cliente = this.cliente;
       this.bucketPronto = (async () => {
-        const { error } = await cliente.storage.getBucket(this.bucket);
-        if (!error) return;
+        const { data, error } = await cliente.storage.getBucket(this.bucket);
+        if (!error) {
+          // Bucket que já existia e é PÚBLICO (criado pelo painel, ou virado
+          // depois): todo anexo — comprovante assinado, parecer — teria URL
+          // aberta a quem adivinhar a chave. Recusa em vez de gravar (revisão
+          // de privacidade, 25/09/2026). O conserto é no painel: bucket privado.
+          if (data?.public) {
+            throw new Error(`o bucket ${this.bucket} e PUBLICO: torne-o privado no painel do Supabase antes de usar`);
+          }
+          return;
+        }
         const criado = await cliente.storage.createBucket(this.bucket, { public: false });
         if (criado.error && !/already exists/i.test(criado.error.message)) {
           throw new Error(`nao foi possivel criar o bucket ${this.bucket}: ${criado.error.message}`);
@@ -155,6 +195,25 @@ export class ArmazenamentoSupabase implements Armazenamento {
     const b = await this.obter();
     const { error } = await b.remove([conferirChave(chave)]);
     if (error) throw new Error(`falha ao remover ${chave} do Storage: ${error.message}`);
+  }
+
+  async listar(prefixo: string): Promise<ItemArmazenado[]> {
+    const b = await this.obter();
+    const pasta = conferirChave(prefixo);
+    const itens: ItemArmazenado[] = [];
+    // o Storage pagina; 1000 por página e segue até a página vir incompleta
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await b.list(pasta, { limit: 1000, offset, sortBy: { column: "name", order: "asc" } });
+      if (error) throw new Error(`falha ao listar ${pasta} no Storage: ${error.message}`);
+      for (const item of data ?? []) {
+        // pasta no Storage vem sem `id`
+        if (!item.id) continue;
+        const tamanho = (item.metadata as { size?: number } | null)?.size ?? null;
+        itens.push({ chave: `${pasta}/${item.name}`, nome: item.name, tamanho });
+      }
+      if (!data || data.length < 1000) break;
+    }
+    return itens;
   }
 
   async urlAssinada(chave: string, segundos: number, nomeDownload?: string): Promise<string> {

@@ -72,6 +72,7 @@ async function _tela(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: string 
   const do_processo = usuario.pode("processo.ver");
   return pagina(c, "paginas/config.html", usuario, {
     cfg: { ambiente: cfg.ambiente, epi_local_retirada: cfg.epiLocalRetirada },
+    pode_exportar_tudo: pode_exportar_tudo(usuario),
     onde: _onde_mora(),
     versao: VERSAO,
     do_processo,
@@ -135,6 +136,18 @@ rotas.post("/config/backup", async (c) => {
 });
 
 /**
+ * Quem leva o banco INTEIRO em claro. Não basta `exportar`: sete perfis a têm
+ * (técnico, consulta PROGEP, auditor...), e o zip traz tudo o que o escopo, a
+ * RN-19 e a porta dos anexos negam a eles — mais o hash de senha de todas as
+ * contas. Fica com quem responde pelo sistema: quem concede perfil
+ * (superintendência) ou quem gere o catálogo (coordenação). DESVIO do Python,
+ * que pedia só `exportar` (ver DESVIOS.md, "Produção — segurança").
+ */
+export function pode_exportar_tudo(usuario: UsuarioAtual): boolean {
+  return usuario.pode("exportar") && (usuario.pode("perfil.conceder") || usuario.pode("catalogo.gerenciar"));
+}
+
+/**
  * POST, e não GET: o que sai daqui é um zip EM CLARO com o banco inteiro.
  *
  * Na nuvem a resposta passa fácil dos 6 MB de corpo da função do Netlify: com
@@ -144,6 +157,18 @@ rotas.post("/config/backup", async (c) => {
 rotas.post("/config/exportar-tudo", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("exportar");
+  if (!pode_exportar_tudo(usuario)) {
+    throw new PermissaoNegada(
+      "exportar",
+      "A exportação completa (o banco inteiro, em claro) é só de quem responde pelo sistema: " +
+        "superintendência ou coordenação da CSSO.",
+    );
+  }
+  // RN-19 (revisão de privacidade, 25/09/2026): o zip é o banco em claro, com
+  // nome e SIAPE de todo servidor. `exportar` sozinho não é permissão nominal —
+  // na matriz ele sempre anda com `exposicao.ver`, mas um perfil montado sem
+  // ela levaria o cadastro inteiro por aqui.
+  usuario.exigir("exposicao.ver");
   const tx = c.get("tx");
   const alvo = await servico_backup.exportar_tudo(tx);
   await auditoria.registrar(tx, {

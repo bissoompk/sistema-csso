@@ -15,6 +15,11 @@ import { obterConfig, VERSAO } from "../config.js";
 import { usuarioLogado } from "../dependencias.js";
 import { PermissaoNegada } from "../servicos/rbac.js";
 import { parecer_tecnico, processo } from "../db/esquema/index.js";
+import { lerMarca } from "../servicos/instalacao.js";
+import { ROTINA_BACKUP, ultimas_execucoes } from "../servicos/rotinas.js";
+
+/** Backup mais velho que isto é alerta: a rotina é diária, com folga de meio dia. */
+export const BACKUP_ATRASADO_HORAS = 36;
 
 export const rotas = new Hono<Ambiente>();
 
@@ -52,11 +57,33 @@ rotas.get("/saude/db", async (c) => {
   );
   const n = Number((travas as unknown as { n: number }[])[0]?.n ?? 0);
   const ok = n > 0;
+  // NUVEM: as rotinas agendadas (backup, retenção, expurgos, cadeia) não têm
+  // janela nem log de máquina para olhar — a última passada de cada uma fica
+  // aqui, e o backup atrasado ou falho vira alerta (ver PRODUCAO.md).
+  const rotinas = await ultimas_execucoes(tx);
+  const alertas: string[] = [];
+  const ultimoBackup = rotinas.find((r) => r.rotina === ROTINA_BACKUP);
+  if (!ultimoBackup) alertas.push("nenhum backup registrado");
+  else if (!ultimoBackup.ok) alertas.push("o último backup FALHOU");
+  else if (Date.now() - new Date(ultimoBackup.concluida_em).getTime() > BACKUP_ATRASADO_HORAS * 3_600_000) {
+    alertas.push(`o último backup tem mais de ${BACKUP_ATRASADO_HORAS} horas`);
+  }
+  for (const r of rotinas) if (!r.ok && r.rotina !== ROTINA_BACKUP) alertas.push(`a última passada de ${r.rotina} falhou`);
+  const marca = await lerMarca(tx);
   return c.json({
     status: ok ? "ok" : "falha",
     integrity_check: ok ? "ok" : "nenhuma trava (trigger) instalada: rode `npm run db:migrar`",
     processos: Number(p?.n ?? 0),
     pareceres: Number(q?.n ?? 0),
     versao: VERSAO,
+    producao: marca !== null,
+    rotinas: rotinas.map((r) => ({
+      rotina: r.rotina,
+      ok: r.ok,
+      concluida_em: new Date(r.concluida_em).toISOString(),
+      duracao_ms: r.duracao_ms,
+      detalhe: r.detalhe,
+    })),
+    alertas,
   });
 });

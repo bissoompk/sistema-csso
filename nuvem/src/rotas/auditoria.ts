@@ -14,6 +14,7 @@ import {
   ultima_conferencia,
 } from "../servicos/auditoria.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
+import * as identificacao from "../servicos/identificacao.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { pagina } from "../web.js";
 
@@ -51,8 +52,15 @@ async function _trilha(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: strin
   const [ok, defeito] = await janela_integra(tx, eventos);
   const tipos = (await tx.selectDistinct({ t: historico_evento.tipo_evento }).from(historico_evento)).map((l) => l.t).sort();
   const entidades = (await tx.selectDistinct({ e: historico_evento.entidade }).from(historico_evento)).map((l) => l.e).sort();
+  // RN-19 no "antes → depois": a janela acima confere o gravado; a tela recebe
+  // a cópia com o valor nominal suprimido para quem não lê nome.
+  const eventos_tela = eventos.map((e) => ({
+    ...e,
+    valor_anterior: identificacao.valor_da_trilha(e.valor_anterior, e.campo, usuario),
+    valor_novo: identificacao.valor_da_trilha(e.valor_novo, e.campo, usuario),
+  }));
   return pagina(c, "paginas/auditoria.html", usuario, {
-    eventos,
+    eventos: eventos_tela,
     janela_ok: ok,
     janela_defeito: defeito,
     conferencia: await ultima_conferencia(tx),

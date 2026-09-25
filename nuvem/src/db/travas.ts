@@ -91,4 +91,8 @@ export const TRIGGERS = [
   'trg_demanda_encaminhamento_sem_update',
   'trg_demanda_encaminhamento_sem_delete',
   'trg_demanda_encaminhamento_sem_truncate',
+  // a marca de produção (tabela `instalacao`) não se desfaz pela aplicação
+  'trg_instalacao_sem_update',
+  'trg_instalacao_sem_delete',
+  'trg_instalacao_sem_truncate',
 ] as const;

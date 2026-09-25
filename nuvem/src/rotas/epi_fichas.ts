@@ -366,6 +366,11 @@ async function registro_e_permissao(tx: Executor, usuario: UsuarioAtual, bruto: 
   const registro = await registro_por_id(tx, inteiro(bruto));
   if (!registro) return null;
   usuario.exigir("epi.entregar");
+  // RN-19 (revisão de privacidade, 25/09/2026): o comprovante leva nome e SIAPE
+  // de quem recebeu. `epi.entregar` sozinho não é permissão nominal — na matriz
+  // ele sempre anda com `epi.ficha`, mas um perfil montado sem ela imprimia o
+  // papel nominal de qualquer um. Ler a linha é ler a ficha.
+  servico.exigir_leitura_da_ficha(usuario, registro.servidor_id);
   return registro;
 }
 

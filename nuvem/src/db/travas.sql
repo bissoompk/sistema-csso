@@ -247,6 +247,29 @@ CREATE TRIGGER trg_demanda_encaminhamento_sem_truncate
 
 
 -- =====================================================================
+-- A marca de producao (`instalacao`, gravada por ferramentas/producao-iniciar.ts)
+-- nao se desfaz pela aplicacao. E ela que faz `ambiente-teste` e
+-- `producao-iniciar` recusarem o banco — uma marca que um UPDATE apagasse nao
+-- travaria nada. Desfazer e gesto manual no editor SQL (PRODUCAO.md):
+-- ALTER TABLE instalacao DISABLE TRIGGER USER; DELETE ...; ENABLE TRIGGER USER.
+-- =====================================================================
+DROP TRIGGER IF EXISTS trg_instalacao_sem_update ON instalacao;
+CREATE TRIGGER trg_instalacao_sem_update
+  BEFORE UPDATE ON instalacao
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('instalacao: a marca de producao nao se altera pela aplicacao');
+
+DROP TRIGGER IF EXISTS trg_instalacao_sem_delete ON instalacao;
+CREATE TRIGGER trg_instalacao_sem_delete
+  BEFORE DELETE ON instalacao
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('instalacao: a marca de producao nao se apaga pela aplicacao');
+
+DROP TRIGGER IF EXISTS trg_instalacao_sem_truncate ON instalacao;
+CREATE TRIGGER trg_instalacao_sem_truncate
+  BEFORE TRUNCATE ON instalacao
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('instalacao: a marca de producao nao se apaga pela aplicacao');
+
+
+-- =====================================================================
 -- A API de dados do Supabase fica FORA do sistema.
 --
 -- O Supabase publica toda tabela de `public` numa API REST (PostgREST) para

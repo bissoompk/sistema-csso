@@ -75,6 +75,10 @@ export const MOTIVOS: Record<string, string> = {
 export function destino_seguro(proximo: string | null | undefined): string {
   const p = (proximo ?? "").trim();
   if (!p.startsWith("/") || p.startsWith("//") || p.startsWith("/\\")) return INICIO;
+  // O navegador APAGA tab e quebra de linha de qualquer ponto da URL antes de
+  // segui-la: `/<TAB>/atacante.example` virava `//atacante.example`. Controle e
+  // barra invertida em qualquer posição: volta ao início.
+  if (/[\u0000-\u001f\u007f\\]/.test(p)) return INICIO;
   return p;
 }
 

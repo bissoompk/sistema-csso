@@ -224,6 +224,12 @@ function valor_da_celula(v: ExcelJS.CellValue): unknown {
     if ("error" in o) return String(o.error);
     return null;
   }
+  // CPF que a planilha traga em qualquer coluna não chega ao staging nem ao
+  // relatório de rejeitadas (revisão de privacidade, 25/09/2026)
+  if (typeof v === "string") return textos.mascarar_cpf(v);
+  if (typeof v === "number" && Number.isInteger(v) && textos.mascarar_cpf(String(v)) !== String(v)) {
+    return textos.CPF_MASCARADO;
+  }
   return v;
 }
 

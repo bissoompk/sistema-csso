@@ -64,6 +64,13 @@ async function _tela_lista(
   });
 }
 
+/** A tela com a senha provisória no recado — e sem cache (`no-store`). */
+async function _senha_na_tela(c: Ctx, usuario: UsuarioAtual, mensagem: string): Promise<Response> {
+  const r = await _tela_lista(c, usuario, { mensagem });
+  r.headers.set("cache-control", "no-store");
+  return r;
+}
+
 /** Campo obrigatório ausente: o 422 do `Form(...)` do FastAPI. */
 function exigidos(f: Formulario, ...nomes: string[]): void {
   const faltando = nomes.filter((n) => typeof f.dados.get(n) !== "string");
@@ -115,7 +122,9 @@ rotas.post("/usuarios", async (c) => {
     descricao: `Conta '${f.texto("login")}' criada.`,
     usuario,
   });
-  return redirecionar(c, comMensagem("/usuarios", `Conta criada. Senha provisória: ${provisoria}`));
+  // A senha provisória sai no CORPO, nunca na URL: no `?mensagem=` ela ficava
+  // no histórico do navegador e em qualquer registro de acesso do caminho.
+  return _senha_na_tela(c, usuario, `Conta criada. Senha provisória: ${provisoria}`);
 });
 
 rotas.post("/usuarios/:id{[0-9]+}/senha", async (c) => {
@@ -142,7 +151,7 @@ rotas.post("/usuarios/:id{[0-9]+}/senha", async (c) => {
     descricao: `Senha de '${alvo.login}' redefinida e sessões revogadas.`,
     usuario,
   });
-  return redirecionar(c, comMensagem("/usuarios", `Nova senha provisória de ${alvo.login}: ${provisoria}`));
+  return _senha_na_tela(c, usuario, `Nova senha provisória de ${alvo.login}: ${provisoria}`);
 });
 
 rotas.post("/usuarios/:id{[0-9]+}/inativar", async (c) => {

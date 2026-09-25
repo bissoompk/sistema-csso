@@ -127,7 +127,8 @@
     <select id="assin-servidor" name="servidor_id"{{ ' autofocus' if recusado }}>
       <option value="">— (marque “externo” abaixo se não for servidor)</option>
       {% for sv in servidores %}
-      <option value="{{ sv.id }}"{{ ui.sel(d['servidor_id'], sv.id) }}>{{ sv.nome }} · SIAPE {{ sv.siape }}</option>
+      {# RN-19: a lista é o cadastro inteiro; sem permissão nominal sai o código opaco #}
+      <option value="{{ sv.id }}"{{ ui.sel(d['servidor_id'], sv.id) }}>{{ identificar(sv).com_siape }}</option>
       {% endfor %}
     </select></div>
   <div class="linha-campos">

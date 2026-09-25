@@ -2,7 +2,7 @@
  * Devolve um backup cifrado (ou uma exportação em claro) a um banco VAZIO.
  * O `backup.restaurar` do Python, da linha de comando.
  *
- *     npx tsx ferramentas/restaurar-backup.ts <arquivo.enc|arquivo.zip> [--permitir-remoto]
+ *     npx tsx ferramentas/restaurar-backup.ts <arquivo.enc|arquivo.zip> [--anexos <pasta>] [--permitir-remoto]
  *
  * - O banco de destino é o do `DATABASE_URL`, e tem de estar MIGRADO e SEM
  *   DADOS (`npm run db:migrar`, e não `db:semear`): restaurar em cima de um
@@ -11,19 +11,34 @@
  * - Os anexos voltam para o armazenamento configurado (Supabase Storage, ou a
  *   pasta local).
  * - A senha do `.enc` é `CSSO_BACKUP_SENHA`.
+ * - Pacote do backup DIÁRIO (tem `anexos.json`): os anexos não estão dentro
+ *   dele, e sim cifrados um a um em `backups/anexos/<sha256>.enc`. Eles são
+ *   lidos de `--anexos <pasta>` (a pasta `backups/anexos` baixada do bucket)
+ *   ou, sem a opção, do próprio armazenamento configurado. Cada um é conferido
+ *   pelo SHA-256 antes de voltar.
  * - Fora de localhost pede `--permitir-remoto`, como o ambiente de teste.
  *
  * Restaurar é feito para conferir antes de trocar: o destino recomendado é um
  * banco novo, e a troca da URL da instalação é decisão de quem responde por ela.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { carregarEnvLocal } from "./env-local.js";
 import { bancoLocal } from "./ambiente-teste.js";
 
+function valor(argv: string[], nome: string): string | null {
+  const i = argv.indexOf(nome);
+  if (i >= 0) return argv[i + 1] ?? null;
+  const junto = argv.find((a) => a.startsWith(`${nome}=`));
+  return junto ? junto.slice(nome.length + 1) : null;
+}
+
 export async function principal(argv: string[]): Promise<number> {
   carregarEnvLocal();
-  const arquivo = argv.find((a) => !a.startsWith("--"));
+  const anexosPasta = valor(argv, "--anexos");
+  const arquivo = argv.find((a, i) => !a.startsWith("--") && !(argv[i - 1] === "--anexos" && a === anexosPasta));
   const url = process.env.DATABASE_URL;
   if (!arquivo || !url) {
     console.error("uso: restaurar-backup <arquivo.enc|arquivo.zip> (com DATABASE_URL apontando para um banco vazio)");
@@ -70,11 +85,46 @@ export async function principal(argv: string[]): Promise<number> {
     }
     const contagem = await db.transaction((tx) => backup.restaurar_no_banco(tx, aberto.banco!));
     const arm = obterArmazenamento();
+    let arquivos = 0;
     for (const [nome, bytes] of aberto.arquivos) {
-      if (nome.startsWith("anexos/")) await arm.gravar(nome, bytes);
+      if (!nome.startsWith("anexos/")) continue;
+      await arm.gravar(nome, bytes);
+      arquivos += 1;
+    }
+    const faltando: string[] = [];
+    if (aberto.anexos_separados) {
+      const pasta = valor(argv, "--anexos");
+      for (const { storage_key } of aberto.anexos_separados) {
+        // o índice vem de dentro do pacote, mas a chave é refeita aqui e não lida
+        // dele: `storage_key` é `ab/<sha256>` e nada além disso vira caminho
+        const m = /^([0-9a-f]{2})\/([0-9a-f]{64})$/.exec(storage_key);
+        if (!m || m[1] !== m[2]!.slice(0, 2)) throw new Error(`storage_key inesperado no índice: ${storage_key}`);
+        const copia = backup.chave_do_anexo_no_backup(storage_key);
+        let cifrado: Uint8Array;
+        try {
+          cifrado = pasta
+            ? new Uint8Array(readFileSync(path.join(pasta, path.basename(copia))))
+            : await arm.ler(copia);
+        } catch {
+          faltando.push(storage_key);
+          continue;
+        }
+        const bytes = backup.decifrar(cifrado, backup.senha_padrao());
+        if (createHash("sha256").update(bytes).digest("hex") !== m[2]) {
+          // cópia que não é o que diz ser não volta — e a restauração não termina "ok"
+          faltando.push(`${storage_key} (SHA-256 não confere)`);
+          continue;
+        }
+        await arm.gravar(`anexos/${storage_key}`, bytes);
+        arquivos += 1;
+      }
     }
     const linhas = Object.values(contagem).reduce((a, b) => a + b, 0);
-    console.log(`[restaurar] ${Object.keys(contagem).length} tabelas, ${linhas} linhas, ${aberto.arquivos.size} arquivo(s).`);
+    console.log(`[restaurar] ${Object.keys(contagem).length} tabelas, ${linhas} linhas, ${arquivos} arquivo(s).`);
+    if (faltando.length) {
+      console.error(`[restaurar] ATENÇÃO: ${faltando.length} anexo(s) sem cópia íntegra: ${faltando.slice(0, 5).join(", ")}${faltando.length > 5 ? "…" : ""}`);
+      return 5;
+    }
   } finally {
     await fecharBanco();
   }

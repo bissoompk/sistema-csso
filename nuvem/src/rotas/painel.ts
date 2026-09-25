@@ -3,6 +3,7 @@
  * Porte de `app/rotas/painel.py`.
  */
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { Ambiente } from "../nucleo/contexto.js";
 import { usuarioCom } from "../dependencias.js";
@@ -21,6 +22,9 @@ import * as datas_br from "../servicos/datas_br.js";
 import { habilitados_vigentes } from "../servicos/parecer.js";
 import { resumir } from "../servicos/processo.js";
 import { LIMIAR_SUPRESSAO, suprimir } from "./relatorios.js";
+import * as identificacao from "../servicos/identificacao.js";
+import { atores_para_tela } from "../servicos/privacidade.js";
+import { ESCOPO_PROPRIO } from "../servicos/rbac.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -110,7 +114,23 @@ rotas.get("/", async (c) => {
       laudo.data_ultima_conferencia === null || datas_br.meses_entre(laudo.data_ultima_conferencia, hoje) > 24,
   );
 
-  const eventos = await tx.select().from(historico_evento).orderBy(desc(historico_evento.id)).limit(10);
+  // Revisão de privacidade (25/09/2026): "Últimos eventos" atravessa o sistema
+  // inteiro. Quem só alcança o PRÓPRIO dado (`servidor_consulta`) vê só o que
+  // ele mesmo fez — os eventos dos outros diziam quem pediu EPI, quem se
+  // inscreveu —, e o nome de quem agiu passa pela RN-19 quando a conta é de um
+  // servidor (`atores_para_tela`). Laudo só para quem tem `laudo.ver`: a fila
+  // abria link que dava 403.
+  const eventos = await atores_para_tela(
+    tx,
+    await tx
+      .select()
+      .from(historico_evento)
+      .where(usuario.escopo === ESCOPO_PROPRIO ? eq(historico_evento.usuario_id, usuario.id) : undefined)
+      .orderBy(desc(historico_evento.id))
+      .limit(10),
+    usuario,
+    identificacao.semente_de({ cookies: { get: (n: string) => getCookie(c, n) ?? null } }),
+  );
 
   // Primeiro acesso: a conta nasce superintendente, que governa acesso mas não
   // opera processo. Sem esta dica o coordenador trava no primeiro minuto.
@@ -126,7 +146,7 @@ rotas.get("/", async (c) => {
     precisam_de_voce,
     total_precisam,
     fila_precisam: FILA_PRECISAM,
-    laudos_sem_conferencia,
+    laudos_sem_conferencia: usuario.pode("laudo.ver") ? laudos_sem_conferencia : [],
     eventos,
   });
 });

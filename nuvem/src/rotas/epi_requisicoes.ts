@@ -19,6 +19,7 @@
  * para o `onError`, que a rende como 403 com a mensagem.
  */
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Tx } from "../db/cliente.js";
@@ -225,15 +226,40 @@ async function _motivos_ativos(tx: Tx) {
     .orderBy(asc(epi_motivo_recusa.rotulo));
 }
 
-/** `{usuario_id: nome}` para a ficha. O nome, e não o id. */
-async function _nomes_de(tx: Tx, ids: (number | null | undefined)[]): Promise<Dic> {
+/**
+ * `{usuario_id: nome}` para a ficha. O nome, e não o id.
+ *
+ * RN-19 (revisão de privacidade, 25/09/2026): a conta que ABRIU o pedido é,
+ * muitas vezes, a do próprio requerente (`servidor_consulta`). Escrever o nome
+ * da conta em "Aberto por" desfazia, na mesma tela, o `SRV-xxxx` do titular.
+ * Conta vinculada a servidor passa por `identificar(...)`, como o titular;
+ * conta de equipe sem vínculo continua saindo pelo nome (é o ator, não o
+ * titular).
+ */
+async function _nomes_de(
+  tx: Tx,
+  ids: (number | null | undefined)[],
+  quem?: { c: Ctx; usuario: UsuarioAtual },
+): Promise<Dic> {
   const alvos = [...new Set(ids.filter((i): i is number => i !== null && i !== undefined))];
   if (!alvos.length) return dic({});
   const linhas = await tx
-    .select({ id: tabela_usuario.id, nome: tabela_usuario.nome })
+    .select({ id: tabela_usuario.id, nome: tabela_usuario.nome, servidor_id: tabela_usuario.servidor_id })
     .from(tabela_usuario)
     .where(inArray(tabela_usuario.id, alvos));
-  return dic(new Map(linhas.map((u) => [u.id, u.nome])));
+  const semente = quem
+    ? identificacao.semente_de({ cookies: { get: (n: string) => getCookie(quem.c, n) ?? null } })
+    : "";
+  return dic(
+    new Map(
+      linhas.map((u) => {
+        if (u.servidor_id === null || (quem && identificacao.pode_ver_nominal(quem.usuario, u.servidor_id))) {
+          return [u.id, u.nome];
+        }
+        return [u.id, textos.identificador_opaco(u.servidor_id, semente)];
+      }),
+    ),
+  );
 }
 
 async function _entrada(tx: Tx, entrada_id: number | null) {
@@ -302,7 +328,7 @@ async function _secao_dos_itens(
     nomes: await _nomes_de(tx, [
       ...requisicao.itens.map((l) => l.decidido_por),
       ...requisicao.itens.map((l) => l.autorizado_por),
-    ]),
+    ], { c, usuario }),
     editavel: servico.EDITAVEL.has(requisicao.estado),
     pode_requisitar: usuario.pode("epi.requisitar"),
     pode_analisar: usuario.pode("epi.analisar"),
@@ -560,6 +586,24 @@ async function _trilha(tx: Tx, requisicao: RequisicaoTela) {
     .orderBy(desc(historico_evento.ocorrido_em), desc(historico_evento.id));
 }
 
+/**
+ * A trilha com o nome de quem agiu passado pela mesma regra de `_nomes_de`:
+ * quando quem agiu é o próprio requerente (conta vinculada ao servidor), o
+ * `usuario_nome` gravado na trilha desfazia o `SRV-xxxx` do titular na mesma
+ * tela (revisão de privacidade, 25/09/2026). A linha gravada não muda.
+ */
+async function _trilha_para_tela(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  eventos: Awaited<ReturnType<typeof _trilha>>,
+) {
+  const atores = await _nomes_de(c.get("tx"), eventos.map((e) => e.usuario_id), { c, usuario });
+  return eventos.map((e) => ({
+    ...e,
+    usuario_nome: e.usuario_id !== null ? (atores.get(e.usuario_id) ?? e.usuario_nome) : e.usuario_nome,
+  }));
+}
+
 async function _tela_ficha(
   c: Ctx,
   usuario: UsuarioAtual,
@@ -594,8 +638,8 @@ async function _tela_ficha(
       requisicao.solicitado_por_id,
       ...requisicao.itens.map((l) => l.decidido_por),
       ...requisicao.itens.map((l) => l.autorizado_por),
-    ]),
-    eventos: await _trilha(tx, requisicao),
+    ], { c, usuario }),
+    eventos: await _trilha_para_tela(c, usuario, await _trilha(tx, requisicao)),
     servidores: await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)),
     editavel: servico.EDITAVEL.has(requisicao.estado),
     // o estado admite cancelar E nada saiu ainda
@@ -655,7 +699,7 @@ rotas.get(`${FILA}/:requisicao_id{[0-9]+}/guia`, async (c) => {
     rotulos: dic(ROTULO_EPI_REQUISICAO),
     rotulos_item: dic(ROTULO_EPI_ITEM),
     rotulo_finalidade: ROTULO_FINALIDADE[requisicao.finalidade] ?? requisicao.finalidade,
-    nomes: await _nomes_de(tx, [requisicao.analisado_por]),
+    nomes: await _nomes_de(tx, [requisicao.analisado_por], { c, usuario }),
   });
 });
 

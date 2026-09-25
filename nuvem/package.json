@@ -12,6 +12,9 @@
     "db:migrar": "tsx ferramentas/migrar.ts",
     "db:semear": "tsx ferramentas/semear.ts",
     "ambiente-teste": "tsx ferramentas/ambiente-teste.ts",
+    "producao-iniciar": "tsx ferramentas/producao-iniciar.ts",
+    "rotinas": "tsx ferramentas/rotinas.ts",
+    "backup:restaurar": "tsx ferramentas/restaurar-backup.ts",
     "tipos": "tsc --noEmit",
     "test": "vitest run"
   },

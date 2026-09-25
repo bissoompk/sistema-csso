@@ -19,6 +19,7 @@
  * 9. o PDF — que na nuvem não existe (`pdf.disponivel()` é falso): sai o .docx
  *    com o aviso que o Python já dava sem LibreOffice (PORTE.md §8).
  */
+import { ambienteDeProducao } from "./instalacao.js";
 import { and, asc, desc, eq, isNull, ne } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -110,6 +111,20 @@ export async function url_base_validacao(tx: Executor): Promise<string> {
   const doAmbiente = (process.env.CSSO_URL_PUBLICA || process.env.URL || "").trim();
   if (doAmbiente) return doAmbiente.replace(/\/+$/, "");
   return `http://127.0.0.1:${process.env.PORTA || "8765"}`;
+}
+
+/**
+ * O endereço público foi DECLARADO (parâmetro ou `CSSO_URL_PUBLICA`)? Os
+ * recuos de `url_base_validacao` — a `URL` que o Netlify dá ao site e o
+ * endereço de desenvolvimento — servem ao teste, mas não a um certificado de
+ * verdade: a URL vai congelada no QR e no texto do documento, e um QR que
+ * aponta para `*.netlify.app` ou `127.0.0.1` não se corrige depois de impresso.
+ * Em produção (`CSSO_AMBIENTE=producao`) a emissão fica bloqueada sem ela
+ * (`validar`); quem a define é `ferramentas/producao-iniciar.ts`.
+ */
+export async function url_publica_declarada(tx: Executor): Promise<boolean> {
+  const [parametro] = await tx.select().from(tabela_parametro).where(eq(tabela_parametro.chave, PARAMETRO_URL_PUBLICA));
+  return Boolean((parametro?.valor ?? "").trim() || (process.env.CSSO_URL_PUBLICA ?? "").trim());
 }
 
 /**
@@ -249,6 +264,15 @@ export async function validar(
   const quando = opcoes.quando ?? datas_br.hoje();
   const v = new Validacao();
   const turma = inscricao.turma;
+
+  // NUVEM: em produção o endereço do QR tem de ter sido declarado (ver
+  // `url_publica_declarada`) — o recuo para a URL do Netlify não vale ali.
+  if (ambienteDeProducao() && !(await url_publica_declarada(tx))) {
+    v.bloqueios.push(
+      "o endereço público de validação (parâmetro certificado.url_publica) não foi definido — " +
+        "ele fica congelado no QR do certificado; defina-o antes da primeira emissão (PRODUCAO.md)",
+    );
+  }
 
   if (turma.situacao !== "CONCLUIDA") {
     v.bloqueios.push(`${turma.codigo} ainda não foi concluída — o certificado atesta um curso que terminou`);

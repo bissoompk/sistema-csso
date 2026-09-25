@@ -8,9 +8,10 @@
  */
 import { Hono } from "hono";
 import type { Ambiente, Ctx } from "./nucleo/contexto.js";
-import { cabecalhos, novoNonce } from "./nucleo/seguranca.js";
+import { cabecalhos, novoNonce, origemCruzada, resumoDoErro } from "./nucleo/seguranca.js";
 import { ErroHttp, PermissaoNegada, RecusaDaApi, RedirecionaParaLogin } from "./nucleo/erros.js";
 import { obterBanco } from "./db/cliente.js";
+import { instalarRegistroDeAcesso } from "./servicos/registro_acesso.js";
 import { pagina } from "./web.js";
 import { usuarioOpcional } from "./dependencias.js";
 import { ROTAS } from "./rotas/index.js";
@@ -68,6 +69,10 @@ async function telaDeErro(c: Ctx, titulo: string, detalhe: string, codigo: strin
 export function criarApp(): Hono<Ambiente> {
   const app = new Hono<Ambiente>();
 
+  // Registro de acesso (porte de `app/registro_acesso.py`): o mais externo,
+  // para medir a requisição inteira e ver o status que de fato saiu.
+  instalarRegistroDeAcesso(app);
+
   // Cabeçalhos de segurança + nonce da CSP, em TODA resposta.
   app.use("*", async (c, next) => {
     const nonce = novoNonce();
@@ -77,6 +82,17 @@ export function criarApp(): Hono<Ambiente> {
     for (const [nome, valor] of cabecalhos(nonce, https)) {
       if (!c.res.headers.has(nome)) c.res.headers.set(nome, valor);
     }
+  });
+
+  // CSRF: método que escreve vindo de outra origem é recusado antes de tocar
+  // no banco (`origemCruzada` explica por que o SameSite=Lax não basta).
+  app.use("*", async (c, next) => {
+    if (origemCruzada(c.req.method, c.req.url, (n) => c.req.header(n))) {
+      const recusa = "Pedido recusado: veio de outra origem (proteção contra CSRF).";
+      if (pedeJson(c as Ctx)) return c.json({ erro: recusa, motivos: ["origem cruzada"] }, 403);
+      return c.text(recusa, 403);
+    }
+    return next();
   });
 
   // A transação da requisição: COMMIT no retorno normal, ROLLBACK quando a
@@ -131,7 +147,9 @@ export function criarApp(): Hono<Ambiente> {
       }
       return c.json({ detail: erro.detalhe }, erro.status as any);
     }
-    console.error("erro nao tratado", erro);
+    // `resumoDoErro`: sem os valores da consulta nem o `detail` do Postgres —
+    // o log do Netlify não é lugar de dado pessoal
+    console.error("erro nao tratado", resumoDoErro(erro));
     if (pedeJson(c)) return c.json({ erro: "Erro interno.", motivos: [] }, 500);
     return telaDeErro(
       c,

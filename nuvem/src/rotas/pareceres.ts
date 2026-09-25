@@ -324,7 +324,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
   const usuario = await usuarioCom(c, "parecer.editar");
   const tx = c.get("tx");
   const parecer_id = _id(c);
-  const parecer = await servico.carregar(tx, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
   if (parecer === null) return redirecionar(c, "/processos");
   if (parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
     return _desenhar_editor(c, usuario, parecer_id, {
@@ -498,8 +498,15 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/portaria", async (c) => {
     ]);
   }
   const texto_original = f.texto("texto_original");
-  const parecer = await servico.carregar(tx, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
   if (parecer === null) return redirecionar(c, "/processos");
+  // RN-14: sem isto a portaria (e o marco inicial) de um parecer já emitido
+  // ou assinado mudava depois de ele ir para o SEI.
+  if (parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
+    return _desenhar_editor(c, usuario, parecer_id, {
+      erro: "Parecer emitido é imutável (RN-14). Crie uma nova versão.",
+    });
+  }
 
   const analise = analisar_portaria(texto_original);
   const data_publicacao = f.texto("data_publicacao");
@@ -558,7 +565,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes", async (c) => {
       ...(percentual_id === null ? ["percentual_id"] : []),
     ]);
   }
-  const parecer = await servico.carregar(tx, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
   if (parecer === null || parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
     return redirecionar(c, `/pareceres/${parecer_id}`);
   }
@@ -657,7 +664,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes/:exposicao_id{[0-9]+}/epi"
   const exposicao_id = _id(c, "exposicao_id");
   const f = await formulario(c);
   if (!f.tem("epi_neutraliza")) _incompleto(["epi_neutraliza"]);
-  const parecer = await servico.carregar(tx, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
   const exposicao = parecer?.exposicoes.find((e) => e.id === exposicao_id);
   if (!parecer || !exposicao) return redirecionar(c, `/pareceres/${parecer_id}`);
   try {
@@ -676,9 +683,15 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes/:exposicao_id{[0-9]+}/epi"
 });
 
 rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes/:exposicao_id{[0-9]+}/excluir", async (c) => {
-  await usuarioCom(c, "parecer.editar");
+  const usuario = await usuarioCom(c, "parecer.editar");
   const tx = c.get("tx");
   const parecer_id = _id(c);
+  // Escopo e RN-14, como no cadastro da exposição: excluir o agente de um
+  // parecer emitido reescrevia o que já foi assinado e está no SEI.
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  if (parecer === null || parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
+    return redirecionar(c, `/pareceres/${parecer_id}`);
+  }
   await tx
     .delete(tabela_exposicao)
     .where(and(eq(tabela_exposicao.id, _id(c, "exposicao_id")), eq(tabela_exposicao.parecer_id, parecer_id)));
@@ -689,7 +702,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/emitir", async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
   const parecer_id = _id(c);
-  const parecer = await servico.carregar(tx, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
   if (parecer === null) return redirecionar(c, "/processos");
   let resultado: servico.ResultadoEmissao;
   try {
@@ -710,7 +723,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/assinar", async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
   const parecer_id = _id(c);
-  const parecer = await servico.carregar(tx, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
   if (parecer === null) return redirecionar(c, "/processos");
   try {
     await servico.assinar(tx, parecer, usuario);
@@ -730,7 +743,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/anular", async (c) => {
   const parecer_id = _id(c);
   const f = await formulario(c);
   if (!f.tem("motivo")) _incompleto(["motivo"]);
-  const parecer = await servico.carregar(tx, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
   if (parecer === null) return redirecionar(c, "/processos");
   try {
     await servico.anular(tx, parecer, usuario, f.texto("motivo"));

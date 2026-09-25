@@ -99,6 +99,21 @@ export const sessao = pgTable('sessao', {
   revogada: boolean('revogada').notNull().default(false),
 });
 
+/**
+ * Falhas de login por endereço de origem. Nao existe no Python: la o sistema
+ * so atendia a rede do setor, e o bloqueio por CONTA bastava. Na internet o
+ * mesmo endereco tenta uma senha em cada conta (sem nunca bloquear nenhuma) e
+ * cada tentativa custa um Argon2id de 64 MiB; o teto por endereco corta os
+ * dois. `ip` e texto (o valor vem de cabecalho); a linha dura um dia
+ * (`autenticacao.expurgar_limites_ip`).
+ */
+export const limite_login_ip = pgTable('limite_login_ip', {
+  ip: varchar('ip', { length: 64 }).primaryKey(),
+  falhas: integer('falhas').notNull(),
+  janela_inicio: MomentoUTC('janela_inicio').notNull(),
+  bloqueado_ate: MomentoUTC('bloqueado_ate'),
+});
+
 /** IN SGP/SEDGG/ME 15/2022, art. 10, SS2, I - quem NAO esta aqui nao assina. */
 export const profissional_habilitado = pgTable(
   'profissional_habilitado',

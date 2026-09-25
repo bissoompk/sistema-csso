@@ -34,7 +34,7 @@
  * O pacote inteiro passa pela memória (já era assim no Python) e a função tem
  * 60 s: é o teto que chega primeiro se o acervo de anexos crescer.
  */
-import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, pbkdf2Sync, randomBytes } from "node:crypto";
 import PizZip from "pizzip";
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
@@ -60,6 +60,13 @@ export const PASTA_BANCO = "banco";
 export const PASTAS_DO_PACOTE = ["anexos", "documentos"] as const;
 export const PREFIXO_BACKUP = "backups";
 export const PREFIXO_EXPORTACAO = "exportacoes";
+/**
+ * Onde o backup DIÁRIO guarda cada anexo, cifrado, uma vez só
+ * (`backups/anexos/<sha256>.enc`) — ver `fazer_backup_diario`.
+ */
+export const PREFIXO_BACKUP_ANEXOS = `${PREFIXO_BACKUP}/anexos`;
+/** O índice de anexos dentro do pacote do backup diário. */
+export const MANIFESTO_ANEXOS = "anexos.json";
 
 export const NUVENS_PROIBIDAS = ["onedrive", "dropbox", "google drive", "\\meu drive", "icloud"];
 
@@ -138,13 +145,28 @@ export function _conferir_destino(destino: string): void {
   }
 }
 
+// A derivação custa ~0,25 s (390 mil iterações, de propósito). O backup
+// diário cifra cada anexo num arquivo próprio, todos com o MESMO sal da
+// passada (nonce sempre novo — é o nonce que o GCM não pode repetir, não o
+// sal): sem esta memória, mil anexos custariam quatro minutos de PBKDF2 no
+// backup e outros quatro na restauração.
+const _derivadas = new Map<string, Buffer>();
+
 function _chave(senha: string, sal: Uint8Array): Buffer {
-  return pbkdf2Sync(Buffer.from(senha, "utf8"), sal, ITERACOES, 32, "sha256");
+  const memo = createHash("sha256").update(senha, "utf8").update(sal).digest("hex");
+  const pronta = _derivadas.get(memo);
+  if (pronta) return pronta;
+  const chave = pbkdf2Sync(Buffer.from(senha, "utf8"), sal, ITERACOES, 32, "sha256");
+  if (_derivadas.size >= 32) _derivadas.clear();
+  _derivadas.set(memo, chave);
+  return chave;
 }
 
-/** `MAGICO + sal(16) + nonce(12) + AES-256-GCM(conteudo) + tag(16)` — o formato do Python. */
-export function cifrar(conteudo: Uint8Array, senha: string): Uint8Array {
-  const sal = randomBytes(16);
+/**
+ * `MAGICO + sal(16) + nonce(12) + AES-256-GCM(conteudo) + tag(16)` — o formato do Python.
+ * `sal` só é passado pelo backup de anexos separados (um sal por passada).
+ */
+export function cifrar(conteudo: Uint8Array, senha: string, sal: Uint8Array = randomBytes(16)): Uint8Array {
   const nonce = randomBytes(12);
   const cifra = createCipheriv("aes-256-gcm", _chave(senha, sal), nonce);
   cifra.setAAD(MAGICO);
@@ -289,6 +311,110 @@ export async function fazer_backup(
   return { chave, nome, tamanho: cifrado.length, cifrado: true, arquivos, tabelas };
 }
 
+export interface ResultadoBackupDiario extends ResultadoBackup {
+  /** anexos cifrados e gravados nesta passada (os que ainda não tinham cópia) */
+  anexos_novos: number;
+  /** anexos que já tinham cópia de uma passada anterior */
+  anexos_ja_guardados: number;
+  /** `storage_key` de anexo cujo blob sumiu do armazenamento */
+  ausentes: string[];
+  /**
+   * Anexos que não couberam no prazo desta passada (ficam para a próxima). O
+   * índice os cita mesmo assim: restaurar ESTE pacote avisa que faltam, em vez
+   * de devolver um banco que aponta para arquivo que não voltou, calado.
+   */
+  pendentes: string[];
+}
+
+/** Prazo para copiar anexos numa passada: sobra folga dos 15 min da função de fundo para o banco. */
+export const PRAZO_ANEXOS_MS = 10 * 60_000;
+
+/** `backups/anexos/<sha>.enc` para o `storage_key` `ab/<sha>`. */
+export function chave_do_anexo_no_backup(storage_key: string): string {
+  return `${PREFIXO_BACKUP_ANEXOS}/${storage_key.split("/").pop()}.enc`;
+}
+
+/**
+ * O backup da rotina diária. NUVEM: o `fazer_backup` põe os anexos DENTRO do
+ * pacote, e isso não escala — o pacote inteiro passa pela memória da função e
+ * o Storage do plano gratuito do Supabase recusa arquivo acima de 50 MB. Com
+ * ~640 processos o acervo de anexos passa disso.
+ *
+ * Aqui o pacote leva o banco inteiro e um ÍNDICE dos anexos (`anexos.json`);
+ * cada anexo vai cifrado para `backups/anexos/<sha256>.enc`, UMA vez: o blob é
+ * endereçado pelo conteúdo e nunca muda, então a cópia de ontem continua
+ * valendo hoje, e a passada diária só cifra o que é novo. Cada arquivo é um
+ * envelope `CSSOBK01` completo (o `decifrar` do Python abre). O pacote é gravado
+ * DEPOIS dos anexos: se ele existe, os anexos que ele cita também existem.
+ */
+export async function fazer_backup_diario(
+  tx: Executor,
+  opcoes: { senha?: string; prazo_anexos_ms?: number; paralelo?: number } = {},
+): Promise<ResultadoBackupDiario> {
+  const senha = opcoes.senha ?? senha_padrao();
+  const limite = Date.now() + (opcoes.prazo_anexos_ms ?? PRAZO_ANEXOS_MS);
+  const arm = obterArmazenamento();
+  const dump = await despejar_banco(tx);
+  const linhas = await tx.select({ storage_key: tabela_anexo.storage_key }).from(tabela_anexo).orderBy(asc(tabela_anexo.id));
+  const chaves = [...new Set(linhas.map((l) => l.storage_key).filter(Boolean))];
+
+  const ja = new Set((await arm.listar(PREFIXO_BACKUP_ANEXOS)).map((i) => i.chave));
+  const sal = randomBytes(16);
+  let novos = 0;
+  const guardados = chaves.filter((k) => ja.has(chave_do_anexo_no_backup(k))).length;
+  const ausentes: string[] = [];
+  const pendentes: string[] = [];
+  // Um de cada vez, cada ida ao Storage custa a latência da rede inteira (a
+  // função e o Supabase podem estar em continentes diferentes): a primeira
+  // passada, com o acervo todo, não caberia nos 15 min. Algumas cópias em
+  // paralelo, e um prazo: o que não coube fica PENDENTE e vai na passada de
+  // amanhã — o banco sai hoje de qualquer jeito.
+  const fila = chaves.filter((k) => !ja.has(chave_do_anexo_no_backup(k)));
+  const trabalhar = async () => {
+    for (let storage_key = fila.shift(); storage_key !== undefined; storage_key = fila.shift()) {
+      if (Date.now() > limite) {
+        pendentes.push(storage_key);
+        continue;
+      }
+      let bytes: Uint8Array;
+      try {
+        bytes = await arm.ler(chave_no_armazenamento(storage_key));
+      } catch (erro) {
+        if (!(erro instanceof ArquivoAusente)) throw erro;
+        ausentes.push(storage_key);
+        continue;
+      }
+      await arm.gravar(chave_do_anexo_no_backup(storage_key), cifrar(bytes, senha, sal), "application/octet-stream");
+      novos += 1;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, opcoes.paralelo ?? 6) }, trabalhar));
+
+  const zip = new PizZip();
+  for (const [tabela, texto] of dump) zip.file(`${PASTA_BANCO}/${tabela}.json`, texto);
+  zip.file(
+    MANIFESTO_ANEXOS,
+    JSON.stringify(chaves.filter((k) => !ausentes.includes(k)).map((k) => ({ storage_key: k, copia: chave_do_anexo_no_backup(k) }))),
+  );
+  const pacote = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as Uint8Array;
+  const cifrado = cifrar(pacote, senha);
+  const nome = `csso-${_carimbo()}.enc`;
+  const chave = `${PREFIXO_BACKUP}/${nome}`;
+  await arm.gravar(chave, cifrado, "application/octet-stream");
+  return {
+    chave,
+    nome,
+    tamanho: cifrado.length,
+    cifrado: true,
+    arquivos: chaves.length - ausentes.length,
+    tabelas: dump.size,
+    anexos_novos: novos,
+    anexos_ja_guardados: guardados,
+    ausentes,
+    pendentes,
+  };
+}
+
 export interface Restaurado {
   /** `{tabela: texto JSON}` — ou `null` quando o pacote é de um backup do Python (SQLite) */
   banco: Map<string, string> | null;
@@ -296,6 +422,11 @@ export interface Restaurado {
   sqlite: Uint8Array | null;
   /** `anexos/...` e `documentos/...` com os bytes */
   arquivos: Map<string, Uint8Array>;
+  /**
+   * Backup diário: os anexos NÃO estão no pacote; este é o índice deles
+   * (`storage_key` e onde está a cópia cifrada). `null` nos demais pacotes.
+   */
+  anexos_separados?: { storage_key: string; copia: string }[] | null;
 }
 
 /** Recusa nome de entrada que escape da pasta (`../`) — restaurar é o gesto que se faz às pressas. */
@@ -319,18 +450,20 @@ export function restaurar(pacote: Uint8Array, senha: string = senha_padrao()): R
   const banco = new Map<string, string>();
   let sqlite: Uint8Array | null = null;
   const arquivos = new Map<string, Uint8Array>();
+  let anexos_separados: Restaurado["anexos_separados"] = null;
   for (const nome of Object.keys(zip.files).sort()) {
     const entrada = zip.files[nome]!;
     if (entrada.dir) continue;
     if (!_nome_seguro(nome)) throw new RegraViolada(`caminho fora do destino no pacote de backup: ${nome}`);
     if (nome === "csso.db") sqlite = entrada.asUint8Array();
+    else if (nome === MANIFESTO_ANEXOS) anexos_separados = JSON.parse(entrada.asText());
     else if (nome.startsWith(`${PASTA_BANCO}/`) && nome.endsWith(".json")) {
       banco.set(nome.slice(PASTA_BANCO.length + 1, -5), entrada.asText());
     } else if ((PASTAS_DO_PACOTE as readonly string[]).includes(nome.split("/", 1)[0]!)) {
       arquivos.set(nome, entrada.asUint8Array());
     }
   }
-  return { banco: banco.size ? banco : null, sqlite, arquivos };
+  return { banco: banco.size ? banco : null, sqlite, arquivos, anexos_separados };
 }
 
 // ---------------------------------------------------------------------

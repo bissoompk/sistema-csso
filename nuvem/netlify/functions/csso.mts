@@ -5,10 +5,18 @@
  * `preferStatic: true` é o que deixa `/estaticos/...` com o CDN: se existe um
  * arquivo publicado no caminho, ele sai direto, sem acordar a função.
  */
-import type { Config } from "@netlify/functions";
+import type { Config, Context } from "@netlify/functions";
 import { obterApp } from "../../src/app.js";
 
-export default async (req: Request) => obterApp().fetch(req);
+// O `context` do Netlify vai como contexto de execução do Hono só pelo
+// `waitUntil`: o registro de acesso (`servicos/registro_acesso.ts`) grava
+// depois de a resposta sair, sem atrasá-la.
+export default async (req: Request, context: Context) =>
+  obterApp().fetch(req, undefined, {
+    waitUntil: (p: Promise<unknown>) => context.waitUntil(p),
+    passThroughOnException: () => {},
+    props: {},
+  });
 
 export const config: Config = {
   path: "/*",

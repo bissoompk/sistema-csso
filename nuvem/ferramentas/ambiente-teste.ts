@@ -11,6 +11,9 @@
  * que sobra é a que importa — recriar apaga TUDO, então a ferramenta recusa banco
  * que não esteja em localhost, a não ser que se peça com `--permitir-remoto`
  * (a instalação de homologação do Supabase, que só tem dado de teste — PORTE.md).
+ * E há uma trava que NENHUMA bandeira desfaz: banco marcado como produção
+ * (tabela `instalacao`, gravada por `producao-iniciar`) ou `CSSO_AMBIENTE=producao`
+ * no ambiente — ver `src/servicos/instalacao.ts`.
  *
  * **Por que passa pelos serviços.** Como no Python: numeração, contexto
  * congelado, máquinas de estado e a cadeia de auditoria moram nos serviços.
@@ -229,33 +232,22 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
 
 /**
  * Apaga os dados do sistema (as tabelas de `public` e o esquema `drizzle`),
- * migra e semeia.
- *
- * Apaga as TABELAS, e não o esquema `public`: no Supabase o `public` vem com
- * permissões para os papéis da plataforma que um `CREATE SCHEMA public` novo
- * não teria.
+ * migra e semeia — ver `ferramentas/apagar-banco.ts`, que tem a trava da
+ * marca de produção. Aqui soma-se a outra metade: com `CSSO_AMBIENTE=producao`
+ * no ambiente, o ambiente de teste não roda em banco nenhum.
  */
 export async function recriar(url: string): Promise<void> {
-  const postgres = (await import("postgres")).default;
-  const sql = postgres(url, { max: 1, prepare: false, onnotice: () => {} });
-  try {
-    await sql.unsafe(`
-      DROP SCHEMA IF EXISTS drizzle CASCADE;
-      DO $$
-      DECLARE t record;
-      BEGIN
-        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
-          EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE', t.tablename);
-        END LOOP;
-      END $$;`);
-  } finally {
-    await sql.end({ timeout: 5 });
+  const { ambienteDeProducao, BancoDeProducao } = await import("../src/servicos/instalacao.js");
+  if (ambienteDeProducao()) {
+    throw new BancoDeProducao(
+      "Recriar o banco recusado: CSSO_AMBIENTE=producao. O ambiente de teste não roda com a configuração de produção.",
+    );
   }
-  const { migrarBanco } = await import("../src/db/migrar.js");
-  await migrarBanco(url);
+  const { apagarEMigrar } = await import("./apagar-banco.js");
+  await apagarEMigrar(url, "Recriar o banco");
 }
 
-async function principal(argv: string[]): Promise<number> {
+export async function principal(argv: string[]): Promise<number> {
   carregarEnvLocal();
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -270,7 +262,14 @@ async function principal(argv: string[]): Promise<number> {
     return 2;
   }
   console.log("Montando o ambiente de teste (banco recriado, dados de mentira)...");
-  await recriar(url);
+  const { BancoDeProducao } = await import("../src/servicos/instalacao.js");
+  try {
+    await recriar(url);
+  } catch (erro) {
+    if (!(erro instanceof BancoDeProducao)) throw erro;
+    console.error(`ERRO: ${erro.message}`);
+    return 3;
+  }
   const { obterBanco, fecharBanco } = await import("../src/db/cliente.js");
   const { semear } = await import("../src/servicos/sementes.js");
   let resumo: Record<string, number>;

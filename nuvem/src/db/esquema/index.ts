@@ -14,4 +14,6 @@ export * from './auditoria';
 export * from './demanda';
 export * from './epi';
 export * from './treinamento';
+export * from './operacao';
+export * from './privacidade';
 export * from './relacoes';

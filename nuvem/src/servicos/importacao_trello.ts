@@ -138,19 +138,98 @@ export class RelatorioTrello {
 export type BuscarAnexo = (url: string) => Promise<Uint8Array>;
 
 /**
+ * Os hosts de onde um anexo do Trello pode vir. A URL vem de DENTRO do JSON
+ * enviado — é entrada, não configuração: sem esta lista o `fetch` ia a qualquer
+ * endereço (rede interna inclusive, SSRF) levando no cabeçalho a chave e o
+ * token do Trello, e o que voltasse virava anexo de processo, baixável depois.
+ */
+export function host_do_trello(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h === "trello.com" ||
+    h.endsWith(".trello.com") ||
+    h === "trello-attachments.s3.amazonaws.com" ||
+    h.endsWith(".trellocdn.com")
+  );
+}
+
+/** Só `trello.com` recebe a credencial (o S3/CDN recebem URL já assinada). */
+function _recebe_credencial(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === "trello.com" || h.endsWith(".trello.com");
+}
+
+export class AnexoForaDoTrello extends Error {}
+
+/**
  * Busca o anexo no Trello. As URLs expiram — baixe tudo antes do corte.
  *
  * Anexo do Trello exige autenticação: sem `CSSO_TRELLO_KEY`/`CSSO_TRELLO_TOKEN`
  * isto devolve 401 e o anexo entra no relatório de perdidos.
+ *
+ * DESVIO (produção): só https, só hosts do Trello (conferidos a cada
+ * redirecionamento, seguido à mão), credencial só para `trello.com`, corpo
+ * cortado no teto do anexo e prazo curto — a função inteira tem 60 s.
  */
-export async function baixar_url(url: string, tempo_limite = 60): Promise<Uint8Array> {
+export async function baixar_url(url: string, tempo_limite = 15): Promise<Uint8Array> {
   const chave = process.env.CSSO_TRELLO_KEY ?? "";
   const token = process.env.CSSO_TRELLO_TOKEN ?? "";
-  const cabecalhos: Record<string, string> = { "User-Agent": "CSSO/1.0" };
-  if (chave && token) cabecalhos.Authorization = `OAuth oauth_consumer_key="${chave}", oauth_token="${token}"`;
-  const resposta = await fetch(url, { headers: cabecalhos, signal: AbortSignal.timeout(tempo_limite * 1000) });
-  if (!resposta.ok) throw new Error(`HTTP Error ${resposta.status}: ${resposta.statusText}`);
-  return new Uint8Array(await resposta.arrayBuffer());
+  const sinal = AbortSignal.timeout(tempo_limite * 1000);
+  let alvo = url;
+  for (let salto = 0; salto < 4; salto++) {
+    let destino: URL;
+    try {
+      destino = new URL(alvo);
+    } catch {
+      throw new AnexoForaDoTrello(`URL inválida: ${alvo.slice(0, 80)}`);
+    }
+    if (destino.protocol !== "https:" || !host_do_trello(destino.hostname) || destino.username || destino.port) {
+      throw new AnexoForaDoTrello(`anexo fora do Trello recusado: ${destino.protocol}//${destino.hostname}`);
+    }
+    const cabecalhos: Record<string, string> = { "User-Agent": "CSSO/1.0" };
+    if (chave && token && _recebe_credencial(destino.hostname)) {
+      cabecalhos.Authorization = `OAuth oauth_consumer_key="${chave}", oauth_token="${token}"`;
+    }
+    const resposta = await fetch(destino, { headers: cabecalhos, signal: sinal, redirect: "manual" });
+    if (resposta.status >= 300 && resposta.status < 400 && resposta.headers.get("location")) {
+      alvo = new URL(resposta.headers.get("location")!, destino).toString();
+      await resposta.body?.cancel();
+      continue;
+    }
+    if (!resposta.ok) throw new Error(`HTTP Error ${resposta.status}: ${resposta.statusText}`);
+    return _ler_com_teto(resposta, anexos.LIMITE_BYTES);
+  }
+  throw new Error("redirecionamentos demais");
+}
+
+/** O corpo até `teto` bytes; passou disso, recusa sem ler o resto. */
+async function _ler_com_teto(resposta: Response, teto: number): Promise<Uint8Array> {
+  const declarado = Number(resposta.headers.get("content-length") ?? "NaN");
+  if (Number.isFinite(declarado) && declarado > teto) {
+    await resposta.body?.cancel();
+    throw new anexos.AnexoGrandeDemais(declarado);
+  }
+  if (!resposta.body) return new Uint8Array();
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  const leitor = resposta.body.getReader();
+  for (;;) {
+    const { done, value } = await leitor.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > teto) {
+      await leitor.cancel();
+      throw new anexos.AnexoGrandeDemais(total);
+    }
+    partes.push(value);
+  }
+  const saida = new Uint8Array(total);
+  let pos = 0;
+  for (const p of partes) {
+    saida.set(p, pos);
+    pos += p.byteLength;
+  }
+  return saida;
 }
 
 export const ARQUIVO_INDICE_ANEXOS = "_indice.json";

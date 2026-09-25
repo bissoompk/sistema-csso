@@ -11,9 +11,9 @@
  */
 import { createHmac, randomBytes, randomInt } from "node:crypto";
 import { argon2id, argon2Verify } from "hash-wasm";
-import { and, eq, lt, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { atribuicao, perfil, sessao, usuario } from "../db/esquema/index.js";
+import { atribuicao, limite_login_ip, perfil, sessao, usuario } from "../db/esquema/index.js";
 import { agora_utc } from "../db/esquema/base.js";
 import { obterConfig } from "../config.js";
 import { hoje_iso } from "../dominio/datas.js";
@@ -195,6 +195,21 @@ export async function buscar_por_login(tx: Executor, login: string): Promise<Usu
   return candidato ?? null;
 }
 
+let _hash_isca: Promise<string> | null = null;
+let _parametros_da_isca: ParametrosArgon2 | null = null;
+
+/**
+ * Confere a senha contra um hash descartável, com os parâmetros correntes:
+ * iguala o tempo da recusa sem conta ao da recusa por senha errada.
+ */
+async function _gastar_argon2(senha: string): Promise<void> {
+  if (!_hash_isca || _parametros_da_isca !== _parametros) {
+    _parametros_da_isca = _parametros;
+    _hash_isca = gerar_hash(randomBytes(18).toString("base64url"));
+  }
+  await conferir_senha(await _hash_isca, senha);
+}
+
 export async function autenticar(
   tx: Executor,
   login: string,
@@ -203,12 +218,37 @@ export async function autenticar(
   user_agent: string | null = null,
 ): Promise<[Usuario, string]> {
   const cfg = obterConfig();
-  const conta = await buscar_por_login(tx, login);
   const agora = agora_utc();
 
-  if (!conta || !conta.ativo) throw new FalhaDeAutenticacao();
+  // O teto por endereço vem ANTES de tudo: não custa Argon2 nem diz nada da conta.
+  const ip_ate = await ip_bloqueado_ate(tx, ip, agora);
+  if (ip_ate) {
+    throw new FalhaDeAutenticacao(
+      `Muitas tentativas de entrada a partir deste endereço. Tente de novo depois de ${local_formatado(ip_ate)}.`,
+    );
+  }
+
+  const achada = await buscar_por_login(tx, login);
+  // A linha da conta TRAVADA até o fim da requisição: sem isto, N tentativas
+  // em paralelo liam todas `tentativas_falhas` igual, passavam todas pelo
+  // bloqueio e gravavam +1 cada uma por cima da outra — o limite de 5 por
+  // janela virava quantas o atacante conseguisse disparar de uma vez.
+  const conta = achada
+    ? ((await tx.select().from(usuario).where(eq(usuario.id, achada.id)).for("update"))[0] ?? null)
+    : null;
+
+  if (!conta || !conta.ativo) {
+    // Mesmo custo de Argon2 da conta que existe: sem isto, "usuário não
+    // existe" respondia em milissegundos e "senha errada" em centenas deles —
+    // a lista de e-mails válidos saía pelo cronômetro.
+    await _gastar_argon2(senha);
+    await registrar_falha_ip(tx, ip, agora);
+    throw new FalhaDeAutenticacao();
+  }
 
   if (conta.bloqueado_ate && conta.bloqueado_ate > agora) {
+    await _gastar_argon2(senha);
+    await registrar_falha_ip(tx, ip, agora);
     // Dizer a hora e a saída é o que transforma a recusa em instrução.
     throw new FalhaDeAutenticacao(
       `Conta bloqueada até ${local_formatado(conta.bloqueado_ate)} por ` +
@@ -226,6 +266,7 @@ export async function autenticar(
       .update(usuario)
       .set({ tentativas_falhas: tentativas, bloqueado_ate })
       .where(eq(usuario.id, conta.id));
+    await registrar_falha_ip(tx, ip, agora);
     // A falha tem de ficar gravada: a rota devolve a tela (retorno normal), e
     // o middleware dá COMMIT — como o `s.flush()` + commit do Python.
     throw new FalhaDeAutenticacao();
@@ -249,7 +290,84 @@ export async function autenticar(
     user_agent,
   });
   await expurgar_sessoes(tx, agora);
+  await expurgar_limites_ip(tx, agora);
   return [conta, token];
+}
+
+// ---------------------------------------------------------------------
+// Teto de falhas por endereço (não existe no Python — ver DESVIOS.md)
+// ---------------------------------------------------------------------
+
+function _inteiro_env(nome: string, padrao: number): number {
+  const n = Number.parseInt(process.env[nome] ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : padrao;
+}
+
+/**
+ * Falhas de um mesmo endereço, em qualquer conta, antes do bloqueio do
+ * endereço. Folgado de propósito: a rede da UFVJM sai para a internet por
+ * poucos endereços (NAT), e um teto baixo bloquearia o campus inteiro por causa
+ * de meia dúzia de senhas erradas. `CSSO_MAX_FALHAS_IP=0` desliga.
+ */
+export function max_falhas_por_ip(): number {
+  if ((process.env.CSSO_MAX_FALHAS_IP ?? "").trim() === "0") return Number.POSITIVE_INFINITY;
+  return _inteiro_env("CSSO_MAX_FALHAS_IP", 30);
+}
+/** A janela em que as falhas se somam (e a duração do bloqueio do endereço). */
+export function janela_ip_minutos(): number {
+  return _inteiro_env("CSSO_JANELA_IP_MINUTOS", 15);
+}
+
+/** O endereço como chave: sem ele (teste, script local) não há teto. */
+function _chave_ip(ip: string | null): string | null {
+  if (max_falhas_por_ip() === Number.POSITIVE_INFINITY) return null;
+  const limpo = (ip ?? "").trim().slice(0, 64);
+  return limpo || null;
+}
+
+export async function ip_bloqueado_ate(tx: Executor, ip: string | null, agora: Date = agora_utc()): Promise<Date | null> {
+  const chave = _chave_ip(ip);
+  if (!chave) return null;
+  const [linha] = await tx.select().from(limite_login_ip).where(eq(limite_login_ip.ip, chave));
+  return linha?.bloqueado_ate && linha.bloqueado_ate > agora ? linha.bloqueado_ate : null;
+}
+
+/**
+ * Soma uma falha ao endereço, num só comando (duas requisições em paralelo
+ * não se sobrescrevem). Janela vencida recomeça a conta; chegar ao teto
+ * bloqueia o endereço por uma janela.
+ */
+export async function registrar_falha_ip(tx: Executor, ip: string | null, agora: Date = agora_utc()): Promise<void> {
+  const chave = _chave_ip(ip);
+  if (!chave) return;
+  const janela_ms = janela_ip_minutos() * 60_000;
+  const inicio_valido = new Date(agora.getTime() - janela_ms);
+  const bloqueio = new Date(agora.getTime() + janela_ms);
+  const max = max_falhas_por_ip();
+  // Date solto num `sql` não passa pelo mapeamento da coluna: vai como texto ISO.
+  const vencida = sql`${limite_login_ip.janela_inicio} < ${inicio_valido.toISOString()}::timestamptz`;
+  const falhas = sql`CASE WHEN ${vencida} THEN 1 ELSE ${limite_login_ip.falhas} + 1 END`;
+  await tx
+    .insert(limite_login_ip)
+    .values({ ip: chave, falhas: 1, janela_inicio: agora, bloqueado_ate: max <= 1 ? bloqueio : null })
+    .onConflictDoUpdate({
+      target: limite_login_ip.ip,
+      set: {
+        falhas,
+        janela_inicio: sql`CASE WHEN ${vencida} THEN ${agora.toISOString()}::timestamptz ELSE ${limite_login_ip.janela_inicio} END`,
+        bloqueado_ate: sql`CASE WHEN (${falhas}) >= ${max} THEN ${bloqueio.toISOString()}::timestamptz ELSE ${limite_login_ip.bloqueado_ate} END`,
+      },
+    });
+}
+
+/** O endereço é dado pessoal: a linha some um dia depois da última janela. */
+export async function expurgar_limites_ip(tx: Executor, agora: Date = agora_utc()): Promise<number> {
+  const limite = new Date(agora.getTime() - 86_400_000);
+  const apagadas = await tx
+    .delete(limite_login_ip)
+    .where(and(lt(limite_login_ip.janela_inicio, limite), or(isNull(limite_login_ip.bloqueado_ate), lt(limite_login_ip.bloqueado_ate, agora))))
+    .returning({ ip: limite_login_ip.ip });
+  return apagadas.length;
 }
 
 /** `log_retencao_dias` do Python (90): o mesmo prazo do registro de acesso. */

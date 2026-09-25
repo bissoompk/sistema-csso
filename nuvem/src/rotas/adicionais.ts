@@ -123,7 +123,8 @@ rotas.post("/adicionais/propor/:parecer_id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
   const parecer = await tx.query.parecer_tecnico.findFirst({
-    where: eq(parecer_tecnico.id, _id(c, "parecer_id")),
+    // o escopo da leitura vale para a escrita: parecer fora dele "não existe"
+    where: and(eq(parecer_tecnico.id, _id(c, "parecer_id")), aplicar_escopo(usuario, parecer_tecnico)),
     with: {
       tipo_adicional: true,
       tipo_movimento: true,

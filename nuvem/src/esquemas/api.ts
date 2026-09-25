@@ -15,6 +15,7 @@
  * esquema repete regra de negócio; eles só dizem o tipo de cada campo.
  */
 import { RecusaDaApi } from "../nucleo/erros.js";
+import { mascarar_cpf_em } from "../servicos/textos.js";
 
 // =====================================================================
 // Saída (as formas que as rotas devolvem)
@@ -290,7 +291,9 @@ export function nova_presenca(corpo: unknown): NovaPresenca {
  */
 export async function corpo_json(requisicao: { json(): Promise<unknown> }): Promise<unknown> {
   try {
-    return await requisicao.json();
+    // CPF em campo livre sai mascarado na porta, como no formulário
+    // (`dependencias.formulario`; revisão de privacidade, 25/09/2026)
+    return mascarar_cpf_em(await requisicao.json());
   } catch {
     throw new RecusaDaApi(422, FORMA_INESPERADA, ["corpo: JSON decode error"]);
   }
