@@ -48,9 +48,9 @@
     <p><strong>Esta versão foi superada e não se edita.</strong> Ela é o layout dos
       certificados que saíram enquanto ela valia — reescrevê-la mudaria papel que já
       circulou.</p>
-    <p>Publicar a v{{ modelo.versao + 1 }} <strong>não move o ponteiro do
-      treinamento</strong>: quem aponta para cá continua apontando, e o catálogo
-      mostra <em>(superada)</em> no seletor até alguém trocar.</p>
+    <p>Quem aponta para cá continua apontando — a versão seguinte foi publicada
+      sem levar estes treinamentos —, e o catálogo mostra <em>(superada)</em> no
+      seletor até alguém trocar.</p>
   </div>
   {% endif %}
 
@@ -294,18 +294,27 @@
 {% call ui.popup_cadastro('publicar-versao', PUBLICAR,
                           '/treinamentos/modelos/' ~ modelo.id ~ '/versao', PUBLICAR,
                           nota='v' ~ modelo.versao ~ ' → v' ~ (modelo.versao + 1)) %}
-  {# FICA, e fica aqui: a surpresa deste botão é o ponteiro que NÃO se move, e
-     quem publica precisa saber disso antes — não depois de o certificado sair com
-     o layout velho. #}
-  <div class="aviso aviso-alerta">
-    <p>Publicar a v{{ modelo.versao + 1 }} <strong>aposenta esta versão e não move o
-      ponteiro de nenhum treinamento</strong>: o catálogo continua apontando para a
-      v{{ modelo.versao }}, marcada <em>(superada)</em> no seletor, até alguém trocar
-      lá. Enquanto isso, o certificado sai com o layout de hoje.</p>
-    <p class="discreto">Clona o modelo e o dicionário inteiro para a versão seguinte.
-      O mapa vai junto de propósito: redigitar trinta linhas é como se troca o nome do
-      instrutor pelo do participante.</p>
+  {# A escolha fica aqui, na hora de publicar: quem publica decide se os
+     treinamentos passam à versão nova, e cada troca vira um evento na trilha.
+     Desmarcada, vale o comportamento antigo — o catálogo segue na versão de
+     hoje, marcada (superada), até alguém trocar lá. #}
+  <p>Publicar a v{{ modelo.versao + 1 }} aposenta esta versão.
+    Clona o modelo e o dicionário inteiro para a versão seguinte — o mapa vai junto
+    de propósito: redigitar trinta linhas é como se troca o nome do instrutor pelo
+    do participante.</p>
+  {% if apontam %}
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="repontar" value="1" checked>
+      Os treinamentos que emitem com a v{{ modelo.versao }} passam a emitir com a
+      v{{ modelo.versao + 1 }}</label>
+    <span class="dica">{{ apontam|length }} treinamento(s):
+      {% for t in apontam %}{{ t.nome }}{{ ', ' if not loop.last }}{% endfor %}.
+      Desmarcado, eles seguem na v{{ modelo.versao }}, marcada <em>(superada)</em> no
+      catálogo, até alguém trocar lá. Certificado já emitido não muda.</span>
   </div>
+  {% else %}
+  <p class="discreto">Nenhum treinamento emite com esta versão hoje.</p>
+  {% endif %}
 {% endcall %}
 {% endif %}
 {% endblock %}

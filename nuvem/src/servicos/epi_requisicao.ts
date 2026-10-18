@@ -28,7 +28,7 @@
  * recebido (`Object.assign`) — é o que o `flush` do ORM fazia com a identidade
  * em memória. Quem guardou OUTRO objeto da mesma linha deve relê-lo.
  */
-import { and, asc, count, desc, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   agora_utc,
@@ -39,6 +39,7 @@ import {
   epi_requisicao_item,
   pendencia as tabela_pendencia,
   servidor as tabela_servidor,
+  unidade_uorg,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import { EpiItem as EpiItemDominio, EpiRequisicao as EpiRequisicaoDominio, EpiRequisicaoItem as EpiRequisicaoItemDominio, FINALIDADES_REQUISICAO, URGENCIAS_REQUISICAO } from "../dominio/epi.js";
@@ -497,16 +498,36 @@ export async function requisicoes_de(tx: Executor, servidor_id: number): Promise
 }
 
 /**
+ * O pedido cujo servidor está lotado hoje (cadastro) numa unidade dos campi.
+ * SQL cru: a subconsulta do Drizzle pede um executor, e o escopo é condição pura.
+ */
+function _servidor_nos_campi(campi: number[]): SQL {
+  const lista = sql.join(
+    campi.map((c) => sql`${c}`),
+    sql`, `,
+  );
+  return sql`${epi_requisicao.servidor_id} IN (SELECT s.id FROM ${tabela_servidor} s JOIN ${unidade_uorg} u ON u.id = s.unidade_uorg_id WHERE u.campus_id IN (${lista}))`;
+}
+
+/**
  * A terceira camada sobre `epi_requisicao` — com as duas ressalvas do modelo.
  * Devolve a CONDIÇÃO (ver `aplicar_escopo` em DESVIOS.md).
  *
- * - Unidade: `campus_id` só é congelado no envio; rascunho sem campus não é de
- *   outra unidade, é de nenhuma ainda.
+ * - Unidade: `campus_id` só é congelado no envio. Enquanto não há o snapshot
+ *   (rascunho), vale o campus ATUAL do servidor — e o autor sempre vê o que
+ *   escreveu. Antes, todo rascunho sem campus aparecia para toda unidade: a
+ *   fila de Teófilo Otoni listava o pedido em digitação de Diamantina, com a
+ *   identificação mascarada pela RN-19 mas presente.
  * - Próprio: o pedido tem duas pessoas, e `solicitado_por_id` é a segunda.
  */
 export function _no_escopo(usuario: UsuarioAtual): SQL | undefined {
   if (usuario.escopo === ESCOPO_UNIDADE && usuario.campi.length) {
-    return or(inArray(epi_requisicao.campus_id, [...usuario.campi]), isNull(epi_requisicao.campus_id));
+    const campi = [...usuario.campi];
+    const servidor_no_campus = _servidor_nos_campi(campi);
+    return or(
+      inArray(epi_requisicao.campus_id, campi),
+      and(isNull(epi_requisicao.campus_id), or(eq(epi_requisicao.solicitado_por_id, usuario.id), servidor_no_campus)),
+    );
   }
   if (usuario.escopo === ESCOPO_PROPRIO) {
     return or(

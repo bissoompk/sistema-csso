@@ -815,3 +815,18 @@ treinamentos, `/api/v1/eu`. Falta: (1) exportar os próprios dados de uma vez
 (art. 18, III) — hoje só pelo e-mail do setor; (3) ver quem leu o próprio dado
 (`acesso_dado_sensivel` sobre si) e com quem foi compartilhado (art. 18, VII);
 (4) conta para cada servidor — sem conta vinculada, nada disso existe para ele.
+
+## Dívidas técnicas fechadas só na nuvem (18/10/2026)
+
+O Python continua com as três; a nuvem diverge dele aqui de propósito.
+
+- **Ficha de EPI: forma canônica v2** (`epi_ficha.VERSAO_FORMA_CANONICA`).
+  Linha nova grava `forma: 2` e `requisicao_item` no evento; `conferir()`
+  escolhe a versão pelo que o evento registrou. Backup do Python restaurado
+  aqui confere pela v1, sem falso positivo.
+- **Fila de pedidos de EPI**: o rascunho, sem `campus_id`, entra no escopo de
+  unidade pelo campus ATUAL do servidor (cadastro) ou pela autoria
+  (`epi_requisicao._no_escopo`). Antes aparecia para toda unidade.
+- **Modelo de certificado**: publicar a versão nova pode levar junto os
+  treinamentos que emitem com a atual (`repontar`, marcado por padrão), com
+  um `TREINAMENTO_MODELO_REPONTADO` por treinamento.

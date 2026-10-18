@@ -152,6 +152,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   CERTIFICADO_DIVERGENTE: "Divergência no certificado",
   CERTIFICADO_MODELO_CRIADO: "Modelo de certificado cadastrado",
   CERTIFICADO_MODELO_VERSIONADO: "Modelo de certificado versionado",
+  TREINAMENTO_MODELO_REPONTADO: "Treinamento passou à versão nova do modelo",
   ASSINATURA_INSTRUTOR_CRIADA: "Assinatura de instrutor cadastrada",
   MODELO_TAG_MAPEADA: "Marcador do modelo mapeado",
   MODELO_TAG_REMOVIDA: "Marcador do modelo removido",

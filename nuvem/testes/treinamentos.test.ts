@@ -462,6 +462,24 @@ describe("vínculos da linha do catálogo", () => {
     expect((await _treinamento(alvo)).modelo_vigente_id).toBe(v1);
   });
 
+  it("publicar com 'repontar' leva os treinamentos à versão nova, com evento na trilha", async () => {
+    await coord();
+    await _criar();
+    const alvo = await _id_do_treinamento();
+    const v1 = _id_do_modelo(await _criar_modelo("Padrão", { treinamento_id: String(alvo) }));
+    await _editar_treinamento(alvo, { modelo_vigente_id: String(v1) });
+    // a tela da v1 oferece a escolha, já marcada, e diz quem será levado
+    const tela = (await cliente.get(`/treinamentos/modelos/${v1}`)).text;
+    expect(tela).toContain('name="repontar" value="1" checked');
+    const v2 = _id_do_modelo(await cliente.post(`/treinamentos/modelos/${v1}/versao`, { repontar: "1" }, { seguir: false }));
+    expect((await _treinamento(alvo)).modelo_vigente_id).toBe(v2);
+    const eventos = await db
+      .select()
+      .from(e.historico_evento)
+      .where(and(eq(e.historico_evento.tipo_evento, "TREINAMENTO_MODELO_REPONTADO"), eq(e.historico_evento.entidade_id, alvo)));
+    expect(eventos).toHaveLength(1);
+  });
+
   it("instrutor inativo não vira padrão de treinamento", async () => {
     await coord();
     await _criar();

@@ -261,12 +261,20 @@ Nenhuma. As três dos lotes de redesign fecharam na 1.19; `/pareceres/{id}/docx`
   rotina de eliminação; a fatia que criar essa rotina precisa resolver antes de
   rodá-la pela primeira vez. Na mesma conferência apareceu que `DESPACHO` não
   está em nenhuma das duas linhas de prazo — defeito anterior.
+- **Fechado na nuvem em 18/10/2026:** publicar a versão nova do modelo de
+  certificado oferece, marcado, "os treinamentos que emitem com a versão atual
+  passam à nova"; cada troca é um evento `TREINAMENTO_MODELO_REPONTADO`.
+  O texto original segue abaixo, como registro.
 - **Publicar a v2 de um modelo de certificado não move `treinamento.modelo_vigente_id`**
   para a versão nova. A tela avisa com o rótulo `(superada)`, mas na emissão isso
   decide com qual layout o certificado sai. Repontar automaticamente tem
   implicação de auditoria — é decisão de desenho, não conserto de defeito.
 - **`pendencias.abertas()` não filtra por escopo.** O plano consolidado registra
   que isso precisa ser escolha, não descoberta.
+- **Fechado na nuvem em 18/10/2026:** a forma canônica da ficha de EPI foi
+  versionada (`VERSAO_FORMA_CANONICA = 2`, com `requisicao_item`); a versão
+  vem do próprio evento, e a linha antiga confere pela v1. O texto original
+  segue abaixo, como registro.
 - **O vínculo entre a linha da ficha de EPI e o item da requisição não entrou na
   cadeia de hash.** A coluna `requisicao_item_id` existe, tem chave estrangeira e
   está protegida pela trigger append-only, mas **não** foi acrescentada a
@@ -275,6 +283,9 @@ Nenhuma. As três dos lotes de redesign fecharam na 1.19; `/pareceres/{id}/docx`
   conserto sem falso positivo é versionar a forma canônica (linha com `versao`
   antiga confere pelo conjunto antigo de campos), e vale fazer antes de a ficha
   ser usada como prova em algum lugar que dependa do vínculo.
+- **Fechado na nuvem em 18/10/2026:** a fila aplica o escopo de unidade, e o
+  rascunho (ainda sem campus congelado) entra pelo campus atual do servidor ou
+  pela autoria. O texto original segue abaixo, como registro.
 - **A fila de `/epis/requisicoes` não aplica `aplicar_escopo`.**
   `epi_requisicao.campus_id` é nulo enquanto o pedido é rascunho, então filtrar
   por unidade esconderia do autor o próprio rascunho. Hoje o portão é `epi.ver` e

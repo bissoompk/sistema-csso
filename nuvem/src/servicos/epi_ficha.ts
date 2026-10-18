@@ -449,8 +449,32 @@ export async function em_poder_de(tx: Executor, servidor_id: number, epi_item_id
 // =====================================================================
 // A forma canônica: o que amarra a linha à cadeia de hash (§6.2)
 // =====================================================================
+/**
+ * A versão da forma canônica que as linhas novas gravam.
+ *
+ * **v1** (até 18/10/2026) não tinha `requisicao_item_id`: o vínculo entre a
+ * linha da ficha e o item do pedido era protegido só pela trava append-only,
+ * e não pela cadeia — quem tivesse acesso ao banco e desligasse a trava podia
+ * trocar a requisição de uma entrega sem que `conferir()` percebesse.
+ * **v2** acrescenta o vínculo e a marca `forma: 2`.
+ *
+ * Por que versionar, em vez de só acrescentar o campo: o evento já gravado
+ * não muda (é a cadeia), e comparar a linha antiga com a forma nova acusaria
+ * divergência em TODA ficha existente. Quem diz a versão é o próprio evento —
+ * o lado confiável da comparação, protegido pelo hash —, então não há coluna
+ * nova na linha para alguém adulterar.
+ */
+export const VERSAO_FORMA_CANONICA = 2;
+
 /** O conteúdo da linha, na forma que vai para `historico_evento.valor_novo`. */
-export function forma_canonica(registro: EpiFichaRegistro): Record<string, unknown> {
+export function forma_canonica(registro: EpiFichaRegistro, versao: number = VERSAO_FORMA_CANONICA): Record<string, unknown> {
+  const v1 = forma_canonica_v1(registro);
+  if (versao === 1) return v1;
+  return { ...v1, forma: 2, requisicao_item: registro.requisicao_item_id };
+}
+
+/** A forma das linhas gravadas antes da v2 — só para conferir o que já existe. */
+function forma_canonica_v1(registro: EpiFichaRegistro): Record<string, unknown> {
   return {
     registro: registro.id,
     tipo: registro.tipo,
@@ -682,8 +706,10 @@ export async function conferir(tx: Executor, servidor_id: number): Promise<Diver
       continue;
     }
     // compara pela serialização canônica da trilha (chaves ordenadas), e não
-    // pelo texto do jsonb
-    if (auditoria.corpo(evento.valor_novo) !== auditoria.corpo(forma_canonica(registro))) {
+    // pelo texto do jsonb — na versão que o EVENTO registrou
+    const registrado = evento.valor_novo as Record<string, unknown> | null;
+    const versao = registrado && typeof registrado === "object" && registrado.forma === 2 ? 2 : 1;
+    if (auditoria.corpo(evento.valor_novo) !== auditoria.corpo(forma_canonica(registro, versao))) {
       achados.push({
         registro_id: registro.id,
         detalhe: "o conteúdo da linha não confere com o que o evento " + `#${evento.id} registrou`,

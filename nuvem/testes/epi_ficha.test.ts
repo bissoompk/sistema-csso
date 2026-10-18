@@ -470,6 +470,44 @@ describe("cadeia de hash", () => {
     expect(await epi_ficha.conferir(db, c.servidor)).toEqual([]);
   });
 
+  it("a linha nova grava a forma v2, com o vínculo com o item do pedido", async () => {
+    const c = await montar(db);
+    await entregar(await como("coordenador_csso"), c);
+    const [registro] = await registros(db);
+    const [evento] = await db.select().from(e.historico_evento).where(eq(e.historico_evento.id, registro!.evento_id!));
+    const gravado = evento!.valor_novo as Record<string, unknown>;
+    expect(gravado.forma).toBe(2);
+    expect(gravado).toHaveProperty("requisicao_item", registro!.requisicao_item_id);
+  });
+
+  /** Amarra a linha a um evento escrito à mão — o que uma ficha antiga (v1) ou adulterada teria. */
+  async function amarrar_a(registro_id: number, valor_novo: Record<string, unknown>) {
+    const evento = await auditoria.registrar(db, {
+      entidade: "epi_ficha_registro",
+      entidade_id: registro_id,
+      tipo_evento: "EPI_ENTREGUE",
+      descricao: "linha de teste",
+      campo: "ficha",
+      valor_novo,
+    });
+    await db.update(e.epi_ficha_registro).set({ evento_id: evento.id }).where(eq(e.epi_ficha_registro.id, registro_id));
+  }
+
+  it("a linha antiga, registrada na forma v1, continua conferindo", async () => {
+    const { registro, servidor } = await linha_direta("1515151", "Ficha antiga", "Óculos");
+    await amarrar_a(registro.id, epi_ficha.forma_canonica(registro, 1));
+    expect(await epi_ficha.conferir(db, servidor.id)).toEqual([]);
+  });
+
+  it("na v2, o vínculo com o pedido entra na conferência", async () => {
+    const { registro, servidor } = await linha_direta("1616161", "Ficha adulterada", "Respirador");
+    // o evento diz que a entrega atendeu o item 999 do pedido; a linha diz outra coisa
+    await amarrar_a(registro.id, { ...epi_ficha.forma_canonica(registro), requisicao_item: 999 });
+    const achados = await epi_ficha.conferir(db, servidor.id);
+    expect(achados).toHaveLength(1);
+    expect(achados[0]!.detalhe).toContain("não confere");
+  });
+
   it("a conferência acusa linha sem evento", async () => {
     const { servidor } = await linha_direta("1414141", "Sem evento", "Avental");
     const achados = await epi_ficha.conferir(db, servidor.id);

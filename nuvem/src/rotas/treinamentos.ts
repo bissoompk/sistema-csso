@@ -348,6 +348,12 @@ rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
     campos_por_grupo: certificado.campos_por_grupo(),
     campos: certificado.CAMPOS_CERTIFICADO,
     treinamentos: await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
+    // os treinamentos que hoje emitem com ESTA versão: são eles que a nova pode herdar
+    apontam: await tx
+      .select()
+      .from(tabela_treinamento)
+      .where(eq(tabela_treinamento.modelo_vigente_id, modelo.id))
+      .orderBy(asc(tabela_treinamento.nome)),
     orientacoes: ORIENTACOES,
     ...recados(c),
   });
@@ -458,7 +464,34 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
     descricao: `${CertificadoModelo.rotulo(nova!)} a partir de v${atual.versao} (${atual.tags.length} tags)`,
     usuario,
   });
-  return _volta(c, `${MODELOS}/${nova!.id}`, `Versão v${nova!.versao} publicada.`);
+  // Repontar é escolha de quem publica, feita na hora e um evento por
+  // treinamento — e não efeito colateral silencioso de publicar. Sem a escolha,
+  // o certificado seguia saindo com o layout superado até alguém lembrar de
+  // trocar no catálogo (dívida técnica fechada em 18/10/2026).
+  let repontados = 0;
+  if ((await formulario(c)).texto("repontar") === "1") {
+    const alvo = await tx.select().from(tabela_treinamento).where(eq(tabela_treinamento.modelo_vigente_id, atual.id));
+    for (const t of alvo) {
+      await tx.update(tabela_treinamento).set({ modelo_vigente_id: nova!.id }).where(eq(tabela_treinamento.id, t.id));
+      await auditoria.registrar(tx, {
+        entidade: "treinamento",
+        entidade_id: t.id,
+        tipo_evento: "TREINAMENTO_MODELO_REPONTADO",
+        descricao: `${t.nome}: certificado passa de v${atual.versao} para v${nova!.versao} (${nova!.nome})`,
+        campo: "modelo_vigente_id",
+        valor_anterior: atual.id,
+        valor_novo: nova!.id,
+        usuario,
+      });
+      repontados += 1;
+    }
+  }
+  return _volta(
+    c,
+    `${MODELOS}/${nova!.id}`,
+    `Versão v${nova!.versao} publicada.` +
+      (repontados ? ` ${repontados} treinamento(s) passa(m) a emitir com ela.` : ""),
+  );
 });
 
 rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
