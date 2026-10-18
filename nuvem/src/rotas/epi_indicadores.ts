@@ -28,6 +28,7 @@ import { usuarioLogado } from "../dependencias.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import * as servico from "../servicos/epi_indicadores.js";
 import { hoje } from "../servicos/datas_br.js";
+import { linha_csv } from "../servicos/csv.js";
 import { marcarDownload, pagina } from "../web.js";
 import { LIMIAR_SUPRESSAO, MARCA_SUPRIMIDO, suprimir, suprimir_aninhado } from "./relatorios.js";
 
@@ -142,18 +143,6 @@ rotas.get(RELATORIOS, async (c) => {
   });
 });
 
-/** Uma linha de CSV do `csv.writer(delimiter=";")` (QUOTE_MINIMAL, `\r\n`). */
-function _linha_csv(campos: (string | number | null | undefined)[]): string {
-  return (
-    campos
-      .map((v) => {
-        const s = v === null || v === undefined ? "" : String(v);
-        return /[;"\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
-      })
-      .join(";") + "\r\n"
-  );
-}
-
 /**
  * O CSV do relatório, com a MESMA supressão. Separado da rota para que o teste
  * exercite o caminho de quem tem `exportar` sem ver nominal — combinação que
@@ -169,18 +158,18 @@ export async function exportar(
   const ctx = await _contexto(tx, usuario, exercicio);
   const dados = ctx.dados;
 
-  let texto = _linha_csv(["Indicador", "Recorte", "Detalhe", "Servidores", "Quantidade"]);
+  let texto = linha_csv(["Indicador", "Recorte", "Detalhe", "Servidores", "Quantidade"]);
   for (const [rotulo, valor] of Object.entries(ctx.por_categoria)) {
-    texto += _linha_csv(["Entregue por categoria (NR-6)", rotulo, "", valor, ctx.quantidade_categoria[rotulo] ?? ""]);
+    texto += linha_csv(["Entregue por categoria (NR-6)", rotulo, "", valor, ctx.quantidade_categoria[rotulo] ?? ""]);
   }
   for (const linha of ctx.por_campus) {
-    texto += _linha_csv(["Entregue por campus", linha.rotulo, "", linha.valor, ""]);
+    texto += linha_csv(["Entregue por campus", linha.rotulo, "", linha.valor, ""]);
     for (const [unidade, valor] of linha.folhas) {
-      texto += _linha_csv(["Entregue por unidade", linha.rotulo, unidade, valor, ""]);
+      texto += linha_csv(["Entregue por unidade", linha.rotulo, unidade, valor, ""]);
     }
   }
   for (const linha of dados.empenhos) {
-    texto += _linha_csv([
+    texto += linha_csv([
       "Custo por empenho",
       linha.empenho,
       linha.incompleto ? "piso (há lote sem valor)" : "",
@@ -189,16 +178,16 @@ export async function exportar(
     ]);
   }
   for (const [rotulo, valor] of Object.entries(ctx.recusas_motivo)) {
-    texto += _linha_csv(["Recusas por motivo (RN-27)", rotulo, "", valor, ""]);
+    texto += linha_csv(["Recusas por motivo (RN-27)", rotulo, "", valor, ""]);
   }
   for (const [rotulo, valor] of Object.entries(ctx.recusas_unidade)) {
-    texto += _linha_csv(["Recusas por unidade (RN-27)", rotulo, "", valor, ""]);
+    texto += linha_csv(["Recusas por unidade (RN-27)", rotulo, "", valor, ""]);
   }
   // o cabeçalho da supressão vai DENTRO do arquivo: o CSV se descola da tela no
   // primeiro anexo de e-mail
   if (ctx.suprime) {
-    texto += _linha_csv([]);
-    texto += _linha_csv([
+    texto += linha_csv([]);
+    texto += linha_csv([
       "Nota",
       `Célula com menos de ${LIMIAR_SUPRESSAO} servidores sai como ` +
         `'${MARCA_SUPRIMIDO}' (RN-19). Quando só uma seria suprimida, a ` +

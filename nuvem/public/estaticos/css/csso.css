@@ -582,6 +582,12 @@ a:hover { text-decoration: underline; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sair { font-size: 12px; color: var(--tinta-dica); }
+/* "sair" e "Novo parecer" são POST (CSRF por GET): botão vestido de link */
+.form-sair { display: inline; margin: 0; }
+button.como-link { background: none; border: 0; padding: 0; font: inherit; color: var(--acento); cursor: pointer; }
+button.como-link:hover { text-decoration: underline; }
+button.sair { background: none; border: 0; padding: 0; font-family: inherit; cursor: pointer; }
+button.sair:hover { text-decoration: underline; }
 /* A engrenagem de /config fica no bloco do usuario, ao lado de "sair": e ajuste
    de sistema, nao tela de trabalho — pendurar na lateral a poria no meio do
    fluxo diario de quem nunca mexe no SLA. Discreta como o "sair", e nao

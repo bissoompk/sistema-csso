@@ -15,6 +15,8 @@ export interface Config {
   bancoUrl: string;
   chaveSecreta: string;
   sessaoHoras: number;
+  /** 0 desliga. */
+  sessaoInatividadeMinutos: number;
   maxTentativas: number;
   bloqueioMinutos: number;
   cookieSeguro: "auto" | "sim" | "nao";
@@ -124,6 +126,7 @@ export function obterConfig(): Config {
     bancoUrl,
     chaveSecreta,
     sessaoHoras: inteiro("CSSO_SESSAO_HORAS", 12),
+    sessaoInatividadeMinutos: inteiro("CSSO_SESSAO_INATIVIDADE_MINUTOS", 120),
     maxTentativas: inteiro("CSSO_MAX_TENTATIVAS", 5),
     bloqueioMinutos: inteiro("CSSO_BLOQUEIO_MINUTOS", 15),
     cookieSeguro: (["auto", "sim", "nao"].includes(modo) ? modo : "auto") as Config["cookieSeguro"],

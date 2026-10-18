@@ -54,6 +54,37 @@ export const CATEGORIAS: readonly string[] = [
   ...CATEGORIAS_ACIDENTES,
 ];
 
+/**
+ * O `Content-Type` com que o anexo SAI. O `mime_type` gravado é o que o
+ * navegador de quem enviou declarou — texto controlado por quem envia.
+ * Servir `text/html` ou `image/svg+xml` de volta, mesmo com `attachment` +
+ * `nosniff` + CSP, depende de três defesas do navegador ao mesmo tempo; fora
+ * desta lista, sai `application/octet-stream`, que nenhum navegador
+ * interpreta (revisão de segurança, 25/09/2026). O gravado não muda: a
+ * trilha guarda o que foi declarado.
+ */
+export const TIPOS_SERVIDOS: ReadonlySet<string> = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/zip",
+]);
+
+export function tipo_para_servir(mime_type: string | null | undefined): string {
+  const base = (mime_type ?? "").split(";")[0]!.trim().toLowerCase();
+  return TIPOS_SERVIDOS.has(base) ? base : "application/octet-stream";
+}
+
 // Categoria que nasce restrita: o documento nomeia pessoa e diz algo sobre a
 // condição dela no trabalho.
 export const NIVEL_POR_CATEGORIA: Readonly<Record<string, string>> = {

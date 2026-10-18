@@ -743,23 +743,36 @@ export class UsuarioAtual {
 }
 
 /**
- * Carrega a identidade da conta: perfis VIGENTES hoje (e ativos), suas
- * permissões, campi das atribuições e habilitações técnicas vigentes.
- *
- * `hoje` é 'AAAA-MM-DD' — o dia de negócio em America/Sao_Paulo, e não o dia
- * UTC do processo da função (ver `dominio/datas.ts`).
+ * Permissões que governam o próprio sistema — quem as tem cria conta, concede
+ * perfil, atesta habilitação ou leva o banco. A conta que tem uma delas é
+ * "conta de administração", e a senha dela só se redefine por quem concede
+ * perfil (`/usuarios/{id}/senha`; revisão de segurança, 25/09/2026).
  */
-export async function carregar_usuario_atual(
+export const PERMISSOES_DE_GOVERNO: ReadonlySet<string> = new Set([
+  "perfil.conceder",
+  "habilitacao.atestar",
+  "usuario.criar_conta",
+  "usuario.resetar_senha",
+  "backup.executar",
+]);
+
+export function eh_conta_de_governo(permissoes: Iterable<string>): boolean {
+  for (const p of permissoes) if (PERMISSOES_DE_GOVERNO.has(p)) return true;
+  return false;
+}
+
+/**
+ * Perfis vigentes da conta, suas permissões e os campi das atribuições —
+ * sem olhar se a conta está ativa. Separado de `carregar_usuario_atual` para
+ * quem precisa saber o que uma conta ALCANÇARIA (a redefinição de senha
+ * compara privilégios inclusive de conta inativa, que pode ser reativada).
+ */
+export async function perfis_vigentes(
   tx: Executor,
   usuario_id: number,
   hoje: string | null = null,
-): Promise<UsuarioAtual> {
+): Promise<{ permissoes: Set<string>; perfis: string[]; campi: Set<number> }> {
   const dia = hoje ?? hoje_iso();
-  const usuario = await tx.query.usuario.findFirst({ where: eq(tabela_usuario.id, usuario_id) });
-  if (!usuario || !usuario.ativo) {
-    throw new PermissaoNegada("sessao", "usuario inativo ou inexistente");
-  }
-
   const atribuicoes = (
     await tx.query.atribuicao.findMany({
       where: eq(atribuicao.usuario_id, usuario_id),
@@ -777,6 +790,28 @@ export async function carregar_usuario_atual(
     for (const pp of perfil.perfil_permissoes) permissoes.add(pp.permissao.codigo);
     if (a.campus_id) campi.add(a.campus_id);
   }
+  return { permissoes, perfis, campi };
+}
+
+/**
+ * Carrega a identidade da conta: perfis VIGENTES hoje (e ativos), suas
+ * permissões, campi das atribuições e habilitações técnicas vigentes.
+ *
+ * `hoje` é 'AAAA-MM-DD' — o dia de negócio em America/Sao_Paulo, e não o dia
+ * UTC do processo da função (ver `dominio/datas.ts`).
+ */
+export async function carregar_usuario_atual(
+  tx: Executor,
+  usuario_id: number,
+  hoje: string | null = null,
+): Promise<UsuarioAtual> {
+  const dia = hoje ?? hoje_iso();
+  const usuario = await tx.query.usuario.findFirst({ where: eq(tabela_usuario.id, usuario_id) });
+  if (!usuario || !usuario.ativo) {
+    throw new PermissaoNegada("sessao", "usuario inativo ou inexistente");
+  }
+
+  const { permissoes, perfis, campi } = await perfis_vigentes(tx, usuario_id, dia);
 
   const habilitacoes = (
     await tx.query.profissional_habilitado.findMany({

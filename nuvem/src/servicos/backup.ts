@@ -50,6 +50,7 @@ import { UnidadeUorg } from "../dominio/organizacao.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import { chave_no_armazenamento } from "./anexos.js";
 import { ArquivoAusente, obterArmazenamento } from "./armazenamento.js";
+import { linha_csv } from "./csv.js";
 
 export const MAGICO = Buffer.from("CSSOBK01", "latin1");
 export const ITERACOES = 390_000;
@@ -102,8 +103,12 @@ export const LEIA_ME_EXPORT = `CONTEÚDO DESTE PACOTE
 =====================
 Pareceres.xlsx  — a planilha nas 24 colunas originais (A–X) + col_Y_sem_cabecalho
 csv/            — CSVs UTF-8 com BOM e separador ';' (abrem direto no Excel pt-BR)
-banco/          — o banco completo, uma tabela por arquivo JSON (dump lógico do
-                  PostgreSQL; volta a um banco vazio com ferramentas/restaurar-backup.ts)
+banco/          — o banco, uma tabela por arquivo JSON (dump lógico do PostgreSQL;
+                  volta a um banco vazio com ferramentas/restaurar-backup.ts).
+                  SEM credenciais: o hash das senhas sai vazio e as tabelas de
+                  sessão e de limite de login ficam de fora. Restaurado daqui,
+                  ninguém entra até quem administra redefinir as senhas. A
+                  cópia fiel, com tudo, é o backup cifrado diário.
 anexos/         — todos os arquivos anexados, nomeados pelo SHA-256
 
 ATENÇÃO — DADOS PESSOAIS DE SERVIDORES (LGPD arts. 33-36, 39 e 46)
@@ -542,8 +547,7 @@ export async function _linhas_planilha(tx: Executor): Promise<string[][]> {
 
 /** O `csv.writer(delimiter=';', QUOTE_MINIMAL)` do Python, com BOM (Excel pt-BR). */
 export function _csv_bytes(cabecalho: string[], linhas: string[][]): Uint8Array {
-  const campo = (v: string) => (/[;"\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
-  const texto = [cabecalho, ...linhas].map((l) => l.map(campo).join(";") + "\r\n").join("");
+  const texto = [cabecalho, ...linhas].map(linha_csv).join("");
   return new Uint8Array(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(texto, "utf8")]));
 }
 
@@ -563,6 +567,34 @@ export interface ResultadoExportacao {
 }
 
 /** O zip EM CLARO com tudo. Uma cópia fica no armazenamento (`exportacoes/`). */
+/** Tabelas que não saem na exportação em claro: só servem para entrar no sistema. */
+export const TABELAS_DE_CREDENCIAL: ReadonlySet<string> = new Set(["sessao", "limite_login_ip"]);
+
+/**
+ * O dump sem o que dá acesso (revisão de segurança, 25/09/2026). A exportação
+ * é um zip EM CLARO baixado para um computador: o hash Argon2id de toda conta
+ * nele é material de força bruta fora de linha, e o hash de sessão é inútil
+ * para quem tem direito ao pacote e útil para quem o rouba. O backup cifrado
+ * continua levando tudo — é ele a cópia de restauração.
+ */
+export function sem_credenciais(dump: Map<string, string>): Map<string, string> {
+  const saida = new Map<string, string>();
+  for (const [tabela, texto] of dump) {
+    if (TABELAS_DE_CREDENCIAL.has(tabela)) continue;
+    if (tabela === "usuario") {
+      const linhas = JSON.parse(texto) as Record<string, unknown>[];
+      for (const linha of linhas) {
+        linha.senha_hash = "";
+        linha.precisa_trocar_senha = true;
+      }
+      saida.set(tabela, JSON.stringify(linhas));
+    } else {
+      saida.set(tabela, texto);
+    }
+  }
+  return saida;
+}
+
 export async function exportar_tudo(tx: Executor, opcoes: { destino?: string } = {}): Promise<ResultadoExportacao> {
   const pasta = opcoes.destino ?? PREFIXO_EXPORTACAO;
   _conferir_destino(pasta);
@@ -626,8 +658,10 @@ export async function exportar_tudo(tx: Executor, opcoes: { destino?: string } =
     { binary: true },
   );
 
-  // o banco inteiro, no mesmo formato do backup: é o que o `restaurar-backup` lê
-  for (const [tabela, texto] of await despejar_banco(tx)) zip.file(`${PASTA_BANCO}/${tabela}.json`, texto);
+  // o banco, no mesmo formato do backup (é o que o `restaurar-backup` lê), sem credenciais
+  for (const [tabela, texto] of sem_credenciais(await despejar_banco(tx))) {
+    zip.file(`${PASTA_BANCO}/${tabela}.json`, texto);
+  }
   const { arquivos } = await _arquivos_de_anexo(tx);
   for (const [nome_arquivo, bytes] of arquivos) zip.file(nome_arquivo, bytes, { binary: true });
 

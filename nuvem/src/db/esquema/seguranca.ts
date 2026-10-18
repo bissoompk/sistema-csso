@@ -97,6 +97,9 @@ export const sessao = pgTable('sessao', {
   ip: Inet('ip'),
   user_agent: text('user_agent'),
   revogada: boolean('revogada').notNull().default(false),
+  // Último pedido atendido com esta sessão: a expiração por inatividade
+  // (`CSSO_SESSAO_INATIVIDADE_MINUTOS`). Nula = nunca usada depois do login.
+  ultimo_uso_em: MomentoUTC('ultimo_uso_em'),
 });
 
 /**

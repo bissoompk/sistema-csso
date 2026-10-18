@@ -1,8 +1,8 @@
 {# Barra de força da senha — o único JavaScript das telas auxiliares.
 
    Ela existe porque mede a política de verdade: `politica_de_senha`, em
-   `app/servicos/autenticacao.py`, recusa senha curta, senha só de letras ou só
-   de números, e a lista de senhas triviais. A barra reproduz essas três
+   `src/servicos/autenticacao.ts`, recusa senha curta, senha com poucos
+   caracteres diferentes e a lista de senhas triviais. A barra reproduz essas três
    perguntas — nas mesmas palavras da mensagem do servidor — e nada além delas.
    Não há escala de "entropia": o servidor não tem uma, e uma barra que
    pontuasse o que o servidor não pontua estaria inventando um critério.
@@ -49,13 +49,12 @@
   // o que a barra mostra, e é o mesmo que o servidor mostraria primeiro.
   function problemas(senha) {
     var lista = [];
-    if (senha.length < politica.minimo) {
+    if (Array.from(senha).length < politica.minimo) {
       lista.push('mínimo de ' + politica.minimo + ' caracteres');
     }
-    // equivale a `senha.isalpha() or senha.isdigit()` — que em Python é falso
-    // para a senha vazia, daí a guarda
-    if (senha && (/^\p{L}+$/u.test(senha) || /^\p{Nd}+$/u.test(senha))) {
-      lista.push('misture letras e números');
+    // `Array.from` conta code points, como o `[...senha]` do servidor
+    if (senha && new Set(Array.from(senha)).size < politica.distintos) {
+      lista.push('use pelo menos ' + politica.distintos + ' caracteres diferentes');
     }
     if (triviais[senha.toLowerCase()]) { lista.push('senha trivial'); }
     return lista;

@@ -768,7 +768,7 @@ async function pedido_pela_tela(o: { recebido?: number; validade_ca?: string | n
 const estado_da_linha = (linha_id: number) => naTransacao(async (tx) => (await reler_linha(tx, { id: linha_id }))!);
 
 async function como(perfil: string) {
-  await cliente.get("/sair");
+  await cliente.post("/sair", {});
   cliente.cookies.clear();
   await entrar(cliente, CONTAS[perfil]![0]);
 }

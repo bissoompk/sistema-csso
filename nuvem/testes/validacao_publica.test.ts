@@ -58,7 +58,7 @@ async function emitido() {
   const [certificado, ...resto] = await db.select().from(e.certificado);
   expect(resto).toHaveLength(0);
   const congelado = (certificado!.contexto_congelado ?? {}) as Record<string, string>;
-  await cliente.get("/sair");
+  await cliente.post("/sair", {});
   return {
     id: certificado!.id,
     chave: certificado!.chave_validacao,
@@ -144,7 +144,7 @@ describe("a negativa é uma só", () => {
     const papel = await emitido();
     await entrar(cliente, "coordenador_csso");
     await cliente.post(`/certificados/${papel.id}/anular`, { motivo: "nome social" }, { seguir: false });
-    await cliente.get("/sair");
+    await cliente.post("/sair", {});
     const corpo = (await cliente.get(`/validar/${papel.chave}`)).text;
     expect(corpo).toContain("foi anulado");
     // o motivo da anulação NÃO é público: ele conta sobre a pessoa

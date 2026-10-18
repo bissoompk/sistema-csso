@@ -317,7 +317,7 @@ describe("permissões", () => {
   it("quem só consulta vê o catálogo mas não edita", async () => {
     await entrar(cliente, "coordenador_csso");
     await _cadastrar(cliente);
-    await cliente.get("/sair");
+    await cliente.post("/sair", {});
     await entrar(cliente, "consulta_progep");
     const tela = await cliente.get(CATALOGO);
     expect(tela.status).toBe(200);

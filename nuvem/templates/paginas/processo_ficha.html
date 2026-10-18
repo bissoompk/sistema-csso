@@ -10,7 +10,7 @@
 <a class="botao secundario" href="{{ processo.url_permanente }}" target="_blank" rel="noopener">Abrir no SEI ↗</a>
 {% endif %}
 {% if usuario.pode('parecer.criar') %}
-<a class="botao" href="/processos/{{ processo.id }}/parecer">Novo parecer</a>
+<form method="post" action="/processos/{{ processo.id }}/parecer" class="form-sair"><button type="submit" class="botao">Novo parecer</button></form>
 {% endif %}
 {% endblock %}
 
@@ -157,7 +157,7 @@
       <h2>Pareceres deste processo</h2>
       <span class="contador">{{ pareceres|length }}</span>
       {% if usuario.pode('parecer.criar') %}
-      <a class="a-direita" href="/processos/{{ processo.id }}/parecer">Novo parecer</a>
+      <form method="post" action="/processos/{{ processo.id }}/parecer" class="a-direita form-sair"><button type="submit" class="como-link">Novo parecer</button></form>
       {% endif %}
     </div>
     <table>

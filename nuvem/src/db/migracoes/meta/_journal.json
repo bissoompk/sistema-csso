@@ -36,6 +36,13 @@
       "when": 1790296675186,
       "tag": "0004_registro_acesso",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792287624064,
+      "tag": "0005_sessao_inatividade",
+      "breakpoints": true
     }
   ]
 }

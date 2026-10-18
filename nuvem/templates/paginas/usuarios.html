@@ -43,7 +43,7 @@
   {# Quem não pode resetar senha nem inativar não ganha a coluna de ações: uma
      coluna vazia em toda linha se lê como funcionalidade quebrada, e não como
      permissão que falta. #}
-  {% set pode_gerir = usuario.pode('usuario.resetar_senha') or usuario.pode('usuario.criar_conta') %}
+  {% set pode_gerir = usuario.pode('usuario.resetar_senha') or usuario.pode('usuario.criar_conta') or usuario.pode('perfil.conceder') %}
   <div class="tabela-cartao lista">
     <table>
       <thead>
@@ -94,7 +94,15 @@
           {% call ui.popup_gaveta('gerir-conta-' ~ u.id, 'Gerir',
                                   'Gerir a conta de ' ~ u.nome,
                                   nota=u.login) %}
-              {% if usuario.pode('usuario.resetar_senha') %}
+              {# Mesma regra de `_recusa_de_redefinicao`: conta de administração
+                 só por quem concede perfil, e a própria senha nunca por aqui. #}
+              {% set governo = u.id in contas_de_governo %}
+              {% if u.id == usuario.id %}
+              <p class="discreto">A sua própria senha se troca em <a href="/trocar-senha">Trocar senha</a>.</p>
+              {% elif governo and not usuario.pode('perfil.conceder') and usuario.pode('usuario.resetar_senha') %}
+              <p class="discreto"><strong>Conta de administração.</strong> A senha dela só é
+                redefinida por quem concede perfil (o superintendente).</p>
+              {% elif usuario.pode('perfil.conceder') or usuario.pode('usuario.resetar_senha') %}
               <form method="post" action="/usuarios/{{ u.id }}/senha">
                 <h3>Resetar senha</h3>
                 <p class="discreto">Gera uma senha provisória, mostrada uma única vez, e

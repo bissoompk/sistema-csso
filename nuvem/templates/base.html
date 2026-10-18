@@ -164,7 +164,7 @@
 <header class="cabecalho-marca">
   <span class="marca-sigla" aria-hidden="true">{% include 'partes/marca.svg' %}</span>
   <span class="nome">CSSO · Sisa/UFVJM</span>
-  {% if usuario %}<a class="sair" href="/sair">sair</a>{% endif %}
+  {% if usuario %}<form class="form-sair" method="post" action="/sair"><button type="submit" class="sair">sair</button></form>{% endif %}
 </header>
 {% else %}
   <header class="cabecalho">
@@ -285,7 +285,7 @@
             <path d="M8 1.3v1.8M8 12.9v1.8M14.7 8h-1.8M3.1 8H1.3M12.74 3.26l-1.28 1.28M4.54 11.46l-1.28 1.28M12.74 12.74l-1.28-1.28M4.54 4.54 3.26 3.26"/>
           </svg></a>
         {% endif %}
-        <a class="sair" href="/sair">sair</a>
+        <form class="form-sair" method="post" action="/sair"><button type="submit" class="sair">sair</button></form>
       </div>
     </div>
   </header>

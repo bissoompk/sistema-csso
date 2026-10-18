@@ -18,11 +18,12 @@ import { formulario, usuarioCom } from "../dependencias.js";
 import { marcarDownload, pagina } from "../web.js";
 import { migracao_rejeitada, stg_trello_cartao } from "../db/esquema/index.js";
 import { obterArmazenamento } from "../servicos/armazenamento.js";
+import { ArquivoZipRecusado } from "../servicos/arquivo_zip.js";
 import * as importacao_planilha from "../servicos/importacao_planilha.js";
 import * as importacao_trello from "../servicos/importacao_trello.js";
 import * as servico_reconciliacao from "../servicos/reconciliacao.js";
 import { recontar_sequencia } from "../servicos/numeracao.js";
-import { linha_csv } from "./relatorios.js";
+import { linha_csv } from "../servicos/csv.js";
 import * as textos from "../servicos/textos.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -77,7 +78,16 @@ rotas.post("/importar/planilha", async (c) => {
   const tx = c.get("tx");
   const { f, nome, conteudo } = await _receber(c, "planilha.xlsx");
   const aplicar = f.texto("aplicar") === "1";
-  const relatorio = await importacao_planilha.importar(tx, { nome, conteudo }, usuario, aplicar);
+  let relatorio;
+  try {
+    relatorio = await importacao_planilha.importar(tx, { nome, conteudo }, usuario, aplicar);
+  } catch (erro) {
+    if (erro instanceof ArquivoZipRecusado) {
+      desfazer(c);
+      throw new ErroHttp(422, erro.message);
+    }
+    throw erro;
+  }
   if (aplicar) await recontar_sequencia(tx);
   else desfazer(c);
   return pagina(c, "paginas/importar_relatorio.html", usuario, { relatorio, aplicado: aplicar, origem: "planilha" });

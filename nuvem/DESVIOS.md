@@ -557,37 +557,54 @@ internet chega ao `/login`. O que mudou por isso (testes em
 - **Link "Abrir no SEI" só para `http(s)://`** (`paginas/processo_ficha.html`):
   o campo é digitado; `javascript:` num `href` é script (a CSP já barrava).
 
-### Recomendações que NÃO foram aplicadas (decisão do dono)
+### Recomendações aplicadas no endurecimento de 18/10/2026
 
-- **Política de senha** (média): 6 caracteres foi pedido para a rede interna.
-  Na internet, recomenda-se mínimo de 10–12, sem exigir mistura, e recusar
-  senhas de listas vazadas; o bloqueio por conta e o teto por endereço agora
-  seguram a força bruta, mas não a senha fraca adivinhada em poucas tentativas.
-  Idem a provisória (4 letras + 2 dígitos ≈ 26 bits): aceitável só porque a
-  troca agora é forçada em toda rota.
+Estavam aqui como "não aplicadas (decisão do dono)"; o dono decidiu aplicar.
+Testes em `testes/endurecimento.test.ts`.
+
+- **Política de senha**: mínimo de **10** caracteres e 5 diferentes, **sem**
+  regra de composição (NIST SP 800-63B), e lista de senhas vazadas e de
+  contexto (UFVJM, campi, CSSO). **Desvio do Python** (6, letras e números).
+  A senha que entra certa mas não passa na política de hoje vira troca
+  obrigatória no próprio login — é o único momento em que o sistema a conhece.
+  A provisória passou a `xxxx-xxxx-99` (≈ 43 bits, contra 26).
+- **Redefinição de senha**: a própria, nunca (troca-se sabendo a atual);
+  conta de administração (`PERMISSOES_DE_GOVERNO`: conceder perfil, atestar
+  habilitação, criar conta, redefinir senha, backup) só por quem tem
+  `perfil.conceder`; as demais, pelo `admin_ti` como antes. A regra "só quem
+  alcança tudo o que o alvo alcança" foi descartada: só o `admin_ti` tem
+  `usuario.resetar_senha`, e ele não alcança nada de técnico — ninguém mais
+  teria a senha redefinida. Recusa grava `SENHA_RESET_RECUSADO`.
+- **Sessão por inatividade**: `CSSO_SESSAO_INATIVIDADE_MINUTOS`, 120 por
+  padrão (0 desliga), além das 12 h absolutas. Coluna nova
+  `sessao.ultimo_uso_em` (migração 0005), regravada no máximo uma vez por
+  minuto. Duas horas, e não quinze minutos: o parecer se escreve com o SEI
+  aberto ao lado, e a sessão vencida no salvamento perderia o texto.
+- **GET que escrevia**: `/sair` é POST (o GET mostra o botão) e o rascunho de
+  parecer nasce de `POST /processos/{id}/parecer` (o GET volta à ficha). O
+  app compilado (`/app`) ainda aponta o "sair" para o GET — cai na tela do
+  botão; trocar por formulário pede recompilar o `frontend/` e um
+  `POST /sair` no Python, que usa o mesmo bundle.
+- **CSV com fórmula**: `servicos/csv.ts`, um gerador só (eram três), prefixa
+  `'` em célula que começa por `= + - @`, tabulação ou `\r` — exceto número.
+- **Anexo**: sai com o tipo declarado só se ele estiver em
+  `anexos.TIPOS_SERVIDOS` (pdf, imagens, office, texto); fora disso,
+  `application/octet-stream`. O `mime_type` gravado não muda.
+- **Planilha**: `servicos/arquivo_zip.conferir_zip` descompacta cada parte com
+  `maxOutputLength` (64 MB no total, 2.000 partes) antes do ExcelJS, e a
+  importação recusa mais de 5.000 linhas. Vale pelo que descompacta, não pelo
+  tamanho que o zip declara.
+- **Exportação completa**: o zip sai sem `sessao` e `limite_login_ip` e com
+  `usuario.senha_hash` vazio (e troca obrigatória). Restaurado dele, ninguém
+  entra até a redefinição; a cópia fiel é o backup cifrado. A permissão
+  própria (`exportar.tudo`) não foi criada: a rota já exige `exportar` +
+  `exposicao.ver` + (`perfil.conceder` ou `catalogo.gerenciar`).
+
+### Recomendações que continuam NÃO aplicadas
+
 - **Mensagem "Conta bloqueada até..."** (baixa): confirma que o e-mail existe
   (CA-12 pede a mensagem). Se o risco pesar mais que a instrução, trocar pela
   genérica.
-- **`admin_ti` redefine a senha de qualquer conta** (média): inclusive
-  superintendente e coordenação — tomada de conta por quem, pela matriz, não
-  vê conteúdo técnico. Mitigado pela troca forçada (o dono percebe que a senha
-  mudou) e pela trilha `SENHA_RESETADA`. Recomenda-se proibir redefinir quem
-  tem mais privilégio, ou exigir segunda pessoa.
-- **Permissão própria para a exportação completa** (`exportar.tudo`) e, no
-  zip, deixar de fora `usuario.senha_hash`, `sessao` e `limite_login_ip`
-  (quebra restaurar a partir da exportação: o restauro é pelo backup cifrado);
-  e apagar `exportacoes/` depois de baixar (a cópia em claro fica no Storage).
-- **Sessão**: 12 h absolutas, sem expiração por inatividade; `/sair` e
-  `/processos/{id}/parecer` são GET que escrevem (CSRF de logout / rascunho
-  criado por link de outro site — o middleware só cobre método que escreve).
-- **Anexo servido com o `Content-Type` que o navegador de quem enviou
-  declarou**: sempre `attachment` + `nosniff` + CSP, então não executa; ainda
-  assim, servir fora de uma lista (pdf/png/jpeg/docx/xlsx) como
-  `application/octet-stream`.
-- **Planilha (xlsx) sem teto de descompressão nem de linhas** (baixa, só
-  `catalogo.gerenciar`): um zip-bomb derruba a instância da função.
-- **CSV com fórmula** (`= + - @` no início da célula) nos relatórios e
-  exportações: prefixar `'`.
 - **Teto por endereço e `/validar`** não seguram ataque distribuído: para isso,
   regra de rate limit/WAF na borda do Netlify.
 - **Varredura de `pendencias` (qualquer permissão de escrita fecha pendência de

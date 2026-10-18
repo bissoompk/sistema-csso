@@ -29,7 +29,7 @@
 import { pathToFileURL } from "node:url";
 import { carregarEnvLocal } from "./env-local.js";
 
-export const SENHA = "teste2026";
+export const SENHA = "teste-csso-2026";
 export const DOMINIO = "csso.teste";
 
 // As contas: uma por perfil, para o dono trocar de login e ver a mesma tela

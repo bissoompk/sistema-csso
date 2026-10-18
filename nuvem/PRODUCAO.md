@@ -37,7 +37,7 @@ Site configuration > Environment variables. Marque as secretas como *secret*
 | `CSSO_BUCKET` | `csso-producao` (bucket novo e vazio; o `csso` antigo tem arquivos de teste) | sim |
 | `CSSO_URL_PUBLICA` | a mesma URL passada ao `producao-iniciar` (recuo; o que vale é o parâmetro do banco) | recomendada |
 | `CSSO_COOKIE_SEGURO` | `auto` (padrão) ou `sim`; **nunca** `nao` (produção recusa subir)² | não |
-| `CSSO_SESSAO_HORAS`, `CSSO_MAX_TENTATIVAS`, `CSSO_BLOQUEIO_MINUTOS`, `CSSO_MAX_FALHAS_IP`, `CSSO_JANELA_IP_MINUTOS`, `CSSO_LOG_RETENCAO_DIAS`, `CSSO_EPI_LOCAL_RETIRADA`, `CSSO_FUSO_EXIBICAO` | padrões servem | não |
+| `CSSO_SESSAO_HORAS` (12), `CSSO_SESSAO_INATIVIDADE_MINUTOS` (120; 0 desliga), `CSSO_MAX_TENTATIVAS`, `CSSO_BLOQUEIO_MINUTOS`, `CSSO_MAX_FALHAS_IP`, `CSSO_JANELA_IP_MINUTOS`, `CSSO_LOG_RETENCAO_DIAS`, `CSSO_EPI_LOCAL_RETIRADA`, `CSSO_FUSO_EXIBICAO` | padrões servem | não |
 
 **Não** defina `CSSO_PRIMEIRO_ACESSO_REMOTO` (o primeiro acesso é pela linha de
 comando, §3) nem `CSSO_DIR_ARQUIVOS` (é de desenvolvimento).
@@ -87,16 +87,22 @@ pode ser apagado depois.
 
 1. Publique o site (Deploys > Trigger deploy) com as variáveis do §2.
 2. Entre com o login e a senha provisória. O sistema manda para
-   `/trocar-senha`: troque.
-3. Em `/usuarios`, substitua o ato "BOOTSTRAP — substituir pelo ato real" pelo
+   `/trocar-senha`: troque. A senha precisa de **10 caracteres** (uma frase
+   curta serve). Conta trazida de banco antigo com senha de 6 caracteres
+   entra uma vez e é mandada trocar.
+3. **Senha esquecida**: o `admin_ti` redefine a de qualquer conta comum; a de
+   conta de administração (superintendente, `admin_ti`) só o superintendente
+   redefine. A do único superintendente, se perdida, só pela linha de comando
+   (SQL no Supabase, com registro em ata).
+4. Em `/usuarios`, substitua o ato "BOOTSTRAP — substituir pelo ato real" pelo
    ato normativo verdadeiro e cadastre as demais contas.
-4. `GET /saude/db` (logado como superintendente/admin_ti/auditor) deve mostrar
+5. `GET /saude/db` (logado como superintendente/admin_ti/auditor) deve mostrar
    `"producao": true`.
-5. **Depois de carregar os dados reais** (importação da planilha/Trello), rode
+6. **Depois de carregar os dados reais** (importação da planilha/Trello), rode
    `npx tsx ferramentas/procurar-cpf.ts` (com a `DATABASE_URL` de produção):
    ele só CONTA CPF perdido em coluna de texto, nunca mostra o valor. Resultado
    diferente de zero: tratar linha a linha pelo `id`.
-6. **Ao encerrar a migração de dados**, apague as cópias brutas das planilhas e
+7. **Ao encerrar a migração de dados**, apague as cópias brutas das planilhas e
    do JSON do Trello que a importação guarda em `entrada/` no bucket
    (Supabase > Storage > `csso-producao` > `entrada`) — são dado bruto, já
    normalizado no sistema (POLITICA_RETENCAO §2.1, staging). Registre em ata.

@@ -525,7 +525,7 @@ rotas.get("/anexos/:anexo_id{[0-9]+}", async (c) => {
   }
   const conteudo = await servico_anexos.ler_conteudo(anexo!);
   return c.body(conteudo as unknown as ArrayBuffer, 200, {
-    "content-type": anexo!.mime_type,
+    "content-type": servico_anexos.tipo_para_servir(anexo!.mime_type),
     "content-disposition": disposicao(anexo!.nome_original),
   });
 });

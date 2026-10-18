@@ -4,6 +4,7 @@
  */
 import { Hono } from "hono";
 import { asc, eq, or } from "drizzle-orm";
+import type { Executor } from "../db/cliente.js";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { desfazer } from "../nucleo/contexto.js";
 import { ErroHttp } from "../nucleo/erros.js";
@@ -21,7 +22,7 @@ import { hoje_iso } from "../dominio/datas.js";
 import { vigente_em } from "../dominio/organizacao.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as autenticacao from "../servicos/autenticacao.js";
-import { MATRIZ_PERFIS, type UsuarioAtual } from "../servicos/rbac.js";
+import { MATRIZ_PERFIS, eh_conta_de_governo, perfis_vigentes, type UsuarioAtual } from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { comMensagem, pagina, redirecionar } from "../web.js";
 
@@ -49,8 +50,18 @@ async function _tela_lista(
     atribuicoes[u.id] = todas.filter((a) => a.usuario_id === u.id);
     vigentes_por_usuario[u.id] = atribuicoes[u.id]!.filter((a) => vigente_em(a, hoje));
   }
+  // quem a tela marca como conta de administração (a senha só o superintendente redefine)
+  const perfis_de_governo = new Set(
+    (await tx.query.perfil.findMany({ with: { perfil_permissoes: { with: { permissao: true } } } }))
+      .filter((pf) => pf.ativo && eh_conta_de_governo(pf.perfil_permissoes.map((pp) => pp.permissao.codigo)))
+      .map((pf) => pf.id),
+  );
+  const contas_de_governo = usuarios
+    .filter((u) => vigentes_por_usuario[u.id]!.some((a) => perfis_de_governo.has(a.perfil_id)))
+    .map((u) => u.id);
   return pagina(c, "paginas/usuarios.html", usuario, {
     usuarios,
+    contas_de_governo,
     perfis: await tx.select().from(tabela_perfil).orderBy(asc(tabela_perfil.codigo)),
     campi: await tx.select().from(campus).orderBy(asc(campus.sigla)),
     atribuicoes,
@@ -62,6 +73,31 @@ async function _tela_lista(
     erro: recado.erro ?? null,
     digitado: recado.digitado ?? {},
   });
+}
+
+/**
+ * Redefinir é passar a conhecer a senha da conta. Sem trava, o `admin_ti` —
+ * que pela matriz não vê conteúdo técnico — tomava a conta do superintendente
+ * e via tudo, ou a de outro `admin_ti` e apagava o rastro de quem fez o quê
+ * (revisão de segurança, 25/09/2026). A regra:
+ *
+ * - a própria senha não se redefine: troca-se em /trocar-senha, sabendo a atual;
+ * - conta de administração (`eh_conta_de_governo`) só por quem concede perfil;
+ * - as demais, por quem tem `usuario.resetar_senha` ou concede perfil.
+ *
+ * A conta comum continua redefinível pelo `admin_ti` — é ele quem atende a
+ * senha esquecida. O que segura esse caso é a troca obrigatória (o dono
+ * percebe na próxima entrada) e o evento `SENHA_RESETADA` na trilha.
+ * Devolve o motivo da recusa, ou `null`.
+ */
+async function _recusa_de_redefinicao(tx: Executor, usuario: UsuarioAtual, alvo_id: number): Promise<string | null> {
+  if (alvo_id === usuario.id) return "a própria senha se troca em Trocar senha, informando a atual.";
+  if (usuario.pode("perfil.conceder")) return null;
+  const { permissoes } = await perfis_vigentes(tx, alvo_id);
+  if (eh_conta_de_governo(permissoes)) {
+    return "é conta de administração; só quem concede perfil (o superintendente) redefine.";
+  }
+  return usuario.pode("usuario.resetar_senha") ? null : "falta a permissão usuario.resetar_senha.";
 }
 
 /** A tela com a senha provisória no recado — e sem cache (`no-store`). */
@@ -129,10 +165,21 @@ rotas.post("/usuarios", async (c) => {
 
 rotas.post("/usuarios/:id{[0-9]+}/senha", async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("usuario.resetar_senha");
+  if (!usuario.pode("perfil.conceder")) usuario.exigir("usuario.resetar_senha");
   const tx = c.get("tx");
   const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
   if (!alvo) return redirecionar(c, "/usuarios");
+  const recusa = await _recusa_de_redefinicao(tx, usuario, alvo.id);
+  if (recusa) {
+    await auditoria.registrar(tx, {
+      entidade: "usuario",
+      entidade_id: alvo.id,
+      tipo_evento: "SENHA_RESET_RECUSADO",
+      descricao: `Redefinição da senha de '${alvo.login}' recusada: ${recusa}`,
+      usuario,
+    });
+    return _tela_lista(c, usuario, { erro: `A senha de ${alvo.nome} não foi redefinida: ${recusa}` });
+  }
   const provisoria = autenticacao.senha_provisoria();
   await tx
     .update(tabela_usuario)

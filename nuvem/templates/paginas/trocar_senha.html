@@ -20,7 +20,8 @@
   <h1>Trocar senha</h1>
   <p class="sub">
     {%- if usuario.precisa_trocar_senha -%}
-    Sua senha é provisória e precisa ser trocada antes de continuar.
+    Sua senha é provisória, ou não atende mais à política de senha, e precisa
+    ser trocada antes de continuar.
     {%- else -%}
     A senha nova passa a valer na hora; as sessões abertas continuam abertas.
     {%- endif -%}
@@ -40,8 +41,8 @@
              autocomplete="new-password" aria-describedby="dica-nova">
       {{ senha.barra('nova') }}
       {% if erro_nova %}<span class="erro-campo">{{ erro_nova }}</span>{% endif %}
-      <span class="dica" id="dica-nova">Mínimo de 6 caracteres, misturando letras e
-        números.</span>
+      <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase
+        curta é mais fácil de lembrar e mais difícil de adivinhar.</span>
     </div>
 
     <div class="campo {{ 'com-erro' if erro_conf }}">

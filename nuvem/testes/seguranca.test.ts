@@ -104,7 +104,7 @@ describe("o Secure do cookie sai da conexão (T-2)", () => {
   it("sair apaga o cookie de sessão", async () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
-    const r = await cliente.get("/sair", { seguir: false });
+    const r = await cliente.post("/sair", {}, { seguir: false });
     expect(r.location).toBe("/login");
     const c = cookieDeSessao(r);
     expect(c).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/);

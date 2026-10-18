@@ -23,23 +23,46 @@ await contas(db);
 // Política de senha
 // =====================================================================
 describe("política de senha", () => {
-  it("mínimo é seis", () => {
-    expect(autenticacao.TAMANHO_MINIMO_SENHA).toBe(6);
+  it("mínimo é dez, com cinco caracteres diferentes", () => {
+    expect(autenticacao.TAMANHO_MINIMO_SENHA).toBe(10);
+    expect(autenticacao.MINIMO_CARACTERES_DISTINTOS).toBe(5);
   });
 
-  it.each(["csso26", "Fab2026", "Lab7x9", "a1b2c3"])("aceita %s", (senha) => {
+  // sem regra de composição: frase só de letras passa (NIST SP 800-63B)
+  it.each(["csso-sisa-26", "Fabricio2026", "laboratorio quimico", "a1b2c3d4e5", "ação-segura"])("aceita %s", (senha) => {
     expect(autenticacao.politica_de_senha(senha)).toEqual([]);
   });
 
   it.each([
-    ["a1b2", "mínimo de 6 caracteres"],
-    ["", "mínimo de 6 caracteres"],
-    ["somenteletras", "misture letras e números"],
-    ["123456789", "misture letras e números"],
-    ["abc123", "senha trivial"],
-    ["Senha123", "senha trivial"],
+    ["a1b2", "mínimo de 10 caracteres"],
+    ["", "mínimo de 10 caracteres"],
+    ["csso26", "mínimo de 10 caracteres"],
+    ["aaaaaaaaaaaa", "use pelo menos 5 caracteres diferentes"],
+    ["1212121212", "use pelo menos 5 caracteres diferentes"],
+    ["1234567890", "senha trivial"],
+    ["UFVJM2026", "mínimo de 10 caracteres"],
+    ["Diamantina", "senha trivial"],
+    ["Senha123456", "senha trivial"],
   ])("recusa %j (%s)", (senha, problema) => {
     expect(autenticacao.politica_de_senha(senha)).toContain(problema);
+  });
+
+  it("conta por code point, não por unidade UTF-16", () => {
+    // 5 emojis são 10 unidades UTF-16 e 5 caracteres
+    expect(autenticacao.politica_de_senha("😀😁😂🤣😃")).toContain("mínimo de 10 caracteres");
+  });
+
+  it("a lista de triviais está em minúsculas (a comparação é em minúsculas)", () => {
+    for (const t of autenticacao.SENHAS_TRIVIAIS) expect(t).toBe(t.toLowerCase());
+  });
+
+  it("senha provisória: dois blocos de letras e dois dígitos, sem caractere ambíguo, e passa na política", () => {
+    for (let i = 0; i < 200; i++) {
+      const s = autenticacao.senha_provisoria();
+      expect(s).toMatch(/^[a-km-np-z]{4}-[a-km-np-z]{4}-[2-9]{2}$/);
+      // pode, raramente, repetir letras a ponto de ficar com menos de 5 distintas —
+      // não importa: a troca é obrigatória; o que importa é a entropia
+    }
   });
 
   it("hash continua Argon2id", async () => {
@@ -87,7 +110,8 @@ describe("política de senha", () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
     const troca = await cliente.get("/trocar-senha");
-    expect(troca.text).toContain('"minimo":6');
+    expect(troca.text).toContain('"minimo":10');
+    expect(troca.text).toContain('"distintos":5');
     expect(troca.text).toContain('"senha123456"');
   });
 
@@ -108,7 +132,7 @@ describe("login", () => {
     for (const variante of ["coordenador_csso", "COORDENADOR_CSSO", "Coordenador_CSSO"]) {
       const r = await cliente.post("/login", { login: variante, senha: SENHA_TESTE }, { seguir: false });
       expect(r.status, variante).toBe(303);
-      await cliente.get("/sair");
+      await cliente.post("/sair", {});
     }
   });
 
@@ -208,7 +232,7 @@ describe("login", () => {
         { seguir: false },
       );
       expect(r.location, fora).toBe("/inicio");
-      await cliente.get("/sair");
+      await cliente.post("/sair", {});
     }
     const r = await cliente.post(
       "/login",
@@ -242,7 +266,7 @@ describe("login", () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
     const token = cliente.cookies.get(autenticacao.COOKIE_SESSAO)!;
-    await cliente.get("/sair", { seguir: false });
+    await cliente.post("/sair", {}, { seguir: false });
     expect(await autenticacao.sessao_valida(db, token)).toBeNull();
     expect((await cliente.get("/kanban", { seguir: false })).status).toBe(303);
   });
@@ -270,7 +294,7 @@ describe("troca de senha e sessões", () => {
     );
     expect(r.status).toBe(303);
     expect(r.location).toBe("/inicio");
-    await cliente.get("/sair");
+    await cliente.post("/sair", {});
     const velha = await cliente.post("/login", { login: "troca1", senha: SENHA_TESTE });
     expect(velha.text).toContain("inválidos");
     const nova = await cliente.post("/login", { login: "troca1", senha: "novasenha1" }, { seguir: false });
@@ -391,7 +415,7 @@ describe("bloqueio e sessão expirada", () => {
   it("sessão expirada volta ao login com o motivo e o filtro", async () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
-    await cliente.get("/sair");
+    await cliente.post("/sair", {});
     cliente.cookies.set(autenticacao.COOKIE_SESSAO, "sessao-que-nao-vale-mais");
     const r = await cliente.get("/processos?estado=EM_TRIAGEM&pagina=3", { seguir: false });
     expect(r.status).toBe(303);

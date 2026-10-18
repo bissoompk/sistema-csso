@@ -42,7 +42,7 @@ async function abrir_rascunho(perfil = "coordenador_csso"): Promise<[Cliente, st
   const cliente = await entrar(amb.novoCliente(), perfil);
   const criado = await cliente.post("/processos/novo", { nup: "23086.021284/2024-56", tipo_processo_id: "1" }, { seguir: false });
   expect(criado.status, criado.text.slice(0, 500)).toBe(303);
-  const rascunho = await cliente.get(`${criado.location}/parecer`, { seguir: false });
+  const rascunho = await cliente.post(`${criado.location}/parecer`, {}, { seguir: false });
   const caminho = rascunho.location!;
   return [cliente, caminho, Number(caminho.split("/").pop())];
 }
@@ -803,7 +803,7 @@ describe("rascunho sem número", () => {
     const nup = `23086.000100/2024-${nup_dv("230860001002024")}`;
     const outro = await cliente.post("/processos/novo", { nup, tipo_processo_id: "1" }, { seguir: false });
     expect(outro.status, outro.text.slice(0, 300)).toBe(303);
-    const segundo = await cliente.get(`${outro.location}/parecer`, { seguir: false });
+    const segundo = await cliente.post(`${outro.location}/parecer`, {}, { seguir: false });
     expect(segundo.status).toBe(303);
     expect(segundo.location).toMatch(/^\/pareceres\/\d+$/);
     expect(segundo.location).not.toBe(primeiro);

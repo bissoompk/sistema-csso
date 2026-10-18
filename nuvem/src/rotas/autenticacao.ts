@@ -143,11 +143,24 @@ rotas.post("/login", async (c) => {
   return redirecionar(c, destino);
 });
 
-rotas.get("/sair", async (c) => {
+/**
+ * Sair é POST (revisão de segurança, 25/09/2026). Como GET, qualquer página da
+ * internet derrubava a sessão de quem a abrisse com um `<img src=".../sair">`
+ * — o CSRF de logout, que o middleware de origem não alcança porque só confere
+ * método que escreve. O GET continua existindo para o link antigo (favorito,
+ * o app de bolso de versão anterior): mostra o botão, e só o botão sai.
+ */
+rotas.post("/sair", async (c) => {
   const token = getCookie(c, autenticacao.COOKIE_SESSAO);
   if (token) await autenticacao.revogar(c.get("tx"), token);
   deleteCookie(c, autenticacao.COOKIE_SESSAO, { path: "/" });
   return redirecionar(c, "/login");
+});
+
+rotas.get("/sair", async (c) => {
+  const usuario = await usuarioOpcional(c);
+  if (!usuario) return redirecionar(c, "/login");
+  return pagina(c, "paginas/sair.html", usuario, { sem_casca: true });
 });
 
 rotas.get("/primeiro-acesso", async (c) => {

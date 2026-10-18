@@ -42,6 +42,7 @@ import {
   tipo_processo,
   unidade_uorg,
 } from "../db/esquema/index.js";
+import { ArquivoZipRecusado, conferir_zip } from "./arquivo_zip.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
 import * as servico_nup from "./nup.js";
@@ -244,12 +245,26 @@ function _texto(valor: unknown): string | null {
   return String(valor);
 }
 
+/**
+ * Linhas aceitas numa planilha. A real de 2019–2026 tem 975; o teto existe
+ * porque cada linha é uma ida ao banco, e 100 mil linhas estourariam os 60 s
+ * da função no meio da importação (revisão de segurança, 25/09/2026).
+ */
+export const MAXIMO_LINHAS_PLANILHA = 5000;
+
 export async function carregar_staging(tx: Executor, arquivo: ArquivoPlanilha): Promise<Registro[]> {
+  // antes do ExcelJS, que descompacta tudo em memória (zip-bomb)
+  conferir_zip(arquivo.conteudo);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(Buffer.from(arquivo.conteudo) as unknown as ArrayBuffer);
   const ws = wb.worksheets[0];
   const registros: Registro[] = [];
   if (!ws) return registros;
+  if (ws.rowCount - 1 > MAXIMO_LINHAS_PLANILHA) {
+    throw new ArquivoZipRecusado(
+      `A planilha tem ${ws.rowCount - 1} linhas; o máximo por importação é ${MAXIMO_LINHAS_PLANILHA}. Divida o arquivo.`,
+    );
+  }
   for (let indice = 2; indice <= ws.rowCount; indice++) {
     const linha = ws.getRow(indice);
     const valores: unknown[] = [];

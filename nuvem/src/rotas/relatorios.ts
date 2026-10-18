@@ -15,6 +15,7 @@ import { adicional_vigencia, laudo_tecnico, parecer_tecnico, processo } from "..
 import * as repo from "../repositorios/processos.js";
 import * as datas_br from "../servicos/datas_br.js";
 import { lacunas_de_numeracao } from "../servicos/numeracao.js";
+import { linha_csv } from "../servicos/csv.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -188,18 +189,6 @@ rotas.get("/relatorios", async (c) => {
     limiar: LIMIAR_SUPRESSAO,
   });
 });
-
-/** O `csv.writer(delimiter=";")` do Python: aspas só quando precisa. */
-export function linha_csv(campos: unknown[]): string {
-  return (
-    campos
-      .map((v) => {
-        const s = v === null || v === undefined ? "" : String(v);
-        return /[;"\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
-      })
-      .join(";") + "\r\n"
-  );
-}
 
 rotas.get("/relatorios/exportar-processos", async (c) => {
   const usuario = await usuarioCom(c, "exportar");

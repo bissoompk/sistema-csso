@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{# Chega aqui quem abriu /sair por link (favorito, app de versão anterior).
+   Sair é POST: o GET só oferece o botão, para que uma página de fora não
+   consiga derrubar a sessão de ninguém. #}
+{% set sem_casca = true %}
+{% block titulo %}Sair · CSSO{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{% block conteudo %}
+<div class="cartao">
+  <h1>Sair do sistema</h1>
+  <p class="sub">A sessão de {{ usuario.nome }} será encerrada neste navegador.</p>
+  <form method="post" action="/sair">
+    <div class="acoes">
+      <button type="submit" class="botao">Sair</button>
+      <a class="botao secundario" href="/inicio">Continuar no sistema</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

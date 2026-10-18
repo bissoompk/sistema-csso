@@ -48,8 +48,8 @@
              autocomplete="new-password" aria-describedby="dica-senha">
       {{ senha.barra('senha') }}
       {% if erro_senha %}<span class="erro-campo">{{ erro_senha }}</span>{% endif %}
-      <span class="dica" id="dica-senha">Mínimo de 6 caracteres, misturando letras e
-        números. Ela nasce provisória: o sistema pede a troca na primeira entrada.
+      <span class="dica" id="dica-senha">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase
+        curta é mais fácil de lembrar e mais difícil de adivinhar. Ela nasce provisória: o sistema pede a troca na primeira entrada.
         Não existe usuário <code>admin</code> com senha <code>admin</code>.</span>
     </div>
 

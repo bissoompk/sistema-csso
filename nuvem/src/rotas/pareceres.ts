@@ -141,7 +141,18 @@ function _negado(c: Ctx, usuario: UsuarioAtual, erro: PermissaoNegada): Promise<
   return pagina(c, "paginas/erro.html", usuario, { titulo: "403 — acesso negado", detalhe: erro.message, codigo: erro.codigo }, 403);
 }
 
+/**
+ * Criar o rascunho é POST (revisão de segurança, 25/09/2026). Como GET, um
+ * `<img>` em qualquer página criava rascunhos em nome de quem a abrisse —
+ * com evento na trilha —, e o middleware de origem não alcança GET. O GET
+ * que sobra atende link antigo: volta à ficha, onde está o botão.
+ */
 rotas.get("/processos/:processo_id{[0-9]+}/parecer", async (c) => {
+  await usuarioCom(c, "parecer.criar");
+  return redirecionar(c, `/processos/${_id(c, "processo_id")}`);
+});
+
+rotas.post("/processos/:processo_id{[0-9]+}/parecer", async (c) => {
   const usuario = await usuarioCom(c, "parecer.criar");
   const tx = c.get("tx");
   const processo = await repo.por_id(tx, usuario, _id(c, "processo_id"));

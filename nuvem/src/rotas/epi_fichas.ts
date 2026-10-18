@@ -440,7 +440,7 @@ rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/anexo`, async (c) => {
   const conteudo = await anexos.ler_conteudo(anexo!);
   return new Response(conteudo, {
     status: 200,
-    headers: { "content-type": anexo!.mime_type, "content-disposition": disposicao(anexo!.nome_original) },
+    headers: { "content-type": anexos.tipo_para_servir(anexo!.mime_type), "content-disposition": disposicao(anexo!.nome_original) },
   });
 });
 

@@ -40,13 +40,13 @@ describe("primeiro acesso", () => {
     expect(corpo).toContain("E-mail institucional");
     const r = await cliente.post(
       "/primeiro-acesso",
-      { nome: "Fabrício Raimundi Andrade", email: "Fabricio.Andrade@ufvjm.edu.br", senha: "primeira1" },
+      { nome: "Fabrício Raimundi Andrade", email: "Fabricio.Andrade@ufvjm.edu.br", senha: "primeira-entrada1" },
       { seguir: false },
     );
     expect(r.status).toBe(303);
     const entrou = await cliente.post(
       "/login",
-      { login: "fabricio.andrade@ufvjm.edu.br", senha: "primeira1" },
+      { login: "fabricio.andrade@ufvjm.edu.br", senha: "primeira-entrada1" },
       { seguir: false },
     );
     expect(entrou.status).toBe(303);
@@ -59,15 +59,17 @@ describe("primeiro acesso", () => {
     expect(r.text).toContain('value="x@y.z"');
   });
 
-  it("senha de seis caracteres é aceita", async () => {
+  it("senha de dez caracteres é aceita; a de seis, não", async () => {
     const { cliente } = await bancoLimpo();
+    const curta = await cliente.post("/primeiro-acesso", { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "csso26" });
+    expect(curta.text).toContain("mínimo de 10 caracteres");
     const r = await cliente.post(
       "/primeiro-acesso",
-      { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "csso26" },
+      { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "csso-sisa-26" },
       { seguir: false },
     );
     expect(r.status).toBe(303);
-    const entrada = await cliente.post("/login", { login: "chefe", senha: "csso26" }, { seguir: false });
+    const entrada = await cliente.post("/login", { login: "chefe", senha: "csso-sisa-26" }, { seguir: false });
     expect(entrada.status).toBe(303);
   });
 

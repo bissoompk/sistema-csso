@@ -94,9 +94,24 @@ export function _hash_token(token: string): string {
   return createHmac("sha256", obterConfig().chaveSecreta).update(token, "utf8").digest("hex");
 }
 
-export const TAMANHO_MINIMO_SENHA = 6;
+/**
+ * Política para a internet aberta (revisão de segurança, 25/09/2026). Era 6,
+ * letras e números, a pedido, quando o sistema só existia na máquina do
+ * setor. Exposto, o que segura a senha fraca não é o bloqueio por tentativas:
+ * 5 chutes por conta a cada 15 minutos, em centenas de contas, acham quem usou
+ * `ufvjm2026`. A recomendação atual (NIST SP 800-63B) é comprimento, sem
+ * regra de composição, e recusar as senhas que todo mundo tenta primeiro.
+ */
+export const TAMANHO_MINIMO_SENHA = 10;
+/** Caracteres diferentes exigidos: `aaaaaaaaaa` e `1212121212` têm dez, e nada de senha. */
+export const MINIMO_CARACTERES_DISTINTOS = 5;
 
-/** Senhas triviais recusadas mesmo respeitando o tamanho mínimo. */
+/**
+ * Senhas recusadas mesmo respeitando o tamanho: as primeiras de toda lista
+ * vazada e as que o próprio contexto sugere (instituição, cidades dos campi,
+ * o nome do sistema). Comparadas em minúsculas. Os itens curtos vêm da
+ * política antiga e ficam: custam nada e a lista é também documentação.
+ */
 export const SENHAS_TRIVIAIS: ReadonlySet<string> = new Set([
   "admin",
   "admin1",
@@ -112,41 +127,102 @@ export const SENHAS_TRIVIAIS: ReadonlySet<string> = new Set([
   "senha123",
   "123456789012",
   "senha123456",
+  // vazadas, com 10 ou mais caracteres
+  "0123456789",
+  "1234567890",
+  "12345678910",
+  "0987654321",
+  "1111111111",
+  "1q2w3e4r5t",
+  "1q2w3e4r5t6y",
+  "qwertyuiop",
+  "qwerty1234",
+  "qwerty12345",
+  "asdfghjkl1",
+  "password12",
+  "password123",
+  "password1234",
+  "iloveyou12",
+  "abcdefghij",
+  "abc1234567",
+  "abcd123456",
+  "a123456789",
+  "aa12345678",
+  "senha12345",
+  "senha1234567",
+  "minhasenha",
+  "minhasenha1",
+  "mudar12345",
+  "mudar123456",
+  "trocar1234",
+  "teste12345",
+  "teste123456",
+  "admin12345",
+  "admin123456",
+  "adminadmin",
+  "administrador",
+  "administrador1",
+  "brasil1234",
+  "brasil12345",
+  "flamengo123",
+  "corinthians",
+  "palmeiras1",
+  "cruzeiro123",
+  "atletico123",
+  // a instituição e os campi
+  "ufvjm12345",
+  "ufvjm123456",
+  "ufvjm2025",
+  "ufvjm2026",
+  "ufvjm2027",
+  "ufvjm@2026",
+  "csso123456",
+  "csso2026sisa",
+  "sisaufvjm1",
+  "diamantina",
+  "diamantina1",
+  "diamantina123",
+  "teofilootoni",
+  "teofilootoni1",
+  "janauba123",
+  "unai123456",
+  "progep2026",
 ]);
 
 // Alfabeto sem 0/O/1/l/I: a senha provisória é ditada e digitada à mão.
 const _ALFABETO_CLARO = "abcdefghijkmnpqrstuvwxyz";
 const _DIGITOS_CLAROS = "23456789";
 
-/** Curta e legível, para o coordenador ditar. Troca obrigatória no 1º acesso. */
+/**
+ * Legível, para o coordenador ditar, em dois blocos de quatro letras e dois
+ * dígitos (`kfwp-tmzq-47`): ≈ 43 bits, contra os 26 da de seis caracteres.
+ * Troca obrigatória no 1º acesso, em toda rota.
+ */
 export function senha_provisoria(): string {
-  let letras = "";
-  for (let i = 0; i < 4; i++) letras += _ALFABETO_CLARO[randomInt(_ALFABETO_CLARO.length)];
+  const letras = (n: number) => {
+    let saida = "";
+    for (let i = 0; i < n; i++) saida += _ALFABETO_CLARO[randomInt(_ALFABETO_CLARO.length)];
+    return saida;
+  };
   let numeros = "";
   for (let i = 0; i < 2; i++) numeros += _DIGITOS_CLAROS[randomInt(_DIGITOS_CLAROS.length)];
-  return letras + numeros;
-}
-
-/** `str.isalpha()` / `str.isdigit()` do Python (Unicode, e falsos na string vazia). */
-function soLetras(s: string): boolean {
-  return s.length > 0 && /^\p{L}+$/u.test(s);
-}
-function soDigitos(s: string): boolean {
-  return s.length > 0 && /^\p{Nd}+$/u.test(s);
+  return `${letras(4)}-${letras(4)}-${numeros}`;
 }
 
 /**
- * Política curta, a pedido do coordenador: 6 caracteres, letras e números.
- * O que segura o risco é o bloqueio por tentativas somado ao Argon2id e às
- * sessões revogáveis. Registrado em PENDENCIAS.md.
+ * Os problemas da senha, na ordem em que a tela os mostra. Lista vazia = aceita.
+ * `templates/partes/senha.html` espelha estas mesmas regras na barra de força.
  */
 export function politica_de_senha(senha: string): string[] {
   const problemas: string[] = [];
   // `len` do Python conta code points, não unidades UTF-16
-  if ([...senha].length < TAMANHO_MINIMO_SENHA) {
+  const caracteres = [...senha];
+  if (caracteres.length < TAMANHO_MINIMO_SENHA) {
     problemas.push(`mínimo de ${TAMANHO_MINIMO_SENHA} caracteres`);
   }
-  if (soLetras(senha) || soDigitos(senha)) problemas.push("misture letras e números");
+  if (senha && new Set(caracteres).size < MINIMO_CARACTERES_DISTINTOS) {
+    problemas.push(`use pelo menos ${MINIMO_CARACTERES_DISTINTOS} caracteres diferentes`);
+  }
   if (SENHAS_TRIVIAIS.has(senha.toLowerCase())) problemas.push("senha trivial");
   return problemas;
 }
@@ -272,13 +348,18 @@ export async function autenticar(
     throw new FalhaDeAutenticacao();
   }
 
+  // A senha que entrou certa mas não passa na política de HOJE (as de 6
+  // caracteres da política anterior) vira troca obrigatória: o único momento
+  // em que o sistema conhece a senha em claro é este, e ela não é guardada.
+  const precisa_trocar_senha = conta.precisa_trocar_senha || politica_de_senha(senha).length > 0;
   await tx
     .update(usuario)
-    .set({ tentativas_falhas: 0, bloqueado_ate: null, ultimo_login_em: agora })
+    .set({ tentativas_falhas: 0, bloqueado_ate: null, ultimo_login_em: agora, precisa_trocar_senha })
     .where(eq(usuario.id, conta.id));
   conta.tentativas_falhas = 0;
   conta.bloqueado_ate = null;
   conta.ultimo_login_em = agora;
+  conta.precisa_trocar_senha = precisa_trocar_senha;
 
   const token = randomBytes(48).toString("base64url");
   await tx.insert(sessao).values({
@@ -388,10 +469,29 @@ export async function expurgar_sessoes(tx: Executor, agora: Date | null = null):
   return apagadas.length;
 }
 
+/** De quanto em quanto tempo o `ultimo_uso_em` é regravado: não a cada clique. */
+const PASSO_ULTIMO_USO_MS = 60_000;
+
+/**
+ * A sessão do cookie, se ainda vale. Além do teto absoluto (`expira_em`, 12 h),
+ * cai a sessão parada há mais de `sessaoInatividadeMinutos` (revisão de
+ * segurança, 25/09/2026): na internet, o computador deixado aberto na sala de
+ * outra unidade não pode continuar logado até o fim do expediente. Duas horas,
+ * e não quinze minutos, porque o parecer se escreve com o processo SEI aberto
+ * do lado — e a recusa por sessão vencida no salvamento perderia o texto.
+ */
 export async function sessao_valida(tx: Executor, token: string | null | undefined): Promise<Sessao | null> {
   if (!token) return null;
   const [registro] = await tx.select().from(sessao).where(eq(sessao.token_hash, _hash_token(token)));
-  if (!registro || registro.revogada || registro.expira_em <= agora_utc()) return null;
+  const agora = agora_utc();
+  if (!registro || registro.revogada || registro.expira_em <= agora) return null;
+  const inatividade_ms = obterConfig().sessaoInatividadeMinutos * 60_000;
+  const ultimo = registro.ultimo_uso_em ?? registro.criada_em;
+  if (inatividade_ms > 0 && agora.getTime() - ultimo.getTime() > inatividade_ms) return null;
+  if (agora.getTime() - ultimo.getTime() > PASSO_ULTIMO_USO_MS) {
+    await tx.update(sessao).set({ ultimo_uso_em: agora }).where(eq(sessao.id, registro.id));
+    registro.ultimo_uso_em = agora;
+  }
   return registro;
 }
 
@@ -491,5 +591,6 @@ export async function criar_primeiro_superintendente(
 // usa. Global de template registrado aqui, no dono dos números (ver `web.ts`).
 global("POLITICA_SENHA", {
   minimo: TAMANHO_MINIMO_SENHA,
+  distintos: MINIMO_CARACTERES_DISTINTOS,
   triviais: [...SENHAS_TRIVIAIS].sort(),
 });
