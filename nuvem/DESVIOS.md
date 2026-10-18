@@ -306,6 +306,14 @@ repete, em uma linha, o comentário que está no código.
 - **Habilitação com vocabulário fora do CHECK** responde 422 com a recusa do
   banco (no FastAPI viraria 500 no flush).
 
+- **Aviso do desfecho a quem demandou** (18/10/2026; não existe no Python):
+  ao encerrar, `demandas.avisar_quem_demandou` abre `DEMANDA_DESFECHO_A_LER`
+  para a conta ativa vinculada a `solicitante_servidor_id`, com o desfecho e
+  o relato na própria descrição — quem demandou não tem `demanda.ver`, e a
+  frase é tudo o que ele lê. `pendencias.titular_de` passou a resolver a
+  entidade `demanda` pelo solicitante, para o titular ler a frase sem
+  supressão. Quem encerra a própria demanda não é avisado.
+
 ## Processos SEI / Adicional Ocupacional (processo, parecer, direito, NUP, SEI, importação, reconciliação)
 
 - **Verdade do Jinja nos templates** (`src/web.ts`, mudança GLOBAL): o Nunjucks

@@ -181,6 +181,8 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, demanda_id: number, ex
     desfechos: DESFECHOS_DEMANDA,
     pessoas: await _pessoas(tx),
     pode_escrever: usuario.pode(servico.PERMISSAO_ESCREVER),
+    // quem demandou tem conta: o desfecho chega a ele, e o formulário avisa
+    avisa_solicitante: demanda ? (await servico.conta_de_quem_demandou(tx, demanda)) !== null : false,
     mensagem: extra.mensagem ?? null,
     erro: extra.erro ?? null,
     digitado: extra.digitado ?? {},

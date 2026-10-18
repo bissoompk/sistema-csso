@@ -334,18 +334,24 @@ resta, na ordem em que rende:
 - **A porta para o que é dele**: `certificado.ver` para o titular (o escopo já
   está pronto — `Certificado.servidor_id` existe exatamente para isso, e
   `aplicar_escopo` já é chamado; só a permissão nunca foi concedida), link para a
-  própria ficha de EPI (a regra "ou próprio" existe e não tem porta no menu), e a
-  **rota `/validar/{chave}` que é impressa em todo certificado e não existe** —
-  404 num documento que já circulou.
+  própria ficha de EPI (a regra "ou próprio" existe e não tem porta no menu).
+  (A rota `/validar/{chave}` impressa no certificado **existe** nas duas
+  versões — `app/rotas/validacao.py` e `nuvem/src/rotas/validacao.ts` —,
+  conferido em 18/10/2026; a frase que dizia o contrário estava velha.)
 - **A auto-inscrição em treinamento.** Hoje `/turmas` responde 200 e vem
   **sempre vazia** para ele: o escopo procura `servidor_id` em `Turma`, não acha,
   e devolve nada — e o docstring de `turmas.py:182-187` afirma que `campus_id`
   previne isso, o que é falso (`campus_id` é do escopo de unidade). A saída
   proposta é uma permissão que nasce "inscrita" e a CSSO confirma: resolve sem
   SMTP e sem exposição de rede, mais barato que a fatia de inscrição pública.
-- **Avisar o requerente da decisão.** Ele protocola em 5 ações e depois o sino
-  marca zero — ao enviar, ao aprovar, ao recusar. Ninguém o avisa, e a tela nunca
-  diz onde retirar.
+- **Avisar o requerente da decisão — feito na versão nuvem.** No pedido de EPI,
+  o sino de quem pediu recebe a decisão, o indeferimento e o "separado, venha
+  retirar" (`epi_requisicao.sincronizar_pendencia_de_*`). Na demanda, desde
+  18/10/2026, o encerramento abre `DEMANDA_DESFECHO_A_LER` para a conta ativa
+  vinculada ao servidor solicitante, com o desfecho por extenso
+  (`demandas.avisar_quem_demandou`); o formulário de encerrar avisa a equipe
+  que o relato vai chegar a quem pediu. Demanda de quem não está no cadastro,
+  ou não tem conta, continua sendo respondida pelo canal por onde chegou.
 
 **Antes de conceder as permissões que faltam**, a auditoria de privacidade pediu
 duas coisas: a lista de chamada da turma não tem guarda de RN-19 (está em

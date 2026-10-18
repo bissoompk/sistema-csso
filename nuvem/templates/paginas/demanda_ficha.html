@@ -221,6 +221,13 @@
     lista da caixa de e-mail, onde as coisas somem sem ninguém conseguir dizer o
     que houve delas. Encerrada, a demanda sai do sino e não recebe mais
     encaminhamento.</p>
+  {% if avisa_solicitante %}
+  <div class="aviso aviso-info">
+    <p><strong>Quem demandou tem conta no sistema e recebe este desfecho no sino</strong>,
+      com o texto do relato e o setor ou processo de destino. Escreva para ele ler:
+      sem nome de terceiros e sem condição de saúde de ninguém (RN-21).</p>
+  </div>
+  {% endif %}
   <div class="campo">
     <label for="desfecho">Desfecho</label>
     <select id="desfecho" name="desfecho" required{{ ' autofocus' if erro_encerrar }}>

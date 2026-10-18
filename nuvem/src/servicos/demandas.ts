@@ -31,6 +31,7 @@ import {
   demanda_encaminhamento,
   pendencia as tabela_pendencia,
   processo as tabela_processo,
+  usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import { hoje_iso } from "../dominio/datas.js";
 import {
@@ -52,6 +53,8 @@ export const PERMISSAO_VER = "demanda.ver";
 export const PERMISSAO_ESCREVER = "demanda.registrar";
 
 export const TIPO_PENDENCIA = "DEMANDA_COM_PRAZO";
+/** O aviso que vai para QUEM DEMANDOU, e não para a CSSO. */
+export const TIPO_AVISO_DESFECHO = "DEMANDA_DESFECHO_A_LER";
 
 /** Recusa de regra de negócio — sai na tela como aviso, não como 500. */
 export class RegraDaDemanda extends RegraViolada {}
@@ -62,6 +65,10 @@ export class RegraDaDemanda extends RegraViolada {}
  */
 export function chave_pendencia(demanda_id: number): string {
   return `demanda:${demanda_id}`;
+}
+
+export function chave_aviso_desfecho(demanda_id: number): string {
+  return `demanda:desfecho:${demanda_id}`;
 }
 
 async function _gravar(tx: Executor, demanda: Demanda, campos: Partial<Demanda>): Promise<void> {
@@ -406,7 +413,85 @@ export async function encerrar(
   });
   // encerrada não cobra mais nada: a tarefa do prazo sai do sino junto
   await _sincronizar_pendencia(tx, demanda, usuario);
+  await avisar_quem_demandou(tx, demanda, usuario);
   return demanda;
+}
+
+// ---------------------------------------------------------------------
+// O aviso de quem demandou
+// ---------------------------------------------------------------------
+/**
+ * A conta de quem pediu: a conta ativa vinculada ao servidor solicitante.
+ * Sem vínculo com o cadastro — chefia de fora, PROGEP, alguém que ligou —
+ * não há a quem avisar pelo sistema, e o retorno continua sendo pelo canal
+ * por onde a demanda chegou.
+ */
+export async function conta_de_quem_demandou(tx: Executor, demanda: Demanda): Promise<number | null> {
+  if (demanda.solicitante_servidor_id === null) return null;
+  const [conta] = await tx
+    .select({ id: tabela_usuario.id })
+    .from(tabela_usuario)
+    .where(and(eq(tabela_usuario.servidor_id, demanda.solicitante_servidor_id), eq(tabela_usuario.ativo, true)))
+    .orderBy(asc(tabela_usuario.id))
+    .limit(1);
+  return conta?.id ?? null;
+}
+
+/** "12/03/2026" a partir de "2026-03-12". */
+function _data(iso: string): string {
+  const [a, m, d] = iso.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+/**
+ * Põe o desfecho no sino de quem demandou. A pessoa pediu no balcão ou por
+ * e-mail e, até aqui, só sabia do resultado se alguém lembrasse de avisá-la.
+ *
+ * O texto inteiro vai NA descrição, e não num link: quem demandou não tem
+ * `demanda.ver` (a fila é do setor, e nomeia outros solicitantes), então a
+ * frase é tudo o que ela lê. É o relato que a CSSO escreveu ao encerrar —
+ * escrito, a partir de agora, sabendo que chega a quem pediu. Ela lê a frase
+ * como titular (`pendencias.titular_de` resolve a demanda pelo solicitante).
+ *
+ * Uma vez por demanda (chave fixa): encerrada não reabre. Quem encerra a
+ * própria demanda não recebe aviso do que acabou de fazer.
+ */
+export async function avisar_quem_demandou(tx: Executor, demanda: Demanda, usuario: UsuarioAtual): Promise<void> {
+  if (demanda.estado !== "ENCERRADA" || demanda.desfecho === null) return;
+  const dono = await conta_de_quem_demandou(tx, demanda);
+  if (dono === null || dono === usuario.id) return;
+
+  let detalhe = "";
+  if (demanda.desfecho === "VIROU_PROCESSO" && demanda.desfecho_processo_id !== null) {
+    const [proc] = await tx
+      .select({ nup: tabela_processo.nup })
+      .from(tabela_processo)
+      .where(eq(tabela_processo.id, demanda.desfecho_processo_id));
+    detalhe = proc ? ` O assunto segue no processo SEI ${proc.nup}.` : "";
+  } else if (demanda.desfecho === "ENCAMINHADA") {
+    detalhe =
+      ` Foi encaminhada a ${demanda.desfecho_setor}` +
+      (demanda.desfecho_data ? ` em ${_data(demanda.desfecho_data)}` : "") +
+      ": é lá que o assunto segue agora.";
+  } else if (demanda.desfecho === "RESOLVIDA" && demanda.desfecho_relato) {
+    detalhe = ` O que foi feito: ${demanda.desfecho_relato}`;
+  } else if (demanda.desfecho === "SEM_PROVIDENCIA" && demanda.desfecho_relato) {
+    detalhe = ` Motivo: ${demanda.desfecho_relato}`;
+  }
+  const descricao =
+    `Sua demanda “${demanda.assunto}”, recebida em ${_data(demanda.data_chegada)}, foi encerrada: ` +
+    `${(ROTULO_DESFECHO_DEMANDA[demanda.desfecho] ?? demanda.desfecho).toLowerCase()}.${detalhe}` +
+    " Dúvidas ou discordância: fale com a CSSO. Marque como concluído depois de ler.";
+
+  await pendencias.abrir(tx, {
+    tipo: TIPO_AVISO_DESFECHO,
+    chave: chave_aviso_desfecho(demanda.id),
+    descricao,
+    entidade: "demanda",
+    entidade_id: demanda.id,
+    responsavel_id: dono,
+    usuario,
+  });
 }
 
 // ---------------------------------------------------------------------

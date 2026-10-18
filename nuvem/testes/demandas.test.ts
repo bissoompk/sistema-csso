@@ -17,7 +17,7 @@ import * as e from "../src/db/esquema/index.js";
 import { hoje_iso, somar_dias } from "../src/dominio/datas.js";
 import { Demanda as DemandaDominio } from "../src/dominio/demanda.js";
 import { ROTULO_EVENTO, cadeia_integra } from "../src/servicos/auditoria.js";
-import { bancoLimpo, contas, entrar, type AmbienteDeTeste, type Cliente, type Resposta } from "./ajuda";
+import { bancoLimpo, contas, criarUsuario, entrar, type AmbienteDeTeste, type Cliente, type Resposta } from "./ajuda";
 
 const HOJE = hoje_iso();
 const NOME_SERVIDOR = "Marco Antônio Alves Schetino";
@@ -499,5 +499,111 @@ describe("povoar_demandas", () => {
     expect(todas.filter((d) => DemandaDominio.atrasada(d, HOJE))).toHaveLength(1);
     expect(await novo.db.select().from(e.demanda_encaminhamento)).toHaveLength(2);
     expect((await cadeia_integra(novo.db))[0]).toBe(true);
+  });
+});
+
+// =====================================================================
+// 11. O aviso de quem demandou — o desfecho chega ao sino dele
+// =====================================================================
+describe("aviso a quem demandou", () => {
+  const SINO = /(\d+) pendência\(s\) aberta\(s\)/;
+
+  /** Servidor do cadastro com a conta `servidor_consulta` amarrada a ele. */
+  async function solicitante_com_conta(): Promise<number> {
+    await entrar(cliente, "coordenador_csso");
+    const criado = await cliente.post("/servidores", { siape: SIAPE, nome: NOME_SERVIDOR }, { seguir: false });
+    const sv = Number(criado.location!.split("/").pop()!.split("?")[0]);
+    await amb.db.update(e.usuario).set({ servidor_id: sv }).where(eq(e.usuario.login, "servidor_consulta"));
+    return sv;
+  }
+
+  async function demanda_de(sv: number): Promise<number> {
+    await entrar(cliente, "coordenador_csso");
+    return _id_da_criada(
+      await _registrar({ assunto: "Ruído na sala de máquinas", solicitante_nome: "pedido no balcão", solicitante_servidor_id: String(sv) }),
+    );
+  }
+
+  async function encerrar(id: number, campos: Record<string, string>) {
+    await entrar(cliente, "coordenador_csso");
+    const r = await cliente.post(`/demandas/${id}/encerrar`, campos, { seguir: false });
+    expect(r.status, r.text.slice(0, 400)).toBe(303);
+  }
+
+  it("o formulário de encerrar avisa que o relato chega a quem pediu", async () => {
+    const id = await demanda_de(await solicitante_com_conta());
+    expect((await cliente.get(`/demandas/${id}`)).text).toContain("recebe este desfecho no sino");
+    // sem conta vinculada, não promete o que não vai acontecer
+    const sem = _id_da_criada(await _registrar());
+    expect((await cliente.get(`/demandas/${sem}`)).text).not.toContain("recebe este desfecho no sino");
+  });
+
+  it("RESOLVIDA chega com o que foi feito, e o titular lê e conclui", async () => {
+    const id = await demanda_de(await solicitante_com_conta());
+    await encerrar(id, { desfecho: "RESOLVIDA", relato: "medição feita em 10/10; protetor tipo concha entregue" });
+
+    const aviso = (await _pendencia(`demanda:desfecho:${id}`))!;
+    expect(aviso.tipo).toBe("DEMANDA_DESFECHO_A_LER");
+    const [conta] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "servidor_consulta"));
+    expect(aviso.responsavel_id).toBe(conta!.id);
+    expect([aviso.entidade, aviso.entidade_id]).toEqual(["demanda", id]);
+
+    const titular = await entrar(amb.novoCliente(), "servidor_consulta");
+    const tela = await titular.get("/pendencias");
+    expect(tela.status).toBe(200);
+    expect(tela.text).toContain("Ler o desfecho da sua demanda");
+    expect(tela.text).toContain("Ruído na sala de máquinas");
+    expect(tela.text).toContain("protetor tipo concha entregue");
+    expect(tela.text).not.toContain("conteúdo suprimido");
+    // não há link para a fila do setor, que ele não pode abrir
+    expect(tela.text).not.toContain(`href="/demandas/${id}`);
+    expect(Number(SINO.exec(tela.text)?.[1] ?? 0)).toBe(1);
+
+    const lida = await titular.post(`/pendencias/${aviso.id}/concluir`, {}, { seguir: false });
+    expect(lida.status).toBe(303);
+    expect((await _pendencia(`demanda:desfecho:${id}`))!.concluida).toBe(true);
+  });
+
+  it("ENCAMINHADA diz para onde foi; VIROU_PROCESSO diz o NUP", async () => {
+    const sv = await solicitante_com_conta();
+    const a = await demanda_de(sv);
+    await encerrar(a, { desfecho: "ENCAMINHADA", setor: "SIASS", data_desfecho: "2026-10-15" });
+    expect((await _pendencia(`demanda:desfecho:${a}`))!.descricao).toContain("encaminhada a SIASS em 15/10/2026");
+
+    const nup = await _processo_no_sistema();
+    const b = await demanda_de(sv);
+    await encerrar(b, { desfecho: "VIROU_PROCESSO", nup });
+    expect((await _pendencia(`demanda:desfecho:${b}`))!.descricao).toContain(`processo SEI ${nup}`);
+  });
+
+  it("sem servidor vinculado, ou servidor sem conta, não há aviso", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const sem_vinculo = _id_da_criada(await _registrar());
+    await encerrar(sem_vinculo, { desfecho: "RESOLVIDA", relato: "respondido por e-mail" });
+    expect(await _pendencia(`demanda:desfecho:${sem_vinculo}`)).toBeNull();
+
+    const criado = await cliente.post("/servidores", { siape: "2220001", nome: "Sem Conta Nenhuma" }, { seguir: false });
+    const sv = Number(criado.location!.split("/").pop()!.split("?")[0]);
+    const sem_conta = await demanda_de(sv);
+    await encerrar(sem_conta, { desfecho: "RESOLVIDA", relato: "respondido por e-mail" });
+    expect(await _pendencia(`demanda:desfecho:${sem_conta}`)).toBeNull();
+  });
+
+  it("quem encerra a própria demanda não recebe aviso", async () => {
+    const sv = await solicitante_com_conta();
+    await amb.db.update(e.usuario).set({ servidor_id: null }).where(eq(e.usuario.login, "servidor_consulta"));
+    await amb.db.update(e.usuario).set({ servidor_id: sv }).where(eq(e.usuario.login, "coordenador_csso"));
+    const id = await demanda_de(sv);
+    await encerrar(id, { desfecho: "RESOLVIDA", relato: "feito" });
+    expect(await _pendencia(`demanda:desfecho:${id}`)).toBeNull();
+  });
+
+  it("outro servidor comum não vê o aviso", async () => {
+    const id = await demanda_de(await solicitante_com_conta());
+    await encerrar(id, { desfecho: "RESOLVIDA", relato: "medição feita" });
+    await criarUsuario(amb.db, { login: "outro_servidor", perfis: ["servidor_consulta"] });
+    const tela = await (await entrar(amb.novoCliente(), "outro_servidor")).get("/pendencias");
+    expect(tela.status).toBe(200);
+    expect(tela.text).not.toContain("Ruído na sala de máquinas");
   });
 });

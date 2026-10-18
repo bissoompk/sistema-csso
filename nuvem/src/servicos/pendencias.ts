@@ -10,6 +10,7 @@ import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   agora_utc,
+  demanda,
   epi_ficha_registro,
   epi_requisicao,
   epi_requisicao_item,
@@ -51,6 +52,8 @@ export const TIPOS: Record<string, readonly [string, number]> = {
   EPI_RETIRADA_DISPONIVEL: ["Retirar o EPI reservado para você", 15],
   // a demanda com prazo: sem prazo não abre pendência nenhuma
   DEMANDA_COM_PRAZO: ["Demanda com prazo a cumprir", 15],
+  // o aviso de QUEM DEMANDOU, quando a CSSO encerra (só se ele tem conta)
+  DEMANDA_DESFECHO_A_LER: ["Ler o desfecho da sua demanda", 15],
   // nasce SEM responsável: é do setor
   TURMA_INSCRICAO_A_CONFIRMAR: ["Confirmar inscrição pedida pelo próprio servidor", 10],
 };
@@ -257,7 +260,7 @@ export function no_escopo(usuario: UsuarioAtual | null | undefined): SQL | undef
 
 // A âncora que sabe dizer DE QUEM é a tarefa. Entidade nova entra aqui quando
 // tiver como responder a pergunta — chave ausente cai no lado seguro (`null`).
-const _TITULAR_POR_ENTIDADE: readonly string[] = ["epi_requisicao", "epi_requisicao_item", "epi_ficha_registro"];
+const _TITULAR_POR_ENTIDADE: readonly string[] = ["epi_requisicao", "epi_requisicao_item", "epi_ficha_registro", "demanda"];
 
 /**
  * `{pendencia.id: servidor_id}` — a outra metade do M-1, do lado da leitura.
@@ -286,6 +289,12 @@ export async function titular_de(tx: Executor, itens: Pendencia[]): Promise<Map<
         .from(epi_requisicao_item)
         .innerJoin(epi_requisicao, eq(epi_requisicao_item.requisicao_id, epi_requisicao.id))
         .where(inArray(epi_requisicao_item.id, ids));
+    } else if (entidade === "demanda") {
+      // o titular da demanda é quem a pediu — quando o pedido veio de alguém do cadastro
+      linhas = await tx
+        .select({ id: demanda.id, servidor_id: demanda.solicitante_servidor_id })
+        .from(demanda)
+        .where(inArray(demanda.id, ids));
     } else if (entidade === "epi_requisicao") {
       linhas = await tx
         .select({ id: epi_requisicao.id, servidor_id: epi_requisicao.servidor_id })
