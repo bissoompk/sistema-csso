@@ -22,7 +22,7 @@ import {
   tipo_processo,
   unidade_uorg,
 } from "../db/esquema/index.js";
-import { COLUNAS_KANBAN, ESTADO_PARA_COLUNA, coluna_de } from "../dominio/estados.js";
+import { COLUNAS_KANBAN, ESTADO_PARA_COLUNA, coluna_de, fluxo_curto } from "../dominio/estados.js";
 import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
 import { pode_ver_nominal } from "../servicos/identificacao.js";
 import { chave_busca } from "../servicos/textos.js";
@@ -315,7 +315,9 @@ export async function kanban(
   })) as ProcessoCarregado[];
   const colunas: Record<string, ProcessoCarregado[]> = {};
   for (const [codigo] of COLUNAS_KANBAN) colunas[codigo] = [];
-  for (const p of processos) (colunas[coluna_de(p.estado_tecnico)] ??= []).push(p);
+  for (const p of processos) {
+    (colunas[coluna_de(p.estado_tecnico, fluxo_curto(p.tipo_processo?.codigo))] ??= []).push(p);
+  }
   return colunas;
 }
 
@@ -327,13 +329,15 @@ export async function contar_por_coluna(
   const onde = await _condicoes(tx, filtro, usuario);
   const contagem: Record<string, number> = {};
   for (const [codigo] of COLUNAS_KANBAN) contagem[codigo] = 0;
+  // o tipo entra no agrupamento: na máquina curta EM_TRIAGEM é "Em andamento"
   const linhas = await tx
-    .select({ estado: tabela_processo.estado_tecnico, n: count() })
+    .select({ estado: tabela_processo.estado_tecnico, tipo: tipo_processo.codigo, n: count() })
     .from(tabela_processo)
+    .leftJoin(tipo_processo, eq(tipo_processo.id, tabela_processo.tipo_processo_id))
     .where(onde)
-    .groupBy(tabela_processo.estado_tecnico);
-  for (const { estado, n } of linhas) {
-    const coluna = coluna_de(estado);
+    .groupBy(tabela_processo.estado_tecnico, tipo_processo.codigo);
+  for (const { estado, tipo, n } of linhas) {
+    const coluna = coluna_de(estado, fluxo_curto(tipo));
     contagem[coluna] = (contagem[coluna] ?? 0) + n;
   }
   return contagem;

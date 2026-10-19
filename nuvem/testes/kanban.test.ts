@@ -6,6 +6,8 @@
  * qualquer processo existir; os outros criam processo com NUP próprio.
  */
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import * as e from "../src/db/esquema/index.js";
 import { nup_dv } from "../src/servicos/nup.js";
 import { bancoLimpo, contas, entrar, type Cliente } from "./ajuda";
 
@@ -20,6 +22,11 @@ let seq = 0;
 function nup_novo(): string {
   const sequencial = String(500000 + ++seq).padStart(6, "0");
   return `23086.${sequencial}/2024-${nup_dv(`23086${sequencial}2024`)}`;
+}
+
+async function tipo_id(codigo: string): Promise<string> {
+  const [tipo] = await db.select().from(e.tipo_processo).where(eq(e.tipo_processo.codigo, codigo));
+  return String(tipo!.id);
 }
 
 async function coordenador(): Promise<Cliente> {
@@ -94,7 +101,9 @@ describe("mover sem arrastar", () => {
     const cartao = corpo.slice(inicio, corpo.indexOf("</article>", inicio));
     expect(cartao).toContain(`action="/kanban/mover/${id}" data-mover`);
     expect(cartao).not.toContain('value="A_FAZER"');
-    for (const destino of ["NAO_INICIADO", "EM_ANDAMENTO", "AGUARDANDO", "CONCLUIDO"]) {
+    // só as colunas que a máquina do tipo admite: "Não iniciado" não é destino
+    expect(cartao).not.toContain('value="NAO_INICIADO"');
+    for (const destino of ["EM_ANDAMENTO", "AGUARDANDO", "CONCLUIDO"]) {
       expect(cartao, destino).toContain(`name="coluna" value="${destino}"`);
     }
     expect(cartao).toContain("mover para…");
@@ -143,7 +152,33 @@ describe("mover sem arrastar", () => {
     expect(ok.status, ok.text).toBe(200);
     expect(ok.text).toContain('class="cartao-kanban"');
     expect(ok.text).not.toContain('value="CONCLUIDO"');
-    expect(ok.text).toContain('value="A_FAZER"');
+    // arquivado é final: o cartão não oferece coluna nenhuma
+    expect(ok.text).not.toContain("data-mover");
+  });
+
+  it("PGR vai de A fazer a Em andamento e a Concluído sem documento", async () => {
+    const cliente = await coordenador();
+    const criado = await cliente.post("/processos/novo", { nup: nup_novo(), tipo_processo_id: await tipo_id("PGR") }, { seguir: false });
+    const id = Number(criado.location!.split("/").pop()!.split("?")[0]);
+    const fetch = { "x-requested-with": "fetch" };
+    const andando = await cliente.post(`/kanban/mover/${id}`, { coluna: "EM_ANDAMENTO" }, { cabecalhos: fetch });
+    expect(andando.status, andando.text).toBe(200);
+    expect(andando.text).toContain('value="CONCLUIDO"');
+    expect(andando.text).not.toContain('value="EM_ANDAMENTO"');
+    const fim = await cliente.post(`/kanban/mover/${id}`, { coluna: "CONCLUIDO" }, { cabecalhos: fetch });
+    expect(fim.status, fim.text).toBe(200);
+    const ficha = (await cliente.get(`/processos/${id}`)).text;
+    expect(ficha).toContain("Concluído");
+  });
+
+  it("arrastar o adicional a uma coluna distante salta quando os requisitos permitem", async () => {
+    const cliente = await coordenador();
+    const id = await processo_novo(cliente);
+    const fetch = { "x-requested-with": "fetch" };
+    const r = await cliente.post(`/kanban/mover/${id}`, { coluna: "EM_ANDAMENTO" }, { cabecalhos: fetch });
+    // RECEBIDO -> Aguardando inspeção é um passo, mas exige portaria e formulário
+    expect(r.status).toBe(422);
+    expect(r.text).toContain("portaria de localização");
   });
 
   it("recusa do fetch não grava nada", async () => {
@@ -182,7 +217,9 @@ describe("troca parcial não falha em silêncio", () => {
     expect(r.text).toContain('role="alert"');
     expect(r.text).toContain("recusa-de-movimento");
     expect(r.text).not.toContain('id="erro-movimento"');
-    expect(r.text).toContain("Transição proibida");
+    // RECEBIDO -> Concluído é salto da cadeia: a recusa diz o que falta, passo a passo
+    expect(r.text).toContain("Recebido → ");
+    expect(r.text).toContain("portaria de localização");
   });
 
   it("o quadro não guarda mais a caixa de erro no topo", async () => {

@@ -135,9 +135,36 @@ describe("criar processo pela tela", () => {
       dispensar_dv: "1",
     });
     expect(r.status).toBe(200);
-    expect(r.text).toContain("termo proibido");
+    expect(r.text).toContain("menciona dado de saúde");
     expect(r.text).toContain("servidora gestante");
     expect(await db.select().from(e.processo).where(eq(e.processo.nup, "23086.000541/2026-01"))).toEqual([]);
+  });
+
+  it("observação com dado de saúde confirmada grava e audita; CPF não passa", async () => {
+    const cliente = await entrar(novoCliente(), "coordenador_csso");
+    const cpf = await cliente.post("/processos/novo", {
+      nup: "23086.000542/2026-01",
+      tipo_processo_id: "1",
+      observacoes: "anotar o cpf do servidor",
+      dispensar_dv: "1",
+      confirmo_mencao_saude: "1",
+    });
+    expect(cpf.text).toContain("termo proibido");
+    const r = await cliente.post(
+      "/processos/novo",
+      {
+        nup: "23086.000542/2026-01",
+        tipo_processo_id: "1",
+        observacoes: "Servidora gestante solicita afastamento de área insalubre",
+        dispensar_dv: "1",
+        confirmo_mencao_saude: "1",
+      },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    const [proc] = await db.select().from(e.processo).where(eq(e.processo.nup, "23086.000542/2026-01"));
+    const eventos = await db.select().from(e.historico_evento).where(eq(e.historico_evento.processo_id, proc!.id));
+    expect(eventos.map((ev) => ev.tipo_evento)).toContain("MENCAO_SAUDE_CONFIRMADA");
   });
 });
 

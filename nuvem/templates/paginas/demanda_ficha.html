@@ -208,6 +208,7 @@
       carimbo de data — seis meses depois ninguém sabe o que se esperava de volta.
       Descreva o pedido, nunca a condição de saúde de ninguém (RN-21).</span>
   </div>
+  {{ ui.confirmar_mencao_saude(aviso_saude and forma == 'encaminhar', 'encaminhar-confirmo-saude') }}
 {% endcall %}
 
 {% set de = d if forma == 'encerrar' else {} %}
@@ -241,20 +242,32 @@
     <label for="relato">O que foi feito, ou por que não houve providência</label>
     <textarea id="relato" name="relato" rows="3"
               aria-describedby="dica-relato">{{ de['relato'] or '' }}</textarea>
-    <span class="dica" id="dica-relato">Obrigatório em <em>resolvida</em> e em
-      <em>sem providência</em>. “Não vamos fazer nada” é decisão legítima — o que
-      não pode é ela ser tomada por esquecimento.</span>
+    <span class="dica" id="dica-relato">Obrigatório em <em>sem providência</em>
+      (“não vamos fazer nada” é decisão legítima — o que não pode é ela ser tomada
+      por esquecimento); opcional em <em>resolvida</em>.</span>
   </div>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="nup">NUP do processo (só em “virou processo SEI”)</label>
+      <input id="nup" name="nup" class="mono" inputmode="numeric" data-nup
+             value="{{ de['nup'] or '' }}" placeholder="23086.000000/0000-00"
+             aria-describedby="dica-nup"></div>
+    <div class="campo">
+      <label for="encerrar-tipo">Tipo do processo</label>
+      <select id="encerrar-tipo" name="tipo_processo_id"><option value="">—</option>
+        {% for t in tipos_processo %}<option value="{{ t.id }}"{{ ui.sel(de['tipo_processo_id'], t.id) }}>{{ t.nome }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <span class="dica" id="dica-nup">Processo já cadastrado vira link. Se ainda não
+    estiver, informe o tipo: ele é cadastrado aqui mesmo, no mesmo ato.</span>
+  {% if de['nup'] %}
   <div class="campo">
-    <label for="nup">NUP do processo (só em “virou processo SEI”)</label>
-    <input id="nup" name="nup" class="mono" inputmode="numeric"
-           value="{{ de['nup'] or '' }}" placeholder="23086.000000/0000-00"
-           aria-describedby="dica-nup">
-    <span class="dica" id="dica-nup">O processo precisa já estar cadastrado em
-      <a href="/processos">Processos</a>: é isso que faz a demanda virar um link
-      para ele, e não um número anotado. Se ainda não estiver,
-      <a href="/processos/novo">cadastre o processo</a> e volte.</span>
-  </div>
+    <label class="discreto" for="encerrar-dispensar-dv">
+      <input id="encerrar-dispensar-dv" type="checkbox" name="dispensar_dv" value="1"
+        {{- ' checked' if de['dispensar_dv'] == '1' }}>
+      confirmei no SEI (o dígito verificador não confere)</label></div>
+  {% endif %}
+  {{ ui.confirmar_mencao_saude(aviso_saude and forma == 'encerrar', 'encerrar-confirmo-saude') }}
   <div class="linha-campos">
     <div class="campo">
       <label for="setor">Setor de destino (só em “encaminhada”)</label>

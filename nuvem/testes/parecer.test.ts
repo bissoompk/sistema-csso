@@ -220,6 +220,27 @@ describe("emissão ponta a ponta", () => {
       expect(gravado.contexto_congelado).toBeTruthy();
     }));
 
+  it("o processo acompanha: emitido -> pronto para assinatura -> assinado", () =>
+    comCenario(async (tx, a, _c, p) => {
+      const estado = async () =>
+        (await tx.select().from(e.processo).where(eq(e.processo.id, p.processo_id!)))[0]!.estado_tecnico;
+      expect(await estado()).toBe("PARECER_EM_ELABORACAO");
+      await servico.emitir(tx, p, a.COORDENADOR, { gerar_pdf: false });
+      expect(await estado()).toBe("PARECER_PRONTO_P_ASSINATURA");
+      // RN-01: quem assina precisa da habilitação vigente — a do signatário vira a dele
+      await tx
+        .update(e.profissional_habilitado)
+        .set({ usuario_id: a.COORDENADOR.id })
+        .where(eq(e.profissional_habilitado.id, p.signatario_id!));
+      await servico.assinar(tx, p, a.COORDENADOR);
+      expect(await estado()).toBe("PARECER_ASSINADO");
+      const passos = await tx
+        .select()
+        .from(e.historico_evento)
+        .where(and(eq(e.historico_evento.tipo_evento, "ESTADO_ALTERADO"), eq(e.historico_evento.processo_id, p.processo_id!)));
+      expect(passos.map((ev) => ev.valor_novo)).toEqual(["PARECER_PRONTO_P_ASSINATURA", "PARECER_ASSINADO"]);
+    }));
+
   it("CA-11: acentuação ponta a ponta; o nome do arquivo sai sem acento", () =>
     comCenario(async (tx, a, _c, p) => {
       const resultado = await servico.emitir(tx, p, a.COORDENADOR, { gerar_pdf: false });

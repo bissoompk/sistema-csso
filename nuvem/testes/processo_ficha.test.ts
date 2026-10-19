@@ -93,11 +93,12 @@ describe("processo novo recusado", () => {
       observacoes: "Servidora gestante afastada do laboratório.",
     });
     expect(r.status).toBe(200);
-    expect(r.text).toContain("termo proibido");
+    expect(r.text).toContain("menciona dado de saúde");
     const marca = /<input[^>]*\bname="dispensar_dv"[^>]*>/.exec(r.text);
     expect(marca![0]).toContain("checked");
-    // e o erro vai para o campo de onde veio
-    expect(r.text).toContain('<span class="erro-campo">O campo observações contém termo proibido');
+    // e o erro vai para o campo de onde veio, com a caixa de confirmação
+    expect(r.text).toContain('<span class="erro-campo">O campo observações menciona dado de saúde');
+    expect(r.text).toContain('name="confirmo_mencao_saude"');
   });
 
   it("recusa preserva tipo, servidor, unidade e data", async () => {
@@ -127,7 +128,8 @@ describe("processo novo recusado", () => {
 // ---------------------------------------------------------------------
 // Comentário (RN-21)
 // ---------------------------------------------------------------------
-const COMENTARIO_PROIBIDO = "Servidor apresentou atestado médico da chefia.";
+const COMENTARIO_PROIBIDO = "Servidor informou o CPF por telefone.";
+const COMENTARIO_DE_SAUDE = "Servidor apresentou atestado médico da chefia.";
 
 describe("comentário no histórico", () => {
   it("termo proibido não derruba a tela, volta dentro do campo e não entra na trilha", async () => {
@@ -146,6 +148,26 @@ describe("comentário no histórico", () => {
       .from(e.historico_evento)
       .where(and(eq(e.historico_evento.tipo_evento, "COMENTARIO"), eq(e.historico_evento.processo_id, p.id)));
     expect(comentarios).toEqual([]);
+  });
+
+  it("termo de saúde volta com aviso; confirmado, grava e audita", async () => {
+    const p = await processo();
+    const cliente = await entrar(novoCliente(), "coordenador_csso");
+    const aviso = await cliente.post(`/processos/${p.id}/comentario`, { comentario: COMENTARIO_DE_SAUDE }, { seguir: false });
+    expect(aviso.status).toBe(200);
+    expect(aviso.text).toContain("menciona dado de saúde");
+    expect(aviso.text).toContain('name="confirmo_mencao_saude"');
+    const r = await cliente.post(
+      `/processos/${p.id}/comentario`,
+      { comentario: COMENTARIO_DE_SAUDE, confirmo_mencao_saude: "1" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    const eventos = await db
+      .select()
+      .from(e.historico_evento)
+      .where(eq(e.historico_evento.processo_id, p.id));
+    expect(eventos.map((ev) => ev.tipo_evento)).toEqual(expect.arrayContaining(["COMENTARIO", "MENCAO_SAUDE_CONFIRMADA"]));
   });
 
   it("comentário limpo continua gravando", async () => {

@@ -14,6 +14,7 @@ import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import type { Executor } from "../db/cliente.js";
 import {
   agente_nocivo,
+  autoridade_destinataria,
   campus,
   cargo,
   checklist_modelo,
@@ -22,6 +23,7 @@ import {
   portaria_localizacao,
   posto_trabalho,
   servidor,
+  setor_emissor,
   texto_padrao,
   tipo_processo,
   tipo_risco,
@@ -52,6 +54,8 @@ export const CATALOGOS: readonly (readonly [string, string])[] = [
   ["textos-padrao", "Textos padrão"],
   ["portarias", "Portarias de localização"],
   ["checklists-modelo", "Checklists modelo"],
+  ["autoridades-destinatarias", "Autoridades destinatárias"],
+  ["setores-emissores", "Setores emissores"],
 ];
 
 export const TIPOS_UNIDADE: readonly (readonly [string, string])[] = [
@@ -169,6 +173,22 @@ async function _itens(tx: Executor, nome: string): Promise<{ itens: unknown[]; e
       extra.em_uso = Object.fromEntries(itens.map((cg) => [cg.id, por.get(cg.id) ?? 0]));
       return { itens, extra };
     }
+    case "autoridades-destinatarias":
+      return {
+        itens: await tx
+          .select()
+          .from(autoridade_destinataria)
+          .orderBy(desc(autoridade_destinataria.vigencia_inicio), asc(autoridade_destinataria.id)),
+        extra,
+      };
+    case "setores-emissores":
+      return {
+        itens: await tx
+          .select()
+          .from(setor_emissor)
+          .orderBy(desc(setor_emissor.vigencia_inicio), asc(setor_emissor.id)),
+        extra,
+      };
     default:
       return { itens: [], extra };
   }
@@ -196,6 +216,7 @@ async function _tela(
     mensagem: recado.mensagem ?? null,
     erro: recado.erro ?? null,
     digitado: recado.digitado ?? {},
+    hoje: hoje_iso(),
     campi: await tx.select().from(campus).orderBy(asc(campus.sigla)),
     tipos: TIPOS_UNIDADE,
     riscos: await tx.select().from(tipo_risco).orderBy(asc(tipo_risco.nome)),
@@ -536,10 +557,146 @@ rotas.post("/catalogos/agentes-nocivos", async (c) => {
   return _volta(c, "/catalogos/agentes-nocivos", "Agente cadastrado.");
 });
 
+/**
+ * A autoridade a quem o parecer se dirige (Pró-Reitor de Gestão de Pessoas).
+ * Troca de gestão é registro novo com vigência, e não edição do nome: o
+ * parecer já emitido guarda o destinatário que valia na data dele.
+ */
+rotas.post("/catalogos/autoridades-destinatarias", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("catalogo.gerenciar");
+  const f = await formulario(c);
+  exigidos(f, "nome", "cargo", "tratamento", "vigencia_inicio");
+  const tx = c.get("tx");
+  const valores = {
+    nome: f.texto("nome").trim(),
+    cargo: f.texto("cargo").trim(),
+    tratamento: f.texto("tratamento").trim(),
+    vigencia_inicio: _data_iso(f.texto("vigencia_inicio")),
+    vigencia_fim: f.texto("vigencia_fim") ? _data_iso(f.texto("vigencia_fim")) : null,
+  };
+  if (!valores.nome || !valores.cargo || !valores.tratamento) {
+    return _tela(c, usuario, "autoridades-destinatarias", {
+      erro: "Nome, cargo e tratamento saem no parecer: nenhum pode ficar em branco.",
+      digitado: Object.fromEntries(["nome", "cargo", "tratamento", "vigencia_inicio", "vigencia_fim"].map((k) => [k, f.texto(k)])),
+    });
+  }
+  const [nova] = await tx.insert(autoridade_destinataria).values(valores).returning();
+  await auditoria.registrar(tx, {
+    entidade: "autoridade_destinataria",
+    entidade_id: nova!.id,
+    tipo_evento: "AUTORIDADE_CRIADA",
+    descricao: `${nova!.nome} — ${nova!.cargo} (desde ${nova!.vigencia_inicio})`,
+    usuario,
+  });
+  return _volta(c, "/catalogos/autoridades-destinatarias", "Autoridade cadastrada.");
+});
+
+/** O setor que emite o parecer (sigla e cabeçalho). A chave é (sigla, início de vigência). */
+rotas.post("/catalogos/setores-emissores", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("catalogo.gerenciar");
+  const f = await formulario(c);
+  exigidos(f, "sigla_composta", "nome_extenso", "vigencia_inicio");
+  const tx = c.get("tx");
+  const valores = _campos_setor(f);
+  const recusar = (erro: string) =>
+    _tela(c, usuario, "setores-emissores", {
+      erro,
+      digitado: Object.fromEntries(CAMPOS_SETOR.map((k) => [k, f.texto(k)])),
+    });
+  if (!valores.sigla_composta || !valores.nome_extenso) return recusar("Sigla e nome extenso não podem ficar em branco.");
+  const [ja] = await tx
+    .select()
+    .from(setor_emissor)
+    .where(and(eq(setor_emissor.sigla_composta, valores.sigla_composta), eq(setor_emissor.vigencia_inicio, valores.vigencia_inicio)));
+  if (ja) return recusar(`Já existe ${valores.sigla_composta} com vigência a partir de ${valores.vigencia_inicio}.`);
+  const [novo] = await tx.insert(setor_emissor).values(valores).returning();
+  await auditoria.registrar(tx, {
+    entidade: "setor_emissor",
+    entidade_id: novo!.id,
+    tipo_evento: "SETOR_EMISSOR_CRIADO",
+    descricao: `${novo!.sigla_composta} — ${novo!.nome_extenso} (desde ${novo!.vigencia_inicio})`,
+    usuario,
+  });
+  return _volta(c, "/catalogos/setores-emissores", "Setor emissor cadastrado.");
+});
+
+const CAMPOS_SETOR = [
+  "sigla_composta",
+  "nome_extenso",
+  "unidade_sei",
+  "email",
+  "endereco",
+  "cidade",
+  "telefone",
+  "vigencia_inicio",
+  "vigencia_fim",
+] as const;
+
+function _campos_setor(f: Formulario) {
+  return {
+    sigla_composta: f.texto("sigla_composta").trim(),
+    nome_extenso: f.texto("nome_extenso").trim(),
+    unidade_sei: _texto(f.texto("unidade_sei")),
+    email: _texto(f.texto("email")),
+    endereco: _texto(f.texto("endereco")),
+    cidade: _texto(f.texto("cidade")) ?? "Diamantina",
+    telefone: _texto(f.texto("telefone")),
+    vigencia_inicio: _data_iso(f.texto("vigencia_inicio")),
+    vigencia_fim: f.texto("vigencia_fim") ? _data_iso(f.texto("vigencia_fim")) : null,
+  };
+}
+
 // ---------------------------------------------------------------------
 // Edições em linha (sempre com diff campo a campo na auditoria)
 // ---------------------------------------------------------------------
 const GERENCIAR = "catalogo.gerenciar";
+
+rotas.post("/catalogos/autoridades-destinatarias/:id{[0-9]+}", async (c) => {
+  const usuario = await usuarioLogado(c);
+  const f = await formulario(c);
+  exigidos(f, "nome", "cargo", "tratamento", "vigencia_inicio");
+  return salvar_com_diff(
+    c,
+    usuario,
+    autoridade_destinataria,
+    Number(c.req.param("id")),
+    {
+      nome: f.texto("nome").trim(),
+      cargo: f.texto("cargo").trim(),
+      tratamento: f.texto("tratamento").trim(),
+      vigencia_inicio: _data_iso(f.texto("vigencia_inicio")),
+      vigencia_fim: f.texto("vigencia_fim") ? _data_iso(f.texto("vigencia_fim")) : null,
+    },
+    { permissao: GERENCIAR, rotulo: "Autoridade", volta: "/catalogos/autoridades-destinatarias" },
+  );
+});
+
+rotas.post("/catalogos/setores-emissores/:id{[0-9]+}", async (c) => {
+  const usuario = await usuarioLogado(c);
+  const f = await formulario(c);
+  exigidos(f, "sigla_composta", "nome_extenso", "vigencia_inicio");
+  const id = Number(c.req.param("id"));
+  const campos = _campos_setor(f);
+  const [ja] = await c
+    .get("tx")
+    .select()
+    .from(setor_emissor)
+    .where(
+      and(
+        eq(setor_emissor.sigla_composta, campos.sigla_composta),
+        eq(setor_emissor.vigencia_inicio, campos.vigencia_inicio),
+        ne(setor_emissor.id, id),
+      ),
+    );
+  if (ja) return _erro(c, "/catalogos/setores-emissores", "Já existe outro setor com essa sigla e esse início de vigência.");
+  return salvar_com_diff(c, usuario, setor_emissor, id, campos, {
+    permissao: GERENCIAR,
+    rotulo: "Setor emissor",
+    volta: "/catalogos/setores-emissores",
+  });
+});
 
 rotas.post("/catalogos/campi/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);

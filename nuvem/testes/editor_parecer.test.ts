@@ -389,8 +389,20 @@ describe("emissão pela tela", () => {
     expect(depois!.situacao).toBe("RASCUNHO");
   });
 
+  it("o rascunho nasce com o signatário de quem cria e o movimento CONCESSAO", async () => {
+    const [, , id] = await abrir_rascunho(); // o coordenador de `contas` é habilitado
+    const [p] = await db.select().from(e.parecer_tecnico).where(eq(e.parecer_tecnico.id, id));
+    const [h] = await db.select().from(e.profissional_habilitado).where(eq(e.profissional_habilitado.id, p!.signatario_id!));
+    const [quem] = await db.select().from(e.usuario).where(eq(e.usuario.id, h!.usuario_id!));
+    expect(quem!.login).toContain("coordenador");
+    const [mov] = await db.select().from(e.tipo_movimento).where(eq(e.tipo_movimento.id, p!.tipo_movimento_id!));
+    expect(mov!.codigo).toBe("CONCESSAO");
+  });
+
   it("signatário sem habilitação guarda o evento mas não a data (403)", async () => {
-    const [cliente, caminho, id] = await abrir_rascunho(); // nasce sem signatário
+    const [cliente, caminho, id] = await abrir_rascunho();
+    // o rascunho nasce com o signatário de quem cria; aqui ele é tirado à mão
+    await db.update(e.parecer_tecnico).set({ signatario_id: null }).where(eq(e.parecer_tecnico.id, id));
     const antes = await quantos_eventos("ASSINATURA_NEGADA");
     const r = await cliente.post(`${caminho}/emitir`, {}, HTML);
     expect(r.status).toBe(403);

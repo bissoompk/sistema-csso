@@ -198,13 +198,45 @@ export const CONTEXTO_PADRAO = "padrao";
 // `acidente_investigacao`. NÃO vale em `acidente_decisao_pericial.observacao`.
 export const CONTEXTO_NEXO_OCUPACIONAL = "nexo_ocupacional";
 
+// Fora do parecer e do laudo — demanda, pedido de EPI, observação e comentário
+// do processo — o termo de saúde é AVISO, e não recusa: "servidora gestante
+// solicita afastamento de área insalubre" é o caso de rotina, e o texto sem a
+// palavra não diz o que se pede. Quem escreve confirma que a menção é
+// necessária, e a confirmação vai para a trilha. CPF e CID continuam recusados
+// em todo contexto (`TERMOS_SEMPRE_PROIBIDOS`).
+export const CONTEXTO_AVISO_SAUDE = "aviso_saude";
+
+/** Identificador e código de doença: nem com confirmação. */
+export const TERMOS_SEMPRE_PROIBIDOS: readonly string[] = ["cid-10", "cid 10", "cpf"];
+
 const DISPENSAS_POR_CONTEXTO: Record<string, readonly string[]> = {
   [CONTEXTO_PADRAO]: [],
   [CONTEXTO_NEXO_OCUPACIONAL]: ["doenca", "doença"],
+  [CONTEXTO_AVISO_SAUDE]: [],
 };
 
 /** Termo de saúde/dado sensível encontrado em campo de texto livre. */
 export class TextoProibido extends RegraViolada {}
+
+/**
+ * Termo de saúde num campo onde ele é aviso: a tela devolve o formulário com a
+ * caixa "confirmo que a menção é necessária". Herda de `TextoProibido` de
+ * propósito — toda rota que já devolvia a recusa continua devolvendo.
+ */
+export class MencaoDeSaude extends TextoProibido {
+  constructor(
+    mensagem: string,
+    public termos: string[],
+  ) {
+    super(mensagem);
+  }
+}
+
+/** Os termos de saúde (os confirmáveis) que o texto traz. */
+export function termos_de_saude_em(texto: string | null | undefined): string[] {
+  const duros = new Set(TERMOS_SEMPRE_PROIBIDOS);
+  return termos_proibidos_em(texto).filter((t) => !duros.has(t));
+}
 
 /**
  * Chaves de busca dispensadas no contexto. Contexto desconhecido é erro de
@@ -247,8 +279,23 @@ export function exigir_texto_limpo<T extends string | null | undefined>(
   texto: T,
   campo = "texto",
   contexto: string = CONTEXTO_PADRAO,
+  mencao_confirmada = false,
 ): T {
-  const achados = termos_proibidos_em(texto, contexto);
+  let achados = termos_proibidos_em(texto, contexto);
+  if (contexto === CONTEXTO_AVISO_SAUDE && achados.length) {
+    const duros = achados.filter((t) => TERMOS_SEMPRE_PROIBIDOS.includes(t));
+    if (!duros.length) {
+      if (mencao_confirmada) return texto;
+      throw new MencaoDeSaude(
+        `O campo ${campo} menciona dado de saúde (${achados.join(", ")}). ` +
+          "Escreva só o necessário para o pedido — sem diagnóstico, CID ou " +
+          "detalhe clínico (LGPD art. 11) — e marque “confirmo que a menção é " +
+          "necessária” para gravar. A confirmação fica registrada na auditoria.",
+        achados,
+      );
+    }
+    achados = duros;
+  }
   if (achados.length) {
     throw new TextoProibido(
       `O campo ${campo} contém termo proibido (${achados.join(", ")}). ` +

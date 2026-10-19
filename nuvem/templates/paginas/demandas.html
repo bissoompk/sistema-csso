@@ -214,11 +214,12 @@
   <div class="linha-campos">
     <div class="campo">
       <label for="solicitante_nome">Quem demandou</label>
-      <input id="solicitante_nome" name="solicitante_nome" required maxlength="160"
+      <input id="solicitante_nome" name="solicitante_nome" maxlength="160"
              value="{{ d['solicitante_nome'] or '' }}"
              aria-describedby="dica-solicitante">
       <span class="dica" id="dica-solicitante">Pode ser chefia, outro setor ou
-        alguém de fora — nome escrito basta.</span></div>
+        alguém de fora. Em branco: o servidor escolhido ao lado, ou “não
+        identificado”.</span></div>
     <div class="campo">
       <label for="solicitante_servidor_id">Servidor do cadastro</label>
       <select id="solicitante_servidor_id" name="solicitante_servidor_id"
@@ -246,10 +247,11 @@
               aria-describedby="dica-descricao">{{ d['descricao'] or '' }}</textarea>
     {# Fica na tela, e não no (i): é a recusa que a pessoa vai encontrar se
        escrever a frase errada, e ela precisa saber ANTES de digitar. #}
-    <span class="dica" id="dica-descricao">Descreva o pedido e o ambiente, nunca a
-      condição de saúde de ninguém: estado de saúde, gestação, CID e diagnóstico
-      são recusados na gravação (RN-21; LGPD art. 11).</span>
+    <span class="dica" id="dica-descricao">Descreva o pedido e o ambiente. Menção a
+      saúde ou gestação só quando necessária — a gravação pede confirmação; CPF e
+      CID são recusados (RN-21; LGPD art. 11).</span>
   </div>
+  {{ ui.confirmar_mencao_saude(aviso_saude, 'registrar-confirmo-saude') }}
   <div class="campo">
     <label for="responsavel_id">Responsável</label>
     <select id="responsavel_id" name="responsavel_id">

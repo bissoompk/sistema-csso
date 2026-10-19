@@ -17,9 +17,15 @@ import { formulario, usuarioCom, usuarioLogado } from "../dependencias.js";
 import { fragmento, pagina, redirecionar } from "../web.js";
 import { dicionario } from "../dicionario.js";
 import { tipo_processo, usuario as tabela_usuario } from "../db/esquema/index.js";
-import { COLUNAS_KANBAN, ESTADO_PARA_COLUNA, TransicaoInvalida, coluna_de } from "../dominio/estados.js";
+import {
+  COLUNAS_KANBAN,
+  ESTADO_PARA_COLUNA,
+  TransicaoInvalida,
+  coluna_de,
+  estado_para_coluna,
+} from "../dominio/estados.js";
 import * as repo from "../repositorios/processos.js";
-import { RequisitoDeSaidaNaoAtendido, mover, resumir, sla_vigente } from "../servicos/processo.js";
+import { RequisitoDeSaidaNaoAtendido, fluxo_curto_de, mover, resumir, sla_vigente } from "../servicos/processo.js";
 import { ErroHttp } from "../nucleo/erros.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -106,7 +112,15 @@ rotas.post("/kanban/mover/:processo_id", async (c) => {
     return c.html("<div class='aviso aviso-erro'>Processo não encontrado.</div>", 404);
   }
 
-  const destino = f.opcional("estado") ?? ESTADO_PADRAO_DA_COLUNA[coluna] ?? "EM_TRIAGEM";
+  // A coluna vira estado pela máquina do tipo: o primeiro passo direto que cai
+  // nela ou, no adicional, o salto até o estado mais próximo adiante. Sem
+  // nenhum, o padrão da coluna — e a recusa diz para onde dá para ir.
+  const curto = await fluxo_curto_de(tx, processo);
+  const destino =
+    f.opcional("estado") ??
+    estado_para_coluna(processo.estado_tecnico, coluna, curto) ??
+    ESTADO_PADRAO_DA_COLUNA[coluna] ??
+    "EM_TRIAGEM";
   try {
     await mover(tx, processo, destino, usuario, {
       comentario: f.opcional("comentario"),
@@ -120,12 +134,12 @@ rotas.post("/kanban/mover/:processo_id", async (c) => {
     return fragmento(c, "partes/erro_movimento.html", { motivos, processo }, 422);
   }
   if (pagina_inteira) {
-    const rotulo = Object.fromEntries(COLUNAS_KANBAN)[coluna_de(processo.estado_tecnico)] ?? coluna;
+    const rotulo = Object.fromEntries(COLUNAS_KANBAN)[coluna_de(processo.estado_tecnico, curto)] ?? coluna;
     return _de_volta_ao_quadro(c, "mensagem", `Processo ${processo.nup} movido para “${rotulo}”.`);
   }
   return fragmento(c, "partes/cartao_kanban.html", {
     r: await resumir(tx, processo),
     usuario,
-    coluna: coluna_de(processo.estado_tecnico),
+    coluna: coluna_de(processo.estado_tecnico, curto),
   });
 });
