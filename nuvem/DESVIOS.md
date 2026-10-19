@@ -870,3 +870,9 @@ O banco de produção nasce com uma única conta e nada cadastrado; a revisão d
 - **Cadastrar servidor na hora.** Na entrega e no pedido de EPI, a busca sem resultado oferece cadastrar (SIAPE + nome) e volta ao fluxo.
 - **"Aprovar tudo como pedido"** no pedido de EPI: inicia a análise, aprova cada item na quantidade pedida e conclui, numa transação, cada passo auditado como antes; RN-28 continua valendo.
 - **CA no catálogo.** A caixa "exige CA" ficou visível com a dica para itens sem CA; a recusa de entrega por falta de CA aponta para a edição do item. A entrega direta (sem pedido) é a primeira opção da tela de EPI.
+
+### Certificado em PDF com QR (19/10/2026)
+
+- **PDF sem LibreOffice.** O Python converte o .docx com o `soffice`; a nuvem não o tem (`pdf.ts`). O PDF passou a ser desenhado com o pdf-lib (`servicos/certificado_pdf.ts`) a partir do contexto CONGELADO, com o mesmo texto do `certificado_padrao_v1.docx`: frente com emissor, certificação, local e data, rubrica e assinante, instrutores e rodapé com número, validade, endereço, chave e o QR; verso com o conteúdo programático, quando há. Carta paisagem, como o .docx; Helvetica padrão (caractere fora do WinAnsi sai "?"). O layout é o da casa e não segue um modelo personalizado — para esse, o .docx continua sendo a fonte.
+- **Não é gravado.** Sai na hora: `GET /certificados/{id}/pdf` e `GET /turmas/{id}/certificados.pdf` (todos os vigentes da turma num arquivo). Os dois passam pela segunda via (regra de leitura, conferência do texto contra a emissão, `CERTIFICADO_SEGUNDA_VIA` na trilha). A emissão deixou de dar o aviso "PDF indisponível".
+- **QR.** Nível M, desenhado em vetor no PDF, abre `/validar/{chave}`. O marcador `certificado_qrcode` (que no Python "chegava na fatia 5") agora rende a imagem PNG de 25 mm no .docx de quem o mapear; o modelo padrão não tem esse marcador.

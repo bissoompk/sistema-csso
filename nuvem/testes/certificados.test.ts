@@ -507,13 +507,14 @@ describe("trilha", () => {
 // =====================================================================
 describe("PDF (test_concorrencia_emissao.py)", () => {
   it("sem LibreOffice a degradação continua muda", async () => {
-    // Na nuvem é sempre este o caso (PORTE.md §8): sai o .docx com o aviso, e a
-    // trilha NÃO ganha PDF_NAO_GERADO — indisponível não é falha.
+    // Na nuvem não há LibreOffice (PORTE.md §8): o PDF não é gravado na emissão
+    // — sai na hora, com o QR, por /certificados/{id}/pdf. Sem aviso e sem
+    // PDF_NAO_GERADO.
     expect(servico_pdf.disponivel()).toBe(false);
     const cen = await cenario_certificado();
     const resultado = await servico.emitir(db, cen.usuario, cen.inscricao, { gerar_pdf: true });
     expect(resultado.pdf).toBeNull();
-    expect(resultado.aviso_pdf).toBe(servico_pdf.AVISO_SEM_PDF);
+    expect(resultado.aviso_pdf).toBeNull();
     expect(resultado.certificado.situacao).toBe("EMITIDO");
     expect(resultado.certificado.arquivo_pdf_anexo_id).toBeNull();
     expect(Buffer.from(resultado.bytes.slice(0, 2)).toString()).toBe("PK");

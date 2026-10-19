@@ -110,6 +110,17 @@ describe("treinamento simplificado: o curso já dado até o certificado", () => 
     const docx = await cliente.get(`/certificados/${certificados[0]!.id}/documento`);
     expect(docx.status).toBe(200);
     expect(docx.headers.get("content-type")).toContain("wordprocessingml");
+
+    // o PDF com QR: de um certificado e da turma inteira
+    const pdf = await cliente.get(`/certificados/${certificados[0]!.id}/pdf`);
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get("content-type")).toBe("application/pdf");
+    expect(pdf.headers.get("content-disposition")).toMatch(/Certificado_.*\.pdf/);
+    expect(pdf.text.startsWith("%PDF-")).toBe(true);
+    const lote = await cliente.get(`/turmas/${turma!.id}/certificados.pdf`);
+    expect(lote.status).toBe(200);
+    expect(lote.headers.get("content-disposition")).toContain("Certificados_");
+    expect((await cliente.get(`/turmas/${turma!.id}?aba=emissao`)).text).toContain("Baixar todos em PDF");
   });
 
   it("com nota mínima, o atalho só lança presença e não inventa nota", async () => {

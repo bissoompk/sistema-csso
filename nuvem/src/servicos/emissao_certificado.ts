@@ -16,8 +16,8 @@
  * 6. montar o contexto e **congelar antes de renderizar**
  * 7. renderizar o .docx
  * 8. auditar
- * 9. o PDF — que na nuvem não existe (`pdf.disponivel()` é falso): sai o .docx
- *    com o aviso que o Python já dava sem LibreOffice (PORTE.md §8).
+ * 9. o PDF — na nuvem não há LibreOffice (PORTE.md §8): não é gravado, sai na
+ *    hora do congelado, com o QR, por `pdf_do_certificado` (`certificado_pdf.ts`).
  */
 import { ambienteDeProducao } from "./instalacao.js";
 import { and, desc, eq, isNull, ne } from "drizzle-orm";
@@ -41,7 +41,7 @@ import * as documento from "./documento.js";
 import * as numeracao from "./numeracao.js";
 import { setor_emissor_vigente } from "./parecer.js";
 import { nome_exibicao } from "./participante.js";
-import * as servico_pdf from "./pdf.js";
+import * as certificado_pdf from "./certificado_pdf.js";
 import * as servico_presenca from "./presenca.js";
 import * as servico_servidores from "./servidores.js";
 import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
@@ -608,25 +608,11 @@ export async function emitir(
     });
   }
 
-  // 9. o PDF. Na nuvem é sempre o ramo "sem LibreOffice": o .docx é o
-  // documento, com o aviso, e a trilha não ganha `PDF_NAO_GERADO`.
-  let aviso_pdf: string | null = null;
-  if (opcoes.gerar_pdf ?? true) {
-    const conversao = servico_pdf.converter_fora_da_transacao(tx, destino, destino.replace(/\.docx$/, ".pdf"));
-    aviso_pdf = conversao.aviso;
-    if (conversao.aviso !== null && !conversao.indisponivel) {
-      await auditoria.registrar(tx, {
-        entidade: "certificado",
-        entidade_id: certificado.id,
-        tipo_evento: auditoria.PDF_NAO_GERADO,
-        descricao:
-          `Certificado ${C.rotulo(certificado)} emitido, mas o PDF não ficou ` +
-          `anexado. O .docx está em ${destino.split("/").pop()} e vale como o ` +
-          `documento; reimprima pela segunda via. Detalhe: ${conversao.aviso}`,
-        usuario,
-      });
-    }
-  }
+  // 9. o PDF não é gravado: sai na hora, do congelado e com o QR, por
+  // `pdf_do_certificado` (NUVEM: sem LibreOffice, ver `certificado_pdf.ts`).
+  // Por isso não há aviso de "PDF indisponível" nem `PDF_NAO_GERADO`.
+  void opcoes.gerar_pdf;
+  const aviso_pdf: string | null = null;
   return { certificado, docx: destino, bytes: info.bytes, pdf: null, aviso_pdf, avisos: [...validacao.avisos] };
 }
 
@@ -813,6 +799,37 @@ export async function segunda_via(
     finalidade: "segunda via do certificado de treinamento",
   });
   return { docx: destino, bytes: info.bytes, hash_conteudo: info.hash_conteudo, confere, aviso };
+}
+
+/**
+ * O certificado em PDF, com o QR da validação (`certificado_pdf.ts`). Passa
+ * pela segunda via: a mesma regra de leitura, a conferência do texto contra o
+ * da emissão e a mesma linha na trilha — o PDF é uma reimpressão do congelado.
+ */
+export async function pdf_do_certificado(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  certificado: CertificadoRegistro,
+): Promise<{ nome: string; bytes: Uint8Array; aviso: string | null }> {
+  const via = await segunda_via(tx, usuario, certificado);
+  const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)]);
+  return { nome: caminho_saida(certificado, "pdf").split("/").pop()!, bytes, aviso: via.aviso };
+}
+
+/** Todos os certificados vigentes da turma num PDF só, na ordem do número. */
+export async function pdf_da_turma(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: { id: number; codigo: string },
+): Promise<{ nome: string; bytes: Uint8Array } | null> {
+  const certificados = Object.values(await certificados_da_turma(tx, turma)).sort(
+    (a, b) => a.ano - b.ano || a.numero - b.numero,
+  );
+  if (!certificados.length) return null;
+  for (const certificado of certificados) await segunda_via(tx, usuario, certificado);
+  const bytes = await certificado_pdf.gerar_pdf(certificados.map((c) => montar_contexto(tx, c)));
+  const codigo = textos.slug_ascii(turma.codigo.replaceAll("-", "_")).replaceAll("_", "-");
+  return { nome: `Certificados_${codigo}.pdf`, bytes };
 }
 
 /** A trilha do certificado, mais nova primeiro (a ficha). */

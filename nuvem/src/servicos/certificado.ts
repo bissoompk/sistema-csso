@@ -26,6 +26,7 @@ import {
 import * as anexos from "./anexos.js";
 import * as datas_br from "./datas_br.js";
 import * as documento from "./documento.js";
+import { qr_png } from "./qr.js";
 import { numero as numero_br } from "./presenca.js";
 
 /** Subpasta de `modelos-docx/` — o `app/templates/certificados/` do Python. */
@@ -33,6 +34,7 @@ export const DIR_MODELOS_CERTIFICADO = "certificados";
 
 // a rubrica sai impressa; 35 mm é a largura típica de uma assinatura digitalizada
 export const LARGURA_RUBRICA_MM = 35.0;
+export const LARGURA_QR_MM = 25.0;
 
 export const SEM_VENCIMENTO = "não expira";
 
@@ -114,7 +116,7 @@ export interface InstrutorCongelado {
   rubrica_sha256?: string | null;
 }
 
-function _linha_do_instrutor(instrutor: InstrutorCongelado): string {
+export function linha_do_instrutor(instrutor: InstrutorCongelado): string {
   const partes = [instrutor.nome || ""];
   if (instrutor.titulo) partes.push(instrutor.titulo);
   const registro = instrutor.registro || "";
@@ -382,7 +384,7 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     (c) => c.turma_unidade_promotora,
   ),
   turma_instrutores: _c("Turma", "Instrutores", "um por linha", (c) =>
-    _rich(c.instrutores.map(_linha_do_instrutor).join("\n")),
+    _rich(c.instrutores.map(linha_do_instrutor).join("\n")),
   ),
   certificado_numero: _c("Documento", "Número", "27", (c) => String(c.numero)),
   certificado_ano: _c("Documento", "Ano", "2026", (c) => String(c.ano)),
@@ -392,10 +394,10 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     datas_br.por_extenso(c.data_emissao),
   ),
   certificado_chave: _c("Documento", "Chave de validação", "CSSO-2026-K7QMX-3FTB9-H", (c) => c.chave_validacao),
-  // A IMAGEM do QR chega com a fatia 5 no Python; até lá o marcador rende vazio
-  // em vez de imprimir a URL crua (estouraria o layout). Não marque esta tag
-  // como obrigatória.
-  certificado_qrcode: _c("Documento", "QR Code da validação", "imagem — chega na fatia 5", () => ""),
+  // A imagem do QR que abre /validar/{chave} (o PDF desenha o seu em vetor).
+  certificado_qrcode: _c("Documento", "QR Code da validação", "imagem 25 mm", (c) =>
+    c.url_validacao ? new documento.ImagemEmLinha({ bytes: qr_png(c.url_validacao), largura_mm: LARGURA_QR_MM }) : "",
+  ),
   certificado_url_validacao: _c(
     "Documento",
     "Endereço da validação",

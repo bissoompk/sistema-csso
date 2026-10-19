@@ -192,9 +192,11 @@ const DELIBERADAS: { motivo: string; contas?: string[]; rota: RegExp; rotulo?: R
     rota: /^\/(turmas\/\d+(\?aba=(inscricoes|presencas|emissao)|\/lista-presenca)|api\/v1\/turmas\/\d+\/presencas)/,
   },
   {
-    motivo: "certificado.ver é, por definição (rbac.PERMISSOES), 'ver certificado nominal'",
+    motivo:
+      "certificado.ver é, por definição (rbac.PERMISSOES), 'ver certificado nominal' " +
+      "— e o PDF (um ou o lote da turma) é o mesmo documento que o .docx",
     contas: ["secretaria", "sem_nominal"],
-    rota: /^\/certificados(\/\d+(\/documento)?)?(\?|$)/,
+    rota: /^\/(certificados(\/\d+(\/(documento|pdf))?)?|turmas\/\d+\/certificados\.pdf)(\?|$)/,
   },
   {
     motivo:

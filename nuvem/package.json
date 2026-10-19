@@ -27,14 +27,17 @@
     "hash-wasm": "^4.12.0",
     "hono": "^4.13.9",
     "nunjucks": "^3.2.4",
+    "pdf-lib": "1.17.1",
     "pizzip": "^3.3.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "qrcode": "1.5.4"
   },
   "devDependencies": {
     "@hono/node-server": "^2.1.1",
     "@netlify/functions": "^6.0.0",
     "@types/node": "^26.6.2",
     "@types/nunjucks": "^3.2.6",
+    "@types/qrcode": "1.5.5",
     "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

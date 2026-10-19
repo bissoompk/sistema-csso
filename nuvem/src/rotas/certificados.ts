@@ -20,6 +20,7 @@ import * as servico from "../servicos/emissao_certificado.js";
 import { COM_PARTICIPANTE } from "../servicos/participante.js";
 import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
 import { numeroDaPagina, pagina, recortarConsulta, redirecionar } from "../web.js";
+import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import { baixar } from "./turmas.js";
 import { erro as _erro, id_opcional, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
 
@@ -174,6 +175,16 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/documento`, async (c) => {
   if (!certificado) return redirecionar(c, _volta_da_ficha(usuario));
   const resultado = await servico.segunda_via(tx, usuario, certificado);
   return baixar(c, resultado.bytes, resultado.docx.split("/").pop()!, servico.TIPO_DOCX);
+});
+
+/** O certificado em PDF, com o QR da validação: o papel que circula. */
+rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/pdf`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  const [certificado] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
+  if (!certificado) return redirecionar(c, _volta_da_ficha(usuario));
+  const resultado = await servico.pdf_do_certificado(tx, usuario, certificado);
+  return baixar(c, resultado.bytes, resultado.nome, TIPO_PDF);
 });
 
 // =====================================================================

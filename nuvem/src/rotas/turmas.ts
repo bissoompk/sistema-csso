@@ -34,6 +34,7 @@ import {
 import { AssinaturaInstrutor, ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import * as servico_emissao from "../servicos/emissao_certificado.js";
+import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
 import * as servico_participante from "../servicos/participante.js";
 import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js";
@@ -899,6 +900,19 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
   // nada emitido é o retorno de uma ação que não aconteceu: sai em vermelho
   if (!relatorio.itens.length) return _erro(c, volta, "Ninguém apto a emitir nesta turma.");
   return _volta(c, volta, `${turma.codigo}: ${relatorio.resumo}.`);
+});
+
+/** Os certificados vigentes da turma num PDF só, para imprimir de uma vez. */
+rotas.get(`${TURMAS}/:turma_id{[0-9]+}/certificados.pdf`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.ver");
+  const tx = c.get("tx");
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const resultado = await servico_emissao.pdf_da_turma(tx, usuario, turma);
+  if (!resultado) return _erro(c, `${TURMAS}/${turma_id}?aba=emissao`, "Nenhum certificado emitido nesta turma.");
+  return baixar(c, resultado.bytes, resultado.nome, TIPO_PDF);
 });
 
 /**

@@ -12,9 +12,10 @@
 {% set ANULAR = 'Anular certificado' %}
 
 {% block acoes_cabecalho %}
-<button type="button" class="secundario" data-imprimir>Imprimir</button>
+<a class="botao" href="/certificados/{{ certificado.id }}/pdf"
+   data-baixar="Gerando o PDF…">Baixar PDF</a>
 <a class="botao secundario" href="/certificados/{{ certificado.id }}/documento"
-   data-baixar="Gerando a segunda via…">Segunda via (.docx)</a>
+   data-baixar="Gerando a segunda via…">Word (.docx)</a>
 {% if usuario.pode('certificado.anular') and not certificado.anulado %}
 {# Anular exige motivo por escrito: o botão do cabeçalho ABRE a camada com o
    formulário, não dispara nada sozinho. #}
@@ -128,8 +129,9 @@
           {% endcall %}
         </div>
         <div class="acoes">
+          <a class="botao" href="/certificados/{{ certificado.id }}/pdf">Baixar PDF</a>
           <a class="botao secundario" href="/certificados/{{ certificado.id }}/documento">
-            Segunda via (.docx)</a>
+            Word (.docx)</a>
         </div>
       </section>
     </div>

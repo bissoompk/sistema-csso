@@ -791,6 +791,10 @@
   <div class="cabecalho-cartao">
     <h2>Emissão dos certificados</h2>
     <span class="contador">{{ certificados|length }} emitido(s)</span>
+    {% if certificados|length %}
+    <a class="botao compacto" href="/turmas/{{ turma.id }}/certificados.pdf"
+       data-baixar="Gerando os PDFs…">Baixar todos em PDF</a>
+    {% endif %}
     {% call ui.info('certificado-congelado', 'o que o certificado congela') %}
       <p>O certificado <strong>congela</strong> tudo o que imprime — conteúdo,
         instrutor, layout e o dicionário de tags — e a segunda via sai desse
@@ -826,6 +830,7 @@
       <td>
         {% if emitido %}
         <a class="mono" href="/certificados/{{ emitido.id }}">{{ emitido.rotulo }}</a>
+        <a class="discreto" href="/certificados/{{ emitido.id }}/pdf">PDF</a>
         <span class="quebra discreto mono">{{ emitido.chave_validacao }}</span>
         {% else %}<span class="discreto">—</span>{% endif %}
       </td>
