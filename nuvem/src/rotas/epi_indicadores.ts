@@ -92,14 +92,17 @@ rotas.get(PAINEL, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.ver");
   const tx = c.get("tx");
-  const medidas = await servico.painel(tx);
   const ve_ficha = usuario.pode("epi.ficha");
+  const opera = usuario.pode("epi.catalogo") || usuario.pode("epi.entregar");
+  const [medidas, [item], [alguem]] = await Promise.all([
+    servico.painel(tx),
+    opera ? tx.select({ id: tabela_epi_item.id }).from(tabela_epi_item).limit(1) : Promise.resolve([]),
+    opera ? tx.select({ id: tabela_servidor.id }).from(tabela_servidor).limit(1) : Promise.resolve([]),
+  ]);
   // Catálogo vazio: a tela diz por onde começar (a entrega pede item e servidor).
   let primeiros_passos: { rotulo: string; feito: boolean; href: string | null; dica: string }[] | null = null;
-  if (usuario.pode("epi.catalogo") || usuario.pode("epi.entregar")) {
-    const [item] = await tx.select({ id: tabela_epi_item.id }).from(tabela_epi_item).limit(1);
+  if (opera) {
     if (!item) {
-      const [alguem] = await tx.select({ id: tabela_servidor.id }).from(tabela_servidor).limit(1);
       primeiros_passos = [
         {
           rotulo: "Cadastrar os itens no catálogo",

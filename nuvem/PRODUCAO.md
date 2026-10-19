@@ -27,7 +27,7 @@ Site configuration > Environment variables. Marque as secretas como *secret*
 
 | Variável | Valor | Obrigatória |
 |---|---|---|
-| `DATABASE_URL` | Supabase > Connect > **Transaction pooler** (porta 6543), com a senha nova | sim |
+| `DATABASE_URL` | Supabase > Connect > **Session pooler** (porta 5432), com a senha nova. Na porta 6543 (modo transação) o sistema funciona, mas sem consulta preparada: cada tela fica 2 a 4 vezes mais lenta (`src/db/cliente.ts`) | sim |
 | `CSSO_AMBIENTE` | `producao` | sim |
 | `CSSO_CHAVE_SECRETA` | 32+ caracteres aleatórios¹ | sim² |
 | `CSSO_BACKUP_SENHA` | 16+ caracteres, **guardada também fora do Netlify** — backup sem a senha é lixo | sim² |

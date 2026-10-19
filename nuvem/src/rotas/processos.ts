@@ -48,6 +48,7 @@ import {
   mover,
   requisitos_de_saida,
   resumir,
+  resumir_varios,
   sla_vigente,
   voltar_do_sobrestamento,
   type Processo,
@@ -126,14 +127,13 @@ rotas.get("/processos", async (c) => {
     [itens, total] = await repo.listar(tx, usuario, filtro);
   }
   const sla = await sla_vigente(tx);
-  const resumos = [];
-  for (const p of itens) resumos.push(await resumir(tx, p, sla));
+  const resumos = await resumir_varios(tx, itens, sla);
   let grupos = null;
   if (filtro.agrupar && Object.hasOwn(CHAVES_AGRUPAMENTO, filtro.agrupar)) {
     const g: Record<string, unknown[]> = {};
+    const do_processo = new Map(resumos.map((r) => [r.processo.id, r]));
     for (const [rotulo, lista] of agrupar(itens, filtro.agrupar)) {
-      g[rotulo] = [];
-      for (const p of lista) g[rotulo]!.push(await resumir(tx, p, sla));
+      g[rotulo] = lista.map((p) => do_processo.get(p.id)!);
     }
     grupos = Object.keys(g).length ? dicionario(g) : null;
   }
@@ -323,29 +323,31 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
     throw new ErroHttp(404, "O processo não existe ou está fora do seu escopo.");
   }
 
-  // Quem decide é a relação titular/terceiro, e não `ve_dado_nominal`.
-  await auditoria.registrar_leitura_nominal(tx, usuario, "processo.servidor", {
-    servidor_id: processo.servidor_id,
-    processo_id: processo.id,
-  });
-
-  const pareceres = await tx.query.parecer_tecnico.findMany({
-    where: eq(parecer_tecnico.processo_id, processo.id),
-    with: { laudo: true, signatario: true },
-    orderBy: [desc(parecer_tecnico.ano), desc(parecer_tecnico.numero)],
-  });
-  const eventos = await tx
-    .select()
-    .from(historico_evento)
-    .where(eq(historico_evento.processo_id, processo.id))
-    .orderBy(desc(historico_evento.ocorrido_em), desc(historico_evento.id));
-  const checklists = await tx.query.checklist.findMany({
-    where: eq(checklist.processo_id, processo.id),
-    with: { itens: { orderBy: (i, { asc: a }) => [a(i.id)] } },
-    orderBy: [asc(checklist.ordem), asc(checklist.id)],
-  });
-  const modelos = (
-    await tx
+  const hoje = datas_br.hoje();
+  // A ficha lê de muitas tabelas, e nenhuma leitura depende de outra: saem
+  // juntas, numa ida ao banco (ver `db/cliente.ts`).
+  const [, pareceres, eventos, checklists, modelos_crus, pendentes, curto, resumo, anexos, faltas_saida] = await Promise.all([
+    // Quem decide é a relação titular/terceiro, e não `ve_dado_nominal`.
+    auditoria.registrar_leitura_nominal(tx, usuario, "processo.servidor", {
+      servidor_id: processo.servidor_id,
+      processo_id: processo.id,
+    }),
+    tx.query.parecer_tecnico.findMany({
+      where: eq(parecer_tecnico.processo_id, processo.id),
+      with: { laudo: true, signatario: true },
+      orderBy: [desc(parecer_tecnico.ano), desc(parecer_tecnico.numero)],
+    }),
+    tx
+      .select()
+      .from(historico_evento)
+      .where(eq(historico_evento.processo_id, processo.id))
+      .orderBy(desc(historico_evento.ocorrido_em), desc(historico_evento.id)),
+    tx.query.checklist.findMany({
+      where: eq(checklist.processo_id, processo.id),
+      with: { itens: { orderBy: (i, { asc: a }) => [a(i.id)] } },
+      orderBy: [asc(checklist.ordem), asc(checklist.id)],
+    }),
+    tx
       .select()
       .from(checklist_modelo)
       .where(
@@ -354,33 +356,39 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
           or(isNull(checklist_modelo.tipo_processo_id), eq(checklist_modelo.tipo_processo_id, processo.tipo_processo_id)),
         ),
       )
-      .orderBy(asc(checklist_modelo.id))
-  ).map((m) => ({ ...m, lista_de_itens: ChecklistModelo.lista_de_itens(m) }));
-  const hoje = datas_br.hoje();
-  const pendencias_do_processo = (
-    await tx
+      .orderBy(asc(checklist_modelo.id)),
+    tx
       .select()
       .from(pendencia)
       .where(and(eq(pendencia.processo_id, processo.id), eq(pendencia.concluida, false)))
-      .orderBy(asc(pendencia.id))
-  ).map((p) => ({ ...p, atrasada: (quando?: string) => pendencias.atrasada(p, quando ?? hoje) }));
+      .orderBy(asc(pendencia.id)),
+    fluxo_curto_de(tx, processo),
+    resumir(tx, processo),
+    servico_anexos.listar(tx, "processo", processo.id),
+    requisitos_de_saida(tx, processo, ""),
+  ]);
+  const modelos = modelos_crus.map((m) => ({ ...m, lista_de_itens: ChecklistModelo.lista_de_itens(m) }));
+  const pendencias_do_processo = pendentes.map((p) => ({
+    ...p,
+    atrasada: (quando?: string) => pendencias.atrasada(p, quando ?? hoje),
+  }));
 
   // só o que a máquina do TIPO admite, saltos inclusive, na ordem do fluxo
-  const saidas = destinos_do_processo(processo.estado_tecnico, await fluxo_curto_de(tx, processo));
+  const saidas = destinos_do_processo(processo.estado_tecnico, curto);
   return pagina(c, "paginas/processo_ficha.html", usuario, {
     processo,
-    resumo: await resumir(tx, processo),
+    resumo,
     aba: o.aba ?? c.req.query("aba") ?? "dados",
     pareceres,
     eventos,
     checklists,
     modelos_checklist: modelos,
     pendencias_do_processo,
-    anexos: await servico_anexos.listar(tx, "processo", processo.id),
+    anexos,
     categorias: servico_anexos.CATEGORIAS_PROCESSO,
     destinos: saidas,
     incisos: dicionario(INCISOS_ART11),
-    faltas_saida: await requisitos_de_saida(tx, processo, ""),
+    faltas_saida,
     passos_sei: sei.PASSOS_INCLUSAO,
     mensagem: o.mensagem !== undefined ? o.mensagem : (c.req.query("mensagem") ?? null),
     erro: o.erro !== undefined ? o.erro : (c.req.query("erro") ?? null),

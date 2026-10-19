@@ -402,6 +402,8 @@ export function requestParaTemplate(c: Ctx) {
 // ---------------------------------------------------------------------
 export interface GanchosDaCasca {
   sino?: (c: Ctx, usuario: UsuarioAtual) => Promise<[number, number]>;
+  /** começa a leitura do sino junto com a da sessão, antes de saber quem é */
+  anteciparSino?: (c: Ctx) => Promise<void>;
   podeVerPendencias?: (usuario: UsuarioAtual | null) => boolean;
   podeBuscar?: (usuario: UsuarioAtual | null) => boolean;
   navegacao?: (

@@ -17,6 +17,8 @@ export type Variaveis = {
   conta_id?: number;
   /** cache por requisição do usuário resolvido do cookie (`undefined` = ainda não resolvido) */
   usuario_resolvido?: UsuarioAtual | null;
+  /** as pendências abertas lidas junto com a sessão, para o sino (`pendencias.ts`) */
+  sino_antecipado?: { responsavel_id: number | null; prazo: string | null; concluida: boolean }[];
   /** marcado por `desfazer()`: a rota pede ROLLBACK mesmo retornando normalmente */
   desfazer?: boolean;
 };

@@ -15,21 +15,26 @@ import { ErroHttp, RecusaDaApi, RedirecionaParaLogin } from "./nucleo/erros.js";
 import * as autenticacao from "./servicos/autenticacao.js";
 import * as textos from "./servicos/textos.js";
 import { carregar_usuario_atual, type UsuarioAtual } from "./servicos/rbac.js";
+import { ganchos } from "./web.js";
 
 export async function usuarioOpcional(c: Ctx): Promise<UsuarioAtual | null> {
   const cache = c.get("usuario_resolvido");
   if (cache !== undefined) return cache;
   const tx = c.get("tx");
   const token = getCookie(c, autenticacao.COOKIE_SESSAO);
-  const registro = await autenticacao.sessao_valida(tx, token ?? null);
   let usuario: UsuarioAtual | null = null;
-  if (registro) {
-    // id numérico, nunca o login (ROPA §6): é o que vai para o log de acesso
-    c.set("conta_id", registro.usuario_id);
-    try {
-      usuario = await carregar_usuario_atual(tx, registro.usuario_id);
-    } catch {
-      usuario = null;
+  if (token) {
+    // A sessão e a identidade saem na MESMA ida ao banco (o banco fica em
+    // outro continente: cada ida pesa). A identidade só vale se a sessão valer.
+    const [registro, carregado] = await Promise.all([
+      autenticacao.sessao_valida(tx, token),
+      carregar_usuario_atual(tx, autenticacao.conta_da_sessao(token)).catch(() => null),
+      ganchos.anteciparSino?.(c),
+    ]);
+    if (registro) {
+      // id numérico, nunca o login (ROPA §6): é o que vai para o log de acesso
+      c.set("conta_id", registro.usuario_id);
+      usuario = carregado && carregado.id === registro.usuario_id ? carregado : null;
     }
   }
   c.set("usuario_resolvido", usuario);

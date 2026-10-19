@@ -888,3 +888,14 @@ Revisão do frontend em produção (itens 2 a 7):
 - **Nomes legíveis**: perfis com acento (a semente atualiza `perfil.nome` existente) e habilitações pelo rótulo, não pelo código; o painel de EPI deixa de citar "RN-32".
 - **Código do treinamento opcional**: o formulário começa pelo nome; código em branco é gerado do nome (ASCII, maiúsculas, até 26 caracteres, sufixo `_2`, `_3`… se repetir). Continua imutável depois.
 - **Habilitação ligada à conta**: `POST /habilitacoes/:id/conta` (exige `habilitacao.atestar`) define ou limpa `profissional_habilitado.usuario_id`, com trilha `HABILITACAO_VINCULADA` / `HABILITACAO_DESVINCULADA`. Sem conta ligada o profissional não assina parecer, e a tela de usuários diz isso.
+
+## Desempenho: idas ao banco (19/10/2026)
+
+A função do Netlify roda em Ohio e o banco em São Paulo (~150 ms por ida e volta); as telas levavam de 2 a 25 s. A causa não era o volume de dados, era o número de idas:
+
+- **Consulta preparada.** O Drizzle chama `sql.unsafe`, que no postgres.js sai com `prepare: false`: cada consulta com parâmetro custava DUAS idas (descreve, executa) e não seguia em paralelo com outra. `db/cliente.ts` passa `prepare: true` em todo `unsafe` (inclusive no da transação e do savepoint) — salvo na porta 6543, o pooler em modo transação, que não aceita *prepared statement*. Produção passa a usar o pooler em modo sessão (porta 5432). A conexão ociosa dura 2 min (era 20 s) para as consultas preparadas sobreviverem entre um clique e outro.
+- **Casca numa ida só.** Sessão, conta, perfis, habilitações e o sino eram cinco idas em sequência; agora saem juntas (`autenticacao.conta_da_sessao` é a conta como subconsulta da sessão; a identidade só vale se a sessão valer). O sino lê as pendências abertas sem recorte e recorta em memória, com a mesma regra de `no_escopo`.
+- **Cartão de processo em lote.** `processo.resumir_varios` faz SLA, tipo, anexos e checklist de N processos em quatro consultas paralelas — o painel fazia quatro por processo (101 consultas). O pós-filtro de `/processos` deixa de ler pareceres quando nenhum filtro de parecer foi pedido.
+- **Leituras independentes em paralelo** (`Promise.all`) no painel, na lista e na ficha de turma, no painel de EPI e na ficha de processo.
+
+Medido localmente com 70 ms de atraso em cada sentido (`testes/idas_ao_banco.test.ts` fixa o teto de consultas por tela): o conjunto de 22 telas foi de 110 s para 28 s (instância aquecida); o painel, de 25 s para 1 s.

@@ -775,7 +775,7 @@ export function eh_conta_de_governo(permissoes: Iterable<string>): boolean {
  */
 export async function perfis_vigentes(
   tx: Executor,
-  usuario_id: number,
+  usuario_id: number | SQL,
   hoje: string | null = null,
 ): Promise<{ permissoes: Set<string>; perfis: string[]; campi: Set<number> }> {
   const dia = hoje ?? hoje_iso();
@@ -805,27 +805,26 @@ export async function perfis_vigentes(
  *
  * `hoje` é 'AAAA-MM-DD' — o dia de negócio em America/Sao_Paulo, e não o dia
  * UTC do processo da função (ver `dominio/datas.ts`).
+ *
+ * `usuario_id` pode ser a SUBCONSULTA que acha a conta pela sessão
+ * (`autenticacao.conta_da_sessao`): aí a identidade sai junto com a sessão, sem
+ * esperar por ela. As três leituras vão juntas — uma ida ao banco.
  */
 export async function carregar_usuario_atual(
   tx: Executor,
-  usuario_id: number,
+  usuario_id: number | SQL,
   hoje: string | null = null,
 ): Promise<UsuarioAtual> {
   const dia = hoje ?? hoje_iso();
-  const usuario = await tx.query.usuario.findFirst({ where: eq(tabela_usuario.id, usuario_id) });
+  const [usuario, { permissoes, perfis, campi }, vinculos] = await Promise.all([
+    tx.query.usuario.findFirst({ where: eq(tabela_usuario.id, usuario_id) }),
+    perfis_vigentes(tx, usuario_id, dia),
+    tx.query.profissional_habilitado.findMany({ where: eq(profissional_habilitado.usuario_id, usuario_id) }),
+  ]);
   if (!usuario || !usuario.ativo) {
     throw new PermissaoNegada("sessao", "usuario inativo ou inexistente");
   }
-
-  const { permissoes, perfis, campi } = await perfis_vigentes(tx, usuario_id, dia);
-
-  const habilitacoes = (
-    await tx.query.profissional_habilitado.findMany({
-      where: eq(profissional_habilitado.usuario_id, usuario_id),
-    })
-  )
-    .filter((h) => vigente_em(h, dia))
-    .map((h) => h.id);
+  const habilitacoes = vinculos.filter((h) => vigente_em(h, dia)).map((h) => h.id);
 
   return new UsuarioAtual({
     id: usuario.id,

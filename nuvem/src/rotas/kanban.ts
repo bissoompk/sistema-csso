@@ -25,7 +25,7 @@ import {
   estado_para_coluna,
 } from "../dominio/estados.js";
 import * as repo from "../repositorios/processos.js";
-import { RequisitoDeSaidaNaoAtendido, fluxo_curto_de, mover, resumir, sla_vigente } from "../servicos/processo.js";
+import { RequisitoDeSaidaNaoAtendido, fluxo_curto_de, mover, resumir, resumir_varios, sla_vigente } from "../servicos/processo.js";
 import { ErroHttp } from "../nucleo/erros.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -80,9 +80,9 @@ rotas.get("/kanban", async (c) => {
   const sla = await sla_vigente(tx);
   const resumos: Record<string, unknown[]> = {};
   let total = 0;
+  const todos = await resumir_varios(tx, Object.values(colunas).flat(), sla);
   for (const [codigo, lista] of Object.entries(colunas)) {
-    resumos[codigo] = [];
-    for (const p of lista) resumos[codigo]!.push(await resumir(tx, p, sla));
+    resumos[codigo] = todos.splice(0, lista.length);
     total += lista.length;
   }
   return pagina(c, "paginas/kanban.html", usuario, {

@@ -172,18 +172,23 @@ async function _tela_lista(
       orderBy: (t, { desc }) => [desc(t.ano), desc(t.numero)],
     })) as unknown as TurmaCarregada[]
   ).map(vista_turma);
-  const inscritos: Record<number, number> = {};
-  for (const turma of itens) inscritos[turma.id] = await servico_turma.inscricoes_que_ocupam_vaga(tx, turma);
-  const treinamentos = await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome));
   // Instalação sem turma nenhuma: a tela diz por onde começar, em vez de só
   // oferecer "Abrir turma" sem treinamento para escolher.
+  const comecando = !itens.length && !situacao && alvo === null && usuario.pode("turma.criar");
+  // tudo junto: uma ida ao banco, e não uma por turma (ver `db/cliente.ts`)
+  const [ocupadas, treinamentos, campi, unidades, [instrutor]] = await Promise.all([
+    Promise.all(itens.map((turma) => servico_turma.inscricoes_que_ocupam_vaga(tx, turma))),
+    tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
+    tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
+    tx.select().from(tabela_unidade).orderBy(asc(tabela_unidade.nome_extenso)),
+    comecando
+      ? tx.select({ id: tabela_assinatura.id }).from(tabela_assinatura).where(eq(tabela_assinatura.ativo, true)).limit(1)
+      : Promise.resolve([]),
+  ]);
+  const inscritos: Record<number, number> = {};
+  itens.forEach((turma, i) => (inscritos[turma.id] = ocupadas[i]!));
   let primeiros_passos: { rotulo: string; feito: boolean; href: string | null; dica: string }[] | null = null;
-  if (!itens.length && !situacao && alvo === null && usuario.pode("turma.criar")) {
-    const [instrutor] = await tx
-      .select({ id: tabela_assinatura.id })
-      .from(tabela_assinatura)
-      .where(eq(tabela_assinatura.ativo, true))
-      .limit(1);
+  if (comecando) {
     const tem_treinamento = treinamentos.some((t) => t.ativo);
     primeiros_passos = [
       {
@@ -220,8 +225,8 @@ async function _tela_lista(
     treinamentos: treinamentos.filter((t) => t.ativo),
     // o filtro lista todos: turma antiga de curso desativado continua encontrável
     treinamentos_do_filtro: treinamentos,
-    campi: await tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
-    unidades: await tx.select().from(tabela_unidade).orderBy(asc(tabela_unidade.nome_extenso)),
+    campi,
+    unidades,
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
@@ -406,15 +411,29 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
   let aba = c.req.query("aba") ?? "turma";
   if (!abas.some(([chave]) => chave === aba)) aba = "turma";
   const busca = c.req.query("busca") ?? "";
-  const inscricoes = ve_nominal ? (await servico_turma.inscricoes_da_turma(tx, turma)).map(vista_inscricao) : [];
-
-  // `usuario=` NÃO é opcional na busca: sem ele ela não casa por nome
-  const achados =
-    busca.trim() && ve_nominal ? (await servico_participante.buscar(tx, busca, usuario)).map(vista_participante) : [];
+  const tem_busca = Boolean(busca.trim()) && ve_nominal;
+  // As leituras da ficha não dependem umas das outras: saem juntas, numa ida
+  // ao banco (ver `db/cliente.ts`).
+  const [inscritas, participantes, achados_srv, grade, certificados_por_inscricao, vagas_restantes, instrutores_livres, campi, unidades] =
+    await Promise.all([
+      ve_nominal ? servico_turma.inscricoes_da_turma(tx, turma) : Promise.resolve([]),
+      // `usuario=` NÃO é opcional na busca: sem ele ela não casa por nome
+      tem_busca ? servico_participante.buscar(tx, busca, usuario) : Promise.resolve([]),
+      tem_busca ? servico_participante.buscar_servidores(tx, busca, usuario) : Promise.resolve([]),
+      ve_nominal ? servico_presenca.grade_da_turma(tx, turma) : Promise.resolve([]),
+      aba === "emissao"
+        ? servico_emissao.certificados_da_turma(tx, turma)
+        : Promise.resolve({} as Awaited<ReturnType<typeof servico_emissao.certificados_da_turma>>),
+      servico_turma.vagas_restantes(tx, turma),
+      _instrutores_livres(tx, turma),
+      tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
+      tx.select().from(tabela_unidade).orderBy(asc(tabela_unidade.nome_extenso)),
+    ]);
+  const inscricoes = inscritas.map(vista_inscricao);
+  const achados = participantes.map(vista_participante);
   let servidores_achados: unknown[] = [];
-  if (busca.trim() && ve_nominal) {
-    const achados_srv = await servico_participante.buscar_servidores(tx, busca, usuario);
-    const unidades = achados_srv.length
+  if (tem_busca) {
+    const do_achado = achados_srv.length
       ? await tx
           .select()
           .from(tabela_unidade)
@@ -425,24 +444,18 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
             ),
           )
       : [];
-    servidores_achados = achados_srv.map((s) => ({ ...s, unidade: unidades.find((u) => u.id === s.unidade_uorg_id) ?? null }));
+    servidores_achados = achados_srv.map((s) => ({ ...s, unidade: do_achado.find((u) => u.id === s.unidade_uorg_id) ?? null }));
   }
 
   const aptidao: Record<number, servico_emissao.Validacao> = {};
   if (aba === "emissao") {
-    for (const inscricao of inscricoes) aptidao[inscricao.id] = await servico_emissao.validar(tx, inscricao);
+    const validacoes = await Promise.all(inscricoes.map((inscricao) => servico_emissao.validar(tx, inscricao)));
+    inscricoes.forEach((inscricao, i) => (aptidao[inscricao.id] = validacoes[i]!));
   }
-  const grade = ve_nominal ? await servico_presenca.grade_da_turma(tx, turma) : [];
   for (const linha of grade) vista_inscricao(linha.inscricao);
-  const certificados =
-    aba === "emissao"
-      ? Object.fromEntries(
-          Object.entries(await servico_emissao.certificados_da_turma(tx, turma)).map(([k, cert]) => [
-            k,
-            { ...cert, rotulo: `${cert.numero}/${cert.ano}` },
-          ]),
-        )
-      : {};
+  const certificados = Object.fromEntries(
+    Object.entries(certificados_por_inscricao).map(([k, cert]) => [k, { ...cert, rotulo: `${cert.numero}/${cert.ano}` }]),
+  );
 
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
@@ -452,7 +465,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     inscricoes,
     rotulo_vinculo: ROTULO_VINCULO,
     vinculos: VINCULOS_PARTICIPANTE.filter((v) => v !== "SERVIDOR"),
-    vagas_restantes: await servico_turma.vagas_restantes(tx, turma),
+    vagas_restantes,
     // de planejada direto a concluída, só turma que já terminou (a guarda é do serviço)
     destinos: destinos_de_turma(turma.situacao)
       .filter((codigo) => !(turma.situacao === "PLANEJADA" && codigo === "CONCLUIDA" && turma.data_fim > datas_br.hoje()))
@@ -465,12 +478,12 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
       usuario.pode("turma.concluir"),
     lancamento_aberto: turma.situacao === "CONCLUIDA" || servico_presenca.aceita_lancamento(turma),
     permissao_por_destino: servico_turma.PERMISSAO_POR_SITUACAO_TURMA,
-    instrutores_livres: await _instrutores_livres(tx, turma),
+    instrutores_livres,
     achados,
     servidores_achados,
     busca,
-    campi: await tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
-    unidades: await tx.select().from(tabela_unidade).orderBy(asc(tabela_unidade.nome_extenso)),
+    campi,
+    unidades,
     // --- aba 3 ---
     dias: servico_presenca.dias_da_turma(turma),
     grade,

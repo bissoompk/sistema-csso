@@ -7,7 +7,7 @@
  * objeto em memória, para quem chamou continuar lendo o estado novo (o que o
  * objeto do SQLAlchemy fazia sozinho).
  */
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   anexo,
@@ -604,36 +604,81 @@ export async function resumir<P extends Pick<Processo, "id" | "estado_tecnico" |
   processo: P,
   sla: Record<string, number> | null = null,
 ): Promise<ResumoCartao<P>> {
-  const tabela_sla = sla ?? (await sla_vigente(tx));
-  const curto = await fluxo_curto_de(tx, processo as ComTipo);
-  const coluna = coluna_de(processo.estado_tecnico, curto);
-  const dias = datas_br.dias_desde(processo.entrou_na_etapa_em);
-  const limite = tabela_sla[coluna] ?? 0;
+  const [resumo] = await resumir_varios(tx, [processo], sla);
+  return resumo!;
+}
 
-  const [anexos] = await tx
-    .select({ n: count() })
-    .from(anexo)
-    .where(and(eq(anexo.entidade, "processo"), eq(anexo.entidade_id, processo.id), eq(anexo.ativo, true)));
+/**
+ * O cartão de vários processos de uma vez: SLA, tipo, anexos e checklist em
+ * QUATRO consultas que vão juntas ao banco (uma ida), e não quatro por processo.
+ * O painel e o quadro faziam dezenas de idas só para isto.
+ */
+export async function resumir_varios<P extends Pick<Processo, "id" | "estado_tecnico" | "entrou_na_etapa_em">>(
+  tx: Executor,
+  processos: readonly P[],
+  sla: Record<string, number> | null = null,
+): Promise<ResumoCartao<P>[]> {
+  if (processos.length === 0) return [];
+  const ids = processos.map((p) => p.id);
+  const sem_tipo = [
+    ...new Set(
+      processos
+        .map((p) => p as ComTipo)
+        .filter((p) => !p.tipo_processo?.codigo && p.tipo_processo_id)
+        .map((p) => p.tipo_processo_id!),
+    ),
+  ];
+  const [tabela_sla, tipos, anexos, contagens] = await Promise.all([
+    sla ?? sla_vigente(tx),
+    sem_tipo.length
+      ? tx
+          .select({ id: tipo_processo.id, codigo: tipo_processo.codigo })
+          .from(tipo_processo)
+          .where(inArray(tipo_processo.id, sem_tipo))
+      : Promise.resolve([]),
+    tx
+      .select({ id: anexo.entidade_id, n: count() })
+      .from(anexo)
+      .where(and(eq(anexo.entidade, "processo"), inArray(anexo.entidade_id, ids), eq(anexo.ativo, true)))
+      .groupBy(anexo.entidade_id),
+    tx
+      .select({
+        id: checklist.processo_id,
+        total: count(),
+        feitos: sql<number>`count(*) filter (where ${checklist_item.concluido})`.mapWith(Number),
+      })
+      .from(checklist_item)
+      .innerJoin(checklist, eq(checklist.id, checklist_item.checklist_id))
+      .where(inArray(checklist.processo_id, ids))
+      .groupBy(checklist.processo_id),
+  ]);
+  const codigo_do_tipo = new Map(tipos.map((t) => [t.id, t.codigo]));
+  const anexos_de = new Map(anexos.map((a) => [a.id, a.n]));
+  const checklist_de = new Map(contagens.map((c) => [c.id, c]));
 
-  const [contagem] = await tx
-    .select({
-      total: count(),
-      feitos: sql<number>`count(*) filter (where ${checklist_item.concluido})`.mapWith(Number),
-    })
-    .from(checklist_item)
-    .innerJoin(checklist, eq(checklist.id, checklist_item.checklist_id))
-    .where(eq(checklist.processo_id, processo.id));
-
-  return {
-    processo,
-    coluna,
-    dias_no_estado: dias,
-    sla: limite,
-    atrasado: Boolean(limite) && dias > limite,
-    anexos: anexos?.n ?? 0,
-    checklist_feitos: contagem?.feitos ?? 0,
-    checklist_total: contagem?.total ?? 0,
-    curto,
-    colunas_destino: colunas_destino(processo.estado_tecnico, curto),
-  };
+  return processos.map((processo) => {
+    const com_tipo = processo as ComTipo;
+    // as mesmas três saídas de `fluxo_curto_de`
+    const curto = com_tipo.tipo_processo?.codigo
+      ? fluxo_curto(com_tipo.tipo_processo.codigo)
+      : com_tipo.tipo_processo_id
+        ? fluxo_curto(codigo_do_tipo.get(com_tipo.tipo_processo_id))
+        : false;
+    const coluna = coluna_de(processo.estado_tecnico, curto);
+    const dias = datas_br.dias_desde(processo.entrou_na_etapa_em);
+    const limite = tabela_sla[coluna] ?? 0;
+    const contagem = checklist_de.get(processo.id);
+    return {
+      processo,
+      coluna,
+      dias_no_estado: dias,
+      sla: limite,
+      atrasado: Boolean(limite) && dias > limite,
+      anexos: anexos_de.get(processo.id) ?? 0,
+      checklist_feitos: contagem?.feitos ?? 0,
+      checklist_total: contagem?.total ?? 0,
+      curto,
+      colunas_destino: colunas_destino(processo.estado_tecnico, curto),
+    };
+  });
 }

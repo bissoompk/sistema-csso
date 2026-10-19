@@ -139,14 +139,15 @@ export class Painel {
  */
 export async function painel(tx: Executor, quando: string | null = null): Promise<Painel> {
   const dia = quando ?? hoje();
-  return new Painel(
-    dia,
-    await epi_requisicao.resumo_de_estados(tx),
-    await _com_o_que_a_tela_le(tx, await epi_requisicao.itens_esperando_estoque(tx)),
-    await lotes_a_vencer(tx, dia),
-    await entregas_do_mes(tx, dia),
-    await epi_ficha.trocas_devidas(tx, { quando: dia }),
-  );
+  // as cinco medidas são independentes: saem juntas (uma ida ao banco cada etapa)
+  const [estados, esperando, lotes, entregas, trocas] = await Promise.all([
+    epi_requisicao.resumo_de_estados(tx),
+    epi_requisicao.itens_esperando_estoque(tx).then((itens) => _com_o_que_a_tela_le(tx, itens)),
+    lotes_a_vencer(tx, dia),
+    entregas_do_mes(tx, dia),
+    epi_ficha.trocas_devidas(tx, { quando: dia }),
+  ]);
+  return new Painel(dia, estados, esperando, lotes, entregas, trocas);
 }
 
 /**

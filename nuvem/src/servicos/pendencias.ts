@@ -344,4 +344,35 @@ export async function contar_abertas(tx: Executor, usuario: UsuarioAtual | null 
 // Ligação com a casca (`web.ts`): o sino do topo é esta regra.
 // ---------------------------------------------------------------------
 ganchos.podeVerPendencias = (usuario) => pode_ver(usuario);
-ganchos.sino = (c, usuario) => contar_abertas(c.get("tx"), usuario);
+ganchos.sino = async (c, usuario) => {
+  const lidas = c.get("sino_antecipado");
+  if (!lidas) return contar_abertas(c.get("tx"), usuario);
+  // o mesmo recorte de `no_escopo`, aplicado às linhas já lidas
+  const itens = usuario.escopo === ESCOPO_PROPRIO ? lidas.filter((p) => p.responsavel_id === usuario.id) : lidas;
+  const hoje = hoje_iso();
+  return [itens.length, itens.filter((p) => atrasada(p, hoje)).length];
+};
+/**
+ * Tela inteira (GET que não é HTMX nem API) lê as pendências abertas na mesma
+ * ida ao banco da sessão: sem isto, o sino era mais uma ida só para ele, no fim.
+ * Lê sem recorte (ainda não se sabe quem é); o recorte vem no `sino` acima.
+ */
+ganchos.anteciparSino = async (c) => {
+  if (c.req.method !== "GET" || c.req.header("hx-request") || new URL(c.req.url).pathname.startsWith("/api/")) return;
+  try {
+    c.set(
+      "sino_antecipado",
+      await c
+        .get("tx")
+        .select({
+          responsavel_id: tabela_pendencia.responsavel_id,
+          prazo: tabela_pendencia.prazo,
+          concluida: tabela_pendencia.concluida,
+        })
+        .from(tabela_pendencia)
+        .where(eq(tabela_pendencia.concluida, false)),
+    );
+  } catch {
+    // o sino nunca derruba a tela: sem a leitura antecipada, ele lê sozinho
+  }
+};

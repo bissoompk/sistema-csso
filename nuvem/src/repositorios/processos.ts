@@ -28,7 +28,7 @@ import { pode_ver_nominal } from "../servicos/identificacao.js";
 import { chave_busca } from "../servicos/textos.js";
 import { declarar_porta } from "../servicos/anexo_acesso.js";
 import * as datas_br from "../servicos/datas_br.js";
-import { precisa_de_atencao, resumir, type Processo } from "../servicos/processo.js";
+import { precisa_de_atencao, resumir_varios, type Processo, type ResumoCartao } from "../servicos/processo.js";
 
 /** O que toda tela de processo lê da linha (o `lazy="selectin"` do Python). */
 export const COM_PROCESSO = {
@@ -186,9 +186,13 @@ async function _condicoes(tx: Executor, filtro: Filtro, usuario: UsuarioAtual): 
 }
 
 /** Visões que dependem de dado derivado (SLA, exposição, anexo). */
-async function _passa_no_pos_filtro(tx: Executor, processo: Processo, filtro: Filtro): Promise<boolean> {
-  if (filtro.atrasados || filtro.precisam || filtro.dias_parado) {
-    const resumo = await resumir(tx, processo);
+async function _passa_no_pos_filtro(
+  tx: Executor,
+  processo: Processo,
+  filtro: Filtro,
+  resumo: ResumoCartao<Processo> | null,
+): Promise<boolean> {
+  if (resumo) {
     if (filtro.atrasados && !resumo.atrasado) return false;
     // o critério mora em `servicos/processo`, e não aqui: é o mesmo que o
     // painel usa para montar o cartão
@@ -196,6 +200,7 @@ async function _passa_no_pos_filtro(tx: Executor, processo: Processo, filtro: Fi
     if (filtro.dias_parado && resumo.dias_no_estado < filtro.dias_parado) return false;
   }
 
+  if (!filtro.sem_percentual && !filtro.reavaliacao_pendente && !filtro.sem_parecer_assinado) return true;
   const pareceres = await tx.query.parecer_tecnico.findMany({
     where: eq(parecer_tecnico.processo_id, processo.id),
     with: { exposicoes: { with: { agente_nocivo: true } } },
@@ -203,10 +208,10 @@ async function _passa_no_pos_filtro(tx: Executor, processo: Processo, filtro: Fi
 
   if (filtro.sem_percentual) {
     // nenhum parecer com exposição que tenha percentual
-    for (const p of pareceres) {
-      const [linha] = await tx.select({ n: count() }).from(exposicao).where(eq(exposicao.parecer_id, p.id));
-      if ((linha?.n ?? 0) > 0) return false;
-    }
+    const linhas = await Promise.all(
+      pareceres.map((p) => tx.select({ n: count() }).from(exposicao).where(eq(exposicao.parecer_id, p.id))),
+    );
+    if (linhas.some(([linha]) => (linha?.n ?? 0) > 0)) return false;
   }
 
   if (filtro.reavaliacao_pendente) {
@@ -216,20 +221,22 @@ async function _passa_no_pos_filtro(tx: Executor, processo: Processo, filtro: Fi
 
   if (filtro.sem_parecer_assinado) {
     if (!pareceres.length) return false;
-    for (const p of pareceres) {
-      const [linha] = await tx
-        .select({ n: count() })
-        .from(anexo)
-        .where(
-          and(
-            eq(anexo.entidade, "parecer_tecnico"),
-            eq(anexo.entidade_id, p.id),
-            eq(anexo.categoria, "PARECER_ASSINADO"),
-            eq(anexo.ativo, true),
+    const linhas = await Promise.all(
+      pareceres.map((p) =>
+        tx
+          .select({ n: count() })
+          .from(anexo)
+          .where(
+            and(
+              eq(anexo.entidade, "parecer_tecnico"),
+              eq(anexo.entidade_id, p.id),
+              eq(anexo.categoria, "PARECER_ASSINADO"),
+              eq(anexo.ativo, true),
+            ),
           ),
-        );
-      if ((linha?.n ?? 0) > 0) return false;
-    }
+      ),
+    );
+    if (linhas.some(([linha]) => (linha?.n ?? 0) > 0)) return false;
   }
   return true;
 }
@@ -251,8 +258,12 @@ export async function listar(
       with: COM_PROCESSO,
       orderBy: ordem,
     })) as ProcessoCarregado[];
-    const todos: ProcessoCarregado[] = [];
-    for (const p of candidatos) if (await _passa_no_pos_filtro(tx, p, filtro)) todos.push(p);
+    // tudo de uma vez: os cartões numa leitura só, e cada candidato em
+    // paralelo (as consultas seguem juntas pela conexão)
+    const resumos =
+      filtro.atrasados || filtro.precisam || filtro.dias_parado ? await resumir_varios(tx, candidatos) : null;
+    const passa = await Promise.all(candidatos.map((p, i) => _passa_no_pos_filtro(tx, p, filtro, resumos?.[i] ?? null)));
+    const todos = candidatos.filter((_, i) => passa[i]);
     return [todos.slice(deslocamento, deslocamento + filtro.por_pagina), todos.length];
   }
 
@@ -369,8 +380,7 @@ export async function indicadores(
     .where(and(aplicar_escopo(usuario, tabela_processo), eq(tabela_processo.origem_repositorio, false)));
   const ano = exercicio || Number(datas_br.hoje().slice(0, 4));
 
-  const resumos = [];
-  for (const p of processos) resumos.push(await resumir(tx, p));
+  const resumos = await resumir_varios(tx, processos);
   const concluidos = processos.filter(
     (p) => p.estado_tecnico === "CONCLUIDO" && p.data_conclusao && Number(p.data_conclusao.slice(0, 4)) === ano,
   );

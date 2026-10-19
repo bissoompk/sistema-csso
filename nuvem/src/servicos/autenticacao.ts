@@ -11,7 +11,7 @@
  */
 import { createHmac, randomBytes, randomInt } from "node:crypto";
 import { argon2id, argon2Verify } from "hash-wasm";
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import { atribuicao, limite_login_ip, perfil, sessao, usuario } from "../db/esquema/index.js";
 import { agora_utc } from "../db/esquema/base.js";
@@ -480,6 +480,15 @@ const PASSO_ULTIMO_USO_MS = 60_000;
  * e não quinze minutos, porque o parecer se escreve com o processo SEI aberto
  * do lado — e a recusa por sessão vencida no salvamento perderia o texto.
  */
+/**
+ * A conta da sessão como SUBCONSULTA: carrega-se a identidade junto com a
+ * sessão. Nomes escritos por extenso, e não `${sessao.usuario_id}`: dentro da
+ * consulta relacional do Drizzle a coluna sairia com o apelido da tabela de fora.
+ */
+export function conta_da_sessao(token: string): SQL {
+  return sql`(select s.usuario_id from sessao s where s.token_hash = ${_hash_token(token)})`;
+}
+
 export async function sessao_valida(tx: Executor, token: string | null | undefined): Promise<Sessao | null> {
   if (!token) return null;
   const [registro] = await tx.select().from(sessao).where(eq(sessao.token_hash, _hash_token(token)));

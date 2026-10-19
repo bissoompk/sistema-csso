@@ -20,7 +20,7 @@ import {
 import * as repo from "../repositorios/processos.js";
 import * as datas_br from "../servicos/datas_br.js";
 import { habilitados_vigentes } from "../servicos/parecer.js";
-import { resumir } from "../servicos/processo.js";
+import { resumir_varios } from "../servicos/processo.js";
 import { LIMIAR_SUPRESSAO, suprimir } from "./relatorios.js";
 import * as identificacao from "../servicos/identificacao.js";
 import { atores_para_tela } from "../servicos/privacidade.js";
@@ -56,15 +56,44 @@ rotas.get("/", async (c) => {
   const tx = c.get("tx");
   const hoje = datas_br.hoje();
   const exercicio = Number(hoje.slice(0, 4));
-  const kpis: Record<string, number | null> = { ...(await repo.indicadores(tx, usuario, exercicio)) };
+  // Os blocos do painel não dependem uns dos outros: saem juntos, e as
+  // consultas seguem lado a lado pela conexão (o banco fica longe — ver
+  // `db/cliente.ts`).
+  const [indicadores, habilitados, emitidos, contagem_risco, [lista, total_precisam], laudos_vigentes, ultimos] =
+    await Promise.all([
+      repo.indicadores(tx, usuario, exercicio),
+      habilitados_vigentes(tx, hoje),
+      tx.query.parecer_tecnico.findMany({
+        where: and(inArray(parecer_tecnico.situacao, ["EMITIDO", "ASSINADO"]), eq(parecer_tecnico.ano, exercicio)),
+        with: { processo: true },
+        orderBy: [asc(parecer_tecnico.id)],
+      }),
+      tx
+        .select({ nome: tipo_risco.nome, n: count() })
+        .from(exposicao)
+        .innerJoin(agente_nocivo, eq(agente_nocivo.id, exposicao.agente_nocivo_id))
+        .innerJoin(tipo_risco, eq(tipo_risco.id, agente_nocivo.tipo_risco_id))
+        .groupBy(tipo_risco.nome),
+      // O cartão "Precisam de você hoje" e o link dele contam a MESMA coisa,
+      // porque são a mesma consulta: o filtro `precisam` do repositório aplica
+      // `processo.precisa_de_atencao`. `por_pagina` alto, e não paginação: o
+      // total é o que o cartão publica.
+      repo.listar(tx, usuario, new repo.Filtro({ precisam: true, por_pagina: 100000 })),
+      tx.query.laudo_tecnico.findMany({
+        where: eq(laudo_tecnico.status, "VIGENTE"),
+        with: { unidade: true },
+        orderBy: [asc(laudo_tecnico.id)],
+      }),
+      tx
+        .select()
+        .from(historico_evento)
+        .where(usuario.escopo === ESCOPO_PROPRIO ? eq(historico_evento.usuario_id, usuario.id) : undefined)
+        .orderBy(desc(historico_evento.id))
+        .limit(10),
+    ]);
+  const kpis: Record<string, number | null> = { ...indicadores };
+  kpis.subscritores_habilitados = habilitados.length;
 
-  kpis.subscritores_habilitados = (await habilitados_vigentes(tx, hoje)).length;
-
-  const emitidos = await tx.query.parecer_tecnico.findMany({
-    where: and(inArray(parecer_tecnico.situacao, ["EMITIDO", "ASSINADO"]), eq(parecer_tecnico.ano, exercicio)),
-    with: { processo: true },
-    orderBy: [asc(parecer_tecnico.id)],
-  });
   const tempos = emitidos
     .filter((p) => p.data_emissao && p.processo && p.processo.data_autuacao)
     .map((p) => dias_entre(p.processo!.data_autuacao!, p.data_emissao!));
@@ -79,57 +108,30 @@ rotas.get("/", async (c) => {
   // RN-19 também aqui, e com a MESMA função de `/relatorios`: publicar cru o que
   // lá sai suprimido fazia do painel a porta dos fundos da supressão.
   const contagem_por_risco: Record<string, number> = {};
-  for (const { nome, n } of await tx
-    .select({ nome: tipo_risco.nome, n: count() })
-    .from(exposicao)
-    .innerJoin(agente_nocivo, eq(agente_nocivo.id, exposicao.agente_nocivo_id))
-    .innerJoin(tipo_risco, eq(tipo_risco.id, agente_nocivo.tipo_risco_id))
-    .groupBy(tipo_risco.nome)) {
-    contagem_por_risco[nome] = n;
-  }
+  for (const { nome, n } of contagem_risco) contagem_por_risco[nome] = n;
   const por_risco = suprimir(contagem_por_risco, usuario.ve_dado_nominal);
 
-  // O cartão "Precisam de você hoje" e o link dele contam a MESMA coisa, porque
-  // são a mesma consulta: o filtro `precisam` do repositório aplica
-  // `processo.precisa_de_atencao`. `por_pagina` alto, e não paginação: o total
-  // é o que o cartão publica.
-  const [lista, total_precisam] = await repo.listar(
-    tx,
-    usuario,
-    new repo.Filtro({ precisam: true, por_pagina: 100000 }),
-  );
-  const resumos = [];
-  for (const p of lista) resumos.push(await resumir(tx, p));
+  const [resumos, eventos] = await Promise.all([
+    resumir_varios(tx, lista),
+    // Revisão de privacidade (25/09/2026): "Últimos eventos" atravessa o
+    // sistema inteiro. Quem só alcança o PRÓPRIO dado (`servidor_consulta`) vê
+    // só o que ele mesmo fez — os eventos dos outros diziam quem pediu EPI,
+    // quem se inscreveu —, e o nome de quem agiu passa pela RN-19 quando a
+    // conta é de um servidor (`atores_para_tela`). Laudo só para quem tem
+    // `laudo.ver`: a fila abria link que dava 403.
+    atores_para_tela(
+      tx,
+      ultimos,
+      usuario,
+      identificacao.semente_de({ cookies: { get: (n: string) => getCookie(c, n) ?? null } }),
+    ),
+  ]);
   // `sorted(..., key=-dias)`: estável, como o do Python
   const precisam_de_voce = resumos.sort((a, b) => b.dias_no_estado - a.dias_no_estado).slice(0, MOSTRADOS_NO_CARTAO);
 
-  const laudos_sem_conferencia = (
-    await tx.query.laudo_tecnico.findMany({
-      where: eq(laudo_tecnico.status, "VIGENTE"),
-      with: { unidade: true },
-      orderBy: [asc(laudo_tecnico.id)],
-    })
-  ).filter(
+  const laudos_sem_conferencia = laudos_vigentes.filter(
     (laudo) =>
       laudo.data_ultima_conferencia === null || datas_br.meses_entre(laudo.data_ultima_conferencia, hoje) > 24,
-  );
-
-  // Revisão de privacidade (25/09/2026): "Últimos eventos" atravessa o sistema
-  // inteiro. Quem só alcança o PRÓPRIO dado (`servidor_consulta`) vê só o que
-  // ele mesmo fez — os eventos dos outros diziam quem pediu EPI, quem se
-  // inscreveu —, e o nome de quem agiu passa pela RN-19 quando a conta é de um
-  // servidor (`atores_para_tela`). Laudo só para quem tem `laudo.ver`: a fila
-  // abria link que dava 403.
-  const eventos = await atores_para_tela(
-    tx,
-    await tx
-      .select()
-      .from(historico_evento)
-      .where(usuario.escopo === ESCOPO_PROPRIO ? eq(historico_evento.usuario_id, usuario.id) : undefined)
-      .orderBy(desc(historico_evento.id))
-      .limit(10),
-    usuario,
-    identificacao.semente_de({ cookies: { get: (n: string) => getCookie(c, n) ?? null } }),
   );
 
   return pagina(c, "paginas/painel.html", usuario, {
