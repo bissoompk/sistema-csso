@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Assinaturas de instrutor · CSSO{% endblock %}
+{% block titulo %}Instrutores · CSSO{% endblock %}
 
 {# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
    em `partes/macros.html`. #}
-{% set CADASTRAR = 'Cadastrar assinatura' %}
+{% set CADASTRAR = 'Cadastrar instrutor' %}
 {% set d = digitado or {} %}
 {% set recusado = true if (erro and d) else false %}
 {% set erro_cadastro = erro if recusado else none %}
@@ -19,10 +19,10 @@
 
   <div class="cabecalho-pagina">
     <div class="titulo">
-      <h1>Assinaturas de instrutor</h1>
+      <h1>Instrutores</h1>
       <p class="sub">
-        {%- if itens %}{{ itens|length }} assinatura(s). {% endif -%}
-        Quem assina o certificado, com o período em que a assinatura vale.</p>
+        {%- if itens %}{{ itens|length }} instrutor(es). {% endif -%}
+        Quem ministra e assina o certificado, com o título e a rubrica.</p>
       {% call ui.info('servidor-ou-externo', 'de onde vem o nome de cada assinatura') %}
         <p>Instrutor da UFVJM aponta para o cadastro de servidor e <strong>o nome é lido
           de lá</strong> — não copiado, para os dois não divergirem no dia em que um for
@@ -39,8 +39,8 @@
      corrige antes de a turma começar. Por isso a coluna "vigente hoje" tem
      pílula, e não texto. #}
   <div class="aviso aviso-info">
-    A emissão recusa assinatura que não vigore no <strong>início da turma</strong> — e
-    o momento de descobrir isso não é com a turma inteira já realizada.
+    Deixe o “início da vigência” em branco para valer desde sempre — assim o
+    instrutor serve também para cursos já dados.
   </div>
 
   <div class="tabela-cartao lista">
@@ -104,10 +104,9 @@
     </tr>
     {% else %}
     {{ ui.vazio_de_lista(
-         'Nenhuma assinatura cadastrada ainda.',
-         'É a assinatura que responde pelo papel: sem uma ativa e vigente na data
-          de início, a turma não recebe instrutor e a emissão do certificado é
-          recusada. Use “' ~ CADASTRAR ~ '”, no canto superior direito.', 10) }}
+         'Nenhum instrutor cadastrado ainda.',
+         'O instrutor assina o certificado. Use “' ~ CADASTRAR ~ '”, no canto
+          superior direito; de fora da UFVJM, marque “externo”.', 10) }}
     {% endfor %}
   </table>
   </div>

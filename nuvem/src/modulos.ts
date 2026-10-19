@@ -38,12 +38,19 @@ export class Item {
     readonly caminho: string,
     readonly permissao: string | readonly string[] | null = null,
     readonly descricao: string = "",
+    /**
+     * Tela do titular ("minha ficha", "meus certificados"): só aparece para
+     * conta vinculada a um servidor — sem vínculo ela abre sempre vazia, e a
+     * conta de quem só administra ficava com três portas para o nada.
+     */
+    readonly do_titular: boolean = false,
   ) {
     Object.freeze(this);
   }
 
   visivel_para(usuario: UsuarioAtual | null | undefined): boolean {
     if (!usuario) return false;
+    if (this.do_titular && usuario.servidor_id === null) return false;
     if (this.permissao === null) return true;
     const exigidas = typeof this.permissao === "string" ? [this.permissao] : this.permissao;
     return exigidas.some((p) => usuario.pode(p));
@@ -202,6 +209,7 @@ export const MODULOS: readonly Modulo[] = [
         "/epis/fichas/minha",
         "epi.ver",
         "O que você recebeu: CA e lote congelados, com o comprovante.",
+        true,
       ),
       new Item(
         "Fichas de EPI",
@@ -262,6 +270,7 @@ export const MODULOS: readonly Modulo[] = [
         "/turmas/minhas",
         "treinamento.ver",
         "As turmas com inscrição aberta, e as suas inscrições.",
+        true,
       ),
       new Item(
         // `treinamento.ver`, como a rota `/certificados/meus` — e não
@@ -274,6 +283,7 @@ export const MODULOS: readonly Modulo[] = [
         "/certificados/meus",
         "treinamento.ver",
         "O que foi emitido em seu nome, com a segunda via do congelado.",
+        true,
       ),
       new Item(
         "Certificados",
@@ -294,10 +304,10 @@ export const MODULOS: readonly Modulo[] = [
         "O .docx do certificado e o dicionário de tags.",
       ),
       new Item(
-        "Assinaturas",
+        "Instrutores",
         "/treinamentos/assinaturas",
         "assinatura.gerenciar",
-        "Instrutores, títulos e rubricas.",
+        "Quem assina o certificado: nome, título e rubrica.",
       ),
     ],
     // o módulo já está em uso, mas entregue por fatias: o que falta continua

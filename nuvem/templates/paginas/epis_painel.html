@@ -17,7 +17,6 @@
    opaco da sessão. #}
 
 {% block titulo %}Gestão de EPI · CSSO{% endblock %}
-{% block trilha %}<span class="atual" aria-current="page">Painel</span>{% endblock %}
 
 {% block acoes_cabecalho %}
 {% if pode_indicador %}
@@ -38,6 +37,10 @@
         já venceu — em {{ hoje|data }}.</p>
     </div>
   </div>
+
+  {% if primeiros_passos %}
+  {{ ui.primeiros_passos('Primeiros passos na gestão de EPI', primeiros_passos) }}
+  {% endif %}
 
   <div class="grade grade-kpi">
     <div class="kpi">
@@ -63,7 +66,7 @@
     <div class="kpi {% if p.trocas_devidas %}perigo{% endif %}">
       <div class="rotulo">Trocas devidas</div>
       <div class="medida"><span class="valor">{{ p.trocas_devidas|length }}</span>
-        <span class="nota">vida útil esgotada (RN-32)</span></div>
+        <span class="nota">vida útil esgotada</span></div>
     </div>
   </div>
 
@@ -105,7 +108,7 @@
               mais.</p>
             <p>Além do inventário, isso tem efeito no <strong>parecer</strong>: um
               EPI com troca vencida não sustenta a alegação de que o agente nocivo
-              está neutralizado (RN-32). É dado técnico, e não lembrete de
+              está neutralizado. É dado técnico, e não lembrete de
               almoxarifado.</p>
           {% endcall %}
           <span class="contador {{ 'alerta' if p.trocas_devidas else 'ok' }}">{{ p.trocas_devidas|length }}</span>
@@ -266,7 +269,7 @@
   </div>
 
   <div class="aviso aviso-info">
-    <strong>Estes números não são gravados em lugar nenhum.</strong>
+    <strong>Os números são calculados na hora em que a tela abre.</strong>
     {% call ui.info('numeros-calculados', 'por que o painel calcula em vez de gravar') %}
       <p>Tudo aqui é calculado <strong>na abertura da tela</strong>, a partir do
         que a ficha, o livro razão e a fila já registraram. Requisição parada, CA

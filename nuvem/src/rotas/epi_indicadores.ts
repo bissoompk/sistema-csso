@@ -21,7 +21,7 @@ import { Hono } from "hono";
 import { inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
-import { servidor as tabela_servidor } from "../db/esquema/index.js";
+import { epi_item as tabela_epi_item, servidor as tabela_servidor } from "../db/esquema/index.js";
 import { ROTULO_EPI_ITEM, ROTULO_EPI_REQUISICAO } from "../dominio/estados.js";
 import { ErroHttp } from "../nucleo/erros.js";
 import { usuarioLogado } from "../dependencias.js";
@@ -94,7 +94,36 @@ rotas.get(PAINEL, async (c) => {
   const tx = c.get("tx");
   const medidas = await servico.painel(tx);
   const ve_ficha = usuario.pode("epi.ficha");
+  // Catálogo vazio: a tela diz por onde começar (a entrega pede item e servidor).
+  let primeiros_passos: { rotulo: string; feito: boolean; href: string | null; dica: string }[] | null = null;
+  if (usuario.pode("epi.catalogo") || usuario.pode("epi.entregar")) {
+    const [item] = await tx.select({ id: tabela_epi_item.id }).from(tabela_epi_item).limit(1);
+    if (!item) {
+      const [alguem] = await tx.select({ id: tabela_servidor.id }).from(tabela_servidor).limit(1);
+      primeiros_passos = [
+        {
+          rotulo: "Cadastrar os itens no catálogo",
+          feito: false,
+          href: "/epis/catalogo",
+          dica: "Luva, bota, protetor… com o CA quando houver.",
+        },
+        {
+          rotulo: "Cadastrar os servidores",
+          feito: Boolean(alguem),
+          href: "/servidores",
+          dica: "Um a um ou por planilha (Importar), com SIAPE e nome.",
+        },
+        {
+          rotulo: "Registrar a primeira entrega",
+          feito: false,
+          href: null,
+          dica: "No botão “Registrar entrega”: sai a ficha e o comprovante. Estoque e requisição são opcionais.",
+        },
+      ];
+    }
+  }
   return pagina(c, "paginas/epis_painel.html", usuario, {
+    primeiros_passos,
     p: medidas,
     hoje: medidas.quando,
     rotulos: ROTULO_EPI_REQUISICAO,

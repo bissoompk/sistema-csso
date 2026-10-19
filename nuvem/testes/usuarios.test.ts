@@ -182,8 +182,9 @@ describe("perfil e habilitação", () => {
   it("perfis vigentes aparecem na lista de contas", async () => {
     await entrar(amb.cliente, "admin_ti");
     const corpo = (await amb.cliente.get("/usuarios")).text;
-    expect(corpo).toContain("coordenador_csso");
-    expect(corpo).toMatch(/pilula info sem-ponto[^>]*>almoxarife_sesmt</);
+    // o nome do perfil, e não o código
+    expect(corpo).toContain("Coordenador da CSSO");
+    expect(corpo).toMatch(/pilula info sem-ponto[^>]*>Almoxarife do SESMT</);
   });
 });
 

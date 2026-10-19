@@ -33,6 +33,8 @@ async function eventos(tipo: string) {
 describe("treinamento simplificado: o curso já dado até o certificado", () => {
   it("do zero ao .docx, pela tela, no modelo genérico semeado", async () => {
     await entrar(cliente, "coordenador_csso");
+    // instalação vazia: a lista de turmas diz por onde começar
+    expect((await cliente.get("/turmas")).text).toContain("Primeiros passos: do curso ao certificado");
 
     // treinamento com os defaults: validade vazia = não expira
     redireciona(

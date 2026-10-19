@@ -1164,6 +1164,30 @@
 </div>
 {% endmacro %}
 
+{# ===================================================================
+   PRIMEIROS PASSOS — a instalação vazia diz por onde começar
+   ===================================================================
+   `passos`: [{rotulo, feito, href, dica}]. O primeiro passo não feito é o
+   "próximo" e ganha o botão; os feitos ficam marcados. #}
+{% macro primeiros_passos(titulo, passos) %}
+{% set pendentes = passos|rejectattr('feito')|list %}
+<section class="cartao primeiros-passos" aria-label="{{ titulo }}">
+  <h2>{{ titulo }}</h2>
+  <ol>
+    {% for p in passos %}
+    <li class="{{ 'feito' if p.feito }} {{ 'proximo' if pendentes|length and p == pendentes[0] }}">
+      <span class="marca-passo" aria-hidden="true">{{ '✓' if p.feito else loop.index }}</span>
+      <span class="texto-passo">
+        {% if p.href and not p.feito %}<a href="{{ p.href }}">{{ p.rotulo }}</a>{% else %}{{ p.rotulo }}{% endif %}
+        {% if p.dica %}<span class="discreto">{{ p.dica }}</span>{% endif %}
+      </span>
+      {% if p.feito %}<span class="oculto">(feito)</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{%- endmacro %}
+
 {% macro vazio_de_lista(fato, saida, colunas=1) %}
 <tr><td colspan="{{ colunas }}">
   <div class="vazio">

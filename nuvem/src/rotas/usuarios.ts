@@ -566,6 +566,53 @@ rotas.post("/usuarios/atribuicoes/:id{[0-9]+}/ato", async (c) => {
 });
 
 /** A habilitação confere, não o cargo (IN 15/2022, art. 10, §2º, I). */
+/**
+ * Liga (ou desliga) o profissional habilitado a uma conta do sistema. Sem o
+ * vínculo, quem tem a habilitação não consegue emitir nem assinar parecer em
+ * nome dela (`rbac.pode_subscrever` procura a habilitação pela conta) — e a
+ * habilitação semeada nasce sem conta.
+ */
+rotas.post("/habilitacoes/:id{[0-9]+}/conta", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("habilitacao.atestar");
+  const f = await formulario(c);
+  const tx = c.get("tx");
+  const id = Number(c.req.param("id"));
+  const [habilitado] = await tx.select().from(profissional_habilitado).where(eq(profissional_habilitado.id, id));
+  if (!habilitado) return redirecionar(c, "/usuarios");
+  const bruto = f.texto("usuario_id").trim();
+  const conta_id = /^\d+$/.test(bruto) ? Number(bruto) : null;
+  let conta: { id: number; nome: string } | undefined;
+  if (conta_id !== null) {
+    [conta] = await tx
+      .select({ id: tabela_usuario.id, nome: tabela_usuario.nome })
+      .from(tabela_usuario)
+      .where(eq(tabela_usuario.id, conta_id));
+    if (!conta) return redirecionar(c, comMensagem("/usuarios", "Conta não encontrada.", "erro"));
+  }
+  if (habilitado.usuario_id === (conta?.id ?? null)) return redirecionar(c, "/usuarios");
+  await tx
+    .update(profissional_habilitado)
+    .set({ usuario_id: conta?.id ?? null })
+    .where(eq(profissional_habilitado.id, id));
+  await auditoria.registrar(tx, {
+    entidade: "profissional_habilitado",
+    entidade_id: id,
+    tipo_evento: conta ? "HABILITACAO_VINCULADA" : "HABILITACAO_DESVINCULADA",
+    descricao: conta
+      ? `${habilitado.nome} (${habilitado.titulo_assinatura}) ligado à conta ${conta.nome}.`
+      : `${habilitado.nome} (${habilitado.titulo_assinatura}) desligado da conta.`,
+    campo: "usuario_id",
+    valor_anterior: habilitado.usuario_id === null ? null : String(habilitado.usuario_id),
+    valor_novo: conta ? String(conta.id) : null,
+    usuario,
+  });
+  return redirecionar(
+    c,
+    comMensagem("/usuarios", conta ? `${habilitado.nome} ligado à conta ${conta.nome}.` : "Habilitação desligada da conta."),
+  );
+});
+
 rotas.post("/habilitacoes", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("habilitacao.atestar");

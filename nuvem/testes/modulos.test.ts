@@ -190,8 +190,12 @@ describe("telas", async () => {
     expect(corpo).toContain("Processos SEI");
     expect(corpo).toContain('class="menu menu-base"');
     expect(corpo).toContain("Gestão de EPI");
-    expect(corpo).toContain('class="em-breve"');
-    // o seletor aponta para a porta de entrada, não para o mapa
+    // os módulos ficam à vista na lateral; o "em breve" só no mapa, não nela
+    expect(corpo).toContain('class="modulos-lateral"');
+    const lateral = corpo.slice(corpo.indexOf('<aside class="lateral">'), corpo.indexOf("</aside>"));
+    expect(lateral).toContain("Certificados e Treinamentos");
+    expect(lateral).not.toContain("Análise de Acidentes");
+    // o link do módulo aponta para a porta de entrada, não para o mapa
     expect(corpo).toContain('href="/epis"');
     // a trilha da tela acima dos módulos diz "Módulos"
     expect(corpo).toMatch(/<nav class="trilha"[^>]*>\s*<a href="\/modulos">Módulos<\/a>/);

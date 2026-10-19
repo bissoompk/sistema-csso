@@ -433,6 +433,22 @@ a:hover { text-decoration: underline; }
   font-size: 13px; color: var(--tinta-fraca);
 }
 
+/* ---------- modulos a vista ----------
+   Todos os modulos da pessoa ficam listados; o ativo abre as telas dele logo
+   abaixo, recuadas. Substitui o seletor <details>, em que o modulo de
+   treinamentos ficava escondido. */
+.modulos-lateral { display: flex; flex-direction: column; gap: 2px; }
+.modulos-lateral > .rotulo-secao { padding: 0 10px 6px; }
+.modulos-lateral > a.modulo {
+  padding: 8px 10px; border-radius: var(--raio-item);
+  font-size: 14px; font-weight: 600; color: var(--lateral-texto);
+  border: 1px solid transparent;
+}
+.modulos-lateral > a.modulo:hover { background: var(--lateral-realce); color: #fff; text-decoration: none; }
+.modulos-lateral > a.modulo.atual { background: var(--lateral-realce); color: #fff; border-color: var(--lateral-linha); }
+.modulos-lateral > a.modulo.lembrado { background: transparent; }
+.modulos-lateral .menu-modulo { margin: 2px 0 8px 10px; padding-left: 4px; border-left: 1px solid var(--lateral-linha); }
+
 /* ---------- itens do modulo e base compartilhada ----------
    A base fica numa secao propria, separada de proposito: nao e deste modulo,
    e de todos. Por isso vem recuada e sem o ponto de estado. */
@@ -2722,3 +2738,19 @@ details > summary { cursor: pointer; }
   }
   .rodape-lateral .versao { color: var(--tinta-fraca); }
 }
+
+/* ---------- primeiros passos (instalacao vazia) ---------- */
+.primeiros-passos { margin-bottom: 16px; }
+.primeiros-passos h2 { font-size: 16px; margin: 0 0 10px; }
+.primeiros-passos ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.primeiros-passos li { display: flex; align-items: flex-start; gap: 10px; }
+.primeiros-passos .marca-passo {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; border: 1px solid var(--borda); color: var(--tinta-fraca);
+}
+.primeiros-passos li.feito .marca-passo { background: var(--acento-claro); border-color: var(--acento-claro); color: var(--acento); }
+.primeiros-passos li.feito .texto-passo { color: var(--tinta-fraca); }
+.primeiros-passos li.proximo .marca-passo { background: var(--acento); border-color: var(--acento); color: #fff; }
+.primeiros-passos li.proximo a { font-weight: 600; }
+.primeiros-passos .texto-passo { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }

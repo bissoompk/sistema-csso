@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
+{% set HABILITACOES = {
+     'ENG_SEG_TRABALHO': 'Engenheiro de Segurança do Trabalho',
+     'MED_TRABALHO': 'Médico do Trabalho',
+     'ARQ_SEG_TRABALHO': 'Arquiteto de Segurança do Trabalho'} %}
 {% block titulo %}Usuários · CSSO{% endblock %}
 
 {# Três cadastros na mesma tela, três popups — e por isso o `digitado` traz uma
@@ -67,7 +71,7 @@
           {# O ato normativo fica no `title`: é ele que autoriza o perfil, e uma
              coluna a mais para ele deixaria a tabela ilegível. #}
           <span class="pilula info sem-ponto"
-                title="{{ a.ato_normativo or 'sem ato normativo registrado' }}">{{ a.perfil.codigo }}</span>
+                title="{{ a.ato_normativo or 'sem ato normativo registrado' }}">{{ a.perfil.nome }}</span>
           {% else %}
           <span class="discreto">sem perfil vigente</span>
           {% endfor %}
@@ -119,7 +123,7 @@
               {% for a in atribuicoes[u.id] %}
               {% if not a.vigencia_fim or a.vigencia_fim >= hoje %}
               <div class="cartao liso">
-                <p><strong>{{ a.perfil.codigo }}</strong>
+                <p><strong>{{ a.perfil.nome }}</strong>
                   <span class="discreto mono">{{ a.vigencia_inicio|data }} —
                     {{ a.vigencia_fim|data or 'sem termo' }}</span></p>
                 <form method="post" action="/usuarios/atribuicoes/{{ a.id }}/ato">
@@ -207,19 +211,36 @@
     <table>
       <thead>
         <tr><th scope="col">Nome</th><th scope="col">SIAPE</th><th scope="col">Habilitação</th><th scope="col">Título</th>
-            <th scope="col">Vigência</th><th scope="col">Externo</th></tr>
+            <th scope="col">Vigência</th><th scope="col">Externo</th><th scope="col">Conta no sistema</th></tr>
       </thead>
       {% for h in habilitados %}
       <tr>
         <td class="nome">{{ h.nome }}</td>
         <td class="mono">{{ h.siape or '—' }}</td>
-        <td>{{ h.habilitacao }}</td>
+        <td>{{ HABILITACOES[h.habilitacao] or h.habilitacao }}</td>
         <td>{{ h.titulo_assinatura }}</td>
         <td class="mono">{{ h.vigencia_inicio|data }} —
           {{ h.vigencia_fim|data or 'sem termo' }}</td>
         <td>{% if h.externo %}<span class="pilula alerta"
                 title="{{ h.justificativa_art10_par5 or 'sem justificativa registrada' }}">art. 10, §5º</span>
             {% else %}<span class="discreto">não</span>{% endif %}</td>
+        {# Sem conta ligada, o profissional não emite nem assina parecer pelo sistema. #}
+        <td>
+          {% if usuario.pode('habilitacao.atestar') %}
+          <form method="post" action="/habilitacoes/{{ h.id }}/conta" class="filtro-inline">
+            <label class="oculto" for="hab-conta-{{ h.id }}">Conta de {{ h.nome }}</label>
+            <select id="hab-conta-{{ h.id }}" name="usuario_id">
+              <option value="">{{ '— ligar a uma conta —' if not h.usuario_id else '— desligar —' }}</option>
+              {% for u in usuarios %}<option value="{{ u.id }}"{{ ' selected' if h.usuario_id == u.id }}>{{ u.nome }} ({{ u.login }})</option>{% endfor %}
+            </select>
+            <button type="submit" class="secundario compacto">Salvar</button>
+          </form>
+          {% if not h.usuario_id %}<span class="quebra discreto">Sem conta: não assina parecer.</span>{% endif %}
+          {% else %}
+          {% for u in usuarios %}{% if u.id == h.usuario_id %}{{ u.nome }}{% endif %}{% endfor %}
+          {% if not h.usuario_id %}<span class="discreto">sem conta</span>{% endif %}
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </table>
@@ -273,7 +294,7 @@
   <div class="linha-campos">
     <div class="campo"><label for="conta-perfil">Perfil (opcional)</label>
       <select id="conta-perfil" name="perfil_id"><option value="">nenhum</option>
-        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.codigo }}</option>{% endfor %}</select></div>
+        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.nome }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="conta-campus">Campus (escopo)</label>
       <select id="conta-campus" name="campus_id"><option value="">todos</option>
         {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
@@ -307,7 +328,7 @@
   <div class="linha-campos">
     <div class="campo"><label for="perf-perfil">Perfil</label>
       <select id="perf-perfil" name="perfil_id" required>
-        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.codigo }}</option>{% endfor %}</select></div>
+        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.nome }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="perf-campus">Campus (escopo)</label>
       <select id="perf-campus" name="campus_id"><option value="">todos</option>
         {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
@@ -355,10 +376,7 @@
   <div class="linha-campos">
     <div class="campo"><label for="hab-tipo">Habilitação</label>
       <select id="hab-tipo" name="habilitacao" required>
-        {% for codigo, rotulo in [
-             ('ENG_SEG_TRABALHO', 'Engenheiro de Segurança do Trabalho'),
-             ('MED_TRABALHO', 'Médico do Trabalho'),
-             ('ARQ_SEG_TRABALHO', 'Arquiteto de Segurança do Trabalho')] %}
+        {% for codigo in ['ENG_SEG_TRABALHO', 'MED_TRABALHO', 'ARQ_SEG_TRABALHO'] %}{% set rotulo = HABILITACOES[codigo] %}
         <option value="{{ codigo }}"{{ ui.sel(d['habilitacao'], codigo) }}>{{ rotulo }}</option>
         {%- endfor %}
       </select></div>

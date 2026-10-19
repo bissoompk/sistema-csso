@@ -876,3 +876,15 @@ O banco de produção nasce com uma única conta e nada cadastrado; a revisão d
 - **PDF sem LibreOffice.** O Python converte o .docx com o `soffice`; a nuvem não o tem (`pdf.ts`). O PDF passou a ser desenhado com o pdf-lib (`servicos/certificado_pdf.ts`) a partir do contexto CONGELADO, com o mesmo texto do `certificado_padrao_v1.docx`: frente com emissor, certificação, local e data, rubrica e assinante, instrutores e rodapé com número, validade, endereço, chave e o QR; verso com o conteúdo programático, quando há. Carta paisagem, como o .docx; Helvetica padrão (caractere fora do WinAnsi sai "?"). O layout é o da casa e não segue um modelo personalizado — para esse, o .docx continua sendo a fonte.
 - **Não é gravado.** Sai na hora: `GET /certificados/{id}/pdf` e `GET /turmas/{id}/certificados.pdf` (todos os vigentes da turma num arquivo). Os dois passam pela segunda via (regra de leitura, conferência do texto contra a emissão, `CERTIFICADO_SEGUNDA_VIA` na trilha). A emissão deixou de dar o aviso "PDF indisponível".
 - **QR.** Nível M, desenhado em vetor no PDF, abre `/validar/{chave}`. O marcador `certificado_qrcode` (que no Python "chegava na fatia 5") agora rende a imagem PNG de 25 mm no .docx de quem o mapear; o modelo padrão não tem esse marcador.
+
+## Telas mais objetivas (19/10/2026)
+
+Revisão do frontend em produção (itens 2 a 7):
+
+- **Módulos à vista**: o seletor suspenso de módulo deu lugar a uma lista lateral com todos os módulos disponíveis para a conta; o atual abre seus itens logo abaixo. Módulos "em breve" saem do menu.
+- **Primeiros passos**: `/turmas` vazia (para quem cria turma) e o painel de EPI com catálogo vazio mostram um cartão com a sequência de cadastro, marcando o que já foi feito.
+- **Itens do titular** ("Minha ficha de EPI", "Meus treinamentos", "Meus certificados") só aparecem para conta vinculada a um servidor.
+- **"Assinaturas" virou "Instrutores"** no menu e na tela; a vigência em branco é explicada como "desde sempre".
+- **Nomes legíveis**: perfis com acento (a semente atualiza `perfil.nome` existente) e habilitações pelo rótulo, não pelo código; o painel de EPI deixa de citar "RN-32".
+- **Código do treinamento opcional**: o formulário começa pelo nome; código em branco é gerado do nome (ASCII, maiúsculas, até 26 caracteres, sufixo `_2`, `_3`… se repetir). Continua imutável depois.
+- **Habilitação ligada à conta**: `POST /habilitacoes/:id/conta` (exige `habilitacao.atestar`) define ou limpa `profissional_habilitado.usuario_id`, com trilha `HABILITACAO_VINCULADA` / `HABILITACAO_DESVINCULADA`. Sem conta ligada o profissional não assina parecer, e a tela de usuários diz isso.

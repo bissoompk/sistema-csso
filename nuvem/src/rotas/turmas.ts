@@ -175,7 +175,45 @@ async function _tela_lista(
   const inscritos: Record<number, number> = {};
   for (const turma of itens) inscritos[turma.id] = await servico_turma.inscricoes_que_ocupam_vaga(tx, turma);
   const treinamentos = await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome));
+  // Instalação sem turma nenhuma: a tela diz por onde começar, em vez de só
+  // oferecer "Abrir turma" sem treinamento para escolher.
+  let primeiros_passos: { rotulo: string; feito: boolean; href: string | null; dica: string }[] | null = null;
+  if (!itens.length && !situacao && alvo === null && usuario.pode("turma.criar")) {
+    const [instrutor] = await tx
+      .select({ id: tabela_assinatura.id })
+      .from(tabela_assinatura)
+      .where(eq(tabela_assinatura.ativo, true))
+      .limit(1);
+    const tem_treinamento = treinamentos.some((t) => t.ativo);
+    primeiros_passos = [
+      {
+        rotulo: "Cadastrar o treinamento no catálogo",
+        feito: tem_treinamento,
+        href: "/treinamentos/catalogo",
+        dica: "Nome, carga horária e conteúdo programático.",
+      },
+      {
+        rotulo: "Cadastrar o instrutor",
+        feito: Boolean(instrutor),
+        href: "/treinamentos/assinaturas",
+        dica: "Quem assina o certificado. De fora da UFVJM: marque “externo”.",
+      },
+      {
+        rotulo: "Abrir a turma",
+        feito: false,
+        href: null,
+        dica: "No botão “Abrir turma”, acima. Curso já dado: use as datas reais.",
+      },
+      {
+        rotulo: "Inscrever, registrar a presença e emitir os certificados",
+        feito: false,
+        href: null,
+        dica: "Na ficha da turma. Curso já dado: “Registrar turma já realizada” faz presença e conclusão de uma vez.",
+      },
+    ];
+  }
   return pagina(c, "paginas/turmas.html", usuario, {
+    primeiros_passos,
     itens,
     inscritos,
     // só treinamento ativo entra no seletor de nova turma

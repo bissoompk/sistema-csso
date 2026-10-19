@@ -170,31 +170,30 @@
    veio conferir. #}
 {% call ui.popup_cadastro('novo-treinamento', CADASTRAR, '/treinamentos/catalogo',
                           CADASTRAR, aberto=recusado, erro=erro_cadastro,
-                          nota='o código não é editável depois') %}
+                          nota='nome e carga horária bastam') %}
+  {# O nome vem primeiro: é o que a pessoa sabe. O código é opcional — em branco,
+     sai do nome — e é o único campo que não muda depois. #}
+  <div class="campo {{ 'com-erro' if recusado }}"><label for="novo-nome">Nome (sai no certificado)</label>
+    <input id="novo-nome" name="nome" required placeholder="Trabalho em Altura — NR-35"
+           value="{{ d['nome'] or '' }}"
+           aria-describedby="dica-nome"{{ ' autofocus' if recusado }}>
+    <span class="dica" id="dica-nome">Pode ser corrigido depois: o certificado guarda o
+      nome do dia em que foi emitido.</span></div>
   <div class="linha-campos">
-    {# O código é o primeiro campo que esta rota recusa (formato) e um dos dois
-       que a duplicata cita: é nele que o foco cai na reabertura. #}
-    <div class="campo codigo {{ 'com-erro' if recusado }}">
-      <label for="novo-codigo">Código</label>
-      <input id="novo-codigo" name="codigo" required placeholder="NR-35"
-             value="{{ d['codigo'] or '' }}"
-             aria-describedby="dica-codigo"{{ ' autofocus' if recusado }}>
-      <span class="dica" id="dica-codigo">Citado em ofício e em planilha do setor.</span></div>
-    <div class="campo"><label for="novo-carga">Carga horária</label>
+    <div class="campo"><label for="novo-carga">Carga horária (horas)</label>
       <input id="novo-carga" name="carga_horaria_horas" required placeholder="8"
-             value="{{ d['carga_horaria_horas'] or '' }}"></div>
+             value="{{ d['carga_horaria_horas'] or '' }}" inputmode="decimal"></div>
     <div class="campo"><label for="nova-validade">Validade da reciclagem (meses)</label>
       <input id="nova-validade" name="validade_meses"
              value="{{ d['validade_meses'] or 0 }}" inputmode="numeric"
              aria-describedby="dica-validade">
       <span class="dica" id="dica-validade">0 ou vazio = não expira.</span></div>
+    <div class="campo codigo"><label for="novo-codigo">Código (opcional)</label>
+      <input id="novo-codigo" name="codigo" placeholder="NR-35"
+             value="{{ d['codigo'] or '' }}"
+             aria-describedby="dica-codigo">
+      <span class="dica" id="dica-codigo">Em branco, sai do nome. Não muda depois.</span></div>
   </div>
-  <div class="campo"><label for="novo-nome">Nome (sai no certificado)</label>
-    <input id="novo-nome" name="nome" required placeholder="Trabalho em Altura — NR-35"
-           value="{{ d['nome'] or '' }}"
-           aria-describedby="dica-nome">
-    <span class="dica" id="dica-nome">Pode ser corrigido depois: o certificado congela o
-      nome do dia em que saiu, como o parecer já faz com o cargo.</span></div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-norma">Norma de referência</label>
       <input id="nova-norma" name="norma_referencia" placeholder="NR-35"

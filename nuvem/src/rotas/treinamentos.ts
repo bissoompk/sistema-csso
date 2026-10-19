@@ -29,6 +29,7 @@ import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as certificado from "../servicos/certificado.js";
 import * as datas_br from "../servicos/datas_br.js";
+import * as textos from "../servicos/textos.js";
 import { normalizar_decimal } from "../servicos/presenca.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { COM_TAGS } from "../servicos/turma.js";
@@ -167,6 +168,19 @@ rotas.get(CATALOGO, async (c) => {
   return _tela_catalogo(c, usuario, recados(c));
 });
 
+/** Código a partir do nome, no padrão e no tamanho da coluna (30), sem repetir. */
+async function _codigo_do_nome(tx: Executor, nome: string): Promise<string> {
+  const base = textos.slug_ascii(nome).toUpperCase().slice(0, 26).replace(/_+$/, "") || "TREINAMENTO";
+  for (let n = 1; ; n++) {
+    const candidato = n === 1 ? base : `${base}_${n}`;
+    const [ja] = await tx
+      .select({ id: tabela_treinamento.id })
+      .from(tabela_treinamento)
+      .where(eq(tabela_treinamento.codigo, candidato));
+    if (!ja) return candidato;
+  }
+}
+
 rotas.post(CATALOGO, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("treinamento.gerenciar");
@@ -185,8 +199,10 @@ rotas.post(CATALOGO, async (c) => {
   };
   const recusar = (mensagem: string) => _tela_catalogo(c, usuario, { erro: mensagem, digitado });
 
-  const codigo_limpo = digitado.codigo.trim().toUpperCase();
   const nome_limpo = digitado.nome.trim();
+  if (!nome_limpo) return recusar("Informe o nome do treinamento.");
+  // NUVEM: código em branco sai do nome ("Brigada de incêndio" → BRIGADA_DE_INCENDIO)
+  const codigo_limpo = digitado.codigo.trim().toUpperCase() || (await _codigo_do_nome(tx, nome_limpo));
   if (!confere_regex(codigo_limpo, PADRAO_CODIGO_TREINAMENTO)) {
     return recusar(
       "Código inválido: use letras maiúsculas, números, ponto, hífen ou sublinhado (NR-35, PRIM_SOCORROS).",

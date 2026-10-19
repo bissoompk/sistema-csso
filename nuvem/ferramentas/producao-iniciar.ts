@@ -184,8 +184,7 @@ export async function implantar(url: string, o: Opcoes, marcadaPor: string): Pro
         entidade_id: 0,
         tipo_evento: "IMPLANTACAO_PRODUCAO",
         descricao:
-          `Banco implantado como PRODUÇÃO por ferramentas/producao-iniciar.ts (${identidade}); ` +
-          `URL pública do certificado: ${o.urlPublica}.`,
+          `Sistema implantado em produção; endereço de validação dos certificados: ${o.urlPublica}.`,
         campo: PARAMETRO_URL_PUBLICA,
         valor_novo: o.urlPublica,
         usuario_nome: conta.nome,

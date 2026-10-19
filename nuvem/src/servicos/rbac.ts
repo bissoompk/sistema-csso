@@ -245,7 +245,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     permissoes: PERMISSOES_COORDENADOR,
   },
   engenheiro_seguranca: {
-    nome: "Engenheiro de Seguranca do Trabalho",
+    nome: "Engenheiro de Segurança do Trabalho",
     base_normativa: "IN SGP/SEDGG/ME 15/2022, art. 10, §2º, I",
     permissoes: [
       "processo.ver",
@@ -293,7 +293,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     ],
   },
   medico_trabalho: {
-    nome: "Medico do Trabalho",
+    nome: "Médico do Trabalho",
     base_normativa: "IN SGP/SEDGG/ME 15/2022, art. 10, §2º, I",
     permissoes: [
       "processo.ver",
@@ -338,7 +338,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     ],
   },
   tecnico_seguranca: {
-    nome: "Tecnico de Seguranca do Trabalho",
+    nome: "Técnico de Segurança do Trabalho",
     base_normativa:
       "Avalia ambiente, mede, instrui e monta rascunho. NAO subscreve laudo " +
       "nem assina parecer (IN 15/2022, art. 10, §2º, I).",
@@ -479,7 +479,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     ],
   },
   servidor_consulta: {
-    nome: "Servidor (consulta do proprio processo)",
+    nome: "Servidor (consulta do próprio processo)",
     base_normativa: "LGPD art. 18, II - acesso do titular.",
     // `epi.ver` abre o catalogo, que nao e nominal: e a lista do que o setor
     // fornece. `epi.ficha` fica DE FORA de proposito: ela e a permissao de

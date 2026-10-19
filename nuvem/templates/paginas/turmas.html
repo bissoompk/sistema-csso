@@ -50,6 +50,10 @@
     </div>
   </div>
 
+  {% if primeiros_passos %}
+  {{ ui.primeiros_passos('Primeiros passos: do curso ao certificado', primeiros_passos) }}
+  {% endif %}
+
   {# Os atalhos de situação são links, e não um <select>: a URL reproduz cada um
      e a que está em uso fica sólida — é o único jeito de saber, olhando, que a
      lista abaixo não é a lista inteira. O filtro por treinamento continua num

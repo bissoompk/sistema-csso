@@ -61,6 +61,9 @@ export const MENCAO_SAUDE_CONFIRMADA = "MENCAO_SAUDE_CONFIRMADA";
 export const ROTULO_EVENTO: Record<string, string> = {
   // --- fundação e conta ---
   BOOTSTRAP_SUPERINTENDENTE: "Primeiro acesso do superintendente",
+  IMPLANTACAO_PRODUCAO: "Implantação em produção",
+  HABILITACAO_VINCULADA: "Habilitação ligada a uma conta",
+  HABILITACAO_DESVINCULADA: "Habilitação desligada da conta",
   USUARIO_CRIADO: "Conta criada",
   USUARIO_ATIVADO: "Conta ativada",
   USUARIO_INATIVADO: "Conta inativada",

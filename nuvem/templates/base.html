@@ -102,34 +102,27 @@
      essa distinção o controle mentia: em `/modulos` nenhum módulo casa, o menu
      caía num padrão fixo, e clicar em "Gestão de EPI" deixava escrito
      "Processos SEI". #}
+  {# Os módulos ficam todos à vista, e o ativo abre as suas telas logo abaixo
+     dele: escondidos num seletor, o de treinamentos não era achado. Módulo
+     previsto ("em breve") só aparece no mapa de /modulos, não aqui. #}
   {% if modulo_ativo %}
-  <details class="seletor-modulo">
-    <summary title="Trocar de módulo">
-      <span class="rotulo-secao">{{ 'Módulo' if no_modulo else 'Voltar ao módulo' }}</span>
-      <span class="nome">{{ modulo_ativo.nome }}</span>
-    </summary>
-    <div class="lista-modulos">
-      {% for m in modulos %}
-      {% if m.disponivel %}
-      {# leva à primeira tela do módulo, não ao mapa: o controle chamado "Trocar
-         de módulo" tem de trocar de módulo. #}
-      <a href="{{ porta_de_entrada(m, usuario) }}"
-         class="{{ 'atual' if no_modulo and m.codigo == modulo_ativo.codigo }}">{{ m.nome }}</a>
-      {% else %}
-      <span class="em-breve" title="ainda não desenvolvido">{{ m.nome }}</span>
-      {% endif %}
+  <nav class="modulos-lateral" aria-label="Módulos">
+    <span class="rotulo-secao">Módulos</span>
+    {% for m in modulos %}
+    {% set e_ativo = m.codigo == modulo_ativo.codigo %}
+    {% if m.disponivel and m.itens_de(usuario)|length %}
+    <a href="{{ porta_de_entrada(m, usuario) }}"
+       class="modulo {{ 'atual' if e_ativo }} {{ 'lembrado' if e_ativo and not no_modulo }}">{{ m.nome }}</a>
+    {% if e_ativo and itens_modulo %}
+    <div class="menu menu-modulo" aria-label="Telas de {{ m.nome }}">
+      {% for item in itens_modulo %}
+      <a href="{{ item.caminho }}" title="{{ item.descricao }}"
+         class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
+         {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ item.rotulo }}</a>
       {% endfor %}
-      <a class="mapa" href="/modulos">Ver os módulos →</a>
     </div>
-  </details>
-  {% endif %}
-
-  {% if itens_modulo %}
-  <nav class="menu" aria-label="Telas de {{ modulo_ativo.nome }}">
-    {% for item in itens_modulo %}
-    <a href="{{ item.caminho }}" title="{{ item.descricao }}"
-       class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
-       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ item.rotulo }}</a>
+    {% endif %}
+    {% endif %}
     {% endfor %}
   </nav>
   {% endif %}

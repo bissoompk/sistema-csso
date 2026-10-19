@@ -130,6 +130,8 @@ export async function semear_rbac(tx: Executor): Promise<void> {
       { codigo },
       { nome: dados.nome, base_normativa: dados.base_normativa ?? null },
     );
+    // o nome é o rótulo da tela e pertence ao código, como a descrição da permissão
+    if (pf.nome !== dados.nome) await tx.update(perfil).set({ nome: dados.nome }).where(eq(perfil.id, pf.id));
     const atuais = new Set(
       (
         await tx
