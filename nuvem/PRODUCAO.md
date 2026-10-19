@@ -92,10 +92,15 @@ pode ser apagado depois.
    entra uma vez e é mandada trocar.
 3. **Senha esquecida**: o `admin_ti` redefine a de qualquer conta comum; a de
    conta de administração (superintendente, `admin_ti`) só o superintendente
-   redefine. A do único superintendente, se perdida, só pela linha de comando
-   (SQL no Supabase, com registro em ata).
-4. Em `/usuarios`, substitua o ato "BOOTSTRAP — substituir pelo ato real" pelo
-   ato normativo verdadeiro e cadastre as demais contas.
+   redefine. A do único superintendente, se perdida, pela linha de comando
+   (com a `DATABASE_URL` de produção; registre em ata):
+   `npm run redefinir-senha -- --login <login>` (`--reativar` se a conta
+   também estiver inativa). A senha provisória aparece uma vez.
+4. Em `/usuarios` > Gerir, corrija o ato "BOOTSTRAP — substituir pelo ato
+   real" para o ato normativo verdadeiro e cadastre as demais contas (perfil e
+   servidor já no cadastro). O superintendente opera o sistema inteiro, menos
+   assinar parecer e laudo — isso exige perfil técnico e habilitação atestada.
+   Os servidores entram por planilha em `/servidores` > Importar.
 5. `GET /saude/db` (logado como superintendente/admin_ti/auditor) deve mostrar
    `"producao": true`.
 6. **Depois de carregar os dados reais** (importação da planilha/Trello), rode

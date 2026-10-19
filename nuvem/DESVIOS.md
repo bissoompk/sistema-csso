@@ -830,3 +830,43 @@ O Python continua com as três; a nuvem diverge dele aqui de propósito.
 - **Modelo de certificado**: publicar a versão nova pode levar junto os
   treinamentos que emitem com a atual (`repontar`, marcado por padrão), com
   um `TREINAMENTO_MODELO_REPONTADO` por treinamento.
+
+## Simplificação para a implantação (19/10/2026)
+
+O banco de produção nasce com uma única conta e nada cadastrado; a revisão de 19/10/2026 tirou as travas que impediam o primeiro uso, mantendo as de base legal (IN 15/2022, NR-6, LGPD) e as de integridade (trilha, ficha de EPI e estoque só por acréscimo, certificado com chave de validação).
+
+### Acesso e administração
+
+- **Superintendente operacional.** No Python ele "vê tudo e opera nada"; na nuvem tem tudo do coordenador_csso exceto `parecer.assinar` e `laudo.criar`, mais criar conta, redefinir senha e executar backup. Motivo: o banco de produção nasce com uma única conta, e o sistema ficava travado até ela se conceder outro perfil. Assinar e registrar laudo seguem exigindo perfil técnico e habilitação vigente (IN 15/2022, art. 10, §2º, I). O `semear_rbac` acrescenta as permissões ao banco existente no próximo deploy.
+- **Ato normativo opcional.** O Python recusa concessão sem ato; na nuvem o ato em branco vira "Pendente — informado por <login> em dd/mm/aaaa", corrigível em Gerir. A portaria costuma sair depois da necessidade de acesso; a trilha registra quem concedeu e quando.
+- **Encerrar concessão e corrigir ato** (não existe no Python): `POST /usuarios/atribuicoes/{id}/encerrar` (vigência termina ontem, porque inclui o último dia) e `POST /usuarios/atribuicoes/{id}/ato` (inclusive o "BOOTSTRAP"). Exigem `perfil.conceder` e são auditadas. Não se encerra a última concessão vigente de quem concede perfil.
+- **Conta com perfil e servidor.** No Python nada grava `usuario.servidor_id`, e o escopo PRÓPRIO ("minha ficha de EPI", "meus certificados") ficava sem efeito. Na nuvem o cadastro aceita perfil, campus, ato e servidor no mesmo envio; em branco, vincula o servidor de mesmo e-mail. `POST /usuarios/{id}/servidor` vincula ou desvincula depois. Vincular exige `perfil.conceder` (quem vincula a conta a outro servidor passa a ler os dados dele) e um servidor fica em uma conta só.
+- **Senha do backup fora da validação de subida.** Antes, produção sem `CSSO_BACKUP_SENHA` forte não atendia requisição nenhuma; agora recusa só o backup (rotina diária e botão de /config), com aviso na casca.
+- **`npm run redefinir-senha -- --login X [--reativar]`** (não existe no Python): senha provisória, troca obrigatória, desbloqueio, sessões derrubadas, auditado com o ator "linha de comando". Para o superintendente único que esquece a senha.
+
+### Treinamentos e certificados
+
+- **Modelo genérico semeado.** `sementes.semear` cria, se não houver NENHUM modelo genérico, o "Padrão da casa" sobre `certificado_padrao_v1.docx` com os 23 marcadores mapeados (`MAPA_SUGERIDO`/`OBRIGATORIOS`, agora em `servicos/certificado.ts`). A semente roda no build de cada publicação, então o modelo chega ao banco de produção existente. O povoamento de teste usa a mesma função.
+- **Tela de modelos.** O arquivo é escolhido numa lista do `manifesto.json`, não mais digitado. "Mapear sugeridos" mapeia num POST todos os marcadores ainda sem linha que têm sugestão (um `MODELO_TAG_MAPEADA` por tag).
+- **Escolha do genérico e URL pública.** Com dois ou mais genéricos vigentes a emissão não para: usa o mais recente cujo mapa cobre o arquivo (se nenhum cobre, o mais recente, e a validação diz o que falta). `url_publica_declarada` aceita também a `URL` que o Netlify define.
+- **Valores padrão.** Validade em branco no cadastro do treinamento vale 0 ("não expira"); na edição, apagar continua recusado. Assinatura de instrutor sem início de vigência vale "desde sempre" (gravada 2000-01-01; a coluna é NOT NULL), para que um curso dado no mês passado possa ser assinado. Sem servidores cadastrados, o formulário abre como "externo".
+- **Instrutor padrão na turma.** `criar_turma` vincula o `instrutor_padrao_id` do treinamento quando a assinatura está ativa e vigente no início da turma.
+- **Curso já realizado.** PLANEJADA → CONCLUIDA só com `data_fim` passada; PLANEJADA já iniciada aceita presença e nota. "Registrar turma já realizada" (datas passadas, sem presença lançada) marca, numa transação, todos presentes pela carga inteira (vários dias: carga repartida em décimos de hora) e conclui com a apuração; evento `TURMA_REALIZADA_REGISTRADA`. Com nota mínima, só lança a presença, passa a turma a em andamento e pede as notas.
+
+### Processos, pareceres e demandas
+
+- **Máquina por tipo de processo.** No Python todo processo percorre a cadeia do adicional ocupacional e só sai da triagem com PORTARIA e FORMULÁRIO anexados — um PGR nunca concluía. Na nuvem a cadeia longa e os requisitos da IN 15/2022 valem só para o adicional ocupacional (aposentadoria especial fica de fora: a base é LTCAT/PPP). Os demais tipos (PGR, RITS, acidente, consulta…) andam pela máquina curta: recebido → em andamento (EM_TRIAGEM, que o quadro mostra na coluna "Em andamento") → concluído, com pendência de documento, ida e volta e reabertura; sobrestar vale de qualquer estado não final. Processo de tipo curto parado num estado da cadeia longa sai para a máquina curta.
+- **RECEBIDO com as saídas da triagem.** O clique RECEBIDO → EM_TRIAGEM não registrava fato e virou opcional.
+- **Salto na cadeia longa.** O processo de adicional avança vários estados num só movimento (inclusive arrastando no quadro para coluna não vizinha) quando os requisitos de saída dos estados pulados estão cumpridos; senão a mensagem diz o que falta. Desvio (pendência, indeferimento, arquivo) continua um passo só, e soltar em "Concluído" nunca arquiva nem indefere.
+- **Parecer move o processo.** Emitir o parecer leva o processo a PRONTO_P_ASSINATURA e assinar a ASSINADO, se ele estiver atrás, auditado; requisito de saída faltando vira aviso, não erro.
+- **Rascunho de parecer pré-preenchido.** Signatário: a habilitação vigente de quem cria; senão, a única vigente. Tipo de movimento: concessão.
+- **RN-21 como aviso fora do parecer e do laudo.** Na demanda, no pedido de EPI e na observação/comentário do processo, termo de saúde ("gestante", "doença"…) mostra aviso e passa com a confirmação "a menção é necessária", que vai para a trilha (um evento por campo). No parecer e no laudo continua recusado; CPF e CID são recusados em todo contexto.
+- **Demandas.** "Quem demandou" em branco vale o nome do servidor escolhido, ou "não identificado". Encerrar como RESOLVIDA dispensa o relato (grava a frase-padrão; "sem providência" continua pedindo o motivo). Encerrar como VIROU_PROCESSO cadastra o processo ali mesmo (NUP + tipo, com a confirmação do dígito), na mesma transação.
+- **Autoridade destinatária e setor emissor em /catalogos.** Antes só existiam na semente. Troca de gestão é registro novo com vigência, não edição: o parecer emitido guarda o destinatário da data dele.
+
+### EPI e servidores
+
+- **Carga de servidores por planilha** (`/servidores`, .csv ou .xlsx; colunas SIAPE; Nome; Cargo; UORG; E-mail e Campus opcionais), com modelo para baixar e prévia por linha antes de gravar (a prévia roda o mesmo código e desfaz a transação). Chave: SIAPE — reimportar só atualiza. Cargo desconhecido é criado; UORG desconhecida só é criada no formato do SIAPE ("250 - NOME") com campus resolvido, senão o servidor entra sem lotação e a linha avisa. Lotação de quem já existe muda pelo histórico. Um evento na trilha por importação, com as contagens.
+- **Cadastrar servidor na hora.** Na entrega e no pedido de EPI, a busca sem resultado oferece cadastrar (SIAPE + nome) e volta ao fluxo.
+- **"Aprovar tudo como pedido"** no pedido de EPI: inicia a análise, aprova cada item na quantidade pedida e conclui, numa transação, cada passo auditado como antes; RN-28 continua valendo.
+- **CA no catálogo.** A caixa "exige CA" ficou visível com a dica para itens sem CA; a recusa de entrega por falta de CA aponta para a edição do item. A entrega direta (sem pedido) é a primeira opção da tela de EPI.

@@ -61,9 +61,10 @@ async function _tela_lista(
     .filter((u) => vigentes_por_usuario[u.id]!.some((a) => perfis_de_governo.has(a.perfil_id)))
     .map((u) => u.id);
   // Nome e SIAPE de todo servidor só vão para a página de quem vincula conta a
-  // servidor (`perfil.conceder`, que traz `exposicao.ver`): o `admin_ti` abre
-  // esta tela e não lê dado nominal (RN-19).
-  const vincula = usuario.pode("perfil.conceder");
+  // servidor (`perfil.conceder`) E lê dado nominal (`exposicao.ver`): o
+  // `admin_ti` abre esta tela e não lê dado nominal (RN-19). Conceder perfil não
+  // traz a leitura nominal por si.
+  const vincula = usuario.pode("perfil.conceder") && usuario.pode("exposicao.ver");
   const servidores = vincula ? await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)) : [];
   const rotulo_servidor: Record<number, string> = {};
   const sugestao_servidor: Record<number, string> = {};
