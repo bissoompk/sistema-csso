@@ -29,6 +29,7 @@
     {{- ' selected' if marcado not in [none, ''] and marcado|string == sv.id|string }}>{{ quem.com_siape }}</option>
   {% endfor %}
 </select>
+{% if recado_cadastro|default('') %}<span class="dica ok" role="status">{{ recado_cadastro }}</span>{% endif %}
 <span class="dica">
   {%- if q and not servidores|length -%}
   Nada encontrado para “{{ q }}”. O SIAPE acha sempre; o nome só acha para quem
@@ -38,3 +39,30 @@
   {%- if nota|default('') %} {{ nota }}{% endif -%}
   {%- endif -%}
 </span>
+
+{# NINGUÉM ACHADO: cadastra ali mesmo, com SIAPE e nome, e volta ao fluxo com a
+   pessoa já escolhida. Sem isto o balcão parava — ir a /servidores e voltar
+   perdia o que já estava digitado. Não é formulário próprio (estaria aninhado
+   no da entrega): o botão manda só os dois campos, por HTMX. O SIAPE repetido
+   é recusado pelo serviço, então o atalho não duplica ninguém. #}
+{% if url_cadastro|default('') and ((q and not servidores|length) or erro_cadastro|default('')) %}
+<div class="cadastro-rapido cartao" id="cadastro-rapido">
+  <strong>Cadastrar servidor agora</strong>
+  {% if erro_cadastro|default('') %}<div class="aviso aviso-erro" role="alert">{{ erro_cadastro }}</div>{% endif %}
+  <div class="linha-campos">
+    <div class="campo codigo"><label for="novo_siape">SIAPE</label>
+      <input id="novo_siape" name="novo_siape" inputmode="numeric" pattern="[0-9]{7}"
+             value="{{ novo_siape|default('') }}"></div>
+    <div class="campo"><label for="novo_nome">Nome</label>
+      <input id="novo_nome" name="novo_nome"
+             value="{{ novo_nome|default('') }}"></div>
+  </div>
+  <div class="acoes">
+    <button type="button" class="secundario"
+            hx-post="{{ url_cadastro }}"
+            hx-target="#lista-de-servidores"
+            hx-include="#novo_siape, #novo_nome">Cadastrar e escolher</button>
+    <span class="dica">Cargo e lotação se completam depois, na ficha do servidor.</span>
+  </div>
+</div>
+{% endif %}

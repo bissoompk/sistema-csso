@@ -55,6 +55,7 @@ import * as servico_servidores from "../servicos/servidores.js";
 import * as textos from "../servicos/textos.js";
 import { hoje } from "../servicos/datas_br.js";
 import { PermissaoNegada, type UsuarioAtual } from "../servicos/rbac.js";
+import { cadastrar_pelo_fragmento, fragmento_servidores } from "./epi_fichas.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -464,17 +465,24 @@ rotas.get(NOVA, async (c) => {
   });
 });
 
+const SERVIDOR_NOVO_NO_PEDIDO = "/epis/requisicoes/servidores/novo";
+
 /** Fragmento HTMX: a busca de servidor sem recarregar o formulário. */
 rotas.get("/epis/requisicoes/servidores", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.requisitar");
-  const q = c.req.query("q") ?? "";
-  return fragmento(c, "partes/epi_requisicao_servidores.html", {
-    usuario,
-    servidores: await servico_servidores.buscar(c.get("tx"), q, usuario),
+  return fragmento_servidores(c, usuario, {
+    q: c.req.query("q") ?? "",
     nota: NOTA_SERVIDOR,
-    q,
+    url_cadastro: SERVIDOR_NOVO_NO_PEDIDO,
   });
+});
+
+/** Ninguém achado: cadastra SIAPE e nome ali mesmo e volta com a pessoa escolhida. */
+rotas.post(SERVIDOR_NOVO_NO_PEDIDO, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.requisitar");
+  return cadastrar_pelo_fragmento(c, usuario, { nota: NOTA_SERVIDOR, url_cadastro: SERVIDOR_NOVO_NO_PEDIDO });
 });
 
 /** Fragmento HTMX: escolhido o item, aparecem quantidade, tamanhos e a RN-29. */
@@ -613,6 +621,7 @@ async function _tela_ficha(
     erro?: string | null;
     digitado?: Record<string, unknown>;
     item_escolhido?: ItemBruto | null;
+    corrigir_item_id?: number | null;
   } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
@@ -647,6 +656,13 @@ async function _tela_ficha(
       EPI_REQUISICAO_CANCELAVEL.has(requisicao.estado) && !requisicao.itens.some((l) => l.quantidade_entregue > 0),
     pode_requisitar: usuario.pode("epi.requisitar"),
     pode_analisar: usuario.pode("epi.analisar"),
+    // o atalho "aprovar tudo como pedido": analista que não é o requerente
+    // (RN-28) e ainda há item sem decisão
+    aprova_tudo:
+      usuario.pode("epi.analisar") &&
+      ["ENVIADA", "EM_ANALISE"].includes(requisicao.estado) &&
+      (usuario.servidor_id === null || usuario.servidor_id !== requisicao.servidor_id) &&
+      requisicao.itens.some((l) => l.estado === "SOLICITADO"),
     pode_entregar: usuario.pode("epi.entregar"),
     // reservar, soltar e marcar falta são do almoxarifado (§4.3)
     pode_estocar: usuario.pode("epi.estoque"),
@@ -656,6 +672,7 @@ async function _tela_ficha(
     erro: opcoes.erro ?? null,
     digitado: dic(opcoes.digitado ?? {}),
     item_escolhido: opcoes.item_escolhido ? vestir_item(opcoes.item_escolhido) : null,
+    corrigir_item_id: opcoes.corrigir_item_id ?? null,
   });
 }
 
@@ -673,6 +690,7 @@ rotas.get(`${FILA}/:requisicao_id{[0-9]+}`, async (c) => {
   return _tela_ficha(c, usuario, achada.id, {
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
+    corrigir_item_id: _id(c.req.query("corrigir_item")),
   });
 });
 
@@ -888,6 +906,15 @@ acao_de_envelope(
   () =>
     "Análise concluída. O que foi aprovado pode ser entregue; " +
     "`EM_ATENDIMENTO` e `ATENDIDA` chegam sozinhas, conforme as entregas.",
+);
+
+/** ENVIADA/EM_ANALISE → ANALISADA de uma vez: tudo aprovado como pedido. */
+acao_de_envelope(
+  "aprovar-tudo",
+  (sp, usuario, requisicao) => servico.aprovar_tudo(sp, usuario, requisicao),
+  (requisicao) =>
+    `${servico.identificacao(requisicao)} aprovado como pedido e com a análise concluída. ` +
+    "Agora é entregar, item a item.",
 );
 
 /** EM_ANALISE → INDEFERIDA, com o motivo do catálogo (RN-27). */
@@ -1111,7 +1138,11 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/entregar`, as
     epi_ficha.EntregaBloqueada,
     epi_estoque.EstoqueBloqueado,
   );
-  if (!r.ok) return _erro(c, destino, _motivos(r.falha));
+  if (!r.ok) {
+    // CA do catálogo faltando: a volta leva o item, e a tela o link para corrigi-lo
+    const corrigir = r.falha instanceof epi_ficha.EntregaBloqueada ? r.falha.item_a_corrigir : null;
+    return _erro(c, corrigir ? `${destino}?corrigir_item=${corrigir}` : destino, _motivos(r.falha));
+  }
   return _volta(
     c,
     destino,

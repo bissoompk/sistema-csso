@@ -66,7 +66,7 @@
   </select>
   <span class="dica" id="dica-lote">
     {%- if lotes -%}
-    O CA que bloqueia a entrega é o <strong>do lote</strong>, não o do catálogo:
+    Lote é opcional: sem lote, a entrega sai com o CA do catálogo. Com lote, o CA que bloqueia a entrega é o <strong>do lote</strong>, não o do catálogo:
     um lote antigo pode estar vencido enquanto o cadastro já aponta para o CA
     renovado.
     {%- else -%}
@@ -109,6 +109,8 @@
   <strong>O CA de referência deste item está vencido ou não informado no
     catálogo.</strong> Havendo lote, o que decide é o CA do lote; não havendo, a
   entrega será recusada — pela NR-6, EPI sem CA válido não é EPI.
+  <a href="/epis/catalogo?item_id={{ item.id }}">Corrigir o item no catálogo</a>
+  (ou desmarcar “exige CA”, se ele não tem CA).
 </div>
 {% endif %}
 

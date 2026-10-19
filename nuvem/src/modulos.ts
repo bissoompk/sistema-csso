@@ -150,6 +150,15 @@ export const MODULOS: readonly Modulo[] = [
         "epi.ver",
         "Requisições, falta de estoque, CA a vencer, entregas e trocas devidas.",
       ),
+      // O caminho direto vem logo depois do painel: entregar no balcão não
+      // exige pedido nem lote de estoque (sem lote, confere-se o CA do
+      // catálogo). Requisição é para quando há o que analisar.
+      new Item(
+        "Entregar EPI",
+        "/epis/entregas/nova",
+        "epi.entregar",
+        "O caminho direto: entrega no balcão, sem pedido e sem lote obrigatório; imprime o comprovante.",
+      ),
       new Item(
         "Requisições",
         "/epis/requisicoes",
@@ -175,7 +184,7 @@ export const MODULOS: readonly Modulo[] = [
         // menu de oferecer porta trancada ao almoxarife e ao auditor,
         // que veem a fila e não abrem pedido.
         "epi.requisitar",
-        "Abre o pedido formal, com contexto congelado no envio.",
+        "Pedido formal para análise do SESMT — opcional: a entrega direta não depende dele.",
       ),
       new Item(
         // A porta do titular para o que é dele. `epi.ver`, exatamente
@@ -199,12 +208,6 @@ export const MODULOS: readonly Modulo[] = [
         "/epis/fichas",
         "epi.ficha",
         "A prova de entrega, congelada no ato e com o comprovante assinado.",
-      ),
-      new Item(
-        "Entregar EPI",
-        "/epis/entregas/nova",
-        "epi.entregar",
-        "Registra a entrega no balcão e imprime o comprovante para assinar.",
       ),
       new Item(
         "Estoque",

@@ -89,6 +89,10 @@
   </div>
   {% endif %}
 
+  {% if so_um %}
+  <p class="discreto">Mostrando só o item a corrigir. <a href="/epis/catalogo">Ver o catálogo inteiro</a>.</p>
+  {% endif %}
+
   <div class="tabela-cartao lista">
   <table>
     <thead>
@@ -131,7 +135,7 @@
                  value="{{ i.vida_util_meses if i.vida_util_meses is not none else '' }}"
                  aria-label="Vida útil do item {{ i.id }}, em meses"></td>
       <td>
-        <label class="discreto"><input form="{{ id }}" type="checkbox" name="exige_ca" value="1"
+        <label class="discreto" title="desmarque para itens que não têm CA (protetor solar, uniforme…): marcado e sem CA válido, não se entrega"><input form="{{ id }}" type="checkbox" name="exige_ca" value="1"
             {% if i.exige_ca %}checked{% endif %}> CA</label>
         <label class="discreto"><input form="{{ id }}" type="checkbox" name="exige_justificativa" value="1"
             {% if i.exige_justificativa %}checked{% endif %}> justificativa</label>
@@ -274,6 +278,20 @@
              value="{{ d.unidade_medida or 'UNIDADE' }}"></div>
   </div>
 
+  {# EM DESTAQUE, E NÃO NO CANTO: item marcado sem CA válido não sai no balcão
+     (NR-6). Quem cadastra protetor solar ou uniforme com a caixa marcada só
+     descobre na hora da entrega, com a pessoa esperando. #}
+  <div class="campo">
+    {# Na abertura nasce marcado, que é o caso comum; na reabertura vale o que
+       foi enviado — remarcar sozinho o que a pessoa acabou de desmarcar é
+       perder digitado do mesmo jeito, só que sem parecer. #}
+    <label><input type="checkbox" name="exige_ca" value="1" aria-describedby="dica-exige-ca"
+      {{- ' checked' if (d.exige_ca == '1') or not recusado }}>
+      <strong>Exige Certificado de Aprovação (CA)</strong></label>
+    <span class="dica atencao" id="dica-exige-ca">Desmarque para itens que não têm CA,
+      como protetor solar, uniforme e jaleco comuns — marcado e sem CA válido, o
+      item não pode ser entregue.</span></div>
+
   <div class="linha-campos">
     <div class="campo codigo"><label for="novo-ca">Número do CA</label>
       <input id="novo-ca" name="numero_ca" placeholder="12345" inputmode="numeric"
@@ -285,13 +303,6 @@
              value="{{ d.validade_ca or '' }}"
              aria-describedby="dica-validade-ca">
       <span class="dica atencao" id="dica-validade-ca">EPI com CA vencido não se entrega.</span></div>
-    <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
-      {# Na abertura nasce marcado, que é o caso comum; na reabertura vale o que
-         foi enviado — remarcar sozinho o que a pessoa acabou de desmarcar é
-         perder digitado do mesmo jeito, só que sem parecer. #}
-      <label class="discreto"><input type="checkbox" name="exige_ca" value="1"
-        {{- ' checked' if (d.exige_ca == '1') or not recusado }}>
-        exige Certificado de Aprovação</label></div>
   </div>
 
   <div class="linha-campos">

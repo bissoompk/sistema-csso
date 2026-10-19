@@ -25,6 +25,15 @@
 {% block conteudo %}
 <div class="tela">
 
+  {# A recusa por CA do catálogo diz ONDE se corrige: o item, no catálogo —
+     preencher o CA, ou desmarcar "exige CA" se o item não tem. #}
+  {% if corrigir_item_id %}
+  <div class="aviso aviso-erro" role="alert">
+    <a href="/epis/catalogo?item_id={{ corrigir_item_id }}">Corrigir o CA deste item no catálogo</a>
+    — ou desmarcar “exige CA”, se ele não tem CA — e registrar a entrega de novo.
+  </div>
+  {% endif %}
+
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Registrar entrega de EPI</h1>

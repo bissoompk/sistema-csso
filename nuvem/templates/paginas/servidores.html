@@ -19,6 +19,7 @@
 
 {% block acoes_cabecalho %}
 {% if usuario.pode('processo.criar') %}
+{{ ui.botao_cadastro('importar-servidores', 'Importar planilha', 'secundario') }}
 {{ ui.botao_cadastro('novo-servidor', CADASTRAR) }}
 {% endif %}
 {% endblock %}
@@ -133,8 +134,8 @@
       {{ ui.vazio_de_lista(
            'Nenhum servidor cadastrado.',
            'Sem servidor não há processo, laudo nem ficha de EPI — é ele que
-            ancora tudo o mais. Use “Cadastrar servidor”, no canto superior
-            direito; a chave é o SIAPE.', 6) }}
+            ancora tudo o mais. Use “Importar planilha” para trazer todos de uma vez,
+            ou “Cadastrar servidor” para um só; a chave é o SIAPE.', 6) }}
       {% endif %}
       {% endfor %}
     </table>
@@ -217,6 +218,23 @@
   </div>
   <div class="campo"><label for="novo-email">E-mail institucional</label>
     <input id="novo-email" name="email" type="email" value="{{ d['email'] or '' }}"></div>
+{% endcall %}
+
+{# A carga em lote: o cadastro um a um continua para o caso avulso. Enviar
+   não grava — mostra a prévia linha a linha, e só a confirmação grava. #}
+{% call ui.popup_cadastro('importar-servidores', 'Importar servidores', '/servidores/importar',
+                          'Ver prévia', enctype='multipart/form-data',
+                          nota='nada é gravado antes da confirmação') %}
+  <p>Uma linha por servidor, com as colunas <strong>SIAPE; Nome; Cargo; UORG</strong>
+    e, se houver, <strong>E-mail; Campus</strong>. Quem já está cadastrado é
+    atualizado pelo SIAPE — importar de novo não duplica ninguém.</p>
+  <p class="discreto">Cargo que não existe é criado. UORG que não existe é criada
+    quando vem como no SIAPE (<code>250 - FACULDADE DE MEDICINA</code>) e o campus
+    é conhecido; senão o servidor entra sem lotação, com aviso na prévia.</p>
+  <div class="campo"><label for="arquivo-servidores">Arquivo .csv ou .xlsx</label>
+    <input id="arquivo-servidores" type="file" name="arquivo" required
+           accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    <span class="dica"><a href="/servidores/modelo.csv">Baixar o modelo (.csv)</a></span></div>
 {% endcall %}
 
 <script nonce="{{ nonce() }}">

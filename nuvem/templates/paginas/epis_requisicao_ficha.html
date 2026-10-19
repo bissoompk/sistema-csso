@@ -112,6 +112,14 @@
 {% block conteudo %}
 <div class="tela">
 
+  {# a entrega recusada por CA do catálogo diz onde se corrige #}
+  {% if corrigir_item_id %}
+  <div class="aviso aviso-erro" role="alert">
+    <a href="/epis/catalogo?item_id={{ corrigir_item_id }}">Corrigir o CA deste item no catálogo</a>
+    — ou desmarcar “exige CA”, se ele não tem CA — e entregar de novo.
+  </div>
+  {% endif %}
+
   {# âncora de volta para quem desceu até a confirmação de exclusão e desistiu #}
   <div class="cabecalho-pagina" id="topo-da-ficha">
     <div class="titulo">
@@ -353,6 +361,11 @@
                              and (pode_estocar or pode_entregar)
       else '')))) %}
 
+      {# O CASO COMUM EM UM CLIQUE: aprovar cada item pendente na quantidade
+         pedida e concluir. Roda os mesmos passos (iniciar, aprovar item a item,
+         concluir), com os mesmos eventos e a mesma RN-28; quem quer mexer em
+         quantidade ou recusar algo continua tendo o caminho item a item. #}
+
       {% if passo %}
       <section class="cartao destaque" id="proximo-passo">
         <div class="titulo-cartao">
@@ -374,12 +387,24 @@
         {% elif passo == 'pegar' %}
         <p class="discreto sem-margem"><strong>Quem pega o pedido assume o nome
           nele.</strong> A RN-28 recusa a análise do próprio pedido, sem exceção.</p>
-        <div class="acoes">{{ ui.botao_cadastro('pegar-analise', 'Iniciar análise') }}</div>
+        <div class="acoes">
+          {% if aprova_tudo %}
+          <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/aprovar-tudo">
+            <button type="submit">Aprovar tudo como pedido</button>
+          </form>
+          {% endif %}
+          {{ ui.botao_cadastro('pegar-analise', 'Iniciar análise', 'secundario' if aprova_tudo else '') }}</div>
 
         {% elif passo == 'concluir' %}
         <p class="discreto sem-margem">Exige <strong>todo</strong> item decidido e
           ao menos um aprovado.</p>
-        <div class="acoes">{{ ui.botao_cadastro('concluir-analise', 'Concluir análise') }}</div>
+        <div class="acoes">
+          {% if aprova_tudo %}
+          <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/aprovar-tudo">
+            <button type="submit">Aprovar tudo como pedido</button>
+          </form>
+          {% endif %}
+          {{ ui.botao_cadastro('concluir-analise', 'Concluir análise', 'secundario' if aprova_tudo else '') }}</div>
 
         {% elif passo == 'reconsiderar' %}
         <p class="discreto sem-margem">O único caminho de volta de um terminal. As

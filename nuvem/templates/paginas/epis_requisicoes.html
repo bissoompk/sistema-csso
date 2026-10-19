@@ -21,8 +21,12 @@
 {% block trilha %}<span class="atual" aria-current="page">Fila</span>{% endblock %}
 
 {% block acoes_cabecalho %}
+{# a entrega direta, sem pedido, é o caminho mais curto — e fica à vista aqui #}
+{% if usuario.pode('epi.entregar') %}
+<a class="botao" href="/epis/entregas/nova">Entregar direto (sem pedido)</a>
+{% endif %}
 {% if pode_requisitar %}
-<a class="botao" href="/epis/requisicoes/nova">Nova requisição</a>
+<a class="botao{{ ' secundario' if usuario.pode('epi.entregar') }}" href="/epis/requisicoes/nova">Nova requisição</a>
 {% endif %}
 {% endblock %}
 
