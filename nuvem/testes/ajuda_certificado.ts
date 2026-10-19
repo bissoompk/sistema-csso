@@ -19,7 +19,7 @@ import * as servico_participante from "../src/servicos/participante.js";
 import * as servico_presenca from "../src/servicos/presenca.js";
 import { UsuarioAtual } from "../src/servicos/rbac.js";
 import * as servico_turma from "../src/servicos/turma.js";
-import { MAPA_SUGERIDO, OBRIGATORIOS } from "../ferramentas/povoar/treinamentos.js";
+import { MAPA_SUGERIDO, OBRIGATORIOS } from "../src/servicos/certificado.js";
 import { SENHA_TESTE } from "./ajuda.js";
 
 export { MAPA_SUGERIDO, OBRIGATORIOS };

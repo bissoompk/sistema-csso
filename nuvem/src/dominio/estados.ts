@@ -362,8 +362,10 @@ export const ESTADOS_TURMA = [
 ] as const;
 
 export const TRANSICOES_TURMA: Transicoes = {
-  // comeca sem inscricao aberta: a turma existe na agenda antes de ter vaga
-  PLANEJADA: conjunto('INSCRICOES_ABERTAS', 'EM_ANDAMENTO', 'CANCELADA'),
+  // comeca sem inscricao aberta: a turma existe na agenda antes de ter vaga.
+  // NUVEM: CONCLUIDA direto e o curso ja dado, registrado depois — so com
+  // `data_fim` ja passada (guarda em `turma.mudar_situacao`, que sabe a data).
+  PLANEJADA: conjunto('INSCRICOES_ABERTAS', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'),
   // voltar para PLANEJADA e fechar a inscricao sem cancelar a turma: acontece
   // quando as vagas esgotam ou a data e adiada.
   INSCRICOES_ABERTAS: conjunto('PLANEJADA', 'EM_ANDAMENTO', 'CANCELADA'),

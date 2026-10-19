@@ -186,6 +186,12 @@
     <div class="corpo">
       <div class="acoes">
         {{ ui.botao_cadastro('mapear-marcador', MAPEAR) }}
+        {% if com_sugestao %}
+        {# Um clique só para o layout padrão: os marcadores que o sistema conhece. #}
+        <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/sugeridas">
+          <button type="submit" class="secundario">Mapear sugeridos ({{ com_sugestao|length }})</button>
+        </form>
+        {% endif %}
       </div>
       {% if conferencia.sem_mapa %}
       {# Sem as chaves, de propósito: aqui o nome é para ser copiado para o campo
@@ -272,7 +278,10 @@
     <input id="nome" name="nome" value="{{ modelo.nome }}" required></div>
   <div class="linha-campos">
     <div class="campo codigo"><label for="arquivo">Arquivo .docx</label>
-      <input id="arquivo" name="arquivo" value="{{ modelo.arquivo }}" required></div>
+      <select id="arquivo" name="arquivo" required>
+        {% if modelo.arquivo not in arquivos %}<option value="{{ modelo.arquivo }}" selected>{{ modelo.arquivo }} (ausente)</option>{% endif %}
+        {% for a in arquivos %}<option value="{{ a }}"{{ ' selected' if a == modelo.arquivo }}>{{ a }}</option>{% endfor %}
+      </select></div>
     <div class="campo"><label for="orientacao">Orientação</label>
       <select id="orientacao" name="orientacao">
         {% for o in orientacoes %}

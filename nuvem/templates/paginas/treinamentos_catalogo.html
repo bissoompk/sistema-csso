@@ -185,9 +185,9 @@
              value="{{ d['carga_horaria_horas'] or '' }}"></div>
     <div class="campo"><label for="nova-validade">Validade da reciclagem (meses)</label>
       <input id="nova-validade" name="validade_meses"
-             value="{{ d['validade_meses'] or 0 }}" required
+             value="{{ d['validade_meses'] or 0 }}" inputmode="numeric"
              aria-describedby="dica-validade">
-      <span class="dica" id="dica-validade">0 = não expira.</span></div>
+      <span class="dica" id="dica-validade">0 ou vazio = não expira.</span></div>
   </div>
   <div class="campo"><label for="novo-nome">Nome (sai no certificado)</label>
     <input id="novo-nome" name="nome" required placeholder="Trabalho em Altura — NR-35"

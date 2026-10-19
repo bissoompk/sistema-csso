@@ -317,7 +317,19 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
     descricao: `${linha!.codigo} · ${treinamento.nome} · ${d.data_inicio} a ${d.data_fim}`,
     usuario,
   });
-  return (await carregar_turma(tx, linha!.id))!;
+  const turma = (await carregar_turma(tx, linha!.id))!;
+  // NUVEM: o instrutor padrão do catálogo já entra na turma, quando serve
+  // (ativo e vigente no início); se não serve, a turma nasce sem e se vincula à mão
+  if (treinamento.instrutor_padrao_id !== null) {
+    const padrao = await tx.query.assinatura_instrutor.findFirst({
+      where: (a, { eq: igual }) => igual(a.id, treinamento.instrutor_padrao_id!),
+      with: { servidor: true },
+    });
+    if (padrao && padrao.ativo && AssinaturaInstrutor.vigente_em(padrao, turma.data_inicio)) {
+      await vincular_instrutor(tx, usuario, turma, padrao);
+    }
+  }
+  return turma;
 }
 
 /**
@@ -417,6 +429,12 @@ export async function mudar_situacao(
     throw new RegraDaTurma(
       "Cancelar exige o motivo: é o único registro que sobra para quem " +
         "perguntar depois por que a turma não aconteceu.",
+    );
+  }
+  if (origem === "PLANEJADA" && destino === "CONCLUIDA" && turma.data_fim > datas_br.hoje()) {
+    throw new RegraDaTurma(
+      `${turma.codigo} termina em ${datas_br.numerica(turma.data_fim)}: de planejada só se conclui ` +
+        "turma que já aconteceu. Passe-a para em andamento quando começar.",
     );
   }
   if (destino === "INSCRICOES_ABERTAS" && turma.data_fim < datas_br.hoje()) {

@@ -414,7 +414,17 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     rotulo_vinculo: ROTULO_VINCULO,
     vinculos: VINCULOS_PARTICIPANTE.filter((v) => v !== "SERVIDOR"),
     vagas_restantes: await servico_turma.vagas_restantes(tx, turma),
-    destinos: destinos_de_turma(turma.situacao).map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
+    // de planejada direto a concluída, só turma que já terminou (a guarda é do serviço)
+    destinos: destinos_de_turma(turma.situacao)
+      .filter((codigo) => !(turma.situacao === "PLANEJADA" && codigo === "CONCLUIDA" && turma.data_fim > datas_br.hoje()))
+      .map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
+    // o atalho "turma já realizada": datas passadas e nada lançado ainda
+    ja_realizada:
+      ["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"].includes(turma.situacao) &&
+      turma.data_fim <= datas_br.hoje() &&
+      usuario.pode("turma.avaliar") &&
+      usuario.pode("turma.concluir"),
+    lancamento_aberto: turma.situacao === "CONCLUIDA" || servico_presenca.aceita_lancamento(turma),
     permissao_por_destino: servico_turma.PERMISSAO_POR_SITUACAO_TURMA,
     instrutores_livres: await _instrutores_livres(tx, turma),
     achados,
@@ -486,6 +496,39 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
     throw erro;
   }
   return _volta(c, volta, `${turma.codigo}: ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}.`);
+});
+
+/**
+ * NUVEM: "Registrar turma já realizada" — presença de todos pela carga e a
+ * turma concluída num clique (com nota mínima, só a presença). As regras são
+ * do serviço (`presenca.registrar_turma_realizada`); tudo num savepoint.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/realizada`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}`;
+  let feito: servico_presenca.TurmaRealizada;
+  try {
+    feito = await _no_savepoint(c, (sp) => servico_presenca.registrar_turma_realizada(sp, usuario, turma));
+  } catch (erro) {
+    if (erro instanceof RegraDaTurma || erro instanceof TransicaoInvalida) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  if (!feito.concluida) {
+    return _volta(
+      c,
+      `${volta}${PRESENCAS}`,
+      `${feito.presentes} presença(s) lançada(s). A turma exige nota mínima: lance as notas e depois conclua a turma.`,
+    );
+  }
+  return _volta(
+    c,
+    `${volta}?aba=emissao`,
+    `${turma.codigo} registrada como realizada: ${feito.presentes} presença(s) e turma concluída. Emita os certificados.`,
+  );
 });
 
 // =====================================================================

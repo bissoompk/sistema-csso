@@ -20,7 +20,7 @@
  *    com o aviso que o Python já dava sem LibreOffice (PORTE.md §8).
  */
 import { ambienteDeProducao } from "./instalacao.js";
-import { and, asc, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   agora_utc,
@@ -114,17 +114,19 @@ export async function url_base_validacao(tx: Executor): Promise<string> {
 }
 
 /**
- * O endereço público foi DECLARADO (parâmetro ou `CSSO_URL_PUBLICA`)? Os
- * recuos de `url_base_validacao` — a `URL` que o Netlify dá ao site e o
- * endereço de desenvolvimento — servem ao teste, mas não a um certificado de
- * verdade: a URL vai congelada no QR e no texto do documento, e um QR que
- * aponta para `*.netlify.app` ou `127.0.0.1` não se corrige depois de impresso.
- * Em produção (`CSSO_AMBIENTE=producao`) a emissão fica bloqueada sem ela
- * (`validar`); quem a define é `ferramentas/producao-iniciar.ts`.
+ * O endereço público foi DECLARADO (parâmetro, `CSSO_URL_PUBLICA` ou a `URL`
+ * que o Netlify define para o site)? O recuo de desenvolvimento (`127.0.0.1`)
+ * não vale para um certificado de verdade: a URL vai congelada no texto do
+ * documento e não se corrige depois de impresso. Em produção
+ * (`CSSO_AMBIENTE=producao`) a emissão fica bloqueada sem ela (`validar`).
+ * DESVIO: a `URL` do Netlify passou a contar — é o endereço em que o site
+ * responde; quem quiser outro define o parâmetro.
  */
 export async function url_publica_declarada(tx: Executor): Promise<boolean> {
   const [parametro] = await tx.select().from(tabela_parametro).where(eq(tabela_parametro.chave, PARAMETRO_URL_PUBLICA));
-  return Boolean((parametro?.valor ?? "").trim() || (process.env.CSSO_URL_PUBLICA ?? "").trim());
+  return Boolean(
+    (parametro?.valor ?? "").trim() || (process.env.CSSO_URL_PUBLICA ?? "").trim() || (process.env.URL ?? "").trim(),
+  );
 }
 
 /**
@@ -196,7 +198,8 @@ export async function certificados_da_turma(
 /**
  * Qual layout sai, e o aviso quando a escolha merece um. **O ponteiro manda**
  * (`treinamento.modelo_vigente_id`); versão superada avisa e segue. Sem
- * ponteiro, cai no modelo genérico vigente — havendo mais de um, a emissão para.
+ * ponteiro, cai no modelo genérico vigente — havendo mais de um, o mais
+ * recente com o mapa completo (DESVIO: antes a emissão parava no empate).
  */
 export async function modelo_da_turma(tx: Executor, turma: TurmaCarregada): Promise<[ModeloCarregado | null, string]> {
   const treinamento = turma.treinamento;
@@ -215,12 +218,16 @@ export async function modelo_da_turma(tx: Executor, turma: TurmaCarregada): Prom
   const genericos = (await tx.query.certificado_modelo.findMany({
     where: and(isNull(tabela_modelo.treinamento_id), eq(tabela_modelo.vigente, true)),
     with: COM_TAGS as never,
-    orderBy: [asc(tabela_modelo.id)],
+    orderBy: [desc(tabela_modelo.criado_em), desc(tabela_modelo.id)],
   })) as unknown as ModeloCarregado[];
-  if (genericos.length === 1) {
+  if (genericos.length) {
+    // o mais recente cujo mapa cobre o arquivo; nenhum cobrindo, o mais recente (e a validação diz o que falta)
+    const escolhido =
+      genericos.find((m) => servico_certificado.conferir_modelo(m.arquivo, CertificadoModelo.mapa_de_tags(m)).ok) ??
+      genericos[0]!;
     return [
-      genericos[0]!,
-      `'${treinamento.nome}' não tem modelo próprio — saiu no modelo genérico ${CertificadoModelo.rotulo(genericos[0]!)}`,
+      escolhido,
+      `'${treinamento.nome}' não tem modelo próprio — saiu no modelo genérico ${CertificadoModelo.rotulo(escolhido)}`,
     ];
   }
   return [null, ""];

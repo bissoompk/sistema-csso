@@ -373,9 +373,10 @@ describe("máquina E", () => {
     expect((await _turma(turma_id)).situacao).toBe("PLANEJADA");
   });
 
-  it("pular de planejada para concluída é recusado", async () => {
+  // NUVEM: de planejada direto a concluída só a turma que já terminou (curso já dado)
+  it("pular de planejada para concluída antes do fim é recusado", async () => {
     const { turma_id } = await turma_aberta();
-    expect(await _msg(cliente, await passar(turma_id, "CONCLUIDA"))).toContain("Transição proibida");
+    expect(await _msg(cliente, await passar(turma_id, "CONCLUIDA"))).toContain("só se conclui turma que já aconteceu");
     expect((await _turma(turma_id)).situacao).toBe("PLANEJADA");
   });
 

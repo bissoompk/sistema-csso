@@ -44,6 +44,7 @@ import {
   RegraDaTurma,
   gravar_inscricao,
   inscricoes_da_turma,
+  mudar_situacao,
   type InscricaoCarregada,
   type PresencaRegistro,
   type TurmaCarregada,
@@ -301,13 +302,22 @@ async function _exigir_lancamento(
     }
     return limpo;
   }
-  if (turma.situacao !== "EM_ANDAMENTO") {
+  if (!aceita_lancamento(turma)) {
     throw new RegraDaTurma(
       `${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}: passe a ` +
         "turma para em andamento antes de lançar presença ou nota.",
     );
   }
   return null;
+}
+
+/**
+ * Lançamento comum (sem retificação): turma em andamento, ou — NUVEM — ainda
+ * planejada mas que já começou: o curso dado antes de alguém mexer no sistema.
+ */
+export function aceita_lancamento(turma: TurmaRegistro): boolean {
+  if (turma.situacao === "EM_ANDAMENTO") return true;
+  return turma.situacao === "PLANEJADA" && turma.data_inicio <= datas_br.hoje();
 }
 
 function _exigir_inscricao_lancavel(inscricao: InscricaoCarregada): void {
@@ -587,6 +597,90 @@ export async function marcar_dia_presente(
     usuario,
   });
   return alcancadas;
+}
+
+// ---------------------------------------------------------------------
+// Turma já realizada
+// ---------------------------------------------------------------------
+export const TURMA_REALIZADA = "TURMA_REALIZADA_REGISTRADA";
+
+/** O que `registrar_turma_realizada` fez, para a mensagem da tela. */
+export interface TurmaRealizada {
+  presentes: number;
+  concluida: boolean;
+}
+
+/**
+ * Horas de cada dia somando a carga inteira, em décimos (a escala de
+ * `turma_presenca.horas`): o resto da divisão vai para os primeiros dias.
+ */
+export function horas_por_dia(turma: TurmaCarregada): [string, string][] {
+  const dias = dias_da_turma(turma);
+  const decimos = escalado(T.carga_efetiva(turma)) / 100_000n;
+  const n = BigInt(dias.length);
+  return dias
+    .map((dia, i): [string, string] => {
+      const h = decimos / n + (BigInt(i) < decimos % n ? 1n : 0n);
+      return [dia, texto_decimal(h * 100_000n)];
+    })
+    .filter(([, h]) => comparar(h, "0") > 0);
+}
+
+/**
+ * NUVEM: o curso que já aconteceu, registrado num clique — todo inscrito
+ * presente pela carga inteira e a turma concluída (com a apuração), na mesma
+ * transação e com a trilha de cada passo. Só para turma cujas datas já
+ * passaram e sem presença lançada (o clique não sobrescreve folha conferida).
+ * Com nota mínima a turma NÃO se conclui: nota não se inventa — lança-se a
+ * presença, a turma fica em andamento e a nota se lança na aba.
+ */
+export async function registrar_turma_realizada(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada,
+): Promise<TurmaRealizada> {
+  usuario.exigir("turma.avaliar");
+  usuario.exigir("turma.concluir");
+  if (!["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"].includes(turma.situacao)) {
+    throw new RegraDaTurma(`${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}.`);
+  }
+  if (turma.data_fim > datas_br.hoje()) {
+    throw new RegraDaTurma(
+      `${turma.codigo} termina em ${datas_br.numerica(turma.data_fim)}: só se registra como realizada depois disso.`,
+    );
+  }
+  const alcancadas = (await inscricoes_da_turma(tx, turma)).filter((i) => !INSCRICAO_FORA_DA_APURACAO.has(i.situacao));
+  if (!alcancadas.length) throw new RegraDaTurma(`${turma.codigo} não tem ninguém inscrito: inscreva os participantes antes.`);
+  if (alcancadas.some((i) => i.presencas.length)) {
+    throw new RegraDaTurma(
+      `${turma.codigo} já tem presença lançada: confira a aba Presença e notas e conclua a turma por lá.`,
+    );
+  }
+  // inscrição aberta não recebe lançamento; planejada que já começou, sim
+  if (turma.situacao === "INSCRICOES_ABERTAS") await mudar_situacao(tx, usuario, turma, "EM_ANDAMENTO");
+
+  const dias = horas_por_dia(turma);
+  if (dias.length === 1) {
+    await marcar_todos_presentes(tx, usuario, turma);
+  } else {
+    for (const [data, horas] of dias) await marcar_dia_presente(tx, usuario, turma, { data, horas });
+  }
+  const com_nota = turma.nota_minima_aprovacao !== null;
+  await auditoria.registrar(tx, {
+    entidade: "turma",
+    entidade_id: turma.id,
+    tipo_evento: TURMA_REALIZADA,
+    descricao:
+      `${turma.codigo}: ${alcancadas.length} presente(s) pela carga de ${numero(T.carga_efetiva(turma))}h` +
+      (com_nota ? " — aguarda as notas para concluir" : " e turma concluída"),
+    usuario,
+  });
+  if (com_nota) {
+    if (turma.situacao === "PLANEJADA") await mudar_situacao(tx, usuario, turma, "EM_ANDAMENTO");
+    return { presentes: alcancadas.length, concluida: false };
+  }
+  await mudar_situacao(tx, usuario, turma, "CONCLUIDA");
+  return { presentes: alcancadas.length, concluida: true };
 }
 
 // ---------------------------------------------------------------------

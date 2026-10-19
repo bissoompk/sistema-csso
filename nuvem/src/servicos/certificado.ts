@@ -465,6 +465,62 @@ function _entrada_do_manifesto(arquivo: string) {
   return _manifesto()[`${DIR_MODELOS_CERTIFICADO}/${path.basename(arquivo)}`] ?? null;
 }
 
+/** Os .docx de certificado que a conversão publicou (o select da tela de modelos). */
+export function arquivos_de_modelo(): string[] {
+  const prefixo = `${DIR_MODELOS_CERTIFICADO}/`;
+  return ordenar(
+    Object.keys(_manifesto())
+      .filter((k) => k.startsWith(prefixo))
+      .map((k) => k.slice(prefixo.length))
+      .filter((nome) => existsSync(caminho_modelo(nome))),
+  );
+}
+
+// o layout que acompanha o sistema, semeado como modelo genérico "Padrão da casa"
+export const MODELO_PADRAO_ARQUIVO = "certificado_padrao_v1.docx";
+export const MODELO_PADRAO_NOME = "Padrão da casa";
+
+// {marcador no .docx: código do campo} — o `MAPA_SUGERIDO` de
+// `ferramentas/gerar_modelo_certificado.py`, que casa com certificado_padrao_v1.docx.
+// Serve à semente e ao "mapear sugeridos" da ficha de qualquer modelo.
+export const MAPA_SUGERIDO: Readonly<Record<string, string>> = {
+  nome_do_aluno: "participante_nome",
+  identificador: "participante_identificador",
+  vinculo: "participante_vinculo",
+  curso: "treinamento_nome",
+  carga: "treinamento_carga_horaria",
+  norma: "treinamento_norma",
+  conteudo: "treinamento_conteudo",
+  periodo: "turma_periodo_extenso",
+  local: "turma_local",
+  promotora: "turma_unidade_promotora",
+  frequencia: "frequencia_percentual",
+  numero_certificado: "certificado_rotulo",
+  data_extenso: "certificado_data_extenso",
+  vencimento: "certificado_data_vencimento",
+  chave: "certificado_chave",
+  url_validacao: "certificado_url_validacao",
+  instrutores: "turma_instrutores",
+  assinante: "assinante_nome",
+  assinante_titulo: "assinante_titulo",
+  rubrica: "assinante_rubrica",
+  setor_nome: "setor_emissor_nome",
+  setor_sigla: "setor_emissor_sigla",
+  cidade: "cidade",
+};
+
+// marcadores que não podem sair em branco no papel
+export const OBRIGATORIOS: readonly string[] = [
+  "nome_do_aluno",
+  "curso",
+  "carga",
+  "periodo",
+  "numero_certificado",
+  "data_extenso",
+  "chave",
+  "assinante",
+];
+
 /**
  * O SHA-256 do modelo de ORIGEM (o `.docx` que o setor edita), lido do
  * manifesto da conversão — o mesmo número que o Python gravava.

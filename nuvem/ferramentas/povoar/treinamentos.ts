@@ -23,51 +23,15 @@ import * as emissao_certificado from "../../src/servicos/emissao_certificado.js"
 import * as servico_participante from "../../src/servicos/participante.js";
 import * as presenca from "../../src/servicos/presenca.js";
 import * as servico_turma from "../../src/servicos/turma.js";
+import { criar_modelo_padrao, semear_modelo_certificado } from "../../src/servicos/sementes.js";
 
 export interface ContextoPovoar {
   atual: (login: string) => Promise<UsuarioAtual>;
   resumo: Record<string, number>;
 }
 
-// {marcador no .docx: código do campo} — o `MAPA_SUGERIDO` de
-// `ferramentas/gerar_modelo_certificado.py`, que casa com certificado_padrao_v1.docx
-export const MAPA_SUGERIDO: Readonly<Record<string, string>> = {
-  nome_do_aluno: "participante_nome",
-  identificador: "participante_identificador",
-  vinculo: "participante_vinculo",
-  curso: "treinamento_nome",
-  carga: "treinamento_carga_horaria",
-  norma: "treinamento_norma",
-  conteudo: "treinamento_conteudo",
-  periodo: "turma_periodo_extenso",
-  local: "turma_local",
-  promotora: "turma_unidade_promotora",
-  frequencia: "frequencia_percentual",
-  numero_certificado: "certificado_rotulo",
-  data_extenso: "certificado_data_extenso",
-  vencimento: "certificado_data_vencimento",
-  chave: "certificado_chave",
-  url_validacao: "certificado_url_validacao",
-  instrutores: "turma_instrutores",
-  assinante: "assinante_nome",
-  assinante_titulo: "assinante_titulo",
-  rubrica: "assinante_rubrica",
-  setor_nome: "setor_emissor_nome",
-  setor_sigla: "setor_emissor_sigla",
-  cidade: "cidade",
-};
-
-// marcadores que não podem sair em branco no papel
-export const OBRIGATORIOS: readonly string[] = [
-  "nome_do_aluno",
-  "curso",
-  "carga",
-  "periodo",
-  "numero_certificado",
-  "data_extenso",
-  "chave",
-  "assinante",
-];
+// o mapa vive em `servicos/certificado.ts`: a semente e a tela de modelos o usam
+export { MAPA_SUGERIDO, OBRIGATORIOS } from "../../src/servicos/certificado.js";
 
 export async function povoar_treinamentos(tx: Executor, ctx: ContextoPovoar): Promise<void> {
   const hoje = hoje_iso();
@@ -108,34 +72,14 @@ export async function povoar_treinamentos(tx: Executor, ctx: ContextoPovoar): Pr
     .returning();
 
   // o específico (apontado por `modelo_vigente_id`) e o genérico: os dois ramos
-  // de `modelo_da_turma`. Genérico é UM só — dois empatariam e a emissão bloquearia.
-  async function modelo(nome: string, treinamento_id: number | null) {
-    const [alvo] = await tx
-      .insert(e.certificado_modelo)
-      .values({
-        treinamento_id,
-        nome,
-        arquivo: "certificado_padrao_v1.docx",
-        versao: 1,
-        vigente: true,
-        criado_por: coord.id,
-      })
-      .returning();
-    let ordem = 1;
-    for (const [marcador, campo] of Object.entries(MAPA_SUGERIDO)) {
-      await tx.insert(e.certificado_modelo_tag).values({
-        modelo_id: alvo!.id,
-        marcador,
-        campo,
-        ordem: ordem++,
-        obrigatorio: OBRIGATORIOS.includes(marcador),
-      });
-    }
-    return alvo!;
-  }
-  const especifico = await modelo("Padrão NR-35", catalogo[0]!.id);
+  // de `modelo_da_turma`. O genérico ("Padrão da casa") a semente já criou.
+  const especifico = await criar_modelo_padrao(tx, {
+    nome: "Padrão NR-35",
+    treinamento_id: catalogo[0]!.id,
+    criado_por: coord.id,
+  });
   await tx.update(e.treinamento).set({ modelo_vigente_id: especifico.id }).where(eq(e.treinamento.id, catalogo[0]!.id));
-  await modelo("Padrão da casa", null);
+  await semear_modelo_certificado(tx);
 
   // instrutor interno aponta para um servidor (`ck_assinatura_vinculo`)
   const [interno] = await tx.select().from(e.servidor).where(eq(e.servidor.siape, "3010088"));
