@@ -136,7 +136,7 @@
       <input id="assin-nome" name="nome" value="{{ d['nome'] or '' }}"></div>
     <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
       <label class="discreto"><input type="checkbox" name="externo" value="1"
-        {{- ' checked' if d['externo'] == '1' }}>
+        {{- ' checked' if d['externo'] == '1' or (not d and not servidores) }}>
         instrutor externo</label></div>
   </div>
   <div class="linha-campos">
@@ -155,8 +155,9 @@
       <input id="assin-org" name="organizacao" placeholder="UFVJM"
              value="{{ d['organizacao'] or '' }}"></div>
     <div class="campo"><label for="assin-de">Vigência — início</label>
-      <input id="assin-de" type="date" name="vigencia_inicio" required
-             value="{{ d['vigencia_inicio'] or '' }}"></div>
+      <input id="assin-de" type="date" name="vigencia_inicio"
+             value="{{ d['vigencia_inicio'] or '' }}" aria-describedby="dica-inicio">
+      <span class="dica" id="dica-inicio">Vazio: desde sempre (assina turma já realizada).</span></div>
     <div class="campo"><label for="assin-ate">Vigência — fim</label>
       <input id="assin-ate" type="date" name="vigencia_fim"
              value="{{ d['vigencia_fim'] or '' }}"

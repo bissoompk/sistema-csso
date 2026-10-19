@@ -43,7 +43,7 @@
 {% set pode_avaliar = usuario.pode('turma.avaliar') %}
 {# retificar mexe em resultado já comunicado: pede a mesma permissão de concluir #}
 {% set pode_lancar = pode_avaliar and (not retificando or usuario.pode('turma.concluir'))
-                     and turma.situacao in ['EM_ANDAMENTO', 'CONCLUIDA'] %}
+                     and lancamento_aberto %}
 {% set editavel = pode_editar and not turma.encerrada %}
 
 {# =====================================================================
@@ -190,6 +190,21 @@
         {{ ui.pilula_turma('CANCELADA') }}
         {% endif %}
       </div>
+
+      {% if ja_realizada %}
+      {# O curso que já aconteceu, num clique: presença de todos pela carga e o
+         fecho com a apuração. Com nota mínima, só a presença — nota não se inventa. #}
+      <form method="post" action="/turmas/{{ turma.id }}/realizada" style="margin-top:12px">
+        <button type="submit">Registrar turma já realizada</button>
+        <span class="dica">
+          {%- if turma.nota_minima_aprovacao is not none %} Marca todos presentes pela carga
+          inteira; a turma exige nota mínima, então as notas se lançam depois, na aba
+          <em>Presença e notas</em>.
+          {%- else %} Marca todos presentes pela carga inteira e conclui a turma (apura
+          aprovados). Quem faltou: lance a presença na aba <em>Presença e notas</em>.
+          {%- endif %}</span>
+      </form>
+      {% endif %}
 
       {% if destinos %}
       <div class="acoes" style="margin-top:12px">
@@ -734,7 +749,7 @@
   </div>
   {% endif %}
 
-  {% if turma.situacao not in ['EM_ANDAMENTO', 'CONCLUIDA'] and pode_avaliar %}
+  {% if not lancamento_aberto and pode_avaliar %}
   <div class="corpo">
     <div class="aviso aviso-alerta">
       <span class="mono">{{ turma.codigo }}</span> está

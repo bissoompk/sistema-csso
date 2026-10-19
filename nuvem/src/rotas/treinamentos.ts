@@ -52,6 +52,10 @@ export const CATALOGO = "/treinamentos/catalogo";
 export const MODELOS = "/treinamentos/modelos";
 export const ASSINATURAS = "/treinamentos/assinaturas";
 
+// NUVEM: o início de vigência de quem foi cadastrado sem data ("desde sempre").
+// `vigencia_inicio` é NOT NULL; uma data bem anterior a qualquer turma basta.
+export const VIGENCIA_DESDE_SEMPRE = "2000-01-01";
+
 export const VINCULOS_INSTRUTOR: [string, string][] = [
   ["0", "Servidor da UFVJM"],
   ["1", "Externo"],
@@ -173,8 +177,8 @@ rotas.post(CATALOGO, async (c) => {
     codigo: f.texto("codigo"),
     nome: f.texto("nome"),
     carga_horaria_horas: f.texto("carga_horaria_horas"),
-    // o default NÃO é "0": campo apagado não vira "não expira" em silêncio
-    validade_meses: f.texto("validade_meses"),
+    // NUVEM: vazio no cadastro é 0 (não expira), o default do formulário
+    validade_meses: f.texto("validade_meses").trim() || "0",
     norma_referencia: f.texto("norma_referencia"),
     conteudo_programatico: f.texto("conteudo_programatico"),
     obrigatorio: f.texto("obrigatorio"),
@@ -272,6 +276,7 @@ async function _tela_modelos(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) {
   return pagina(c, "paginas/certificado_modelos.html", usuario, {
     itens: await _modelos_ordenados(tx),
     treinamentos: await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
+    arquivos: certificado.arquivos_de_modelo(),
     orientacoes: ORIENTACOES,
     mensagem: d.mensagem ?? null,
     erro: d.erro ?? null,
@@ -342,11 +347,15 @@ rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
   const modelo = await _modelo(tx, Number(c.req.param("modelo_id")));
   if (!modelo) return redirecionar(c, MODELOS);
   vista_modelo(modelo);
+  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.mapa_de_tags(modelo));
   return pagina(c, "paginas/certificado_modelo.html", usuario, {
     modelo,
-    conferencia: certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.mapa_de_tags(modelo)),
+    conferencia,
+    // os sem mapa que o "mapear sugeridos" resolve
+    com_sugestao: conferencia.sem_mapa.filter((m) => Object.hasOwn(certificado.MAPA_SUGERIDO, m)),
     campos_por_grupo: certificado.campos_por_grupo(),
     campos: certificado.CAMPOS_CERTIFICADO,
+    arquivos: certificado.arquivos_de_modelo(),
     treinamentos: await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
     // os treinamentos que hoje emitem com ESTA versão: são eles que a nova pode herdar
     apontam: await tx
@@ -534,6 +543,55 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
   return _volta(c, volta, `Marcador '${limpo}' mapeado para ${campo}.`);
 });
 
+/**
+ * NUVEM: mapeia de uma vez os marcadores do arquivo ainda sem linha que têm
+ * sugestão em `MAPA_SUGERIDO` — o dicionário do layout padrão. Um evento de
+ * trilha por tag, como o mapeamento manual; o que já está mapeado não muda.
+ */
+rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const tx = c.get("tx");
+  const modelo_id = Number(c.req.param("modelo_id"));
+  const volta = `${MODELOS}/${modelo_id}`;
+  const modelo = await _modelo(tx, modelo_id);
+  if (!modelo) return redirecionar(c, MODELOS);
+  if (!modelo.vigente) return _erro(c, volta, "Versão superada não se edita.");
+  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.mapa_de_tags(modelo));
+  if (!conferencia.arquivo_encontrado) {
+    return _erro(c, volta, `O arquivo '${modelo.arquivo}' não foi encontrado — não há marcadores para mapear.`);
+  }
+  const a_mapear = conferencia.sem_mapa.filter((m) => Object.hasOwn(certificado.MAPA_SUGERIDO, m));
+  if (!a_mapear.length) return _erro(c, volta, "Nenhum marcador sem mapa tem sugestão — mapeie à mão.");
+  let ordem = modelo.tags.length;
+  for (const marcador of a_mapear) {
+    const campo = certificado.MAPA_SUGERIDO[marcador]!;
+    const [tag] = await tx
+      .insert(tabela_tag)
+      .values({
+        modelo_id: modelo.id,
+        marcador,
+        campo,
+        ordem: ++ordem,
+        obrigatorio: certificado.OBRIGATORIOS.includes(marcador),
+      })
+      .returning();
+    await auditoria.registrar(tx, {
+      entidade: "certificado_modelo_tag",
+      entidade_id: tag!.id,
+      tipo_evento: "MODELO_TAG_MAPEADA",
+      descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${marcador} }} ← ${campo} (sugerido)`,
+      usuario,
+    });
+  }
+  const restam = conferencia.sem_mapa.length - a_mapear.length;
+  return _volta(
+    c,
+    volta,
+    `${a_mapear.length} marcador(es) mapeado(s) pela sugestão.` + (restam ? ` ${restam} sem sugestão: mapeie à mão.` : ""),
+  );
+});
+
 rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/:tag_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("treinamento.gerenciar");
@@ -621,8 +679,9 @@ async function _dados_da_assinatura(
   // `nome` é NOT NULL; para o interno ele nasce do cadastro
   const nome_limpo = (d.nome ?? "").trim() || (servidor ? servidor.nome : "");
   if (!nome_limpo) return [null, "Informe o nome do instrutor."];
-  const inicio = data_iso(d.vigencia_inicio ?? "");
-  if (inicio === null) return [null, "Informe o início da vigência (AAAA-MM-DD)."];
+  // vazio = desde sempre: o curso já dado no mês passado tem de poder ser assinado
+  const inicio = (d.vigencia_inicio ?? "").trim() ? data_iso(d.vigencia_inicio) : VIGENCIA_DESDE_SEMPRE;
+  if (inicio === null) return [null, "Início da vigência inválido (AAAA-MM-DD), ou deixe vazio para desde sempre."];
   let fim: string | null = null;
   if ((d.vigencia_fim ?? "").trim()) {
     fim = data_iso(d.vigencia_fim);

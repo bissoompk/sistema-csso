@@ -289,14 +289,21 @@ describe("marcar todos presentes", () => {
     expect(texto).toContain("não recebe lançamento");
   });
 
-  it("lançar em turma planejada é recusado", async () => {
+  // NUVEM: planejada que JÁ começou aceita lançamento (o curso dado antes do
+  // sistema); a que ainda não começou, não
+  it("lançar em turma planejada que não começou é recusado", async () => {
     await entrar(cliente, "coordenador_csso");
     expect((await cliente.post("/treinamentos/catalogo", NR35, { seguir: false })).status).toBe(303);
     const [t] = await db.select().from(e.treinamento).limit(1);
-    await cliente.post("/turmas", { treinamento_id: String(t!.id), ...TURMA }, { seguir: false });
+    const depois = somar_dias(hoje(), 5);
+    await cliente.post(
+      "/turmas",
+      { treinamento_id: String(t!.id), ...TURMA, data_inicio: depois, data_fim: depois },
+      { seguir: false },
+    );
     const [turma] = await db.select().from(e.turma).limit(1);
     const inscricao_id = await inscrever(cliente, turma!.id, "1110654", "Marco Antônio");
-    const texto = await mensagem(cliente, await lancar(cliente, turma!.id, inscricao_id, { horas: "8" }));
+    const texto = await mensagem(cliente, await lancar(cliente, turma!.id, inscricao_id, { horas: "8", data: depois }));
     expect(texto).toContain("passe a turma para em andamento");
     expect(await algumaPresenca()).toBeNull();
   });

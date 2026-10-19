@@ -269,6 +269,7 @@ describe("certificado em produção exige a URL pública declarada", () => {
     const producao = {
       CSSO_AMBIENTE: "producao",
       CSSO_URL_PUBLICA: undefined,
+      URL: undefined,
       CSSO_CHAVE_SECRETA: "x".repeat(48),
       CSSO_BACKUP_SENHA: "y".repeat(24),
     };
@@ -278,6 +279,10 @@ describe("certificado em produção exige a URL pública declarada", () => {
       const v = await validar(amb.db, c.inscricao);
       expect(v.ok).toBe(false);
       expect(v.bloqueios.join(" ")).toMatch(/certificado\.url_publica/);
+      // a URL que o Netlify define para o site também vale
+      await comAmbiente({ URL: "https://csso.netlify.app" }, async () => {
+        expect(await url_publica_declarada(amb.db)).toBe(true);
+      });
       await amb.db.insert(e.parametro).values({ chave: PARAMETRO_URL_PUBLICA, valor: "https://csso.exemplo.br" });
       expect((await validar(amb.db, c.inscricao)).ok).toBe(true);
     });

@@ -132,6 +132,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   TREINAMENTO_CRIADO: "Treinamento cadastrado",
   TURMA_CRIADA: "Turma criada",
   TURMA_APURADA: "Turma apurada",
+  TURMA_REALIZADA_REGISTRADA: "Turma já realizada registrada",
   TURMA_INSTRUTOR_VINCULADO: "Instrutor vinculado à turma",
   TURMA_INSTRUTOR_DESVINCULADO: "Instrutor desvinculado da turma",
   INSCRICAO_CRIADA: "Inscrição criada",

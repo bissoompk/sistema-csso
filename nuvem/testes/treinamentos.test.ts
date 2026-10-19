@@ -175,13 +175,13 @@ describe("validade da reciclagem", () => {
     expect(resposta.text).toContain("Validade inválida");
   });
 
-  it("validade em branco é recusada no cadastro", async () => {
+  // NUVEM: no cadastro, vazio é o default do formulário — 0, não expira
+  it("validade em branco no cadastro é não expira", async () => {
     await coord();
     const resposta = await _criar({ codigo: "SEMPRAZO", nome: "Curso sem prazo", validade_meses: "" });
-    expect(resposta.text).toContain("Validade inválida");
-    // e o que foi digitado voltou: a recusa renderiza, não redireciona
-    expect(resposta.text).toContain('value="SEMPRAZO"');
-    expect(await db.select().from(e.treinamento).where(eq(e.treinamento.codigo, "SEMPRAZO"))).toEqual([]);
+    expect(resposta.status).toBe(303);
+    const [t] = await db.select().from(e.treinamento).where(eq(e.treinamento.codigo, "SEMPRAZO"));
+    expect(t!.validade_meses).toBe(0);
   });
 
   it("validade apagada na edição não vira não expira", async () => {
@@ -265,7 +265,10 @@ describe("modelo e dicionário de tags", () => {
     const modelo_id = _id_do_modelo(await _criar_modelo());
     const resposta = await cliente.post(`/treinamentos/modelos/${modelo_id}/tags`, { marcador: "qualquer", campo: "cpf_do_aluno" });
     expect(resposta.text).toContain("Campo desconhecido");
-    expect(await db.select().from(e.certificado_modelo_tag)).toEqual([]);
+    // o filtro pelo modelo: a semente já traz o "Padrão da casa" com o mapa inteiro
+    expect(
+      await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, modelo_id)),
+    ).toEqual([]);
   });
 
   it("marcador inválido é recusado", async () => {
@@ -319,7 +322,11 @@ describe("modelo e dicionário de tags", () => {
     await cliente.post(`/treinamentos/modelos/${v2}/tags`, { marcador: "instrutor", campo: "assinante_nome" });
     const recusa = await cliente.post(`/treinamentos/modelos/${v1}/versao`);
     expect(recusa.text).toContain("não se edita");
-    const versoes = await db.select().from(e.certificado_modelo).orderBy(asc(e.certificado_modelo.versao));
+    const versoes = await db
+      .select()
+      .from(e.certificado_modelo)
+      .where(eq(e.certificado_modelo.nome, "Certificado padrão CSSO"))
+      .orderBy(asc(e.certificado_modelo.versao));
     expect(versoes.map((m) => m.versao)).toEqual([1, 2]);
     const vigentes = versoes.filter((m) => m.vigente);
     expect(vigentes).toHaveLength(1);
@@ -358,7 +365,7 @@ describe("modelo e dicionário de tags", () => {
     });
     expect(recusa.text.toLowerCase()).toContain("já existe");
     const nomes = (await db.select().from(e.certificado_modelo)).map((m) => m.nome).sort();
-    expect(nomes).toEqual(["Alfa", "Beta"]);
+    expect(nomes).toEqual(["Alfa", "Beta", "Padrão da casa"]);
   });
 
   it("editar modelo também exige .docx", async () => {
@@ -388,7 +395,10 @@ describe("modelo e dicionário de tags", () => {
     ]) {
       await cliente.post(`/treinamentos/modelos/${modelo_id}/tags`, { marcador: marcador!, campo: campo!, ordem: ordem! });
     }
-    const [segunda] = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.marcador, "curso"));
+    const [segunda] = await db
+      .select()
+      .from(e.certificado_modelo_tag)
+      .where(and(eq(e.certificado_modelo_tag.marcador, "curso"), eq(e.certificado_modelo_tag.modelo_id, modelo_id)));
     await cliente.post(`/treinamentos/modelos/${modelo_id}/tags/${segunda!.id}`, {
       campo: "treinamento_nome",
       ordem: "",

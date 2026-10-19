@@ -20,6 +20,8 @@ import {
   autoridade_destinataria,
   campus,
   cargo,
+  certificado_modelo,
+  certificado_modelo_tag,
   epi_categoria,
   epi_motivo_recusa,
   fluxo_etapa,
@@ -40,6 +42,13 @@ import {
   unidade_uorg,
 } from "../db/esquema/index.js";
 import { MATRIZ_PERFIS, PERMISSOES, modulo_da_permissao } from "./rbac.js";
+import {
+  MAPA_SUGERIDO,
+  MODELO_PADRAO_ARQUIVO,
+  MODELO_PADRAO_NOME,
+  OBRIGATORIOS,
+  sha256_do_modelo,
+} from "./certificado.js";
 
 // =====================================================================
 // Textos literais (aspas curvas em ambos - §5)
@@ -620,6 +629,54 @@ export async function semear_epi(tx: Executor): Promise<void> {
   }
 }
 
+/**
+ * Um modelo de certificado sobre `certificado_padrao_v1.docx` com os 23
+ * marcadores já mapeados (`MAPA_SUGERIDO`). A semente e o povoamento de teste
+ * passam por aqui.
+ */
+export async function criar_modelo_padrao(
+  tx: Executor,
+  d: { nome?: string; treinamento_id?: number | null; criado_por?: number | null } = {},
+) {
+  const [modelo] = await tx
+    .insert(certificado_modelo)
+    .values({
+      treinamento_id: d.treinamento_id ?? null,
+      nome: d.nome ?? MODELO_PADRAO_NOME,
+      arquivo: MODELO_PADRAO_ARQUIVO,
+      arquivo_sha256: sha256_do_modelo(MODELO_PADRAO_ARQUIVO),
+      versao: 1,
+      vigente: true,
+      criado_por: d.criado_por ?? null,
+    })
+    .returning();
+  let ordem = 1;
+  for (const [marcador, campo] of Object.entries(MAPA_SUGERIDO)) {
+    await tx.insert(certificado_modelo_tag).values({
+      modelo_id: modelo!.id,
+      marcador,
+      campo,
+      ordem: ordem++,
+      obrigatorio: OBRIGATORIOS.includes(marcador),
+    });
+  }
+  return modelo!;
+}
+
+/**
+ * NUVEM: o modelo genérico "Padrão da casa", para a primeira emissão não
+ * depender de montar dicionário à mão. Só nasce quando não há NENHUM genérico
+ * (vigente ou não): o que o setor cadastrou ou aposentou não é recriado.
+ */
+export async function semear_modelo_certificado(tx: Executor): Promise<void> {
+  const [ja] = await tx
+    .select({ id: certificado_modelo.id })
+    .from(certificado_modelo)
+    .where(isNull(certificado_modelo.treinamento_id))
+    .limit(1);
+  if (!ja) await criar_modelo_padrao(tx);
+}
+
 /** Tudo, na ordem do Python. Quem chama dá o COMMIT (ver o cabeçalho). */
 export async function semear(tx: Executor): Promise<void> {
   await semear_rbac(tx);
@@ -628,4 +685,5 @@ export async function semear(tx: Executor): Promise<void> {
   await semear_textos(tx);
   await semear_emissores(tx);
   await semear_epi(tx);
+  await semear_modelo_certificado(tx);
 }

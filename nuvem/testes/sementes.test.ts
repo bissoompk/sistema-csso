@@ -9,6 +9,7 @@ import { count, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import { MATRIZ_PERFIS, PERMISSOES, modulo_da_permissao } from "../src/servicos/rbac.js";
 import { semear, semear_rbac, TEXTO_NR15_AX14 } from "../src/servicos/sementes.js";
+import { conferir_modelo } from "../src/servicos/certificado.js";
 import { bancoLimpo, naTransacao } from "./ajuda";
 
 const { db } = await bancoLimpo();
@@ -37,6 +38,8 @@ async function contagens() {
     profissional_habilitado: e.profissional_habilitado,
     epi_categoria: e.epi_categoria,
     epi_motivo_recusa: e.epi_motivo_recusa,
+    certificado_modelo: e.certificado_modelo,
+    certificado_modelo_tag: e.certificado_modelo_tag,
   };
   const r: Record<string, number> = {};
   for (const [nome, t] of Object.entries(tabelas)) {
@@ -71,6 +74,9 @@ describe("sementes", () => {
       profissional_habilitado: 1,
       epi_categoria: 9,
       epi_motivo_recusa: 8,
+      // NUVEM: o genérico "Padrão da casa", com os 23 marcadores do .docx mapeados
+      certificado_modelo: 1,
+      certificado_modelo_tag: 23,
     });
   });
 
@@ -151,5 +157,20 @@ describe("sementes", () => {
       .from(e.agente_nocivo)
       .where(eq(e.agente_nocivo.descricao, "Manipulação de produtos químicos"));
     expect(sinonimo!.agente_canonico_id).toBe(canonico!.id);
+  });
+
+  it("o modelo genérico semeado confere com o .docx e não volta depois de aposentado", async () => {
+    const [modelo] = await db.select().from(e.certificado_modelo);
+    expect(modelo!.treinamento_id).toBeNull();
+    expect(modelo!.nome).toBe("Padrão da casa");
+    expect(modelo!.vigente).toBe(true);
+    const tags = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, modelo!.id));
+    const mapa = Object.fromEntries(tags.map((t) => [t.marcador, t.campo]));
+    expect(conferir_modelo(modelo!.arquivo, mapa).ok).toBe(true);
+    // genérico existente (mesmo superado) não é recriado
+    await db.update(e.certificado_modelo).set({ vigente: false }).where(eq(e.certificado_modelo.id, modelo!.id));
+    await naTransacao((tx) => semear(tx));
+    expect(await db.select().from(e.certificado_modelo)).toHaveLength(1);
+    await db.update(e.certificado_modelo).set({ vigente: true }).where(eq(e.certificado_modelo.id, modelo!.id));
   });
 });

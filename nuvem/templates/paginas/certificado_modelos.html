@@ -80,13 +80,13 @@
     <input id="modelo-nome" name="nome" required placeholder="Certificado padrão CSSO"
            value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}></div>
   <div class="linha-campos">
+    {# A lista vem do manifesto da conversão: só o que a emissão consegue abrir. #}
     <div class="campo codigo"><label for="modelo-arquivo">Arquivo .docx</label>
-      <input id="modelo-arquivo" name="arquivo" required
-             value="{{ d['arquivo'] or '' }}"
-             placeholder="certificado_padrao.docx" aria-describedby="dica-arquivo">
-      <span class="dica" id="dica-arquivo">Só o nome, dentro de
-        <code>app/templates/certificados/</code>. Pode ser cadastrado antes de o
-        arquivo estar lá — a ficha avisa enquanto ele não existe.</span></div>
+      <select id="modelo-arquivo" name="arquivo" required aria-describedby="dica-arquivo">
+        {% for a in arquivos %}<option value="{{ a }}"{{ ui.sel(d['arquivo'], a) }}>{{ a }}</option>{% endfor %}
+      </select>
+      <span class="dica" id="dica-arquivo">Os layouts publicados com o sistema. Layout
+        novo entra pelo <code>ferramentas/converter-modelos-docx.ts</code>.</span></div>
     <div class="campo"><label for="modelo-orientacao">Orientação</label>
       <select id="modelo-orientacao" name="orientacao">
         {% for o in orientacoes %}<option value="{{ o }}"{{ ui.sel(d['orientacao'], o) }}>{{ o|capitalize }}</option>{% endfor %}
