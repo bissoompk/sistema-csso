@@ -507,3 +507,37 @@ export async function inconsistencias(tx: Executor, servidor_id: number): Promis
   }
   return problemas;
 }
+
+/**
+ * Cadastro mínimo (SIAPE e nome) de dentro de outro fluxo — o balcão de EPI e
+ * o pedido —, para a pessoa que não está no cadastro não travar o atendimento.
+ * Abre o primeiro período da linha do tempo, como `/servidores`.
+ */
+export async function cadastrar_basico(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  d: { siape: string; nome: string },
+): Promise<Servidor> {
+  const siape = (d.siape ?? "").trim();
+  const nome = (d.nome ?? "").replace(/\s+/g, " ").trim();
+  if (!/^\d{7}$/.test(siape)) throw new LotacaoInvalida("a matrícula SIAPE tem exatamente 7 dígitos, sem ponto nem traço");
+  if (!nome) throw new LotacaoInvalida("o nome não pode ficar em branco");
+  if (nome.length > 160) throw new LotacaoInvalida("o nome passa de 160 caracteres");
+  const [ja] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
+  if (ja) throw new LotacaoInvalida(`o SIAPE ${siape} já está cadastrado — busque por ele`);
+  const [servidor] = await tx.insert(tabela_servidor).values({ siape, nome }).returning();
+  await auditoria.registrar(tx, {
+    entidade: "servidor",
+    entidade_id: servidor!.id,
+    tipo_evento: "SERVIDOR_CRIADO",
+    descricao: `Servidor SIAPE ${siape} cadastrado.`,
+    usuario,
+  });
+  await registrar_lotacao_inicial(tx, servidor!, usuario);
+  return servidor!;
+}
+
+/** Quem cadastra servidor: a base (`processo.criar`) e o balcão de EPI. */
+export function pode_cadastrar(usuario: UsuarioAtual): boolean {
+  return usuario.pode("processo.criar") || usuario.pode("epi.entregar");
+}

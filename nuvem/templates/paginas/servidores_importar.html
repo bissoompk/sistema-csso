@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Importar servidores · CSSO{% endblock %}
+{% block trilha %}<span class="atual" aria-current="page">Importação de servidores</span>{% endblock %}
+
+{# A prévia e o resultado da carga de servidores: a mesma tela, separadas pela
+   pílula. Na prévia o banco foi revertido; o botão de confirmar reenvia as
+   linhas lidas (no corpo do POST) e a gravação roda o mesmo código. #}
+
+{% set ROTULO = {'CRIAR': 'cria', 'ATUALIZAR': 'atualiza', 'SEM_MUDANCA': 'sem mudança', 'RECUSAR': 'recusada'} %}
+{% set NATUREZA = {'CRIAR': 'ok', 'ATUALIZAR': 'info', 'SEM_MUDANCA': '', 'RECUSAR': 'perigo'} %}
+
+{% block acoes_cabecalho %}
+<a class="botao secundario" href="/servidores">Voltar aos servidores</a>
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Importação de servidores</h1>
+      <p class="identificacao">{{ ui.pilula_carga(aplicado) }}</p>
+    </div>
+  </div>
+
+  <div class="grade grade-kpi">
+    <div class="kpi {{ 'ok' if resultado.criados }}">
+      <div class="rotulo">{{ 'Criados' if aplicado else 'A criar' }}</div>
+      <div class="medida"><span class="valor">{{ resultado.criados }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">{{ 'Atualizados' if aplicado else 'A atualizar' }}</div>
+      <div class="medida"><span class="valor">{{ resultado.atualizados }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Sem mudança</div>
+      <div class="medida"><span class="valor">{{ resultado.sem_mudanca }}</span></div>
+    </div>
+    <div class="kpi {{ 'perigo' if resultado.recusados }}">
+      <div class="rotulo">Recusadas</div>
+      <div class="medida"><span class="valor">{{ resultado.recusados }}</span>
+        <span class="nota">não entram</span></div>
+    </div>
+  </div>
+
+  {% if resultado.cargos_criados or resultado.unidades_criadas %}
+  <p class="discreto">{{ resultado.cargos_criados }} cargo(s) e {{ resultado.unidades_criadas }}
+    UORG(s) {{ 'criados' if aplicado else 'serão criados' }} junto.</p>
+  {% endif %}
+
+  {% if not aplicado %}
+  <form class="cartao destaque" method="post" action="/servidores/importar/confirmar">
+    <input type="hidden" name="linhas" value="{{ linhas_json }}">
+    <p class="sem-margem"><strong>Nada foi gravado ainda.</strong> Confira as linhas
+      abaixo; as recusadas ficam de fora, o resto entra ao confirmar.</p>
+    <div class="acoes">
+      <button type="submit">Confirmar importação</button>
+      <a class="botao secundario" href="/servidores">Cancelar</a>
+    </div>
+  </form>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+    <table>
+      <thead>
+        <tr><th scope="col" class="numerico">Linha</th><th scope="col">SIAPE</th><th scope="col">Nome (do arquivo)</th>
+          <th scope="col">O que acontece</th><th scope="col">Detalhes</th></tr>
+      </thead>
+      {% for l in resultado.linhas %}
+      <tr>
+        <td class="numerico">{{ l.linha }}</td>
+        <td class="mono">{{ l.siape or '—' }}</td>
+        <td>{{ l.nome or '—' }}</td>
+        <td><span class="pilula {{ NATUREZA[l.acao] }}">{{ ROTULO[l.acao] }}</span></td>
+        <td>{{ l.detalhes | join(' · ') if l.detalhes | length else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+</div>
+{% endblock %}

@@ -170,6 +170,8 @@ interface OpcoesTela {
   digitado?: Record<string, string> | null;
   digitado_recusa?: Record<string, string> | null;
   foco_na_recusa?: boolean;
+  /** recusa por CA do catálogo: o link para corrigir o item */
+  corrigir_item_id?: number | null;
 }
 
 /**
@@ -195,6 +197,7 @@ async function tela_de_entrega(c: Ctx, usuario: UsuarioAtual, o: OpcoesTela): Pr
     digitado: o.digitado ?? {},
     digitado_recusa: o.digitado_recusa ?? {},
     foco_na_recusa: o.foco_na_recusa ?? false,
+    corrigir_item_id: o.corrigir_item_id ?? null,
     mensagem: o.mensagem ?? null,
     erro: o.erro ?? null,
   });
@@ -211,18 +214,83 @@ rotas.get(ENTREGA_NOVA, async (c) => {
   });
 });
 
-/** Fragmento HTMX: a busca de servidor do balcão (o mesmo de `/epis/requisicoes/nova`). */
-rotas.get("/epis/entregas/servidores", async (c) => {
-  const usuario = await usuarioLogado(c);
-  usuario.exigir("epi.entregar");
-  const q = c.req.query("q") ?? "";
+interface OpcoesFragmento {
+  q: string;
+  rotulo?: string;
+  nota?: string;
+  /** a rota do cadastro rápido; só aparece para quem pode cadastrar */
+  url_cadastro: string;
+  escolhido?: number | null;
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * O fragmento da busca de servidor — do balcão e do pedido —, com o cadastro
+ * rápido oferecido quando a busca não acha ninguém.
+ */
+export async function fragmento_servidores(c: Ctx, usuario: UsuarioAtual, o: OpcoesFragmento): Promise<Response> {
+  const q = o.q.trim();
   return fragmento(c, "partes/epi_requisicao_servidores.html", {
     // `identificar()` lê a RN-19 do contexto do template
     usuario,
     servidores: await servico_servidores.buscar(c.get("tx"), q, usuario),
-    rotulo: "Quem recebe",
+    rotulo: o.rotulo,
+    nota: o.nota,
     q,
+    escolhido: o.escolhido ?? null,
+    url_cadastro: servico_servidores.pode_cadastrar(usuario) ? o.url_cadastro : "",
+    // o que foi buscado já preenche o campo certo do cadastro
+    novo_siape: /^\d{7}$/.test(q) ? q : "",
+    novo_nome: /\d/.test(q) ? "" : q,
+    ...(o.extra ?? {}),
   });
+}
+
+/** Cadastro rápido (SIAPE e nome) de dentro do fragmento; volta com a pessoa escolhida. */
+export async function cadastrar_pelo_fragmento(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  o: Omit<OpcoesFragmento, "q" | "escolhido" | "extra">,
+): Promise<Response> {
+  if (!servico_servidores.pode_cadastrar(usuario)) throw new PermissaoNegada("processo.criar");
+  const f = await formulario(c);
+  const siape = f.texto("novo_siape").trim();
+  const nome = f.texto("novo_nome");
+  try {
+    const sv = await c.get("tx").transaction((sp) => servico_servidores.cadastrar_basico(sp, usuario, { siape, nome }));
+    return fragmento_servidores(c, usuario, {
+      ...o,
+      q: siape,
+      escolhido: sv.id,
+      extra: { recado_cadastro: `Servidor SIAPE ${siape} cadastrado e escolhido. Cargo e lotação se completam na ficha dele.` },
+    });
+  } catch (falha) {
+    if (!(falha instanceof servico_servidores.LotacaoInvalida)) throw falha;
+    return fragmento_servidores(c, usuario, {
+      ...o,
+      q: siape,
+      extra: { erro_cadastro: `Não cadastrado: ${falha.message}.`, novo_siape: siape, novo_nome: nome },
+    });
+  }
+}
+
+const SERVIDOR_NOVO_NO_BALCAO = "/epis/entregas/servidores/novo";
+
+/** Fragmento HTMX: a busca de servidor do balcão (o mesmo de `/epis/requisicoes/nova`). */
+rotas.get("/epis/entregas/servidores", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.entregar");
+  return fragmento_servidores(c, usuario, {
+    q: c.req.query("q") ?? "",
+    rotulo: "Quem recebe",
+    url_cadastro: SERVIDOR_NOVO_NO_BALCAO,
+  });
+});
+
+rotas.post(SERVIDOR_NOVO_NO_BALCAO, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.entregar");
+  return cadastrar_pelo_fragmento(c, usuario, { rotulo: "Quem recebe", url_cadastro: SERVIDOR_NOVO_NO_BALCAO });
 });
 
 /** Fragmento HTMX: escolhido o item, aparecem tamanho, lote e quantidade. */
@@ -261,12 +329,13 @@ rotas.post("/epis/entregas", async (c) => {
   const servidor = await servidor_por_id(tx, inteiro(digitado.servidor_id));
   const item = await item_por_id(tx, inteiro(digitado.item_id));
 
-  const recusar = (mensagem: string) =>
+  const recusar = (mensagem: string, corrigir_item_id: number | null = null) =>
     tela_de_entrega(c, usuario, {
       servidor_id: servidor ? servidor.id : null,
       item_id: item ? item.id : null,
       erro: mensagem,
       digitado,
+      corrigir_item_id,
     });
 
   if (!servidor) return recusar("Escolha o servidor que vai receber o EPI.");
@@ -303,7 +372,7 @@ rotas.post("/epis/entregas", async (c) => {
     );
   } catch (falha) {
     if (!recusavel(falha)) throw falha;
-    return recusar(motivos_de(falha));
+    return recusar(motivos_de(falha), falha instanceof servico.EntregaBloqueada ? falha.item_a_corrigir : null);
   }
   return volta(
     c,

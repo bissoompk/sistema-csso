@@ -88,6 +88,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   CONFLITO_NUMERACAO: "Conflito de numeração",
   LOTACAO_ALTERADA: "Lotação alterada",
   SERVIDOR_CRIADO: "Servidor cadastrado",
+  SERVIDORES_IMPORTADOS: "Servidores importados por planilha",
   // --- laudo e parecer ---
   PARECER_RASCUNHO_CRIADO: "Rascunho de parecer criado",
   NUMERO_DEFINIDO_MANUALMENTE: "Número definido manualmente",

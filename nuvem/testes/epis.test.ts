@@ -375,11 +375,12 @@ describe("o módulo no menu", () => {
     expect(modulo.disponivel).toBe(true);
     expect(modulo.itens.map((i) => [i.caminho, i.permissao])).toEqual([
       ["/epis", "epi.ver"],
+      // o caminho direto (entrega sem pedido) logo depois do painel
+      ["/epis/entregas/nova", "epi.entregar"],
       ["/epis/requisicoes", "epi.ver"],
       ["/epis/requisicoes/nova", "epi.requisitar"],
       ["/epis/fichas/minha", "epi.ver"],
       ["/epis/fichas", "epi.ficha"],
-      ["/epis/entregas/nova", "epi.entregar"],
       ["/epis/estoque", "epi.ver"],
       [CATALOGO, "epi.ver"],
       ["/epis/relatorios", "indicador.ver"],

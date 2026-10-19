@@ -74,7 +74,11 @@ export const TIPO_PENDENCIA_TROCA = "TROCA_EPI_DEVIDA";
  * numa passada.
  */
 export class EntregaBloqueada extends RegraViolada {
-  constructor(public motivos: string[]) {
+  constructor(
+    public motivos: string[],
+    /** o item cujo CA do catálogo falta ou venceu: a tela aponta onde corrigir */
+    public item_a_corrigir: number | null = null,
+  ) {
     super("Entrega bloqueada: " + motivos.join("; "));
   }
 }
@@ -82,6 +86,7 @@ export class EntregaBloqueada extends RegraViolada {
 export class Validacao {
   bloqueios: string[] = [];
   avisos: string[] = [];
+  item_a_corrigir: number | null = null;
   get ok(): boolean {
     return this.bloqueios.length === 0;
   }
@@ -551,8 +556,12 @@ export async function validar(tx: Executor, d: DadosValidacao): Promise<Validaca
     if (quantidade > saldo) v.bloqueios.push(`o lote tem ${saldo} disponível(is) e a entrega pede ${quantidade}`);
     if (entrada.epi_item_id !== item.id) v.bloqueios.push("o lote escolhido é de outro item do catálogo");
   } else if (item.exige_ca) {
+    if (!item.numero_ca || item.validade_ca === null || item.validade_ca < quando) v.item_a_corrigir = item.id;
     if (!item.numero_ca) {
-      v.bloqueios.push(`'${item.nome}' exige CA e não tem número de CA no catálogo`);
+      v.bloqueios.push(
+        `'${item.nome}' exige CA e não tem número de CA no catálogo — preencha o CA ou, ` +
+          "se o item não tem CA, desmarque “exige CA” no catálogo",
+      );
     } else if (item.validade_ca === null) {
       v.bloqueios.push(
         `'${item.nome}' exige CA e não tem validade registrada — ` + "“não sei” não é “está válido”",
@@ -781,7 +790,7 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
   textos.exigir_texto_limpo(justificativa_excecao, "justificativa da exceção");
 
   const validacao = await validar(tx, { servidor, item, entrada, quantidade, quando, justificativa_excecao });
-  if (!validacao.ok) throw new EntregaBloqueada(validacao.bloqueios);
+  if (!validacao.ok) throw new EntregaBloqueada(validacao.bloqueios, validacao.item_a_corrigir);
 
   const motivo = [observacao.trim(), justificativa_excecao.trim()].filter((t) => t).join(" ");
   // snapshots e congelado saem do MESMO contexto

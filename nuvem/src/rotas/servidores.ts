@@ -26,11 +26,13 @@ import { hoje_iso } from "../dominio/datas.js";
 import { UnidadeUorg } from "../dominio/organizacao.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as identificacao from "../servicos/identificacao.js";
+import * as importacao_servidores from "../servicos/importacao_servidores.js";
+import { linha_csv } from "../servicos/csv.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import * as textos from "../servicos/textos.js";
 import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
-import { comMensagem, numeroDaPagina, pagina, recortar, redirecionar } from "../web.js";
+import { comMensagem, marcarDownload, numeroDaPagina, pagina, recortar, redirecionar } from "../web.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -172,6 +174,67 @@ rotas.post("/servidores", async (c) => {
   // abre o primeiro período da linha do tempo com o que foi cadastrado
   await servico_servidores.registrar_lotacao_inicial(tx, servidor!, usuario, { postos });
   return redirecionar(c, `/servidores/${servidor!.id}`);
+});
+
+// =====================================================================
+// Carga por planilha: prévia, depois confirmação
+// =====================================================================
+/** O modelo para baixar: só o cabeçalho, no `;` do Excel brasileiro. */
+rotas.get("/servidores/modelo.csv", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("processo.criar");
+  marcarDownload(c);
+  return c.body("\uFEFF" + linha_csv([...importacao_servidores.CABECALHO]), 200, {
+    "content-type": "text/csv; charset=utf-8",
+    "content-disposition": 'attachment; filename="modelo_servidores.csv"',
+  });
+});
+
+/**
+ * Roda a carga e mostra linha a linha o que acontece. Na prévia a transação é
+ * desfeita; as linhas voltam no formulário de confirmação (no corpo do POST,
+ * nunca na URL), e confirmar roda o mesmo código de novo, agora gravando.
+ */
+async function _carga(c: Ctx, usuario: UsuarioAtual, linhas: importacao_servidores.LinhaArquivo[], aplicar: boolean) {
+  const resultado = await importacao_servidores.importar(c.get("tx"), usuario, linhas);
+  if (!aplicar) desfazer(c);
+  return pagina(c, "paginas/servidores_importar.html", usuario, {
+    resultado,
+    aplicado: aplicar,
+    linhas_json: aplicar ? "" : JSON.stringify(linhas),
+  });
+}
+
+rotas.post("/servidores/importar", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("processo.criar");
+  const f = await formulario(c);
+  const arquivo = f.dados.get("arquivo");
+  if (!(arquivo instanceof File) || !arquivo.size) {
+    return _tela_lista(c, usuario, "", { erro: "Escolha o arquivo .csv ou .xlsx com os servidores." });
+  }
+  let linhas;
+  try {
+    linhas = await importacao_servidores.ler_arquivo(arquivo.name, new Uint8Array(await arquivo.arrayBuffer()));
+  } catch (erro) {
+    if (!(erro instanceof importacao_servidores.ArquivoRecusado)) throw erro;
+    return _tela_lista(c, usuario, "", { erro: erro.message });
+  }
+  return _carga(c, usuario, linhas, false);
+});
+
+rotas.post("/servidores/importar/confirmar", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("processo.criar");
+  const f = await formulario(c);
+  let linhas;
+  try {
+    linhas = importacao_servidores.linhas_de_json(f.texto("linhas"));
+  } catch (erro) {
+    if (!(erro instanceof importacao_servidores.ArquivoRecusado)) throw erro;
+    return _tela_lista(c, usuario, "", { erro: erro.message });
+  }
+  return _carga(c, usuario, linhas, true);
 });
 
 /** Corrige nome, SIAPE, e-mail e situação. Lotação muda pelo histórico. */

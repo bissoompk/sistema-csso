@@ -225,7 +225,13 @@ async function _categorias(tx: Executor) {
 async function _tela_catalogo(
   c: Ctx,
   usuario: UsuarioAtual,
-  r: { mensagem?: string | null; erro?: string | null; digitado?: Record<string, string> | null } = {},
+  r: {
+    mensagem?: string | null;
+    erro?: string | null;
+    digitado?: Record<string, string> | null;
+    /** só este item: é o destino do link "corrigir o CA" da entrega recusada */
+    item_id?: number | null;
+  } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const categorias = await _categorias(tx);
@@ -242,8 +248,10 @@ async function _tela_catalogo(
   // vencido que encolhe ao virar de página é pior do que alerta nenhum.
   const hoje = datas_br.hoje();
   const com_ca_vencido = itens.filter((i) => i.exige_ca && i.ativo && (i.validade_ca === null || i.validade_ca < hoje));
-  const recorte = recortar(itens, numeroDaPagina(c));
+  const so_um = r.item_id ? itens.filter((i) => i.id === r.item_id) : null;
+  const recorte = recortar(so_um ?? itens, numeroDaPagina(c));
   return pagina(c, "paginas/epis_catalogo.html", usuario, {
+    so_um: so_um !== null,
     abas: ABAS,
     aba: CATALOGO,
     itens: recorte.itens,
@@ -262,7 +270,12 @@ rotas.get(CATALOGO, async (c) => {
   const usuario = await usuarioLogado(c);
   // abre em leitura para quem tem `epi.ver`; editar pede `epi.catalogo`
   usuario.exigir("epi.ver");
-  return _tela_catalogo(c, usuario, { mensagem: c.req.query("mensagem"), erro: c.req.query("erro") });
+  const item_id = c.req.query("item_id") ?? "";
+  return _tela_catalogo(c, usuario, {
+    mensagem: c.req.query("mensagem"),
+    erro: c.req.query("erro"),
+    item_id: /^\d+$/.test(item_id) ? Number(item_id) : null,
+  });
 });
 
 rotas.post(CATALOGO, async (c) => {

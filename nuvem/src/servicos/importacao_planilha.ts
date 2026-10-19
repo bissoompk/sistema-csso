@@ -214,7 +214,7 @@ function str_datetime(d: Date): string {
 }
 
 /** O valor da célula como o openpyxl o devolveria (`data_only=True`). */
-function valor_da_celula(v: ExcelJS.CellValue): unknown {
+export function valor_da_celula(v: ExcelJS.CellValue): unknown {
   if (v === null || v === undefined) return null;
   if (typeof v === "object" && !(v instanceof Date)) {
     const o = v as unknown as Record<string, unknown>;

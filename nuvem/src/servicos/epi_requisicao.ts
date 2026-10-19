@@ -974,6 +974,27 @@ export async function concluir_analise(
   });
 }
 
+/**
+ * O caminho curto do caso comum: pega o pedido (se ainda está na fila), aprova
+ * cada item pendente na quantidade pedida e conclui — numa transação só, cada
+ * passo com o seu evento, como se fossem os cliques um a um. A RN-28 vale em
+ * cada passo; a RN-26 estourada recusa tudo (exceção se autoriza item a item).
+ */
+export async function aprovar_tudo(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<EpiRequisicao> {
+  await _exigir_analista_diferente(tx, usuario, requisicao);
+  if (requisicao.estado === "ENVIADA") await iniciar_analise(tx, usuario, requisicao);
+  if (requisicao.estado !== "EM_ANALISE") {
+    throw new RequisicaoBloqueada([
+      `aprovar tudo exige o pedido na fila ou em análise, e ${identificacao(requisicao)} está em ` +
+        rotulo_req(requisicao.estado).toLowerCase(),
+    ]);
+  }
+  for (const linha of await itens_de(tx, requisicao.id)) {
+    if (linha.estado === "SOLICITADO") await aprovar_item(tx, usuario, linha);
+  }
+  return concluir_analise(tx, usuario, requisicao);
+}
+
 /** EM_ANALISE → INDEFERIDA: todo item RECUSADO, com motivo do catálogo. */
 export async function indeferir(
   tx: Executor,
