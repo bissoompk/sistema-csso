@@ -277,7 +277,7 @@ export async function povoar_processos(tx: Executor, ctx: ContextoPovoar): Promi
   // 6) Aguardando quantificação há 95 dias — o agente químico da RN-06
   const p7 = await criar_processo(coord, {
     sequencial: 100007,
-    codigo_tipo: "PARECER_TECNICO",
+    codigo_tipo: "ADICIONAL_OCUPACIONAL",
     servidor: await pessoa("3010055"),
     unidade: ica,
     observacoes: "Agente químico: falta o relatório de ensaio. Dado de teste.",
@@ -318,7 +318,7 @@ export async function povoar_processos(tx: Executor, ctx: ContextoPovoar): Promi
   };
   const p4 = await criar_processo(coord, {
     sequencial: 100004,
-    codigo_tipo: "PARECER_TECNICO",
+    codigo_tipo: "ADICIONAL_OCUPACIONAL",
     servidor: await pessoa("3010022"),
     unidade: iect,
     observacoes: "Parecer em elaboração — laboratório de química. Dado de teste.",
@@ -454,9 +454,9 @@ export async function povoar_processos(tx: Executor, ctx: ContextoPovoar): Promi
   });
   await servico_parecer.emitir(tx, pronto, coord, { gerar_pdf: false });
   await servico_parecer.assinar(tx, pronto, coord);
-  for (const destino of ["PARECER_PRONTO_P_ASSINATURA", "PARECER_ASSINADO", "INSERIDO_NO_SEI"]) {
-    await mover(p8, destino, coord);
-  }
+  // emitir e assinar já levaram o processo a "Parecer assinado": relê e segue
+  const recarregar = async (p: Processo) => Object.assign(p, await um(tx.select().from(e.processo).where(eq(e.processo.id, p.id)), "processo"));
+  await mover(await recarregar(p8), "INSERIDO_NO_SEI", coord);
 
   const encerrado = await montar_rascunho(coord, p9, {
     laudo: await laudo_de("000.301"),
@@ -465,7 +465,8 @@ export async function povoar_processos(tx: Executor, ctx: ContextoPovoar): Promi
   });
   await servico_parecer.emitir(tx, encerrado, coord, { gerar_pdf: false });
   await servico_parecer.assinar(tx, encerrado, coord);
-  for (const destino of ["PARECER_PRONTO_P_ASSINATURA", "PARECER_ASSINADO", "INSERIDO_NO_SEI", "DEVOLVIDO_A_PROGEP", "CONCLUIDO"]) {
+  await recarregar(p9);
+  for (const destino of ["INSERIDO_NO_SEI", "DEVOLVIDO_A_PROGEP", "CONCLUIDO"]) {
     await mover(p9, destino, coord);
   }
 

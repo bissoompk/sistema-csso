@@ -17,21 +17,30 @@ import {
   laudo_tecnico,
   parametro,
   processo as tabela_processo,
+  tipo_processo,
 } from "../db/esquema/index.js";
 import { agora_utc } from "../db/esquema/base.js";
 import { ChecklistModelo } from "../dominio/dominios.js";
 import {
   ATALHO_REUSO_LAUDO,
+  CADEIA_ADICIONAL,
   INCISOS_ART11,
+  ORIGENS_DA_TRIAGEM,
   ROTULO_ESTADO,
   ROTULO_ESTADO_TELA,
   TransicaoInvalida,
+  caminhos_de_avanco,
   coluna_de,
+  colunas_destino,
   exigir_transicao,
+  fluxo_curto,
+  pode_transitar,
 } from "../dominio/estados.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
+import * as servico_nup from "./nup.js";
+import * as textos from "./textos.js";
 import type { UsuarioAtual } from "./rbac.js";
 
 export type Processo = typeof tabela_processo.$inferSelect;
@@ -119,6 +128,10 @@ export interface ResumoCartao<P = Processo> {
   readonly anexos: number;
   readonly checklist_feitos: number;
   readonly checklist_total: number;
+  /** maquina curta (tudo o que nao e adicional ocupacional) */
+  readonly curto: boolean;
+  /** as colunas do quadro para onde o cartao pode ir */
+  readonly colunas_destino: string[];
 }
 
 /**
@@ -140,17 +153,45 @@ export function precisa_de_atencao(resumo: Pick<ResumoCartao<unknown>, "atrasado
 }
 
 // ---------------------------------------------------------------------
+// Qual máquina
+// ---------------------------------------------------------------------
+type ComTipo = { tipo_processo_id?: number | null; tipo_processo?: { codigo?: string | null } | null };
+
+/**
+ * O processo anda pela máquina curta? Lê a relação `tipo_processo` quando ela
+ * veio carregada; senão consulta. Sem tipo nenhum, a cadeia longa (a mais
+ * exigente) — é o que valia antes de haver duas máquinas.
+ */
+export async function fluxo_curto_de(tx: Executor, processo: ComTipo): Promise<boolean> {
+  const carregado = processo.tipo_processo?.codigo;
+  if (carregado) return fluxo_curto(carregado);
+  if (!processo.tipo_processo_id) return false;
+  const [tipo] = await tx
+    .select({ codigo: tipo_processo.codigo })
+    .from(tipo_processo)
+    .where(eq(tipo_processo.id, processo.tipo_processo_id));
+  return fluxo_curto(tipo?.codigo);
+}
+
+// ---------------------------------------------------------------------
 // Requisitos de saída (§4)
 // ---------------------------------------------------------------------
+// Sair da triagem para estes destinos não cobra documento: arquivar, sobrestar,
+// pedir o documento que falta e (de RECEBIDO) entrar na triagem.
+const SAIDAS_DA_TRIAGEM_SEM_DOCUMENTO = new Set(["ARQUIVADO", "SOBRESTADO", "PENDENTE_DOCUMENTO", "EM_TRIAGEM"]);
+
 export async function requisitos_de_saida(
   tx: Executor,
-  processo: Pick<Processo, "id" | "estado_tecnico" | "observacoes" | "unidade_uorg_id">,
+  processo: Pick<Processo, "id" | "estado_tecnico" | "observacoes" | "unidade_uorg_id"> & ComTipo,
   destino: string,
+  curto: boolean | null = null,
 ): Promise<string[]> {
   const faltas: string[] = [];
   const origem = processo.estado_tecnico;
+  // Os requisitos são da IN 15/2022: só a cadeia do adicional os cobra.
+  if (curto ?? (await fluxo_curto_de(tx, processo))) return faltas;
 
-  if (origem === "EM_TRIAGEM" && destino !== "ARQUIVADO" && destino !== "SOBRESTADO") {
+  if (ORIGENS_DA_TRIAGEM.has(origem) && !SAIDAS_DA_TRIAGEM_SEM_DOCUMENTO.has(destino)) {
     const categorias = await _categorias_anexadas(tx, processo.id);
     if (!categorias.has("PORTARIA")) faltas.push("anexe a portaria de localização");
     if (!categorias.has("FORMULARIO")) {
@@ -167,7 +208,7 @@ export async function requisitos_de_saida(
     }
   }
 
-  if (origem === ATALHO_REUSO_LAUDO[0] && destino === ATALHO_REUSO_LAUDO[1]) {
+  if (ORIGENS_DA_TRIAGEM.has(origem) && destino === ATALHO_REUSO_LAUDO[1]) {
     if (!(await _tem_laudo_vigente(tx, processo))) {
       faltas.push(
         "o atalho para elaboração de parecer exige um laudo VIGENTE do mesmo " +
@@ -203,8 +244,22 @@ export interface OpcoesMover {
   inciso_art11?: string | null;
   laudo_reusado?: { numero_siape: string } | null;
   forcar?: boolean;
+  /**
+   * Movimento que é CONSEQUÊNCIA de outro ato já autorizado (o parecer emitido
+   * ou assinado): não cobra `processo.status` de quem emitiu.
+   */
+  pelo_sistema?: boolean;
 }
 
+const rotulo_ascii = (e: string) => (Object.hasOwn(ROTULO_ESTADO, e) ? ROTULO_ESTADO[e]! : e);
+const rotulo_tela = (e: string) => (Object.hasOwn(ROTULO_ESTADO_TELA, e) ? ROTULO_ESTADO_TELA[e]! : e);
+
+/**
+ * Move o processo. Na cadeia longa o destino pode estar vários estados adiante
+ * (salto): passa quando os requisitos de saída de TODOS os estados pulados
+ * estão atendidos, e cada passo fica na trilha. Sem caminho que passe, a
+ * recusa lista o que falta em cada passo do caminho mais curto.
+ */
 export async function mover<P extends Processo>(
   tx: Executor,
   processo: P,
@@ -212,15 +267,21 @@ export async function mover<P extends Processo>(
   usuario: UsuarioAtual,
   opcoes: OpcoesMover = {},
 ): Promise<P> {
-  usuario.exigir("processo.status");
+  if (!opcoes.pelo_sistema) usuario.exigir("processo.status");
   const origem = processo.estado_tecnico;
   if (origem === destino) return processo;
+  const curto = await fluxo_curto_de(tx, processo);
 
-  exigir_transicao(origem, destino);
-
-  if (!opcoes.forcar) {
-    const faltas = await requisitos_de_saida(tx, processo, destino);
-    if (faltas.length) throw new RequisitoDeSaidaNaoAtendido(faltas);
+  let caminho = [origem, destino];
+  if (pode_transitar(origem, destino, curto)) {
+    if (!opcoes.forcar) {
+      const faltas = await requisitos_de_saida(tx, processo, destino, curto);
+      if (faltas.length) throw new RequisitoDeSaidaNaoAtendido(faltas);
+    }
+  } else {
+    const caminhos = curto ? [] : caminhos_de_avanco(origem, destino);
+    if (!caminhos.length) exigir_transicao(origem, destino, curto); // lança
+    caminho = await _caminho_que_passa(tx, processo, caminhos, opcoes.forcar ?? false);
   }
 
   const inciso = opcoes.inciso_art11 ?? null;
@@ -233,6 +294,56 @@ export async function mover<P extends Processo>(
     ]);
   }
 
+  const salto = caminho.length > 2;
+  for (let k = 1; k < caminho.length; k++) {
+    let comentario = opcoes.comentario || null;
+    if (salto) {
+      const nota = `salto ${rotulo_ascii(origem)} -> ${rotulo_ascii(destino)}`;
+      comentario = comentario ? `${nota} — ${comentario}` : nota;
+    }
+    await _passo(tx, processo, caminho[k]!, usuario, curto, comentario, opcoes.laudo_reusado ?? null);
+  }
+  return processo;
+}
+
+/**
+ * O primeiro caminho de avanço em que nenhum passo tem requisito pendente. Sem
+ * nenhum, a recusa do mais curto, passo a passo.
+ */
+async function _caminho_que_passa(
+  tx: Executor,
+  processo: Processo,
+  caminhos: string[][],
+  forcar: boolean,
+): Promise<string[]> {
+  if (forcar) return caminhos[0]!;
+  let primeiras: string[] | null = null;
+  for (const caminho of caminhos) {
+    const faltas: string[] = [];
+    for (let k = 0; k + 1 < caminho.length; k++) {
+      const de = caminho[k]!;
+      const para = caminho[k + 1]!;
+      for (const falta of await requisitos_de_saida(tx, { ...processo, estado_tecnico: de }, para, false)) {
+        faltas.push(`${rotulo_tela(de)} → ${rotulo_tela(para)}: ${falta}`);
+      }
+    }
+    if (!faltas.length) return caminho;
+    primeiras ??= faltas;
+  }
+  throw new RequisitoDeSaidaNaoAtendido(primeiras!);
+}
+
+/** Um passo: grava o estado novo e a linha da trilha. */
+async function _passo<P extends Processo>(
+  tx: Executor,
+  processo: P,
+  destino: string,
+  usuario: UsuarioAtual,
+  curto: boolean,
+  comentario: string | null,
+  laudo_reusado: { numero_siape: string } | null,
+): Promise<void> {
+  const origem = processo.estado_tecnico;
   let estado_anterior = processo.estado_anterior;
   if (destino === "SOBRESTADO") estado_anterior = origem;
   else if (origem === "SOBRESTADO") estado_anterior = null;
@@ -241,7 +352,7 @@ export async function mover<P extends Processo>(
     estado_anterior,
     estado_tecnico: destino,
     entrou_na_etapa_em: agora_utc(),
-    etapa_id: await _etapa_da_coluna(tx, coluna_de(destino)),
+    etapa_id: await _etapa_da_coluna(tx, coluna_de(destino, curto)),
     situacao: destino === "CONCLUIDO" ? "CONCLUIDO" : "EM_ANDAMENTO",
     data_conclusao: destino === "CONCLUIDO" ? datas_br.hoje() : null,
     versao: processo.versao + 1,
@@ -249,14 +360,12 @@ export async function mover<P extends Processo>(
   const [gravado] = await tx.update(tabela_processo).set(novos).where(eq(tabela_processo.id, processo.id)).returning();
   Object.assign(processo, gravado ?? novos);
 
-  const comentario = opcoes.comentario || null;
-  const rotulo = (e: string) => (Object.hasOwn(ROTULO_ESTADO, e) ? ROTULO_ESTADO[e]! : e);
   await auditoria.registrar(tx, {
     entidade: "processo",
     entidade_id: processo.id,
     processo_id: processo.id,
     tipo_evento: auditoria.ESTADO_ALTERADO,
-    descricao: `${rotulo(origem)} -> ${rotulo(destino)}` + (comentario ? ` — ${comentario}` : ""),
+    descricao: `${rotulo_ascii(origem)} -> ${rotulo_ascii(destino)}` + (comentario ? ` — ${comentario}` : ""),
     campo: "estado_tecnico",
     valor_anterior: origem,
     valor_novo: destino,
@@ -264,7 +373,7 @@ export async function mover<P extends Processo>(
     usuario,
   });
 
-  if (origem === ATALHO_REUSO_LAUDO[0] && destino === ATALHO_REUSO_LAUDO[1]) {
+  if (!curto && ORIGENS_DA_TRIAGEM.has(origem) && destino === ATALHO_REUSO_LAUDO[1]) {
     await auditoria.registrar(tx, {
       entidade: "processo",
       entidade_id: processo.id,
@@ -272,12 +381,133 @@ export async function mover<P extends Processo>(
       tipo_evento: auditoria.REUSO_DE_LAUDO,
       descricao:
         "Parecer em elaboração por reúso de laudo vigente " +
-        `(${opcoes.laudo_reusado ? opcoes.laudo_reusado.numero_siape : "laudo do posto"}) ` +
+        `(${laudo_reusado ? laudo_reusado.numero_siape : "laudo do posto"}) ` +
         "— IN 15/2022, art. 10, §3º.",
       usuario,
     });
   }
-  return processo;
+}
+
+// Estados fora da cadeia que ainda estão "antes" do parecer: dali o processo
+// pode ser levado adiante quando o parecer anda.
+const ANTES_DA_CADEIA = new Set(["NAO_INICIADO", "PENDENTE_DOCUMENTO", "EM_RECURSO"]);
+
+/**
+ * O processo acompanha o parecer: emitido -> pronto para assinatura; assinado
+ * -> parecer assinado. Só na cadeia do adicional, só para a frente, e só se o
+ * processo está atrás. Os requisitos de saída continuam valendo: quando um
+ * deles falta, o processo fica onde está e volta o aviso (o parecer não é
+ * desfeito por isso).
+ */
+export async function acompanhar_parecer(
+  tx: Executor,
+  processo_id: number | null,
+  destino: "PARECER_PRONTO_P_ASSINATURA" | "PARECER_ASSINADO",
+  usuario: UsuarioAtual,
+  comentario: string,
+): Promise<string | null> {
+  if (processo_id === null) return null;
+  const [processo] = await tx.select().from(tabela_processo).where(eq(tabela_processo.id, processo_id));
+  if (!processo || (await fluxo_curto_de(tx, processo))) return null;
+  const i = CADEIA_ADICIONAL.indexOf(processo.estado_tecnico);
+  const atras = i >= 0 ? i < CADEIA_ADICIONAL.indexOf(destino) : ANTES_DA_CADEIA.has(processo.estado_tecnico);
+  if (!atras) return null;
+  try {
+    await mover(tx, processo, destino, usuario, { comentario, pelo_sistema: true });
+    return null;
+  } catch (erro) {
+    if (!(erro instanceof RequisitoDeSaidaNaoAtendido || erro instanceof TransicaoInvalida)) throw erro;
+    const motivos = erro instanceof RequisitoDeSaidaNaoAtendido ? erro.motivos.join("; ") : erro.message;
+    return `O processo ${processo.nup} continua em “${rotulo_tela(processo.estado_tecnico)}” — ${motivos}`;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Criação
+// ---------------------------------------------------------------------
+/** Recusa ao cadastrar o processo (NUP, duplicata, RN-21) — volta ao formulário. */
+export class ProcessoRecusado extends RegraViolada {}
+
+export interface DadosProcessoNovo {
+  nup: string;
+  tipo_processo_id: number;
+  servidor_id?: number | null;
+  unidade_uorg_id?: number | null;
+  data_autuacao?: string | null;
+  observacoes?: string | null;
+  /** "confirmei no SEI": o DV não confere e a pessoa conferiu o número */
+  dispensar_dv?: boolean;
+  /** RN-21 em aviso: a menção a saúde nas observações é necessária */
+  confirmo_mencao_saude?: boolean;
+}
+
+/**
+ * Cadastra o processo em RECEBIDO. Um lugar só para o formulário de processo
+ * novo e para a demanda que vira processo no encerramento. `TextoProibido`
+ * (e `MencaoDeSaude`) sobem como estão; o resto da recusa é `ProcessoRecusado`.
+ */
+export async function criar(tx: Executor, usuario: UsuarioAtual, d: DadosProcessoNovo): Promise<Processo> {
+  usuario.exigir("processo.criar");
+  const resultado = servico_nup.validar(d.nup);
+  if (!resultado.formato_ok) throw new ProcessoRecusado(resultado.aviso || "NUP inválido");
+  if (!resultado.dv_ok && !d.dispensar_dv) {
+    throw new ProcessoRecusado(`${resultado.aviso}. Marque 'confirmei no SEI' para prosseguir.`);
+  }
+  const [ja] = await tx
+    .select({ id: tabela_processo.id })
+    .from(tabela_processo)
+    .where(eq(tabela_processo.nup, resultado.valor));
+  if (ja) throw new ProcessoRecusado("já existe processo com este NUP");
+  const observacoes = (d.observacoes ?? "").trim() || null;
+  textos.exigir_texto_limpo(observacoes, "observações", textos.CONTEXTO_AVISO_SAUDE, d.confirmo_mencao_saude ?? false);
+
+  const [etapa] = await tx.select().from(fluxo_etapa).where(eq(fluxo_etapa.codigo, "A_FAZER"));
+  const [processo] = await tx
+    .insert(tabela_processo)
+    .values({
+      nup: resultado.valor,
+      tipo_processo_id: d.tipo_processo_id,
+      etapa_id: etapa!.id,
+      estado_tecnico: "RECEBIDO",
+      servidor_id: d.servidor_id ?? null,
+      unidade_uorg_id: d.unidade_uorg_id ?? null,
+      data_autuacao: d.data_autuacao || null,
+      ano_referencia: Number(datas_br.hoje().slice(0, 4)),
+      observacoes,
+      nup_dv_dispensado: !resultado.dv_ok,
+      responsavel_id: usuario.id,
+    })
+    .returning();
+
+  await auditoria.registrar(tx, {
+    entidade: "processo",
+    entidade_id: processo!.id,
+    processo_id: processo!.id,
+    tipo_evento: "PROCESSO_CRIADO",
+    descricao: `Processo ${processo!.nup} criado.`,
+    usuario,
+  });
+  if (!resultado.dv_ok) {
+    await auditoria.registrar(tx, {
+      entidade: "processo",
+      entidade_id: processo!.id,
+      processo_id: processo!.id,
+      tipo_evento: auditoria.NUP_DV_DISPENSADO,
+      descricao: `DV do NUP ${processo!.nup} dispensado por confirmação manual.`,
+      usuario,
+    });
+  }
+  if (d.confirmo_mencao_saude) {
+    await auditoria.registrar_mencao_de_saude(tx, {
+      entidade: "processo",
+      entidade_id: processo!.id,
+      processo_id: processo!.id,
+      campo: "observações",
+      texto: observacoes,
+      usuario,
+    });
+  }
+  return processo!;
 }
 
 export async function voltar_do_sobrestamento<P extends Processo>(
@@ -375,7 +605,8 @@ export async function resumir<P extends Pick<Processo, "id" | "estado_tecnico" |
   sla: Record<string, number> | null = null,
 ): Promise<ResumoCartao<P>> {
   const tabela_sla = sla ?? (await sla_vigente(tx));
-  const coluna = coluna_de(processo.estado_tecnico);
+  const curto = await fluxo_curto_de(tx, processo as ComTipo);
+  const coluna = coluna_de(processo.estado_tecnico, curto);
   const dias = datas_br.dias_desde(processo.entrou_na_etapa_em);
   const limite = tabela_sla[coluna] ?? 0;
 
@@ -402,5 +633,7 @@ export async function resumir<P extends Pick<Processo, "id" | "estado_tecnico" |
     anexos: anexos?.n ?? 0,
     checklist_feitos: contagem?.feitos ?? 0,
     checklist_total: contagem?.total ?? 0,
+    curto,
+    colunas_destino: colunas_destino(processo.estado_tecnico, curto),
   };
 }

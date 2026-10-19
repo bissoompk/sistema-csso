@@ -420,8 +420,9 @@
            value="{{ comentario_digitado|default('', true) }}"
            {{- ' autofocus' if recusa_comentario }}
            aria-describedby="dica-comentario">
-    <span class="dica atencao" id="dica-comentario">Nunca registre estado de saúde, CID,
-      diagnóstico ou gestação (RN-21).</span></div>
+    <span class="dica atencao" id="dica-comentario">Evite estado de saúde, diagnóstico ou
+      gestação; CPF e CID nunca (RN-21).</span></div>
+  {{ ui.confirmar_mencao_saude(aviso_saude, 'comentario-confirmo-saude') }}
 {% endcall %}
 {% endif %}
 {% endblock %}

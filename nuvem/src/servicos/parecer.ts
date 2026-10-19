@@ -31,6 +31,7 @@ import { ContextoParecer } from "./documento.js";
 import * as numeracao from "./numeracao.js";
 import * as servico_pdf from "./pdf.js";
 import * as pendencias from "./pendencias.js";
+import * as servico_processo from "./processo.js";
 import * as textos from "./textos.js";
 import { declarar_porta } from "./anexo_acesso.js";
 import { MENSAGEM_RN01, PermissaoNegada, aplicar_escopo, pode_subscrever, type UsuarioAtual } from "./rbac.js";
@@ -853,6 +854,17 @@ export async function emitir(
     parecer_id: parecer.id,
   });
 
+  // O processo acompanha: parecer emitido é parecer pronto para assinatura. Sem
+  // segundo clique na ficha; se um requisito de saída faltar, vira aviso.
+  const aviso_processo = await servico_processo.acompanhar_parecer(
+    tx,
+    parecer.processo_id,
+    "PARECER_PRONTO_P_ASSINATURA",
+    usuario,
+    `parecer ${parecer.rotulo} emitido`,
+  );
+  if (aviso_processo) validacao.avisos.push(aviso_processo);
+
   // A conversão é a ÚLTIMA coisa. Na nuvem não há LibreOffice (DESVIOS.md):
   // `converter_fora_da_transacao` devolve na hora o aviso de "sem PDF", o
   // mesmo que o Python dava numa máquina sem LibreOffice — e "indisponível"
@@ -923,6 +935,14 @@ export async function assinar(tx: Executor, parecer: ParecerCompleto, usuario: U
     usuario,
     processo_id: parecer.processo_id,
   });
+  // o processo acompanha (ver `emitir`)
+  await servico_processo.acompanhar_parecer(
+    tx,
+    parecer.processo_id,
+    "PARECER_ASSINADO",
+    usuario,
+    `parecer ${parecer.rotulo} assinado`,
+  );
   return parecer;
 }
 

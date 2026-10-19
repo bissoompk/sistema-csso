@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
 {% block titulo %}Novo processo · CSSO{% endblock %}
 {# terceiro nível da trilha: só a página sabe que aqui é "Novo processo" #}
 {% block trilha %}<span class="atual" aria-current="page">Novo processo</span>{% endblock %}
@@ -108,9 +109,10 @@
       <textarea id="obs" name="observacoes" aria-describedby="dica-obs">{{ d.get('observacoes') or '' }}</textarea>
       {% if erro_observacoes %}
       <span class="erro-campo">{{ erro_observacoes }}</span>{% endif %}
-      <span class="dica atencao" id="dica-obs">Nunca registre estado de saúde, CID,
-        diagnóstico ou gestação (RN-21).</span>
+      <span class="dica atencao" id="dica-obs">Evite estado de saúde, diagnóstico ou
+        gestação; CPF e CID nunca (RN-21).</span>
     </div>
+    {{ ui.confirmar_mencao_saude(aviso_saude, 'obs-confirmo-saude') }}
 
     <div class="acoes">
       <button type="submit">Criar</button>

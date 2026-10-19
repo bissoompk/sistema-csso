@@ -34,7 +34,7 @@ import {
   tipo_movimento,
   unidade_uorg,
 } from "../db/esquema/index.js";
-import { UnidadeUorg } from "../dominio/organizacao.js";
+import { UnidadeUorg, vigente_em } from "../dominio/organizacao.js";
 import * as repo from "../repositorios/processos.js";
 import { analisar_portaria } from "../servicos/importacao_planilha.js";
 import * as auditoria from "../servicos/auditoria.js";
@@ -179,6 +179,14 @@ rotas.post("/processos/:processo_id{[0-9]+}/parecer", async (c) => {
   if (destinatario) rascunho.destinatario_id = destinatario.id;
   const setor = await servico.setor_emissor_vigente(tx, hoje);
   if (setor) rascunho.setor_emissor_id = setor.id;
+  // Signatário: a habilitação vigente de quem cria; senão, a única vigente.
+  // Com duas ou mais e nenhuma de quem cria, a escolha fica com a pessoa.
+  const vigentes = (await tx.select().from(profissional_habilitado)).filter((h) => vigente_em(h, hoje));
+  const signatario = vigentes.find((h) => h.usuario_id === usuario.id) ?? (vigentes.length === 1 ? vigentes[0] : null);
+  if (signatario) rascunho.signatario_id = signatario.id;
+  // movimento: concessão é o caso de quase todo parecer
+  const [concessao] = await tx.select().from(tipo_movimento).where(eq(tipo_movimento.codigo, "CONCESSAO"));
+  if (concessao) rascunho.tipo_movimento_id = concessao.id;
   const [novo] = await tx
     .insert(parecer_tecnico)
     .values(rascunho as typeof parecer_tecnico.$inferInsert)

@@ -23,6 +23,7 @@ import {
   permissao,
   processo as tabela_processo,
   servidor as tabela_servidor,
+  tipo_processo,
   unidade_uorg,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
@@ -39,6 +40,8 @@ import {
 } from "../dominio/estados.js";
 import * as servico from "../servicos/demandas.js";
 import * as servico_nup from "../servicos/nup.js";
+import * as servico_processo from "../servicos/processo.js";
+import { MencaoDeSaude } from "../servicos/textos.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { numeroDaPagina, pagina, recortar, redirecionar } from "../web.js";
@@ -117,7 +120,13 @@ async function _carregar(tx: Executor, ids: number[]) {
 }
 
 type Digitado = Record<string, string>;
-type Recado = { mensagem?: string | null; erro?: string | null; digitado?: Digitado | null };
+type Recado = {
+  mensagem?: string | null;
+  erro?: string | null;
+  digitado?: Digitado | null;
+  /** a recusa foi termo de saúde (aviso): o formulário oferece a confirmação */
+  aviso_saude?: boolean;
+};
 
 async function _tela_lista(
   c: Ctx,
@@ -166,6 +175,7 @@ async function _tela_lista(
     mensagem: extra.mensagem ?? null,
     erro: extra.erro ?? null,
     digitado: extra.digitado ?? {},
+    aviso_saude: extra.aviso_saude ?? false,
   });
 }
 
@@ -183,9 +193,12 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, demanda_id: number, ex
     pode_escrever: usuario.pode(servico.PERMISSAO_ESCREVER),
     // quem demandou tem conta: o desfecho chega a ele, e o formulário avisa
     avisa_solicitante: demanda ? (await servico.conta_de_quem_demandou(tx, demanda)) !== null : false,
+    // o encerramento como "virou processo" cadastra o processo ali mesmo
+    tipos_processo: await tx.select().from(tipo_processo).orderBy(asc(tipo_processo.nome)),
     mensagem: extra.mensagem ?? null,
     erro: extra.erro ?? null,
     digitado: extra.digitado ?? {},
+    aviso_saude: extra.aviso_saude ?? false,
   });
 }
 
@@ -226,16 +239,16 @@ function recusavel(erro: unknown): erro is Error {
  * que o processo exista — por isso a saída é **recusar dizendo onde
  * cadastrar**. O NUP é aceito colado sujo, e o DV não bloqueia (RN-10).
  */
-async function _processo_do_nup(tx: Executor, bruto: string): Promise<[number | null, string | null]> {
+async function _processo_do_nup(tx: Executor, bruto: string): Promise<[number | null, string | null, boolean]> {
   const texto = (bruto ?? "").trim();
   if (!texto) {
-    return [null, "Informe o NUP do processo que a demanda gerou — é ele que liga uma " + "coisa à outra."];
+    return [null, "Informe o NUP do processo que a demanda gerou — é ele que liga uma " + "coisa à outra.", false];
   }
   let valor: string;
   try {
     valor = servico_nup.normalizar(texto);
   } catch {
-    return [null, `“${texto}” não é um NUP: o formato é 23086.021284/2024-56, com 17 ` + "dígitos."];
+    return [null, `“${texto}” não é um NUP: o formato é 23086.021284/2024-56, com 17 ` + "dígitos.", false];
   }
   const [proc] = await tx
     .select({ id: tabela_processo.id })
@@ -244,12 +257,13 @@ async function _processo_do_nup(tx: Executor, bruto: string): Promise<[number | 
   if (!proc) {
     return [
       null,
-      `Não há processo ${valor} cadastrado no sistema. Cadastre-o em “Novo ` +
-        "processo” e volte para encerrar a demanda — assim ela vira um link " +
-        "para o processo, e não um número anotado.",
+      `Não há processo ${valor} cadastrado no sistema. Escolha o tipo do ` +
+        "processo no mesmo formulário e ele é cadastrado agora — a demanda vira " +
+        "um link para ele, e não um número anotado.",
+      true,
     ];
   }
-  return [proc.id, null];
+  return [proc.id, null, false];
 }
 
 async function _demanda(tx: Executor, id: number) {
@@ -286,6 +300,7 @@ rotas.post("/demandas", async (c) => {
     solicitante_unidade_uorg_id: f.texto("solicitante_unidade_uorg_id"),
     responsavel_id: f.texto("responsavel_id"),
     prazo: f.texto("prazo"),
+    confirmo_mencao_saude: f.texto("confirmo_mencao_saude"),
   };
   const tx = c.get("tx");
   let demanda: servico.Demanda;
@@ -300,11 +315,12 @@ rotas.post("/demandas", async (c) => {
       solicitante_unidade_uorg_id: _id(d.solicitante_unidade_uorg_id),
       responsavel_id: _id(d.responsavel_id),
       prazo: _data(d.prazo),
+      confirmo_mencao_saude: d.confirmo_mencao_saude === "1",
     });
   } catch (falha) {
     if (!recusavel(falha)) throw falha;
     desfazer(c);
-    return _tela_lista(c, usuario, {}, { erro: falha.message, digitado: d });
+    return _tela_lista(c, usuario, {}, { erro: falha.message, digitado: d, aviso_saude: falha instanceof MencaoDeSaude });
   }
   return _voltar(c, `/demandas/${demanda.id}`, { mensagem: "Demanda registrada." });
 });
@@ -374,11 +390,12 @@ rotas.post("/demandas/:id{[0-9]+}/encaminhar", async (c) => {
       para_quem: d.para_quem!,
       pedido: d.pedido!,
       data_encaminhamento: _data(d.data_encaminhamento),
+      confirmo_mencao_saude: f.texto("confirmo_mencao_saude") === "1",
     });
   } catch (falha) {
     if (!(falha instanceof RegraViolada)) throw falha;
     desfazer(c);
-    return _tela_ficha(c, usuario, id, { erro: falha.message, digitado: d });
+    return _tela_ficha(c, usuario, id, { erro: falha.message, digitado: d, aviso_saude: falha instanceof MencaoDeSaude });
   }
   return _voltar(c, `/demandas/${id}`, { mensagem: "Encaminhamento registrado." });
 });
@@ -396,25 +413,43 @@ rotas.post("/demandas/:id{[0-9]+}/encerrar", async (c) => {
     nup: f.texto("nup"),
     setor: f.texto("setor"),
     data_desfecho: f.texto("data_desfecho"),
+    tipo_processo_id: f.texto("tipo_processo_id"),
+    dispensar_dv: f.texto("dispensar_dv"),
   };
-  let processo_id: number | null = null;
-  if (d.desfecho === "VIROU_PROCESSO") {
-    const [achado, recusa] = await _processo_do_nup(tx, d.nup!);
-    if (recusa) return _tela_ficha(c, usuario, id, { erro: recusa, digitado: d });
-    processo_id = achado;
-  }
+  const confirmado = f.texto("confirmo_mencao_saude") === "1";
   try {
+    let processo_id: number | null = null;
+    if (d.desfecho === "VIROU_PROCESSO") {
+      const [achado, recusa, nao_cadastrado] = await _processo_do_nup(tx, d.nup!);
+      const tipo = _id(d.tipo_processo_id);
+      if (achado !== null) processo_id = achado;
+      else if (nao_cadastrado && tipo !== null) {
+        // o processo nasce aqui, na mesma transação do encerramento: recusa
+        // adiante desfaz os dois. NUP e DV passam pela MESMA regra do
+        // formulário de processo novo.
+        usuario.exigir("processo.criar");
+        const novo = await servico_processo.criar(tx, usuario, {
+          nup: d.nup!,
+          tipo_processo_id: tipo,
+          servidor_id: demanda.solicitante_servidor_id,
+          unidade_uorg_id: demanda.solicitante_unidade_uorg_id,
+          dispensar_dv: d.dispensar_dv === "1",
+        });
+        processo_id = novo.id;
+      } else return _tela_ficha(c, usuario, id, { erro: recusa, digitado: d });
+    }
     await servico.encerrar(tx, usuario, demanda, {
       desfecho: d.desfecho!,
       relato: d.relato,
       processo_id,
       setor: d.setor,
       data_desfecho: _data(d.data_desfecho),
+      confirmo_mencao_saude: confirmado,
     });
   } catch (falha) {
     if (!recusavel(falha)) throw falha;
     desfazer(c);
-    return _tela_ficha(c, usuario, id, { erro: falha.message, digitado: d });
+    return _tela_ficha(c, usuario, id, { erro: falha.message, digitado: d, aviso_saude: falha instanceof MencaoDeSaude });
   }
   return _voltar(c, `/demandas/${id}`, { mensagem: "Demanda encerrada." });
 });

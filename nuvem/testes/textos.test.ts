@@ -60,6 +60,24 @@ describe("textos", () => {
     expect(() => textos.exigir_texto_limpo("quadro de enfermidade cronica", "observacoes")).toThrow(textos.TextoProibido);
   });
 
+  it("rn21 em aviso: saúde pede confirmação, CPF e CID nunca", () => {
+    const rotina = "Servidora gestante solicita afastamento de área insalubre";
+    const aviso = textos.CONTEXTO_AVISO_SAUDE;
+    expect(() => textos.exigir_texto_limpo(rotina, "assunto", aviso)).toThrow(textos.MencaoDeSaude);
+    expect(textos.exigir_texto_limpo(rotina, "assunto", aviso, true)).toBe(rotina);
+    for (const duro of ["consta CID-10 no atestado", "informar o CPF da gestante"]) {
+      let erro: unknown;
+      try {
+        textos.exigir_texto_limpo(duro, "assunto", aviso, true);
+      } catch (x) {
+        erro = x;
+      }
+      expect(erro).toBeInstanceOf(textos.TextoProibido);
+      expect(erro).not.toBeInstanceOf(textos.MencaoDeSaude);
+    }
+    expect(textos.termos_de_saude_em(rotina)).toEqual(["gestante"]);
+  });
+
   it("rn21 doença relacionada ao trabalho passa no contexto de acidente", () => {
     const narrativa =
       "Ocorrencia registrada na especie doença relacionada ao trabalho, com exposicao a ruido continuo no Setor de Marcenaria desde 2019.";

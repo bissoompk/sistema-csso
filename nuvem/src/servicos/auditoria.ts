@@ -25,6 +25,7 @@ import type { Executor } from "../db/cliente.js";
 import { acesso_dado_sensivel, agora_utc, conferencia_cadeia, historico_evento } from "../db/esquema/index.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import type { UsuarioAtual } from "./rbac.js";
+import { termos_de_saude_em } from "./textos.js";
 
 export type HistoricoEvento = typeof historico_evento.$inferSelect;
 export type ConferenciaCadeia = typeof conferencia_cadeia.$inferSelect;
@@ -48,6 +49,8 @@ export const BOOTSTRAP_SUPERINTENDENTE = "BOOTSTRAP_SUPERINTENDENTE";
 // é falso) e a falha "indisponível" não suja a trilha; o evento continua
 // declarado porque é chave de banco e os eventos importados o trazem.
 export const PDF_NAO_GERADO = "PDF_NAO_GERADO";
+// RN-21 em aviso: o termo de saúde ficou no texto porque quem escreveu confirmou
+export const MENCAO_SAUDE_CONFIRMADA = "MENCAO_SAUDE_CONFIRMADA";
 
 // ---------------------------------------------------------------------
 // O nome do evento na tela
@@ -106,6 +109,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   PRESCRICAO_QUINQUENAL_ALERTADA: "Prescrição quinquenal alertada",
   REUSO_DE_LAUDO: "Reuso de laudo",
   LAUDO_SUPERADO: "Laudo superado",
+  MENCAO_SAUDE_CONFIRMADA: "Menção a saúde confirmada",
   // --- direito ao adicional ---
   DIREITO_PROPOSTO: "Adicional proposto",
   DIREITO_VIGENTE: "Adicional vigente",
@@ -132,6 +136,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   PORTARIA_CRIADA: "Portaria cadastrada",
   TEXTO_VERSIONADO: "Texto padrão versionado",
   CHECKLIST_MODELO_CRIADO: "Modelo de checklist cadastrado",
+  AUTORIDADE_CRIADA: "Autoridade destinatária cadastrada",
+  SETOR_EMISSOR_CRIADO: "Setor emissor cadastrado",
   // --- certificados e treinamentos ---
   TREINAMENTO_CRIADO: "Treinamento cadastrado",
   TURMA_CRIADA: "Turma criada",
@@ -487,6 +493,35 @@ function iguais(a: unknown, b: unknown): boolean {
   if (a === undefined) a = null;
   if (b === undefined) b = null;
   return corpo(a) === corpo(b) && typeof a === typeof b;
+}
+
+/**
+ * RN-21 em aviso: quem escreveu confirmou que a menção a saúde é necessária. A
+ * linha diz o campo e os termos — o texto em si fica no registro de origem.
+ * Sem termo de saúde no texto, não grava nada (a caixa marcada à toa não é fato).
+ */
+export async function registrar_mencao_de_saude(
+  tx: Executor,
+  d: {
+    entidade: string;
+    entidade_id: number;
+    campo: string;
+    texto: string | null | undefined;
+    usuario: UsuarioAtual;
+    processo_id?: number | null;
+  },
+): Promise<void> {
+  const termos = termos_de_saude_em(d.texto);
+  if (!termos.length) return;
+  await registrar(tx, {
+    entidade: d.entidade,
+    entidade_id: d.entidade_id,
+    processo_id: d.processo_id ?? null,
+    tipo_evento: MENCAO_SAUDE_CONFIRMADA,
+    descricao: `Menção a dado de saúde confirmada como necessária no campo ${d.campo} (${termos.join(", ")}).`,
+    campo: d.campo,
+    usuario: d.usuario,
+  });
 }
 
 /** RN-14: cada campo registrado individualmente. */

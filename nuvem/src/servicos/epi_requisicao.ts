@@ -655,6 +655,7 @@ function _campos_do_cabecalho(c: {
   riscos_declarados: string;
   urgencia: string;
   justificativa_urgencia: string;
+  confirmo_mencao_saude?: boolean;
 }) {
   const problemas: string[] = [];
   if (!(FINALIDADES_REQUISICAO as readonly string[]).includes(c.finalidade)) {
@@ -674,10 +675,14 @@ function _campos_do_cabecalho(c: {
 
   return {
     finalidade: c.finalidade,
-    descricao_atividade: textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho") || null,
-    riscos_declarados: textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados") || null,
+    // RN-21 em aviso (gestante, lactante...): `MencaoDeSaude` até a confirmação
+    descricao_atividade:
+      textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
+    riscos_declarados:
+      textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
     urgencia: c.urgencia,
-    justificativa_urgencia: textos.exigir_texto_limpo(justificativa, "justificativa da urgência") || null,
+    justificativa_urgencia:
+      textos.exigir_texto_limpo(justificativa, "justificativa da urgência", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
   };
 }
 

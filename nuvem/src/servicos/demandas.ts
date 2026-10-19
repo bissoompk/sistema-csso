@@ -31,6 +31,7 @@ import {
   demanda_encaminhamento,
   pendencia as tabela_pendencia,
   processo as tabela_processo,
+  servidor as tabela_servidor,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import { hoje_iso } from "../dominio/datas.js";
@@ -130,12 +131,34 @@ export async function _sincronizar_pendencia(
 /**
  * `strip`, depois RN-21 — e devolve `null` para o que ficou vazio. `campo` é o
  * RÓTULO DA TELA, e não o nome da coluna.
+ *
+ * Na demanda o termo de saúde é AVISO (`MencaoDeSaude`), e passa com
+ * `confirmado`: "servidora gestante solicita afastamento de área insalubre" é
+ * a demanda de rotina. CPF e CID continuam recusados.
  */
-export function _limpar(valor: string | null | undefined, campo: string): string | null {
+export function _limpar(valor: string | null | undefined, campo: string, confirmado = false): string | null {
   const texto = (valor ?? "").trim();
   if (!texto) return null;
-  textos.exigir_texto_limpo(texto, campo);
+  textos.exigir_texto_limpo(texto, campo, textos.CONTEXTO_AVISO_SAUDE, confirmado);
   return texto;
+}
+
+/** Quem demandou e não foi dito nem escolhido do cadastro. */
+export const SOLICITANTE_NAO_IDENTIFICADO = "não identificado";
+
+/** RESOLVIDA sem relato: a CHECK do banco quer texto, e o texto diz que não houve. */
+export const RELATO_PADRAO_RESOLVIDA = "Resolvida, sem relato por escrito.";
+
+/** A trilha da confirmação de RN-21, um evento por campo que trouxe termo de saúde. */
+async function _registrar_mencoes(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  demanda_id: number,
+  campos: [string, string | null][],
+): Promise<void> {
+  for (const [campo, texto] of campos) {
+    await auditoria.registrar_mencao_de_saude(tx, { entidade: "demanda", entidade_id: demanda_id, campo, texto, usuario });
+  }
 }
 
 function repr(valor: string): string {
@@ -153,6 +176,7 @@ export interface DadosRegistro {
   solicitante_unidade_uorg_id?: number | null;
   responsavel_id?: number | null;
   prazo?: string | null;
+  confirmo_mencao_saude?: boolean;
 }
 
 /**
@@ -166,20 +190,24 @@ export async function registrar(tx: Executor, usuario: UsuarioAtual, d: DadosReg
   if (!(CANAIS_DEMANDA as readonly string[]).includes(d.canal)) {
     throw new RegraDaDemanda(`Canal desconhecido: ${repr(d.canal)}.`);
   }
-  const assunto_limpo = _limpar(d.assunto, "assunto");
+  const ok = d.confirmo_mencao_saude ?? false;
+  const assunto_limpo = _limpar(d.assunto, "assunto", ok);
   if (assunto_limpo === null) {
     throw new RegraDaDemanda(
       "O assunto é obrigatório — é a linha que aparece na fila, e sem ela " + "a demanda vira uma data sem conteúdo.",
     );
   }
-  const solicitante = _limpar(d.solicitante_nome, "quem demandou");
-  if (solicitante === null) {
-    throw new RegraDaDemanda(
-      "Diga quem demandou. Pode ser servidor do cadastro, chefia ou alguém " +
-        "de fora — o nome escrito é o que permite retomar a conversa depois.",
-    );
+  // Em branco: o nome do servidor escolhido do cadastro; sem ele, "não identificado".
+  let solicitante = _limpar(d.solicitante_nome, "quem demandou", ok);
+  if (solicitante === null && d.solicitante_servidor_id) {
+    const [srv] = await tx
+      .select({ nome: tabela_servidor.nome })
+      .from(tabela_servidor)
+      .where(eq(tabela_servidor.id, d.solicitante_servidor_id));
+    solicitante = srv?.nome ?? null;
   }
-  const descricao = _limpar(d.descricao, "descrição da demanda");
+  solicitante ??= SOLICITANTE_NAO_IDENTIFICADO;
+  const descricao = _limpar(d.descricao, "descrição da demanda", ok);
 
   const [demanda] = await tx
     .insert(tabela_demanda)
@@ -205,6 +233,13 @@ export async function registrar(tx: Executor, usuario: UsuarioAtual, d: DadosReg
     descricao: `${demanda!.assunto} — chegou por ${d.canal.toLowerCase()} em ${demanda!.data_chegada}`,
     usuario,
   });
+  if (ok) {
+    await _registrar_mencoes(tx, usuario, demanda!.id, [
+      ["assunto", assunto_limpo],
+      ["quem demandou", solicitante],
+      ["descrição da demanda", descricao],
+    ]);
+  }
   await _sincronizar_pendencia(tx, demanda!, usuario);
   return demanda!;
 }
@@ -278,7 +313,7 @@ export async function encaminhar(
   tx: Executor,
   usuario: UsuarioAtual,
   demanda: Demanda,
-  d: { para_quem: string; pedido: string; data_encaminhamento?: string | null },
+  d: { para_quem: string; pedido: string; data_encaminhamento?: string | null; confirmo_mencao_saude?: boolean },
 ): Promise<DemandaEncaminhamento> {
   usuario.exigir(PERMISSAO_ESCREVER);
   if (demanda.estado === "ENCERRADA") {
@@ -288,9 +323,10 @@ export async function encaminhar(
         "chegada é outra, e esta continua legível ao lado.",
     );
   }
-  const destino = _limpar(d.para_quem, "para quem");
+  const ok = d.confirmo_mencao_saude ?? false;
+  const destino = _limpar(d.para_quem, "para quem", ok);
   if (destino === null) throw new RegraDaDemanda("Diga para quem a demanda foi encaminhada.");
-  const texto = _limpar(d.pedido, "o que foi pedido");
+  const texto = _limpar(d.pedido, "o que foi pedido", ok);
   if (texto === null) {
     throw new RegraDaDemanda(
       "Escreva o que foi pedido. Encaminhamento sem isso é um carimbo de " +
@@ -316,6 +352,12 @@ export async function encaminhar(
     comentario: texto,
     usuario,
   });
+  if (ok) {
+    await _registrar_mencoes(tx, usuario, demanda.id, [
+      ["para quem", destino],
+      ["o que foi pedido", texto],
+    ]);
+  }
   if (demanda.estado === "ABERTA") {
     await _passar_a_andamento(tx, demanda, usuario, `encaminhada a ${destino}`);
   }
@@ -328,9 +370,9 @@ export async function encaminhar(
 /**
  * Fecha a demanda dizendo COMO ela terminou. Sem desfecho não encerra.
  *
- * - `RESOLVIDA` — o que foi feito, por escrito;
- * - `VIROU_PROCESSO` — o processo REAL (`processo_id`). Se o processo não
- *   existe no sistema, recusa e diz onde cadastrá-lo;
+ * - `RESOLVIDA` — o que foi feito, por escrito, se houver o que dizer (opcional);
+ * - `VIROU_PROCESSO` — o processo REAL (`processo_id`). Sem processo no sistema,
+ *   a rota o cadastra ali mesmo (NUP + tipo), na mesma transação;
  * - `ENCAMINHADA` — para qual setor e em que data;
  * - `SEM_PROVIDENCIA` — o motivo: "não vamos fazer nada" é decisão legítima, e
  *   o que não pode é ela ser tomada por esquecimento.
@@ -345,6 +387,7 @@ export async function encerrar(
     processo_id?: number | null;
     setor?: string | null;
     data_desfecho?: string | null;
+    confirmo_mencao_saude?: boolean;
   },
 ): Promise<Demanda> {
   usuario.exigir(PERMISSAO_ESCREVER);
@@ -354,8 +397,9 @@ export async function encerrar(
     throw new RegraDaDemanda("Escolha um desfecho: é ele que diz como terminou.");
   }
 
-  const texto = _limpar(d.relato, "o desfecho da demanda");
-  const destino = _limpar(d.setor, "setor de destino");
+  const ok = d.confirmo_mencao_saude ?? false;
+  let texto = _limpar(d.relato, "o desfecho da demanda", ok);
+  const destino = _limpar(d.setor, "setor de destino", ok);
   const processo_id = d.processo_id ?? null;
   let data_desfecho = d.data_desfecho ?? null;
 
@@ -381,10 +425,11 @@ export async function encerrar(
     }
     data_desfecho = data_desfecho || hoje_iso();
   }
-  if ((desfecho === "RESOLVIDA" || desfecho === "SEM_PROVIDENCIA") && texto === null) {
-    const exigido =
-      desfecho === "RESOLVIDA" ? "escreva o que foi feito" : "escreva o motivo de não haver providência";
-    throw new RegraDaDemanda(`Falta o desfecho por escrito — ${exigido}.`);
+  // RESOLVIDA dispensa o relato (o banco guarda a frase-padrão); "sem
+  // providência" continua pedindo o motivo — é decisão de não fazer.
+  if (desfecho === "RESOLVIDA" && texto === null) texto = RELATO_PADRAO_RESOLVIDA;
+  if (desfecho === "SEM_PROVIDENCIA" && texto === null) {
+    throw new RegraDaDemanda("Falta o desfecho por escrito — escreva o motivo de não haver providência.");
   }
 
   await _gravar(tx, demanda, {
@@ -411,6 +456,12 @@ export async function encerrar(
     processo_id: demanda.desfecho_processo_id,
     usuario,
   });
+  if (ok) {
+    await _registrar_mencoes(tx, usuario, demanda.id, [
+      ["o desfecho da demanda", texto],
+      ["setor de destino", destino],
+    ]);
+  }
   // encerrada não cobra mais nada: a tarefa do prazo sai do sino junto
   await _sincronizar_pendencia(tx, demanda, usuario);
   await avisar_quem_demandou(tx, demanda, usuario);
@@ -473,7 +524,11 @@ export async function avisar_quem_demandou(tx: Executor, demanda: Demanda, usuar
       ` Foi encaminhada a ${demanda.desfecho_setor}` +
       (demanda.desfecho_data ? ` em ${_data(demanda.desfecho_data)}` : "") +
       ": é lá que o assunto segue agora.";
-  } else if (demanda.desfecho === "RESOLVIDA" && demanda.desfecho_relato) {
+  } else if (
+    demanda.desfecho === "RESOLVIDA" &&
+    demanda.desfecho_relato &&
+    demanda.desfecho_relato !== RELATO_PADRAO_RESOLVIDA
+  ) {
     detalhe = ` O que foi feito: ${demanda.desfecho_relato}`;
   } else if (demanda.desfecho === "SEM_PROVIDENCIA" && demanda.desfecho_relato) {
     detalhe = ` Motivo: ${demanda.desfecho_relato}`;

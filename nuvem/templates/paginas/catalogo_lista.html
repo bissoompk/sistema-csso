@@ -23,7 +23,9 @@
   'percentuais': 'O valor é a lei; só o rótulo é editável.',
   'textos-padrao': 'Versionado: cada mudança cria a versão seguinte e aposenta a anterior.',
   'portarias': '001, 01 e 1 são a mesma portaria; o literal fica preservado.',
-  'checklists-modelo': 'Sugeridos por tipo de processo e estado — o checklist aplicado é uma cópia.'
+  'checklists-modelo': 'Sugeridos por tipo de processo e estado — o checklist aplicado é uma cópia.',
+  'autoridades-destinatarias': 'A quem o parecer se dirige. Troca de gestão é registro novo com vigência — o parecer emitido guarda o que valia na data dele.',
+  'setores-emissores': 'A sigla e o cabeçalho de quem emite o parecer. Mudança de nome é registro novo com vigência; a emissão congela o que valia.'
 } %}
 
 {# Os catálogos que oferecem cadastro. Quem não está aqui só edita o que existe:
@@ -41,7 +43,9 @@
   'agentes-nocivos': 'Cadastrar agente nocivo',
   'textos-padrao': 'Criar versão de texto',
   'portarias': 'Cadastrar portaria',
-  'checklists-modelo': 'Cadastrar modelo de checklist'
+  'checklists-modelo': 'Cadastrar modelo de checklist',
+  'autoridades-destinatarias': 'Cadastrar autoridade',
+  'setores-emissores': 'Cadastrar setor emissor'
 } %}
 
 {# O que foi digitado, devolvido pela rota quando a gravação é recusada. Só um
@@ -414,6 +418,66 @@
     {{ salvar(id) }}
   </tr>{% else %}{{ nenhum(5) }}{% endfor %}</table>
 
+{% elif nome == 'autoridades-destinatarias' %}
+<table><thead>
+  <tr><th scope="col">Nome</th><th scope="col">Cargo</th><th scope="col">Tratamento</th>
+    <th scope="col">Desde</th><th scope="col">Até</th>
+    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
+</thead>
+  {% for a in itens %}
+  {% set id = 'f-aut-' ~ a.id %}
+  <tr>
+    {% if editavel %}
+    <td><form method="post" action="/catalogos/autoridades-destinatarias/{{ a.id }}" id="{{ id }}"></form>
+        <input form="{{ id }}" name="nome" value="{{ a.nome }}" required aria-label="Nome da autoridade"></td>
+    <td><input form="{{ id }}" name="cargo" value="{{ a.cargo }}" required aria-label="Cargo da autoridade"></td>
+    <td><input form="{{ id }}" name="tratamento" value="{{ a.tratamento }}" required aria-label="Tratamento"></td>
+    <td><input form="{{ id }}" name="vigencia_inicio" type="date" value="{{ a.vigencia_inicio }}" required
+               aria-label="Início da vigência"></td>
+    <td><input form="{{ id }}" name="vigencia_fim" type="date" value="{{ a.vigencia_fim or '' }}"
+               aria-label="Fim da vigência"></td>
+    {% else %}
+    <td>{{ a.nome }}</td><td>{{ a.cargo }}</td><td>{{ a.tratamento }}</td>
+    <td class="mono">{{ a.vigencia_inicio|data }}</td>
+    <td class="mono">{{ a.vigencia_fim|data if a.vigencia_fim else '—' }}</td>
+    {% endif %}
+    {{ salvar(id) }}
+  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</table>
+
+{% elif nome == 'setores-emissores' %}
+<table><thead>
+  <tr><th scope="col">Sigla</th><th scope="col">Nome extenso</th><th scope="col">Unidade SEI</th>
+    <th scope="col">Contato</th><th scope="col">Cidade</th><th scope="col">Desde</th><th scope="col">Até</th>
+    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
+</thead>
+  {% for st in itens %}
+  {% set id = 'f-setor-' ~ st.id %}
+  <tr>
+    {% if editavel %}
+    <td><form method="post" action="/catalogos/setores-emissores/{{ st.id }}" id="{{ id }}"></form>
+        <input form="{{ id }}" name="sigla_composta" class="mono" value="{{ st.sigla_composta }}" required
+               aria-label="Sigla composta"></td>
+    <td><input form="{{ id }}" name="nome_extenso" value="{{ st.nome_extenso }}" required aria-label="Nome extenso"></td>
+    <td><input form="{{ id }}" name="unidade_sei" class="campo-medio" value="{{ st.unidade_sei or '' }}"
+               aria-label="Unidade no SEI"></td>
+    <td><input form="{{ id }}" name="email" value="{{ st.email or '' }}" aria-label="E-mail">
+        <input form="{{ id }}" name="telefone" value="{{ st.telefone or '' }}" aria-label="Telefone">
+        <input form="{{ id }}" name="endereco" value="{{ st.endereco or '' }}" aria-label="Endereço"></td>
+    <td><input form="{{ id }}" name="cidade" class="campo-medio" value="{{ st.cidade }}" aria-label="Cidade de emissão"></td>
+    <td><input form="{{ id }}" name="vigencia_inicio" type="date" value="{{ st.vigencia_inicio }}" required
+               aria-label="Início da vigência"></td>
+    <td><input form="{{ id }}" name="vigencia_fim" type="date" value="{{ st.vigencia_fim or '' }}"
+               aria-label="Fim da vigência"></td>
+    {% else %}
+    <td class="mono">{{ st.sigla_composta }}</td><td>{{ st.nome_extenso }}</td>
+    <td>{{ st.unidade_sei or '—' }}</td>
+    <td>{{ st.email or '' }} {{ st.telefone or '' }}</td><td>{{ st.cidade }}</td>
+    <td class="mono">{{ st.vigencia_inicio|data }}</td>
+    <td class="mono">{{ st.vigencia_fim|data if st.vigencia_fim else '—' }}</td>
+    {% endif %}
+    {{ salvar(id) }}
+  </tr>{% else %}{{ nenhum(8) }}{% endfor %}</table>
+
 {% else %}
 <p class="nada">Catálogo sem visão dedicada.</p>
 {% endif %}
@@ -644,6 +708,61 @@
       <textarea id="chk-itens" name="itens" required aria-describedby="dica-chk"
 placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assinado por servidor e chefia&#10;Inspeção realizada&#10;Laudo vinculado">{{ d['itens'] or '' }}</textarea>
       <span class="dica" id="dica-chk">Um por linha, na ordem.</span></div>
+  {% endcall %}
+
+  {% elif nome == 'autoridades-destinatarias' %}
+  {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/autoridades-destinatarias',
+                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            nota='ao trocar a gestão, feche a vigência da anterior') %}
+    <div class="campo"><label for="aut-nome">Nome</label>
+      <input id="aut-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="aut-cargo">Cargo</label>
+        <input id="aut-cargo" name="cargo" required placeholder="Pró-Reitor de Gestão de Pessoas"
+               value="{{ d['cargo'] or '' }}"></div>
+      <div class="campo"><label for="aut-trat">Tratamento</label>
+        <input id="aut-trat" name="tratamento" required placeholder="Senhor Pró-Reitor"
+               value="{{ d['tratamento'] or '' }}"></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label for="aut-ini">Vigente desde</label>
+        <input id="aut-ini" name="vigencia_inicio" type="date" required value="{{ d['vigencia_inicio'] or hoje }}"></div>
+      <div class="campo"><label for="aut-fim">Até (opcional)</label>
+        <input id="aut-fim" name="vigencia_fim" type="date" value="{{ d['vigencia_fim'] or '' }}"></div>
+    </div>
+  {% endcall %}
+
+  {% elif nome == 'setores-emissores' %}
+  {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/setores-emissores',
+                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            nota='a chave é sigla + início de vigência') %}
+    <div class="linha-campos">
+      <div class="campo"><label for="set-sigla">Sigla composta</label>
+        <input id="set-sigla" name="sigla_composta" required class="mono" placeholder="SEST/DASA/PROGEP"
+               value="{{ d['sigla_composta'] or '' }}"></div>
+      <div class="campo"><label for="set-sei">Unidade no SEI</label>
+        <input id="set-sei" name="unidade_sei" value="{{ d['unidade_sei'] or '' }}"></div>
+    </div>
+    <div class="campo"><label for="set-nome">Nome extenso</label>
+      <input id="set-nome" name="nome_extenso" required value="{{ d['nome_extenso'] or '' }}"></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="set-email">E-mail</label>
+        <input id="set-email" name="email" value="{{ d['email'] or '' }}"></div>
+      <div class="campo"><label for="set-tel">Telefone</label>
+        <input id="set-tel" name="telefone" value="{{ d['telefone'] or '' }}"></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label for="set-end">Endereço</label>
+        <input id="set-end" name="endereco" value="{{ d['endereco'] or '' }}"></div>
+      <div class="campo"><label for="set-cidade">Cidade de emissão</label>
+        <input id="set-cidade" name="cidade" value="{{ d['cidade'] or 'Diamantina' }}"></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label for="set-ini">Vigente desde</label>
+        <input id="set-ini" name="vigencia_inicio" type="date" required value="{{ d['vigencia_inicio'] or hoje }}"></div>
+      <div class="campo"><label for="set-fim">Até (opcional)</label>
+        <input id="set-fim" name="vigencia_fim" type="date" value="{{ d['vigencia_fim'] or '' }}"></div>
+    </div>
   {% endcall %}
 
   {% elif nome == 'agentes-nocivos' %}

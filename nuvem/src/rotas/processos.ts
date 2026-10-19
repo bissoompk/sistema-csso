@@ -15,7 +15,6 @@ import {
   checklist,
   checklist_item,
   checklist_modelo,
-  fluxo_etapa,
   historico_evento,
   parecer_tecnico,
   pendencia,
@@ -27,7 +26,7 @@ import {
 } from "../db/esquema/index.js";
 import { agora_utc } from "../db/esquema/base.js";
 import { ChecklistModelo } from "../dominio/dominios.js";
-import { INCISOS_ART11, ROTULO_ESTADO_TELA, TRANSICOES, TransicaoInvalida } from "../dominio/estados.js";
+import { INCISOS_ART11, ROTULO_ESTADO_TELA, TransicaoInvalida, destinos_do_processo } from "../dominio/estados.js";
 import * as repo from "../repositorios/processos.js";
 import * as anexo_acesso from "../servicos/anexo_acesso.js";
 import * as servico_anexos from "../servicos/anexos.js";
@@ -42,12 +41,16 @@ import {
   CHAVES_AGRUPAMENTO,
   RequisitoDeSaidaNaoAtendido,
   agrupar,
+  ProcessoRecusado,
   aplicar_checklist_modelo,
+  criar as criar_processo,
+  fluxo_curto_de,
   mover,
   requisitos_de_saida,
   resumir,
   sla_vigente,
   voltar_do_sobrestamento,
+  type Processo,
 } from "../servicos/processo.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -229,10 +232,18 @@ rotas.post("/processos/lote", async (c) => {
  * função só para os dois casos: duplicá-las foi o que fez a recusa esquecer
  * metade dos campos.
  */
-async function _tela_novo(c: Ctx, usuario: UsuarioAtual, erro: string | null = null, digitado: Record<string, unknown> = {}) {
+async function _tela_novo(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  erro: string | null = null,
+  digitado: Record<string, unknown> = {},
+  aviso_saude = false,
+) {
   const tx = c.get("tx");
   return pagina(c, "paginas/processo_novo.html", usuario, {
     erro,
+    // RN-21 em aviso: a tela oferece "confirmo que a menção é necessária"
+    aviso_saude,
     digitado: dicionario(digitado),
     tipos: await tx.select().from(tipo_processo).orderBy(asc(tipo_processo.nome)),
     servidores: await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)),
@@ -268,60 +279,26 @@ rotas.post("/processos/novo", async (c) => {
     observacoes,
     dispensar_dv,
   };
+  // do formato em diante vale o NUP normalizado (a regra mora em `servico.criar`)
   const resultado = servico_nup.validar(nup);
-  if (!resultado.formato_ok) return _tela_novo(c, usuario, resultado.aviso || "NUP inválido", digitado);
-  // do formato em diante vale o NUP normalizado
-  digitado.nup = resultado.valor;
-  if (!resultado.dv_ok && dispensar_dv !== "1") {
-    return _tela_novo(c, usuario, `${resultado.aviso}. Marque 'confirmei no SEI' para prosseguir.`, digitado);
-  }
-  if ((await repo.por_nup(tx, usuario, resultado.valor)) !== null) {
-    return _tela_novo(c, usuario, "já existe processo com este NUP", digitado);
-  }
+  if (resultado.formato_ok) digitado.nup = resultado.valor;
+  let processo: Processo;
   try {
-    textos.exigir_texto_limpo(observacoes, "observações");
-  } catch (erro) {
-    if (!(erro instanceof textos.TextoProibido)) throw erro;
-    return _tela_novo(c, usuario, erro.message, digitado);
-  }
-
-  const [etapa] = await tx.select().from(fluxo_etapa).where(eq(fluxo_etapa.codigo, "A_FAZER"));
-  const [processo] = await tx
-    .insert(tabela_processo)
-    .values({
-      nup: resultado.valor,
+    processo = await criar_processo(tx, usuario, {
+      nup,
       tipo_processo_id,
-      etapa_id: etapa!.id,
-      estado_tecnico: "RECEBIDO",
       servidor_id: servidor_id ? Number(servidor_id) : null,
       unidade_uorg_id: unidade_uorg_id ? Number(unidade_uorg_id) : null,
       data_autuacao: data_autuacao || null,
-      ano_referencia: Number(datas_br.hoje().slice(0, 4)),
-      observacoes: observacoes || null,
-      nup_dv_dispensado: !resultado.dv_ok,
-      responsavel_id: usuario.id,
-    })
-    .returning();
-
-  await auditoria.registrar(tx, {
-    entidade: "processo",
-    entidade_id: processo!.id,
-    processo_id: processo!.id,
-    tipo_evento: "PROCESSO_CRIADO",
-    descricao: `Processo ${processo!.nup} criado.`,
-    usuario,
-  });
-  if (!resultado.dv_ok) {
-    await auditoria.registrar(tx, {
-      entidade: "processo",
-      entidade_id: processo!.id,
-      processo_id: processo!.id,
-      tipo_evento: auditoria.NUP_DV_DISPENSADO,
-      descricao: `DV do NUP ${processo!.nup} dispensado por confirmação manual.`,
-      usuario,
+      observacoes,
+      dispensar_dv: dispensar_dv === "1",
+      confirmo_mencao_saude: f.texto("confirmo_mencao_saude") === "1",
     });
+  } catch (erro) {
+    if (!(erro instanceof ProcessoRecusado || erro instanceof textos.TextoProibido)) throw erro;
+    return _tela_novo(c, usuario, erro.message, digitado, erro instanceof textos.MencaoDeSaude);
   }
-  return redirecionar(c, `/processos/${processo!.id}`);
+  return redirecionar(c, `/processos/${processo.id}`);
 });
 
 // ---------------------------------------------------------------------
@@ -333,6 +310,8 @@ interface OpcoesFicha {
   erro?: string | null;
   /** o comentário que a RN-21 recusou, de volta para dentro do campo */
   comentario_digitado?: string;
+  /** a recusa foi termo de saúde (aviso): a camada oferece a confirmação */
+  aviso_saude?: boolean;
 }
 
 async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: OpcoesFicha = {}): Promise<Response> {
@@ -386,7 +365,8 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
       .orderBy(asc(pendencia.id))
   ).map((p) => ({ ...p, atrasada: (quando?: string) => pendencias.atrasada(p, quando ?? hoje) }));
 
-  const saidas = Object.hasOwn(TRANSICOES, processo.estado_tecnico) ? [...TRANSICOES[processo.estado_tecnico]!] : [];
+  // só o que a máquina do TIPO admite, saltos inclusive, na ordem do fluxo
+  const saidas = destinos_do_processo(processo.estado_tecnico, await fluxo_curto_de(tx, processo));
   return pagina(c, "paginas/processo_ficha.html", usuario, {
     processo,
     resumo: await resumir(tx, processo),
@@ -398,13 +378,14 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
     pendencias_do_processo,
     anexos: await servico_anexos.listar(tx, "processo", processo.id),
     categorias: servico_anexos.CATEGORIAS_PROCESSO,
-    destinos: saidas.sort(),
+    destinos: saidas,
     incisos: dicionario(INCISOS_ART11),
     faltas_saida: await requisitos_de_saida(tx, processo, ""),
     passos_sei: sei.PASSOS_INCLUSAO,
     mensagem: o.mensagem !== undefined ? o.mensagem : (c.req.query("mensagem") ?? null),
     erro: o.erro !== undefined ? o.erro : (c.req.query("erro") ?? null),
     comentario_digitado: o.comentario_digitado ?? c.req.query("comentario_digitado") ?? "",
+    aviso_saude: o.aviso_saude ?? false,
   });
 }
 
@@ -594,14 +575,27 @@ rotas.post("/processos/:processo_id{[0-9]+}/comentario", async (c) => {
   const f = await formulario(c);
   exigidos(f, "comentario");
   const comentario = f.texto("comentario");
+  // RN-21 em aviso: termo de saúde volta com a caixa de confirmação; CPF/CID não passam
+  const confirmado = f.texto("confirmo_mencao_saude") === "1";
   try {
-    textos.exigir_texto_limpo(comentario, "comentário");
+    textos.exigir_texto_limpo(comentario, "comentário", textos.CONTEXTO_AVISO_SAUDE, confirmado);
   } catch (erro) {
     if (!(erro instanceof textos.TextoProibido)) throw erro;
     return _ficha(c, usuario, processo_id, {
       aba: "historico",
       erro: erro.message,
       comentario_digitado: comentario,
+      aviso_saude: erro instanceof textos.MencaoDeSaude,
+    });
+  }
+  if (confirmado) {
+    await auditoria.registrar_mencao_de_saude(tx, {
+      entidade: "processo",
+      entidade_id: processo_id,
+      processo_id,
+      campo: "comentário",
+      texto: comentario,
+      usuario,
     });
   }
   await auditoria.registrar(tx, {

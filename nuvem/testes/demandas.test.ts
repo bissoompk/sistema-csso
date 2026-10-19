@@ -130,11 +130,39 @@ describe("RN-21", () => {
     ["descricao", "A servidora está grávida e pediu remoção do laboratório."],
     ["assunto", "Atestado médico da servidora do LEAC"],
     ["solicitante_nome", "Servidora com doença ocupacional"],
-  ])("recusa dado de saúde em %s", async (campo, valor) => {
+  ])("termo de saúde em %s volta com aviso e a caixa de confirmação", async (campo, valor) => {
     await entrar(cliente, "coordenador_csso");
     const recusa = await _registrar({ [campo]: valor });
     expect(recusa.status).toBe(200);
-    expect(recusa.text).toContain("termo proibido");
+    expect(recusa.text).toContain("menciona dado de saúde");
+    expect(recusa.text).toContain('name="confirmo_mencao_saude"');
+  });
+
+  it("confirmada, a menção grava e vai para a trilha", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const id = _id_da_criada(
+      await _registrar({
+        assunto: "Servidora gestante solicita afastamento de área insalubre",
+        confirmo_mencao_saude: "1",
+      }),
+    );
+    expect((await _gravada(id))!.assunto).toContain("gestante");
+    const eventos = await amb.db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "MENCAO_SAUDE_CONFIRMADA"));
+    expect(eventos).toHaveLength(1);
+    expect(eventos[0]!.entidade_id).toBe(id);
+    expect(eventos[0]!.descricao).toContain("gestante");
+    expect(ROTULO_EVENTO["MENCAO_SAUDE_CONFIRMADA"]).toBeTruthy();
+  });
+
+  it("CPF e CID não passam nem com a confirmação", async () => {
+    await entrar(cliente, "coordenador_csso");
+    for (const descricao of ["Informou o CPF na ligação.", "Atestado com CID-10 anexado."]) {
+      const recusa = await _registrar({ descricao, confirmo_mencao_saude: "1" });
+      expect(recusa.status).toBe(200);
+      expect(recusa.text).toContain("termo proibido");
+    }
+    const [{ n }] = (await amb.db.select({ n: count() }).from(e.demanda)) as [{ n: number }];
+    expect(n).toBe(0);
   });
 
   it("recusada devolve o popup aberto com o que foi digitado", async () => {
@@ -161,6 +189,19 @@ describe("RN-21", () => {
     await _registrar({ descricao: "Tem diagnóstico de LER no laudo." });
     const [{ n }] = (await amb.db.select({ n: count() }).from(e.demanda)) as [{ n: number }];
     expect(n).toBe(0);
+  });
+});
+
+describe("quem demandou", () => {
+  it("em branco vira o nome do servidor escolhido, ou “não identificado”", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const sem = _id_da_criada(await _registrar({ solicitante_nome: "" }));
+    expect((await _gravada(sem))!.solicitante_nome).toBe("não identificado");
+    const [srv] = await amb.db.select().from(e.servidor).limit(1);
+    if (srv) {
+      const com = _id_da_criada(await _registrar({ solicitante_nome: "", solicitante_servidor_id: String(srv.id) }));
+      expect((await _gravada(com))!.solicitante_nome).toBe(srv.nome);
+    }
   });
 });
 
@@ -211,10 +252,19 @@ describe("encerramento", () => {
     expect(corpo).toContain("Escolha um desfecho");
   });
 
-  it.each(["RESOLVIDA", "SEM_PROVIDENCIA"])("%s exige o texto", async (desfecho) => {
+  it("SEM_PROVIDENCIA exige o texto", async () => {
     const demanda = await _demanda_criada();
-    const corpo = (await cliente.post(`/demandas/${demanda}/encerrar`, { desfecho, relato: " " })).text;
+    const corpo = (await cliente.post(`/demandas/${demanda}/encerrar`, { desfecho: "SEM_PROVIDENCIA", relato: " " })).text;
     expect(corpo).toContain("Falta o desfecho por escrito");
+  });
+
+  it("RESOLVIDA encerra sem relato (grava a frase-padrão)", async () => {
+    const demanda = await _demanda_criada();
+    const r = await cliente.post(`/demandas/${demanda}/encerrar`, { desfecho: "RESOLVIDA", relato: " " }, { seguir: false });
+    expect(r.status).toBe(303);
+    const gravada = (await _gravada(demanda))!;
+    expect(gravada.estado).toBe("ENCERRADA");
+    expect(gravada.desfecho_relato).toBe("Resolvida, sem relato por escrito.");
   });
 
   it("encerrar RESOLVIDA grava o que foi feito", async () => {
@@ -282,11 +332,50 @@ describe("VIROU_PROCESSO", () => {
     expect(corpo).toContain(`href="/processos/${proc!.id}"`);
   });
 
-  it("NUP de processo inexistente recusa dizendo onde cadastrar", async () => {
+  it("NUP de processo inexistente, sem tipo, pede o tipo no mesmo formulário", async () => {
     const demanda = await _demanda_criada();
     const corpo = (await cliente.post(`/demandas/${demanda}/encerrar`, { desfecho: "VIROU_PROCESSO", nup: "23086.000608/2026-84" })).text;
     expect(corpo).toContain("Não há processo 23086.000608/2026-84 cadastrado");
-    expect(corpo).toContain("Novo processo");
+    expect(corpo).toContain('name="tipo_processo_id"');
+    expect((await _gravada(demanda))!.estado).toBe("ABERTA");
+  });
+
+  it("NUP inexistente com o tipo cadastra o processo e encerra no mesmo ato", async () => {
+    const demanda = await _demanda_criada();
+    const [tipo] = await amb.db.select().from(e.tipo_processo).where(eq(e.tipo_processo.codigo, "PGR"));
+    const r = await cliente.post(
+      `/demandas/${demanda}/encerrar`,
+      { desfecho: "VIROU_PROCESSO", nup: "23086.000608/2026-84", tipo_processo_id: String(tipo!.id) },
+      { seguir: false },
+    );
+    expect(r.status, r.text.slice(0, 400)).toBe(303);
+    const [proc] = await amb.db.select().from(e.processo).where(eq(e.processo.nup, "23086.000608/2026-84"));
+    expect(proc!.tipo_processo_id).toBe(tipo!.id);
+    expect(proc!.estado_tecnico).toBe("RECEBIDO");
+    const gravada = (await _gravada(demanda))!;
+    expect(gravada.desfecho).toBe("VIROU_PROCESSO");
+    expect(gravada.desfecho_processo_id).toBe(proc!.id);
+  });
+
+  it("DV errado pede a confirmação do SEI, e nada é gravado", async () => {
+    const demanda = await _demanda_criada();
+    const [tipo] = await amb.db.select().from(e.tipo_processo).where(eq(e.tipo_processo.codigo, "PGR"));
+    const corpo = (
+      await cliente.post(`/demandas/${demanda}/encerrar`, {
+        desfecho: "VIROU_PROCESSO",
+        nup: "23086.000608/2026-00",
+        tipo_processo_id: String(tipo!.id),
+      })
+    ).text;
+    expect(corpo).toContain("confirmei no SEI");
+    expect(corpo).toContain('name="dispensar_dv"');
+    expect(await amb.db.select().from(e.processo).where(eq(e.processo.nup, "23086.000608/2026-00"))).toHaveLength(0);
+    const ok = await cliente.post(
+      `/demandas/${demanda}/encerrar`,
+      { desfecho: "VIROU_PROCESSO", nup: "23086.000608/2026-00", tipo_processo_id: String(tipo!.id), dispensar_dv: "1" },
+      { seguir: false },
+    );
+    expect(ok.status).toBe(303);
   });
 
   it("NUP mal formado recusa com o formato", async () => {

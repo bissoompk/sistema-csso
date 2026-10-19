@@ -36,14 +36,13 @@
      percorre o MESMO caminho do arrasto. A coluna atual fica de fora da lista:
      "mover para onde já está" não é um movimento.
 
-     `coluna` vem da rota quando este cartão volta como fragmento; na página
-     inteira quem sabe a coluna é o laço de `kanban.html` (`codigo`). #}
-  {% set coluna_atual = coluna if coluna is defined else codigo %}
-  {% if usuario and usuario.pode('processo.status') %}
+     Só saem as colunas que a máquina do TIPO admite a partir do estado atual
+     (`r.colunas_destino`): PGR não ganha botão para a cadeia do adicional. #}
+  {% if usuario and usuario.pode('processo.status') and r.colunas_destino|length %}
   <details class="mover">
     <summary>mover para…</summary>
     <form method="post" action="/kanban/mover/{{ p.id }}" data-mover>
-      {% for destino, rotulo in COLUNAS_KANBAN %}{% if destino != coluna_atual %}
+      {% for destino, rotulo in COLUNAS_KANBAN %}{% if destino in r.colunas_destino %}
       <button type="submit" name="coluna" value="{{ destino }}" class="secundario compacto">{{ rotulo }}</button>
       {% endif %}{% endfor %}
     </form>

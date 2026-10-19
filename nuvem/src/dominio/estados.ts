@@ -72,16 +72,23 @@ export const ESTADOS_PROCESSO = [
 export type EstadoProcesso = (typeof ESTADOS_PROCESSO)[number];
 
 // Transicoes nao listadas sao proibidas. SOBRESTADO e tratado a parte.
+//
+// Esta e a cadeia LONGA, do adicional ocupacional (IN 15/2022). Os demais
+// tipos andam pela maquina curta, logo abaixo (`TRANSICOES_CURTA`).
+//
+// RECEBIDO tem as mesmas saidas da triagem: o clique RECEBIDO -> EM_TRIAGEM
+// nao registrava fato nenhum, e virou opcional.
+const SAIDAS_DA_TRIAGEM = conjunto(
+  'PENDENTE_DOCUMENTO',
+  'AGUARDANDO_INSPECAO',
+  'PARECER_EM_ELABORACAO', // atalho por reuso de laudo (art. 10 SS3)
+  'INDEFERIDO_TECNICAMENTE',
+  'ARQUIVADO',
+);
 export const TRANSICOES: Transicoes = {
   NAO_INICIADO: conjunto('RECEBIDO', 'EM_TRIAGEM', 'ARQUIVADO'),
-  RECEBIDO: conjunto('EM_TRIAGEM'),
-  EM_TRIAGEM: conjunto(
-    'PENDENTE_DOCUMENTO',
-    'AGUARDANDO_INSPECAO',
-    'PARECER_EM_ELABORACAO', // atalho por reuso de laudo (art. 10 SS3)
-    'INDEFERIDO_TECNICAMENTE',
-    'ARQUIVADO',
-  ),
+  RECEBIDO: conjunto('EM_TRIAGEM', ...SAIDAS_DA_TRIAGEM),
+  EM_TRIAGEM: SAIDAS_DA_TRIAGEM,
   PENDENTE_DOCUMENTO: conjunto('EM_TRIAGEM', 'SOBRESTADO', 'ARQUIVADO'),
   AGUARDANDO_INSPECAO: conjunto('INSPECIONADO'),
   INSPECIONADO: conjunto(
@@ -105,7 +112,55 @@ export const TRANSICOES: Transicoes = {
 };
 
 // Atalho legitimo: EM_TRIAGEM -> PARECER_EM_ELABORACAO exige laudo vigente
+// (de RECEBIDO tambem, que tem as mesmas saidas da triagem)
 export const ATALHO_REUSO_LAUDO = ['EM_TRIAGEM', 'PARECER_EM_ELABORACAO'] as const;
+export const ORIGENS_DA_TRIAGEM: ReadonlySet<string> = conjunto('RECEBIDO', 'EM_TRIAGEM');
+
+// Os tipos de processo que percorrem a cadeia longa e cobram os requisitos da
+// IN 15/2022 (portaria e formulario na triagem, laudo, parecer). Aposentadoria
+// especial fica de fora: a base legal e outra (LTCAT/PPP), nao a IN 15/2022.
+export const TIPOS_CADEIA_ADICIONAL: ReadonlySet<string> = conjunto('ADICIONAL_OCUPACIONAL');
+
+/** PGR, RITS, acidente, consulta... — tudo o que nao e adicional anda pela maquina curta. */
+export function fluxo_curto(tipo_codigo: string | null | undefined): boolean {
+  return !(tipo_codigo && TIPOS_CADEIA_ADICIONAL.has(tipo_codigo));
+}
+
+// A maquina CURTA: chegou, esta sendo feito, terminou. EM_TRIAGEM faz as vezes
+// de "em andamento" (no quadro ele cai na coluna Em andamento, ver `coluna_de`)
+// e PENDENTE_DOCUMENTO a de "aguardando". Ida e volta onde nao custa nada;
+// CONCLUIDO reabre. Sobrestar continua valendo de qualquer estado nao final.
+export const TRANSICOES_CURTA: Transicoes = {
+  NAO_INICIADO: conjunto('RECEBIDO', 'EM_TRIAGEM', 'PENDENTE_DOCUMENTO', 'CONCLUIDO', 'ARQUIVADO'),
+  RECEBIDO: conjunto('EM_TRIAGEM', 'PENDENTE_DOCUMENTO', 'CONCLUIDO', 'ARQUIVADO'),
+  EM_TRIAGEM: conjunto('RECEBIDO', 'PENDENTE_DOCUMENTO', 'CONCLUIDO', 'ARQUIVADO'),
+  PENDENTE_DOCUMENTO: conjunto('EM_TRIAGEM', 'CONCLUIDO', 'ARQUIVADO'),
+  CONCLUIDO: conjunto('EM_TRIAGEM'),
+  ARQUIVADO: conjunto(),
+  SOBRESTADO: conjunto(),
+};
+// Processo de tipo curto parado num estado da cadeia longa (importado, ou de
+// antes desta maquina): sai para a maquina curta, e nao fica preso.
+const SAIDAS_CURTA_DE_RESGATE = conjunto('EM_TRIAGEM', 'PENDENTE_DOCUMENTO', 'CONCLUIDO', 'ARQUIVADO');
+
+// A ordem do AVANCO na cadeia longa. So nela cabe o salto de varios estados num
+// movimento (`caminhos_de_avanco`); desvio (pendencia, indeferimento, arquivo)
+// e sempre um passo so.
+export const CADEIA_ADICIONAL: readonly string[] = [
+  'RECEBIDO',
+  'EM_TRIAGEM',
+  'AGUARDANDO_INSPECAO',
+  'INSPECIONADO',
+  'AGUARDANDO_QUANTIFICACAO',
+  'LAUDO_EM_ELABORACAO',
+  'LAUDO_EMITIDO',
+  'PARECER_EM_ELABORACAO',
+  'PARECER_PRONTO_P_ASSINATURA',
+  'PARECER_ASSINADO',
+  'INSERIDO_NO_SEI',
+  'DEVOLVIDO_A_PROGEP',
+  'CONCLUIDO',
+];
 
 export const ESTADO_PARA_COLUNA: Rotulos = {
   NAO_INICIADO: 'NAO_INICIADO',
@@ -505,7 +560,7 @@ export const ROTULO_CANAL_DEMANDA: Rotulos = {
 
 // Como a demanda terminou. **O desfecho e obrigatorio no encerramento**, e cada
 // um cobra a sua prova (a CHECK `ck_demanda_desfecho_campos` cobra no banco):
-//   RESOLVIDA       — o que foi feito, por escrito;
+//   RESOLVIDA       — o que foi feito, por escrito (opcional: vazio grava a frase-padrao);
 //   VIROU_PROCESSO  — o `processo.id` REAL, e nao um NUP digitado;
 //   ENCAMINHADA     — para qual setor, e em que data;
 //   SEM_PROVIDENCIA — o motivo escrito: "nao vamos fazer nada" e decisao
@@ -593,26 +648,77 @@ function recusa(origem: string, destino: string, saidas: Iterable<string>, rotul
   return frase;
 }
 
-/**
- * Maquina A. SOBRESTADO fica a parte: entra de quase todo lugar e volta para o
- * estado anterior, que nao cabe numa tabela de origem -> destinos.
- */
-export function pode_transitar(origem: string, destino: string): boolean {
-  if (destino === 'SOBRESTADO') return origem !== 'SOBRESTADO' && origem !== 'ARQUIVADO';
-  if (origem === 'SOBRESTADO') return (ESTADOS_PROCESSO as readonly string[]).includes(destino);
-  return pode(TRANSICOES, origem, destino);
+/** As saidas de tabela do processo (sem SOBRESTADO), pela maquina do tipo. */
+function saidas_do_processo(origem: string, curto: boolean): ReadonlySet<string> {
+  if (!curto) return saidas_de(TRANSICOES, origem);
+  if (Object.hasOwn(TRANSICOES_CURTA, origem)) return TRANSICOES_CURTA[origem]!;
+  return SAIDAS_CURTA_DE_RESGATE;
 }
 
-export function exigir_transicao(origem: string, destino: string): void {
-  if (pode_transitar(origem, destino)) return;
+/**
+ * Maquina A. SOBRESTADO fica a parte: entra de quase todo lugar e volta para o
+ * estado anterior, que nao cabe numa tabela de origem -> destinos. `curto`
+ * escolhe a maquina do tipo (`fluxo_curto`); o padrao e a cadeia longa.
+ */
+export function pode_transitar(origem: string, destino: string, curto = false): boolean {
+  if (destino === 'SOBRESTADO') return origem !== 'SOBRESTADO' && origem !== 'ARQUIVADO';
+  if (origem === 'SOBRESTADO') return (ESTADOS_PROCESSO as readonly string[]).includes(destino);
+  return saidas_do_processo(origem, curto).has(destino);
+}
+
+export function exigir_transicao(origem: string, destino: string, curto = false): void {
+  if (pode_transitar(origem, destino, curto)) return;
   // `ROTULO_ESTADO_TELA`, e não o ASCII: esta frase vai para a tela e para mais
   // nada. SOBRESTADO entra na lista de saídas porque `pode_transitar` o admite
   // de quase todo lugar — a lista tem de dizer o que a máquina de fato aceita.
-  let saidas = new Set(saidas_de(TRANSICOES, origem));
+  let saidas = new Set(saidas_do_processo(origem, curto));
   if (origem === 'SOBRESTADO') saidas = new Set(ESTADOS_PROCESSO);
   else if (origem !== 'ARQUIVADO') saidas.add('SOBRESTADO');
   saidas.delete(origem);
   throw new TransicaoInvalida(recusa(origem, destino, saidas, ROTULO_ESTADO_TELA));
+}
+
+/**
+ * Para onde o processo pode ir num movimento, na ordem da maquina: os passos
+ * diretos e, na cadeia longa, os estados adiante alcancaveis por salto. Sem
+ * SOBRESTADO, que a tela oferece a parte. Os requisitos de saida NAO entram
+ * aqui (dependem de anexo); quem confere e o servico, ao mover.
+ */
+export function destinos_do_processo(origem: string, curto = false): string[] {
+  const diretos = saidas_do_processo(origem, curto);
+  return ESTADOS_PROCESSO.filter(
+    (e) =>
+      e !== origem &&
+      e !== 'SOBRESTADO' &&
+      (diretos.has(e) || (!curto && caminhos_de_avanco(origem, e).length > 0)),
+  );
+}
+
+/**
+ * Os caminhos de AVANCO de `origem` ate `destino` na cadeia longa, do mais
+ * curto ao mais longo. O primeiro passo e qualquer transicao admitida (sair de
+ * PENDENTE_DOCUMENTO pela triagem, por exemplo); dali em diante, so para a
+ * frente na `CADEIA_ADICIONAL`. Vazio quando nao ha salto possivel.
+ */
+export function caminhos_de_avanco(origem: string, destino: string): string[][] {
+  const alvo = CADEIA_ADICIONAL.indexOf(destino);
+  if (alvo < 0 || origem === destino) return [];
+  const achados: string[][] = [];
+  const andar = (atual: string, caminho: string[]) => {
+    if (atual === destino) {
+      achados.push(caminho);
+      return;
+    }
+    const i = CADEIA_ADICIONAL.indexOf(atual);
+    for (const proximo of saidas_de(TRANSICOES, atual)) {
+      const j = CADEIA_ADICIONAL.indexOf(proximo);
+      if (j < 0 || j > alvo || caminho.includes(proximo)) continue;
+      if (i >= 0 && j <= i) continue;
+      andar(proximo, [...caminho, proximo]);
+    }
+  };
+  andar(origem, [origem]);
+  return achados.sort((a, b) => a.length - b.length);
 }
 
 export function exigir_transicao_direito(origem: string, destino: string): void {
@@ -648,6 +754,62 @@ export function destinos_de_turma(origem: string): string[] {
   return ESTADOS_TURMA.filter((estado) => admitidos.has(estado));
 }
 
-export function coluna_de(estado: string): string {
+// Os estados que um cartao pode assumir ao ser solto em cada coluna, na ordem
+// de preferencia. CONCLUIDO so conclui: soltar em "Concluido" nunca arquiva
+// nem indefere (isso e decisao, e vai pela ficha).
+const CANDIDATOS_DA_COLUNA: Readonly<Record<string, readonly string[]>> = {
+  A_FAZER: ['EM_TRIAGEM', 'RECEBIDO'],
+  EM_ANDAMENTO: [
+    'AGUARDANDO_INSPECAO',
+    'INSPECIONADO',
+    'LAUDO_EM_ELABORACAO',
+    'LAUDO_EMITIDO',
+    'PARECER_EM_ELABORACAO',
+    'PARECER_ASSINADO',
+    'INSERIDO_NO_SEI',
+    'EM_RECURSO',
+  ],
+  AGUARDANDO: ['PENDENTE_DOCUMENTO', 'AGUARDANDO_QUANTIFICACAO', 'PARECER_PRONTO_P_ASSINATURA', 'DEVOLVIDO_A_PROGEP'],
+  CONCLUIDO: ['CONCLUIDO'],
+};
+const CANDIDATOS_DA_COLUNA_CURTA: Readonly<Record<string, readonly string[]>> = {
+  A_FAZER: ['RECEBIDO'],
+  EM_ANDAMENTO: ['EM_TRIAGEM'],
+  AGUARDANDO: ['PENDENTE_DOCUMENTO'],
+  CONCLUIDO: ['CONCLUIDO'],
+};
+
+/**
+ * O estado em que o cartao cai ao ser solto na `coluna`: o primeiro candidato
+ * da coluna que seja passo direto; senao, na cadeia longa, o mais proximo
+ * adiante (salto). `null` quando a coluna nao e destino para esta maquina.
+ */
+export function estado_para_coluna(origem: string, coluna: string, curto = false): string | null {
+  const tabela = curto ? CANDIDATOS_DA_COLUNA_CURTA : CANDIDATOS_DA_COLUNA;
+  const candidatos = (Object.hasOwn(tabela, coluna) ? tabela[coluna]! : []).filter(
+    (e) => e !== origem && coluna_de(e, curto) === coluna,
+  );
+  const direto = candidatos.find((e) => pode_transitar(origem, e, curto));
+  if (direto) return direto;
+  if (curto) return null;
+  const adiante = candidatos
+    .filter((e) => caminhos_de_avanco(origem, e).length > 0)
+    .sort((a, b) => CADEIA_ADICIONAL.indexOf(a) - CADEIA_ADICIONAL.indexOf(b));
+  return adiante[0] ?? null;
+}
+
+/** As colunas do quadro para onde o cartao pode ir (o menu "mover para..."). */
+export function colunas_destino(origem: string, curto = false): string[] {
+  return COLUNAS_KANBAN.map(([codigo]) => codigo).filter(
+    (codigo) => codigo !== coluna_de(origem, curto) && estado_para_coluna(origem, codigo, curto) !== null,
+  );
+}
+
+/**
+ * A coluna do quadro. Na maquina curta EM_TRIAGEM e o "em andamento" do PGR,
+ * do RITS...: vai para a coluna Em andamento, e nao para A fazer.
+ */
+export function coluna_de(estado: string, curto = false): string {
+  if (curto && estado === 'EM_TRIAGEM') return 'EM_ANDAMENTO';
   return Object.hasOwn(ESTADO_PARA_COLUNA, estado) ? ESTADO_PARA_COLUNA[estado]! : 'A_FAZER';
 }

@@ -64,6 +64,19 @@
       >somente leitura<span class="oculto"> — {{ verbo }} exige a permissão {{ permissao }}</span></span>
 {%- endmacro %}
 
+{# RN-21 em aviso: a caixa que deixa gravar um termo de saúde necessário
+   ("servidora gestante solicita afastamento..."). Só aparece depois do aviso —
+   marcada de antemão, ela deixaria de ser confirmação. A marcação vai para a
+   auditoria (MENCAO_SAUDE_CONFIRMADA). CPF e CID não passam nem com ela. #}
+{% macro confirmar_mencao_saude(aviso, id='confirmo-mencao-saude') %}
+{% if aviso %}
+<div class="campo">
+  <label class="discreto" for="{{ id }}">
+    <input id="{{ id }}" type="checkbox" name="confirmo_mencao_saude" value="1">
+    confirmo que a menção é necessária</label></div>
+{% endif %}
+{%- endmacro %}
+
 {% set ROTULO_SITUACAO_PARECER = {
   'RASCUNHO': 'Rascunho',
   'EM_REVISAO': 'Em revisão',

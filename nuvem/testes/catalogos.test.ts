@@ -22,6 +22,7 @@ const abertos = (corpo: string) => [...corpo.matchAll(/<dialog[^>]*id="([^"]+)"[
 const CATALOGOS = [
   "campi", "unidades-uorg", "postos-trabalho", "cargos", "agentes-nocivos", "tipos-risco",
   "fundamentacoes-legais", "percentuais", "textos-padrao", "portarias", "checklists-modelo",
+  "autoridades-destinatarias", "setores-emissores",
 ];
 
 describe("índice e telas", () => {
@@ -45,6 +46,48 @@ describe("índice e telas", () => {
     expect(r.status).toBe(200);
     expect(r.text).toContain("somente leitura");
     expect(r.text).not.toContain('action="/catalogos/campi/');
+  });
+});
+
+describe("autoridade destinatária e setor emissor", () => {
+  it("cadastra autoridade com vigência e audita", async () => {
+    const r = await amb.cliente.post(
+      "/catalogos/autoridades-destinatarias",
+      { nome: "Fulana de Tal", cargo: "Pró-Reitora de Gestão de Pessoas", tratamento: "Senhora Pró-Reitora", vigencia_inicio: "2026-10-01" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    const [a] = await amb.db.select().from(e.autoridade_destinataria).where(eq(e.autoridade_destinataria.nome, "Fulana de Tal"));
+    expect(a!.vigencia_inicio).toBe("2026-10-01");
+    const [ev] = await amb.db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "AUTORIDADE_CRIADA"));
+    expect(ev!.entidade_id).toBe(a!.id);
+  });
+
+  it("edita autoridade em linha com diff", async () => {
+    const [a] = await amb.db.select().from(e.autoridade_destinataria).limit(1);
+    await amb.cliente.post(
+      `/catalogos/autoridades-destinatarias/${a!.id}`,
+      { nome: a!.nome, cargo: a!.cargo, tratamento: a!.tratamento, vigencia_inicio: a!.vigencia_inicio, vigencia_fim: "2026-09-30" },
+      { seguir: false },
+    );
+    const [depois] = await amb.db.select().from(e.autoridade_destinataria).where(eq(e.autoridade_destinataria.id, a!.id));
+    expect(depois!.vigencia_fim).toBe("2026-09-30");
+  });
+
+  it("cadastra setor emissor; mesma sigla e início é recusado com o popup aberto", async () => {
+    const dados = { sigla_composta: "SEST/DASA/PROGEP", nome_extenso: "Seção de Segurança", vigencia_inicio: "2026-11-01" };
+    expect((await amb.cliente.post("/catalogos/setores-emissores", dados, { seguir: false })).status).toBe(303);
+    const [s] = await amb.db.select().from(e.setor_emissor).where(eq(e.setor_emissor.vigencia_inicio, "2026-11-01"));
+    expect(s!.cidade).toBe("Diamantina");
+    const corpo = (await amb.cliente.post("/catalogos/setores-emissores", dados)).text;
+    expect(abertos(corpo)).toEqual(["novo"]);
+    expect(corpo).toContain("Já existe SEST/DASA/PROGEP");
+  });
+
+  it("exige catalogo.gerenciar", async () => {
+    await entrar(amb.cliente, "secretaria_csso");
+    const r = await amb.cliente.post("/catalogos/setores-emissores", { sigla_composta: "X", nome_extenso: "X", vigencia_inicio: "2026-01-01" });
+    expect(r.status).toBe(403);
   });
 });
 

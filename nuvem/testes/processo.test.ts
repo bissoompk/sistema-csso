@@ -7,13 +7,14 @@ import { and, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import type { Banco } from "../src/db/cliente.js";
 import { agora_utc } from "../src/db/esquema/base.js";
-import { TransicaoInvalida } from "../src/dominio/estados.js";
+import { TransicaoInvalida, coluna_de, colunas_destino, destinos_do_processo, estado_para_coluna } from "../src/dominio/estados.js";
 import * as repo from "../src/repositorios/processos.js";
 import * as servico_anexos from "../src/servicos/anexos.js";
 import * as datas_br from "../src/servicos/datas_br.js";
 import {
   SLA_PADRAO,
   RequisitoDeSaidaNaoAtendido,
+  acompanhar_parecer,
   mover,
   requisitos_de_saida,
   resumir,
@@ -137,7 +138,10 @@ describe("transições", () => {
   });
 
   it("transição proibida", async () => {
-    await expect(mover(db, processo, "CONCLUIDO", ator)).rejects.toBeInstanceOf(TransicaoInvalida);
+    await expect(mover(db, processo, "NAO_INICIADO", ator)).rejects.toBeInstanceOf(TransicaoInvalida);
+    // para trás na cadeia não é salto
+    await mudar({ estado_tecnico: "LAUDO_EMITIDO" });
+    await expect(mover(db, processo, "AGUARDANDO_INSPECAO", ator)).rejects.toBeInstanceOf(TransicaoInvalida);
   });
 
   it("mover para o mesmo estado não faz nada", async () => {
@@ -170,6 +174,128 @@ describe("transições", () => {
     expect(ev!.descricao).toBe("Em triagem -> Arquivado — sem objeto");
     expect(ev!.valor_anterior).toBe("EM_TRIAGEM");
     expect(ev!.valor_novo).toBe("ARQUIVADO");
+  });
+});
+
+describe("cadeia do adicional: atalhos e saltos", () => {
+  it("RECEBIDO tem as saídas da triagem, com os mesmos requisitos", async () => {
+    await mudar({ estado_tecnico: "RECEBIDO" });
+    await expect(mover(db, processo, "AGUARDANDO_INSPECAO", ator)).rejects.toBeInstanceOf(RequisitoDeSaidaNaoAtendido);
+    await anexar("PORTARIA");
+    await anexar("FORMULARIO");
+    await mover(db, processo, "AGUARDANDO_INSPECAO", ator);
+    expect(processo.estado_tecnico).toBe("AGUARDANDO_INSPECAO");
+  });
+
+  it("pedir documento não exige o documento", async () => {
+    await mover(db, processo, "PENDENTE_DOCUMENTO", ator);
+    expect(processo.estado_tecnico).toBe("PENDENTE_DOCUMENTO");
+  });
+
+  it("salto recusado lista o que falta, passo a passo, e não grava nada", async () => {
+    const erro = await mover(db, processo, "LAUDO_EMITIDO", ator).catch((x) => x);
+    expect(erro).toBeInstanceOf(RequisitoDeSaidaNaoAtendido);
+    expect(erro.motivos[0]).toContain("Em triagem → ");
+    expect(erro.motivos.join(" ")).toContain("portaria de localização");
+    const [gravado] = await db.select().from(e.processo).where(eq(e.processo.id, processo.id));
+    expect(gravado!.estado_tecnico).toBe("EM_TRIAGEM");
+  });
+
+  it("salto com requisitos atendidos passa e registra cada passo", async () => {
+    await anexar("PORTARIA");
+    await anexar("FORMULARIO");
+    await mover(db, processo, "LAUDO_EMITIDO", ator);
+    expect(processo.estado_tecnico).toBe("LAUDO_EMITIDO");
+    const passos = await db
+      .select()
+      .from(e.historico_evento)
+      .where(and(eq(e.historico_evento.tipo_evento, "ESTADO_ALTERADO"), eq(e.historico_evento.processo_id, processo.id)));
+    // triagem -> inspeção -> inspecionado -> laudo em elaboração -> laudo emitido
+    // (a quantificação fica de fora: o caminho mais curto que passa)
+    expect(passos.map((p) => p.valor_novo)).toEqual([
+      "AGUARDANDO_INSPECAO",
+      "INSPECIONADO",
+      "LAUDO_EM_ELABORACAO",
+      "LAUDO_EMITIDO",
+    ]);
+    expect(passos[0]!.descricao).toContain("salto Em triagem -> Laudo emitido");
+  });
+
+  it("a tela oferece os saltos e o quadro escolhe o estado pela coluna", () => {
+    expect(destinos_do_processo("EM_TRIAGEM")).toEqual(expect.arrayContaining(["PENDENTE_DOCUMENTO", "LAUDO_EMITIDO", "CONCLUIDO"]));
+    expect(destinos_do_processo("EM_TRIAGEM")).not.toContain("RECEBIDO");
+    expect(estado_para_coluna("EM_TRIAGEM", "AGUARDANDO")).toBe("PENDENTE_DOCUMENTO");
+    expect(estado_para_coluna("LAUDO_EMITIDO", "AGUARDANDO")).toBe("PARECER_PRONTO_P_ASSINATURA");
+    expect(estado_para_coluna("EM_TRIAGEM", "CONCLUIDO")).toBe("CONCLUIDO");
+    expect(estado_para_coluna("EM_TRIAGEM", "NAO_INICIADO")).toBeNull();
+  });
+
+  it("o processo acompanha o parecer, só para a frente", async () => {
+    await mudar({ estado_tecnico: "PARECER_EM_ELABORACAO" });
+    expect(await acompanhar_parecer(db, processo.id, "PARECER_PRONTO_P_ASSINATURA", ator, "parecer 1/2026 emitido")).toBeNull();
+    let [gravado] = await db.select().from(e.processo).where(eq(e.processo.id, processo.id));
+    expect(gravado!.estado_tecnico).toBe("PARECER_PRONTO_P_ASSINATURA");
+    // já adiante: não volta
+    await mudar({ estado_tecnico: "INSERIDO_NO_SEI" });
+    await acompanhar_parecer(db, processo.id, "PARECER_ASSINADO", ator, "parecer 1/2026 assinado");
+    [gravado] = await db.select().from(e.processo).where(eq(e.processo.id, processo.id));
+    expect(gravado!.estado_tecnico).toBe("INSERIDO_NO_SEI");
+  });
+
+  it("sem portaria, o processo fica e volta o aviso", async () => {
+    const aviso = await acompanhar_parecer(db, processo.id, "PARECER_PRONTO_P_ASSINATURA", ator, "parecer emitido");
+    expect(aviso).toContain("continua em “Em triagem”");
+    const [gravado] = await db.select().from(e.processo).where(eq(e.processo.id, processo.id));
+    expect(gravado!.estado_tecnico).toBe("EM_TRIAGEM");
+  });
+});
+
+describe("máquina curta (PGR, RITS, acidente...)", () => {
+  async function virar(codigo: string) {
+    const [tipo] = await db.select().from(e.tipo_processo).where(eq(e.tipo_processo.codigo, codigo));
+    await mudar({ tipo_processo_id: tipo!.id, estado_tecnico: "RECEBIDO" });
+  }
+
+  it("PGR conclui sem portaria nem formulário", async () => {
+    await virar("PGR");
+    expect(await requisitos_de_saida(db, processo, "CONCLUIDO")).toEqual([]);
+    await mover(db, processo, "EM_TRIAGEM", ator);
+    await mover(db, processo, "CONCLUIDO", ator);
+    expect(processo.estado_tecnico).toBe("CONCLUIDO");
+    // e reabre
+    await mover(db, processo, "EM_TRIAGEM", ator);
+    expect(processo.estado_tecnico).toBe("EM_TRIAGEM");
+  });
+
+  it("não entra na cadeia do adicional", async () => {
+    await virar("RITS");
+    await expect(mover(db, processo, "AGUARDANDO_INSPECAO", ator)).rejects.toBeInstanceOf(TransicaoInvalida);
+    expect(destinos_do_processo("RECEBIDO", true)).toEqual(["EM_TRIAGEM", "PENDENTE_DOCUMENTO", "CONCLUIDO", "ARQUIVADO"]);
+  });
+
+  it("aposentadoria especial também é curta (a base legal não é a IN 15/2022)", async () => {
+    await virar("APOSENTADORIA_ESPECIAL");
+    await mover(db, processo, "CONCLUIDO", ator);
+    expect(processo.estado_tecnico).toBe("CONCLUIDO");
+  });
+
+  it("no quadro, o andamento da máquina curta fica em Em andamento", async () => {
+    await virar("PGR");
+    await mover(db, processo, "EM_TRIAGEM", ator);
+    expect(coluna_de("EM_TRIAGEM", true)).toBe("EM_ANDAMENTO");
+    expect((await resumir(db, processo)).coluna).toBe("EM_ANDAMENTO");
+    expect(colunas_destino("EM_TRIAGEM", true)).toEqual(["A_FAZER", "AGUARDANDO", "CONCLUIDO"]);
+    const colunas = await repo.kanban(db, ator, new repo.Filtro({ q: processo.nup }));
+    expect(colunas.EM_ANDAMENTO!.map((p) => p.id)).toContain(processo.id);
+    const contagem = await repo.contar_por_coluna(db, ator, new repo.Filtro({ q: processo.nup }));
+    expect(contagem.EM_ANDAMENTO).toBe(1);
+  });
+
+  it("parecer não move processo de máquina curta", async () => {
+    await virar("PGR");
+    expect(await acompanhar_parecer(db, processo.id, "PARECER_ASSINADO", ator, "x")).toBeNull();
+    const [gravado] = await db.select().from(e.processo).where(eq(e.processo.id, processo.id));
+    expect(gravado!.estado_tecnico).toBe("RECEBIDO");
   });
 });
 
