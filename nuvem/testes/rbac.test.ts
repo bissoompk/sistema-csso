@@ -77,12 +77,17 @@ describe("matriz de perfis", () => {
     expect(almoxarife.ve_dado_nominal).toBe(true);
   });
 
-  it("superintendente governa acesso mas não assina", () => {
+  it("superintendente governa acesso e opera, mas não assina nem registra laudo", () => {
     const chefe = usuario("superintendente");
-    expect(chefe.pode("perfil.conceder")).toBe(true);
-    expect(chefe.pode("habilitacao.atestar")).toBe(true);
+    for (const p of ["perfil.conceder", "habilitacao.atestar", "usuario.criar_conta", "usuario.resetar_senha", "backup.executar"]) {
+      expect(chefe.pode(p), p).toBe(true);
+    }
+    // operacional: tudo o que o coordenador escreve, menos o ato técnico
+    for (const p of MATRIZ_PERFIS.coordenador_csso!.permissoes) {
+      expect(chefe.pode(p), p).toBe(!["parecer.assinar", "laudo.criar"].includes(p));
+    }
     expect(chefe.pode("parecer.assinar")).toBe(false);
-    expect(chefe.pode("processo.criar")).toBe(false);
+    expect(chefe.pode("laudo.criar")).toBe(false);
   });
 
   it("coordenador não concede perfil", () => {

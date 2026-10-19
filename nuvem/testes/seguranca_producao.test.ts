@@ -128,8 +128,6 @@ describe("produção recusa configuração insegura", () => {
     ["chave de exemplo", { CSSO_CHAVE_SECRETA: "desenvolvimento-inseguro-troque" }, "CSSO_CHAVE_SECRETA"],
     ["chave vazia", { CSSO_CHAVE_SECRETA: "" }, "CSSO_CHAVE_SECRETA"],
     ["chave curta", { CSSO_CHAVE_SECRETA: "curta" }, "CSSO_CHAVE_SECRETA"],
-    ["backup sem senha", { CSSO_BACKUP_SENHA: undefined }, "CSSO_BACKUP_SENHA"],
-    ["backup de exemplo", { CSSO_BACKUP_SENHA: "backup-inseguro-troque" }, "CSSO_BACKUP_SENHA"],
     ["cookie sem Secure", { CSSO_COOKIE_SEGURO: "nao" }, "CSSO_COOKIE_SEGURO"],
     ["sem banco", { DATABASE_URL: "" }, "DATABASE_URL"],
   ])("%s: recusa, dizendo a variável e não o valor", (_n, troca, variavel) => {
@@ -145,6 +143,14 @@ describe("produção recusa configuração insegura", () => {
     expect((erro as Error).message).not.toContain("desenvolvimento-inseguro-troque");
   });
 
+  it("senha de backup ausente não derruba a produção: só o backup recusa", () => {
+    for (const senha of [undefined, "backup-inseguro-troque", "curta"]) {
+      const env = { ...BOA, CSSO_BACKUP_SENHA: senha } as NodeJS.ProcessEnv;
+      expect(problemasDeProducao(env)).toEqual([]);
+      expect(() => exigirConfiguracaoDeProducao(env)).not.toThrow();
+    }
+  });
+
   it("fora de produção, o mesmo problema é só aviso", () => {
     expect(() => exigirConfiguracaoDeProducao({ ...BOA, CSSO_AMBIENTE: "homologacao", CSSO_CHAVE_SECRETA: "" })).not.toThrow();
   });
@@ -154,6 +160,13 @@ describe("produção recusa configuração insegura", () => {
     process.env.CSSO_CHAVE_SECRETA = "desenvolvimento-inseguro-troque";
     redefinirConfig();
     expect(() => obterConfig()).toThrow(ConfiguracaoInsegura);
+  });
+
+  it("obterConfig atende em produção sem senha de backup, com aviso na casca", () => {
+    Object.assign(process.env, BOA);
+    delete process.env.CSSO_BACKUP_SENHA;
+    redefinirConfig();
+    expect(obterConfig().inseguro.join(" ")).toContain("CSSO_BACKUP_SENHA");
   });
 
   it("chave vazia fora de produção vira o valor de exemplo, com aviso", () => {

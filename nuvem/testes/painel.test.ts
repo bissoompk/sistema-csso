@@ -73,8 +73,9 @@ describe("painel", () => {
     expect(total).toBe(a_mao);
   });
 
-  it("superintendente sem perfil operacional recebe a dica", async () => {
+  it("superintendente opera: nem dica de perfil operacional, e o botão de novo processo aparece", async () => {
     const corpo = (await (await entrar(novoCliente(), "superintendente")).get("/")).text;
-    if (corpo.includes("Painel")) expect(corpo).toContain("Próximo passo: conceder o perfil operacional");
+    expect(corpo).not.toContain("Próximo passo: conceder o perfil operacional");
+    if (corpo.includes("Painel")) expect(corpo).toContain('href="/processos/novo"');
   });
 });

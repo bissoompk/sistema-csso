@@ -216,6 +216,24 @@ describe("tela /config", () => {
     expect(eventos).toHaveLength(1);
   });
 
+  it("em produção, o botão recusa backup sem senha própria (a subida não recusa mais)", async () => {
+    await entrar(amb.cliente, "admin_ti");
+    const antes = { amb: process.env.CSSO_AMBIENTE, senha: process.env.CSSO_BACKUP_SENHA };
+    process.env.CSSO_AMBIENTE = "producao";
+    delete process.env.CSSO_BACKUP_SENHA;
+    try {
+      const r = await amb.cliente.post("/config/backup");
+      expect(r.status).toBe(200);
+      expect(r.text).toContain("CSSO_BACKUP_SENHA ausente");
+      const eventos = await amb.db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "BACKUP_EXECUTADO"));
+      expect(eventos).toHaveLength(0);
+    } finally {
+      if (antes.amb === undefined) delete process.env.CSSO_AMBIENTE;
+      else process.env.CSSO_AMBIENTE = antes.amb;
+      if (antes.senha !== undefined) process.env.CSSO_BACKUP_SENHA = antes.senha;
+    }
+  });
+
   it("exportar é POST e pede a permissão", async () => {
     await entrar(amb.cliente, "admin_ti");
     expect((await amb.cliente.post("/config/exportar-tudo", {}, { seguir: false })).status).toBe(403);

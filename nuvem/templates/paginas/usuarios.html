@@ -34,8 +34,9 @@
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Usuários e governança de acesso</h1>
-      <p class="sub">A concessão de perfil sempre exige o ato normativo que a autoriza
-        (Resolução Consu 11/2026, art. 11, IX).
+      <p class="sub">Cada concessão de perfil registra o ato normativo que a autoriza
+        (Resolução Consu 11/2026, art. 11, IX); sem ele, fica “pendente” até ser
+        informado em Gerir.
         <a href="/perfis">Ver matriz de perfis »</a></p>
     </div>
   </div>
@@ -109,6 +110,48 @@
                   revoga as sessões abertas desta conta.</p>
                 <div class="acoes"><button type="submit" class="secundario compacto">
                   Resetar senha</button></div>
+              </form>
+              {% endif %}
+              {% if usuario.pode('perfil.conceder') %}
+              {# Concessões que ainda valem ou vão valer: as encerradas ficam na
+                 trilha. Encerrar e corrigir o ato moram aqui, ao lado da conta. #}
+              <h3>Perfis</h3>
+              {% for a in atribuicoes[u.id] %}
+              {% if not a.vigencia_fim or a.vigencia_fim >= hoje %}
+              <div class="cartao liso">
+                <p><strong>{{ a.perfil.codigo }}</strong>
+                  <span class="discreto mono">{{ a.vigencia_inicio|data }} —
+                    {{ a.vigencia_fim|data or 'sem termo' }}</span></p>
+                <form method="post" action="/usuarios/atribuicoes/{{ a.id }}/ato">
+                  <div class="campo"><label for="ato-{{ a.id }}">Ato normativo</label>
+                    <input id="ato-{{ a.id }}" name="ato_normativo" required
+                           value="{{ a.ato_normativo or '' }}"></div>
+                  <div class="acoes"><button type="submit" class="secundario compacto">
+                    Salvar ato</button></div>
+                </form>
+                <form method="post" action="/usuarios/atribuicoes/{{ a.id }}/encerrar">
+                  <div class="acoes"><button type="submit" class="perigo compacto">
+                    Encerrar perfil</button></div>
+                </form>
+              </div>
+              {% endif %}
+              {% else %}
+              <p class="discreto">Nenhum perfil concedido.</p>
+              {% endfor %}
+              {# O `servidor_id` é o que abre "minha ficha de EPI" e "meus
+                 certificados": sem ele o escopo próprio não acha nada. #}
+              <form method="post" action="/usuarios/{{ u.id }}/servidor">
+                <h3>Servidor vinculado</h3>
+                {% set sugerido = sugestao_servidor[u.id] if not u.servidor_id else none %}
+                <div class="campo"><label for="serv-{{ u.id }}">SIAPE ou nome</label>
+                  <input id="serv-{{ u.id }}" name="servidor" list="lista-servidores"
+                         value="{{ rotulo_servidor[u.servidor_id] if u.servidor_id else (sugerido or '') }}"
+                         aria-describedby="dica-serv-{{ u.id }}">
+                  <span class="dica" id="dica-serv-{{ u.id }}">
+                    {%- if sugerido %}Sugerido pelo e-mail da conta — salve para vincular.
+                    {%- else %}Em branco desvincula.{% endif %}</span></div>
+                <div class="acoes"><button type="submit" class="secundario compacto">
+                  Salvar vínculo</button></div>
               </form>
               {% endif %}
               {% if usuario.pode('usuario.criar_conta') %}
@@ -210,7 +253,8 @@
 {% if usuario.pode('usuario.criar_conta') %}
 {% call ui.popup_cadastro('nova-conta', CADASTRAR_CONTA, '/usuarios', CADASTRAR_CONTA,
                           aberto=(forma == 'conta'), erro=erro_conta,
-                          nota='a conta nasce sem perfil nenhum') %}
+                          nota=('perfil e servidor são opcionais' if usuario.pode('perfil.conceder')
+                                else 'a conta nasce sem perfil nenhum')) %}
   <div class="campo"><label for="conta-nome">Nome</label>
     <input id="conta-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
   {# Login e e-mail são únicos no banco, e são os dois que a rota recusa; o foco
@@ -223,6 +267,27 @@
     <label for="conta-email">E-mail</label>
     <input id="conta-email" name="email" type="email" required
            value="{{ d['email'] or '' }}"></div>
+  {% if usuario.pode('perfil.conceder') %}
+  {# Opcionais, e no MESMO envio: a conta já nasce abrindo o que precisa. O
+     ato em branco entra como "pendente", como em Conceder perfil. #}
+  <div class="linha-campos">
+    <div class="campo"><label for="conta-perfil">Perfil (opcional)</label>
+      <select id="conta-perfil" name="perfil_id"><option value="">nenhum</option>
+        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.codigo }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="conta-campus">Campus (escopo)</label>
+      <select id="conta-campus" name="campus_id"><option value="">todos</option>
+        {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="campo"><label for="conta-ato">Ato normativo (opcional)</label>
+    <input id="conta-ato" name="ato_normativo" value="{{ d['ato_normativo'] or '' }}"
+           placeholder="Portaria Reitoria nº 1.553/2026"></div>
+  <div class="campo"><label for="conta-servidor">Servidor (SIAPE ou nome, opcional)</label>
+    <input id="conta-servidor" name="servidor" list="lista-servidores"
+           value="{{ d['servidor'] or '' }}" aria-describedby="dica-conta-servidor">
+    <span class="dica" id="dica-conta-servidor">Em branco, vincula sozinho o servidor
+      que tiver o mesmo e-mail. É o vínculo que abre “minha ficha de EPI” e
+      “meus certificados”.</span></div>
+  {% endif %}
   <p class="discreto rodape-cartao sem-margem">A senha provisória aparece uma única
     vez, na faixa verde do topo da lista. Não existe <code>admin/admin</code>.</p>
 {% endcall %}
@@ -256,13 +321,21 @@
              value="{{ d['vigencia_fim'] or '' }}"></div>
   </div>
   <div class="campo {{ 'com-erro' if forma == 'perfil' }}">
-    <label for="perf-ato">Ato normativo (obrigatório)</label>
-    <input id="perf-ato" name="ato_normativo" required
+    <label for="perf-ato">Ato normativo</label>
+    <input id="perf-ato" name="ato_normativo"
            value="{{ d['ato_normativo'] or '' }}"{{ ' autofocus' if forma == 'perfil' }}
            placeholder="Portaria Reitoria nº 1.553/2026" aria-describedby="dica-ato">
-    <span class="dica" id="dica-ato">Sem o ato não há concessão: é ele que a
-      auditoria guarda como autorização.</span></div>
+    <span class="dica" id="dica-ato">Se ainda não saiu, deixe em branco: a concessão
+      entra como “pendente”, com seu login e a data, e o ato se informa depois em Gerir.</span></div>
 {% endcall %}
+{% endif %}
+
+{% if usuario.pode('perfil.conceder') %}
+{# Um datalist só, para o cadastro e para todo "Gerir": o navegador filtra por
+   SIAPE ou nome enquanto se digita, sem script. #}
+<datalist id="lista-servidores">
+  {% for s in servidores %}<option value="{{ rotulo_servidor[s.id] }}">{% endfor %}
+</datalist>
 {% endif %}
 
 {% if usuario.pode('habilitacao.atestar') %}

@@ -132,12 +132,7 @@ rotas.get("/", async (c) => {
     identificacao.semente_de({ cookies: { get: (n: string) => getCookie(c, n) ?? null } }),
   );
 
-  // Primeiro acesso: a conta nasce superintendente, que governa acesso mas não
-  // opera processo. Sem esta dica o coordenador trava no primeiro minuto.
-  const precisa_de_perfil_operacional = usuario.pode("perfil.conceder") && !usuario.pode("processo.criar");
-
   return pagina(c, "paginas/painel.html", usuario, {
-    precisa_de_perfil_operacional,
     kpis,
     exercicio,
     por_mes: dicionario(por_mes),

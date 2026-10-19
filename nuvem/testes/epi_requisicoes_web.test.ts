@@ -207,7 +207,7 @@ describe("permissões", () => {
     ["almoxarife_sesmt", 200, 403],
     ["consulta_progep", 200, 403],
     ["auditor_interno", 200, 403],
-    ["superintendente", 200, 403],
+    ["superintendente", 200, 200],
     ["admin_ti", 403, 403],
   ])("telas de requisição para %s", async (perfil, fila, nova) => {
     const amb = await novo();

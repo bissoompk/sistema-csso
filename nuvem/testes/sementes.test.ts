@@ -5,7 +5,7 @@
  * que o modelo tem de ter.
  */
 import { describe, expect, it } from "vitest";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import { MATRIZ_PERFIS, PERMISSOES, modulo_da_permissao } from "../src/servicos/rbac.js";
 import { semear, semear_rbac, TEXTO_NR15_AX14 } from "../src/servicos/sementes.js";
@@ -100,6 +100,26 @@ describe("sementes", () => {
     expect(p!.descricao).toBe(PERMISSOES["epi.ver"]);
     expect(p!.modulo).toBe(modulo_da_permissao("epi.ver"));
     expect(p!.modulo).toBe("EPI");
+  });
+
+  it("banco de produção com o superintendente antigo ganha as permissões novas no próximo seed", async () => {
+    // o perfil como estava gravado antes de virar operacional: sem escrita
+    const [sup] = await db.select().from(e.perfil).where(eq(e.perfil.codigo, "superintendente"));
+    const novas = ["processo.criar", "catalogo.gerenciar", "usuario.criar_conta", "backup.executar"];
+    const ids = (await db.select().from(e.permissao)).filter((p) => novas.includes(p.codigo)).map((p) => p.id);
+    for (const id of ids) {
+      await db.delete(e.perfil_permissao).where(and(eq(e.perfil_permissao.perfil_id, sup!.id), eq(e.perfil_permissao.permissao_id, id)));
+    }
+    await naTransacao((tx) => semear_rbac(tx));
+    const agora = await db
+      .select({ codigo: e.permissao.codigo })
+      .from(e.perfil_permissao)
+      .innerJoin(e.permissao, eq(e.permissao.id, e.perfil_permissao.permissao_id))
+      .where(eq(e.perfil_permissao.perfil_id, sup!.id));
+    const codigos = agora.map((l) => l.codigo);
+    for (const p of novas) expect(codigos).toContain(p);
+    expect(codigos).not.toContain("parecer.assinar");
+    expect(codigos).not.toContain("laudo.criar");
   });
 
   it("semear_rbac nunca remove permissão de perfil (só acrescenta)", async () => {

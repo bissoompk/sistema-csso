@@ -31,6 +31,7 @@ import * as epi_estoque from "./epi_estoque.js";
 import * as epi_ficha from "./epi_ficha.js";
 import { obterArmazenamento, type Armazenamento } from "./armazenamento.js";
 import { ambienteDeProducao } from "./instalacao.js";
+import { TAMANHO_MINIMO_SENHA_BACKUP } from "../config.js";
 import { expurgos_de_privacidade, mensagem_sem_dados } from "./privacidade.js";
 
 export const ROTINA_BACKUP = "BACKUP";
@@ -281,7 +282,7 @@ export async function reter_backups(
 export function conferir_senha_do_backup(): void {
   const senha = process.env.CSSO_BACKUP_SENHA ?? "";
   if (!ambienteDeProducao()) return;
-  if (!senha || senha.includes("troque") || senha.length < 16) {
+  if (!senha || senha.includes("troque") || senha.length < TAMANHO_MINIMO_SENHA_BACKUP) {
     throw new RotinaFalhou(
       "CSSO_BACKUP_SENHA ausente, de exemplo ou curta (mínimo 16 caracteres): em produção o backup não sai sem senha própria.",
     );

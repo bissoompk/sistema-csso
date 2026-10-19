@@ -72,12 +72,9 @@ export function problemasDeProducao(env: NodeJS.ProcessEnv = process.env): strin
   if (!chave || chave.includes("troque") || chave.length < TAMANHO_MINIMO_CHAVE) {
     problemas.push(`CSSO_CHAVE_SECRETA ausente, de exemplo ou com menos de ${TAMANHO_MINIMO_CHAVE} caracteres.`);
   }
-  const backup = env.CSSO_BACKUP_SENHA?.trim() ?? "";
-  if (!backup || backup.includes("troque") || backup.length < TAMANHO_MINIMO_SENHA_BACKUP) {
-    problemas.push(
-      `CSSO_BACKUP_SENHA ausente, de exemplo ou com menos de ${TAMANHO_MINIMO_SENHA_BACKUP} caracteres.`,
-    );
-  }
+  // `CSSO_BACKUP_SENHA` saiu daqui (19/10/2026): sem ela o sistema inteiro
+  // ficava fora do ar por causa de UMA rotina. Quem recusa é o próprio backup
+  // (`rotinas.conferir_senha_do_backup`, no diário e no botão de /config).
   if ((env.CSSO_COOKIE_SEGURO ?? "").trim().toLowerCase() === "nao") {
     problemas.push("CSSO_COOKIE_SEGURO=nao: o cookie de sessão sairia sem Secure.");
   }
@@ -118,6 +115,14 @@ export function obterConfig(): Config {
   if ((env.CSSO_PRIMEIRO_ACESSO_REMOTO ?? "").trim().toLowerCase() === "sim") {
     inseguro.push(
       "CSSO_PRIMEIRO_ACESSO_REMOTO=sim: desligue assim que o primeiro superintendente existir.",
+    );
+  }
+  // não barra a subida (ver `problemasDeProducao`), mas avisa em produção:
+  // sem ela o backup é recusado
+  const senhaBackup = env.CSSO_BACKUP_SENHA?.trim() ?? "";
+  if (ehProducao(env.CSSO_AMBIENTE ?? "") && (!senhaBackup || senhaBackup.includes("troque") || senhaBackup.length < TAMANHO_MINIMO_SENHA_BACKUP)) {
+    inseguro.push(
+      `CSSO_BACKUP_SENHA ausente, de exemplo ou com menos de ${TAMANHO_MINIMO_SENHA_BACKUP} caracteres: o backup de producao sera recusado.`,
     );
   }
   const bancoUrl = env.DATABASE_URL ?? env.CSSO_BANCO_URL ?? "";

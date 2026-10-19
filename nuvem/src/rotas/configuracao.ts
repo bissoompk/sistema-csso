@@ -16,6 +16,7 @@ import { autoridade_destinataria, setor_emissor } from "../db/esquema/index.js";
 import { PermissaoNegada, type UsuarioAtual } from "../servicos/rbac.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as servico_backup from "../servicos/backup.js";
+import { RotinaFalhou, conferir_senha_do_backup } from "../servicos/rotinas.js";
 import * as sei from "../servicos/sei.js";
 import { SLA_PADRAO, gravar_sla, sla_vigente } from "../servicos/processo.js";
 import { obterArmazenamento, pastaLocal } from "../servicos/armazenamento.js";
@@ -116,9 +117,12 @@ rotas.post("/config/backup", async (c) => {
   const tx = c.get("tx");
   let resultado: servico_backup.ResultadoBackup;
   try {
+    // a mesma recusa da rotina diária: desde que a senha do backup deixou de
+    // barrar a subida do sistema, é aqui que ela barra o botão
+    conferir_senha_do_backup();
     resultado = await servico_backup.fazer_backup(tx);
   } catch (falha) {
-    if (!(falha instanceof servico_backup.DestinoProibido)) throw falha;
+    if (!(falha instanceof servico_backup.DestinoProibido || falha instanceof RotinaFalhou)) throw falha;
     return _tela(c, usuario, { erro: falha.message });
   }
   await auditoria.registrar(tx, {

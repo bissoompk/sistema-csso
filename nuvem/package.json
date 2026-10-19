@@ -15,6 +15,7 @@
     "producao-iniciar": "tsx ferramentas/producao-iniciar.ts",
     "rotinas": "tsx ferramentas/rotinas.ts",
     "backup:restaurar": "tsx ferramentas/restaurar-backup.ts",
+    "redefinir-senha": "tsx ferramentas/redefinir-senha.ts",
     "tipos": "tsc --noEmit",
     "test": "vitest run"
   },

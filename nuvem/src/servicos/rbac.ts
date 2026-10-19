@@ -159,6 +159,54 @@ export const PERMISSOES: Record<string, string> = {
   "demanda.registrar": "Registrar demanda, encaminhamento e encerramento",
 };
 
+/** A lista do coordenador — o superintendente parte dela (ver abaixo). */
+const PERMISSOES_COORDENADOR: string[] = [
+  "processo.ver",
+  "processo.criar",
+  "processo.editar",
+  "processo.status",
+  "processo.atribuir",
+  "parecer.ver",
+  "parecer.criar",
+  "parecer.editar",
+  "parecer.emitir",
+  "parecer.assinar",
+  "parecer.anular",
+  "laudo.ver",
+  "laudo.criar",
+  "catalogo.gerenciar",
+  "anexo.enviar",
+  "exposicao.ver",
+  "exportar",
+  "auditoria.ver",
+  "indicador.ver",
+  "treinamento.ver",
+  "treinamento.gerenciar",
+  "assinatura.gerenciar",
+  "turma.criar",
+  "turma.inscrever",
+  "turma.concluir",
+  "turma.avaliar",
+  "certificado.emitir",
+  "certificado.anular",
+  "certificado.ver",
+  "epi.ver",
+  "epi.catalogo",
+  "epi.entregar",
+  "epi.ficha",
+  "epi.estoque",
+  "epi.requisitar",
+  "epi.analisar",
+  "demanda.ver",
+  "demanda.registrar",
+];
+
+/**
+ * Ato tecnico da IN 15/2022, art. 10, §2º, I: so com perfil tecnico E
+ * habilitacao vigente (`pode_subscrever`). Nao entra em perfil de gestao.
+ */
+const SO_DO_TECNICO_HABILITADO: ReadonlySet<string> = new Set(["parecer.assinar", "laudo.criar"]);
+
 export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   admin_ti: {
     nome: "Administrador de TI",
@@ -174,69 +222,27 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   superintendente: {
     nome: "Superintendente da Sisa",
     base_normativa: "Resolucao Consu UFVJM 11/2026, art. 11, IX",
+    // Operacional (19/10/2026). Era "ve tudo e opera nada": no banco recem
+    // implantado a unica conta e a do superintendente, e ela nao criava conta,
+    // servidor, catalogo, turma, demanda nem processo — o sistema nascia
+    // travado ate alguem conceder a si mesmo outro perfil. Agora e a do
+    // coordenador mais a governanca da conta (criar, redefinir senha, backup).
+    // O que fica DE FORA e o ato tecnico que a IN 15/2022 reserva a quem tem
+    // habilitacao: assinar parecer e registrar laudo (`SO_DO_TECNICO_HABILITADO`).
+    // `semear_rbac` acrescenta o que falta ao perfil ja gravado no proximo deploy.
     permissoes: [
-      "processo.ver",
-      "parecer.ver",
-      "laudo.ver",
-      "processo.atribuir",
+      ...PERMISSOES_COORDENADOR.filter((p) => !SO_DO_TECNICO_HABILITADO.has(p)),
       "perfil.conceder",
       "habilitacao.atestar",
-      "exposicao.ver",
-      "exportar",
-      "auditoria.ver",
-      "indicador.ver",
-      "treinamento.ver",
-      "certificado.ver",
-      "epi.ver",
-      "epi.ficha",
-      // le a fila do setor e nao escreve nela: e a mesma forma do resto do
-      // perfil, que ve tudo e opera nada
-      "demanda.ver",
+      "usuario.criar_conta",
+      "usuario.resetar_senha",
+      "backup.executar",
     ],
   },
   coordenador_csso: {
     nome: "Coordenador da CSSO",
     base_normativa: "Resolucao Consu UFVJM 11/2026, art. 20, VII",
-    permissoes: [
-      "processo.ver",
-      "processo.criar",
-      "processo.editar",
-      "processo.status",
-      "processo.atribuir",
-      "parecer.ver",
-      "parecer.criar",
-      "parecer.editar",
-      "parecer.emitir",
-      "parecer.assinar",
-      "parecer.anular",
-      "laudo.ver",
-      "laudo.criar",
-      "catalogo.gerenciar",
-      "anexo.enviar",
-      "exposicao.ver",
-      "exportar",
-      "auditoria.ver",
-      "indicador.ver",
-      "treinamento.ver",
-      "treinamento.gerenciar",
-      "assinatura.gerenciar",
-      "turma.criar",
-      "turma.inscrever",
-      "turma.concluir",
-      "turma.avaliar",
-      "certificado.emitir",
-      "certificado.anular",
-      "certificado.ver",
-      "epi.ver",
-      "epi.catalogo",
-      "epi.entregar",
-      "epi.ficha",
-      "epi.estoque",
-      "epi.requisitar",
-      "epi.analisar",
-      "demanda.ver",
-      "demanda.registrar",
-    ],
+    permissoes: PERMISSOES_COORDENADOR,
   },
   engenheiro_seguranca: {
     nome: "Engenheiro de Seguranca do Trabalho",
