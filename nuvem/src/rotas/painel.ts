@@ -56,6 +56,9 @@ rotas.get("/", async (c) => {
   const tx = c.get("tx");
   const hoje = datas_br.hoje();
   const exercicio = Number(hoje.slice(0, 4));
+  // Lido ANTES de disparar as consultas: perfil sem escopo declarado lança aqui,
+  // e lançar no meio da lista abaixo deixaria as já disparadas sem dono.
+  const so_o_proprio = usuario.escopo === ESCOPO_PROPRIO;
   // Os blocos do painel não dependem uns dos outros: saem juntos, e as
   // consultas seguem lado a lado pela conexão (o banco fica longe — ver
   // `db/cliente.ts`).
@@ -87,7 +90,7 @@ rotas.get("/", async (c) => {
       tx
         .select()
         .from(historico_evento)
-        .where(usuario.escopo === ESCOPO_PROPRIO ? eq(historico_evento.usuario_id, usuario.id) : undefined)
+        .where(so_o_proprio ? eq(historico_evento.usuario_id, usuario.id) : undefined)
         .orderBy(desc(historico_evento.id))
         .limit(10),
     ]);
