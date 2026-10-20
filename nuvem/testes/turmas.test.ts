@@ -556,14 +556,16 @@ describe("participante", () => {
     expect(P.nome_exibicao(pessoa)).toBe("Maria Aparecida de Souza");
   });
 
-  it("não há coluna de CPF em nenhuma tabela nova", async () => {
-    for (const tabela of ["participante", "participante_email", "turma", "inscricao"]) {
-      const colunas = (await db.execute(
-        sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ${tabela}`,
-      )) as unknown as { column_name: string }[];
-      expect(colunas.length, tabela).toBeGreaterThan(0);
-      expect(colunas.some((c) => c.column_name.toLowerCase().includes("cpf")), tabela).toBe(false);
-    }
+  it("CPF só nas duas colunas do certificado (19/10/2026), em nenhuma outra", async () => {
+    // "guardar CPF só para certificado": participante.cpf e assinatura_instrutor.cpf
+    const colunas = (await db.execute(
+      sql`SELECT table_name, column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND column_name ILIKE '%cpf%' ORDER BY 1, 2`,
+    )) as unknown as { table_name: string; column_name: string }[];
+    expect(colunas.map((c) => `${c.table_name}.${c.column_name}`)).toEqual([
+      "assinatura_instrutor.cpf",
+      "participante.cpf",
+    ]);
   });
 
   it("cadastrar externo com vínculo de servidor é recusado", async () => {

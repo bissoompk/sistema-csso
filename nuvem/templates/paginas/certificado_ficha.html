@@ -154,6 +154,13 @@
         <dd class="mono">{{ contexto.participante_siape }}</dd>
         {% endif %}
 
+        {# o CPF congelado (só quando o modelo o pede) sai no documento, nunca aqui #}
+        {% if contexto.participante_cpf %}
+        <dt>CPF</dt>
+        <dd><span class="mono">***.***.***-**</span>
+          <span class="discreto">congelado; sai só no documento</span></dd>
+        {% endif %}
+
         {% if contexto.participante_lotacao %}
         <dt>Lotação na turma</dt>
         <dd>{{ contexto.participante_lotacao }}</dd>

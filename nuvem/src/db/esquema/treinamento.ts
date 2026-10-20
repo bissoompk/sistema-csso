@@ -234,6 +234,9 @@ export const assinatura_instrutor = pgTable(
     conselho: varchar('conselho', { length: 8 }),
     registro_conselho: varchar('registro_conselho', { length: 30 }),
     organizacao: varchar('organizacao', { length: 160 }),
+    // CPF do responsavel pela formacao, so para o certificado que o exige; so
+    // digitos, nunca exibido (ver `servicos/cpf_certificado.ts`)
+    cpf: varchar('cpf', { length: 11 }),
     externo: boolean('externo').notNull().default(false),
     imagem_anexo_id: integer('imagem_anexo_id'),
     vigencia_inicio: DataPura('vigencia_inicio').notNull(),
@@ -252,6 +255,7 @@ export const assinatura_instrutor = pgTable(
       columns: [t.imagem_anexo_id],
       foreignColumns: [anexo.id],
     }),
+    check_regex('ck_assinatura_cpf', 'cpf', '[0-9]{11}'),
     // `externo = 1` no SQLite; booleano usado como booleano aqui
     check('ck_assinatura_vinculo', sql.raw(`externo OR servidor_id IS NOT NULL`)),
     check(
@@ -293,6 +297,11 @@ export const participante = pgTable(
     // matricula de discente ou numero do contrato do terceirizado, quando houver.
     // NAO e CPF, NAO e RG, e e opcional.
     matricula_externa: varchar('matricula_externa', { length: 30 }),
+    // CPF SO para o certificado que a norma exige (ex.: brigadista, CBMMG),
+    // so digitos. Mora aqui, e nao em `servidor`, para servir ao externo e ao
+    // servidor sem copia: o participante e uma linha por pessoa. Nunca sai em
+    // tela, lista, busca, API ou trilha (ver `servicos/cpf_certificado.ts`).
+    cpf: varchar('cpf', { length: 11 }),
     email_principal_id: integer('email_principal_id'),
     // mesclagem (fatia 6): o absorvido aponta para o mantido e sai das listas,
     // sem ser apagado — chave de validacao e relatorio ja emitidos continuam
@@ -328,6 +337,7 @@ export const participante = pgTable(
           `(servidor_id IS NULL AND nome IS NOT NULL) OR expurgado_em IS NOT NULL`,
       ),
     ),
+    check_regex('ck_participante_cpf', 'cpf', '[0-9]{11}'),
     check(
       'ck_participante_vinculo',
       sql.raw(`vinculo IN ('SERVIDOR','TERCEIRIZADO','DISCENTE','VISITANTE','OUTRO')`),

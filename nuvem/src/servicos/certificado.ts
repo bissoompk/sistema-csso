@@ -30,6 +30,7 @@ import * as envio from "./modelo_certificado_envio.js";
 import * as datas_br from "./datas_br.js";
 import * as documento from "./documento.js";
 import { qr_png } from "./qr.js";
+import * as textos from "./textos.js";
 import { numero as numero_br } from "./presenca.js";
 
 /** Subpasta de `modelos-docx/` — o `app/templates/certificados/` do Python. */
@@ -117,6 +118,8 @@ export interface InstrutorCongelado {
   conselho?: string | null;
   registro?: string | null;
   rubrica_sha256?: string | null;
+  // só dígitos, e só quando o modelo tem `instrutor_cpf` (`cpf_certificado.ts`)
+  cpf?: string | null;
 }
 
 /**
@@ -147,6 +150,8 @@ export interface DadosContextoCertificado {
   participante_organizacao: string;
   participante_siape: string;
   participante_lotacao: string;
+  // só dígitos, e só quando o modelo tem `participante_cpf`; senão vazio
+  participante_cpf?: string | null;
   treinamento_nome: string;
   treinamento_norma: string;
   treinamento_conteudo: string;
@@ -190,7 +195,7 @@ export interface DadosContextoCertificado {
 const CAMPOS_CONGELADOS = [
   "participante_nome", "participante_identificador", "participante_vinculo",
   "participante_organizacao", "participante_siape", "participante_lotacao",
-  "treinamento_nome", "treinamento_norma", "treinamento_conteudo",
+  "participante_cpf", "treinamento_nome", "treinamento_norma", "treinamento_conteudo",
   "validade_meses", "turma_codigo", "turma_data_inicio", "turma_data_fim",
   "carga_horaria", "turma_local", "turma_unidade_promotora", "turma_campus",
   "turma_campus_cidade", "data_base_vencimento", "nota_final", "frequencia_percentual",
@@ -215,6 +220,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   participante_organizacao!: string;
   participante_siape!: string;
   participante_lotacao!: string;
+  participante_cpf: string | null = null;
   treinamento_nome!: string;
   treinamento_norma!: string;
   treinamento_conteudo!: string;
@@ -406,6 +412,11 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     "Faculdade de Medicina de Diamantina",
     (c) => c.participante_lotacao,
   ),
+  // CPF só para o certificado que a norma exige (brigadista, CBMMG): mapear
+  // este campo é o que faz o CPF ser congelado na emissão (`cpf_certificado.ts`)
+  participante_cpf: _c("Participante", "CPF (só se a norma exigir)", "000.000.000-00", (c) =>
+    textos.formatar_cpf(c.participante_cpf),
+  ),
   treinamento_nome: _c("Treinamento", "Nome do treinamento", "Trabalho em Altura (NR-35)", (c) => c.treinamento_nome),
   // a carga da TURMA, não a do catálogo: o certificado diz o que aconteceu
   treinamento_carga_horaria: _c("Treinamento", "Carga horária", "8 horas", (c) => `${numero_br(c.carga_horaria)} horas`),
@@ -471,6 +482,20 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   ),
   assinante_rubrica: _c("Assinatura", "Imagem da rubrica", "imagem do anexo", (c) =>
     _caminho_rubrica(c.assinante.rubrica_sha256),
+  ),
+  // O "responsável pela formação" da norma (CBMMG): o instrutor principal, que
+  // é o primeiro que assina — o mesmo de `assinante_*`.
+  instrutor_nome: _c("Responsável pela formação", "Nome do instrutor principal", "Fabrício Raimundi Andrade", (c) =>
+    c.assinante.nome ?? "",
+  ),
+  instrutor_titulo: _c("Responsável pela formação", "Título do instrutor principal", "Eng. Seg. do Trabalho", (c) =>
+    c.assinante.titulo ?? "",
+  ),
+  instrutor_registro: _c("Responsável pela formação", "Registro no conselho", "CREA-MG 12345/D", (c) =>
+    c.assinante.registro ?? "",
+  ),
+  instrutor_cpf: _c("Responsável pela formação", "CPF do instrutor principal (só se a norma exigir)", "000.000.000-00", (c) =>
+    textos.formatar_cpf(c.assinante.cpf),
   ),
   setor_emissor_nome: _c(
     "Emissor",

@@ -10,6 +10,10 @@
  * assinatura, instrutores e, no rodapé, número, validade, chave e o QR que abre
  * `/validar/{chave}`. Página 2 (só quando há): o conteúdo programático.
  *
+ * CPF (participante e responsável pela formação) só sai quando o contexto
+ * congelado o tem — e ele só é congelado quando o modelo do treinamento mapeia
+ * `participante_cpf`/`instrutor_cpf` (`cpf_certificado.ts`).
+ *
  * Fonte: Helvetica padrão do PDF (WinAnsi). Cobre o português; caractere fora
  * dela sai como "?" em vez de derrubar a geração.
  */
@@ -156,6 +160,9 @@ function trechos_de_certificacao(contexto: ContextoCertificado): Trecho[] {
   const t: Trecho[] = [{ texto: "Certificamos que " }, { texto: v("participante_nome"), negrito: true }];
   if (v("participante_vinculo")) t.push({ texto: ` (${v("participante_vinculo")})` });
   if (v("participante_identificador")) t.push({ texto: `, participante identificado sob ${v("participante_identificador")}` });
+  // CPF: só existe no congelado quando o modelo do treinamento o pede (norma
+  // que o exige, como a do brigadista do CBMMG) — ver `cpf_certificado.ts`
+  if (v("participante_cpf")) t.push({ texto: `, CPF ${v("participante_cpf")}` });
   t.push({ texto: ", concluiu o treinamento " }, { texto: v("treinamento_nome"), negrito: true });
   if (v("treinamento_norma")) t.push({ texto: ` ${v("treinamento_norma")}` });
   t.push({ texto: `, com carga horária de ${v("treinamento_carga_horaria")}` });
@@ -231,6 +238,8 @@ async function desenhar_certificado(documento: PDFDocument, fontes: Fontes, cont
   y -= 14;
   if (v("assinante_nome")) y = paragrafo(pagina, fontes, [{ texto: v("assinante_nome"), negrito: true }], { y, tamanho: 11, largura: util });
   if (v("assinante_titulo")) y = paragrafo(pagina, fontes, [{ texto: v("assinante_titulo") }], { y, tamanho: 10, largura: util, cor: COR_SUAVE });
+  // o CPF do responsável pela formação, discreto, nas mesmas condições
+  if (v("instrutor_cpf")) y = paragrafo(pagina, fontes, [{ texto: `CPF ${v("instrutor_cpf")}` }], { y, tamanho: 9, largura: util, cor: COR_SUAVE });
 
   const instrutores = contexto.instrutores.map(linha_do_instrutor).filter((l) => l);
   if (instrutores.length) {

@@ -19,6 +19,7 @@ import {
   Treinamento,
   Turma,
 } from "../dominio/treinamento.js";
+import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import { redirecionar } from "../web.js";
 
 type Obj = Record<string, any>;
@@ -70,6 +71,10 @@ export function vista_participante<T extends Obj | null | undefined>(p: T): T {
     nome_exibicao: (o) => Participante.nome_exibicao(o as never),
     email_exibicao: (o) => (o.emails ? Participante.email_exibicao(o as never) : ""),
     e_servidor: (o) => Participante.e_servidor(o as never),
+    // o CPF do certificado chega ao template só assim: o fato e a máscara sem
+    // dígito (`cpf_certificado.ts`). Template nenhum lê `.cpf`.
+    tem_cpf: (o) => Boolean(o.cpf),
+    cpf_exibicao: (o) => cpf_certificado.exibir(o.cpf),
   }) as T;
 }
 

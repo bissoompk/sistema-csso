@@ -37,6 +37,7 @@ import * as auditoria from "./auditoria.js";
 import * as campos_certificado from "./campos_certificado.js";
 import * as servico_certificado from "./certificado.js";
 import { ContextoCertificado } from "./certificado.js";
+import { CAMPO_CPF_INSTRUTOR, CAMPO_CPF_PARTICIPANTE } from "./cpf_certificado.js";
 import * as datas_br from "./datas_br.js";
 import * as documento from "./documento.js";
 import * as numeracao from "./numeracao.js";
@@ -397,7 +398,7 @@ async function _valores_livres(
 // ---------------------------------------------------------------------
 // Montagem do contexto
 // ---------------------------------------------------------------------
-async function _dados_do_instrutor(tx: Executor, vinculo: VinculoInstrutor) {
+async function _dados_do_instrutor(tx: Executor, vinculo: VinculoInstrutor, pede_cpf = false) {
   const instrutor = vinculo.instrutor;
   let rubrica: string | null = null;
   if (instrutor.imagem_anexo_id !== null) {
@@ -411,6 +412,8 @@ async function _dados_do_instrutor(tx: Executor, vinculo: VinculoInstrutor) {
     registro: AssinaturaInstrutor.registro_completo(instrutor),
     // o SHA-256, e não o `anexo_id`: trocar a rubrica passa a ser detectável
     rubrica_sha256: rubrica,
+    // CPF só quando o modelo o pede (minimização; `cpf_certificado.ts`)
+    ...(pede_cpf && instrutor.cpf ? { cpf: instrutor.cpf } : {}),
   };
 }
 
@@ -446,8 +449,14 @@ export async function montar_contexto_para_emitir(
   const base = T.data_base(turma);
   const vencimento = validade > 0 ? datas_br.somar_meses(base, validade) : null;
   const mapa = CertificadoModelo.mapa_de_tags(d.modelo);
+  // o CPF entra no congelado só se algum marcador do modelo o pede
+  const campos_do_mapa = new Set(Object.values(mapa));
+  const pede_cpf_instrutor = campos_do_mapa.has(CAMPO_CPF_INSTRUTOR);
   const instrutores = [];
-  for (const v of instrutores_que_assinam(turma)) instrutores.push(await _dados_do_instrutor(tx, v));
+  for (const [n, v] of instrutores_que_assinam(turma).entries()) {
+    // só o principal (o primeiro que assina) é o "responsável pela formação"
+    instrutores.push(await _dados_do_instrutor(tx, v, pede_cpf_instrutor && n === 0));
+  }
   // NUVEM: texto fixo e campos de turma/participante, resolvidos e congelados
   const [da_turma, do_participante] = await _valores_livres(tx, inscricao);
   const campos_livres = campos_certificado.resolver(d.modelo, da_turma, do_participante);
@@ -459,6 +468,7 @@ export async function montar_contexto_para_emitir(
     participante_organizacao: participante.organizacao || (servidor ? "UFVJM" : ""),
     participante_siape: servidor ? servidor.siape : "",
     participante_lotacao: await _lotacao_na_data(tx, inscricao, turma.data_inicio),
+    participante_cpf: campos_do_mapa.has(CAMPO_CPF_PARTICIPANTE) ? participante.cpf || null : null,
     treinamento_nome: treinamento.nome,
     treinamento_norma: treinamento.norma_referencia || "",
     // o conteúdo inteiro como TEXTO, e não a FK

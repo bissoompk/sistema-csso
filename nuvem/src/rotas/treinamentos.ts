@@ -28,7 +28,8 @@ import {
   type TipoTag,
   Treinamento,
 } from "../dominio/treinamento.js";
-import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
+import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado, type Formulario } from "../dependencias.js";
+import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as certificado from "../servicos/certificado.js";
@@ -912,7 +913,10 @@ async function _tela_assinaturas(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) 
   const tx = c.get("tx");
   const itens = (
     await tx.query.assinatura_instrutor.findMany({ with: { servidor: true }, orderBy: [asc(tabela_assinatura.nome)] })
-  ).map(vista_assinatura);
+  )
+    // o número não chega ao template: só a máscara (sem dígito) ou "não informado"
+    .map(({ cpf, ...a }) => ({ ...a, cpf_exibicao: cpf_certificado.exibir(cpf), tem_cpf: Boolean(cpf) }))
+    .map(vista_assinatura);
   const em_uso: Record<number, number> = {};
   for (const a of itens) {
     const [linha] = await tx
@@ -1001,7 +1005,15 @@ rotas.post(ASSINATURAS, async (c) => {
     vigencia_fim: digitado.vigencia_fim,
   });
   // tudo o que foi digitado volta: eram nove campos perdidos por esquecer o servidor
+  // (menos o CPF, que não volta à tela nem na recusa)
   if (campos === null) return _tela_assinaturas(c, usuario, { erro: problema, digitado });
+  let cpf: string | null | undefined;
+  try {
+    cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO));
+  } catch (erro) {
+    if (erro instanceof cpf_certificado.CpfInvalido) return _tela_assinaturas(c, usuario, { erro: erro.message, digitado });
+    throw erro;
+  }
   const [assinatura] = await tx
     .insert(tabela_assinatura)
     .values({
@@ -1022,6 +1034,7 @@ rotas.post(ASSINATURAS, async (c) => {
       (assinatura!.externo ? " · externo" : " · servidor"),
     usuario,
   });
+  if (cpf) await cpf_certificado.definir_do_instrutor(tx, usuario, assinatura!.id, cpf);
   return _volta(c, ASSINATURAS, `Assinatura de ${assinatura!.nome} cadastrada.`);
 });
 
@@ -1040,6 +1053,17 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
     vigencia_fim: digitado.vigencia_fim,
   });
   if (campos === null) return _erro(c, ASSINATURAS, problema);
+  // O CPF fica FORA do `salvar_com_diff`: o diff grava antes → depois na
+  // trilha, e do CPF a trilha guarda só o fato (`cpf_certificado.ts`).
+  try {
+    const cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO), marcado(f.texto("apagar_cpf")));
+    if (cpf !== undefined) {
+      await cpf_certificado.definir_do_instrutor(tx, usuario, Number(c.req.param("assinatura_id")), cpf);
+    }
+  } catch (erro) {
+    if (erro instanceof cpf_certificado.CpfInvalido) return _erro(c, ASSINATURAS, erro.message);
+    throw erro;
+  }
   return salvar_com_diff(
     c,
     usuario,

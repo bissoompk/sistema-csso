@@ -277,6 +277,31 @@ async function entrarComo(login: string, senha = SENHA): Promise<Cliente> {
 
 let enderecos: string[] = [];
 
+/** CPFs gravados no ambiente (só dígitos). */
+const CPFS: string[] = [];
+
+/** Um CPF válido a partir de uma semente (os dois verificadores calculados). */
+function cpf_de_teste(semente: number): string {
+  const d = String(semente).padStart(9, "0").slice(-9).split("").map(Number);
+  for (const n of [9, 10]) {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += d[i]! * (n + 1 - i);
+    d.push(((soma * 10) % 11) % 10);
+  }
+  return d.join("");
+}
+
+/** O CPF em qualquer forma: só dígitos, pontuado, ou o miolo `456.789`. */
+function regras_de_cpf(): { rotulo: string; re: RegExp }[] {
+  return CPFS.flatMap((d) => [
+    { rotulo: `CPF ${d.slice(0, 3)}…`, re: new RegExp(`(?<![0-9])${d}(?![0-9])`) },
+    { rotulo: `CPF ${d.slice(0, 3)}… (pontuado)`, re: new RegExp(`${d.slice(3, 6)}\\.${d.slice(6, 9)}`) },
+  ]);
+}
+
+/** O único lugar onde o CPF pode sair: o documento do certificado, para quem pode baixá-lo. */
+const SAIDA_DO_CPF = /^\/(certificados\/\d+\/(documento|pdf)|turmas\/\d+\/certificados\.pdf)(\?|$)/;
+
 beforeAll(async () => {
   amb = await bancoLimpo();
   await naTransacao((tx) => povoar(tx));
@@ -310,6 +335,19 @@ beforeAll(async () => {
     ato_normativo: "teste",
   });
   expect(Object.keys(PERMISSOES).length).toBeGreaterThan(10);
+
+  // CPF só para certificado (`cpf_certificado.ts`): todo participante e todo
+  // instrutor do ambiente ganham um CPF válido, para a varredura de CPF abaixo
+  for (const p of await db.select().from(e.participante)) {
+    const cpf = cpf_de_teste(734_215_000 + p.id * 37);
+    CPFS.push(cpf);
+    await db.update(e.participante).set({ cpf }).where(eq(e.participante.id, p.id));
+  }
+  for (const a of await db.select().from(e.assinatura_instrutor)) {
+    const cpf = cpf_de_teste(618_430_000 + a.id * 53);
+    CPFS.push(cpf);
+    await db.update(e.assinatura_instrutor).set({ cpf }).where(eq(e.assinatura_instrutor.id, a.id));
+  }
 
   // O coordenador anda pelo sistema inteiro; as rotas registradas completam.
   const coord = await entrarComo("coordenador");
@@ -364,6 +402,27 @@ describe("RN-19 em todas as saídas", () => {
         achados.push(...vazamentos(conta, url, r, regras));
       }
       if (process.env.VARREDURA_SAIDA) appendFileSync(process.env.VARREDURA_SAIDA, achados.join("\n") + "\n");
+      expect(achados, achados.slice(0, 40).join("\n")).toEqual([]);
+    }, 600_000);
+  }
+
+  for (const conta of ["coordenador", "secretaria", "sem_nominal", "servidor"] as const) {
+    it(`${conta}: o CPF do certificado não sai em GET nenhum fora do documento`, async () => {
+      expect(CPFS.length).toBeGreaterThan(3);
+      const cliente = await entrarComo(conta);
+      const regras = regras_de_cpf();
+      const achados: string[] = [];
+      for (const url of enderecos) {
+        if (SAIDA_DO_CPF.test(url)) continue;
+        const r = await ler(cliente, url);
+        for (const { rotulo, re } of regras) {
+          const m = re.exec(r.texto);
+          if (m) {
+            achados.push(`${conta} GET ${url} [${r.status}] → ${rotulo}`);
+            break;
+          }
+        }
+      }
       expect(achados, achados.slice(0, 40).join("\n")).toEqual([]);
     }, 600_000);
   }
