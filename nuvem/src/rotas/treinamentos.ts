@@ -23,10 +23,13 @@ import {
   ORIENTACOES,
   PADRAO_CODIGO_TREINAMENTO,
   PADRAO_MARCADOR,
+  ROTULO_TIPO_TAG,
+  TIPOS_TAG,
   Treinamento,
 } from "../dominio/treinamento.js";
 import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
+import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as certificado from "../servicos/certificado.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as textos from "../servicos/textos.js";
@@ -363,8 +366,10 @@ rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
   const modelo = await _modelo(tx, Number(c.req.param("modelo_id")));
   if (!modelo) return redirecionar(c, MODELOS);
   vista_modelo(modelo);
-  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.mapa_de_tags(modelo));
+  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.marcadores_mapeados(modelo));
   return pagina(c, "paginas/certificado_modelo.html", usuario, {
+    tipos_tag: TIPOS_TAG.map((t) => [t, ROTULO_TIPO_TAG[t]]),
+    rotulo_tipo_tag: ROTULO_TIPO_TAG,
     modelo,
     conferencia,
     // os sem mapa que o "mapear sugeridos" resolve
@@ -473,15 +478,20 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
       criado_por: usuario.id,
     })
     .returning();
-  for (const tag of atual.tags as (typeof tabela_tag.$inferSelect)[]) {
-    await tx.insert(tabela_tag).values({
-      modelo_id: nova!.id,
-      marcador: tag.marcador,
-      campo: tag.campo,
-      ordem: tag.ordem,
-      obrigatorio: tag.obrigatorio,
-    });
-  }
+  // o dicionário inteiro, inclusive o tipo de preenchimento, o texto fixo e o
+  // rótulo dos campos de turma/participante (os valores digitados nas turmas
+  // são guardados pelo marcador e continuam valendo)
+  const clonadas = (atual.tags as (typeof tabela_tag.$inferSelect)[]).map((tag) => ({
+    modelo_id: nova!.id,
+    marcador: tag.marcador,
+    campo: tag.campo,
+    ordem: tag.ordem,
+    obrigatorio: tag.obrigatorio,
+    tipo: tag.tipo,
+    texto_fixo: tag.texto_fixo,
+    rotulo: tag.rotulo,
+  }));
+  if (clonadas.length) await tx.insert(tabela_tag).values(clonadas);
   await auditoria.registrar(tx, {
     entidade: "certificado_modelo",
     entidade_id: nova!.id,
@@ -519,6 +529,21 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
   );
 });
 
+/**
+ * NUVEM: a linha do dicionário como foi digitada. Na tabela da ficha o texto
+ * fixo e o nome do campo dividem uma caixa só (`detalhe`), lida conforme o tipo.
+ */
+function _tag_digitada(f: Formulario, tipo_padrao: string) {
+  const tipo = f.texto("tipo") || tipo_padrao;
+  const detalhe = f.texto("detalhe");
+  return campos_certificado.dados_da_tag({
+    tipo,
+    campo: f.texto("campo"),
+    texto_fixo: f.texto("texto_fixo") || (tipo === "TEXTO_FIXO" ? detalhe : ""),
+    rotulo: f.texto("rotulo") || (tipo === "TURMA" || tipo === "PARTICIPANTE" ? detalhe : ""),
+  });
+}
+
 rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("treinamento.gerenciar");
@@ -530,7 +555,6 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
   if (!modelo) return redirecionar(c, MODELOS);
   if (!modelo.vigente) return _erro(c, volta, "Versão superada não se edita.");
   const limpo = f.texto("marcador").trim();
-  const campo = f.texto("campo");
   if (!confere_regex(limpo, PADRAO_MARCADOR)) {
     return _erro(
       c,
@@ -538,25 +562,27 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
       `Marcador inválido: '${limpo}'. Use letra ou sublinhado no começo, depois letras, números e sublinhado.`,
     );
   }
-  // nunca chutar a chave: campo desconhecido sairia em branco no papel
-  if (!Object.hasOwn(certificado.CAMPOS_CERTIFICADO, campo)) return _erro(c, volta, `Campo desconhecido: '${campo}'.`);
-  if (Object.hasOwn(CertificadoModelo.mapa_de_tags(modelo), limpo)) {
+  // tipo do sistema: campo fechado no vocabulário (nunca chutar a chave)
+  const [dados, recusa] = _tag_digitada(f, "SISTEMA");
+  if (!dados) return _erro(c, volta, recusa);
+  if (Object.hasOwn(CertificadoModelo.marcadores_mapeados(modelo), limpo)) {
     return _erro(c, volta, `O marcador '${limpo}' já está mapeado neste modelo.`);
   }
   // default vazio: sem número, a tag cai no fim da lista
   const posicao = _inteiro(f.texto("ordem"), 1) || modelo.tags.length + 1;
   const [tag] = await tx
     .insert(tabela_tag)
-    .values({ modelo_id: modelo.id, marcador: limpo, campo, ordem: posicao, obrigatorio: marcado(f.texto("obrigatorio")) })
+    .values({ modelo_id: modelo.id, marcador: limpo, ...dados, ordem: posicao, obrigatorio: marcado(f.texto("obrigatorio")) })
     .returning();
+  const destino = campos_certificado.descrever_tag(tag!);
   await auditoria.registrar(tx, {
     entidade: "certificado_modelo_tag",
     entidade_id: tag!.id,
     tipo_evento: "MODELO_TAG_MAPEADA",
-    descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${limpo} }} ← ${campo}`,
+    descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${limpo} }} ← ${destino}`,
     usuario,
   });
-  return _volta(c, volta, `Marcador '${limpo}' mapeado para ${campo}.`);
+  return _volta(c, volta, `Marcador '${limpo}' mapeado para ${destino}.`);
 });
 
 /**
@@ -573,7 +599,7 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
   const modelo = await _modelo(tx, modelo_id);
   if (!modelo) return redirecionar(c, MODELOS);
   if (!modelo.vigente) return _erro(c, volta, "Versão superada não se edita.");
-  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.mapa_de_tags(modelo));
+  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.marcadores_mapeados(modelo));
   if (!conferencia.arquivo_encontrado) {
     return _erro(c, volta, `O arquivo '${modelo.arquivo}' não foi encontrado — não há marcadores para mapear.`);
   }
@@ -625,20 +651,21 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/:tag_id{[0-9]+}`, async (c) => {
       entidade: "certificado_modelo_tag",
       entidade_id: tag.id,
       tipo_evento: "MODELO_TAG_REMOVIDA",
-      descricao: `${CertificadoModelo.rotulo(modelo!)}: {{ ${tag.marcador} }} ← ${tag.campo}`,
+      descricao: `${CertificadoModelo.rotulo(modelo!)}: {{ ${tag.marcador} }} ← ${campos_certificado.descrever_tag(tag)}`,
       usuario,
     });
     await tx.delete(tabela_tag).where(eq(tabela_tag.id, tag.id));
     return _volta(c, volta, `Marcador '${tag.marcador}' removido do mapa.`);
   }
-  const campo = f.texto("campo");
-  if (!Object.hasOwn(certificado.CAMPOS_CERTIFICADO, campo)) return _erro(c, volta, `Campo desconhecido: '${campo}'.`);
+  // formulário antigo (sem `tipo`) continua sendo campo do sistema
+  const [dados, recusa] = _tag_digitada(f, tag.tipo);
+  if (!dados) return _erro(c, volta, recusa);
   return salvar_com_diff(
     c,
     usuario,
     tabela_tag,
     tag_id,
-    { campo, ordem: _inteiro(f.texto("ordem"), 1) || tag.ordem, obrigatorio: marcado(f.texto("obrigatorio")) },
+    { ...dados, ordem: _inteiro(f.texto("ordem"), 1) || tag.ordem, obrigatorio: marcado(f.texto("obrigatorio")) },
     { permissao: "treinamento.gerenciar", rotulo: "Mapa de tags", volta },
   );
 });

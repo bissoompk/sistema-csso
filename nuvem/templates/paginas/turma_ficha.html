@@ -787,6 +787,106 @@
 </div>
 {% endif %}
 
+{# ===== campos que o modelo do certificado pede (NUVEM) =====
+   O modelo declara campos que o sistema não tem — o local de atuação do
+   brigadista, a nota de cada disciplina. A turma preenche aqui; na emissão os
+   valores são congelados no certificado, e mudar depois não mexe em papel
+   emitido. As notas por pessoa são dado pessoal: o nome segue a mesma regra da
+   tabela de emissão abaixo, e gravar pede a permissão de lançar nota. #}
+{% if campos_turma|length %}
+<section class="cartao liso" id="campos-turma">
+  <div class="cabecalho-cartao">
+    <h2>Dados do certificado desta turma</h2>
+    <span class="nota">pedidos pelo modelo {{ modelo_emissao.nome }} v{{ modelo_emissao.versao }}</span>
+  </div>
+  <div class="corpo">
+    {% if pode_preencher_turma %}
+    <form method="post" action="/turmas/{{ turma.id }}/campos-certificado">
+      {% for tag in campos_turma %}
+      <div class="campo"><label for="ct-{{ tag.marcador }}">{{ tag.rotulo }}
+        {% if tag.obrigatorio %}<span class="discreto">(obrigatório para emitir)</span>{% endif %}</label>
+        <input id="ct-{{ tag.marcador }}" name="v_{{ tag.marcador }}" maxlength="2000"
+               value="{{ valores_turma[tag.marcador] or '' }}"></div>
+      {% endfor %}
+      <div class="acoes"><button type="submit">Salvar</button></div>
+    </form>
+    {% else %}
+    <dl class="tabela-dados">
+      {% for tag in campos_turma %}
+      <dt>{{ tag.rotulo }}</dt><dd>{{ valores_turma[tag.marcador] or '—' }}</dd>
+      {% endfor %}
+    </dl>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if campos_participante|length %}
+<section class="cartao liso" id="campos-participante">
+  <div class="cabecalho-cartao">
+    <h2>Dados do certificado por participante</h2>
+    <span class="nota">quem já tem certificado não muda aqui: anule e reemita</span>
+  </div>
+  {% set grava = pode_preencher_participante %}
+  {% if grava %}<form method="post" action="/turmas/{{ turma.id }}/campos-participante" id="f-campos-participante"></form>{% endif %}
+  <table>
+    <thead>
+      <tr><th scope="col">Participante</th>
+        {% for tag in campos_participante %}<th scope="col">{{ tag.rotulo }}{% if tag.obrigatorio %} *{% endif %}</th>{% endfor %}
+      </tr>
+    </thead>
+    {% for inscricao in inscricoes %}
+    {% if inscricao.situacao not in ['CANCELADA', 'AGUARDANDO_EMAIL'] %}
+    {% set quem = identificar(inscricao.participante.servidor, vazio=SUPRIMIDO) %}
+    {% set nominal = pode_nominal or quem.nominal %}
+    {% set valores = valores_inscritos[inscricao.id] or {} %}
+    {% set travada = certificados[inscricao.id] %}
+    <tr>
+      <td class="nome">
+        {%- if nominal %}{{ inscricao.participante.nome_exibicao }}
+        <span class="quebra discreto mono">{{ inscricao.participante.identificador_publico }}</span>
+        {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
+      {% for tag in campos_participante %}
+      <td>{% if grava and not travada %}
+        <input class="campo-curto" form="f-campos-participante" maxlength="2000"
+               name="v_{{ inscricao.id }}_{{ tag.marcador }}" value="{{ valores[tag.marcador] or '' }}"
+               aria-label="{{ tag.rotulo }} de {{ inscricao.participante.identificador_publico }}">
+        {% else %}{{ valores[tag.marcador] or '—' }}{% endif %}</td>
+      {% endfor %}
+    </tr>
+    {% endif %}
+    {% else %}
+    <tr><td colspan="{{ campos_participante|length + 1 }}" class="nada">A turma não tem inscrição ativa.</td></tr>
+    {% endfor %}
+  </table>
+  {% if grava %}
+  <div class="corpo"><div class="acoes"><button type="submit" form="f-campos-participante">Salvar</button></div></div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if (campos_turma|length or campos_participante|length) and trilha_campos|length %}
+<section class="cartao liso">
+  <div class="cabecalho-cartao">
+    <h2>Alterações nestes dados</h2>
+    <span class="contador">{{ trilha_campos|length }}</span>
+  </div>
+  <table>
+    <thead>
+      <tr><th scope="col">Quando</th><th scope="col">O quê</th><th scope="col">Antes → depois</th><th scope="col">Quem</th></tr>
+    </thead>
+    {% for evento in trilha_campos %}
+    <tr>
+      <td class="mono">{{ evento.ocorrido_em|momento }}</td>
+      <td>{{ evento.descricao }}</td>
+      <td>{{ evento.valor_anterior or '(vazio)' }} → {{ evento.valor_novo or '(vazio)' }}</td>
+      <td>{{ evento.usuario_nome }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
 <section class="cartao liso">
   <div class="cabecalho-cartao">
     <h2>Emissão dos certificados</h2>

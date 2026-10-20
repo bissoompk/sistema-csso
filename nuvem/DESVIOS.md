@@ -899,3 +899,16 @@ A função do Netlify roda em Ohio e o banco em São Paulo (~150 ms por ida e vo
 - **Leituras independentes em paralelo** (`Promise.all`) no painel, na lista e na ficha de turma, no painel de EPI e na ficha de processo.
 
 Medido localmente com 70 ms de atraso em cada sentido (`testes/idas_ao_banco.test.ts` fixa o teto de consultas por tela): o conjunto de 22 telas foi de 110 s para 28 s (instância aquecida); o painel, de 25 s para 1 s.
+
+## Campos do certificado além do sistema (19/10/2026)
+
+Não existe no Python. O modelo de Brigadista Orgânico pede dados que o sistema não tem (local de atuação, nota de cada disciplina, carga em "tempos"); criar coluna para cada curso não escala.
+
+- **Preenchimento do marcador** (`certificado_modelo_tag.tipo`): `SISTEMA` (o `campo` do vocabulário, como antes), `TEXTO_FIXO` (`texto_fixo`, digitado na ficha do modelo, igual em todo certificado), `TURMA` e `PARTICIPANTE` (o modelo declara o `rotulo`; o valor é digitado na aba Emissão da turma, por turma ou por inscrição). Fora de `SISTEMA`, `campo` fica `''`. `CertificadoModelo.mapa_de_tags` passou a devolver só os campos do sistema; a conferência com o .docx usa `marcadores_mapeados` (todas as linhas).
+- **Valores** em `certificado_valor_turma` e `certificado_valor_inscricao`, com chave no MARCADOR (não na linha do dicionário): a versão nova do modelo clona o dicionário com tipo, texto e rótulo (`/treinamentos/modelos/:id/versao`), e o que as turmas já digitaram continua valendo. Migração `0006_campos_livres_certificado`.
+- **Congelado**: a emissão resolve tudo em `ContextoCertificado.campos_livres` (`{marcador: {tipo, rotulo, valor}}`); a segunda via e o hash leem dali. Certificado antigo, sem a chave, reimprime igual.
+- **Recusa**: campo obrigatório em branco entra nos bloqueios de `validar` ("falta preencher “…” da turma/deste participante"), na coluna "O que falta" da aba Emissão; o lote trava só quem não tem o valor.
+- **Quem preenche**: campo da turma, `turma.criar` ou `certificado.emitir`; campo do participante, `turma.avaliar` (a regra da nota final), recusado quando a inscrição já tem certificado válido (anula e reemite). A grade da aba Emissão mostra o participante pela mesma regra RN-19 da tabela de emissão. Cada alteração vai para a trilha (`CERTIFICADO_CAMPO_TURMA_ALTERADO`, `CERTIFICADO_CAMPO_PARTICIPANTE_ALTERADO`; a do participante leva o identificador público, não o nome) e a aba mostra "Alterações nestes dados", com o ator pela RN-19.
+- **Campos de sistema novos**: `turma_campus` (nome do campus da turma) e `turma_campus_cidade` (também congelado).
+- **PDF**: o layout da casa (`certificado_pdf.ts`) não desenha os campos livres — para modelo personalizado o .docx continua sendo a fonte.
+- O povoamento de teste põe um campo de turma e um de participante (opcionais) no modelo "Padrão NR-35", para a varredura de privacidade passar pela grade.

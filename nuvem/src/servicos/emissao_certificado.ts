@@ -34,6 +34,7 @@ import { AssinaturaInstrutor, Certificado as C, CertificadoModelo, ROTULO_VINCUL
 import { RegraViolada } from "../nucleo/erros.js";
 import * as anexo_acesso from "./anexo_acesso.js";
 import * as auditoria from "./auditoria.js";
+import * as campos_certificado from "./campos_certificado.js";
 import * as servico_certificado from "./certificado.js";
 import { ContextoCertificado } from "./certificado.js";
 import * as datas_br from "./datas_br.js";
@@ -223,7 +224,7 @@ export async function modelo_da_turma(tx: Executor, turma: TurmaCarregada): Prom
   if (genericos.length) {
     // o mais recente cujo mapa cobre o arquivo; nenhum cobrindo, o mais recente (e a validação diz o que falta)
     const escolhido =
-      genericos.find((m) => servico_certificado.conferir_modelo(m.arquivo, CertificadoModelo.mapa_de_tags(m)).ok) ??
+      genericos.find((m) => servico_certificado.conferir_modelo(m.arquivo, CertificadoModelo.marcadores_mapeados(m)).ok) ??
       genericos[0]!;
     return [
       escolhido,
@@ -266,7 +267,12 @@ export function caminho_saida(certificado: CertificadoRegistro, extensao = "docx
 export async function validar(
   tx: Executor,
   inscricao: InscricaoCarregada,
-  opcoes: { quando?: string | null } = {},
+  opcoes: {
+    quando?: string | null;
+    // NUVEM: a aba Emissão lê os valores da turma inteira de uma vez e passa aqui
+    valores_turma?: campos_certificado.Valores;
+    valores_inscricao?: campos_certificado.Valores;
+  } = {},
 ): Promise<Validacao> {
   const quando = opcoes.quando ?? datas_br.hoje();
   const v = new Validacao();
@@ -340,7 +346,7 @@ export async function validar(
 
   const mapa = CertificadoModelo.mapa_de_tags(modelo);
   const rotulo = CertificadoModelo.rotulo(modelo);
-  if (!Object.keys(mapa).length) {
+  if (!modelo.tags.length) {
     v.bloqueios.push(`o modelo ${rotulo} não tem nenhuma tag no dicionário — o certificado sairia em branco`);
   }
   const desconhecidos = Object.values(mapa)
@@ -350,7 +356,7 @@ export async function validar(
     v.bloqueios.push(`o modelo ${rotulo} aponta campo que não existe no vocabulário: ` + desconhecidos.join(", "));
   }
 
-  const conferencia = servico_certificado.conferir_modelo(modelo.arquivo, mapa);
+  const conferencia = servico_certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.marcadores_mapeados(modelo));
   if (!conferencia.ok) {
     if (!conferencia.arquivo_encontrado) {
       v.bloqueios.push(`o arquivo '${modelo.arquivo}' não está em app/templates/certificados/`);
@@ -366,7 +372,26 @@ export async function validar(
       );
     }
   }
+
+  // NUVEM: campos de turma/participante e texto fixo obrigatórios em branco
+  if (modelo.tags.some((t) => campos_certificado.tipo_de(t) !== "SISTEMA")) {
+    const [da_turma, do_participante] = await _valores_livres(tx, inscricao, opcoes);
+    const livres = campos_certificado.resolver(modelo, da_turma, do_participante);
+    v.bloqueios.push(...campos_certificado.pendencias(modelo, livres));
+  }
   return v;
+}
+
+async function _valores_livres(
+  tx: Executor,
+  inscricao: InscricaoCarregada,
+  dados: { valores_turma?: campos_certificado.Valores; valores_inscricao?: campos_certificado.Valores } = {},
+): Promise<[campos_certificado.Valores, campos_certificado.Valores]> {
+  return Promise.all([
+    dados.valores_turma ?? campos_certificado.valores_da_turma(tx, inscricao.turma_id),
+    dados.valores_inscricao ??
+      campos_certificado.valores_das_inscricoes(tx, [inscricao.id]).then((v) => v[inscricao.id] ?? {}),
+  ]);
 }
 
 // ---------------------------------------------------------------------
@@ -423,6 +448,9 @@ export async function montar_contexto_para_emitir(
   const mapa = CertificadoModelo.mapa_de_tags(d.modelo);
   const instrutores = [];
   for (const v of instrutores_que_assinam(turma)) instrutores.push(await _dados_do_instrutor(tx, v));
+  // NUVEM: texto fixo e campos de turma/participante, resolvidos e congelados
+  const [da_turma, do_participante] = await _valores_livres(tx, inscricao);
+  const campos_livres = campos_certificado.resolver(d.modelo, da_turma, do_participante);
 
   return new ContextoCertificado({
     participante_nome: nome_exibicao(participante),
@@ -443,6 +471,7 @@ export async function montar_contexto_para_emitir(
     turma_local: turma.local || "",
     turma_unidade_promotora: turma.unidade_promotora ? turma.unidade_promotora.nome_extenso : "",
     turma_campus: turma.campus ? turma.campus.nome : "",
+    turma_campus_cidade: turma.campus ? turma.campus.cidade : "",
     data_base_vencimento: base,
     nota_final: inscricao.nota_final,
     frequencia_percentual: servico_presenca.frequencia_de(inscricao),
@@ -464,6 +493,7 @@ export async function montar_contexto_para_emitir(
     modelo_sha256: servico_certificado.sha256_do_modelo(d.modelo.arquivo),
     modelo_versao: d.modelo.versao,
     mapa_tags: { ...mapa },
+    campos_livres,
     tags_obrigatorias: d.modelo.tags
       .filter((t) => t.obrigatorio)
       .map((t) => t.marcador)

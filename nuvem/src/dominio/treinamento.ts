@@ -20,6 +20,16 @@ export const PADRAO_CODIGO_TREINAMENTO = String.raw`[A-Z0-9][A-Z0-9._-]*`;
 // aqui, quando alguem digita.
 export const PADRAO_MARCADOR = String.raw`[A-Za-z_][A-Za-z0-9_]*`;
 
+// NUVEM: de onde vem o valor do marcador (`certificado_modelo_tag.tipo`)
+export const TIPOS_TAG = ['SISTEMA', 'TEXTO_FIXO', 'TURMA', 'PARTICIPANTE'] as const;
+export type TipoTag = (typeof TIPOS_TAG)[number];
+export const ROTULO_TIPO_TAG: Record<TipoTag, string> = {
+  SISTEMA: 'Campo do sistema',
+  TEXTO_FIXO: 'Texto fixo do modelo',
+  TURMA: 'Campo da turma',
+  PARTICIPANTE: 'Campo do participante',
+};
+
 // =====================================================================
 // Fatia 2 — participante, turma e inscricao
 // =====================================================================
@@ -132,8 +142,25 @@ export const CertificadoModelo = {
    * `{marcador: campo}` — a forma que a emissao congela. Exige `tags` carregada
    * e ORDENADA por (ordem, id), que era o `order_by` da relacao no Python.
    */
-  mapa_de_tags(modelo: { tags: ReadonlyArray<{ marcador: string; campo: string }> }): Record<string, string> {
-    return Object.fromEntries(modelo.tags.map((tag) => [tag.marcador, tag.campo]));
+  mapa_de_tags(
+    modelo: { tags: ReadonlyArray<{ marcador: string; campo: string; tipo?: string | null }> },
+  ): Record<string, string> {
+    // NUVEM: só os campos do sistema; texto fixo e campos de turma/participante
+    // não têm código no vocabulário (ver `marcadores_mapeados`)
+    return Object.fromEntries(
+      modelo.tags.filter((tag) => (tag.tipo ?? 'SISTEMA') === 'SISTEMA').map((tag) => [tag.marcador, tag.campo]),
+    );
+  },
+  /**
+   * NUVEM: `{marcador: tipo-ou-campo}` de TODA linha do dicionário — o que se
+   * confronta com o .docx (`conferir_modelo` só olha as chaves).
+   */
+  marcadores_mapeados(
+    modelo: { tags: ReadonlyArray<{ marcador: string; campo: string; tipo?: string | null }> },
+  ): Record<string, string> {
+    return Object.fromEntries(
+      modelo.tags.map((tag) => [tag.marcador, (tag.tipo ?? 'SISTEMA') === 'SISTEMA' ? tag.campo : (tag.tipo as string)]),
+    );
   },
 };
 
