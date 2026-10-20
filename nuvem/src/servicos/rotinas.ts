@@ -36,6 +36,7 @@ import { ambienteDeProducao } from "./instalacao.js";
 import { TAMANHO_MINIMO_SENHA_BACKUP } from "../config.js";
 import { expurgos_de_privacidade, mensagem_sem_dados } from "./privacidade.js";
 import { expurgar_corpos } from "./email.js";
+import * as acesso_participante from "./acesso_participante.js";
 
 export const ROTINA_BACKUP = "BACKUP";
 export const ROTINA_RETENCAO = "RETENCAO_BACKUP";
@@ -216,11 +217,15 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
   const expurgos = await rodar(
     db,
     ROTINA_PRIVACIDADE,
-    async (tx) => ({ ...(await expurgos_de_privacidade(tx)), corpos: await expurgar_corpos(tx) }),
+    async (tx) => ({
+      ...(await expurgos_de_privacidade(tx)),
+      corpos: await expurgar_corpos(tx),
+      links: await acesso_participante.expurgar(tx),
+    }),
     (r) => [
       true,
       `${r.acessos} linha(s) de registro de acesso e ${r.exportacoes} exportação(ões) apagada(s); ` +
-        `IP de ${r.ips} pedido(s) pelo link limpo(s); texto de ${r.corpos} e-mail(s) apagado(s)`,
+        `IP de ${r.ips} pedido(s) pelo link limpo(s); texto de ${r.corpos} e-mail(s) e ${r.links} link(s) de acesso apagado(s)`,
     ],
   );
   passos.push({ rotina: ROTINA_PRIVACIDADE, ok: expurgos.ok, detalhe: expurgos.detalhe });

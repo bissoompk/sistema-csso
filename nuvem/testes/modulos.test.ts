@@ -48,11 +48,11 @@ describe("declaração dos módulos", () => {
     }
   });
 
-  it("módulo entregue por fatias declara o que falta", () => {
+  it("módulo entregue por fatias deixa de declarar o que já chegou", () => {
     const c = modulos.por_codigo("certificados")!;
     expect(c.disponivel).toBe(true);
     expect(c.itens.length).toBeGreaterThan(0);
-    expect(c.itens_previstos.length).toBeGreaterThan(0);
+    expect(c.itens_previstos).toEqual([]);
   });
 
   it.each(["/", "/kanban", "/processos", "/processos/12", "/pareceres/3", "/laudos"])(

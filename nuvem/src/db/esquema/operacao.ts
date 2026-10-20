@@ -103,3 +103,23 @@ export const email_saida = pgTable(
     index('ix_email_saida_certificado').on(t.certificado_id),
   ],
 );
+
+/**
+ * O link de acesso do participante sem conta aos próprios certificados
+ * (NUVEM; `servicos/acesso_participante.ts`). Quem prova ser o dono é a caixa
+ * de e-mail: o link vai para o endereço cadastrado, e o banco guarda só o
+ * SHA-256 do token. A rotina de privacidade apaga a linha em 7 dias.
+ */
+export const acesso_participante = pgTable(
+  'acesso_participante',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    token_hash: varchar('token_hash', { length: 64 }).notNull().unique('uq_acesso_participante_token'),
+    email_normalizado: varchar('email_normalizado', { length: 160 }).notNull(),
+    expira_em: MomentoUTC('expira_em').notNull(),
+    ip: text('ip'),
+    usado_em: MomentoUTC('usado_em'),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [index('ix_acesso_participante_email').on(t.email_normalizado, t.criado_em)],
+);

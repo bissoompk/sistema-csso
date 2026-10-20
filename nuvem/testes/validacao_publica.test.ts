@@ -226,6 +226,8 @@ const ABERTAS_SEM_SESSAO: Record<string, string> = {
   "/quem-sou-eu":
     "responde `{autenticado: false}` a quem não entrou, e é isso que ela existe para responder — não há dado de ninguém antes da sessão",
   "/validar": "o formulário da validação pública por chave",
+  "/certificados/acesso":
+    "o formulário em que o participante sem conta pede, por e-mail, o link dos próprios certificados (`servicos/acesso_participante.ts`): não mostra dado de ninguém, e a resposta é a mesma para e-mail conhecido ou não",
   "/sw.js":
     "o service worker da tela de bolso: o navegador o baixa ANTES de haver sessão (é assim que a casca abre sem rede), e ele é código, não dado — a lista do que ele guarda não tem /api/ e há teste disso",
   "/validar/{chave}":

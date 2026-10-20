@@ -7,7 +7,9 @@ e não cria finalidade nem categoria nova. O que muda — e é o que esta emenda
 registra — é **onde o dado está, quem o processa em nome da UFVJM e por qual
 caminho ele passa**.
 
-**Versão:** 1.3, de 20/10/2026 — acrescenta o envio de e-mail (certificado e
+**Versão:** 1.4, de 20/10/2026 — acrescenta o acesso do participante sem
+conta aos próprios certificados, por link enviado ao e-mail cadastrado (§5.10
+e §6). Versão 1.3, de 20/10/2026: o envio de e-mail (certificado e
 aviso da inscrição pelo link; §3, §5.9 e §6), **desligado até o controlador
 escolher e registrar o provedor de SMTP**. Versão 1.2, de 20/10/2026: a
 inscrição pública por link, um canal de coleta aberto a quem não tem conta
@@ -253,6 +255,19 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Provedor | SMTP configurado no Netlify (`PRODUCAO.md` §2.2). **Pendente**: escolher e registrar no §3 — o institucional, se o TI da UFVJM liberar, é o que não acrescenta operador |
 | Desligar | Apagar `CSSO_SMTP_URL` no Netlify: os pedidos ficam na fila e nada sai |
 
+### 5.10 Acesso do participante sem conta aos certificados (20/10/2026)
+
+| Item | Registro |
+|---|---|
+| O que é | Em `/certificados/acesso` a pessoa digita o e-mail; se ele está no cadastro de algum participante com certificado emitido, o sistema envia (§5.9) um link que vale 2 horas e lista e baixa esses certificados (`servicos/acesso_participante.ts`) |
+| Quem prova ser o titular | A posse da caixa de e-mail: o link só vai ao endereço que já está no cadastro, nunca a um digitado de novo |
+| Sem oráculo | A resposta é sempre a mesma frase; de fora não se sabe se o e-mail existe nem se há certificado |
+| Abuso | Até 3 links por hora por endereço; limite de pedidos por IP; o banco guarda só o SHA-256 do token |
+| O que se guarda | E-mail normalizado, IP e horários do pedido do link, por 7 dias; a segunda via baixada entra na trilha do certificado como "pelo link de acesso do participante" (sem usuário) |
+| Base legal | A do certificado (ROPA §2): é o titular recebendo o próprio documento (LGPD art. 18, II) |
+| Limite conhecido | Um e-mail ainda não confirmado pode estar em mais de um participante (duplicata a mesclar); o link mostra os certificados de todos eles. Quem recebe é sempre o dono da caixa — o risco é ver o certificado de um homônimo cadastrado por engano com o e-mail dele, e a correção é a mesclagem/limpeza do cadastro |
+| Depende de | O envio de e-mail ligado (§5.9). Desligado, a página diz que o acesso está indisponível |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -268,6 +283,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | IP do pedido pelo link público (§5.8) | 90 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `expurgar_ip_de_inscricao`) |
 | Participante e pedido recusado pelo link (§5.8) | Os da inscrição (POLITICA §2) | O pedido recusado fica cancelado com o motivo, como a inscrição interna |
 | Texto do e-mail na caixa de saída (§5.9) | 90 dias do pedido (enviado, falhado ou cancelado) | Rotina noturna (`EXPURGO_PRIVACIDADE`, `email.expurgar_corpos`); a linha fica sem o texto, como registro do envio |
+| Pedido de link de acesso do participante (§5.10): e-mail, IP, horários | 7 dias | Rotina noturna (`EXPURGO_PRIVACIDADE`, `acesso_participante.expurgar`) |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 

@@ -71,6 +71,13 @@
       "when": 1792518184406,
       "tag": "0009_caixa_de_saida_email",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792521024163,
+      "tag": "0010_acesso_participante",
+      "breakpoints": true
     }
   ]
 }

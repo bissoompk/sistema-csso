@@ -11,6 +11,7 @@ import { rotas as aplicativo } from "./aplicativo.js";
 import { rotas as celular } from "./celular.js";
 import { rotas as validacao } from "./validacao.js";
 import { rotas as inscricao_publica } from "./inscricao_publica.js";
+import { rotas as acesso_participante } from "./acesso_participante.js";
 import { rotas as painel } from "./painel.js";
 import { rotas as modulos } from "./modulos.js";
 import { rotas as busca } from "./busca.js";
@@ -44,6 +45,7 @@ export const ROTAS: Hono<Ambiente>[] = [
   celular,
   validacao,
   inscricao_publica,
+  acesso_participante,
   painel,
   modulos,
   busca,

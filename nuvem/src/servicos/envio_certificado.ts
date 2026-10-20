@@ -49,7 +49,8 @@ function _corpo(certificado: CertificadoRegistro): { assunto: string; corpo: str
       `(turma ${c.turma_codigo}, ${periodo}).\n\n` +
       `Certificado nº ${C.rotulo(certificado)}. A autenticidade pode ser conferida em:\n` +
       `${c.url_validacao}\n\n` +
-      "Guarde este arquivo: ele é o documento do treinamento.\n\n" +
+      "Guarde este arquivo: ele é o documento do treinamento. Para baixá-lo de novo, " +
+      `peça o link em ${c.url_validacao.replace(/\/validar\/.*$/, "")}/certificados/acesso\n\n` +
       "Coordenação de Saúde e Segurança Ocupacional (CSSO) — UFVJM\n" +
       "Mensagem enviada pelo Sistema CSSO.\n",
   };

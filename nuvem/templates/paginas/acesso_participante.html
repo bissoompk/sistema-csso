@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# Sem lateral, como /validar: quem abre não tem conta neste sistema. #}
+{% set sem_casca = true %}
+{% block titulo %}Meus certificados · CSSO{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{% block conteudo %}
+
+{% if aberto %}
+<div class="cartao">
+  <h1>Seus certificados</h1>
+  <p class="sub">Os certificados de treinamento emitidos pela CSSO/UFVJM para o seu
+    e-mail. Este link vale por 2 horas; depois, peça outro.</p>
+  {% if itens|length %}
+  <table>
+    <thead><tr><th scope="col">Treinamento</th><th scope="col">Período</th>
+        <th scope="col">Certificado</th><th scope="col"></th></tr></thead>
+    {% for x in itens %}
+    <tr>
+      <td>{{ x.treinamento }}<span class="quebra discreto mono">{{ x.turma }}</span></td>
+      <td class="mono">{{ x.inicio|data }}{% if x.fim != x.inicio %} a {{ x.fim|data }}{% endif %}
+        {% if x.vencimento %}<span class="quebra discreto">válido até {{ x.vencimento|data }}</span>{% endif %}</td>
+      <td class="mono">{{ x.rotulo }}</td>
+      <td><a class="botao compacto" href="{{ caminho }}/{{ token }}/{{ x.id }}">
+        {{- 'Baixar (Word)' if x.so_word and not pdf_fiel() else 'Baixar PDF' -}}</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum certificado em vigor ligado a este e-mail. Se algum foi anulado, a CSSO
+    emitiu (ou vai emitir) outro no lugar.</p>
+  {% endif %}
+  <p class="discreto">Quem recebe o seu certificado confere a autenticidade em
+    <a href="/validar">/validar</a>, pela chave impressa nele.</p>
+</div>
+
+{% elif expirado %}
+<div class="cartao">
+  <h1>Link vencido ou inválido</h1>
+  <p>O link de acesso vale por 2 horas. Peça outro abaixo.</p>
+  <p><a class="botao" href="{{ caminho }}">Pedir um link novo</a></p>
+</div>
+
+{% else %}
+<div class="cartao">
+  <h1>Meus certificados</h1>
+  <p class="sub">Para quem fez treinamento com a CSSO/UFVJM e não tem conta no sistema
+    (terceirizado, estudante, visitante). Servidor da UFVJM também pode usar.</p>
+
+  {% if not disponivel %}
+  <div class="aviso aviso-alerta">O acesso por e-mail está indisponível no momento.
+    Peça o seu certificado diretamente à CSSO.</div>
+
+  {% elif excedeu %}
+  <div class="aviso aviso-alerta" role="alert">Pedidos demais deste endereço de rede.
+    Espere alguns minutos e tente de novo.</div>
+
+  {% elif recebido %}
+  <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
+  <p class="discreto">Não chegou? O link só vai para o e-mail que a CSSO tem no seu
+    cadastro. Se você não deu e-mail na inscrição, ou ele mudou, fale com a CSSO.</p>
+
+  {% else %}
+  {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+  <form method="post" action="{{ caminho }}">
+    <div class="campo"><label for="acesso-email">Seu e-mail</label>
+      <input id="acesso-email" name="email" type="email" value="{{ digitado }}" required
+             maxlength="160" autocomplete="email" aria-describedby="dica-acesso">
+      <span class="dica" id="dica-acesso">O mesmo que você informou na inscrição. Vamos
+        enviar para ele um link que lista e baixa os seus certificados.</span></div>
+    <div class="acoes"><button type="submit" class="largo">Receber o link</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

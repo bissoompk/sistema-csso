@@ -344,10 +344,10 @@ export const MODULOS: readonly Modulo[] = [
     // particular, era a mais cara de manter: o endereço já saía impresso em
     // todo certificado emitido, e a lista dizia que ele não existia.
     // A inscrição pública por link saiu também (a CSSO confere cada pedido,
-    // `servicos/inscricao_publica.ts`), e o envio por e-mail (`servicos/email.ts`).
-    itens_previstos: [
-      "Acesso do participante externo aos próprios certificados",
-    ],
+    // `servicos/inscricao_publica.ts`), o envio por e-mail (`servicos/email.ts`)
+    // e o acesso do participante sem conta (`servicos/acesso_participante.ts`):
+    // o módulo não tem mais fatia declarada por fazer.
+    itens_previstos: [],
   }),
   new Modulo({
     codigo: "acidentes",

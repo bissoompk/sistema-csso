@@ -739,8 +739,8 @@ describe("o módulo no menu e no mapa", () => {
       ["/treinamentos/modelos", "treinamento.gerenciar"],
       ["/treinamentos/assinaturas", "assinatura.gerenciar"],
     ]);
-    // o que falta continua declarado: entregue por fatias, não escondido
-    expect(modulo.itens_previstos.length).toBeGreaterThan(0);
+    // as fatias declaradas chegaram todas: a lista do que falta esvaziou
+    expect(modulo.itens_previstos).toEqual([]);
   });
 
   it.each(["/treinamentos/catalogo", "/treinamentos/modelos", "/treinamentos/modelos/7"])(
@@ -759,7 +759,9 @@ describe("o módulo no menu e no mapa", () => {
     for (const caminho of ["/treinamentos/catalogo", "/treinamentos/modelos", "/treinamentos/assinaturas"]) {
       expect(mapa).toContain(`href="${caminho}"`);
     }
-    expect(mapa).toContain("O que ainda vem");
+    // as fatias declaradas chegaram: o módulo não promete mais nada
+    expect(mapa).not.toContain("Inscrição pública por link");
+    expect(mapa).not.toContain("Acesso do participante externo");
   });
 
   it("o mapa não oferece a tela a quem não pode", async () => {

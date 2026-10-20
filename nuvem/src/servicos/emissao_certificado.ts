@@ -806,6 +806,33 @@ export async function segunda_via(
 ): Promise<ResultadoSegundaVia> {
   // chamada pelo efeito: é ela que levanta para quem não pode ler
   exigir_leitura_do_certificado(usuario, certificado.servidor_id);
+  const via = await _reimprimir(tx, certificado, usuario, "");
+  // a segunda via do PRÓPRIO certificado não entra em `acesso_dado_sensivel`
+  await auditoria.registrar_leitura_nominal(tx, usuario, "certificado", {
+    servidor_id: certificado.servidor_id,
+    finalidade: "segunda via do certificado de treinamento",
+  });
+  return via;
+}
+
+/**
+ * NUVEM: a segunda via que o PRÓPRIO participante baixa pelo link que recebeu
+ * no e-mail (`acesso_participante.ts`) — sem conta, e por isso sem usuário na
+ * trilha. Quem chama já conferiu que o certificado é do dono do link.
+ */
+export async function segunda_via_do_titular(
+  tx: Executor,
+  certificado: CertificadoRegistro,
+): Promise<ResultadoSegundaVia> {
+  return _reimprimir(tx, certificado, null, " · pelo link de acesso do participante");
+}
+
+async function _reimprimir(
+  tx: Executor,
+  certificado: CertificadoRegistro,
+  usuario: UsuarioAtual | null,
+  como: string,
+): Promise<ResultadoSegundaVia> {
   const contexto = montar_contexto(tx, certificado);
   const destino = caminho_saida(certificado);
   const info = await servico_certificado.renderizar(contexto, destino);
@@ -834,13 +861,8 @@ export async function segunda_via(
     tipo_evento: CERTIFICADO_SEGUNDA_VIA,
     descricao:
       `Segunda via do certificado ${C.rotulo(certificado)} ` +
-      `(${contexto.participante_identificador}) · ${info.hash_conteudo.slice(0, 12)}`,
+      `(${contexto.participante_identificador}) · ${info.hash_conteudo.slice(0, 12)}${como}`,
     usuario,
-  });
-  // a segunda via do PRÓPRIO certificado não entra em `acesso_dado_sensivel`
-  await auditoria.registrar_leitura_nominal(tx, usuario, "certificado", {
-    servidor_id: certificado.servidor_id,
-    finalidade: "segunda via do certificado de treinamento",
   });
   return { docx: destino, bytes: info.bytes, hash_conteudo: info.hash_conteudo, confere, aviso };
 }
@@ -892,6 +914,38 @@ export async function pdf_do_modelo_enviado(
     async () => (await segunda_via(tx, usuario, certificado)).bytes,
   );
   return { nome: caminho_saida(certificado, "pdf").split("/").pop()!, bytes };
+}
+
+/**
+ * O papel do certificado para o próprio participante, pelo link do e-mail: o
+ * mesmo que a ficha baixa (PDF da casa, PDF fiel do modelo enviado ou o Word),
+ * sem usuário (`segunda_via_do_titular`).
+ */
+export async function arquivo_do_titular(
+  tx: Executor,
+  certificado: CertificadoRegistro,
+): Promise<{ nome: string; bytes: Uint8Array; tipo: string }> {
+  const nome_pdf = caminho_saida(certificado, "pdf").split("/").pop()!;
+  if (do_modelo_enviado(certificado)) {
+    if (conversor_pdf.configurado()) {
+      const congelado = certificado.contexto_congelado as Record<string, unknown>;
+      const chave = conversor_pdf.chave_do_pdf(
+        certificado.id,
+        certificado.hash_conteudo ?? "",
+        String(congelado["modelo_sha256"] ?? ""),
+      );
+      const bytes = await conversor_pdf.pdf_guardado_ou_convertido(
+        chave,
+        async () => (await segunda_via_do_titular(tx, certificado)).bytes,
+      );
+      return { nome: nome_pdf, bytes, tipo: certificado_pdf.TIPO_PDF };
+    }
+    const via = await segunda_via_do_titular(tx, certificado);
+    return { nome: via.docx.split("/").pop()!, bytes: via.bytes, tipo: TIPO_DOCX };
+  }
+  await segunda_via_do_titular(tx, certificado);
+  const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)]);
+  return { nome: nome_pdf, bytes, tipo: certificado_pdf.TIPO_PDF };
 }
 
 /** Os .docx vigentes da turma num .zip, na ordem do número (o "todos" do Word). */

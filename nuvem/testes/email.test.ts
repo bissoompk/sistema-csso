@@ -7,6 +7,7 @@ import { asc, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import type { Banco } from "../src/db/cliente.js";
 import * as email from "../src/servicos/email.js";
+import * as acesso from "../src/servicos/acesso_participante.js";
 import * as servico from "../src/servicos/emissao_certificado.js";
 import * as servico_participante from "../src/servicos/participante.js";
 import { definirArmazenamento } from "../src/servicos/armazenamento.js";
@@ -17,6 +18,7 @@ definirArmazenamento(null);
 
 let db: Banco;
 let cliente: Cliente;
+let novoCliente: () => Cliente;
 let enviadas: email.Mensagem[];
 
 await bancoLimpo();
@@ -24,6 +26,7 @@ beforeEach(async () => {
   const amb = await bancoLimpo();
   db = amb.db;
   cliente = amb.cliente;
+  novoCliente = amb.novoCliente;
   enviadas = [];
 });
 afterEach(() => email.definir_transporte(null));
@@ -170,5 +173,99 @@ describe("envio", () => {
     const [depois] = await _caixa();
     expect(depois!.corpo).toBeNull();
     expect(depois!.destinatario).toBe("marco@ufvjm.edu.br");
+  });
+});
+
+describe("acesso do participante sem conta", () => {
+  beforeEach(() => acesso.limpar_limites());
+
+  function _ligar() {
+    process.env.CSSO_SMTP_URL = "smtp://teste:teste@localhost:2525";
+    process.env.CSSO_EMAIL_REMETENTE = "CSSO <csso@teste.br>";
+  }
+  afterEach(() => {
+    delete process.env.CSSO_SMTP_URL;
+    delete process.env.CSSO_EMAIL_REMETENTE;
+  });
+
+  /** Pede o link pela página pública e o tira do e-mail que entrou na caixa. */
+  async function _link(publico: Cliente, endereco: string): Promise<string | null> {
+    const r = await publico.post(acesso.CAMINHO, { email: endereco });
+    expect(r.status).toBe(200);
+    expect(r.text).toContain("Se este e-mail estiver cadastrado");
+    const [linha] = (await _caixa()).filter((x) => x.tipo === acesso.TIPO_EMAIL).slice(-1);
+    const m = linha?.corpo?.match(/\/certificados\/acesso\/([A-Za-z0-9_-]{20,})/);
+    return m ? m[1]! : null;
+  }
+
+  it("sem o envio ligado, a página diz que está indisponível e nada sai", async () => {
+    await cenario();
+    const publico = novoCliente();
+    expect((await publico.get(acesso.CAMINHO)).text).toContain("indisponível");
+    await publico.post(acesso.CAMINHO, { email: "marco@ufvjm.edu.br" });
+    expect(await _caixa()).toHaveLength(0);
+  });
+
+  it("o link vai ao e-mail cadastrado, lista e baixa só os certificados dele", async () => {
+    const h = await cenario();
+    _ligar();
+    const publico = novoCliente();
+    const token = await _link(publico, "MARCO@ufvjm.edu.br");
+    expect(token).not.toBeNull();
+    const [aviso] = await _caixa();
+    expect(aviso!.destinatario).toBe("marco@ufvjm.edu.br");
+    const [registro] = await db.select().from(e.acesso_participante);
+    expect(registro!.token_hash).not.toContain(token!);
+
+    const lista = await publico.get(`${acesso.CAMINHO}/${token}`);
+    expect(lista.status).toBe(200);
+    expect(lista.text).toContain("Trabalho em Altura");
+    expect(lista.text).toContain(`${acesso.CAMINHO}/${token}/${h.do_marco.id}`);
+    expect(lista.cabecalho("referrer-policy")).toBe("no-referrer");
+    const pdf = await publico.get(`${acesso.CAMINHO}/${token}/${h.do_marco.id}`);
+    expect(pdf.status).toBe(200);
+    expect(pdf.cabecalho("content-type")).toBe("application/pdf");
+    // o da Ana não sai por este link
+    const da_ana = (await db.select().from(e.certificado)).find((x) => x.id !== h.do_marco.id)!;
+    expect((await publico.get(`${acesso.CAMINHO}/${token}/${da_ana.id}`)).status).toBe(404);
+    // a trilha diz que a segunda via saiu pelo link, sem usuário
+    const trilha = await db.select().from(e.historico_evento).where(eq(e.historico_evento.entidade_id, h.do_marco.id));
+    const via = trilha.find((t) => t.descricao?.includes("pelo link de acesso do participante"))!;
+    expect(via.usuario_id).toBeNull();
+  });
+
+  it("e-mail desconhecido recebe a mesma resposta, e nada sai", async () => {
+    await cenario();
+    _ligar();
+    expect(await _link(novoCliente(), "ninguem@exemplo.com")).toBeNull();
+    expect(await _caixa()).toHaveLength(0);
+  });
+
+  it("no máximo 3 links por hora para o mesmo endereço, e o limite por IP", async () => {
+    await cenario();
+    _ligar();
+    const publico = novoCliente();
+    for (let n = 0; n < 5; n++) await publico.post(acesso.CAMINHO, { email: "marco@ufvjm.edu.br" });
+    expect(await _caixa()).toHaveLength(acesso.LINKS_POR_HORA);
+    expect((await publico.post(acesso.CAMINHO, { email: "marco@ufvjm.edu.br" })).status).toBe(429);
+  });
+
+  it("o link vence em 2 horas; o registro sai em 7 dias", async () => {
+    await cenario();
+    _ligar();
+    const token = (await _link(novoCliente(), "marco@ufvjm.edu.br"))!;
+    expect(await acesso.abrir(db, token, new Date(Date.now() + 3 * 3_600_000))).toBeNull();
+    expect((await novoCliente().get(`${acesso.CAMINHO}/nao-existe-este-token`)).status).toBe(404);
+    expect(await acesso.expurgar(db)).toBe(0);
+    expect(await acesso.expurgar(db, new Date(Date.now() + 8 * 86_400_000))).toBe(1);
+  });
+
+  it("certificado anulado sai da lista", async () => {
+    const h = await cenario();
+    _ligar();
+    const token = (await _link(novoCliente(), "marco@ufvjm.edu.br"))!;
+    await db.transaction((tx) => servico.anular(tx, h.montador, h.do_marco, "emitido com erro de digitação"));
+    const lista = await novoCliente().get(`${acesso.CAMINHO}/${token}`);
+    expect(lista.text).toContain("Nenhum certificado em vigor");
   });
 });
