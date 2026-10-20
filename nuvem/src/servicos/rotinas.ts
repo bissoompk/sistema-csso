@@ -29,6 +29,8 @@ import * as autenticacao from "./autenticacao.js";
 import * as backup from "./backup.js";
 import * as epi_estoque from "./epi_estoque.js";
 import * as epi_ficha from "./epi_ficha.js";
+import * as reciclagem from "./reciclagem.js";
+import { hoje_iso } from "../dominio/datas.js";
 import { obterArmazenamento, type Armazenamento } from "./armazenamento.js";
 import { ambienteDeProducao } from "./instalacao.js";
 import { TAMANHO_MINIMO_SENHA_BACKUP } from "../config.js";
@@ -95,11 +97,12 @@ async function rodar<T>(
 // ---------------------------------------------------------------------
 // Varredura das pendências de EPI (porte de ferramentas/varrer_pendencias.py)
 // ---------------------------------------------------------------------
-export const TIPOS_VARRIDOS = [epi_estoque.TIPO_PENDENCIA_CA, epi_ficha.TIPO_PENDENCIA_TROCA] as const;
+export const TIPOS_VARRIDOS = [epi_estoque.TIPO_PENDENCIA_CA, epi_ficha.TIPO_PENDENCIA_TROCA, reciclagem.TIPO_PENDENCIA] as const;
 
 export interface ResultadoVarredura {
   lotes: number;
   servidores: number;
+  certificados: { abertas: number; fechadas: number };
   antes: Record<string, number>;
   depois: Record<string, number>;
 }
@@ -123,7 +126,13 @@ async function _contar(tx: Executor): Promise<Record<string, number>> {
  * não é ninguém), e é idempotente por chave.
  */
 export async function varrer_pendencias(tx: Executor, quando: string | null = null): Promise<ResultadoVarredura> {
-  const resultado: ResultadoVarredura = { lotes: 0, servidores: 0, antes: await _contar(tx), depois: {} };
+  const resultado: ResultadoVarredura = {
+    lotes: 0,
+    servidores: 0,
+    certificados: { abertas: 0, fechadas: 0 },
+    antes: await _contar(tx),
+    depois: {},
+  };
   const lotes = await tx.select().from(epi_entrada_estoque).where(isNotNull(epi_entrada_estoque.validade_ca));
   for (const entrada of lotes) {
     await epi_estoque.sincronizar_pendencia_de_ca(tx, entrada, null);
@@ -137,6 +146,8 @@ export async function varrer_pendencias(tx: Executor, quando: string | null = nu
     await epi_ficha.sincronizar_trocas_do_servidor(tx, servidor_id, null, quando);
     resultado.servidores += 1;
   }
+  // o certificado que entra na janela de 30 dias da reciclagem
+  resultado.certificados = await reciclagem.varrer(tx, quando ?? hoje_iso());
   resultado.depois = await _contar(tx);
   return resultado;
 }
@@ -182,6 +193,7 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
     (r) => [
       true,
       `${r.lotes} lote(s) com CA e ${r.servidores} servidor(es) com troca prevista revistos; ` +
+        `reciclagem: ${r.certificados.abertas} aviso(s) aberto(s), ${r.certificados.fechadas} fechado(s); ` +
         TIPOS_VARRIDOS.map((t) => `${t}: ${r.depois[t] ?? 0} aberta(s) (${(r.depois[t] ?? 0) - (r.antes[t] ?? 0)} nesta passada)`).join("; "),
     ],
   );

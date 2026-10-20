@@ -292,6 +292,12 @@ export const MODULOS: readonly Modulo[] = [
         "Emitidos, com segunda via a partir do congelado.",
       ),
       new Item(
+        "Reciclagem",
+        "/certificados/vencimentos",
+        "certificado.ver",
+        "Quem tem certificado vencido ou a vencer em 30 dias.",
+      ),
+      new Item(
         "Catálogo",
         "/treinamentos/catalogo",
         "treinamento.ver",
@@ -321,7 +327,6 @@ export const MODULOS: readonly Modulo[] = [
     // todo certificado emitido, e a lista dizia que ele não existia.
     itens_previstos: [
       "Inscrição pública por link, com e-mail confirmado",
-      "Monitor de vencimento por servidor e por unidade",
     ],
   }),
   new Modulo({

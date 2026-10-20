@@ -8,6 +8,7 @@ import { randomInt } from 'node:crypto';
 
 import { INSCRICAO_OCUPA_VAGA, TURMA_ACEITA_INSCRICAO } from './estados';
 import { linhas } from './dominios';
+import { somar_dias } from './datas';
 import { vigente_em } from './organizacao';
 
 export const ORIENTACOES = ['PAISAGEM', 'RETRATO'] as const;
@@ -306,4 +307,25 @@ export const Certificado = {
     if (Certificado.anulado(certificado)) return 'ANULADO';
     return Certificado.vencido_em(certificado, quando) ? 'VENCIDO' : 'VALIDO';
   },
+  /**
+   * O semáforo da reciclagem: o válido que vence em até
+   * `DIAS_AVISO_RECICLAGEM` dias já é "a vencer" — é a janela para marcar a
+   * turma de reciclagem antes de a pessoa ficar sem o certificado.
+   */
+  situacao_reciclagem(
+    certificado: { data_vencimento: string | null },
+    quando: string,
+  ): 'VENCIDO' | 'A_VENCER' | 'VALIDO' {
+    if (Certificado.vencido_em(certificado, quando)) return 'VENCIDO';
+    const limite = somar_dias(quando, DIAS_AVISO_RECICLAGEM);
+    return certificado.data_vencimento !== null && certificado.data_vencimento <= limite ? 'A_VENCER' : 'VALIDO';
+  },
+};
+
+export const DIAS_AVISO_RECICLAGEM = 30;
+
+export const ROTULO_RECICLAGEM: Readonly<Record<string, string>> = {
+  VALIDO: 'Válido',
+  A_VENCER: `A vencer (${DIAS_AVISO_RECICLAGEM} dias)`,
+  VENCIDO: 'Vencido',
 };

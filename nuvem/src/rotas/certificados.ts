@@ -7,11 +7,18 @@
  * arquivo: a guarda que importa é a do serviço (`emissao_certificado.ts`).
  */
 import { Hono } from "hono";
-import { and, asc, count, desc, eq, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import { certificado as tabela_certificado, treinamento as tabela_treinamento } from "../db/esquema/index.js";
-import { Certificado as C, ROTULO_CERTIFICADO, ROTULO_TIPO_TAG, SITUACOES_CERTIFICADO } from "../dominio/treinamento.js";
+import {
+  Certificado as C,
+  DIAS_AVISO_RECICLAGEM,
+  ROTULO_CERTIFICADO,
+  ROTULO_RECICLAGEM,
+  ROTULO_TIPO_TAG,
+  SITUACOES_CERTIFICADO,
+} from "../dominio/treinamento.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
 import { CAMPOS_CERTIFICADO, normalizar_chave } from "../servicos/certificado.js";
@@ -22,6 +29,8 @@ import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
 import { numeroDaPagina, pagina, recortarConsulta, redirecionar } from "../web.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as conversor_pdf from "../servicos/conversor_pdf.js";
+import * as reciclagem from "../servicos/reciclagem.js";
+import { parece_cpf } from "../servicos/textos.js";
 import { baixar } from "./turmas.js";
 import { erro as _erro, id_opcional, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
 
@@ -29,6 +38,7 @@ export const rotas = new Hono<Ambiente>();
 
 export const CERTIFICADOS = "/certificados";
 export const MEUS = `${CERTIFICADOS}/meus`;
+export const VENCIMENTOS = `${CERTIFICADOS}/vencimentos`;
 
 /** Os certificados de uma página, com o que a lista lê (participante e treinamento). */
 async function _pagina_de_certificados(c: Ctx, onde: SQL | undefined) {
@@ -80,6 +90,43 @@ rotas.get(CERTIFICADOS, async (c) => {
     filtro_treinamento: treinamento_id,
     busca,
     ...recados(c),
+  });
+});
+
+// =====================================================================
+// Monitor de reciclagem — o em vigor de cada pessoa, pelo vencimento
+// =====================================================================
+rotas.get(VENCIMENTOS, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.ver");
+  const tx = c.get("tx");
+  const situacao = c.req.query("situacao") ?? "";
+  const treinamento_id = c.req.query("treinamento_id") ?? "";
+  const busca = c.req.query("busca") ?? "";
+  // o CPF não se busca (RN-21): dizer, em vez de devolver "ninguém"
+  const busca_cpf = parece_cpf(busca);
+  const hoje = datas_br.hoje();
+  const { itens, contagem } = await reciclagem.monitor(tx, usuario, hoje, {
+    situacao,
+    treinamento_id: id_opcional(treinamento_id),
+    busca: busca_cpf ? "" : busca,
+  });
+  return pagina(c, "paginas/certificados_vencimentos.html", usuario, {
+    itens,
+    contagem,
+    hoje,
+    dias_aviso: DIAS_AVISO_RECICLAGEM,
+    situacoes: Object.entries(ROTULO_RECICLAGEM),
+    rotulo_reciclagem: ROTULO_RECICLAGEM,
+    treinamentos: await tx
+      .select()
+      .from(tabela_treinamento)
+      .where(gt(tabela_treinamento.validade_meses, 0))
+      .orderBy(asc(tabela_treinamento.nome)),
+    filtro_situacao: situacao,
+    filtro_treinamento: treinamento_id,
+    busca,
+    busca_cpf,
   });
 });
 

@@ -10,6 +10,7 @@ import { and, asc, count, desc, eq, isNull, ne, or } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import {
+  anexo as tabela_anexo,
   assinatura_instrutor as tabela_assinatura,
   certificado_modelo as tabela_modelo,
   certificado_modelo_tag as tabela_tag,
@@ -30,6 +31,7 @@ import {
 } from "../dominio/treinamento.js";
 import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
+import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as certificado from "../servicos/certificado.js";
@@ -1093,4 +1095,85 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
     },
     { permissao: "assinatura.gerenciar", rotulo: "Instrutor", volta: ASSINATURAS },
   );
+});
+
+/**
+ * A rubrica em imagem: PNG ou JPEG, os dois que o .docx e o PDF da casa
+ * desenham. O tipo é lido dos primeiros bytes, não do nome nem do que o
+ * navegador declara — o certificado não pode sair com uma imagem que nenhum
+ * dos dois sabe abrir.
+ */
+function _tipo_da_rubrica(bytes: Uint8Array): string | null {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  return null;
+}
+
+rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}/rubrica`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("assinatura.gerenciar");
+  const tx = c.get("tx");
+  const instrutor = await _assinatura(tx, Number(c.req.param("assinatura_id")));
+  if (!instrutor) return _erro(c, ASSINATURAS, "Instrutor não encontrado.");
+  const nome = AssinaturaInstrutor.nome_exibicao(instrutor);
+  const f = await formulario(c);
+  if (marcado(f.texto("remover"))) {
+    if (instrutor.imagem_anexo_id === null) return _volta(c, ASSINATURAS, `${nome} já está sem rubrica.`);
+    // o anexo fica: certificado já emitido guardou o SHA-256 dele e a segunda
+    // via redesenha a mesma rubrica
+    await tx.update(tabela_assinatura).set({ imagem_anexo_id: null }).where(eq(tabela_assinatura.id, instrutor.id));
+    await auditoria.registrar(tx, {
+      entidade: "assinatura_instrutor",
+      entidade_id: instrutor.id,
+      tipo_evento: "RUBRICA_INSTRUTOR_REMOVIDA",
+      descricao: `${nome}: rubrica retirada; os próximos certificados saem sem a imagem.`,
+      usuario,
+    });
+    return _volta(c, ASSINATURAS, `Rubrica de ${nome} retirada.`);
+  }
+  const imagem = f.arquivo("imagem");
+  if (!imagem || imagem.size === 0) return _erro(c, ASSINATURAS, "Escolha a imagem da rubrica (PNG ou JPEG).");
+  if (imagem.size > anexos.LIMITE_BYTES) return _erro(c, ASSINATURAS, new anexos.AnexoGrandeDemais(imagem.size).message);
+  const bytes = new Uint8Array(await imagem.arrayBuffer());
+  const tipo = _tipo_da_rubrica(bytes);
+  if (tipo === null) return _erro(c, ASSINATURAS, "A rubrica precisa ser uma imagem PNG ou JPEG.");
+  const { anexo } = await anexos.guardar(tx, {
+    entidade: "assinatura_instrutor",
+    entidade_id: instrutor.id,
+    nome_original: imagem.name || `rubrica.${tipo === "image/png" ? "png" : "jpg"}`,
+    conteudo: bytes,
+    mime_type: tipo,
+    categoria: "RUBRICA_INSTRUTOR",
+    usuario,
+  });
+  if (anexo.id === instrutor.imagem_anexo_id) return _volta(c, ASSINATURAS, `${nome} já usa esta mesma rubrica.`);
+  await tx.update(tabela_assinatura).set({ imagem_anexo_id: anexo.id }).where(eq(tabela_assinatura.id, instrutor.id));
+  await auditoria.registrar(tx, {
+    entidade: "assinatura_instrutor",
+    entidade_id: instrutor.id,
+    tipo_evento: "RUBRICA_INSTRUTOR_DEFINIDA",
+    descricao:
+      `${nome}: rubrica '${anexo.nome_original}' (SHA-256 ${anexo.sha256.slice(0, 12)}…). ` +
+      "Vale para os certificados emitidos daqui em diante.",
+    usuario,
+  });
+  return _volta(c, ASSINATURAS, `Rubrica de ${nome} guardada.`);
+});
+
+// a miniatura da tela: quem gerencia instrutores vê a rubrica que vai ao papel
+rotas.get(`${ASSINATURAS}/:assinatura_id{[0-9]+}/rubrica`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("assinatura.gerenciar");
+  const tx = c.get("tx");
+  const instrutor = await _assinatura(tx, Number(c.req.param("assinatura_id")));
+  const [anexo] =
+    instrutor?.imagem_anexo_id != null
+      ? await tx.select().from(tabela_anexo).where(eq(tabela_anexo.id, instrutor.imagem_anexo_id))
+      : [];
+  if (!anexo) return c.text("Sem rubrica.", 404);
+  const conteudo = await anexos.ler_conteudo(anexo);
+  return c.body(conteudo as unknown as ArrayBuffer, 200, {
+    "content-type": anexos.tipo_para_servir(anexo.mime_type),
+    "cache-control": "private, no-store",
+  });
 });

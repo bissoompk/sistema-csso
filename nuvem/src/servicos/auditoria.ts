@@ -172,6 +172,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   TREINAMENTO_MODELO_REPONTADO: "Treinamento passou à versão nova do modelo",
   ASSINATURA_INSTRUTOR_CRIADA: "Assinatura de instrutor cadastrada",
   ASSINATURA_INSTRUTOR_CPF_ALTERADO: "CPF do instrutor (certificado) alterado",
+  RUBRICA_INSTRUTOR_DEFINIDA: "Rubrica do instrutor enviada",
+  RUBRICA_INSTRUTOR_REMOVIDA: "Rubrica do instrutor retirada",
   MODELO_TAG_MAPEADA: "Marcador do modelo mapeado",
   MODELO_TAG_REMOVIDA: "Marcador do modelo removido",
   CERTIFICADO_CAMPO_TURMA_ALTERADO: "Campo do certificado preenchido na turma",

@@ -2480,6 +2480,10 @@ details > summary { cursor: pointer; }
    NUP, numero de laudo, protocolo, data, SIAPE, chave de validacao. */
 .mono { font-family: var(--mono); font-size: 13px; }
 .discreto { color: var(--tinta-fraca); font-size: 13px; }
+/* a rubrica do instrutor (tela de instrutores) */
+.rubrica-miniatura { display: block; max-width: 140px; max-height: 48px; margin-top: 4px;
+  background: #fff; border: 1px solid var(--borda-fraca); border-radius: 4px; padding: 2px; }
+.rubrica-envio form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
 .nada { color: var(--tinta-fraca); font-style: italic; padding: 12px 0; }
 /* Segunda informacao da celula, embaixo da primeira (a base legal sob a data de
    fim do adicional). */

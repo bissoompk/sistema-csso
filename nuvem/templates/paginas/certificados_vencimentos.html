@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Reciclagem · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Reciclagem</h1>
+      <p class="sub">
+        {%- if contagem.VENCIDO or contagem.A_VENCER %}{{ contagem.VENCIDO }} vencido(s) e
+        {{ contagem.A_VENCER }} a vencer em {{ dias_aviso }} dias. {% endif -%}
+        O certificado em vigor de cada pessoa, do vencimento mais próximo ao mais distante.</p>
+      {% call ui.info('em-vigor', 'por que o certificado antigo não aparece') %}
+        <p>Cada pessoa aparece <strong>uma vez por treinamento</strong>: com o último
+          certificado emitido e não anulado. Quem já fez a reciclagem tem o certificado
+          novo, e o antigo deixa de ser vencimento de alguém.</p>
+        <p>Treinamento que não expira (validade 0 no catálogo) não entra aqui.</p>
+        <p>O certificado que entra na janela de {{ dias_aviso }} dias abre uma tarefa
+          em <a href="/pendencias">Pendências</a>, sem nome de ninguém; ela se fecha
+          sozinha quando a pessoa recebe o certificado da reciclagem.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  <div class="fileira">
+    <span class="rotulo-grupo">Situação</span>
+    {% set eixo_treinamento = ('&treinamento_id=' ~ filtro_treinamento) if filtro_treinamento else '' %}
+    {% set eixo_busca = ('&busca=' ~ busca|urlencode) if busca else '' %}
+    <a class="ficha-filtro {{ 'ativa' if not filtro_situacao }}"
+       href="/certificados/vencimentos?{{ (eixo_treinamento ~ eixo_busca)|replace('&', '', 1) }}">Todos</a>
+    {% for codigo, rotulo in situacoes %}
+    <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
+       href="/certificados/vencimentos?situacao={{ codigo }}{{ eixo_treinamento }}{{ eixo_busca }}">{{ rotulo }}
+      <span class="discreto">{{ contagem[codigo] }}</span></a>
+    {% endfor %}
+    <form method="get" action="/certificados/vencimentos" class="filtro-inline">
+      {% if filtro_situacao %}
+      <input type="hidden" name="situacao" value="{{ filtro_situacao }}">{% endif %}
+      <label class="oculto" for="f-treinamento">Filtrar por treinamento</label>
+      <select id="f-treinamento" name="treinamento_id" data-envia-ao-mudar>
+        <option value="">Treinamento: todos</option>
+        {% for t in treinamentos %}
+        <option value="{{ t.id }}" {% if filtro_treinamento == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
+        {% endfor %}
+      </select>
+      <label class="oculto" for="f-busca">Nome, lotação, curso ou turma</label>
+      <input id="f-busca" type="search" name="busca" value="{{ busca }}"
+             placeholder="nome, lotação, curso ou turma">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  {% if busca_cpf %}
+  <div class="aviso aviso-info">O sistema não busca por CPF. Procure pelo nome, pela
+    lotação, pelo curso ou pelo código da turma.</div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Vencimento</th><th scope="col">Situação</th><th scope="col">Participante</th>
+        <th scope="col">Lotação</th><th scope="col">Treinamento</th><th scope="col">Certificado</th>
+      </tr>
+    </thead>
+    {% for x in itens %}
+    <tr>
+      <td class="mono">{{ x.data_vencimento|data }}</td>
+      <td>
+        {%- if x.situacao == 'VENCIDO' %}<span class="pilula erro">Vencido</span>
+        {%- elif x.situacao == 'A_VENCER' %}<span class="pilula alerta">A vencer</span>
+        {%- else %}<span class="pilula ok">Válido</span>{% endif -%}
+      </td>
+      <td class="nome">{{ x.participante_nome }}
+        <span class="quebra discreto mono">{{ x.participante_identificador }}</span></td>
+      <td>{{ x.participante_lotacao or '—' }}</td>
+      <td>{{ x.treinamento_nome }}
+        {% if x.turma_codigo %}<span class="quebra discreto mono">{{ x.turma_codigo }}</span>{% endif %}</td>
+      <td><a class="mono" href="/certificados/{{ x.id }}">{{ x.rotulo }}</a>
+        <span class="quebra discreto">emitido em {{ x.data_emissao|data }}</span></td>
+    </tr>
+    {% else %}
+    {% if busca or filtro_situacao or filtro_treinamento %}
+    {{ ui.vazio_de_lista(
+         'Ninguém nesta seleção.',
+         'A situação, o treinamento e a busca valem ao mesmo tempo. “Todos”, na
+          fileira acima, desfaz o recorte da situação.', 6) }}
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhum certificado com vencimento.',
+         'Aparecem aqui os certificados emitidos de treinamentos com validade de
+          reciclagem no catálogo (em meses).', 6) }}
+    {% endif %}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+{% endblock %}

@@ -611,6 +611,68 @@ describe("assinatura de instrutor", () => {
 });
 
 // =====================================================================
+// Rubrica em imagem
+// =====================================================================
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAACgAAAAUCAIAAABwJOjsAAAAJElEQVR4nO3NMQ0AAAwEofdvupVxCwk7uy3RrGKxWCwWi8WJB336HQ594lo5AAAAAElFTkSuQmCC",
+  "base64",
+);
+
+function _imagem(bytes: Uint8Array, nome = "rubrica.png", tipo = "image/png") {
+  return new File([bytes as Uint8Array<ArrayBuffer>], nome, { type: tipo });
+}
+
+async function _instrutor_externo(): Promise<number> {
+  await coord();
+  await cliente.post("/treinamentos/assinaturas", { nome: "Joana Ribeiro", externo: "1", vigencia_inicio: "2026-01-01" });
+  return (await _assinatura_unica()).id;
+}
+
+describe("rubrica do instrutor", () => {
+  it("o PNG enviado vira a rubrica, aparece na tela e fica na trilha", async () => {
+    const alvo = await _instrutor_externo();
+    const resposta = await cliente.post(`/treinamentos/assinaturas/${alvo}/rubrica`, { imagem: _imagem(PNG) }, { seguir: false });
+    expect(resposta.status).toBe(303);
+    const assinatura = await _assinatura_unica();
+    expect(assinatura.imagem_anexo_id).not.toBeNull();
+    const [anexo] = await db.select().from(e.anexo).where(eq(e.anexo.id, assinatura.imagem_anexo_id!));
+    expect(anexo).toMatchObject({ entidade: "assinatura_instrutor", entidade_id: alvo, categoria: "RUBRICA_INSTRUTOR", mime_type: "image/png" });
+    expect((await cliente.get("/treinamentos/assinaturas")).text).toContain(`/treinamentos/assinaturas/${alvo}/rubrica`);
+    const imagem = await cliente.get(`/treinamentos/assinaturas/${alvo}/rubrica`);
+    expect(imagem.status).toBe(200);
+    expect(imagem.headers.get("content-type")).toBe("image/png");
+    const eventos = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "RUBRICA_INSTRUTOR_DEFINIDA"));
+    expect(eventos).toHaveLength(1);
+  });
+
+  it("o tipo vem dos bytes: um PDF com nome de .png é recusado", async () => {
+    const alvo = await _instrutor_externo();
+    const falso = _imagem(new TextEncoder().encode("%PDF-1.4 não é imagem"), "rubrica.png");
+    const resposta = await cliente.post(`/treinamentos/assinaturas/${alvo}/rubrica`, { imagem: falso });
+    expect(resposta.text).toContain("PNG ou JPEG");
+    expect((await _assinatura_unica()).imagem_anexo_id).toBeNull();
+  });
+
+  it("retirar a rubrica desliga a imagem e guarda o anexo", async () => {
+    const alvo = await _instrutor_externo();
+    await cliente.post(`/treinamentos/assinaturas/${alvo}/rubrica`, { imagem: _imagem(PNG) });
+    const resposta = await cliente.post(`/treinamentos/assinaturas/${alvo}/rubrica`, { remover: "1" }, { seguir: false });
+    expect(resposta.status).toBe(303);
+    expect((await _assinatura_unica()).imagem_anexo_id).toBeNull();
+    // o certificado já emitido guardou o SHA-256: o arquivo continua lá
+    expect(await db.select().from(e.anexo).where(eq(e.anexo.categoria, "RUBRICA_INSTRUTOR"))).toHaveLength(1);
+    expect((await cliente.get(`/treinamentos/assinaturas/${alvo}/rubrica`)).status).toBe(404);
+  });
+
+  it("quem não gerencia instrutores não envia nem vê a rubrica", async () => {
+    const alvo = await _instrutor_externo();
+    await entrar(cliente, "secretaria_csso");
+    expect((await cliente.post(`/treinamentos/assinaturas/${alvo}/rubrica`, { imagem: _imagem(PNG) })).status).toBe(403);
+    expect((await cliente.get(`/treinamentos/assinaturas/${alvo}/rubrica`)).status).toBe(403);
+  });
+});
+
+// =====================================================================
 // Permissões
 // =====================================================================
 describe("permissões", () => {
@@ -669,6 +731,7 @@ describe("o módulo no menu e no mapa", () => {
       ["/turmas/minhas", "treinamento.ver"],
       ["/certificados/meus", "treinamento.ver"],
       ["/certificados", "certificado.ver"],
+      ["/certificados/vencimentos", "certificado.ver"],
       ["/treinamentos/catalogo", "treinamento.ver"],
       ["/treinamentos/modelos", "treinamento.gerenciar"],
       ["/treinamentos/assinaturas", "assinatura.gerenciar"],

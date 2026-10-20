@@ -32,6 +32,7 @@ import * as documento from "../src/servicos/documento.js";
 import * as servico from "../src/servicos/emissao_certificado.js";
 import * as servico_pdf from "../src/servicos/pdf.js";
 import * as servico_presenca from "../src/servicos/presenca.js";
+import * as reciclagem from "../src/servicos/reciclagem.js";
 import { PermissaoNegada, type UsuarioAtual } from "../src/servicos/rbac.js";
 import { normalizar_fluxo } from "../src/servicos/textos.js";
 import * as servico_turma from "../src/servicos/turma.js";
@@ -683,5 +684,82 @@ describe("rotas", () => {
       expect(resposta.status).toBe(303);
       expect(resposta.location).toContain("/login");
     }
+  });
+});
+
+// =====================================================================
+// Monitor de reciclagem
+// =====================================================================
+describe("reciclagem: o monitor e o aviso de 30 dias", () => {
+  const HOJE = "2026-10-20";
+
+  async function _dois_emitidos() {
+    const usuario = await _usuario(db);
+    const cen = await _cenario(db, usuario, { extras: [["2220001", "Ana Lima", "8"]] });
+    const a = (await servico.emitir(db, usuario, cen.inscricao, { gerar_pdf: false })).certificado;
+    const b = (await servico.emitir(db, usuario, cen.outras[0]!, { gerar_pdf: false })).certificado;
+    // Marco vence em 10 dias; Ana venceu ontem
+    await db.update(e.certificado).set({ data_vencimento: "2026-10-30" }).where(eq(e.certificado.id, a.id));
+    await db.update(e.certificado).set({ data_vencimento: "2026-10-19" }).where(eq(e.certificado.id, b.id));
+    return { usuario, a, b };
+  }
+
+  it("situação: vencido, a vencer em até 30 dias, válido", () => {
+    expect(C.situacao_reciclagem({ data_vencimento: "2026-10-19" }, HOJE)).toBe("VENCIDO");
+    expect(C.situacao_reciclagem({ data_vencimento: "2026-10-20" }, HOJE)).toBe("A_VENCER");
+    expect(C.situacao_reciclagem({ data_vencimento: "2026-11-19" }, HOJE)).toBe("A_VENCER");
+    expect(C.situacao_reciclagem({ data_vencimento: "2026-11-20" }, HOJE)).toBe("VALIDO");
+  });
+
+  it("o monitor lista o em vigor de cada pessoa, conta por situação e busca pelo nome", async () => {
+    const { usuario, a } = await _dois_emitidos();
+    const tudo = await reciclagem.monitor(db, usuario, HOJE);
+    expect(tudo.contagem).toEqual({ VENCIDO: 1, A_VENCER: 1, VALIDO: 0 });
+    expect(tudo.itens.map((x) => x.participante_nome)).toEqual(["Ana Lima", "Marco Antônio Alves Schetino"]);
+    const busca = await reciclagem.monitor(db, usuario, HOJE, { busca: "marco antonio" });
+    expect(busca.itens.map((x) => x.id)).toEqual([a.id]);
+    const so_a_vencer = await reciclagem.monitor(db, usuario, HOJE, { situacao: "A_VENCER" });
+    expect(so_a_vencer.itens.map((x) => x.id)).toEqual([a.id]);
+  });
+
+  it("quem se reciclou sai do monitor; o aviso abre na janela e fecha com a reciclagem", async () => {
+    const { usuario, a, b } = await _dois_emitidos();
+    const primeira = await reciclagem.varrer(db, HOJE);
+    // só o de Marco está na janela; o de Ana já venceu antes de a rotina olhar
+    expect(primeira).toEqual({ abertas: 1, fechadas: 0 });
+    const [aviso] = await db.select().from(e.pendencia).where(eq(e.pendencia.tipo, reciclagem.TIPO_PENDENCIA));
+    expect(aviso).toMatchObject({ entidade: "certificado", entidade_id: a.id, prazo: "2026-10-30", responsavel_id: null });
+    expect(aviso!.descricao).not.toContain("Marco");
+    expect(await reciclagem.varrer(db, HOJE)).toEqual({ abertas: 0, fechadas: 0 });
+
+    // a reciclagem: um certificado novo do mesmo treinamento para a mesma
+    // pessoa. Só a pessoa e o treinamento contam; a inscrição emprestada (a de
+    // Ana, anulada antes) é para não precisar de uma segunda turma.
+    const { id: _id, ...resto } = await _certificado(a.id);
+    await servico.anular(db, usuario, await _certificado(b.id), "teste da reciclagem");
+    await db.insert(e.certificado).values({
+      ...resto,
+      inscricao_id: b.inscricao_id,
+      numero: 900,
+      chave_validacao: servico_certificado.gerar_chave(2026),
+      data_emissao: "2026-10-25",
+      data_vencimento: "2028-10-25",
+    });
+    const monitor = await reciclagem.monitor(db, usuario, "2026-10-26");
+    expect(monitor.itens.find((x) => x.participante_nome.startsWith("Marco"))!.data_vencimento).toBe("2028-10-25");
+    expect(await reciclagem.varrer(db, "2026-10-26")).toEqual({ abertas: 0, fechadas: 1 });
+  });
+
+  it("a tela do monitor abre para quem lê certificados, e não busca CPF", async () => {
+    await _dois_emitidos();
+    await contas(db);
+    await entrar(cliente, "coordenador_csso");
+    const tela = await cliente.get("/certificados/vencimentos");
+    expect(tela.status).toBe(200);
+    expect(tela.text).toContain("Ana Lima");
+    expect(tela.text).toContain("Marco Antônio Alves Schetino");
+    expect((await cliente.get("/certificados/vencimentos?busca=123.456.789-09")).text).toContain("não busca por CPF");
+    await entrar(cliente, "servidor_consulta");
+    expect((await cliente.get("/certificados/vencimentos")).status).toBe(403);
   });
 });

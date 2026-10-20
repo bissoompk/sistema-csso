@@ -127,6 +127,7 @@ const ANCORAS_POR_ENTIDADE: Readonly<Record<string, readonly [string, string, st
   epi_requisicao: ["/epis/requisicoes/", "", "epi.ver"],
   demanda: ["/demandas/", "", "demanda.ver"],
   turma: ["/turmas/", "?aba=inscricoes", "turma.inscrever"],
+  certificado: ["/certificados/", "", "certificado.ver"],
 };
 
 type Pendencia = typeof tabela_pendencia.$inferSelect;

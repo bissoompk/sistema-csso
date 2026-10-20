@@ -66,8 +66,26 @@
            a linha diz. Não há "sem rubrica" escrito: o certificado sai sem ela
            do mesmo jeito, e uma coluna de vazios não é resposta. #}
         {% if a.imagem_anexo_id %}
-        <span class="pilula sem-ponto" title="há imagem de rubrica anexada">rubrica</span>
+        <img class="rubrica-miniatura quebra" src="/treinamentos/assinaturas/{{ a.id }}/rubrica"
+             alt="Rubrica de {{ a.nome_exibicao }}" loading="lazy">
         {% endif %}
+        {# A rubrica tem formulário próprio: o arquivo não vai junto com o
+           "salvar" da linha, que é edição de texto. #}
+        <details class="quebra rubrica-envio">
+          <summary class="discreto">{{ 'trocar rubrica' if a.imagem_anexo_id else 'enviar rubrica' }}</summary>
+          <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/rubrica" enctype="multipart/form-data">
+            <input type="file" name="imagem" accept="image/png,image/jpeg" required
+                   aria-label="Imagem da rubrica de {{ a.nome_exibicao }} (PNG ou JPEG)">
+            <button type="submit" class="secundario marcador">enviar</button>
+          </form>
+          {% if a.imagem_anexo_id %}
+          <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/rubrica">
+            <input type="hidden" name="remover" value="1">
+            <button type="submit" class="secundario marcador">retirar rubrica</button>
+          </form>
+          {% endif %}
+          <span class="dica">PNG com fundo transparente, de preferência (cerca de 3:1). Vale para os certificados emitidos daqui em diante.</span>
+        </details>
         {% if em_uso[a.id] %}
         <span class="quebra discreto"
               title="treinamentos que a têm como instrutor padrão">
@@ -182,8 +200,8 @@
       <span class="dica" id="dica-vigencia">Vazio: sem termo.</span></div>
   </div>
   <p class="discreto rodape-cartao sem-margem">
-    A rubrica em imagem entra como anexo com dedup por SHA-256, junto com a
-    emissão. No IntegraSST ela era um link do Google Drive — e certificado não
+    A rubrica em imagem (PNG ou JPEG) se envia na linha do instrutor, depois de
+    cadastrado. No IntegraSST ela era um link do Google Drive — e certificado não
     pode depender de arquivo que alguém move na nuvem.
   </p>
 {% endcall %}
