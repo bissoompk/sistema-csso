@@ -125,7 +125,7 @@
         {% if t.topicos %}
         <span class="quebra discreto">{{ t.topicos|join(' · ') }}</span>
         {% endif %}</td>
-      <td class="mono">{{ t.carga_horaria_horas }}h</td>
+      <td class="mono">{{ t.carga_horaria_horas|num }} h</td>
       <td>{% if t.expira %}<span class="mono">{{ t.validade_rotulo }}</span>
           {% else %}<span class="selo">não expira</span>{% endif %}</td>
       <td>{{ t.norma_referencia or '—' }}</td>

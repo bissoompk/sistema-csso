@@ -494,11 +494,17 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
   }
   for (const linha of grade) vista_inscricao(linha.inscricao);
   const certificados = Object.fromEntries(
-    Object.entries(certificados_por_inscricao).map(([k, cert]) => [k, { ...cert, rotulo: `${cert.numero}/${cert.ano}` }]),
+    Object.entries(certificados_por_inscricao).map(([k, cert]) => [
+      k,
+      { ...cert, rotulo: `${cert.numero}/${cert.ano}`, so_word: servico_emissao.do_modelo_enviado(cert) },
+    ]),
   );
+  // algum de modelo enviado: o "todos" sai em Word (.zip), não no PDF da casa
+  const certificados_em_word = Object.values(certificados).some((cert) => cert.so_word);
 
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
+    certificados_em_word,
     aba,
     abas,
     abas_previstas: ABAS_PREVISTAS,
@@ -596,7 +602,12 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
     if (erro instanceof RegraDaTurma || erro instanceof TransicaoInvalida) return _erro(c, volta, erro.message);
     throw erro;
   }
-  return _volta(c, volta, `${turma.codigo}: ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}.`);
+  // concluída, o próximo passo é emitir: a volta já cai na aba
+  if (turma.situacao === "CONCLUIDA") {
+    return _volta(c, `${volta}?aba=emissao`, `${turma.codigo}: concluída. Confira os dados e emita os certificados.`);
+  }
+  const rotulo = { INSCRICOES_ABERTAS: "inscrições abertas" }[turma.situacao as string] ?? ROTULO_TURMA[turma.situacao]!.toLowerCase();
+  return _volta(c, volta, `${turma.codigo}: ${rotulo}.`);
 });
 
 /**
@@ -720,7 +731,9 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
   const turma_id = Number(c.req.param("turma_id"));
   const turma = await _turma_no_escopo(tx, usuario, turma_id);
   if (!turma) return redirecionar(c, TURMAS);
-  const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
+  // inscrito um da lista, a mesma busca volta aberta para o próximo
+  const busca = f.texto("busca").trim();
+  const volta = `${TURMAS}/${turma_id}?aba=inscricoes${busca ? `&busca=${encodeURIComponent(busca)}` : ""}`;
   const d = Object.fromEntries(
     ["participante_id", "servidor_id", "nome", "vinculo", "email", "organizacao", "matricula_externa", "observacao"].map(
       (k) => [k, f.texto(k)],
@@ -1114,6 +1127,19 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-participante`, async (c) => {
     return _erro(c, volta, `${mudaram} valor(es) salvo(s). Recusado: ${recusas.join(" ")}`, "#campos-participante");
   }
   return _volta(c, volta, mudaram ? `${mudaram} valor(es) salvo(s).` : "Nada mudou.", "#campos-participante");
+});
+
+/** Os .docx vigentes da turma num .zip (modelo enviado: o papel é o Word). */
+rotas.get(`${TURMAS}/:turma_id{[0-9]+}/certificados.zip`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.ver");
+  const tx = c.get("tx");
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const resultado = await servico_emissao.word_da_turma(tx, usuario, turma);
+  if (!resultado) return _erro(c, `${TURMAS}/${turma_id}?aba=emissao`, "Nenhum certificado emitido nesta turma.");
+  return baixar(c, resultado.bytes, resultado.nome, "application/zip");
 });
 
 /** Os certificados vigentes da turma num PDF só, para imprimir de uma vez. */

@@ -249,9 +249,10 @@ repete, em uma linha, o comentário que está no código.
   verbo do Drizzle/SQL sobre a tabela; as partes do parecer
   (`registrar_avaliacao_de_epi`, congelado `epi` na emissão, telas do editor)
   ficam com o porte de Processos.
-- **Horas presentes sempre com uma casa** (`dominio/treinamento.Inscricao.horas_presentes`):
-  a linha da grade mostra "8.0h" onde o Python, com o `Decimal('8')` ainda em
-  memória, mostrava "8h". O valor é o mesmo.
+- **Decimais das telas de turma e certificado em português** (filtro `num`, de
+  `presenca.numero`): horas, frequência e notas saem "8,3 h", "100%", "7" — e
+  não "8.3h", "100.00%", "7.00" (o texto cru do `numeric`). O valor gravado não
+  muda; os campos de digitar continuam aceitando ponto ou vírgula.
 
 ## Base compartilhada e Demandas (servidores, pendências, demandas, catálogos, usuários, config, auditoria, backup)
 

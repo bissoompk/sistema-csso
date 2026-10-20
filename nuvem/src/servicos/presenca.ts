@@ -40,6 +40,7 @@ import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
 import { nome_exibicao } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
+import { filtro } from "../web.js";
 import {
   RegraDaTurma,
   gravar_inscricao,
@@ -129,6 +130,9 @@ export function numero(valor: string | number | bigint | null | undefined): stri
   const texto = duas_casas(v).replace(/0+$/, "").replace(/\.$/, "");
   return (texto || "0").replace(".", ",");
 }
+
+// nas telas, o decimal sai como o setor lê: "8,3", "100", "7"
+filtro("num", (v: string | number | bigint | null | undefined) => numero(v));
 
 /** Aceita 8, 8,5 e 8.5 — a vírgula é o separador que o setor digita. */
 export function para_decimal(valor: string | number | null | undefined): string | null {

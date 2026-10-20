@@ -324,6 +324,13 @@ describe("envio pela tela", () => {
     await entrar(cliente, "coordenador_csso");
     await enviar();
     let modelo = await modelo_por_nome("Brigadista");
+    // a lacuna «___» propõe como nome o rótulo que vem antes dela no Word
+    const antes_de_salvar = (await cliente.get(`/treinamentos/modelos/${modelo.id}`)).text;
+    expect(antes_de_salvar).toContain('name="detalhe__campo" value="Prevenção e combate a incêndio"');
+    expect(antes_de_salvar).toContain('name="detalhe__campo_2" value="Primeiros socorros"');
+    // o menu diz "Instrutores": o endereço com esse nome leva à tela
+    const instrutores = await cliente.get("/treinamentos/instrutores", { seguir: false });
+    expect(instrutores.location).toBe("/treinamentos/assinaturas");
     const r = await cliente.post(
       `/treinamentos/modelos/${modelo.id}/mapa`,
       {
@@ -444,6 +451,24 @@ describe("emissão com o modelo enviado", () => {
 
     const segunda = await servico.segunda_via(db, usuario, emitido.certificado);
     expect(segunda.confere).toBe(true);
+    expect(servico.do_modelo_enviado(emitido.certificado)).toBe(true);
+
+    // o papel é o Word: o PDF da casa não tem o layout nem os campos dele
+    await entrar(cliente, "coordenador_csso");
+    const pdf = await cliente.get(`/certificados/${emitido.certificado.id}/pdf`, { seguir: false });
+    expect([pdf.status, pdf.location]).toEqual([303, `/certificados/${emitido.certificado.id}/documento`]);
+    const ficha = (await cliente.get(`/certificados/${emitido.certificado.id}`)).text;
+    expect(ficha).toContain("Baixar Word (.docx)");
+    expect(ficha).not.toContain(`/certificados/${emitido.certificado.id}/pdf"`);
+    const aba = (await cliente.get(`/turmas/${turma.id}?aba=emissao`)).text;
+    expect(aba).toContain(`/turmas/${turma.id}/certificados.zip`);
+    expect(aba).not.toContain(`/turmas/${turma.id}/certificados.pdf`);
+    const lote = await baixar(`/turmas/${turma.id}/certificados.zip`);
+    expect([lote.status, lote.tipo]).toEqual([200, "application/zip"]);
+    const dentro = new PizZip(lote.bytes);
+    const nomes = Object.keys(dentro.files);
+    expect(nomes).toHaveLength(1);
+    expect(texto(dentro.file(nomes[0]!)!.asUint8Array())).toContain("Marco Antônio Alves Schetino");
 
     // o arquivo do modelo vai no backup, junto com os anexos
     const feito = await backup.fazer_backup(db, { senha: "senha-do-teste" });

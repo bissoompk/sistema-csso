@@ -95,7 +95,7 @@
         <span class="mono">{{ turma.data_inicio|data }}
           {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
         <span class="ponto">·</span>
-        <span class="mono">{{ turma.carga_efetiva }}h</span>
+        <span class="mono">{{ turma.carga_efetiva|num }} h</span>
         {{ ui.pilula_turma(turma.situacao) }}
       </p>
     </div>
@@ -140,7 +140,7 @@
       <dt>Treinamento</dt><dd>{{ turma.treinamento.nome }}</dd>
       <dt>Período</dt>
       <dd class="mono">{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
-      <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva }}h</dd>
+      <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
       <dt>Local</dt><dd>{{ turma.local or '—' }}</dd>
       <dt>Campus</dt><dd>{{ turma.campus.nome if turma.campus else '—' }}</dd>
       <dt>Unidade promotora</dt>
@@ -149,9 +149,9 @@
       <dt>Inscrições até</dt>
       <dd class="mono">{{ turma.inscricao_aberta_ate|data or '—' }}</dd>
       <dt>Nota mínima</dt>
-      <dd>{{ turma.nota_minima_aprovacao or 'não avalia por nota' }}</dd>
+      <dd>{{ turma.nota_minima_aprovacao|num if turma.nota_minima_aprovacao is not none else 'não avalia por nota' }}</dd>
       <dt>Frequência mínima</dt>
-      <dd class="mono">{{ turma.frequencia_minima_percentual }}%</dd>
+      <dd class="mono">{{ turma.frequencia_minima_percentual|num }}%</dd>
       <dt>Data base do vencimento</dt><dd class="mono">{{ turma.data_base|data }}</dd>
       <dt>Observações</dt><dd>{{ turma.observacoes or '—' }}</dd>
     </dl>
@@ -395,7 +395,7 @@
         {# CPF só para o certificado que a norma exige (brigadista, CBMMG; ver
            `cpf_certificado.ts`). A tela recebe só a máscara sem dígito. #}
         {% if i.situacao != 'CANCELADA' %}
-        {% call ui.popup_gaveta('cpf-inscricao-' ~ i.id, 'CPF',
+        {% call ui.popup_gaveta('cpf-inscricao-' ~ i.id, ('CPF ✓' if i.participante.tem_cpf else 'CPF'),
                                 'CPF para o certificado · ' ~ (i.participante.nome_exibicao
                                                                if nominal else quem.nome),
                                 nota=i.participante.cpf_exibicao, largo=false) %}
@@ -491,6 +491,7 @@
         <td>
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
             <input type="hidden" name="participante_id" value="{{ p.id }}">
+            <input type="hidden" name="busca" value="{{ busca }}">
             <button type="submit" class="secundario marcador">inscrever</button>
           </form>
         </td>
@@ -537,6 +538,7 @@
         <td>
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
             <input type="hidden" name="servidor_id" value="{{ sv.id }}">
+            <input type="hidden" name="busca" value="{{ busca }}">
             <button type="submit" class="secundario marcador">inscrever</button>
           </form>
         </td>
@@ -599,14 +601,14 @@
    são o que explica cada "reprovado" da última coluna. #}
 <div class="cartao tira-medidas">
   <span class="medida"><span class="rotulo">Carga da turma</span>
-    <span class="valor">{{ carga_efetiva }}h</span></span>
+    <span class="valor">{{ carga_efetiva|num }} h</span></span>
   <span class="traco" aria-hidden="true"></span>
   <span class="medida"><span class="rotulo">Frequência mínima</span>
-    <span class="valor">{{ turma.frequencia_minima_percentual }}%</span></span>
+    <span class="valor">{{ turma.frequencia_minima_percentual|num }}%</span></span>
   <span class="traco" aria-hidden="true"></span>
   <span class="medida"><span class="rotulo">Nota mínima</span>
     {% if turma.nota_minima_aprovacao is not none %}
-    <span class="valor">{{ turma.nota_minima_aprovacao }}</span>
+    <span class="valor">{{ turma.nota_minima_aprovacao|num }}</span>
     {% else %}<span class="valor ausente">não avalia por nota</span>{% endif %}</span>
   <span class="traco" aria-hidden="true"></span>
   <span class="medida"><span class="rotulo">Na apuração</span>
@@ -759,7 +761,7 @@
   <div class="corpo">
     <div class="acoes">
       {{ ui.botao_cadastro('marcar-todos-presentes',
-                           MARCAR_TODOS ~ ' (' ~ carga_efetiva ~ 'h)', 'secundario') }}
+                           MARCAR_TODOS ~ ' (' ~ (carga_efetiva|num) ~ ' h)', 'secundario') }}
       {% call ui.info('lote-de-um-dia', 'por que o lote só existe em curso de um dia') %}
         <p>Numa turma de mais de um dia este botão não aparece — e a rota recusa
           mesmo que alguém a chame direto: num clique só, quem faltou um dia sairia
@@ -914,8 +916,13 @@
     <h2>Emissão dos certificados</h2>
     <span class="contador">{{ certificados|length }} emitido(s)</span>
     {% if certificados|length %}
+    {% if certificados_em_word %}
+    <a class="botao compacto" href="/turmas/{{ turma.id }}/certificados.zip"
+       data-baixar="Juntando os documentos…">Baixar todos em Word (.zip)</a>
+    {% else %}
     <a class="botao compacto" href="/turmas/{{ turma.id }}/certificados.pdf"
        data-baixar="Gerando os PDFs…">Baixar todos em PDF</a>
+    {% endif %}
     {% endif %}
     {% call ui.info('certificado-congelado', 'o que o certificado congela') %}
       <p>O certificado <strong>congela</strong> tudo o que imprime — conteúdo,
@@ -952,7 +959,8 @@
       <td>
         {% if emitido %}
         <a class="mono" href="/certificados/{{ emitido.id }}">{{ emitido.rotulo }}</a>
-        <a class="discreto" href="/certificados/{{ emitido.id }}/pdf">PDF</a>
+        {% if emitido.so_word %}<a class="discreto" href="/certificados/{{ emitido.id }}/documento">Word</a>
+        {% else %}<a class="discreto" href="/certificados/{{ emitido.id }}/pdf">PDF</a>{% endif %}
         <span class="quebra discreto mono">{{ emitido.chave_validacao }}</span>
         {% else %}<span class="discreto">—</span>{% endif %}
       </td>
@@ -1050,7 +1058,7 @@
     <div class="campo"><label for="carga">Carga horária da turma</label>
       <input id="carga" name="carga_horaria_horas"
              value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
-             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas }}h)"
+             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
              aria-describedby="dica-carga">
       <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
   </div>
@@ -1210,10 +1218,10 @@
 {% if aba == 'presencas' and pode_lancar and dias|length == 1 %}
 {% call ui.popup_cadastro('marcar-todos-presentes', MARCAR_TODOS,
                           '/turmas/' ~ turma.id ~ '/presencas/todos',
-                          MARCAR_TODOS ~ ' (' ~ carga_efetiva ~ 'h)',
+                          MARCAR_TODOS ~ ' (' ~ (carga_efetiva|num) ~ ' h)',
                           nota='curso de um dia: a folha e a turma têm o mesmo escopo') %}
   <div class="aviso aviso-alerta">
-    Marca <strong>todo mundo</strong> com {{ carga_efetiva }}h, inclusive quem já
+    Marca <strong>todo mundo</strong> com {{ carga_efetiva|num }} h, inclusive quem já
     estava lançado como falta. Cada sobrescrita entra na trilha com o valor de antes.
   </div>
   {% if retificando %}

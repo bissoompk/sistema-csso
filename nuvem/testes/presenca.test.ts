@@ -587,7 +587,7 @@ describe("aba 3 e lista de presença", () => {
     const corpo = (await cliente.get(`/turmas/${turma_id}?aba=presencas`)).text;
     expect(corpo).toContain("Presença e notas");
     expect(corpo).toContain("Marco Antônio");
-    expect(corpo).toContain("50.00%");
+    expect(corpo).toContain("50%");
     expect(corpo).toContain("abaixo do mínimo de 75%");
   });
 
@@ -597,7 +597,7 @@ describe("aba 3 e lista de presença", () => {
     await entrar(cliente, "auditor_interno");
     const corpo = (await cliente.get(`/turmas/${turma_id}?aba=presencas`)).text;
     expect(corpo).toContain("Marco Antônio");
-    expect(corpo).toContain("100.00%");
+    expect(corpo).toContain("100%");
     expect(corpo).not.toContain(`action="/turmas/${turma_id}/presencas"`);
     expect(corpo).not.toContain(`action="/turmas/${turma_id}/notas"`);
     expect(corpo).not.toContain("lista-presenca");
@@ -685,10 +685,9 @@ describe("troca parcial (HTMX)", () => {
     const corpo = r.text;
     expect(corpo.trimStart().startsWith("<tr"), corpo.slice(0, 200)).toBe(true);
     expect(corpo).not.toContain("<html");
-    expect(corpo).toContain("100.00%");
-    // DESVIO: o Python mostrava "8h" (o Decimal('8') em memória); aqui
-    // `Inscricao.horas_presentes` (dominio) escreve sempre uma casa: "8.0h"
-    expect(corpo).toContain('<td class="mono">8.0h</td>');
+    expect(corpo).toContain("100%");
+    // a tela escreve o decimal em português, sem casa à toa (filtro `num`)
+    expect(corpo).toContain('<td class="mono">8 h</td>');
     expect(corpo).toContain("Presente");
     expect(corpo.includes('method="post"') && corpo.includes('hx-post="/turmas/')).toBe(true);
     expect((await inscricao(inscricao_id)).frequencia_percentual).toBe("100.00");

@@ -194,9 +194,9 @@ const DELIBERADAS: { motivo: string; contas?: string[]; rota: RegExp; rotulo?: R
   {
     motivo:
       "certificado.ver é, por definição (rbac.PERMISSOES), 'ver certificado nominal' " +
-      "— e o PDF (um ou o lote da turma) é o mesmo documento que o .docx",
+      "— e o PDF (um ou o lote da turma) e o .zip dos .docx são o mesmo documento",
     contas: ["secretaria", "sem_nominal"],
-    rota: /^\/(certificados(\/\d+(\/(documento|pdf))?)?|turmas\/\d+\/certificados\.pdf)(\?|$)/,
+    rota: /^\/(certificados(\/\d+(\/(documento|pdf))?)?|turmas\/\d+\/certificados\.(pdf|zip))(\?|$)/,
   },
   {
     motivo:
@@ -300,7 +300,7 @@ function regras_de_cpf(): { rotulo: string; re: RegExp }[] {
 }
 
 /** O único lugar onde o CPF pode sair: o documento do certificado, para quem pode baixá-lo. */
-const SAIDA_DO_CPF = /^\/(certificados\/\d+\/(documento|pdf)|turmas\/\d+\/certificados\.pdf)(\?|$)/;
+const SAIDA_DO_CPF = /^\/(certificados\/\d+\/(documento|pdf)|turmas\/\d+\/certificados\.(pdf|zip))(\?|$)/;
 
 beforeAll(async () => {
   amb = await bancoLimpo();

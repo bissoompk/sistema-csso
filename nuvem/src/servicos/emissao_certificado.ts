@@ -48,6 +48,7 @@ import * as servico_presenca from "./presenca.js";
 import * as servico_servidores from "./servidores.js";
 import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
+import PizZip from "pizzip";
 import {
   COM_TAGS,
   inscricoes_da_turma,
@@ -855,6 +856,34 @@ export async function pdf_do_certificado(
   const via = await segunda_via(tx, usuario, certificado);
   const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)]);
   return { nome: caminho_saida(certificado, "pdf").split("/").pop()!, bytes, aviso: via.aviso };
+}
+
+/**
+ * Certificado de modelo enviado pela tela: o layout é o do .docx do setor, e o
+ * PDF daqui é o desenho da casa (`certificado_pdf.ts`), que não sabe dele — sem
+ * os campos livres e com outro texto. Para esses, o papel é o Word.
+ */
+export function do_modelo_enviado(certificado: { contexto_congelado: Record<string, unknown> }): boolean {
+  return Boolean(certificado.contexto_congelado?.["modelo_chave"]);
+}
+
+/** Os .docx vigentes da turma num .zip, na ordem do número (o "todos" do Word). */
+export async function word_da_turma(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: { id: number; codigo: string },
+): Promise<{ nome: string; bytes: Uint8Array } | null> {
+  const certificados = Object.values(await certificados_da_turma(tx, turma)).sort(
+    (a, b) => a.ano - b.ano || a.numero - b.numero,
+  );
+  if (!certificados.length) return null;
+  const zip = new PizZip();
+  for (const certificado of certificados) {
+    const via = await segunda_via(tx, usuario, certificado);
+    zip.file(via.docx.split("/").pop()!, via.bytes);
+  }
+  const codigo = textos.slug_ascii(turma.codigo.replaceAll("-", "_")).replaceAll("_", "-");
+  return { nome: `Certificados_${codigo}.zip`, bytes: zip.generate({ type: "uint8array", compression: "DEFLATE" }) };
 }
 
 /** Todos os certificados vigentes da turma num PDF só, na ordem do número. */

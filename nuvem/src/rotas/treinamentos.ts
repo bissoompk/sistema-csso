@@ -339,9 +339,20 @@ function _linhas_do_mapa(modelo: any) {
       // preenchimento à parte aparece como "@TIPO"
       escolhido: tag ? (tipo === "SISTEMA" ? (tag.campo as string) : `@${tipo}`) : (sugestao ?? ""),
       // texto fixo ou nome do campo; sem nada gravado, o próprio texto do Word
-      detalhe: (tag?.texto_fixo || tag?.rotulo || (m.rotulo !== m.marcador ? m.rotulo : "")) as string,
+      detalhe: (tag?.texto_fixo || tag?.rotulo || _nome_sugerido(m)) as string,
     };
   });
+}
+
+/**
+ * O nome que a caixa propõe para o campo livre: o texto do marcador; quando ele
+ * é só lacuna («___», «___ %»), o rótulo que vem antes no Word ("Primeiros
+ * socorros: «___»" → "Primeiros socorros").
+ */
+function _nome_sugerido(m: { marcador: string; rotulo: string; antes?: string }): string {
+  if (/\p{L}/u.test(m.rotulo)) return m.rotulo !== m.marcador ? m.rotulo : "";
+  const ultimo = (m.antes ?? "").split(/\s\/\s|[.»]\s/).pop() ?? "";
+  return ultimo.replace(/[:\-–\s]+$/u, "").replace(/^[\s/«…]+/u, "").trim().slice(0, 80);
 }
 
 async function _tela_modelos(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) {
@@ -937,6 +948,9 @@ async function _tela_assinaturas(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) 
   });
 }
 
+// o menu diz "Instrutores": o endereço digitado por esse nome leva à mesma tela
+rotas.get("/treinamentos/instrutores", (c) => redirecionar(c, ASSINATURAS));
+
 rotas.get(ASSINATURAS, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("assinatura.gerenciar");
@@ -1077,6 +1091,6 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
       organizacao: texto_ou_nulo(digitado.organizacao),
       ativo: marcado(f.texto("ativo")),
     },
-    { permissao: "assinatura.gerenciar", rotulo: "Assinatura", volta: ASSINATURAS },
+    { permissao: "assinatura.gerenciar", rotulo: "Instrutor", volta: ASSINATURAS },
   );
 });

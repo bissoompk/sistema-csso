@@ -184,6 +184,8 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/pdf`, async (c) => {
   const tx = c.get("tx");
   const [certificado] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
   if (!certificado) return redirecionar(c, _volta_da_ficha(usuario));
+  // modelo enviado: o PDF da casa não é o papel dele; o link antigo leva ao Word
+  if (servico.do_modelo_enviado(certificado)) return redirecionar(c, `${CERTIFICADOS}/${certificado.id}/documento`);
   const resultado = await servico.pdf_do_certificado(tx, usuario, certificado);
   return baixar(c, resultado.bytes, resultado.nome, TIPO_PDF);
 });

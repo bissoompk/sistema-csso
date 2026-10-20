@@ -81,7 +81,7 @@
   {% set marca = linha.por_dia[dia] %}
   <td>
     {% if marca and marca.presente %}
-    <span class="pilula ok sem-ponto">{{ marca.horas }}h</span>
+    <span class="pilula ok sem-ponto">{{ marca.horas|num }} h</span>
     {% elif marca %}
     <span class="pilula erro sem-ponto"
           title="{{ marca.justificativa or 'sem justificativa' }}">falta</span>
@@ -116,7 +116,7 @@
     {% endif %}
   </td>
   {% endfor %}
-  <td class="mono">{{ linha.horas }}h</td>
+  <td class="mono">{{ linha.horas|num }} h</td>
   {# A barra é colorida pela FREQUÊNCIA contra o mínimo da turma, e não pelo
      resultado: quem vai reprovar só por nota tem frequência boa, e pintar a
      barra de âmbar ali diria que faltou. Quem decide o resultado continua
@@ -124,12 +124,12 @@
   {% set freq_baixa = linha.frequencia_baixa %}
   <td>
     <span class="progresso vertical {{ 'abaixo' if freq_baixa }}">
-      <span class="quanto">{{ linha.frequencia }}%</span>
+      <span class="quanto">{{ linha.frequencia|num }}%</span>
       <span class="trilho"><span style="--v:{{ [(linha.frequencia|float)|round|int, 100]|min }}"></span></span>
     </span>
   </td>
   <td>
-    <span class="mono">{{ linha.inscricao.nota_final if linha.inscricao.nota_final is not none else '—' }}</span>
+    <span class="mono">{{ linha.inscricao.nota_final|num }}</span>
     {% if pode_lancar %}
     <form method="post" action="/turmas/{{ turma.id }}/notas" style="margin-top:5px"
           hx-post="/turmas/{{ turma.id }}/notas"
