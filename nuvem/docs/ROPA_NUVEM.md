@@ -7,7 +7,9 @@ e não cria finalidade nem categoria nova. O que muda — e é o que esta emenda
 registra — é **onde o dado está, quem o processa em nome da UFVJM e por qual
 caminho ele passa**.
 
-**Versão:** 1.4, de 20/10/2026 — acrescenta o acesso do participante sem
+**Versão:** 1.5, de 20/10/2026 — acrescenta ao §5.9 o aviso de reciclagem
+por e-mail ao participante (manual, ou automático quando a CSSO o liga).
+Versão 1.4, de 20/10/2026: acrescenta o acesso do participante sem
 conta aos próprios certificados, por link enviado ao e-mail cadastrado (§5.10
 e §6). Versão 1.3, de 20/10/2026: o envio de e-mail (certificado e
 aviso da inscrição pelo link; §3, §5.9 e §6), **desligado até o controlador
@@ -247,7 +249,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 
 | Item | Registro |
 |---|---|
-| O que sai | (a) O certificado, com o PDF (ou o Word) anexado, ao e-mail do próprio participante — pedido por quem tem `certificado.emitir`, um a um (ficha) ou os da turma (aba Emissão); (b) o aviso de "inscrição confirmada" ou "pedido não aceito" a quem pediu vaga pelo link público (§5.8) e deixou e-mail. Nada sai sem um ato de alguém da CSSO |
+| O que sai | (a) O certificado, com o PDF (ou o Word) anexado, ao e-mail do próprio participante — pedido por quem tem `certificado.emitir`, um a um (ficha) ou os da turma (aba Emissão); (b) o aviso de "inscrição confirmada" ou "pedido não aceito" a quem pediu vaga pelo link público (§5.8) e deixou e-mail; (c) o aviso de reciclagem — certificado a vencer ou vencido —, um por certificado, marcado no monitor de reciclagem por quem tem `certificado.emitir` ou, se alguém com `treinamento.gerenciar` ligar o **aviso automático** (desligado de saída; a mudança fica na trilha), mandado pela varredura noturna no dia em que o certificado entra na janela de 30 dias. Nada sai sem um ato de alguém da CSSO: no automático, o ato é ligá-lo |
 | Para quem | Só o titular do dado, no endereço que ele ou a CSSO cadastrou. Sem cópia a terceiros |
 | O que leva | Nome, treinamento, turma, período, número e chave do certificado; no anexo, o certificado inteiro (com CPF, quando o modelo o exige — §5.5.1). O aviso de recusa **não** leva o motivo escrito na trilha |
 | Base legal | A do certificado e da inscrição (ROPA §2): o e-mail é meio de entregar o documento ao titular, não finalidade nova |

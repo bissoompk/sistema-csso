@@ -30,6 +30,7 @@ import { numeroDaPagina, pagina, recortarConsulta, redirecionar } from "../web.j
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as conversor_pdf from "../servicos/conversor_pdf.js";
 import * as reciclagem from "../servicos/reciclagem.js";
+import * as aviso_reciclagem from "../servicos/aviso_reciclagem.js";
 import * as fila_emissao from "../servicos/fila_emissao.js";
 import * as email from "../servicos/email.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
@@ -163,9 +164,14 @@ rotas.get(VENCIMENTOS, async (c) => {
     treinamento_id: id_opcional(treinamento_id),
     busca: busca_cpf ? "" : busca,
   });
+  const pode_avisar = usuario.pode("certificado.emitir");
   return pagina(c, "paginas/certificados_vencimentos.html", usuario, {
     itens,
     contagem,
+    pode_avisar,
+    avisados: pode_avisar ? [...(await aviso_reciclagem.ja_avisados(tx, itens.map((x) => x.id)))] : [],
+    automatico: await aviso_reciclagem.automatico_ligado(tx),
+    pode_automatico: usuario.pode("treinamento.gerenciar"),
     hoje,
     dias_aviso: DIAS_AVISO_RECICLAGEM,
     situacoes: Object.entries(ROTULO_RECICLAGEM),
@@ -179,7 +185,37 @@ rotas.get(VENCIMENTOS, async (c) => {
     filtro_treinamento: treinamento_id,
     busca,
     busca_cpf,
+    ...recados(c),
   });
+});
+
+/** Avisa por e-mail, uma vez, os participantes dos certificados marcados no monitor. */
+rotas.post(`${VENCIMENTOS}/avisar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.emitir");
+  const f = await formulario(c);
+  const volta = `${VENCIMENTOS}${f.texto("volta").startsWith("?") ? f.texto("volta") : ""}`;
+  const ids = [...new Set(f.todos("certificado_id").map((v) => id_opcional(v)).filter((v): v is number => v !== null))];
+  if (!ids.length) return _erro(c, volta, "Marque quem vai receber o aviso.");
+  const r = await aviso_reciclagem.avisar_marcados(c.get("tx"), usuario, ids);
+  if (r.enfileirados) await email.acordar_envio();
+  return (r.enfileirados ? _volta : _erro)(c, volta, aviso_reciclagem.resumo(r));
+});
+
+/** Liga ou desliga o aviso automático (a varredura noturna). */
+rotas.post(`${VENCIMENTOS}/automatico`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const f = await formulario(c);
+  const ligado = f.texto("ligado") === "sim";
+  await aviso_reciclagem.definir_automatico(c.get("tx"), usuario, ligado);
+  return _volta(
+    c,
+    VENCIMENTOS,
+    ligado
+      ? "Aviso automático ligado: a partir da próxima madrugada, quem entrar na janela de reciclagem recebe um e-mail."
+      : "Aviso automático desligado.",
+  );
 });
 
 // =====================================================================

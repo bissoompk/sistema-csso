@@ -169,6 +169,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   LISTA_PRESENCA_GERADA: "Lista de presença gerada",
   CERTIFICADO_EMITIDO: "Certificado emitido",
   CERTIFICADO_ENVIO_PEDIDO: "Envio do certificado por e-mail pedido",
+  RECICLAGEM_AVISO_PEDIDO: "Aviso de reciclagem por e-mail pedido",
+  RECICLAGEM_AVISO_AUTOMATICO: "Aviso de reciclagem automático ligado/desligado",
   CERTIFICADO_LOTE: "Certificados emitidos em lote",
   CERTIFICADO_SEGUNDA_VIA: "Segunda via de certificado",
   CERTIFICADO_ANULADO: "Certificado anulado",

@@ -729,11 +729,11 @@ describe("reciclagem: o monitor e o aviso de 30 dias", () => {
     const { usuario, a, b } = await _dois_emitidos();
     const primeira = await reciclagem.varrer(db, HOJE);
     // só o de Marco está na janela; o de Ana já venceu antes de a rotina olhar
-    expect(primeira).toEqual({ abertas: 1, fechadas: 0 });
+    expect(primeira).toEqual({ abertas: 1, fechadas: 0, avisados: 0 });
     const [aviso] = await db.select().from(e.pendencia).where(eq(e.pendencia.tipo, reciclagem.TIPO_PENDENCIA));
     expect(aviso).toMatchObject({ entidade: "certificado", entidade_id: a.id, prazo: "2026-10-30", responsavel_id: null });
     expect(aviso!.descricao).not.toContain("Marco");
-    expect(await reciclagem.varrer(db, HOJE)).toEqual({ abertas: 0, fechadas: 0 });
+    expect(await reciclagem.varrer(db, HOJE)).toEqual({ abertas: 0, fechadas: 0, avisados: 0 });
 
     // a reciclagem: um certificado novo do mesmo treinamento para a mesma
     // pessoa. Só a pessoa e o treinamento contam; a inscrição emprestada (a de
@@ -750,7 +750,7 @@ describe("reciclagem: o monitor e o aviso de 30 dias", () => {
     });
     const monitor = await reciclagem.monitor(db, usuario, "2026-10-26");
     expect(monitor.itens.find((x) => x.participante_nome.startsWith("Marco"))!.data_vencimento).toBe("2028-10-25");
-    expect(await reciclagem.varrer(db, "2026-10-26")).toEqual({ abertas: 0, fechadas: 1 });
+    expect(await reciclagem.varrer(db, "2026-10-26")).toEqual({ abertas: 0, fechadas: 1, avisados: 0 });
   });
 
   it("a tela do monitor abre para quem lê certificados, e não busca CPF", async () => {

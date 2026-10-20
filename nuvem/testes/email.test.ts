@@ -9,6 +9,8 @@ import type { Banco } from "../src/db/cliente.js";
 import * as email from "../src/servicos/email.js";
 import * as acesso from "../src/servicos/acesso_participante.js";
 import * as servico from "../src/servicos/emissao_certificado.js";
+import * as reciclagem from "../src/servicos/reciclagem.js";
+import * as datas_br from "../src/servicos/datas_br.js";
 import * as servico_participante from "../src/servicos/participante.js";
 import { definirArmazenamento } from "../src/servicos/armazenamento.js";
 import { bancoLimpo, contas, entrar, type Cliente } from "./ajuda.js";
@@ -316,5 +318,67 @@ describe("envio pela fila de emissão", () => {
     await entrar(cliente, "auditor_interno");
     expect((await cliente.post("/certificados/fila/email", { certificado_id: todos })).status).toBe(403);
     expect(await _caixa()).toHaveLength(1);
+  });
+});
+
+describe("aviso de reciclagem por e-mail", () => {
+  const HOJE = datas_br.hoje();
+
+  /** Marco a vencer em 10 dias, Ana vencida há 5 (só Marco tem e-mail). */
+  async function na_janela() {
+    const h = await cenario();
+    await db.update(e.certificado).set({ data_vencimento: datas_br.somar_dias(HOJE, 10) }).where(eq(e.certificado.id, h.do_marco.id));
+    const da_ana = (await db.select().from(e.certificado)).find((x) => x.id !== h.do_marco.id)!;
+    await db.update(e.certificado).set({ data_vencimento: datas_br.somar_dias(HOJE, -5) }).where(eq(e.certificado.id, da_ana.id));
+    return { ...h, da_ana };
+  }
+
+  it("os marcados no monitor recebem um aviso, uma vez só", async () => {
+    const h = await na_janela();
+    await entrar(cliente, "coordenador_csso");
+    const tela = (await cliente.get("/certificados/vencimentos")).text;
+    expect(tela).toContain("Avisar por e-mail os marcados");
+    expect(tela).toMatch(new RegExp(`value="${h.do_marco.id}"\\s+checked`));
+    expect(tela).not.toMatch(new RegExp(`value="${h.da_ana.id}"\\s+checked`));
+    const r = await cliente.post("/certificados/vencimentos/avisar", { certificado_id: [String(h.do_marco.id), String(h.da_ana.id)] });
+    expect(r.text).toContain("1 aviso(s) de reciclagem na fila de envio; 1 sem e-mail cadastrado.");
+    const [aviso] = await _caixa();
+    expect(aviso!.tipo).toBe("RECICLAGEM_AVISO");
+    expect(aviso!.destinatario).toBe("marco@ufvjm.edu.br");
+    expect(aviso!.corpo).toContain(`vence em ${datas_br.numerica(datas_br.somar_dias(HOJE, 10))}`);
+    expect(aviso!.corpo).toContain("procure a CSSO");
+    expect((await cliente.get("/certificados/vencimentos")).text).toContain(">avisado<");
+    const de_novo = await cliente.post("/certificados/vencimentos/avisar", { certificado_id: String(h.do_marco.id) });
+    expect(de_novo.text).toContain("1 já avisado(s) antes");
+    expect(await _caixa()).toHaveLength(1);
+  });
+
+  it("o automático vem desligado; ligado, a varredura avisa quem entra na janela, uma vez", async () => {
+    await na_janela();
+    await entrar(cliente, "coordenador_csso");
+    expect((await cliente.get("/certificados/vencimentos")).text).toContain("Ligar o aviso automático por e-mail");
+    await cliente.post("/certificados/vencimentos/automatico", { ligado: "sim" });
+    expect((await cliente.get("/certificados/vencimentos")).text).toContain("Aviso automático: ligado");
+    const r = await reciclagem.varrer(db, HOJE);
+    // a vencida há 5 dias não entra na janela (e nem tem e-mail): só Marco
+    expect(r).toEqual({ abertas: 1, fechadas: 0, avisados: 1 });
+    const [aviso] = await _caixa();
+    expect(aviso!.criado_por).toBeNull();
+    expect((await reciclagem.varrer(db, HOJE)).avisados).toBe(0);
+    expect(await _caixa()).toHaveLength(1);
+  });
+
+  it("desligado, a varredura só abre a tarefa do setor", async () => {
+    await na_janela();
+    expect(await reciclagem.varrer(db, HOJE)).toEqual({ abertas: 1, fechadas: 0, avisados: 0 });
+    expect(await _caixa()).toHaveLength(0);
+  });
+
+  it("quem só vê certificado não avisa nem liga o automático", async () => {
+    const h = await na_janela();
+    await entrar(cliente, "auditor_interno");
+    expect((await cliente.post("/certificados/vencimentos/avisar", { certificado_id: String(h.do_marco.id) })).status).toBe(403);
+    expect((await cliente.post("/certificados/vencimentos/automatico", { ligado: "sim" })).status).toBe(403);
+    expect((await cliente.get("/certificados/vencimentos")).text).not.toContain('form="f-avisar"');
   });
 });

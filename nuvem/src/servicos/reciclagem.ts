@@ -24,6 +24,7 @@ import {
 import { somar_dias } from "../dominio/datas.js";
 import { Certificado, DIAS_AVISO_RECICLAGEM } from "../dominio/treinamento.js";
 import * as datas_br from "./datas_br.js";
+import * as aviso_reciclagem from "./aviso_reciclagem.js";
 import * as pendencias from "./pendencias.js";
 import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
@@ -136,6 +137,8 @@ export async function monitor(
 export interface ResultadoVarredura {
   abertas: number;
   fechadas: number;
+  /** avisos por e-mail postos na fila (só com o automático ligado) */
+  avisados: number;
 }
 
 /**
@@ -144,7 +147,8 @@ export interface ResultadoVarredura {
  * anulado. Idempotente: a chave é o certificado.
  */
 export async function varrer(tx: Executor, hoje: string): Promise<ResultadoVarredura> {
-  const resultado: ResultadoVarredura = { abertas: 0, fechadas: 0 };
+  const resultado: ResultadoVarredura = { abertas: 0, fechadas: 0, avisados: 0 };
+  const automatico = await aviso_reciclagem.automatico_ligado(tx);
   const em_vigor = await _em_vigor(tx, undefined);
   const vigentes = new Set(em_vigor.map((l) => l.id));
   const limite = somar_dias(hoje, DIAS_AVISO_RECICLAGEM);
@@ -166,6 +170,8 @@ export async function varrer(tx: Executor, hoje: string): Promise<ResultadoVarre
       prazo: l.data_vencimento,
     });
     resultado.abertas += 1;
+    // o aviso ao participante sai no mesmo dia em que a tarefa do setor nasce
+    if (automatico && (await aviso_reciclagem.avisar_pela_rotina(tx, l.id, hoje))) resultado.avisados += 1;
   }
   const abertas = await tx
     .select()

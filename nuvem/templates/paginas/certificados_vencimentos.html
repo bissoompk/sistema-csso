@@ -20,8 +20,24 @@
         <p>O certificado que entra na janela de {{ dias_aviso }} dias abre uma tarefa
           em <a href="/pendencias">Pendências</a>, sem nome de ninguém; ela se fecha
           sozinha quando a pessoa recebe o certificado da reciclagem.</p>
+        <p><strong>Aviso por e-mail ao participante:</strong> marque as linhas e use
+          “Avisar por e-mail os marcados”. Cada certificado é avisado uma vez só. Com o
+          aviso automático ligado, a varredura da madrugada avisa sozinha quem
+          <em>entra</em> na janela de {{ dias_aviso }} dias — quem já estava nela antes de
+          ligar se avisa por aqui.</p>
       {% endcall %}
     </div>
+    {% if pode_automatico %}
+    <form method="post" action="/certificados/vencimentos/automatico">
+      <input type="hidden" name="ligado" value="{{ 'nao' if automatico else 'sim' }}">
+      <button type="submit" class="secundario">
+        {{- 'Desligar o aviso automático por e-mail' if automatico else 'Ligar o aviso automático por e-mail' -}}
+      </button>
+      <span class="quebra discreto">Aviso automático: {{ 'ligado' if automatico else 'desligado' }}</span>
+    </form>
+    {% elif automatico %}
+    <p class="discreto">Aviso automático por e-mail: ligado.</p>
+    {% endif %}
   </div>
 
   <div class="fileira">
@@ -57,16 +73,32 @@
     lotação, pelo curso ou pelo código da turma.</div>
   {% endif %}
 
+  {% set marcavel = pode_avisar and itens|length %}
+  {% if marcavel %}
+  <form method="post" action="/certificados/vencimentos/avisar" id="f-avisar">
+    <input type="hidden" name="volta" value="?{{ ('situacao=' ~ filtro_situacao) if filtro_situacao else '' }}{{ eixo_treinamento }}{{ eixo_busca }}">
+  </form>
+  {% endif %}
+
   <div class="tabela-cartao lista">
   <table>
     <thead>
       <tr>
+        {% if marcavel %}<th scope="col"><span class="oculto">Avisar</span></th>{% endif %}
         <th scope="col">Vencimento</th><th scope="col">Situação</th><th scope="col">Participante</th>
         <th scope="col">Lotação</th><th scope="col">Treinamento</th><th scope="col">Certificado</th>
       </tr>
     </thead>
     {% for x in itens %}
     <tr>
+      {% if marcavel %}
+      {# marcado de saída: quem está a vencer e ainda não foi avisado #}
+      <td>{% if x.situacao != 'VALIDO' and x.id not in avisados %}
+        <input form="f-avisar" type="checkbox" name="certificado_id" value="{{ x.id }}"
+               {{ 'checked' if x.situacao == 'A_VENCER' }}
+               aria-label="Avisar {{ x.participante_nome }} por e-mail">
+        {% elif x.id in avisados %}<span class="pilula sem-ponto" title="aviso de reciclagem enviado ou na fila">avisado</span>{% endif %}</td>
+      {% endif %}
       <td class="mono">{{ x.data_vencimento|data }}</td>
       <td>
         {%- if x.situacao == 'VENCIDO' %}<span class="pilula erro">Vencido</span>
@@ -96,6 +128,17 @@
     {% endfor %}
   </table>
   </div>
+
+  {% if marcavel %}
+  <div class="acoes">
+    <button form="f-avisar" type="submit">Avisar por e-mail os marcados</button>
+    <p class="discreto sem-margem">Vai ao e-mail do participante: o certificado, a data de
+      vencimento e o pedido para procurar a CSSO. Os “a vencer” vêm marcados; os vencidos,
+      não. Quem já foi avisado não recebe de novo.
+      {%- if not email_configurado() %} <strong>O envio ainda não está configurado:</strong>
+      os avisos ficam na fila e saem quando for ligado.{% endif %}</p>
+  </div>
+  {% endif %}
 
 </div>
 {% endblock %}

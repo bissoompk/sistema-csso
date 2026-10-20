@@ -104,7 +104,7 @@ export const TIPOS_VARRIDOS = [epi_estoque.TIPO_PENDENCIA_CA, epi_ficha.TIPO_PEN
 export interface ResultadoVarredura {
   lotes: number;
   servidores: number;
-  certificados: { abertas: number; fechadas: number };
+  certificados: reciclagem.ResultadoVarredura;
   antes: Record<string, number>;
   depois: Record<string, number>;
 }
@@ -131,7 +131,7 @@ export async function varrer_pendencias(tx: Executor, quando: string | null = nu
   const resultado: ResultadoVarredura = {
     lotes: 0,
     servidores: 0,
-    certificados: { abertas: 0, fechadas: 0 },
+    certificados: { abertas: 0, fechadas: 0, avisados: 0 },
     antes: await _contar(tx),
     depois: {},
   };
@@ -195,7 +195,8 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
     (r) => [
       true,
       `${r.lotes} lote(s) com CA e ${r.servidores} servidor(es) com troca prevista revistos; ` +
-        `reciclagem: ${r.certificados.abertas} aviso(s) aberto(s), ${r.certificados.fechadas} fechado(s); ` +
+        `reciclagem: ${r.certificados.abertas} aviso(s) aberto(s), ${r.certificados.fechadas} fechado(s), ` +
+        `${r.certificados.avisados} e-mail(s) ao participante; ` +
         TIPOS_VARRIDOS.map((t) => `${t}: ${r.depois[t] ?? 0} aberta(s) (${(r.depois[t] ?? 0) - (r.antes[t] ?? 0)} nesta passada)`).join("; "),
     ],
   );
