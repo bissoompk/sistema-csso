@@ -444,6 +444,8 @@ export function sugerir_campo(
     // o texto já diz "Campus" logo antes: só o nome, sem repetir a palavra
     [tem("campus") && /campus\s*$/.test(antes), _o_que_houver(campos, "turma_campus_curto", "turma_campus")],
     [tem("campus"), "turma_campus"],
+    // «link de validação», «endereço da validação»: o endereço que abre /validar
+    [tem("validacao", "validar") && tem("endereco", "link", "url", "site"), "certificado_url_validacao"],
     [tem("endereco", "local do curso", "local de realizacao"), "turma_local"],
     [tem("tecnico", "engenheir", "cargo", "titulo", "formacao profissional") && !tem("credenciamento", "registro"), _o_que_houver(campos, "instrutor_titulo", "assinante_titulo")],
     [tem("credenciamento", "registro no conselho", "registro crea", "registro profissional"), _o_que_houver(campos, "instrutor_registro")],

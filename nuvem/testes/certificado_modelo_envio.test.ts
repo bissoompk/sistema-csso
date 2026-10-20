@@ -222,6 +222,18 @@ describe("sugestão de campo", () => {
       "participante_cpf",
     );
   });
+
+  it("modelo do repositório traz chave, link e QR da validação, já sugeridos", () => {
+    const origem = readFileSync(path.join(aqui, "..", "modelos-docx", "origem", "Modelo_Certificado_Brigadista_Organico_CSSO.docx"));
+    const { marcadores } = envio.converter_docx_enviado(new Uint8Array(origem));
+    const sugestao = Object.fromEntries(marcadores.map((m) => [m.marcador, certificado.sugerir_campo(m)]));
+    expect(sugestao["chave_de_validacao"]).toBe("certificado_chave");
+    expect(sugestao["link_de_validacao"]).toBe("certificado_url_validacao");
+    expect(sugestao["link_de_validacao_2"]).toBe("certificado_url_validacao");
+    expect(sugestao["qr_code"]).toBe("certificado_qrcode");
+    // «endereço completo do local do curso» continua sendo o local da turma
+    expect(sugestao["endereco_completo_do_local_do_curso"]).toBe("turma_local");
+  });
 });
 
 // =====================================================================
