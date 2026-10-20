@@ -33,6 +33,7 @@ import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado, type Formulario } fro
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
+import * as exclusao_cadastro from "../servicos/exclusao_cadastro.js";
 import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as certificado from "../servicos/certificado.js";
 import * as envio from "../servicos/modelo_certificado_envio.js";
@@ -295,6 +296,21 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
     },
     { permissao: "treinamento.gerenciar", rotulo: "Treinamento", volta: CATALOGO },
   );
+});
+
+/** O treinamento cadastrado por engano, que nunca teve turma (`exclusao_cadastro.ts`). */
+rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}/excluir`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  try {
+    const codigo = await c
+      .get("tx")
+      .transaction((sp) => exclusao_cadastro.excluir_treinamento(sp as Executor, usuario, Number(c.req.param("treinamento_id"))));
+    return _volta(c, CATALOGO, `Treinamento ${codigo} excluído.`);
+  } catch (erro) {
+    if (erro instanceof exclusao_cadastro.ExclusaoRecusada) return _erro(c, CATALOGO, erro.message);
+    throw erro;
+  }
 });
 
 // =====================================================================
@@ -1098,6 +1114,21 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
     },
     { permissao: "assinatura.gerenciar", rotulo: "Instrutor", volta: ASSINATURAS },
   );
+});
+
+/** O instrutor cadastrado por engano, que nunca esteve em turma. */
+rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}/excluir`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("assinatura.gerenciar");
+  try {
+    const nome = await c
+      .get("tx")
+      .transaction((sp) => exclusao_cadastro.excluir_instrutor(sp as Executor, usuario, Number(c.req.param("assinatura_id"))));
+    return _volta(c, ASSINATURAS, `Instrutor ${nome} excluído.`);
+  } catch (erro) {
+    if (erro instanceof exclusao_cadastro.ExclusaoRecusada) return _erro(c, ASSINATURAS, erro.message);
+    throw erro;
+  }
 });
 
 /**

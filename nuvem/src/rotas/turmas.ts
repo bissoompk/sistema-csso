@@ -20,6 +20,7 @@ import type { Executor } from "../db/cliente.js";
 import {
   assinatura_instrutor as tabela_assinatura,
   campus as tabela_campus,
+  certificado as tabela_certificado,
   servidor as tabela_servidor,
   treinamento as tabela_treinamento,
   turma as tabela_turma,
@@ -42,6 +43,7 @@ import { atores_para_tela } from "../servicos/privacidade.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as inscricao_lote from "../servicos/inscricao_lote.js";
 import * as inscricao_publica from "../servicos/inscricao_publica.js";
+import * as retificacao from "../servicos/retificacao.js";
 import * as email from "../servicos/email.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
 import { qr_png } from "../servicos/qr.js";
@@ -537,8 +539,15 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
         )
       : {};
 
+  // excluir só aparece onde poderia dar certo; os motivos vão na camada
+  const impedimentos_exclusao =
+    aba === "turma" && usuario.pode("turma.concluir") && ["PLANEJADA", "INSCRICOES_ABERTAS"].includes(turma.situacao)
+      ? await servico_turma.impedimentos_da_exclusao(tx, turma)
+      : null;
+
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
+    impedimentos_exclusao,
     descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
     link_no_ar: inscricao_publica.link_no_ar(turma),
     certificados_em_word,
@@ -648,6 +657,29 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
   }
   const rotulo = { INSCRICOES_ABERTAS: "inscrições abertas" }[turma.situacao as string] ?? ROTULO_TURMA[turma.situacao]!.toLowerCase();
   return _volta(c, volta, `${turma.codigo}: ${rotulo}.`);
+});
+
+/**
+ * Excluir a turma aberta por engano, antes de acontecer (`excluir_turma`). A que
+ * já tem história — presença, certificado, pedido do próprio participante —
+ * se cancela.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/excluir`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.concluir");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const codigo = turma.codigo;
+  try {
+    await _no_savepoint(c, (sp) => servico_turma.excluir_turma(sp, usuario, turma, f.texto("motivo")));
+  } catch (erro) {
+    if (erro instanceof RegraDaTurma) return _erro(c, `${TURMAS}/${turma_id}`, erro.message);
+    throw erro;
+  }
+  return _volta(c, TURMAS, `Turma ${codigo} excluída. O código não volta para a sequência.`);
 });
 
 /**
@@ -966,6 +998,54 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/cpf`, a
   const quem = inscricao.participante.identificador_publico;
   if (!mudou) return _volta(c, volta, `${quem}: CPF sem alteração.`);
   return _volta(c, volta, cpf === null ? `${quem}: CPF apagado.` : `${quem}: CPF gravado para o certificado.`);
+});
+
+/**
+ * Corrigir o cadastro do participante externo (nome, vínculo, organização) pela
+ * linha da inscrição. Vale para o que ainda vai sair; certificado já emitido
+ * se corrige pela ficha dele, que anula e reemite.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/participante`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
+  const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
+  if (!inscricao || inscricao.turma_id !== turma.id) return redirecionar(c, volta);
+  if (inscricao.participante.servidor_id !== null) {
+    return _erro(c, volta, "O nome de servidor vem do cadastro de servidores: corrija-o lá.");
+  }
+  let mudou: string[];
+  try {
+    mudou = await _no_savepoint(c, (sp) =>
+      retificacao.corrigir_participante(sp, usuario, inscricao.participante, {
+        nome: f.texto("nome"),
+        vinculo: f.texto("vinculo"),
+        organizacao: f.texto("organizacao"),
+      }),
+    );
+  } catch (erro) {
+    if (erro instanceof retificacao.RetificacaoRecusada) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  const quem = inscricao.participante.identificador_publico;
+  if (!mudou.length) return _volta(c, volta, `${quem}: nada a corrigir.`);
+  const emitidos = await tx
+    .select({ id: tabela_certificado.id })
+    .from(tabela_certificado)
+    .where(and(eq(tabela_certificado.participante_id, inscricao.participante_id), eq(tabela_certificado.situacao, "EMITIDO")));
+  return _volta(
+    c,
+    volta,
+    `${quem}: ${mudou.join(", ")} corrigido(s).` +
+      (emitidos.length
+        ? ` ${emitidos.length} certificado(s) já emitido(s) continuam com o dado antigo — use “Corrigir certificado” na ficha de cada um.`
+        : ""),
+  );
 });
 
 // =====================================================================

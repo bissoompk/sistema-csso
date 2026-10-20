@@ -19,7 +19,7 @@ import {
   ROTULO_TIPO_TAG,
   SITUACOES_CERTIFICADO,
 } from "../dominio/treinamento.js";
-import { formulario, usuarioLogado } from "../dependencias.js";
+import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
 import { CAMPOS_CERTIFICADO, chave_valida, normalizar_chave } from "../servicos/certificado.js";
 import * as datas_br from "../servicos/datas_br.js";
@@ -36,7 +36,12 @@ import * as email from "../servicos/email.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
 import { chave_busca, parece_cpf } from "../servicos/textos.js";
 import { baixar } from "./turmas.js";
-import { erro as _erro, id_opcional, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
+import * as cpf_certificado from "../servicos/cpf_certificado.js";
+import * as retificacao from "../servicos/retificacao.js";
+import { carregar_inscricao } from "../servicos/turma.js";
+import { ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
+
+import { erro as _erro, id_opcional, marcado, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -370,7 +375,25 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}`, async (c) => {
     substituto = s ? vista_certificado(s as Record<string, any>) : null;
   }
   const hoje = datas_br.hoje();
+  // o formulário da correção: o cadastro de HOJE, que é o que o substituto leva
+  let correcao = null;
+  if (!C.anulado(certificado) && usuario.pode("certificado.anular") && usuario.pode("certificado.emitir")) {
+    const inscricao = await carregar_inscricao(tx, certificado.inscricao_id);
+    const p = inscricao?.participante;
+    if (p) {
+      correcao = {
+        externo: p.servidor_id === null,
+        nome: p.servidor ? p.servidor.nome : (p.nome ?? ""),
+        servidor_id: p.servidor_id,
+        vinculo: p.vinculo,
+        organizacao: p.organizacao ?? "",
+        tem_cpf: p.cpf !== null,
+        vinculos: VINCULOS_PARTICIPANTE.filter((v) => v !== "SERVIDOR").map((v) => [v, ROTULO_VINCULO[v]]),
+      };
+    }
+  }
   return pagina(c, "paginas/certificado_ficha.html", usuario, {
+    correcao,
     certificado: vista_certificado(certificado as Record<string, any>),
     contexto,
     campos: CAMPOS_CERTIFICADO,
@@ -481,6 +504,53 @@ rotas.post(`${EMAILS}/:email_id{[0-9]+}/:acao{tentar|cancelar}`, async (c) => {
   }
   if (!(await email.cancelar(tx, id))) return _erro(c, EMAILS, "Só e-mail na fila ou que falhou pode ser cancelado.");
   return _volta(c, EMAILS, "Envio cancelado.");
+});
+
+// =====================================================================
+// Correção (retificação)
+// =====================================================================
+/**
+ * Corrigir o dado do participante e reemitir, num ato só: anula este, emite o
+ * substituto com número novo e liga os dois (`retificacao.ts`). Se o
+ * substituto não puder sair, nada muda.
+ */
+rotas.post(`${CERTIFICADOS}/:certificado_id{[0-9]+}/corrigir`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.anular");
+  usuario.exigir("certificado.emitir");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const certificado_id = Number(c.req.param("certificado_id"));
+  const certificado = await servico.no_escopo(tx, usuario, certificado_id);
+  if (!certificado) return redirecionar(c, CERTIFICADOS);
+  const destino = `${CERTIFICADOS}/${certificado_id}`;
+  const correcao: retificacao.Correcao = {};
+  if (f.tem("nome")) correcao.nome = f.texto("nome");
+  if (f.tem("vinculo")) correcao.vinculo = f.texto("vinculo");
+  if (f.tem("organizacao")) correcao.organizacao = f.texto("organizacao");
+  let r: retificacao.ResultadoRetificacao;
+  try {
+    const cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO), marcado(f.texto("apagar_cpf")));
+    if (cpf !== undefined) correcao.cpf = cpf;
+    r = await tx.transaction((sp) => retificacao.retificar(sp as Executor, usuario, certificado, f.texto("motivo"), correcao));
+  } catch (erro) {
+    if (
+      erro instanceof retificacao.RetificacaoRecusada ||
+      erro instanceof servico.EmissaoBloqueada ||
+      erro instanceof servico.AnulacaoRecusada ||
+      erro instanceof cpf_certificado.CpfInvalido
+    ) {
+      return _erro(c, destino, `Nada foi alterado. ${erro.message}`);
+    }
+    throw erro;
+  }
+  let frase =
+    `Certificado ${C.rotulo(r.antigo)} anulado e substituído por ${C.rotulo(r.novo)}` +
+    (r.corrigidos.length ? ` (corrigido: ${r.corrigidos.join(", ")}).` : ".");
+  if (r.outros_em_vigor) {
+    frase += ` A pessoa tem mais ${r.outros_em_vigor} certificado(s) em vigor com o dado antigo; corrija cada um pela ficha dele.`;
+  }
+  return _volta(c, `${CERTIFICADOS}/${r.novo.id}`, frase);
 });
 
 // =====================================================================

@@ -974,3 +974,25 @@ Nada disto existe no Python. Saiu da comparação, função por função, com o 
 - **Aviso de reciclagem por e-mail** (`servicos/aviso_reciclagem.ts`): um por certificado. Ou marcado no monitor (`certificado.emitir`), ou automático na varredura, no dia em que o certificado entra na janela. O automático depende do parâmetro `reciclagem.aviso_email_automatico`, desligado de saída e ligado só por `treinamento.gerenciar`, com trilha.
 
 **Ficou de fora, por decisão:** RG (LGPD) e WhatsApp ou telefone do participante (a lista em lote os descarta com aviso). **Diferente de propósito:** PDFs no Storage, e não em pasta do Drive; a data é gerada do início e do fim, e não texto livre; emitir é um passo só (número e chave), com o e-mail à parte.
+
+## Corrigir e excluir (20/10/2026)
+
+- **Corrigir certificado** (`POST /certificados/:id/corrigir`, `servicos/retificacao.ts`). O Python só anulava; a reemissão era outro passo, na turma, e o vínculo `substituido_por_id` existia sem tela que o preenchesse.
+  - Aqui é **um ato**: grava a correção no cadastro do externo (nome, vínculo, organização, CPF do certificado), anula o antigo com o motivo «Retificação: …», emite o substituto com número e chave novos e aponta o antigo para ele.
+  - Tudo num savepoint: se o substituto travar (assinatura fora da vigência, modelo quebrado), nada muda.
+  - O certificado continua imutável. A página pública da chave antiga diz «anulado» e o **número** do substituto (a chave dele não, porque é do titular).
+  - Nome de servidor não se corrige aqui: ele mora no cadastro de servidores, com permissão própria. A tela aponta para lá.
+  - A trilha registra que o nome foi corrigido, mas não qual era (RN-19 na escrita). O nome antigo fica no congelado do certificado anulado.
+  - Permissões: `certificado.anular` **e** `certificado.emitir`.
+- **Corrigir o participante pela inscrição** (`POST /turmas/:id/inscricoes/:iid/participante`, `turma.inscrever`): nome, vínculo e organização do externo, para o que ainda vai sair. Se a pessoa já tem certificado emitido, a resposta avisa que ele continua com o dado antigo.
+- **Excluir turma** (`POST /turmas/:id/excluir`, `turma.concluir`, com motivo). O Python só cancelava. A exclusão vale só para a turma **planejada ou com inscrições abertas** que não tem:
+  - presença ou nota;
+  - certificado, mesmo anulado;
+  - e-mail enviado a inscrito;
+  - pedido do próprio participante (link público ou «inscrever-me»).
+
+  As inscrições lançadas pela CSSO, os instrutores vinculados e os campos do certificado saem em cascata. As tarefas abertas sobre a turma são fechadas e o e-mail ainda na fila é cancelado. O código não volta para a sequência; a trilha guarda o retrato e o motivo. A turma com história continua se cancelando.
+- **Excluir treinamento e instrutor** (`POST /treinamentos/catalogo/:id/excluir`, `/treinamentos/assinaturas/:id/excluir`, `servicos/exclusao_cadastro.ts`): só o que nunca serviu a turma.
+  - O treinamento não pode ter turma, certificado nem modelo próprio.
+  - O instrutor não pode estar em turma. Se ele era o instrutor padrão de algum treinamento, o treinamento só perde a sugestão.
+  - O resto se desativa, como antes.

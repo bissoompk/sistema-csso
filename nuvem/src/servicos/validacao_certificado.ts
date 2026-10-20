@@ -89,6 +89,8 @@ export interface Resposta {
   emissor: string;
   numero: string;
   identificador_participante: string;
+  // o número do certificado que substituiu este (retificação), ou ""
+  substituido_por: string;
 }
 
 function nao_encontrado(): Resposta {
@@ -106,6 +108,7 @@ function nao_encontrado(): Resposta {
     emissor: "",
     numero: "",
     identificador_participante: "",
+    substituido_por: "",
   };
 }
 
@@ -129,6 +132,11 @@ export async function consultar(tx: Executor, bruta: string | null | undefined, 
   // descongela pela MESMA função que a segunda via usa
   const contexto = ContextoCertificado.descongelar((certificado.contexto_congelado ?? {}) as Record<string, unknown>);
   const quando = hoje ?? datas_br.hoje();
+  let substituido_por = "";
+  if (certificado.substituido_por_id !== null) {
+    const [novo] = await tx.select().from(tabela_certificado).where(eq(tabela_certificado.id, certificado.substituido_por_id));
+    substituido_por = novo ? C.rotulo(novo) : "";
+  }
   return {
     encontrado: true,
     chave,
@@ -145,6 +153,8 @@ export async function consultar(tx: Executor, bruta: string | null | undefined, 
     emissor: contexto.setor_nome || contexto.setor_sigla || "",
     numero: C.rotulo(certificado),
     identificador_participante: contexto.participante_identificador || "",
+    // só o número: a chave do substituto é do titular, e ela não se descobre por aqui
+    substituido_por,
   };
 }
 

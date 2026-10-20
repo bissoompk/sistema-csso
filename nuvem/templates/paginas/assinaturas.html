@@ -130,7 +130,14 @@
           {% else %}<span class="pilula alerta">fora de vigência</span>{% endif %}</td>
       <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
           {% if a.ativo %}checked{% endif %}> ativa</label></td>
-      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button></td>
+      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button>
+        {% call ui.popup_gaveta('excluir-assin-' ~ a.id, 'excluir', 'Excluir · ' ~ a.nome_exibicao, largo=false) %}
+          <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/excluir">
+            <p class="discreto">Só para o instrutor cadastrado por engano, que nunca esteve em
+              turma. O que já assinou turma não se apaga: desmarque “ativa” ou feche a vigência.</p>
+            <div class="acoes"><button type="submit" class="perigo compacto">Excluir</button></div>
+          </form>
+        {% endcall %}</td>
     </tr>
     {% else %}
     {{ ui.vazio_de_lista(

@@ -31,6 +31,7 @@
    nesta ficha, quatro deles ao mesmo tempo na mesma aba. #}
 {% set EDITAR_TURMA = 'Editar dados da turma' %}
 {% set CANCELAR_TURMA = 'Cancelar turma' %}
+{% set EXCLUIR_TURMA = 'Excluir turma' %}
 {% set CONCLUIR_TURMA = 'Concluir turma' %}
 {% set VINCULAR_INSTRUTOR = 'Vincular instrutor' %}
 {% set CADASTRAR_EXTERNO = 'Cadastrar participante externo' %}
@@ -221,6 +222,9 @@
         {% elif codigo == 'CANCELADA' %}
         {# Cancelar exige motivo escrito: o botão abre a camada com o campo. #}
         {{ ui.botao_cadastro('cancelar-turma', CANCELAR_TURMA, 'perigo-discreto') }}
+        {% if impedimentos_exclusao != none %}
+        {{ ui.botao_cadastro('excluir-turma', EXCLUIR_TURMA, 'perigo-discreto') }}
+        {% endif %}
         {% else %}
         {# Os passos sem campo nenhum continuam sendo um clique só, na tela: um
            popup aqui cobraria dois cliques para não mostrar informação alguma. #}
@@ -428,6 +432,32 @@
                      placeholder="desistiu, remanejado, turma cheia…"></div>
             <div class="acoes"><button type="submit" class="perigo compacto">
               {{ 'Recusar' if i.situacao == 'AGUARDANDO_EMAIL' else 'Cancelar inscrição' }}</button></div>
+          </form>
+        {% endcall %}
+        {% endif %}
+        {# Corrigir o cadastro do externo: nome, vínculo, organização. O de
+           servidor mora no cadastro de servidores. Só para quem lê o nome —
+           a camada mostra o nome atual para ser corrigido. #}
+        {% if i.situacao != 'CANCELADA' and i.participante.servidor_id is none and nominal %}
+        {% call ui.popup_gaveta('corrigir-participante-' ~ i.id, 'corrigir',
+                                'Corrigir dados · ' ~ i.participante.nome_exibicao,
+                                nota=i.participante.identificador_publico) %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}/participante">
+            <p class="discreto">Vale para o cadastro e para os próximos certificados.
+              Certificado já emitido se corrige pela ficha dele (“Corrigir certificado”),
+              que anula e reemite com número novo.</p>
+            <div class="campo"><label for="corrigir-nome-{{ i.id }}">Nome</label>
+              <input id="corrigir-nome-{{ i.id }}" name="nome" value="{{ i.participante.nome }}" required maxlength="160"></div>
+            <div class="campo"><label for="corrigir-vinculo-{{ i.id }}">Vínculo</label>
+              <select id="corrigir-vinculo-{{ i.id }}" name="vinculo">
+                {% for v in vinculos %}
+                <option value="{{ v }}"{{ ui.sel(i.participante.vinculo, v) }}>{{ rotulo_vinculo[v] }}</option>
+                {% endfor %}
+              </select></div>
+            <div class="campo"><label for="corrigir-organizacao-{{ i.id }}">Organização</label>
+              <input id="corrigir-organizacao-{{ i.id }}" name="organizacao"
+                     value="{{ i.participante.organizacao or '' }}" maxlength="160"></div>
+            <div class="acoes"><button type="submit" class="secundario compacto">Gravar a correção</button></div>
           </form>
         {% endcall %}
         {% endif %}
@@ -1182,6 +1212,31 @@
   <div class="campo">
     <label class="discreto"><input type="checkbox" name="assina_certificado" value="1" checked>
       assina o certificado</label></div>
+{% endcall %}
+{% endif %}
+
+{% if impedimentos_exclusao != none %}
+{% call ui.popup_cadastro('excluir-turma', EXCLUIR_TURMA,
+                          '/turmas/' ~ turma.id ~ '/excluir', EXCLUIR_TURMA,
+                          classe_botao='perigo', nota='só a turma aberta por engano, antes de acontecer') %}
+  {% if impedimentos_exclusao.length %}
+  <div class="aviso aviso-erro">
+    <p><strong>Esta turma não pode ser excluída</strong>, porque:</p>
+    <ul>{% for m in impedimentos_exclusao %}<li>{{ m }}</li>{% endfor %}</ul>
+    <p>Use “{{ CANCELAR_TURMA }}”: o cancelamento guarda o motivo, que é o que quem já
+      sabia da turma vai ler.</p>
+  </div>
+  {% else %}
+  <div class="aviso aviso-erro">
+    <p><strong>Excluir apaga a turma de vez</strong>, com as inscrições lançadas pela CSSO,
+      os instrutores vinculados e os campos do certificado. Não há como desfazer.</p>
+    <p>O código <span class="mono">{{ turma.codigo }}</span> não volta para a sequência: a
+      trilha guarda o retrato da turma e o motivo, que é o que explica o número que falta.</p>
+  </div>
+  <div class="campo"><label for="motivo-excluir">Motivo da exclusão</label>
+    <input id="motivo-excluir" name="motivo" required
+           placeholder="aberta com o treinamento errado, turma duplicada…"></div>
+  {% endif %}
 {% endcall %}
 {% endif %}
 

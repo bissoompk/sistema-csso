@@ -69,6 +69,11 @@
     <p><strong>Este certificado foi anulado pela CSSO.</strong> Ele existiu e foi
       cancelado — não use como comprovação. O motivo da anulação não é público;
       quem precisar dele deve procurar a CSSO.</p>
+    {% if resposta.substituido_por %}
+    <p>Ele foi <strong>substituído pelo certificado
+      <span class="mono">{{ resposta.substituido_por }}</span></strong>, emitido com a correção.
+      Quem é o titular recebe o novo documento da CSSO, com chave própria.</p>
+    {% endif %}
   </div>
   {% elif resposta.situacao == 'VENCIDO' %}
   <div class="aviso aviso-alerta">

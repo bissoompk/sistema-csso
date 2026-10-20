@@ -22,8 +22,10 @@ import {
   agora_utc,
   assinatura_instrutor as tabela_assinatura,
   campus as tabela_campus,
+  certificado as tabela_certificado,
   certificado_modelo as tabela_modelo,
   certificado_modelo_tag as tabela_tag,
+  email_saida as tabela_email_saida,
   inscricao as tabela_inscricao,
   participante as tabela_participante,
   pendencia as tabela_pendencia,
@@ -472,6 +474,133 @@ export async function mudar_situacao(
     await presenca.apurar_turma(tx, usuario, turma);
   }
   return turma;
+}
+
+// ---------------------------------------------------------------------
+// Exclusão da turma aberta por engano
+// ---------------------------------------------------------------------
+export const TURMA_EXCLUIDA = "TURMA_EXCLUIDA";
+const SITUACOES_EXCLUIVEIS = ["PLANEJADA", "INSCRICOES_ABERTAS"];
+
+/**
+ * O que impede apagar a turma — lista vazia é "pode". A turma que ainda não
+ * aconteceu e que só a CSSO conhece (treinamento errado, data trocada, turma
+ * duplicada) sai de vez; a que alguém de fora já viu se CANCELA, com motivo,
+ * porque o cancelamento é o que essa pessoa vai ler.
+ *
+ * Trava: começou (presença ou nota lançada), tem certificado (mesmo anulado:
+ * o número existiu), já saiu e-mail para algum inscrito, ou há pedido feito
+ * pelo próprio participante (link público ou "inscrever-me"). A inscrição que
+ * a própria CSSO lançou vai junto com a turma.
+ */
+export async function impedimentos_da_exclusao(tx: Executor, turma: TurmaRegistro): Promise<string[]> {
+  const motivos: string[] = [];
+  if (!SITUACOES_EXCLUIVEIS.includes(turma.situacao)) {
+    motivos.push(
+      `a turma está ${(ROTULO_TURMA[turma.situacao] ?? turma.situacao).toLowerCase()}: só se exclui a ` +
+        "planejada ou com inscrições abertas — a que já começou ou acabou tem história",
+    );
+  }
+  const inscricoes = await tx.select().from(tabela_inscricao).where(eq(tabela_inscricao.turma_id, turma.id));
+  const ids = inscricoes.map((i) => i.id);
+  if (ids.length) {
+    const [presencas] = await tx
+      .select({ n: count() })
+      .from(tabela_presenca)
+      .where(inArray(tabela_presenca.inscricao_id, ids));
+    if (Number(presencas?.n ?? 0) > 0 || inscricoes.some((i) => i.nota_final !== null)) {
+      motivos.push("já há presença ou nota lançada");
+    }
+    const [certificados] = await tx
+      .select({ n: count() })
+      .from(tabela_certificado)
+      .where(inArray(tabela_certificado.inscricao_id, ids));
+    if (Number(certificados?.n ?? 0) > 0) motivos.push("já há certificado emitido para ela, ainda que anulado");
+    const [enviados] = await tx
+      .select({ n: count() })
+      .from(tabela_email_saida)
+      .where(and(inArray(tabela_email_saida.inscricao_id, ids), eq(tabela_email_saida.situacao, "ENVIADO")));
+    if (Number(enviados?.n ?? 0) > 0) motivos.push("algum inscrito já recebeu e-mail sobre ela");
+    // o pedido do próprio participante (link ou "inscrever-me") é o que abre a
+    // tarefa de confirmação; a inscrição lançada pela CSSO não abre
+    const chaves = inscricoes.map(chave_da_pendencia_de_confirmacao);
+    const pedidas = new Set(
+      (await tx.select({ chave: tabela_pendencia.chave }).from(tabela_pendencia).where(inArray(tabela_pendencia.chave, chaves))).map(
+        (p) => p.chave,
+      ),
+    );
+    const de_fora = inscricoes.filter(
+      (i) => i.situacao !== "CANCELADA" && (i.origem === "PUBLICA" || pedidas.has(chave_da_pendencia_de_confirmacao(i))),
+    );
+    if (de_fora.length) {
+      motivos.push(`${de_fora.length} pedido(s) feito(s) pelo próprio participante — essa pessoa precisa ler o cancelamento`);
+    }
+  }
+  return motivos;
+}
+
+/**
+ * Apaga a turma e o que só existia por ela: inscrições lançadas pela CSSO,
+ * vínculos de instrutor, campos do certificado (as FKs cascateiam). Fecha as
+ * tarefas abertas sobre ela e cancela o e-mail que ainda estava na fila. O
+ * código não volta para a sequência: `TUR-AAAA-NNNN` que sumiu fica explicado
+ * na trilha, que guarda o retrato da turma.
+ */
+export async function excluir_turma(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada,
+  motivo: string | null | undefined,
+): Promise<void> {
+  usuario.exigir("turma.concluir");
+  const limpo = (motivo ?? "").trim();
+  if (!limpo) {
+    throw new RegraDaTurma("Excluir exige o motivo: é o que explica, depois, o código que falta na sequência.");
+  }
+  const motivos = await impedimentos_da_exclusao(tx, turma);
+  if (motivos.length) {
+    throw new RegraDaTurma(`${turma.codigo} não pode ser excluída: ${motivos.join("; ")}. Cancele a turma, com o motivo.`);
+  }
+  const inscricoes = await tx
+    .select({ id: tabela_inscricao.id })
+    .from(tabela_inscricao)
+    .where(eq(tabela_inscricao.turma_id, turma.id));
+  const ids = inscricoes.map((i) => i.id);
+  if (ids.length) {
+    await tx
+      .update(tabela_email_saida)
+      .set({ situacao: "CANCELADO", ultimo_erro: "turma excluída" })
+      .where(and(inArray(tabela_email_saida.inscricao_id, ids), inArray(tabela_email_saida.situacao, ["PENDENTE", "FALHOU"])));
+  }
+  const tarefas = await tx
+    .select()
+    .from(tabela_pendencia)
+    .where(and(eq(tabela_pendencia.entidade, "turma"), eq(tabela_pendencia.entidade_id, turma.id), eq(tabela_pendencia.concluida, false)));
+  for (const tarefa of tarefas) await pendencias.concluir(tx, tarefa, usuario);
+
+  await tx.delete(tabela_turma).where(eq(tabela_turma.id, turma.id));
+  await auditoria.registrar(tx, {
+    entidade: "turma",
+    entidade_id: turma.id,
+    tipo_evento: TURMA_EXCLUIDA,
+    descricao:
+      `${turma.codigo} · ${turma.treinamento.nome} · ${datas_br.numerica(turma.data_inicio)} excluída` +
+      (ids.length ? `, com ${ids.length} inscrição(ões) lançada(s) pela CSSO` : "") +
+      ` — ${limpo}`,
+    campo: "situacao",
+    valor_anterior: {
+      codigo: turma.codigo,
+      treinamento_id: turma.treinamento_id,
+      situacao: turma.situacao,
+      data_inicio: turma.data_inicio,
+      data_fim: turma.data_fim,
+      local: turma.local,
+      campus_id: turma.campus_id,
+      inscricoes: ids.length,
+    },
+    comentario: limpo,
+    usuario,
+  });
 }
 
 // ---------------------------------------------------------------------

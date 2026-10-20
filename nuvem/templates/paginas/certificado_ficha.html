@@ -10,6 +10,7 @@
 {# O verbo do botão e o do título da camada num lugar só — ver `popup_cadastro`
    em `partes/macros.html`. #}
 {% set ANULAR = 'Anular certificado' %}
+{% set CORRIGIR = 'Corrigir certificado' %}
 
 {% block acoes_cabecalho %}
 {# modelo enviado pela tela: o papel é o próprio .docx do setor; o PDF da casa
@@ -22,6 +23,11 @@
    data-baixar="Gerando o PDF…">Baixar PDF</a>
 <a class="botao secundario" href="/certificados/{{ certificado.id }}/documento"
    data-baixar="Gerando a segunda via…">Word (.docx)</a>
+{% endif %}
+{% if correcao %}
+{# Corrigir é anular + reemitir num ato só: o botão abre a camada com os dados
+   do cadastro, que é o que o substituto vai levar. #}
+{{ ui.botao_cadastro('corrigir-certificado', CORRIGIR, 'secundario') }}
 {% endif %}
 {% if usuario.pode('certificado.anular') and not certificado.anulado %}
 {# Anular exige motivo por escrito: o botão do cabeçalho ABRE a camada com o
@@ -332,6 +338,55 @@
   </section>
 
 </div>
+
+{% if correcao %}
+{% call ui.popup_cadastro('corrigir-certificado', CORRIGIR,
+                          '/certificados/' ~ certificado.id ~ '/corrigir', 'Corrigir e reemitir',
+                          nota='anula este e emite o substituto, com número novo', largo=true) %}
+  <div class="aviso">
+    <p>O papel <span class="mono">{{ certificado.rotulo }}</span> pode já estar na mão de
+      alguém, então ele não é reescrito: este certificado é <strong>anulado</strong> e sai um
+      <strong>substituto com número e chave novos</strong>, já com a correção. A página pública
+      da chave antiga passa a dizer que ele foi substituído.</p>
+    <p>A correção vale também para o cadastro: os próximos certificados da pessoa já saem
+      certos. Se o substituto não puder ser emitido, nada é alterado.</p>
+  </div>
+  {% if correcao.externo %}
+  <div class="campo"><label for="corrigir-nome">Nome do participante</label>
+    <input id="corrigir-nome" name="nome" value="{{ correcao.nome }}" required maxlength="160"></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="corrigir-vinculo">Vínculo</label>
+      <select id="corrigir-vinculo" name="vinculo">
+        {% for codigo, rotulo in correcao.vinculos %}
+        <option value="{{ codigo }}"{{ ui.sel(correcao.vinculo, codigo) }}>{{ rotulo }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo"><label for="corrigir-organizacao">Organização</label>
+      <input id="corrigir-organizacao" name="organizacao" value="{{ correcao.organizacao }}" maxlength="160"
+             placeholder="empresa contratada, curso…"></div>
+  </div>
+  {% else %}
+  <div class="campo"><span>Nome do participante</span>
+    <p><strong>{{ correcao.nome }}</strong></p>
+    <span class="dica">Servidor: o nome vem do cadastro de servidores.
+      {%- if usuario.pode('processo.editar') %} <a href="/servidores/{{ correcao.servidor_id }}">Corrija-o lá</a>
+      e volte aqui para reemitir.{% else %} Peça a correção a quem edita o cadastro de servidores e
+      volte aqui para reemitir.{% endif %}</span></div>
+  {% endif %}
+  <div class="campo"><label for="corrigir-cpf">{{ 'Novo CPF' if correcao.tem_cpf else 'CPF' }} (só se o certificado exigir)</label>
+    <input id="corrigir-cpf" name="cpf_certificado" value="" inputmode="numeric" autocomplete="off"
+           placeholder="{{ 'em branco: mantém o atual' if correcao.tem_cpf else '000.000.000-00' }}">
+    {% if correcao.tem_cpf %}
+    <label class="discreto"><input type="checkbox" name="apagar_cpf" value="1"> apagar o CPF</label>
+    {% endif %}</div>
+  <div class="campo"><label for="motivo-corrigir">Motivo da correção</label>
+    <input id="motivo-corrigir" name="motivo" required
+           placeholder="nome digitado errado, nome social, alteração civil, modelo corrigido…"
+           aria-describedby="dica-motivo-corrigir">
+    <span class="dica" id="dica-motivo-corrigir">Sem mudar nenhum dado acima, o certificado é só
+      reemitido com o cadastro e o modelo de hoje.</span></div>
+{% endcall %}
+{% endif %}
 
 {% if pode_anular and not certificado.anulado %}
 {# Fora de `.tela`: o diálogo é camada, não bloco da coluna. O aviso vai DENTRO

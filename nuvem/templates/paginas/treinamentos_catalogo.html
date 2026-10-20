@@ -116,7 +116,15 @@
         <label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
             {% if t.ativo %}checked{% endif %}> ativo</label>
       </td>
-      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button></td>
+      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button>
+        {# só o que nunca teve turma se apaga; o resto se desativa (o serviço recusa e diz) #}
+        {% call ui.popup_gaveta('excluir-trein-' ~ t.id, 'excluir', 'Excluir · ' ~ t.codigo, largo=false) %}
+          <form method="post" action="/treinamentos/catalogo/{{ t.id }}/excluir">
+            <p class="discreto">Só para o treinamento cadastrado por engano, que nunca teve
+              turma. O que já teve turma não se apaga: desmarque “ativo”.</p>
+            <div class="acoes"><button type="submit" class="perigo compacto">Excluir {{ t.codigo }}</button></div>
+          </form>
+        {% endcall %}</td>
       {% else %}
       {# O conteúdo programático vem sob o nome, e não numa segunda linha da
          tabela: é o que distingue dois treinamentos de nome parecido, e numa
