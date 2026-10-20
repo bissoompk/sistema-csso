@@ -186,8 +186,8 @@ describe("sugestão de campo", () => {
       campo_000_000_000_00_2: "instrutor_cpf",
       credenciamento_cbmmg_n_registro_crea_mg: "instrutor_registro",
       endereco_completo_do_local_do_curso: "turma_local",
-      nome_do_campus: "turma_campus",
-      cidade: "cidade",
+      nome_do_campus: "turma_campus_curto",
+      cidade: "turma_campus_cidade",
       cidade_2: "cidade",
       dd_mm_aaaa: "turma_data_inicio",
       dd_mm_aaaa_2: "turma_data_fim",
@@ -347,6 +347,11 @@ describe("envio pela tela", () => {
     expect([fixo.tipo, fixo.texto_fixo]).toEqual(["TEXTO_FIXO", "Registro CREA-MG nº 12345"]);
     // a ficha mostra a escolha gravada no seletor
     expect((await cliente.get(`/treinamentos/modelos/${modelo.id}`)).text).toContain('value="@TURMA" selected');
+    // o exemplo mostra o texto fixo e o nome do campo, não "[falta: ...]"
+    const ex = texto((await baixar(`/treinamentos/modelos/${modelo.id}/exemplo`)).bytes);
+    expect(ex).toContain("Local de atuação do brigadista: [Local de atuação do brigadista], Campus");
+    expect(ex).toContain("Prevenção e combate a incêndio: [Nota – Prevenção e combate a incêndio]");
+    expect(ex).toContain("Registro CREA-MG nº 12345");
 
     // sem o nome do campo, recusa sem gravar
     const sem_nome = await cliente.post(`/treinamentos/modelos/${modelo.id}/mapa`, {

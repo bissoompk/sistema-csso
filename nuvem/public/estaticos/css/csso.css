@@ -2356,6 +2356,9 @@ tbody[data-carregando] td, tr[data-carregando] td { color: var(--tinta-dica); }
 .mapa-tags .trecho { font-size: 13px; color: var(--tinta-media); max-width: 40ch; }
 .mapa-tags .trecho mark { background: var(--alerta-fundo); color: var(--tinta); padding: 0 2px; border-radius: 3px; }
 .mapa-tags select { max-width: 100%; }
+/* A caixa do texto fixo / nome do campo so aparece quando o select pede. */
+.mapa-tags .detalhe-tag { display: none; margin-top: 6px; }
+.mapa-tags select:has(option[value^="@"]:checked) + .detalhe-tag { display: block; }
 
 /* ---------- linha do tempo ---------- */
 .linha-tempo {

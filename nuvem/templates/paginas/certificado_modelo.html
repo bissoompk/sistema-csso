@@ -221,7 +221,7 @@
             {% endfor %}
           </select>
           {# o texto, no texto fixo; o nome do campo, na turma/participante #}
-          <input form="f-mapa" name="detalhe__{{ l.marcador }}" value="{{ l.detalhe }}"
+          <input class="detalhe-tag" form="f-mapa" name="detalhe__{{ l.marcador }}" value="{{ l.detalhe }}"
                  placeholder="texto fixo, ou nome do campo" aria-label="Texto fixo ou nome do campo de {{ l.rotulo }}"></td>
         <td><label class="discreto"><input form="f-mapa" type="checkbox" name="obrigatorio__{{ l.marcador }}" value="1"
             {% if (l.tag and l.tag.obrigatorio) or (not l.tag and l.escolhido != 'em_branco') %}checked{% endif %}> bloqueia</label></td>

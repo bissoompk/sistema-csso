@@ -398,6 +398,12 @@ export function sugerir_campo(
 ): string | null {
   const existe = (c: string | null | undefined): string | null => (c && Object.hasOwn(campos, c) ? c : null);
   const sem_sufixo = m.marcador.replace(/_\d+$/, "");
+  // «Campus X, «cidade»»: a cidade do campus da turma, não a do setor emissor;
+  // vem antes do nome igual ao código, que daria a cidade do setor
+  if (/cidade|municipio/.test(normalizar(m.rotulo)) && /campus[^.]{0,60}$/.test(normalizar(m.antes))) {
+    const do_campus = _o_que_houver(campos, "turma_campus_cidade");
+    if (do_campus) return do_campus;
+  }
   for (const nome of [m.marcador, sem_sufixo]) {
     const direto = existe(nome) ?? existe(mapa_sugerido[nome]);
     if (direto) return direto;
@@ -435,6 +441,8 @@ export function sugerir_campo(
     [r === "aaaa" || r === "ano", "certificado_ano"],
     [/^n[ºo°.]?$|^numero$|^no\.?$/.test(r), "certificado_numero"],
     [tem("cidade", "municipio"), "cidade"],
+    // o texto já diz "Campus" logo antes: só o nome, sem repetir a palavra
+    [tem("campus") && /campus\s*$/.test(antes), _o_que_houver(campos, "turma_campus_curto", "turma_campus")],
     [tem("campus"), "turma_campus"],
     [tem("endereco", "local do curso", "local de realizacao"), "turma_local"],
     [tem("tecnico", "engenheir", "cargo", "titulo", "formacao profissional") && !tem("credenciamento", "registro"), _o_que_houver(campos, "instrutor_titulo", "assinante_titulo")],

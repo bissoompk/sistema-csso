@@ -431,6 +431,10 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   ),
   turma_local: _c("Turma", "Local", "Auditório do Campus JK", (c) => c.turma_local),
   turma_campus: _c("Turma", "Campus", "Campus JK", (c) => c.turma_campus),
+  // para o modelo que já escreve "Campus «...»": "Campus JK / Diamantina" vira "JK"
+  turma_campus_curto: _c("Turma", "Campus sem a palavra “Campus”", "JK", (c) =>
+    c.turma_campus.replace(/^\s*campus\s+/i, "").replace(/\s*\/.*$/, ""),
+  ),
   turma_campus_cidade: _c("Turma", "Cidade do campus", "Diamantina", (c) => c.turma_campus_cidade),
   turma_unidade_promotora: _c(
     "Turma",
@@ -730,13 +734,20 @@ async function _origem_enviada(chave: string | null, arquivo: string, sha256: st
  * "[falta: rótulo]"; o QR sai de verdade (aponta para um endereço de exemplo).
  */
 export async function renderizar_exemplo(
-  modelo: ArquivoDoModelo & { tags: ReadonlyArray<{ marcador: string; campo: string }> },
+  modelo: ArquivoDoModelo & {
+    tags: ReadonlyArray<{ marcador: string; campo: string; tipo?: string; texto_fixo?: string | null; rotulo?: string | null }>;
+  },
 ): Promise<Uint8Array> {
   const mapa = Object.fromEntries(modelo.tags.map((t) => [t.marcador, t.campo]));
+  const livres = new Map(modelo.tags.filter((t) => t.tipo && t.tipo !== "SISTEMA").map((t) => [t.marcador, t]));
   const valores: Record<string, unknown> = {};
   for (const m of marcadores_detalhados(modelo)) {
     const campo = Object.hasOwn(mapa, m.marcador) ? mapa[m.marcador]! : null;
-    if (campo === null || !Object.hasOwn(CAMPOS_CERTIFICADO, campo)) {
+    const livre = livres.get(m.marcador);
+    if (livre) {
+      // texto fixo sai como está; campo da turma/participante, com o nome entre colchetes
+      valores[m.marcador] = livre.tipo === "TEXTO_FIXO" ? (livre.texto_fixo ?? "") : `[${livre.rotulo || m.rotulo}]`;
+    } else if (campo === null || !Object.hasOwn(CAMPOS_CERTIFICADO, campo)) {
       valores[m.marcador] = `[falta: ${m.rotulo}]`;
     } else if (campo === "certificado_qrcode") {
       valores[m.marcador] = new documento.ImagemEmLinha({
