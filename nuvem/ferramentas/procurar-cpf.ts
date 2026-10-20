@@ -3,7 +3,10 @@
  *
  *     npx tsx ferramentas/procurar-cpf.ts            # o banco do DATABASE_URL
  *
- * O sistema não tem coluna de CPF (ROPA §4.5), e desde a revisão de 25/09/2026
+ * O sistema não tem coluna de CPF (ROPA §4.5) além das do certificado
+ * (`COLUNAS_DO_CERTIFICADO`, 19/10/2026: "guardar CPF só para certificado"),
+ * que esta ferramenta não conta — nem o CPF congelado no contexto do
+ * certificado emitido. Desde a revisão de 25/09/2026
  * todo formulário, toda chamada da API e toda importação mascaram o CPF que
  * alguém digite num campo livre (`textos.mascarar_cpf`). O que esta ferramenta
  * responde é o que a máscara não alcança: o que já estava no banco antes dela
@@ -21,6 +24,10 @@ import postgres from "postgres";
 import { pathToFileURL } from "node:url";
 import { carregarEnvLocal } from "./env-local.js";
 import { mascarar_cpf } from "../src/servicos/textos.js";
+import { sem_cpf_no_contexto } from "../src/servicos/cpf_certificado.js";
+
+/** Onde o CPF mora DE PROPÓSITO (`src/servicos/cpf_certificado.ts`). */
+export const COLUNAS_DO_CERTIFICADO: ReadonlySet<string> = new Set(["participante.cpf", "assinatura_instrutor.cpf"]);
 
 // Candidatos no Postgres (sem lookbehind lá): a forma pontuada, ou onze
 // dígitos soltos. A decisão final é a mesma de `textos.mascarar_cpf`.
@@ -43,13 +50,18 @@ export async function procurar_cpf(sql: postgres.Sql): Promise<Achado[]> {
      ORDER BY 1, 2`;
   const achados: Achado[] = [];
   for (const { tabela, coluna } of colunas) {
+    if (COLUNAS_DO_CERTIFICADO.has(`${tabela}.${coluna}`)) continue;
+    // o contexto do certificado guarda o CPF que o modelo pediu; o resto dele não
+    const do_certificado = tabela === "certificado" && coluna === "contexto_congelado";
     const valores = await sql.unsafe<{ v: string }[]>(
       `SELECT "${coluna.replaceAll('"', '""')}"::text AS v
          FROM public."${tabela.replaceAll('"', '""')}"
         WHERE "${coluna.replaceAll('"', '""')}"::text ~ $1`,
       [CANDIDATO],
     );
-    const linhas = valores.filter(({ v }) => mascarar_cpf(v) !== v).length;
+    const linhas = valores
+      .map(({ v }) => (do_certificado ? JSON.stringify(sem_cpf_no_contexto(JSON.parse(v))) : v))
+      .filter((v) => mascarar_cpf(v) !== v).length;
     if (linhas) achados.push({ tabela, coluna, linhas });
   }
   return achados;

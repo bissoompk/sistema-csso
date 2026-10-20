@@ -50,6 +50,7 @@ import { UnidadeUorg } from "../dominio/organizacao.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import { chave_no_armazenamento } from "./anexos.js";
 import { ArquivoAusente, obterArmazenamento } from "./armazenamento.js";
+import { sem_cpf_no_dump } from "./cpf_certificado.js";
 import { linha_csv } from "./csv.js";
 
 export const MAGICO = Buffer.from("CSSOBK01", "latin1");
@@ -569,6 +570,8 @@ export interface ResultadoExportacao {
 /** O zip EM CLARO com tudo. Uma cópia fica no armazenamento (`exportacoes/`). */
 /** Tabelas que não saem na exportação em claro: só servem para entrar no sistema. */
 export const TABELAS_DE_CREDENCIAL: ReadonlySet<string> = new Set(["sessao", "limite_login_ip"]);
+/** Tabelas com o CPF do certificado (`cpf_certificado.ts`): saem sem ele. */
+const TABELAS_COM_CPF: ReadonlySet<string> = new Set(["participante", "assinatura_instrutor", "certificado"]);
 
 /**
  * O dump sem o que dá acesso (revisão de segurança, 25/09/2026). A exportação
@@ -587,6 +590,11 @@ export function sem_credenciais(dump: Map<string, string>): Map<string, string> 
         linha.senha_hash = "";
         linha.precisa_trocar_senha = true;
       }
+      saida.set(tabela, JSON.stringify(linhas));
+    } else if (TABELAS_COM_CPF.has(tabela)) {
+      // CPF só para certificado: o zip em claro não o leva (minimização)
+      const linhas = JSON.parse(texto) as Record<string, unknown>[];
+      sem_cpf_no_dump(tabela, linhas);
       saida.set(tabela, JSON.stringify(linhas));
     } else {
       saida.set(tabela, texto);

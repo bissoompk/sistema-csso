@@ -100,10 +100,19 @@ export async function usuarioCom(c: Ctx, ...codigos: string[]): Promise<UsuarioA
   return exigir(await usuarioLogado(c), ...codigos);
 }
 
+/**
+ * O ÚNICO campo de formulário que pode trazer CPF: o do certificado que a norma
+ * exige (brigadista, CBMMG — "guardar CPF só para certificado", 19/10/2026).
+ * Lido só por `servicos/cpf_certificado.ts`, que valida e grava os dígitos.
+ * Nome exato: nenhum outro campo escapa da máscara por se parecer com ele.
+ */
+export const CAMPO_CPF_CERTIFICADO = "cpf_certificado";
+
 // Campos cujo valor não é texto de gente e não pode mudar um byte: toda senha
 // (`senha`, `senha_atual`, e `nova`/`confirmacao` da troca de senha), token,
-// CSRF e nonce. Campo de senha novo tem de entrar aqui.
-const INTOCAVEIS = /^(senha.*|nova|confirmacao)$|token|csrf|nonce/i;
+// CSRF e nonce. Campo de senha novo tem de entrar aqui. E, de propósito, o
+// `cpf_certificado` (acima) — inteiro, ancorado: ele é o CPF.
+const INTOCAVEIS = /^(senha.*|nova|confirmacao|cpf_certificado)$|token|csrf|nonce/i;
 
 /**
  * CPF digitado em qualquer campo livre sai mascarado ANTES de chegar à rota

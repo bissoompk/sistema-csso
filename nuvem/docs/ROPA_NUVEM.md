@@ -155,15 +155,34 @@ registro de acesso não usa `console`.
 
 ### 5.5 CPF
 
-O sistema **não tem coluna de CPF** em tabela nenhuma (conferido no esquema e
-no ambiente de teste povoado). Desde esta revisão, **CPF digitado em qualquer
+Até 19/10/2026 o sistema **não tinha coluna de CPF**. Desde então há duas, e
+só duas, com uma finalidade só — ver §5.5.1. Fora delas, **CPF digitado em qualquer
 campo livre é mascarado na entrada** (`***.***.***-**`, sem dígito nenhum) — em
 todo formulário, toda chamada da API, nomes de arquivo enviados e nas
 importações de planilha e Trello. A RN-21 continua recusando a palavra "cpf"
 nos campos que filtra. `ferramentas/procurar-cpf.ts` conta, sem imprimir o
 valor, CPF que já esteja no banco (rodar depois de carregar os dados reais e a
-cada restauração). **Não alcança o conteúdo de anexo** (PDF digitalizado pode
-trazer CPF impresso).
+cada restauração), excluídas as colunas do §5.5.1. **Não alcança o conteúdo de
+anexo** (PDF digitalizado pode trazer CPF impresso).
+
+#### 5.5.1 CPF só para certificado (19/10/2026)
+
+Decisão do dono do sistema: "guardar CPF só para certificado". O certificado
+de Brigadista Orgânico segue a norma do CBMMG, que exige o CPF do participante
+e o do responsável pela formação.
+
+| Item | Registro |
+|---|---|
+| Dado | CPF do participante de treinamento (servidor ou externo) e do instrutor |
+| Onde | `participante.cpf`, `assinatura_instrutor.cpf` (só dígitos, CHECK de formato); cópia congelada em `certificado.contexto_congelado` **só** quando o modelo do treinamento tem marcador para o CPF |
+| Finalidade | Emitir o certificado cuja norma exige o CPF; nada mais (não é chave de busca nem de identificação) |
+| Base legal | Art. 7º, II (cumprimento de obrigação legal ou regulatória — a regulamentação do CBMMG para o certificado de brigadista) e art. 23 (execução de competência legal do serviço público) |
+| Minimização | Opcional; só entra pelo campo próprio, com dígito verificador conferido; só é congelado quando o modelo o pede |
+| Exibição | Nenhuma tela mostra dígito: só `***.***.***-**`. Fora de lista, busca, CSV, API, log e trilha (a trilha registra "CPF informado/substituído/apagado", sem o valor). A validação pública não o mostra |
+| Saída | Só o documento do certificado (.docx/.pdf), baixado por quem tem `certificado.ver` (ou o próprio titular) |
+| Exportação | A exportação em claro (`/config/exportar-tudo`) sai **sem** o CPF; o backup cifrado o leva |
+| Quem altera | Quem gerencia a pessoa: `turma.inscrever` (participante), `assinatura.gerenciar` (instrutor) |
+| Retenção | A do certificado que o exige; apagar é ato próprio na tela (auditado). Certificado já emitido guarda o CPF congelado pelo prazo do certificado |
 
 ### 5.6 Backup
 
@@ -182,13 +201,15 @@ banco: protege contra erro e corrupção, não contra perda da conta — ver §7
 | `backups/` | 90 dias + 1 mensal por 5 anos | Rotina de retenção de backup |
 | `entrada/` (cópia da planilha/JSON importados) | Até o encerramento da migração, como `stg_*` (POLITICA §2.1) | **Manual**: apagar no painel do Storage ao encerrar a migração |
 | `documentos/` (.docx gerados) | Regeneráveis do contexto congelado; sem prazo próprio | — |
+| CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 
 ## 7. O que falta providenciar (responsável: controlador)
 
 1. **Autorização formal da UFVJM** para hospedar o sistema em nuvem de
    terceiro, com os dados reais — antes, e não depois, de ampliar o uso.
-2. **Indicação e ciência do encarregado (DPO)**, com esta emenda e o ROPA.
+2. **Indicação e ciência do encarregado (DPO)**, com esta emenda e o ROPA —
+   inclusive do CPF guardado para o certificado de brigadista (§5.5.1).
 3. **Instrumento com os operadores** (art. 39): aceitar/firmar os DPAs do
    Supabase e do Netlify **em nome de quem contrata**, e resolver quem contrata
    — hoje é conta pessoal. Com isso, as cláusulas de transferência

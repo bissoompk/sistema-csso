@@ -47,7 +47,7 @@
   <table>
     <thead>
       <tr><th scope="col">Nome</th><th scope="col">Título de assinatura</th><th scope="col">Conselho</th><th scope="col">Registro</th>
-          <th scope="col">Organização</th><th scope="col">Vínculo</th><th scope="col">Vigência</th>
+          <th scope="col">Organização</th><th scope="col">CPF (certificado)</th><th scope="col">Vínculo</th><th scope="col">Vigência</th>
           <th scope="col">Vigente hoje</th><th scope="col">Ativa</th><th scope="col"></th></tr>
     </thead>
     {% for a in itens %}
@@ -83,6 +83,18 @@
                  aria-label="Registro no conselho de {{ a.nome_exibicao }}"></td>
       <td><input class="campo-longo" form="{{ id }}" name="organizacao" value="{{ a.organizacao or '' }}"
                  aria-label="Organização de {{ a.nome_exibicao }}"></td>
+      {# CPF só para o certificado que a norma exige (ver `cpf_certificado.ts`):
+         a tela nunca recebe o número, só a máscara sem dígito. Em branco = não
+         mexe; trocar é digitar o novo. #}
+      <td>
+        <span class="discreto mono">{{ a.cpf_exibicao }}</span>
+        <input class="campo-medio" form="{{ id }}" name="cpf_certificado" value=""
+               inputmode="numeric" autocomplete="off" placeholder="{{ 'trocar' if a.tem_cpf else 'informar' }}"
+               aria-label="CPF de {{ a.nome_exibicao }} para o certificado (em branco: não muda)">
+        {% if a.tem_cpf %}
+        <label class="discreto quebra"><input form="{{ id }}" type="checkbox" name="apagar_cpf" value="1"> apagar</label>
+        {% endif %}
+      </td>
       <td>
         {% if a.externo %}<span class="pilula sem-ponto">externo</span>
         <input form="{{ id }}" type="hidden" name="externo" value="1">
@@ -106,7 +118,7 @@
     {{ ui.vazio_de_lista(
          'Nenhum instrutor cadastrado ainda.',
          'O instrutor assina o certificado. Use “' ~ CADASTRAR ~ '”, no canto
-          superior direito; de fora da UFVJM, marque “externo”.', 10) }}
+          superior direito; de fora da UFVJM, marque “externo”.', 11) }}
     {% endfor %}
   </table>
   </div>
@@ -153,6 +165,12 @@
     <div class="campo"><label for="assin-org">Organização</label>
       <input id="assin-org" name="organizacao" placeholder="UFVJM"
              value="{{ d['organizacao'] or '' }}"></div>
+    <div class="campo"><label for="assin-cpf">CPF (só se o certificado exigir)</label>
+      <input id="assin-cpf" name="cpf_certificado" value="" inputmode="numeric" autocomplete="off"
+             aria-describedby="dica-cpf">
+      <span class="dica" id="dica-cpf">Opcional. Só sai no certificado cuja norma o pede (ex.: brigadista); a tela nunca o mostra.</span></div>
+  </div>
+  <div class="linha-campos">
     <div class="campo"><label for="assin-de">Vigência — início</label>
       <input id="assin-de" type="date" name="vigencia_inicio"
              value="{{ d['vigencia_inicio'] or '' }}" aria-describedby="dica-inicio">

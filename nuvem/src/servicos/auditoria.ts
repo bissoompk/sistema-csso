@@ -155,6 +155,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   INSCRICAO_PEDIDA_PELO_TITULAR: "Inscrição pedida pelo próprio servidor",
   INSCRICAO_DESISTIDA: "Desistência do próprio inscrito",
   PARTICIPANTE_CRIADO: "Participante externo cadastrado",
+  // o fato, nunca o valor: a trilha diz que o CPF mudou, e não qual é
+  PARTICIPANTE_CPF_ALTERADO: "CPF do participante (certificado) alterado",
   PRESENCA_LANCADA: "Presença lançada",
   PRESENCA_EM_LOTE: "Presença lançada em lote",
   NOTA_LANCADA: "Nota lançada",
@@ -169,6 +171,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   CERTIFICADO_MODELO_VERSIONADO: "Modelo de certificado versionado",
   TREINAMENTO_MODELO_REPONTADO: "Treinamento passou à versão nova do modelo",
   ASSINATURA_INSTRUTOR_CRIADA: "Assinatura de instrutor cadastrada",
+  ASSINATURA_INSTRUTOR_CPF_ALTERADO: "CPF do instrutor (certificado) alterado",
   MODELO_TAG_MAPEADA: "Marcador do modelo mapeado",
   MODELO_TAG_REMOVIDA: "Marcador do modelo removido",
   // --- EPI: catálogo e estoque ---

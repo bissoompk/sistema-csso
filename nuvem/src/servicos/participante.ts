@@ -17,8 +17,12 @@
  * 3. **E-mail é tabela filha, nunca coluna.** É o que reconcilia a mesma pessoa
  *    que hoje usa o e-mail pessoal e amanhã o institucional.
  *
- * NÃO HÁ COLUNA DE CPF em lugar nenhum, e não deve haver (decisão 1 do
- * coordenador). O identificador do externo é o e-mail confirmado, que é mutável.
+ * CPF não é identificador: o do externo continua sendo o e-mail confirmado,
+ * que é mutável (decisão 1 do coordenador). Desde 19/10/2026 há uma coluna
+ * `participante.cpf`, opcional, SÓ para o certificado cuja norma exige o CPF
+ * (brigadista orgânico, CBMMG) — decisão do dono do sistema, "guardar CPF só
+ * para certificado". Quem lê e grava é `servicos/cpf_certificado.ts`; nada
+ * aqui busca, mostra ou audita o valor.
  *
  * **Diferença de forma do porte.** No Python o `Participante` era um objeto do
  * ORM que carregava `servidor` e `emails` sob demanda. Aqui quem lê recebe o

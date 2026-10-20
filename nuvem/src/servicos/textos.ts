@@ -102,7 +102,8 @@ export function chave_busca(texto: string | null | undefined): string {
  * Onze dígitos seguidos só podem ser uma coisa nesta casa — e ela não existe.
  *
  * O SIAPE tem sete, o protocolo de EPI tem prefixo, o NUP tem pontuação e o
- * número de laudo também. Sobra o CPF, que o sistema NÃO armazena (RN-21).
+ * número de laudo também. Sobra o CPF, que o sistema não busca nem mostra
+ * (RN-21; o único guardado é o do certificado, em campo próprio).
  * Isto é detecção, não recusa; mas a detecção é uma só, aqui.
  */
 export function parece_cpf(bruto: string | null | undefined): boolean {
@@ -321,8 +322,9 @@ export function identificador_opaco(servidor_id: number | null | undefined, seme
 // CPF digitado em campo livre (revisão de privacidade, 25/09/2026)
 // ---------------------------------------------------------------------
 /**
- * O que fica no lugar do CPF. Nenhum dígito: o sistema não guarda CPF (RN-21;
- * ROPA §4.5), nem parcial — a máscara `***.456.789-**` do Portal da
+ * O que fica no lugar do CPF. Nenhum dígito: o sistema não guarda CPF de campo
+ * livre (RN-21; ROPA §4.5) — o do certificado mora em campo próprio e também
+ * aparece na tela só como esta máscara —, nem parcial — a máscara `***.456.789-**` do Portal da
  * Transparência guarda seis dígitos para desempatar homônimo publicado, e aqui
  * não há o que desempatar. O ROPA §6 já recusa máscara parcial de matrícula;
  * de CPF, com mais razão.
@@ -346,6 +348,25 @@ export function cpf_valido(onze: string): boolean {
     if (dv !== d[n]) return false;
   }
   return true;
+}
+
+/**
+ * O CPF do campo próprio do certificado (`cpf_certificado`), só dígitos, ou
+ * `null` quando o que veio não é CPF (dígito verificador errado, tamanho
+ * errado, onze dígitos iguais). Aceita com ou sem pontuação.
+ */
+export function cpf_digitos(bruto: string | null | undefined): string | null {
+  const limpo = (bruto ?? "").trim();
+  if (!/^[\d.\-\s]+$/.test(limpo)) return null;
+  const digitos = limpo.replace(/\D/g, "");
+  return cpf_valido(digitos) ? digitos : null;
+}
+
+/** `000.000.000-00` — a forma que sai no certificado, e só nele. */
+export function formatar_cpf(digitos: string | null | undefined): string {
+  const d = (digitos ?? "").replace(/\D/g, "");
+  if (d.length !== 11) return "";
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
 /**

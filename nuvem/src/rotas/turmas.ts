@@ -32,7 +32,8 @@ import {
   destinos_de_turma,
 } from "../dominio/estados.js";
 import { AssinaturaInstrutor, ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
-import { formulario, usuarioLogado } from "../dependencias.js";
+import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencias.js";
+import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as servico_emissao from "../servicos/emissao_certificado.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
@@ -679,15 +680,24 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
   );
   let pessoa: servico_participante.ParticipanteCarregado;
   try {
+    // CPF opcional, só para o certificado (`cpf_certificado.ts`): conferido
+    // ANTES de gravar qualquer coisa, e a recusa não ecoa o número
+    const cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO));
     // o savepoint é o que impede o pior caso desta rota: o participante externo
     // gravado antes de a inscrição ser recusada
     pessoa = await _no_savepoint(c, async (sp) => {
       const p = await _resolver_participante(sp, usuario, d);
       await servico_turma.inscrever(sp, usuario, turma, p, { observacao: texto_ou_nulo(d.observacao) });
+      if (cpf) await cpf_certificado.definir_do_participante(sp, usuario, p, cpf);
       return p;
     });
   } catch (erro) {
-    if (erro instanceof CampoInvalido || erro instanceof DadosDoParticipante || erro instanceof RegraDaTurma) {
+    if (
+      erro instanceof CampoInvalido ||
+      erro instanceof DadosDoParticipante ||
+      erro instanceof RegraDaTurma ||
+      erro instanceof cpf_certificado.CpfInvalido
+    ) {
       return _erro(c, volta, erro.message);
     }
     throw erro;
@@ -718,6 +728,36 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async
     volta,
     `${nome_exibicao(inscricao.participante)}: ${ROTULO_INSCRICAO[inscricao.situacao]!.toLowerCase()}.`,
   );
+});
+
+/**
+ * O CPF do participante, só para o certificado que a norma exige
+ * (`cpf_certificado.ts`). Quem inscreve é quem gerencia o participante; a
+ * resposta nunca traz o número, nem na recusa.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/cpf`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
+  const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
+  if (!inscricao || inscricao.turma_id !== turma.id) return redirecionar(c, volta);
+  let cpf: string | null | undefined;
+  try {
+    cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO), marcado(f.texto("apagar_cpf")));
+  } catch (erro) {
+    if (erro instanceof cpf_certificado.CpfInvalido) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  if (cpf === undefined) return _erro(c, volta, "Digite o CPF, ou marque “apagar”.");
+  const mudou = await cpf_certificado.definir_do_participante(tx, usuario, inscricao.participante, cpf);
+  const quem = inscricao.participante.identificador_publico;
+  if (!mudou) return _volta(c, volta, `${quem}: CPF sem alteração.`);
+  return _volta(c, volta, cpf === null ? `${quem}: CPF apagado.` : `${quem}: CPF gravado para o certificado.`);
 });
 
 // =====================================================================

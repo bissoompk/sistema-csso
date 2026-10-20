@@ -392,6 +392,27 @@
           </form>
         {% endcall %}
         {% endif %}
+        {# CPF só para o certificado que a norma exige (brigadista, CBMMG; ver
+           `cpf_certificado.ts`). A tela recebe só a máscara sem dígito. #}
+        {% if i.situacao != 'CANCELADA' %}
+        {% call ui.popup_gaveta('cpf-inscricao-' ~ i.id, 'CPF',
+                                'CPF para o certificado · ' ~ (i.participante.nome_exibicao
+                                                               if nominal else quem.nome),
+                                nota=i.participante.cpf_exibicao, largo=false) %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}/cpf">
+            <p class="discreto">Só preencha se o certificado deste treinamento exigir o CPF
+              (ex.: brigadista). Ele sai apenas no documento do certificado; nenhuma tela o mostra.</p>
+            <div class="campo">
+              <label for="cpf-{{ i.id }}">{{ 'Novo CPF' if i.participante.tem_cpf else 'CPF' }}</label>
+              <input id="cpf-{{ i.id }}" name="cpf_certificado" value="" inputmode="numeric"
+                     autocomplete="off" placeholder="000.000.000-00"></div>
+            {% if i.participante.tem_cpf %}
+            <label class="discreto"><input type="checkbox" name="apagar_cpf" value="1"> apagar o CPF</label>
+            {% endif %}
+            <div class="acoes"><button type="submit" class="secundario compacto">Gravar</button></div>
+          </form>
+        {% endcall %}
+        {% endif %}
       </td>
       {% endif %}
     </tr>
@@ -419,9 +440,10 @@
           para cá faria os dois divergirem no dia em que um fosse corrigido — e o
           certificado sairia com o errado.</p>
         <p>O participante externo é o contrário: <strong>é o único lugar do sistema onde
-          o nome dessa pessoa existe</strong>. Não há campo de CPF e não deve haver — o
-          identificador é o e-mail confirmado, e a identidade pública é o
-          <code>PTC-…</code> que o sistema gera.</p>
+          o nome dessa pessoa existe</strong>. O identificador é o e-mail confirmado, e a
+          identidade pública é o <code>PTC-…</code> que o sistema gera. CPF não
+          identifica ninguém aqui: ele só é guardado, em campo próprio, para o
+          certificado cuja norma o exige, e nenhuma tela o mostra.</p>
         <p>São duas listas porque são duas perguntas: a primeira procura quem já esteve
           em alguma turma; a segunda, quem está no cadastro de servidor e nunca
           participou. Não achar em nenhuma das duas é o único caso em que cadastrar como
@@ -1052,12 +1074,12 @@
 {% call ui.popup_cadastro('cadastrar-externo', CADASTRAR_EXTERNO,
                           '/turmas/' ~ turma.id ~ '/inscricoes', 'Cadastrar e inscrever',
                           nota='terceirizado, discente ou visitante') %}
-  {# FICA dentro do popup: é lido no instante da digitação, que é onde a ausência
-     do campo de CPF precisa ser explicada — e onde alguém tentaria escrevê-lo. #}
+  {# FICA dentro do popup: é lido no instante da digitação, que é onde o lugar
+     certo do CPF precisa ser explicado — e onde alguém tentaria escrevê-lo noutro campo. #}
   <div class="aviso aviso-info">
-    É o único lugar do sistema onde o nome dessa pessoa existe.
-    <strong>Não há campo de CPF</strong> e não deve haver: o identificador é o e-mail
-    confirmado, e a identidade pública é o <code>PTC-…</code> que o sistema gera.
+    É o único lugar do sistema onde o nome dessa pessoa existe. O identificador é o
+    e-mail confirmado, e a identidade pública é o <code>PTC-…</code> que o sistema gera.
+    O CPF só entra no campo próprio abaixo, e só se o certificado exigir.
   </div>
   <div class="campo"><label for="ext-nome">Nome</label>
     <input id="ext-nome" name="nome" required></div>
@@ -1078,6 +1100,10 @@
       <input id="ext-matricula" name="matricula_externa" aria-describedby="dica-matricula">
       <span class="dica atencao" id="dica-matricula">Opcional; nunca CPF nem RG.</span></div>
   </div>
+  <div class="campo"><label for="ext-cpf">CPF (só se o certificado exigir)</label>
+    <input id="ext-cpf" name="cpf_certificado" value="" inputmode="numeric" autocomplete="off"
+           placeholder="000.000.000-00" aria-describedby="dica-cpf-ext">
+    <span class="dica" id="dica-cpf-ext">Opcional. Sai só no certificado cuja norma o pede (ex.: brigadista); nenhuma tela o mostra.</span></div>
 {% endcall %}
 {% endif %}
 
