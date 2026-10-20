@@ -942,3 +942,35 @@ Decisão do dono do sistema: "guardar CPF só para certificado". O certificado d
 - **`ferramentas/procurar-cpf.ts`** passa a ignorar as duas colunas e o CPF do congelado do certificado; o resto do banco continua tendo de dar zero.
 - **Testes.** `testes/privacidade_cpf.test.ts` (entrada, máscara, trilha, congelamento, PDF, validação pública, exportação, nenhum template imprime `.cpf`) e, em `privacidade_varredura.test.ts`, todo participante e instrutor do ambiente povoado ganha CPF e nenhum GET (de coordenador, secretaria, `sem_nominal` e titular) o devolve fora de `/certificados/{id}/documento|pdf` e `/turmas/{id}/certificados.pdf`.
 - **Pendências.** Não há expurgo automático do CPF (o expurgo do participante externo ainda não foi portado); apagar é manual. O modelo do brigadista precisa mapear `participante_cpf`/`instrutor_cpf` para que o CPF saia.
+
+## Paridade com o IntegraSST (20/10/2026)
+
+Nada disto existe no Python. Saiu da comparação, função por função, com o módulo de Certificados e Inscrições do IntegraSST. Cada item tem teste em `testes/` (`certificados`, `treinamentos`, `turmas`, `email`).
+
+- **Rubrica do instrutor pela tela** (`POST /treinamentos/assinaturas/:id/rubrica`): PNG ou JPEG, conferido pelos primeiros bytes e não pela extensão, guardado como anexo `RUBRICA_INSTRUTOR`. A emissão já lia a imagem; faltava a porta de entrada.
+- **Monitor de reciclagem** (`/certificados/vencimentos`, `servicos/reciclagem.ts`): o certificado em vigor (o último emitido, não anulado) de cada pessoa em cada treinamento, com a situação Vencido, A vencer em 30 dias ou Válido. A varredura noturna abre a pendência `CERTIFICADO_A_VENCER`, sem responsável e sem nome, só para quem **entra** na janela; ela se fecha sozinha quando a pessoa se recicla ou o certificado é anulado.
+- **Inscrição em lote** (`/turmas/:id/inscricoes/lote`, `servicos/inscricao_lote.ts`): a lista colada da planilha, com cada célula reconhecida pelo conteúdo. «Conferir» é um savepoint desfeito; «Inscrever» grava cada linha no seu savepoint, até 300 linhas. CPF, telefone e cargo são lidos e descartados com aviso; o nome só casa para quem pode ver nomes.
+- **Indicadores de treinamento** (`/treinamentos/indicadores`): o recorte é a turma (período pela data de início, setor promotor); contagens de pessoas abaixo de 5 suprimidas pela RN-19 para quem não vê nomes, como em `/relatorios`.
+- **Fila de emissão entre turmas** (`/certificados/fila`, `servicos/fila_emissao.ts`): a etapa de cada inscrição. «Travado» usa a mesma validação da emissão, com os motivos dela. Emitir os marcados agrupa por turma em `emitir_lote`. Na etapa Emitidos, «Enviar por e-mail os marcados».
+- **Descrição do evento** (`turma.descricao`, migração `0007`): texto livre, com «usar a da última turma deste treinamento», e campo de certificado `turma_descricao`.
+- **Busca de `/certificados`** (`filtro_da_busca`): além da chave inteira, o número `12/2026` e, palavra por palavra, o nome congelado ou o atual, o SIAPE, o `PTC-…`, a turma e o treinamento. Sem acento por `translate()`, porque o Supabase não tem `unaccent` ligado. CPF não é busca e a tela avisa.
+- **Inscrição pública por link** (`/inscricao/:token`, `servicos/inscricao_publica.ts`, migração `0008`):
+  - O desenho da fatia 6 confirmava por e-mail. Aqui a trava é a **conferência da CSSO**: o pedido nasce `AGUARDANDO_EMAIL` («pedido pelo link, a conferir»), não ocupa vaga, abre a pendência e só vira `INSCRITA` quando alguém com `turma.inscrever` o aceita (`conferida_por`/`conferida_em`).
+  - A CHECK `ck_inscricao_email_confirmado` passou a aceitar a conferência e a recusa (`CANCELADA`).
+  - O token de 192 bits é mostrado uma vez; fica só o SHA-256 e ele expira no fim do dia de «inscrições até».
+  - Resposta pública única (sem oráculo); SIAPE ou e-mail só ligam a um cadastro existente se o nome conferir.
+  - Limite por IP, teto de 200 pedidos em espera, campo-armadilha, sem CPF. O IP sai em 90 dias.
+- **Envio de e-mail** (`servicos/email.ts`, `envio_certificado.ts`, `avisos_inscricao.ts`, migração `0009`):
+  - O Python registrava «sem SMTP». Aqui há uma caixa de saída (`email_saida`) e qualquer SMTP (`CSSO_SMTP_URL`, `CSSO_EMAIL_REMETENTE`).
+  - Quem envia é a função de fundo `email-background`, acordada no pedido e que olha a fila de novo por um minuto, porque o pedido ainda não deu COMMIT quando ela chega. De reserva, a agendada `email-agendado`, a cada 10 min.
+  - Posse da linha por `proxima_tentativa_em` com `SKIP LOCKED`; até 5 tentativas com espera crescente.
+  - O anexo do certificado é montado na hora, como segunda via de quem pediu (`carregar_usuario_atual` do `criado_por`).
+  - O texto sai em 90 dias. **Desligado em produção até o SMTP ser configurado.**
+- **Acesso do participante sem conta** (`/certificados/acesso`, `servicos/acesso_participante.ts`, migração `0010`):
+  - Um link de 2 h vai ao e-mail **já cadastrado**; ele lista e baixa os certificados emitidos de todo participante com aquele e-mail.
+  - A segunda via é `segunda_via_do_titular`, sem usuário na trilha.
+  - Até 3 links por hora por endereço, mais o limite por IP; o registro sai em 7 dias.
+  - Limite conhecido: e-mail não confirmado em duplicata mostra os certificados das duas linhas (ROPA §5.10).
+- **Aviso de reciclagem por e-mail** (`servicos/aviso_reciclagem.ts`): um por certificado. Ou marcado no monitor (`certificado.emitir`), ou automático na varredura, no dia em que o certificado entra na janela. O automático depende do parâmetro `reciclagem.aviso_email_automatico`, desligado de saída e ligado só por `treinamento.gerenciar`, com trilha.
+
+**Ficou de fora, por decisão:** RG (LGPD) e WhatsApp ou telefone do participante (a lista em lote os descarta com aviso). **Diferente de propósito:** PDFs no Storage, e não em pasta do Drive; a data é gerada do início e do fim, e não texto livre; emitir é um passo só (número e chave), com o e-mail à parte.
