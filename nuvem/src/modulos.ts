@@ -298,6 +298,12 @@ export const MODULOS: readonly Modulo[] = [
         "Quem tem certificado vencido ou a vencer em 30 dias.",
       ),
       new Item(
+        "Indicadores",
+        "/treinamentos/indicadores",
+        "indicador.ver",
+        "Turmas, participantes e emissão por período e setor promotor.",
+      ),
+      new Item(
         "Catálogo",
         "/treinamentos/catalogo",
         "treinamento.ver",

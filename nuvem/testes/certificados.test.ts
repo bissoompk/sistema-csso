@@ -33,6 +33,8 @@ import * as servico from "../src/servicos/emissao_certificado.js";
 import * as servico_pdf from "../src/servicos/pdf.js";
 import * as servico_presenca from "../src/servicos/presenca.js";
 import * as reciclagem from "../src/servicos/reciclagem.js";
+import * as indicadores from "../src/servicos/treinamento_indicadores.js";
+import { periodo_de } from "../src/rotas/treinamentos.js";
 import { PermissaoNegada, type UsuarioAtual } from "../src/servicos/rbac.js";
 import { normalizar_fluxo } from "../src/servicos/textos.js";
 import * as servico_turma from "../src/servicos/turma.js";
@@ -761,5 +763,65 @@ describe("reciclagem: o monitor e o aviso de 30 dias", () => {
     expect((await cliente.get("/certificados/vencimentos?busca=123.456.789-09")).text).toContain("não busca por CPF");
     await entrar(cliente, "servidor_consulta");
     expect((await cliente.get("/certificados/vencimentos")).status).toBe(403);
+  });
+});
+
+// =====================================================================
+// Indicadores de treinamento
+// =====================================================================
+describe("indicadores de treinamento", () => {
+  async function _cenario_indicadores() {
+    const usuario = await _usuario(db);
+    const cen = await _cenario(db, usuario, { extras: [["2220001", "Ana Lima", "8"]] });
+    await servico.emitir(db, usuario, cen.inscricao, { gerar_pdf: false });
+    return { usuario, cen };
+  }
+
+  it("conta turmas, participantes, emitidos, pendentes e a taxa de aprovação", async () => {
+    const { usuario } = await _cenario_indicadores();
+    const r = await indicadores.calcular(db, usuario, { de: null, ate: null, unidade_promotora_id: null });
+    expect(r).toMatchObject({
+      turmas: 1,
+      turmas_concluidas: 1,
+      turmas_ativas: 0,
+      participantes: 2,
+      aprovados: 2,
+      reprovados: 0,
+      emitidos: 1,
+      pendentes: 1,
+      taxa_aprovacao: 100,
+    });
+    expect(r.participantes_por_treinamento).toEqual({ "Trabalho em Altura — NR-35": 2 });
+    // fora do período, nada
+    const vazio = await indicadores.calcular(db, usuario, { de: "1990-01-01", ate: "1990-12-31", unidade_promotora_id: null });
+    expect(vazio.turmas).toBe(0);
+    expect(vazio.taxa_aprovacao).toBeNull();
+  });
+
+  it("o período: ano atual, anterior, todo e intervalo", () => {
+    const hoje = "2026-10-20";
+    expect(periodo_de("", "", "", hoje)).toEqual(["2026-01-01", "2026-12-31", "ano_atual"]);
+    expect(periodo_de("ano_anterior", "", "", hoje)).toEqual(["2025-01-01", "2025-12-31", "ano_anterior"]);
+    expect(periodo_de("todo", "", "", hoje)).toEqual([null, null, "todo"]);
+    expect(periodo_de("intervalo", "2026-03-01", "", hoje)).toEqual(["2026-03-01", null, "intervalo"]);
+    expect(periodo_de("intervalo", "torto", "", hoje)).toEqual(["2026-01-01", "2026-12-31", "ano_atual"]);
+  });
+
+  it("a tela mostra os números a quem vê nome e suprime as pessoas para quem não vê", async () => {
+    await _cenario_indicadores();
+    await contas(db);
+    await entrar(cliente, "coordenador_csso");
+    const tela = await cliente.get("/treinamentos/indicadores?periodo=todo");
+    expect(tela.status).toBe(200);
+    expect(tela.text).toContain("Treinamentos com mais participantes");
+    expect(tela.text).toContain("Trabalho em Altura — NR-35");
+    expect(tela.text).toContain("100%");
+    await entrar(cliente, "secretaria_csso");
+    const suprimida = await cliente.get("/treinamentos/indicadores?periodo=todo");
+    expect(suprimida.status).toBe(200);
+    expect(suprimida.text).not.toContain("100%");
+    expect(suprimida.text).toMatch(/Participantes<\/div>\s*<div class="medida"><span class="valor">—</);
+    await entrar(cliente, "servidor_consulta");
+    expect((await cliente.get("/treinamentos/indicadores")).status).toBe(403);
   });
 });

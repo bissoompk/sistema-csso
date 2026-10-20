@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Indicadores de treinamento · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Indicadores de treinamento</h1>
+      <p class="sub">
+        {%- if de and ate %}Turmas iniciadas de {{ de|data }} a {{ ate|data }}
+        {%- elif de %}Turmas iniciadas a partir de {{ de|data }}
+        {%- elif ate %}Turmas iniciadas até {{ ate|data }}
+        {%- else %}Todas as turmas{% endif %}
+        {%- for s in setores %}{% if setor == s.id|string %} · {{ s.nome }}{% endif %}{% endfor %}.</p>
+      {% call ui.info('como-se-conta', 'como cada número é contado') %}
+        <p>O recorte é a <strong>turma</strong>: o período é o da data de início dela, e o
+          setor é a unidade promotora. Turma cancelada não entra em nenhum número além do
+          seu próprio contador.</p>
+        <p><strong>Participantes</strong> são inscrições que ocupam vaga — quem fez dois
+          cursos conta duas vezes. <strong>Pendentes</strong> são aprovados ainda sem
+          certificado emitido. A <strong>taxa de aprovação</strong> é aprovados ÷ (aprovados
+          + reprovados), entre quem já tem resultado.</p>
+        {% if not usuario.ve_dado_nominal %}
+        <p>Contagem de pessoas abaixo de {{ limiar }} aparece como <span class="mono">—</span>
+          para quem não tem <code>exposicao.ver</code> (RN-19); turmas aparecem sempre.</p>
+        {% endif %}
+      {% endcall %}
+    </div>
+  </div>
+
+  <form method="get" action="/treinamentos/indicadores" class="fileira filtro-inline">
+    <label class="oculto" for="f-periodo">Período</label>
+    <select id="f-periodo" name="periodo">
+      {% for codigo, rotulo in periodos %}
+      <option value="{{ codigo }}"{{ ' selected' if codigo == periodo }}>{{ rotulo }}</option>
+      {% endfor %}
+    </select>
+    <label class="oculto" for="f-de">De</label>
+    <input id="f-de" type="date" name="de" value="{{ de if periodo == 'intervalo' else '' }}"
+           aria-describedby="dica-intervalo">
+    <label class="oculto" for="f-ate">Até</label>
+    <input id="f-ate" type="date" name="ate" value="{{ ate if periodo == 'intervalo' else '' }}">
+    <label class="oculto" for="f-setor">Setor promotor</label>
+    <select id="f-setor" name="setor">
+      <option value="">Setor promotor: todos</option>
+      {% for s in setores %}
+      <option value="{{ s.id }}"{{ ' selected' if setor == s.id|string }}>{{ s.nome }}{% if s.sigla %} ({{ s.sigla }}){% endif %}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="secundario">Aplicar</button>
+    <span class="dica" id="dica-intervalo">As datas valem com “De… até…”.</span>
+  </form>
+
+  <div class="grade grade-kpi">
+    <div class="kpi">
+      <div class="rotulo">Turmas</div>
+      <div class="medida"><span class="valor">{{ r.turmas }}</span>
+        {% if r.turmas_canceladas %}<span class="nota">+ {{ r.turmas_canceladas }} cancelada(s)</span>{% endif %}</div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Turmas ativas</div>
+      <div class="medida"><span class="valor">{{ r.turmas_ativas }}</span>
+        <span class="nota">planejadas, com inscrição aberta ou em andamento</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Turmas concluídas</div>
+      <div class="medida"><span class="valor">{{ r.turmas_concluidas }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Participantes</div>
+      <div class="medida"><span class="valor">{{ cartoes_pessoas.participantes }}</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Aguardando confirmação</div>
+      <div class="medida"><span class="valor">{{ cartoes_pessoas.aguardando_confirmacao }}</span>
+        <span class="nota">inscritos ainda não confirmados</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Certificados emitidos</div>
+      <div class="medida"><span class="valor">{{ cartoes_pessoas.emitidos }}</span></div>
+    </div>
+    <div class="kpi {% if r.pendentes %}alerta{% endif %}">
+      <div class="rotulo">Pendentes de emissão</div>
+      <div class="medida"><span class="valor">{{ cartoes_pessoas.pendentes }}</span>
+        <span class="nota">aprovados sem certificado</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Faltas</div>
+      <div class="medida"><span class="valor">{{ cartoes_pessoas.faltas }}</span>
+        <span class="nota">inscrições marcadas ausentes</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Taxa de aprovação</div>
+      <div class="medida"><span class="valor">{{ taxa or '—' }}</span>
+        <span class="nota">{{ cartoes_pessoas.aprovados }} aprovado(s), {{ cartoes_pessoas.reprovados }} reprovado(s)</span></div>
+    </div>
+  </div>
+
+  <div class="grade grade-2">
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Turmas por setor promotor</h2>
+        <span class="contador">{{ turmas_por_setor|length }}</span>
+      </div>
+      {{ ui.distribuicao(turmas_por_setor, limiar, 'Nenhuma turma no período.') }}
+    </section>
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Treinamentos com mais participantes</h2>
+        <span class="contador">até {{ top }}</span>
+      </div>
+      {{ ui.distribuicao(participantes_por_treinamento, limiar, 'Ninguém inscrito no período.') }}
+    </section>
+  </div>
+
+</div>
+{% endblock %}

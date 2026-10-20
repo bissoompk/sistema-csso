@@ -39,6 +39,9 @@ import * as envio from "../servicos/modelo_certificado_envio.js";
 import { obterArmazenamento } from "../servicos/armazenamento.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as textos from "../servicos/textos.js";
+import * as indicadores from "../servicos/treinamento_indicadores.js";
+import { LIMIAR_SUPRESSAO, MARCA_SUPRIMIDO, suprimir } from "./relatorios.js";
+import { dicionario } from "../dicionario.js";
 import { normalizar_decimal } from "../servicos/presenca.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { COM_TAGS } from "../servicos/turma.js";
@@ -1177,3 +1180,72 @@ rotas.get(`${ASSINATURAS}/:assinatura_id{[0-9]+}/rubrica`, async (c) => {
     "cache-control": "private, no-store",
   });
 });
+
+// =====================================================================
+// Indicadores de treinamento
+// =====================================================================
+export const INDICADORES = "/treinamentos/indicadores";
+
+export const PERIODOS: [string, string][] = [
+  ["ano_atual", "Ano atual"],
+  ["ano_anterior", "Ano anterior"],
+  ["todo", "Todo o período"],
+  ["intervalo", "De… até…"],
+];
+
+/** O período pedido, em datas: [de, até, código]. Torto cai no ano atual. */
+export function periodo_de(codigo: string, de: string, ate: string, hoje: string): [string | null, string | null, string] {
+  const ano = Number(hoje.slice(0, 4));
+  if (codigo === "ano_anterior") return [`${ano - 1}-01-01`, `${ano - 1}-12-31`, codigo];
+  if (codigo === "todo") return [null, null, codigo];
+  if (codigo === "intervalo") {
+    const inicio = data_iso(de);
+    const fim = data_iso(ate);
+    if (inicio || fim) return [inicio, fim, codigo];
+  }
+  return [`${ano}-01-01`, `${ano}-12-31`, "ano_atual"];
+}
+
+rotas.get(INDICADORES, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("indicador.ver");
+  const tx = c.get("tx");
+  const [de, ate, periodo] = periodo_de(
+    c.req.query("periodo") ?? "",
+    c.req.query("de") ?? "",
+    c.req.query("ate") ?? "",
+    datas_br.hoje(),
+  );
+  const setor = id_opcional(c.req.query("setor") ?? "");
+  const r = await indicadores.calcular(tx, usuario, { de, ate, unidade_promotora_id: setor });
+  const nominal = usuario.ve_dado_nominal;
+  // RN-19: contagem de PESSOAS abaixo do limiar vira "—" para quem não vê
+  // nome; turma é evento, não pessoa, e sai sempre
+  const pessoas = (n: number) => (nominal || n === 0 || n >= LIMIAR_SUPRESSAO ? String(n) : MARCA_SUPRIMIDO);
+  return pagina(c, "paginas/treinamentos_indicadores.html", usuario, {
+    r,
+    cartoes_pessoas: Object.fromEntries(
+      (["participantes", "aguardando_confirmacao", "aprovados", "reprovados", "faltas", "emitidos", "pendentes"] as const).map(
+        (k) => [k, pessoas(r[k])],
+      ),
+    ),
+    // taxa sobre poucas pessoas é a mesma reidentificação, em porcentagem
+    taxa: r.taxa_aprovacao === null || (!nominal && r.aprovados + r.reprovados < LIMIAR_SUPRESSAO)
+      ? null
+      : textos_numero(r.taxa_aprovacao),
+    turmas_por_setor: dicionario(Object.fromEntries(Object.entries(r.turmas_por_setor).map(([k, v]) => [k, String(v)]))),
+    participantes_por_treinamento: dicionario(suprimir(r.participantes_por_treinamento, nominal)),
+    setores: await indicadores.setores_promotores(tx),
+    periodos: PERIODOS,
+    periodo,
+    de: de ?? "",
+    ate: ate ?? "",
+    setor: setor ? String(setor) : "",
+    limiar: LIMIAR_SUPRESSAO,
+    top: indicadores.TOP_TREINAMENTOS,
+  });
+});
+
+function textos_numero(n: number): string {
+  return `${String(n).replace(".", ",")}%`;
+}
