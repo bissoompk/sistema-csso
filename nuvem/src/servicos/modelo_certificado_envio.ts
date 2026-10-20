@@ -392,15 +392,17 @@ function _o_que_houver(campos: Readonly<Record<string, unknown>>, ...codigos: st
 }
 
 export function sugerir_campo(
-  m: Pick<MarcadorDoModelo, "marcador" | "rotulo" | "antes" | "ocorrencia">,
+  m: Pick<MarcadorDoModelo, "marcador" | "rotulo" | "antes" | "ocorrencia"> & { depois?: string },
   campos: Readonly<Record<string, CampoSugerivel>>,
   mapa_sugerido: Readonly<Record<string, string>> = {},
 ): string | null {
   const existe = (c: string | null | undefined): string | null => (c && Object.hasOwn(campos, c) ? c : null);
   const sem_sufixo = m.marcador.replace(/_\d+$/, "");
-  // «Campus X, «cidade»»: a cidade do campus da turma, não a do setor emissor;
-  // vem antes do nome igual ao código, que daria a cidade do setor
-  if (/cidade|municipio/.test(normalizar(m.rotulo)) && /campus[^.]{0,60}$/.test(normalizar(m.antes))) {
+  // «Campus X, «cidade»» e «Cidade», «DD» de «mês» (a data de expedição): a
+  // cidade do campus da turma, não a do setor emissor; vem antes do nome igual
+  // ao código, que daria a cidade do setor
+  const da_data = /^\s*,?\s*(«\s*dd\s*»|\d{1,2}|_+)\s+de\b/.test(normalizar(m.depois ?? ""));
+  if (/cidade|municipio/.test(normalizar(m.rotulo)) && (da_data || /campus[^.]{0,60}$/.test(normalizar(m.antes)))) {
     const do_campus = _o_que_houver(campos, "turma_campus_cidade");
     if (do_campus) return do_campus;
   }

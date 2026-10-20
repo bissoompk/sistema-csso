@@ -188,7 +188,7 @@ describe("sugestão de campo", () => {
       endereco_completo_do_local_do_curso: "turma_local",
       nome_do_campus: "turma_campus_curto",
       cidade: "turma_campus_cidade",
-      cidade_2: "cidade",
+      cidade_2: "turma_campus_cidade",
       dd_mm_aaaa: "turma_data_inicio",
       dd_mm_aaaa_2: "turma_data_fim",
       dd: "certificado_dia",
@@ -221,6 +221,16 @@ describe("sugestão de campo", () => {
     expect(envio.sugerir_campo(cpf, certificado.CAMPOS_CERTIFICADO)).toBe(
       "participante_cpf",
     );
+    // a cidade da data de expedição é a do campus da turma; sem data nem
+    // campus por perto, segue a do setor emissor
+    const cidade = (depois: string) =>
+      envio.sugerir_campo(
+        { marcador: "municipio", rotulo: "Município", antes: "", depois, ocorrencia: 1 },
+        certificado.CAMPOS_CERTIFICADO,
+      );
+    expect(cidade(", 12 de março de 2026.")).toBe("turma_campus_cidade");
+    expect(cidade(", «DD» de «mês» de «AAAA»")).toBe("turma_campus_cidade");
+    expect(cidade(" – MG")).toBe("cidade");
   });
 
   it("modelo do repositório traz chave, link e QR da validação, já sugeridos", () => {
