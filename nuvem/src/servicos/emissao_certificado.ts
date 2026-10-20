@@ -223,7 +223,7 @@ export async function modelo_da_turma(tx: Executor, turma: TurmaCarregada): Prom
   if (genericos.length) {
     // o mais recente cujo mapa cobre o arquivo; nenhum cobrindo, o mais recente (e a validação diz o que falta)
     const escolhido =
-      genericos.find((m) => servico_certificado.conferir_modelo(m.arquivo, CertificadoModelo.mapa_de_tags(m)).ok) ??
+      genericos.find((m) => servico_certificado.conferir_modelo(m, CertificadoModelo.mapa_de_tags(m)).ok) ??
       genericos[0]!;
     return [
       escolhido,
@@ -350,16 +350,16 @@ export async function validar(
     v.bloqueios.push(`o modelo ${rotulo} aponta campo que não existe no vocabulário: ` + desconhecidos.join(", "));
   }
 
-  const conferencia = servico_certificado.conferir_modelo(modelo.arquivo, mapa);
+  const conferencia = servico_certificado.conferir_modelo(modelo, mapa);
   if (!conferencia.ok) {
     if (!conferencia.arquivo_encontrado) {
-      v.bloqueios.push(`o arquivo '${modelo.arquivo}' não está em app/templates/certificados/`);
+      v.bloqueios.push(`o arquivo '${modelo.arquivo}' do modelo ${rotulo} não foi encontrado — envie o .docx de novo em /treinamentos/modelos`);
     } else {
       // sem esta guarda o certificado sai com `{{ nome }}` impresso no papel
       v.bloqueios.push(`o .docx de ${rotulo} tem marcador sem linha no dicionário: ` + conferencia.sem_mapa.join(", "));
     }
   } else {
-    const sha = servico_certificado.sha256_do_modelo(modelo.arquivo);
+    const sha = servico_certificado.sha256_do_modelo(modelo);
     if (modelo.arquivo_sha256 && sha && sha !== modelo.arquivo_sha256) {
       v.avisos.push(
         `o arquivo de ${rotulo} mudou desde o cadastro (SHA-256 diferente do registrado): confira o layout`,
@@ -461,7 +461,8 @@ export async function montar_contexto_para_emitir(
     cidade: setor ? setor.cidade : "Diamantina",
     modelo_id: d.modelo.id,
     modelo_arquivo: d.modelo.arquivo,
-    modelo_sha256: servico_certificado.sha256_do_modelo(d.modelo.arquivo),
+    modelo_sha256: servico_certificado.sha256_do_modelo(d.modelo),
+    modelo_chave: servico_certificado.chave_do_modelo(d.modelo),
     modelo_versao: d.modelo.versao,
     mapa_tags: { ...mapa },
     tags_obrigatorias: d.modelo.tags

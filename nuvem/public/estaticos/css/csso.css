@@ -2348,6 +2348,14 @@ tbody[data-carregando] td, tr[data-carregando] td { color: var(--tinta-dica); }
 .mapa-tags .codigo-campo { font-family: var(--mono); font-size: 12px; color: var(--tinta-dica); }
 /* Fileira de chips de marcador solto (os que o arquivo tem e o mapa nao). */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.chips .em-linha { display: inline; }
+/* Modelo enviado pela tela: o marcador e texto livre («NOME COMPLETO...»), que
+   pode ser longo, e o trecho ao redor diz qual «DD/MM/AAAA» e qual. */
+.tabela-rolavel { overflow-x: auto; }
+.mapa-tags .marcador-docx { white-space: normal; max-width: 28ch; }
+.mapa-tags .trecho { font-size: 13px; color: var(--tinta-media); max-width: 40ch; }
+.mapa-tags .trecho mark { background: var(--alerta-fundo); color: var(--tinta); padding: 0 2px; border-radius: 3px; }
+.mapa-tags select { max-width: 100%; }
 
 /* ---------- linha do tempo ---------- */
 .linha-tempo {

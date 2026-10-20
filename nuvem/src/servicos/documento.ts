@@ -441,9 +441,15 @@ export function carregar_modelo(
 export async function renderizar_modelo(
   modelo: string | null | undefined,
   contexto: Record<string, unknown>,
-  opcoes: { destino?: string | null; dica?: string; pasta?: string | null } = {},
+  opcoes: {
+    destino?: string | null;
+    dica?: string;
+    pasta?: string | null;
+    // NUVEM: o modelo já lido (o .docx enviado pela tela, que mora no armazenamento)
+    origem?: { bytes: Uint8Array; arquivo: string; sha256: string };
+  } = {},
 ): Promise<DocumentoRenderizado> {
-  const origem = carregar_modelo(modelo, opcoes);
+  const origem = opcoes.origem ?? carregar_modelo(modelo, opcoes);
   const bytes = await renderizar_bytes(origem.bytes, contexto);
   if (opcoes.destino) {
     await obterArmazenamento().gravar(

@@ -23,7 +23,10 @@ import {
   PREFIXO_CHAVE,
   TAMANHO_SORTEIO_CHAVE,
 } from "../dominio/treinamento.js";
+import type { ArquivoEnviado, MarcadorDoModelo } from "../dominio/treinamento.js";
 import * as anexos from "./anexos.js";
+import { obterArmazenamento } from "./armazenamento.js";
+import * as envio from "./modelo_certificado_envio.js";
 import * as datas_br from "./datas_br.js";
 import * as documento from "./documento.js";
 import { qr_png } from "./qr.js";
@@ -162,6 +165,8 @@ export interface DadosContextoCertificado {
   modelo_id: number | null;
   modelo_arquivo: string;
   modelo_sha256: string | null;
+  // NUVEM: chave no armazenamento do .docx enviado pela tela; null = embutido
+  modelo_chave?: string | null;
   modelo_versao: number;
   mapa_tags: Record<string, string>;
   tags_obrigatorias?: readonly string[];
@@ -179,7 +184,7 @@ const CAMPOS_CONGELADOS = [
   "data_emissao", "chave_validacao", "data_vencimento", "url_validacao",
   "setor_sigla", "setor_nome", "setor_endereco", "cidade", "modelo_id",
   "modelo_arquivo", "modelo_sha256", "modelo_versao", "mapa_tags",
-  "tags_obrigatorias",
+  "tags_obrigatorias", "modelo_chave",
 ] as const;
 
 const _DATAS = ["turma_data_inicio", "turma_data_fim", "data_base_vencimento", "data_emissao", "data_vencimento"] as const;
@@ -226,6 +231,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   modelo_id!: number | null;
   modelo_arquivo!: string;
   modelo_sha256!: string | null;
+  modelo_chave: string | null = null;
   modelo_versao!: number;
   mapa_tags!: Record<string, string>;
   tags_obrigatorias: readonly string[] = [];
@@ -235,6 +241,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
 
   constructor(d: DadosContextoCertificado) {
     Object.assign(this, d);
+    this.modelo_chave = d.modelo_chave ?? null;
     this.tags_obrigatorias = [...(d.tags_obrigatorias ?? [])];
     this.avisos = [...(d.avisos ?? [])];
   }
@@ -301,6 +308,8 @@ export class ContextoCertificado implements DadosContextoCertificado {
         faltam.push(`${marcador} (campo desconhecido)`);
         continue;
       }
+      // "deixar em branco" é a escolha de não imprimir nada: nunca falta
+      if (campo === "em_branco") continue;
       if (!(await _tem_valor(CAMPOS_CERTIFICADO[campo]!.obter(this)))) {
         faltam.push(`${marcador} (${CAMPOS_CERTIFICADO[campo]!.rotulo})`);
       }
@@ -377,6 +386,8 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     _periodo_extenso(c.turma_data_inicio, c.turma_data_fim),
   ),
   turma_local: _c("Turma", "Local", "Auditório do Campus JK", (c) => c.turma_local),
+  // NUVEM: o campus já ia no congelado; faltava o campo que o imprime
+  turma_campus: _c("Turma", "Campus", "Campus JK", (c) => c.turma_campus),
   turma_unidade_promotora: _c(
     "Turma",
     "Unidade promotora",
@@ -392,6 +403,13 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   certificado_data_emissao: _c("Documento", "Data de emissão", "12/03/2026", (c) => _data(c.data_emissao)),
   certificado_data_extenso: _c("Documento", "Data por extenso", "12 de março de 2026", (c) =>
     datas_br.por_extenso(c.data_emissao),
+  ),
+  // NUVEM: os pedaços da data, para modelo escrito como «Cidade», «DD» de «mês» de «AAAA»
+  certificado_dia: _c("Documento", "Dia da emissão", "12", (c) =>
+    c.data_emissao ? String(datas_br.partes(c.data_emissao)[2]).padStart(2, "0") : "",
+  ),
+  certificado_mes_extenso: _c("Documento", "Mês da emissão por extenso", "março", (c) =>
+    c.data_emissao ? datas_br.MESES_ACENTUADOS[datas_br.partes(c.data_emissao)[1] - 1]! : "",
   ),
   certificado_chave: _c("Documento", "Chave de validação", "CSSO-2026-K7QMX-3FTB9-H", (c) => c.chave_validacao),
   // A imagem do QR que abre /validar/{chave} (o PDF desenha o seu em vetor).
@@ -429,6 +447,9 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   ),
   setor_emissor_sigla: _c("Emissor", "Sigla composta", "CSSO/Sisa", (c) => c.setor_sigla),
   cidade: _c("Emissor", "Cidade", "Diamantina", (c) => c.cidade),
+  // NUVEM: o marcador que o setor decidiu não preencher («___» de nota por
+  // disciplina, por exemplo) — escolha explícita, em vez de travar a emissão
+  em_branco: _c("Outros", "Deixar em branco", "(nada é impresso)", () => ""),
 });
 
 /** Agrupa o vocabulário para o seletor da tela do modelo: `[[grupo, [[codigo, campo]...]]...]`. */
@@ -524,10 +545,35 @@ export const OBRIGATORIOS: readonly string[] = [
 ];
 
 /**
- * O SHA-256 do modelo de ORIGEM (o `.docx` que o setor edita), lido do
- * manifesto da conversão — o mesmo número que o Python gravava.
+ * O modelo como a emissão o vê: o nome do arquivo e, quando veio pela tela, o
+ * que o envio guardou. Aceita também só o nome (modelo embutido).
  */
-export function sha256_do_modelo(arquivo: string): string | null {
+export type ArquivoDoModelo =
+  | string
+  | { arquivo: string; arquivo_sha256?: string | null; arquivo_enviado?: ArquivoEnviado | null };
+
+function _enviado(modelo: ArquivoDoModelo): ArquivoEnviado | null {
+  return typeof modelo === "string" ? null : (modelo.arquivo_enviado ?? null);
+}
+
+function _nome(modelo: ArquivoDoModelo): string {
+  return typeof modelo === "string" ? modelo : modelo.arquivo;
+}
+
+/** NUVEM: a chave do .docx enviado no armazenamento, ou null (embutido). */
+export function chave_do_modelo(modelo: ArquivoDoModelo): string | null {
+  const enviado = _enviado(modelo);
+  return enviado ? envio.chave_no_armazenamento(enviado.sha256_convertido) : null;
+}
+
+/**
+ * O SHA-256 do modelo de ORIGEM (o `.docx` que o setor edita), lido do
+ * manifesto da conversão — o mesmo número que o Python gravava. Para o enviado
+ * pela tela, o do arquivo como chegou.
+ */
+export function sha256_do_modelo(modelo: ArquivoDoModelo): string | null {
+  if (_enviado(modelo)) return (modelo as { arquivo_sha256?: string | null }).arquivo_sha256 ?? null;
+  const arquivo = _nome(modelo);
   if (!existsSync(caminho_modelo(arquivo))) return null;
   const entrada = _entrada_do_manifesto(arquivo);
   if (entrada) return entrada.sha256_origem;
@@ -535,15 +581,38 @@ export function sha256_do_modelo(arquivo: string): string | null {
 }
 
 /**
- * Os `{{ marcadores }}` que o .docx realmente tem, ou `null` quando o arquivo
- * não existe. DESVIO: lidos do `manifesto.json` da conversão (o docxtpl não
- * existe aqui); modelo que não passou por `ferramentas/converter-modelos-docx.ts`
- * aparece como "arquivo ausente".
+ * Os marcadores que o .docx realmente tem, ou `null` quando o arquivo não
+ * existe. DESVIO: lidos do `manifesto.json` da conversão (o docxtpl não existe
+ * aqui), ou, no modelo enviado pela tela, do que o envio leu do arquivo.
  */
-export function marcadores_do_arquivo(arquivo: string): Set<string> | null {
+export function marcadores_do_arquivo(modelo: ArquivoDoModelo): Set<string> | null {
+  const enviado = _enviado(modelo);
+  if (enviado) return new Set(enviado.marcadores.map((m) => m.marcador));
+  const arquivo = _nome(modelo);
   if (!existsSync(caminho_modelo(arquivo))) return null;
   const entrada = _entrada_do_manifesto(arquivo);
   return entrada ? new Set(entrada.marcadores) : null;
+}
+
+/**
+ * Os marcadores na ordem do documento, com rótulo e trecho — o que a tela de
+ * mapeamento lista. O embutido não tem trecho: o rótulo é o próprio nome.
+ */
+export function marcadores_detalhados(modelo: ArquivoDoModelo): MarcadorDoModelo[] {
+  const enviado = _enviado(modelo);
+  if (enviado) return enviado.marcadores;
+  return ordenar(marcadores_do_arquivo(modelo) ?? []).map((m) => ({
+    marcador: m,
+    rotulo: m,
+    antes: "",
+    depois: "",
+    ocorrencia: 1,
+  }));
+}
+
+/** A sugestão de campo para o marcador (`modelo_certificado_envio.sugerir_campo`). */
+export function sugerir_campo(m: MarcadorDoModelo): string | null {
+  return envio.sugerir_campo(m, CAMPOS_CERTIFICADO, MAPA_SUGERIDO);
 }
 
 /** O confronto entre o .docx e o dicionário de tags. */
@@ -561,8 +630,8 @@ export class ConferenciaDoModelo {
 
 const ordenar = (xs: Iterable<string>) => [...xs].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
-export function conferir_modelo(arquivo: string, mapa: Record<string, string>): ConferenciaDoModelo {
-  const marcadores = marcadores_do_arquivo(arquivo);
+export function conferir_modelo(modelo: ArquivoDoModelo, mapa: Record<string, string>): ConferenciaDoModelo {
+  const marcadores = marcadores_do_arquivo(modelo);
   if (marcadores === null) return new ConferenciaDoModelo(false);
   const chaves = new Set(Object.keys(mapa));
   return new ConferenciaDoModelo(
@@ -581,12 +650,48 @@ export function conferir_modelo(arquivo: string, mapa: Record<string, string>): 
  * único lugar do sistema que abre um modelo (`documento.renderizar_modelo`).
  * `destino` é a chave no armazenamento.
  */
-export function renderizar(contexto: ContextoCertificado, destino: string | null) {
+export async function renderizar(contexto: ContextoCertificado, destino: string | null) {
   return documento.renderizar_modelo(contexto.modelo_arquivo, contexto.como_dicionario(), {
     destino,
     pasta: DIR_MODELOS_CERTIFICADO,
-    dica:
-      "Cadastre o .docx em app/templates/certificados/, rode " +
-      "ferramentas/converter-modelos-docx.ts e confira o dicionário de tags em /treinamentos/modelos.",
+    origem: await _origem_enviada(contexto.modelo_chave, contexto.modelo_arquivo, contexto.modelo_sha256),
+    dica: "Confira o arquivo do modelo em /treinamentos/modelos.",
   });
+}
+
+/** O .docx enviado, lido do armazenamento (ou undefined: o embutido). */
+async function _origem_enviada(chave: string | null, arquivo: string, sha256: string | null) {
+  if (!chave) return undefined;
+  const bytes = await obterArmazenamento().ler(chave);
+  return { bytes, arquivo, sha256: sha256 ?? documento.sha256_arquivo(bytes) };
+}
+
+/**
+ * NUVEM: o .docx do modelo preenchido com o `exemplo` de cada campo, para
+ * conferir o layout antes de emitir. Marcador sem campo sai como
+ * "[falta: rótulo]"; o QR sai de verdade (aponta para um endereço de exemplo).
+ */
+export async function renderizar_exemplo(
+  modelo: ArquivoDoModelo & { tags: ReadonlyArray<{ marcador: string; campo: string }> },
+): Promise<Uint8Array> {
+  const mapa = Object.fromEntries(modelo.tags.map((t) => [t.marcador, t.campo]));
+  const valores: Record<string, unknown> = {};
+  for (const m of marcadores_detalhados(modelo)) {
+    const campo = Object.hasOwn(mapa, m.marcador) ? mapa[m.marcador]! : null;
+    if (campo === null || !Object.hasOwn(CAMPOS_CERTIFICADO, campo)) {
+      valores[m.marcador] = `[falta: ${m.rotulo}]`;
+    } else if (campo === "certificado_qrcode") {
+      valores[m.marcador] = new documento.ImagemEmLinha({
+        bytes: qr_png("https://exemplo.invalid/validar/CSSO-2026-K7QMX-3FTB9-H"),
+        largura_mm: LARGURA_QR_MM,
+      });
+    } else {
+      valores[m.marcador] = CAMPOS_CERTIFICADO[campo]!.exemplo;
+    }
+  }
+  const info = await documento.renderizar_modelo(_nome(modelo), valores, {
+    pasta: DIR_MODELOS_CERTIFICADO,
+    origem: await _origem_enviada(chave_do_modelo(modelo), _nome(modelo), sha256_do_modelo(modelo)),
+  });
+  return info.bytes;
 }

@@ -43,6 +43,13 @@
       "when": 1792287624064,
       "tag": "0005_sessao_inatividade",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792453556259,
+      "tag": "0006_modelo_certificado_enviado",
+      "breakpoints": true
     }
   ]
 }

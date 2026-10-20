@@ -20,6 +20,31 @@ export const PADRAO_CODIGO_TREINAMENTO = String.raw`[A-Z0-9][A-Z0-9._-]*`;
 // aqui, quando alguem digita.
 export const PADRAO_MARCADOR = String.raw`[A-Za-z_][A-Za-z0-9_]*`;
 
+/**
+ * Um marcador do .docx enviado pela tela: o nome que o sistema usa, o texto
+ * que o usuario escreveu no Word («NOME COMPLETO...» ou o proprio nome do
+ * `{{ x }}`) e um trecho do texto ao redor, para saber qual e qual.
+ */
+export interface MarcadorDoModelo {
+  marcador: string;
+  rotulo: string;
+  antes: string;
+  depois: string;
+  // 1 na primeira vez que o mesmo rotulo aparece, 2 na segunda...
+  ocorrencia: number;
+}
+
+/**
+ * NUVEM: o .docx que veio pela tela (`certificado_modelo.arquivo_enviado`).
+ * NULL = modelo embutido em `modelos-docx/certificados/`.
+ */
+export interface ArquivoEnviado {
+  // SHA-256 do .docx ja convertido para `{marcador}` — e a chave no armazenamento
+  sha256_convertido: string;
+  tamanho: number;
+  marcadores: MarcadorDoModelo[];
+}
+
 // =====================================================================
 // Fatia 2 — participante, turma e inscricao
 // =====================================================================

@@ -54,100 +54,63 @@
   </div>
   {% endif %}
 
-  {# ================= o confronto =================
-     É a razão de a tela existir: de um lado o marcador que está escrito no
-     .docx, do outro o campo do sistema que o alimenta. Vem primeiro e ocupa a
-     largura inteira porque é o que se vem conferir aqui; os dados do próprio
-     modelo, que quase nunca mudam, ficam abaixo. #}
-  <section class="cartao liso">
+  {# ================= marcador x dado =================
+     É a razão de a tela existir: de um lado o que está escrito no .docx, do
+     outro o dado do sistema que vai no lugar. Vem primeiro e ocupa a largura
+     inteira; os dados do próprio modelo, que quase nunca mudam, ficam abaixo. #}
+  <section class="cartao liso" id="mapa">
     <div class="cabecalho-cartao">
-      <h2>Dicionário de tags</h2>
-      {# O que é marcador e o que é campo se aprende uma vez. O que MUDA decisão —
-         quantos marcadores estão sem mapa, e que a emissão é recusada enquanto
-         houver um — continua em faixa, logo abaixo. #}
-      {% call ui.info('o-que-e-o-dicionario', 'o que liga o .docx ao dado do sistema') %}
-        <p><code>{{ '{{' }} marcador {{ '}}' }}</code> é o que está escrito no
-          <code>.docx</code>; o campo é o dado do sistema que o alimenta. A lista de
-          campos é fechada — campo desconhecido é recusado, nunca chutado.</p>
-        <p>O dicionário é <strong>dado, e não código</strong>: trocar o layout do
-          certificado não pede alteração de programa. É ele que a emissão congela,
-          junto com os valores, para a segunda via não sair com o nome do instrutor no
-          campo do participante.</p>
+      <h2>Marcadores e dados</h2>
+      {% call ui.info('o-que-e-o-dicionario', 'o que é um marcador') %}
+        <p>Marcador é o texto do <code>.docx</code> que a emissão troca por um dado:
+          «NOME COMPLETO DO PARTICIPANTE», «DD/MM/AAAA» ou
+          <code>{{ '{{' }} nome {{ '}}' }}</code>. Para cada um, escolha o dado do
+          sistema que vai no lugar.</p>
+        <p>Quando o mesmo texto aparece mais de uma vez (duas datas «DD/MM/AAAA», por
+          exemplo), cada aparição é um marcador próprio, na ordem do documento — o
+          trecho ao lado mostra qual é qual. Se um marcador não deve receber nada,
+          escolha “Deixar em branco”.</p>
+        <p>O certificado emitido guarda o mapa do dia: mudar aqui não altera papel
+          que já saiu.</p>
       {% endcall %}
-      <span class="contador" title="linhas no dicionário">{{ modelo.tags|length }} no mapa</span>
       {% if not conferencia.arquivo_encontrado %}
       <span class="pilula alerta">arquivo ausente</span>
       {% else %}
-      <span class="contador" title="marcadores lidos do .docx">
-        {{ conferencia.marcadores|length }} no arquivo</span>
-      {% if conferencia.sem_mapa %}
-      <span class="contador erro">{{ conferencia.sem_mapa|length }} sem mapa</span>{% endif %}
+      <span class="contador" title="marcadores lidos do .docx">{{ linhas|length }} no arquivo</span>
+      {% if faltam %}<span class="contador erro">faltam {{ faltam }}</span>{% endif %}
       {% if conferencia.sem_marcador %}
       <span class="contador alerta">{{ conferencia.sem_marcador|length }} fora do arquivo</span>{% endif %}
       {% if conferencia.ok %}<span class="contador ok">o mapa cobre o arquivo</span>{% endif %}
       {% endif %}
     </div>
 
+    {% if not conferencia.arquivo_encontrado %}
+    {# ---- arquivo que não está mais com o sistema: o dicionário cru ---- #}
     <div class="corpo">
-      {% if not conferencia.arquivo_encontrado %}
       <div class="aviso aviso-alerta">
-        <p>Não achei <code>{{ modelo.arquivo }}</code> em
-          <code>app/templates/certificados/</code>, ou ele não abre como <code>.docx</code>.
-          Enquanto isso <strong>não dá para conferir os marcadores</strong>, e a emissão
-          com este modelo é recusada.</p>
+        <p>O arquivo <code>{{ modelo.arquivo }}</code> não foi encontrado. Enquanto isso
+          <strong>não dá para conferir os marcadores</strong>, e a emissão com este modelo
+          é recusada. Publique uma versão nova enviando o <code>.docx</code> de novo.</p>
       </div>
-      {% else %}
-      {% if conferencia.sem_mapa %}
-      <div class="aviso aviso-erro">
-        <p><strong>{{ conferencia.sem_mapa|length }} marcador(es) do arquivo sem linha no
-          mapa.</strong> Isso sairia impresso no papel, com as chaves e tudo — mapeie
-          antes de emitir. Enquanto houver um, a emissão com este modelo é recusada.</p>
-        <div class="chips">
-          {% for m in conferencia.sem_mapa %}
-          <span class="marcador-docx sem-mapa">{{ '{{' }} {{ m }} {{ '}}' }}</span>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-      {% if conferencia.sem_marcador %}
-      <div class="aviso aviso-alerta">
-        <p><strong>{{ conferencia.sem_marcador|length }} linha(s) do mapa sem marcador no
-          arquivo.</strong> Só um aviso: a linha pode ter sido deixada para o próximo
-          layout. O que ela alimenta simplesmente não é impresso.</p>
-        <div class="chips">
-          {% for m in conferencia.sem_marcador %}
-          <span class="marcador-docx sem-arquivo">{{ '{{' }} {{ m }} {{ '}}' }}</span>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-      {% if conferencia.ok and not conferencia.sem_marcador %}
-      <div class="aviso aviso-ok">
-        Todo marcador do arquivo tem linha no mapa, e toda linha do mapa existe no
-        arquivo. {{ conferencia.marcadores|length }} marcador(es) conferido(s).
-      </div>
-      {% endif %}
-      {% endif %}
     </div>
 
     <table class="mapa-tags">
       <thead>
-        <tr><th scope="col">Marcador no .docx</th><th scope="col">Campo do sistema</th><th scope="col">Ordem</th>
-            <th scope="col">Vazio bloqueia</th><th scope="col">No arquivo</th>
+        <tr><th scope="col">Marcador</th><th scope="col">Dado do sistema</th><th scope="col">Ordem</th>
+            <th scope="col">Vazio bloqueia</th>
             {% if modelo.vigente %}<th scope="col"></th><th scope="col"></th>{% endif %}</tr>
       </thead>
       {% for tag in modelo.tags %}
       {% set fid = 'f-tag-' ~ tag.id %}
-      {% set fora = conferencia.arquivo_encontrado and tag.marcador not in conferencia.marcadores %}
       <tr>
         <td>
-          <span class="marcador-docx {{ 'sem-arquivo' if fora }}">{{ '{{' }} {{ tag.marcador }} {{ '}}' }}</span>
+          <span class="marcador-docx">{{ '{{' }} {{ tag.marcador }} {{ '}}' }}</span>
           {% if modelo.vigente %}
           <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/{{ tag.id }}" id="{{ fid }}"></form>
           {% endif %}</td>
         {% if modelo.vigente %}
         <td><span class="para"><span class="seta" aria-hidden="true">→</span>
-          <select form="{{ fid }}" name="campo" aria-label="Campo que alimenta {{ tag.marcador }}">
+          <select form="{{ fid }}" name="campo" aria-label="Dado que vai em {{ tag.marcador }}">
             {% for grupo, lista in campos_por_grupo %}
             <optgroup label="{{ grupo }}">
               {% for codigo, campo in lista %}
@@ -160,52 +123,118 @@
                    aria-label="Ordem de {{ tag.marcador }}"></td>
         <td><label class="discreto"><input form="{{ fid }}" type="checkbox" name="obrigatorio" value="1"
             {% if tag.obrigatorio %}checked{% endif %}> bloqueia</label></td>
-        {% else %}
-        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
-          <span class="campo-fixo">{{ campos[tag.campo].rotulo if tag.campo in campos else tag.campo }}
-            <span class="quebra codigo-campo">{{ tag.campo }}</span></span></span></td>
-        <td class="mono">{{ tag.ordem }}</td>
-        <td>{{ ui.pilula_sim_nao(tag.obrigatorio, 'bloqueia', 'não bloqueia') }}</td>
-        {% endif %}
-        <td>{% if not conferencia.arquivo_encontrado %}<span class="discreto">—</span>
-            {% elif fora %}<span class="pilula alerta">não</span>
-            {% else %}<span class="pilula ok">sim</span>{% endif %}</td>
-        {% if modelo.vigente %}
         <td><button form="{{ fid }}" type="submit" class="secundario marcador">salvar</button></td>
         <td><button form="{{ fid }}" type="submit" name="remover" value="1"
                     class="perigo marcador">remover</button></td>
+        {% else %}
+        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
+          <span class="campo-fixo">{{ campos[tag.campo].rotulo if tag.campo in campos else tag.campo }}</span></span></td>
+        <td class="mono">{{ tag.ordem }}</td>
+        <td>{{ ui.pilula_sim_nao(tag.obrigatorio, 'bloqueia', 'não bloqueia') }}</td>
         {% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="{{ 7 if modelo.vigente else 5 }}" class="nada">
-        O mapa está vazio — o certificado sairia em branco.</td></tr>
+      <tr><td colspan="{{ 6 if modelo.vigente else 4 }}" class="nada">
+        Nenhum marcador ligado a um dado.</td></tr>
       {% endfor %}
     </table>
-
     {% if modelo.vigente %}
+    <div class="corpo"><div class="acoes">{{ ui.botao_cadastro('mapear-marcador', MAPEAR) }}</div></div>
+    {% endif %}
+
+    {% else %}
+    {# ---- o arquivo está aqui: uma linha por marcador, na ordem do documento ---- #}
     <div class="corpo">
-      <div class="acoes">
-        {{ ui.botao_cadastro('mapear-marcador', MAPEAR) }}
-        {% if com_sugestao %}
-        {# Um clique só para o layout padrão: os marcadores que o sistema conhece. #}
-        <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/sugeridas">
-          <button type="submit" class="secundario">Mapear sugeridos ({{ com_sugestao|length }})</button>
-        </form>
-        {% endif %}
+      {% if faltam %}
+      <div class="aviso aviso-erro">
+        <p><strong>{{ faltam }} marcador(es) ainda sem dado.</strong> Enquanto houver um,
+          a emissão com este modelo é recusada — o marcador sairia impresso no papel.
+          {% if com_sugestao %}O sistema já sugeriu o dado de {{ com_sugestao|length }}:
+          confira e use “Aplicar sugestões” ou “Salvar”.{% endif %}</p>
       </div>
-      {% if conferencia.sem_mapa %}
-      {# Sem as chaves, de propósito: aqui o nome é para ser copiado para o campo
-         da camada, e as chaves são recusadas pelo validador do marcador. FICA na
-         tela: é a lista de trabalho de quem abriu esta ficha, e a faixa vermelha
-         acima já disse que a emissão está travada enquanto ela não esvaziar. #}
-      <p class="discreto sem-margem">Lidos do arquivo e ainda sem mapa — copie o nome
-        para o campo <em>Marcador no .docx</em>, em “{{ MAPEAR }}”:</p>
-      <div class="chips">
-        {% for m in conferencia.sem_mapa %}
-        <span class="marcador-docx sem-mapa">{{ m }}</span>
-        {% endfor %}
+      {% elif not conferencia.sem_marcador %}
+      <div class="aviso aviso-ok">
+        Todos os {{ linhas|length }} marcadores do arquivo têm um dado escolhido.
+        Baixe o exemplo para conferir o layout antes de emitir.
       </div>
       {% endif %}
+      {% if conferencia.sem_marcador %}
+      <div class="aviso aviso-alerta">
+        <p><strong>{{ conferencia.sem_marcador|length }} ligação(ões) para marcador que o
+          arquivo não tem.</strong> Não atrapalham a emissão; o dado só não é impresso.</p>
+        <div class="chips">
+          {% for tag in modelo.tags %}{% if tag.marcador in conferencia.sem_marcador %}
+          <span class="marcador-docx sem-arquivo">{{ tag.marcador }}</span>
+          {% if modelo.vigente %}
+          <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/{{ tag.id }}" class="em-linha">
+            <input type="hidden" name="campo" value="{{ tag.campo }}">
+            <button type="submit" name="remover" value="1" class="perigo marcador">remover</button>
+          </form>
+          {% endif %}
+          {% endif %}{% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if modelo.vigente %}
+    <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/mapa" id="f-mapa"></form>
+    {% endif %}
+    <div class="tabela-rolavel">
+    <table class="mapa-tags">
+      <thead>
+        <tr><th scope="col">Marcador no documento</th><th scope="col">Onde aparece</th>
+            <th scope="col">Dado do sistema</th><th scope="col">Vazio bloqueia</th>
+            <th scope="col">Situação</th></tr>
+      </thead>
+      {% for l in linhas %}
+      <tr id="marcador-{{ l.marcador }}">
+        <td><span class="marcador-docx {{ 'sem-mapa' if not l.tag }}">{{ l.rotulo }}</span>
+          {% if l.rotulo != l.marcador %}<span class="quebra codigo-campo">{{ l.marcador }}</span>{% endif %}</td>
+        <td class="trecho">{% if l.antes or l.depois %}{{ l.antes }} <mark>{{ l.rotulo }}</mark> {{ l.depois }}
+            {%- else %}<span class="discreto">—</span>{% endif %}</td>
+        {% if modelo.vigente %}
+        <td><select form="f-mapa" name="campo__{{ l.marcador }}" aria-label="Dado que vai em {{ l.rotulo }}">
+            <option value=""{{ ' selected' if not l.escolhido }}>— escolha o dado —</option>
+            {% for grupo, lista in campos_por_grupo %}
+            <optgroup label="{{ grupo }}">
+              {% for codigo, campo in lista %}
+              <option value="{{ codigo }}"{{ ' selected' if l.escolhido == codigo }}>{{ campo.rotulo }}
+                {%- if codigo == l.sugestao %} (sugerido){% endif %} — ex.: {{ campo.exemplo }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select></td>
+        <td><label class="discreto"><input form="f-mapa" type="checkbox" name="obrigatorio__{{ l.marcador }}" value="1"
+            {% if (l.tag and l.tag.obrigatorio) or (not l.tag and l.escolhido != 'em_branco') %}checked{% endif %}> bloqueia</label></td>
+        {% else %}
+        <td>{% if l.tag %}<span class="campo-fixo">{{ campos[l.campo].rotulo if l.campo in campos else l.campo }}</span>
+            {%- else %}<span class="discreto">—</span>{% endif %}</td>
+        <td>{% if l.tag %}{{ ui.pilula_sim_nao(l.tag.obrigatorio, 'bloqueia', 'não bloqueia') }}{% endif %}</td>
+        {% endif %}
+        <td>{% if l.tag %}<span class="pilula ok">ligado</span>
+            {% elif l.sugestao %}<span class="pilula alerta" title="sugerido: {{ l.sugestao_rotulo }}">sugerido, falta salvar</span>
+            {% else %}<span class="pilula erro">falta escolher</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+
+    <div class="corpo">
+      <div class="acoes">
+        {% if modelo.vigente %}
+        <button type="submit" form="f-mapa">Salvar</button>
+        {% if com_sugestao %}
+        {# Só os que ainda não têm dado: o que já foi escolhido não muda. #}
+        <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/sugeridas">
+          <button type="submit" class="secundario">Aplicar sugestões ({{ com_sugestao|length }})</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        <a class="botao secundario" href="/treinamentos/modelos/{{ modelo.id }}/exemplo">Baixar exemplo preenchido</a>
+      </div>
+      <p class="discreto sem-margem">O exemplo é o próprio <code>.docx</code> com dados de
+        mentira em cada marcador (o que ainda não tem dado sai como “[falta: …]”).</p>
     </div>
     {% endif %}
   </section>
@@ -246,14 +275,14 @@
 {# Daqui para baixo é camada, e não bloco da coluna. #}
 {% call ui.popup_cadastro('mapear-marcador', MAPEAR,
                           '/treinamentos/modelos/' ~ modelo.id ~ '/tags', MAPEAR,
-                          nota='uma linha do dicionário: o marcador e o campo que o alimenta') %}
+                          nota='o marcador do arquivo e o dado que vai no lugar dele') %}
   <div class="linha-campos">
     <div class="campo codigo"><label for="novo-marcador">Marcador no .docx</label>
       <input id="novo-marcador" name="marcador" required placeholder="nome_do_participante"
              aria-describedby="dica-marcador">
       <span class="dica" id="dica-marcador">Sem as chaves: só o nome de dentro
         delas.</span></div>
-    <div class="campo"><label for="novo-campo">Campo do sistema</label>
+    <div class="campo"><label for="novo-campo">Dado do sistema</label>
       <select id="novo-campo" name="campo" required>
         {% for grupo, lista in campos_por_grupo %}
         <optgroup label="{{ grupo }}">
@@ -277,11 +306,17 @@
   <div class="campo"><label for="nome">Nome</label>
     <input id="nome" name="nome" value="{{ modelo.nome }}" required></div>
   <div class="linha-campos">
+    {% if enviado %}
+    <div class="campo codigo"><span class="rotulo">Arquivo .docx</span>
+      <span class="mono">{{ modelo.arquivo }}</span>
+      <span class="dica">Para trocar o arquivo, publique uma versão nova.</span></div>
+    {% else %}
     <div class="campo codigo"><label for="arquivo">Arquivo .docx</label>
       <select id="arquivo" name="arquivo" required>
         {% if modelo.arquivo not in arquivos %}<option value="{{ modelo.arquivo }}" selected>{{ modelo.arquivo }} (ausente)</option>{% endif %}
         {% for a in arquivos %}<option value="{{ a }}"{{ ' selected' if a == modelo.arquivo }}>{{ a }}</option>{% endfor %}
       </select></div>
+    {% endif %}
     <div class="campo"><label for="orientacao">Orientação</label>
       <select id="orientacao" name="orientacao">
         {% for o in orientacoes %}
@@ -302,15 +337,21 @@
 
 {% call ui.popup_cadastro('publicar-versao', PUBLICAR,
                           '/treinamentos/modelos/' ~ modelo.id ~ '/versao', PUBLICAR,
+                          enctype='multipart/form-data',
                           nota='v' ~ modelo.versao ~ ' → v' ~ (modelo.versao + 1)) %}
   {# A escolha fica aqui, na hora de publicar: quem publica decide se os
      treinamentos passam à versão nova, e cada troca vira um evento na trilha.
      Desmarcada, vale o comportamento antigo — o catálogo segue na versão de
      hoje, marcada (superada), até alguém trocar lá. #}
-  <p>Publicar a v{{ modelo.versao + 1 }} aposenta esta versão.
-    Clona o modelo e o dicionário inteiro para a versão seguinte — o mapa vai junto
-    de propósito: redigitar trinta linhas é como se troca o nome do instrutor pelo
-    do participante.</p>
+  <p>Publicar a v{{ modelo.versao + 1 }} aposenta esta versão. A versão nova leva
+    junto o dado escolhido para cada marcador — refazer tudo à mão é como se troca o
+    nome do instrutor pelo do participante.</p>
+  <div class="campo"><label for="versao-docx">Arquivo do Word novo (opcional)</label>
+    <input id="versao-docx" type="file" name="docx"
+           accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+           aria-describedby="dica-versao-docx">
+    <span class="dica" id="dica-versao-docx">Até {{ limite_mb }} MB. Em branco, a versão nova usa
+      o mesmo arquivo. Com arquivo novo, vão junto só os marcadores que ele ainda tem.</span></div>
   {% if apontam %}
   <div class="campo">
     <label class="discreto"><input type="checkbox" name="repontar" value="1" checked>

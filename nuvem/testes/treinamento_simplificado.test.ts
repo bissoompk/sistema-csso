@@ -165,7 +165,7 @@ describe("treinamento simplificado: o curso já dado até o certificado", () => 
     expect(vinculos).toHaveLength(1);
   });
 
-  it("mapear sugeridos completa o dicionário de um modelo novo num POST", async () => {
+  it("aplicar sugestões completa o dicionário de um modelo novo num POST", async () => {
     redireciona(
       await cliente.post(
         "/treinamentos/modelos",
@@ -178,7 +178,7 @@ describe("treinamento simplificado: o curso já dado até o certificado", () => 
     const tela = (await cliente.get("/treinamentos/modelos")).text;
     expect(tela).toContain('<option value="certificado_padrao_v1.docx"');
     await cliente.post(`/treinamentos/modelos/${modelo!.id}/tags`, { marcador: "curso", campo: "treinamento_conteudo" });
-    expect((await cliente.get(`/treinamentos/modelos/${modelo!.id}`)).text).toContain("Mapear sugeridos (22)");
+    expect((await cliente.get(`/treinamentos/modelos/${modelo!.id}`)).text).toContain("Aplicar sugestões (22)");
     redireciona(await cliente.post(`/treinamentos/modelos/${modelo!.id}/tags/sugeridas`, {}, { seguir: false }));
     const tags = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, modelo!.id));
     expect(tags).toHaveLength(23);
