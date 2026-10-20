@@ -19,7 +19,8 @@ import {
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
 import { INSCRICAO_OCUPA_VAGA } from "../dominio/estados.js";
-import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import type { UsuarioAtual } from "./rbac.js";
+import * as servico_turma from "./turma.js";
 
 export const SEM_SETOR = "(sem setor promotor)";
 export const TOP_TREINAMENTOS = 10;
@@ -53,7 +54,7 @@ export interface Indicadores {
 }
 
 export async function calcular(tx: Executor, usuario: UsuarioAtual, f: Filtros): Promise<Indicadores> {
-  const onde: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_turma)];
+  const onde: (SQL | undefined)[] = [servico_turma.consulta_no_escopo(usuario)];
   if (f.de) onde.push(gte(tabela_turma.data_inicio, f.de));
   if (f.ate) onde.push(lte(tabela_turma.data_inicio, f.ate));
   if (f.unidade_promotora_id) onde.push(eq(tabela_turma.unidade_promotora_id, f.unidade_promotora_id));

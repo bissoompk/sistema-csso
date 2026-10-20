@@ -292,6 +292,12 @@ export const MODULOS: readonly Modulo[] = [
         "Emitidos, com segunda via a partir do congelado.",
       ),
       new Item(
+        "Fila de emissão",
+        "/certificados/fila",
+        "certificado.ver",
+        "Aprovados sem certificado, travados e emitidos, de todas as turmas.",
+      ),
+      new Item(
         "Reciclagem",
         "/certificados/vencimentos",
         "certificado.ver",

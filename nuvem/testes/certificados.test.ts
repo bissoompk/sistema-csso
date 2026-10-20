@@ -33,6 +33,7 @@ import * as servico from "../src/servicos/emissao_certificado.js";
 import * as servico_pdf from "../src/servicos/pdf.js";
 import * as servico_presenca from "../src/servicos/presenca.js";
 import * as reciclagem from "../src/servicos/reciclagem.js";
+import * as fila_emissao from "../src/servicos/fila_emissao.js";
 import * as indicadores from "../src/servicos/treinamento_indicadores.js";
 import { periodo_de } from "../src/rotas/treinamentos.js";
 import { PermissaoNegada, type UsuarioAtual } from "../src/servicos/rbac.js";
@@ -823,5 +824,65 @@ describe("indicadores de treinamento", () => {
     expect(suprimida.text).toMatch(/Participantes<\/div>\s*<div class="medida"><span class="valor">—</);
     await entrar(cliente, "servidor_consulta");
     expect((await cliente.get("/treinamentos/indicadores")).status).toBe(403);
+  });
+});
+
+// =====================================================================
+// Fila de emissão
+// =====================================================================
+describe("fila de emissão entre turmas", () => {
+  async function _cenario_fila() {
+    const usuario = await _usuario(db);
+    const cen = await _cenario(db, usuario, { extras: [["2220001", "Ana Lima", "8"]] });
+    return { usuario, cen };
+  }
+
+  it("separa aguardando, emitido e travado, com o motivo da emissão", async () => {
+    const { usuario, cen } = await _cenario_fila();
+    let r = await fila_emissao.fila(db, usuario);
+    expect(r.contagem).toMatchObject({ AGUARDANDO: 2, TRAVADO: 0, EMITIDO: 0 });
+    await servico.emitir(db, usuario, cen.inscricao, { gerar_pdf: false });
+    r = await fila_emissao.fila(db, usuario, { etapa: "EMITIDO" });
+    expect(r.itens.map((x) => x.participante_nome)).toEqual(["Marco Antônio Alves Schetino"]);
+    expect(r.itens[0]!.certificado_rotulo).toMatch(/^\d+\/\d{4}$/);
+    // o instrutor perde a vigência antes do curso: a emissão recusaria, a fila diz por quê
+    await db.update(e.assinatura_instrutor).set({ vigencia_fim: "2001-01-01", vigencia_inicio: "2000-01-01" });
+    r = await fila_emissao.fila(db, usuario, { etapa: "TRAVADO" });
+    expect(r.itens.map((x) => x.participante_nome)).toEqual(["Ana Lima"]);
+    expect(r.itens[0]!.motivos.join(" ")).toMatch(/vig/i);
+    expect(r.contagem.AGUARDANDO).toBe(0);
+  });
+
+  it("busca por nome e turma, e emite os marcados pela tela", async () => {
+    await _cenario_fila();
+    await contas(db);
+    await entrar(cliente, "coordenador_csso");
+    const tela = await cliente.get("/certificados/fila?busca=ana+lima");
+    expect(tela.status).toBe(200);
+    expect(tela.text).toContain("Ana Lima");
+    expect(tela.text).not.toContain("Marco Antônio");
+    const [ana] = await db
+      .select({ id: e.inscricao.id })
+      .from(e.inscricao)
+      .innerJoin(e.participante, eq(e.participante.id, e.inscricao.participante_id))
+      .innerJoin(e.servidor, eq(e.servidor.id, e.participante.servidor_id))
+      .where(eq(e.servidor.nome, "Ana Lima"));
+    const resposta = await cliente.post("/certificados/fila/emitir", { inscricao_id: [String(ana!.id)] }, { seguir: false });
+    expect(resposta.status).toBe(303);
+    expect((await cliente.get(resposta.location!)).text).toContain("1 certificado(s) emitido(s).");
+    expect(await db.select().from(e.certificado)).toHaveLength(1);
+    expect((await cliente.get("/certificados/fila?busca=123.456.789-09")).text).toContain("não busca por CPF");
+  });
+
+  it("quem não lê certificado não abre a fila, e quem não emite não emite", async () => {
+    await _cenario_fila();
+    await contas(db);
+    await entrar(cliente, "servidor_consulta");
+    expect((await cliente.get("/certificados/fila")).status).toBe(403);
+    await entrar(cliente, "auditor_interno");
+    const tela = await cliente.get("/certificados/fila");
+    expect(tela.status).toBe(200);
+    expect(tela.text).not.toContain('action="/certificados/fila/emitir"');
+    expect((await cliente.post("/certificados/fila/emitir", { inscricao_id: ["1"] })).status).toBe(403);
   });
 });

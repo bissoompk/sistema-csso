@@ -30,6 +30,7 @@ import { numeroDaPagina, pagina, recortarConsulta, redirecionar } from "../web.j
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as conversor_pdf from "../servicos/conversor_pdf.js";
 import * as reciclagem from "../servicos/reciclagem.js";
+import * as fila_emissao from "../servicos/fila_emissao.js";
 import { parece_cpf } from "../servicos/textos.js";
 import { baixar } from "./turmas.js";
 import { erro as _erro, id_opcional, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
@@ -39,6 +40,7 @@ export const rotas = new Hono<Ambiente>();
 export const CERTIFICADOS = "/certificados";
 export const MEUS = `${CERTIFICADOS}/meus`;
 export const VENCIMENTOS = `${CERTIFICADOS}/vencimentos`;
+export const FILA = `${CERTIFICADOS}/fila`;
 
 /** Os certificados de uma página, com o que a lista lê (participante e treinamento). */
 async function _pagina_de_certificados(c: Ctx, onde: SQL | undefined) {
@@ -128,6 +130,64 @@ rotas.get(VENCIMENTOS, async (c) => {
     busca,
     busca_cpf,
   });
+});
+
+// =====================================================================
+// Fila de emissão — todas as turmas, pela etapa de cada inscrição
+// =====================================================================
+async function _tela_fila(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string | null; erro?: string | null; travados?: fila_emissao.ResultadoFila["travados"] } = {}) {
+  const tx = c.get("tx");
+  const etapa = c.req.query("etapa") ?? "AGUARDANDO";
+  const treinamento_id = c.req.query("treinamento_id") ?? "";
+  const busca = c.req.query("busca") ?? "";
+  const busca_cpf = parece_cpf(busca);
+  const { itens, contagem, cortado } = await fila_emissao.fila(tx, usuario, {
+    etapa,
+    treinamento_id: id_opcional(treinamento_id),
+    busca: busca_cpf ? "" : busca,
+  });
+  return pagina(c, "paginas/certificados_fila.html", usuario, {
+    itens,
+    contagem,
+    cortado,
+    limite: fila_emissao.LIMITE_LINHAS,
+    etapas: fila_emissao.ETAPAS.map((e) => [e, fila_emissao.ROTULO_ETAPA[e]]),
+    filtro_etapa: (fila_emissao.ETAPAS as readonly string[]).includes(etapa) ? etapa : "AGUARDANDO",
+    filtro_treinamento: treinamento_id,
+    busca,
+    busca_cpf,
+    treinamentos: await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
+    pode_emitir: usuario.pode("certificado.emitir"),
+    travados: d.travados ?? [],
+    ...recados(c),
+    ...(d.mensagem ? { mensagem: d.mensagem } : {}),
+    ...(d.erro ? { erro: d.erro } : {}),
+  });
+}
+
+rotas.get(FILA, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.ver");
+  return _tela_fila(c, usuario);
+});
+
+rotas.post(`${FILA}/emitir`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.ver");
+  usuario.exigir("certificado.emitir");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const ids = [...new Set(f.todos("inscricao_id").map((v) => id_opcional(v)).filter((v): v is number => v !== null))];
+  if (!ids.length) return _erro(c, FILA, "Marque quem vai receber o certificado.");
+  const resultado = await fila_emissao.emitir_escolhidas(tx, usuario, ids);
+  const frase =
+    `${resultado.emitidos} certificado(s) emitido(s)` +
+    (resultado.travados.length ? `, ${resultado.travados.length} travado(s) — o motivo está abaixo.` : ".");
+  // o travado fica na tela com o motivo: o recado da URL não cabe a lista
+  if (resultado.travados.length) {
+    return _tela_fila(c, usuario, { [resultado.emitidos ? "mensagem" : "erro"]: frase, travados: resultado.travados });
+  }
+  return _volta(c, FILA, frase);
 });
 
 // =====================================================================

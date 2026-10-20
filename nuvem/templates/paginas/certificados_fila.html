@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Fila de emissão · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Fila de emissão</h1>
+      <p class="sub">
+        {%- if contagem.AGUARDANDO or contagem.TRAVADO %}{{ contagem.AGUARDANDO }} aguardando emissão
+        e {{ contagem.TRAVADO }} travado(s). {% endif -%}
+        Todas as turmas, pela etapa de cada inscrição.</p>
+      {% call ui.info('etapas-da-fila', 'o que cada etapa quer dizer') %}
+        <p><strong>Aguardando emissão</strong>: aprovado em turma concluída, sem certificado,
+          e a emissão aceitaria agora. <strong>Travados</strong>: aprovados que a emissão
+          recusaria — o motivo está na linha (instrutor sem vigência, modelo incompleto, campo
+          da turma em branco…). Corrija na turma e volte.</p>
+        <p><strong>Em curso</strong>: inscritos de turma que ainda não terminou.
+          <strong>Faltaram</strong> e <strong>reprovados</strong> não recebem certificado.</p>
+        <p>Emitir dá número e chave de validação de uma vez; o PDF sai do certificado
+          quando alguém o abre. O sistema não envia e-mail: o participante baixa o seu em
+          “Meus certificados”, ou o setor envia o PDF.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  <div class="fileira">
+    <span class="rotulo-grupo">Etapa</span>
+    {% set eixo_treinamento = ('&treinamento_id=' ~ filtro_treinamento) if filtro_treinamento else '' %}
+    {% set eixo_busca = ('&busca=' ~ busca|urlencode) if busca else '' %}
+    {% for codigo, rotulo in etapas %}
+    <a class="ficha-filtro {{ 'ativa' if filtro_etapa == codigo }}"
+       href="/certificados/fila?etapa={{ codigo }}{{ eixo_treinamento }}{{ eixo_busca }}">{{ rotulo }}
+      <span class="discreto">{{ contagem[codigo] }}</span></a>
+    {% endfor %}
+    <form method="get" action="/certificados/fila" class="filtro-inline">
+      <input type="hidden" name="etapa" value="{{ filtro_etapa }}">
+      <label class="oculto" for="f-treinamento">Filtrar por treinamento</label>
+      <select id="f-treinamento" name="treinamento_id" data-envia-ao-mudar>
+        <option value="">Treinamento: todos</option>
+        {% for t in treinamentos %}
+        <option value="{{ t.id }}" {% if filtro_treinamento == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
+        {% endfor %}
+      </select>
+      <label class="oculto" for="f-busca">Nome, SIAPE, PTC-… ou turma</label>
+      <input id="f-busca" type="search" name="busca" value="{{ busca }}" placeholder="nome, SIAPE, PTC-… ou turma">
+      <button type="submit" class="secundario">Buscar</button>
+    </form>
+  </div>
+
+  {% if busca_cpf %}
+  <div class="aviso aviso-info">O sistema não busca por CPF. Procure pelo nome, pelo SIAPE,
+    pelo identificador PTC-… ou pelo código da turma.</div>
+  {% endif %}
+
+  {% if travados|length %}
+  <div class="aviso aviso-alerta">
+    <strong>Travados nesta emissão:</strong>
+    <ul class="sem-margem">
+      {% for t in travados %}<li><span class="mono">{{ t.quem }}</span> — {{ t.motivo }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% set selecionavel = pode_emitir and filtro_etapa == 'AGUARDANDO' and itens|length %}
+  {% if selecionavel %}
+  <form method="post" action="/certificados/fila/emitir" id="f-emitir"></form>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr>
+        {% if selecionavel %}<th scope="col"><span class="oculto">Selecionar</span></th>{% endif %}
+        <th scope="col">Participante</th><th scope="col">Turma</th><th scope="col">Terminou em</th>
+        <th scope="col">{{ 'Certificado' if filtro_etapa == 'EMITIDO' else 'Situação' }}</th>
+      </tr>
+    </thead>
+    {% for x in itens %}
+    <tr>
+      {% if selecionavel %}
+      <td><input form="f-emitir" type="checkbox" name="inscricao_id" value="{{ x.inscricao_id }}" checked
+                 aria-label="Emitir o certificado de {{ x.participante_nome }}"></td>
+      {% endif %}
+      <td class="nome">{{ x.participante_nome }}
+        <span class="quebra discreto mono">{{ x.siape or x.participante_identificador }}</span></td>
+      <td><a class="mono" href="/turmas/{{ x.turma_id }}?aba=emissao">{{ x.turma_codigo }}</a>
+        <span class="quebra discreto">{{ x.treinamento_nome }}</span></td>
+      <td class="mono">{{ x.turma_fim|data }}</td>
+      <td>
+        {%- if x.etapa == 'EMITIDO' %}<a class="mono" href="/certificados/{{ x.certificado_id }}">{{ x.certificado_rotulo }}</a>
+        {%- elif x.etapa == 'TRAVADO' %}<span class="pilula alerta">travado</span>
+          {% for m in x.motivos %}<span class="quebra discreto">{{ m }}</span>{% endfor %}
+        {%- elif x.etapa == 'AGUARDANDO' %}<span class="pilula ok">pronto para emitir</span>
+        {%- elif x.etapa == 'FALTOU' %}<span class="pilula sem-ponto">faltou</span>
+        {%- elif x.etapa == 'REPROVADO' %}<span class="pilula erro">reprovado</span>
+        {%- else %}<span class="pilula sem-ponto">em curso</span>{% endif -%}
+      </td>
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Ninguém nesta etapa.',
+         'A etapa, o treinamento e a busca valem ao mesmo tempo. As outras etapas, na
+          fileira acima, mostram quantos há em cada uma.', 5) }}
+    {% endfor %}
+  </table>
+  </div>
+
+  {% if cortado %}
+  <p class="discreto">Mostrando os primeiros {{ limite }}. Use o treinamento ou a busca para
+    recortar.</p>
+  {% endif %}
+
+  {% if selecionavel %}
+  <div class="acoes">
+    <button form="f-emitir" type="submit">Emitir os certificados marcados</button>
+    <p class="discreto sem-margem">Cada certificado consome um número da sequência do ano, e
+      número consumido não volta. Desmarque quem não deve sair agora.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

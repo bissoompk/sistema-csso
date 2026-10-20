@@ -731,6 +731,7 @@ describe("o módulo no menu e no mapa", () => {
       ["/turmas/minhas", "treinamento.ver"],
       ["/certificados/meus", "treinamento.ver"],
       ["/certificados", "certificado.ver"],
+      ["/certificados/fila", "certificado.ver"],
       ["/certificados/vencimentos", "certificado.ver"],
       ["/treinamentos/indicadores", "indicador.ver"],
       ["/treinamentos/catalogo", "treinamento.ver"],

@@ -195,9 +195,9 @@ const DELIBERADAS: { motivo: string; contas?: string[]; rota: RegExp; rotulo?: R
     motivo:
       "certificado.ver é, por definição (rbac.PERMISSOES), 'ver certificado nominal' " +
       "— e o PDF (um ou o lote da turma) e o .zip dos .docx são o mesmo documento; " +
-      "o monitor de reciclagem é a mesma lista, ordenada pelo vencimento",
+      "o monitor de reciclagem e a fila de emissão são a mesma lista, por vencimento e por etapa",
     contas: ["secretaria", "sem_nominal"],
-    rota: /^\/(certificados(\/\d+(\/(documento|pdf))?|\/vencimentos)?|turmas\/\d+\/certificados\.(pdf|zip))(\?|$)/,
+    rota: /^\/(certificados(\/\d+(\/(documento|pdf))?|\/(vencimentos|fila))?|turmas\/\d+\/certificados\.(pdf|zip))(\?|$)/,
   },
   {
     motivo:
