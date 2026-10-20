@@ -269,3 +269,52 @@ describe("acesso do participante sem conta", () => {
     expect(lista.text).toContain("Nenhum certificado em vigor");
   });
 });
+
+describe("busca em /certificados", () => {
+  it("acha por nome sem acento e fora de ordem, SIAPE, PTC, turma, número e chave; CPF não", async () => {
+    const h = await cenario();
+    await entrar(cliente, "coordenador_csso");
+    const busca = async (termo: string) =>
+      (await cliente.get(`/certificados?busca=${encodeURIComponent(termo)}`)).text;
+    const rotulo = `${h.do_marco.numero}/${h.do_marco.ano}`;
+    const so_marco = (html: string) => html.includes(`>${rotulo}<`) && !html.includes("Ana Lima");
+    expect(so_marco(await busca("marco schetino"))).toBe(true);
+    expect(so_marco(await busca("ANTONIO"))).toBe(true);
+    expect(so_marco(await busca("1110654"))).toBe(true);
+    expect(so_marco(await busca(rotulo))).toBe(true);
+    expect(so_marco(await busca(h.do_marco.chave_validacao))).toBe(true);
+    const [p] = await db.select().from(e.participante).where(eq(e.participante.id, h.do_marco.participante_id));
+    expect(so_marco(await busca(p!.identificador_publico))).toBe(true);
+    // a turma e o treinamento trazem os dois
+    const turma = await busca((h.do_marco.contexto_congelado as Record<string, string>)["turma_codigo"]!);
+    expect(turma).toContain("Ana Lima");
+    expect(turma).toContain("Marco Antônio");
+    expect(await busca("altura")).toContain("Ana Lima");
+    expect(await busca("ninguem com este nome")).toContain("Nenhum certificado encontrado");
+    expect(await busca("100%_")).toContain("Nenhum certificado encontrado");
+    const cpf = await busca("529.982.247-25");
+    expect(cpf).toContain("O sistema não busca por CPF");
+  });
+});
+
+describe("envio pela fila de emissão", () => {
+  it("os marcados entre turmas vão para a caixa; o já enviado vem desmarcado", async () => {
+    const h = await cenario();
+    await entrar(cliente, "coordenador_csso");
+    const antes = (await cliente.get("/certificados/fila?etapa=EMITIDO")).text;
+    expect(antes).toContain('action="/certificados/fila/email"');
+    expect(antes).toContain(`name="certificado_id" value="${h.do_marco.id}"\n                 checked`);
+    const todos = (await db.select().from(e.certificado)).map((x) => String(x.id));
+    const r = await cliente.post("/certificados/fila/email", { certificado_id: todos });
+    expect(r.text).toContain("1 certificado(s) na fila de envio; 1 sem e-mail cadastrado.");
+    const [linha] = await _caixa();
+    expect(linha!.certificado_id).toBe(h.do_marco.id);
+    const depois = (await cliente.get("/certificados/fila?etapa=EMITIDO")).text;
+    expect(depois).toContain("e-mail: na fila");
+    expect(depois).not.toContain(`name="certificado_id" value="${h.do_marco.id}"\n                 checked`);
+    // quem só vê certificado não envia
+    await entrar(cliente, "auditor_interno");
+    expect((await cliente.post("/certificados/fila/email", { certificado_id: todos })).status).toBe(403);
+    expect(await _caixa()).toHaveLength(1);
+  });
+});

@@ -40,9 +40,9 @@
     <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
        href="/certificados?situacao={{ codigo }}">{{ rotulo }}</a>
     {% endfor %}
-    {# A busca é pela CHAVE, e não por nome: a lista autenticada já mostra o nome,
-       e a consulta por chave é o que o suporte faz quando alguém liga com o papel
-       na mão. #}
+    {# A busca acha pela chave inteira (o suporte com o papel na mão), pelo número
+       (12/2026) ou, palavra por palavra, pelo nome, SIAPE, PTC-…, turma ou
+       treinamento — `filtro_da_busca` em `rotas/certificados.ts`. #}
     <form method="get" action="/certificados" class="filtro-inline">
       {% if filtro_situacao %}
       <input type="hidden" name="situacao" value="{{ filtro_situacao }}">{% endif %}
@@ -53,12 +53,17 @@
         <option value="{{ t.id }}" {% if filtro_treinamento == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
         {% endfor %}
       </select>
-      <label class="oculto" for="f-chave">Chave de validação</label>
-      <input id="f-chave" class="mono" type="search" name="busca" value="{{ busca }}"
-             placeholder="CSSO-2026-K7QMX-3FTB9-H">
+      <label class="oculto" for="f-chave">Nome, SIAPE, PTC-…, turma, número ou chave</label>
+      <input id="f-chave" type="search" name="busca" value="{{ '' if busca_cpf else busca }}"
+             placeholder="nome, SIAPE, turma, 12/2026 ou a chave">
       <button type="submit" class="secundario">Buscar</button>
     </form>
   </div>
+
+  {% if busca_cpf %}
+  <div class="aviso aviso-info">O sistema não busca por CPF. Procure pelo nome, pelo SIAPE,
+    pelo identificador PTC-…, pela turma ou pela chave de validação.</div>
+  {% endif %}
 
   <div class="tabela-cartao lista">
   <table>
@@ -87,16 +92,16 @@
       <td>{{ ui.pilula_certificado(situacao_publica[c.id]) }}</td>
     </tr>
     {% else %}
-    {# A busca desta tela é por CHAVE EXATA, e é isso que a saída precisa dizer:
-       quem digitar o nome do participante aqui não acha nada e conclui que o
-       certificado não foi emitido. O certificado não nasce nesta tela — ele sai
-       da aba Emissão da turma —, então o próximo passo aponta para lá. #}
-    {% if busca %}
+    {# A saída diz onde a busca olhou: quem não acha conclui que o certificado não
+       foi emitido. Ele não nasce nesta tela — sai da aba Emissão da turma, e o
+       aprovado ainda sem certificado está na Fila de emissão. #}
+    {% if busca and not busca_cpf %}
     {{ ui.vazio_de_lista(
-         'Nenhum certificado com essa chave.',
-         'Este campo procura a chave de validação inteira e exata
-          (CSSO-2026-K7QMX-3FTB9-H), como ela vem impressa no papel — não o nome
-          de quem recebeu nem o número do certificado.', 6) }}
+         'Nenhum certificado encontrado.',
+         'A busca olha o nome (como está no certificado e como está hoje no cadastro),
+          o SIAPE, o PTC-…, a turma e o treinamento, com cada palavra digitada; ou o
+          número (12/2026) e a chave inteira. Aprovado ainda sem certificado aparece na
+          Fila de emissão.', 6) }}
     {% elif filtro_situacao or filtro_treinamento %}
     {{ ui.vazio_de_lista(
          'Nenhum certificado nesta seleção.',

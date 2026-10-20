@@ -20,9 +20,10 @@
         <p><strong>Em curso</strong>: inscritos de turma que ainda não terminou.
           <strong>Faltaram</strong> e <strong>reprovados</strong> não recebem certificado.</p>
         <p>Emitir dá número e chave de validação de uma vez; o PDF sai do certificado
-          quando alguém o abre. Para mandá-lo ao participante, use “Enviar por e-mail” na
-          aba Emissão da turma (ou na ficha do certificado); o servidor também o baixa em
-          “Meus certificados”.</p>
+          quando alguém o abre. Para mandá-lo ao participante, marque-o na etapa
+          <strong>Emitidos</strong> e use “Enviar por e-mail os marcados” (ou a aba Emissão
+          da turma, ou a ficha do certificado); o participante também o baixa em “Meus
+          certificados”, com ou sem conta.</p>
       {% endcall %}
     </div>
   </div>
@@ -69,12 +70,17 @@
   {% if selecionavel %}
   <form method="post" action="/certificados/fila/emitir" id="f-emitir"></form>
   {% endif %}
+  {# nos emitidos, a caixinha é a do envio por e-mail #}
+  {% set enviavel = pode_emitir and filtro_etapa == 'EMITIDO' and itens|length %}
+  {% if enviavel %}
+  <form method="post" action="/certificados/fila/email" id="f-email"></form>
+  {% endif %}
 
   <div class="tabela-cartao lista">
   <table>
     <thead>
       <tr>
-        {% if selecionavel %}<th scope="col"><span class="oculto">Selecionar</span></th>{% endif %}
+        {% if selecionavel or enviavel %}<th scope="col"><span class="oculto">Selecionar</span></th>{% endif %}
         <th scope="col">Participante</th><th scope="col">Turma</th><th scope="col">Terminou em</th>
         <th scope="col">{{ 'Certificado' if filtro_etapa == 'EMITIDO' else 'Situação' }}</th>
       </tr>
@@ -84,6 +90,10 @@
       {% if selecionavel %}
       <td><input form="f-emitir" type="checkbox" name="inscricao_id" value="{{ x.inscricao_id }}" checked
                  aria-label="Emitir o certificado de {{ x.participante_nome }}"></td>
+      {% elif enviavel %}
+      <td><input form="f-email" type="checkbox" name="certificado_id" value="{{ x.certificado_id }}"
+                 {{ '' if envios[x.certificado_id] in ['ENVIADO', 'PENDENTE'] else 'checked' }}
+                 aria-label="Enviar por e-mail o certificado de {{ x.participante_nome }}"></td>
       {% endif %}
       <td class="nome">{{ x.participante_nome }}
         <span class="quebra discreto mono">{{ x.siape or x.participante_identificador }}</span></td>
@@ -92,6 +102,8 @@
       <td class="mono">{{ x.turma_fim|data }}</td>
       <td>
         {%- if x.etapa == 'EMITIDO' %}<a class="mono" href="/certificados/{{ x.certificado_id }}">{{ x.certificado_rotulo }}</a>
+          {% if envios[x.certificado_id] %}<span class="quebra"><span class="pilula {{ 'ok' if envios[x.certificado_id] == 'ENVIADO' else ('erro' if envios[x.certificado_id] == 'FALHOU' else 'sem-ponto') }}">
+            e-mail: {{ rotulo_envio[envios[x.certificado_id]]|lower }}</span></span>{% endif %}
         {%- elif x.etapa == 'TRAVADO' %}<span class="pilula alerta">travado</span>
           {% for m in x.motivos %}<span class="quebra discreto">{{ m }}</span>{% endfor %}
         {%- elif x.etapa == 'AGUARDANDO' %}<span class="pilula ok">pronto para emitir</span>
@@ -112,6 +124,17 @@
   {% if cortado %}
   <p class="discreto">Mostrando os primeiros {{ limite }}. Use o treinamento ou a busca para
     recortar.</p>
+  {% endif %}
+
+  {% if enviavel %}
+  <div class="acoes">
+    <button form="f-email" type="submit">Enviar por e-mail os marcados</button>
+    <p class="discreto sem-margem">Vai para o e-mail do participante, com o certificado
+      anexado. Os já enviados vêm desmarcados e não saem de novo por aqui (reenviar é pela
+      ficha do certificado); quem não tem e-mail é contado no aviso.
+      {%- if not email_configurado() %} <strong>O envio ainda não está configurado:</strong>
+      os pedidos ficam na fila e saem quando for ligado.{% endif %}</p>
+  </div>
   {% endif %}
 
   {% if selecionavel %}

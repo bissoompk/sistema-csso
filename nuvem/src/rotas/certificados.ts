@@ -7,7 +7,7 @@
  * arquivo: a guarda que importa é a do serviço (`emissao_certificado.ts`).
  */
 import { Hono } from "hono";
-import { and, asc, count, desc, eq, gt, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, or, sql, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import { certificado as tabela_certificado, treinamento as tabela_treinamento } from "../db/esquema/index.js";
@@ -21,7 +21,7 @@ import {
 } from "../dominio/treinamento.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
-import { CAMPOS_CERTIFICADO, normalizar_chave } from "../servicos/certificado.js";
+import { CAMPOS_CERTIFICADO, chave_valida, normalizar_chave } from "../servicos/certificado.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as servico from "../servicos/emissao_certificado.js";
 import { COM_PARTICIPANTE } from "../servicos/participante.js";
@@ -33,7 +33,7 @@ import * as reciclagem from "../servicos/reciclagem.js";
 import * as fila_emissao from "../servicos/fila_emissao.js";
 import * as email from "../servicos/email.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
-import { parece_cpf } from "../servicos/textos.js";
+import { chave_busca, parece_cpf } from "../servicos/textos.js";
 import { baixar } from "./turmas.js";
 import { erro as _erro, id_opcional, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
 
@@ -67,6 +67,51 @@ async function _pagina_de_certificados(c: Ctx, onde: SQL | undefined) {
 // =====================================================================
 // Lista
 // =====================================================================
+const _COM_ACENTO = "áàâãäéèêëíìîïóòôõöúùûüçñ";
+const _SEM_ACENTO = "aaaaaeeeeiiiiooooouuuucn";
+
+/** `translate(lower(x))`: a comparação sem acento nem caixa, no banco (sem `unaccent`). */
+function _sem_acento(expr: SQL): SQL {
+  return sql`translate(lower(${expr}), ${_COM_ACENTO}, ${_SEM_ACENTO})`;
+}
+
+/**
+ * O que o campo de busca da lista procura:
+ *
+ * - a chave de validação inteira (o suporte com o papel na mão);
+ * - o número, `12/2026`;
+ * - senão, cada palavra em algum lugar: o nome que está no papel (congelado)
+ *   ou o de hoje do participante, o SIAPE, o `PTC-…`, o código da turma e o
+ *   treinamento. Sem acento nem caixa.
+ *
+ * `null` quando não há o que buscar.
+ */
+export function filtro_da_busca(busca: string): SQL | null {
+  const limpa = busca.trim();
+  if (!limpa) return null;
+  if (chave_valida(normalizar_chave(limpa))) return eq(tabela_certificado.chave_validacao, normalizar_chave(limpa));
+  const numero = limpa.match(/^(\d{1,6})\s*\/\s*(\d{4})$/);
+  if (numero) {
+    return and(eq(tabela_certificado.numero, Number(numero[1])), eq(tabela_certificado.ano, Number(numero[2])))!;
+  }
+  const congelado = (campo: string) => sql`(${tabela_certificado.contexto_congelado} ->> ${campo})`;
+  const palavras = chave_busca(limpa).split(" ").filter(Boolean).slice(0, 6);
+  const condicoes = palavras.map((p) => {
+    const curinga = `%${p.replace(/[\\%_]/g, (x) => `\\${x}`)}%`;
+    return or(
+      sql`${_sem_acento(congelado("participante_nome"))} LIKE ${curinga}`,
+      sql`${_sem_acento(congelado("treinamento_nome"))} LIKE ${curinga}`,
+      sql`lower(${congelado("turma_codigo")}) LIKE ${curinga}`,
+      sql`lower(${congelado("participante_identificador")}) LIKE ${curinga}`,
+      sql`${tabela_certificado.participante_id} IN (
+        SELECT p.id FROM participante p LEFT JOIN servidor s ON s.id = p.servidor_id
+        WHERE ${_sem_acento(sql`coalesce(s.nome, p.nome, '')`)} LIKE ${curinga}
+           OR coalesce(s.siape, '') LIKE ${curinga})`,
+    )!;
+  });
+  return and(...condicoes)!;
+}
+
 rotas.get(CERTIFICADOS, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("certificado.ver");
@@ -78,9 +123,10 @@ rotas.get(CERTIFICADOS, async (c) => {
   if ((SITUACOES_CERTIFICADO as readonly string[]).includes(situacao)) filtros.push(eq(tabela_certificado.situacao, situacao));
   const alvo = id_opcional(treinamento_id);
   if (alvo !== null) filtros.push(eq(tabela_certificado.treinamento_id, alvo));
-  const limpa = busca.trim();
-  // busca pela CHAVE, e não por nome: é o que o suporte faz com o papel na mão
-  if (limpa) filtros.push(eq(tabela_certificado.chave_validacao, normalizar_chave(limpa)));
+  // CPF não é busca (RN-21): a tela avisa e a lista não filtra por ele
+  const busca_cpf = parece_cpf(busca);
+  const filtro = busca_cpf ? null : filtro_da_busca(busca);
+  if (filtro) filtros.push(filtro);
   const recorte = await _pagina_de_certificados(c, and(...filtros));
   const hoje = datas_br.hoje();
   return pagina(c, "paginas/certificados.html", usuario, {
@@ -94,6 +140,7 @@ rotas.get(CERTIFICADOS, async (c) => {
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
     busca,
+    busca_cpf,
     ...recados(c),
   });
 });
@@ -149,13 +196,24 @@ async function _tela_fila(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string 
     treinamento_id: id_opcional(treinamento_id),
     busca: busca_cpf ? "" : busca,
   });
+  const filtro_etapa = (fila_emissao.ETAPAS as readonly string[]).includes(etapa) ? etapa : "AGUARDANDO";
+  // nos emitidos, o último envio por e-mail de cada um (o que já foi vem desmarcado)
+  const envios =
+    filtro_etapa === "EMITIDO" && usuario.pode("certificado.emitir")
+      ? await envio_certificado.ultimo_envio_por_certificado(
+          tx,
+          itens.map((x) => x.certificado_id).filter((id): id is number => id !== null),
+        )
+      : {};
   return pagina(c, "paginas/certificados_fila.html", usuario, {
     itens,
+    envios,
+    rotulo_envio: email.ROTULO_SITUACAO,
     contagem,
     cortado,
     limite: fila_emissao.LIMITE_LINHAS,
     etapas: fila_emissao.ETAPAS.map((e) => [e, fila_emissao.ROTULO_ETAPA[e]]),
-    filtro_etapa: (fila_emissao.ETAPAS as readonly string[]).includes(etapa) ? etapa : "AGUARDANDO",
+    filtro_etapa,
     filtro_treinamento: treinamento_id,
     busca,
     busca_cpf,
@@ -191,6 +249,23 @@ rotas.post(`${FILA}/emitir`, async (c) => {
     return _tela_fila(c, usuario, { [resultado.emitidos ? "mensagem" : "erro"]: frase, travados: resultado.travados });
   }
   return _volta(c, FILA, frase);
+});
+
+/**
+ * Envia por e-mail os certificados marcados na etapa "Emitidos", de várias
+ * turmas de uma vez. O que já foi enviado não sai de novo (reenviar é pela
+ * ficha), e quem não tem e-mail é contado na frase.
+ */
+rotas.post(`${FILA}/email`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.emitir");
+  const f = await formulario(c);
+  const volta = `${FILA}?etapa=EMITIDO`;
+  const ids = [...new Set(f.todos("certificado_id").map((v) => id_opcional(v)).filter((v): v is number => v !== null))];
+  if (!ids.length) return _erro(c, volta, "Marque os certificados a enviar.");
+  const r = await envio_certificado.pedir_envio(c.get("tx"), usuario, ids);
+  if (r.enfileirados) await email.acordar_envio();
+  return (r.enfileirados ? _volta : _erro)(c, volta, envio_certificado.resumo(r));
 });
 
 // =====================================================================
