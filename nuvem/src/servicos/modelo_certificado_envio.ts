@@ -386,6 +386,11 @@ function primeiro(campos: Readonly<Record<string, CampoSugerivel>>, teste: (codi
  * 3. semelhança de palavras com o rótulo e o código de cada campo — é o que faz
  *    um campo novo do vocabulário ganhar sugestão sem mexer aqui.
  */
+/** O primeiro dos campos que o vocabulário tem (o vocabulário cresce; a regra não quebra). */
+function _o_que_houver(campos: Readonly<Record<string, unknown>>, ...codigos: string[]): string | null {
+  return codigos.find((c) => Object.hasOwn(campos, c)) ?? null;
+}
+
 export function sugerir_campo(
   m: Pick<MarcadorDoModelo, "marcador" | "rotulo" | "antes" | "ocorrencia">,
   campos: Readonly<Record<string, CampoSugerivel>>,
@@ -420,7 +425,8 @@ export function sugerir_campo(
 
   const regras: [boolean, string | null][] = [
     [tem("nome") && tem("participante", "aluno", "servidor", "cursista", "concluinte"), "participante_nome"],
-    [tem("responsavel", "instrutor", "ministrante") && tem("nome"), "assinante_nome"],
+    // o "responsável pela formação" é o instrutor principal; sem esses campos, o assinante
+    [tem("responsavel", "instrutor", "ministrante") && tem("nome"), _o_que_houver(campos, "instrutor_nome", "assinante_nome")],
     [r === "dd/mm/aaaa" || r === "dd/mm/aa" || r === "data", n === 1 ? "turma_data_inicio" : n === 2 ? "turma_data_fim" : null],
     [tem("data de inicio", "inicio"), "turma_data_inicio"],
     [tem("data de termino", "data final", "termino"), "turma_data_fim"],
@@ -431,7 +437,8 @@ export function sugerir_campo(
     [tem("cidade", "municipio"), "cidade"],
     [tem("campus"), "turma_campus"],
     [tem("endereco", "local do curso", "local de realizacao"), "turma_local"],
-    [tem("tecnico", "engenheir", "cargo", "titulo", "formacao profissional") && !tem("credenciamento", "registro"), "assinante_titulo"],
+    [tem("tecnico", "engenheir", "cargo", "titulo", "formacao profissional") && !tem("credenciamento", "registro"), _o_que_houver(campos, "instrutor_titulo", "assinante_titulo")],
+    [tem("credenciamento", "registro no conselho", "registro crea", "registro profissional"), _o_que_houver(campos, "instrutor_registro")],
     [tem("carga horaria", "horas"), "treinamento_carga_horaria"],
     [tem("conteudo"), "treinamento_conteudo"],
     [tem("periodo"), "turma_periodo_extenso"],

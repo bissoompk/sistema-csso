@@ -181,7 +181,10 @@ describe("sugestão de campo", () => {
     const sugestao = Object.fromEntries(marcadores.map((m) => [m.marcador, certificado.sugerir_campo(m)]));
     expect(sugestao).toMatchObject({
       nome_completo_do_participante: "participante_nome",
-      nome_do_a_responsavel_pela_formacao: "assinante_nome",
+      nome_do_a_responsavel_pela_formacao: "instrutor_nome",
+      campo_000_000_000_00: "participante_cpf",
+      campo_000_000_000_00_2: "instrutor_cpf",
+      credenciamento_cbmmg_n_registro_crea_mg: "instrutor_registro",
       endereco_completo_do_local_do_curso: "turma_local",
       nome_do_campus: "turma_campus",
       cidade: "cidade",
@@ -204,14 +207,18 @@ describe("sugestão de campo", () => {
   });
 
   it("campo novo no vocabulário ganha sugestão sem mexer nas regras", () => {
+    // o vocabulário sem os campos de instrutor e de CPF, que já casariam sozinhos
+    const base = Object.fromEntries(
+      Object.entries(certificado.CAMPOS_CERTIFICADO).filter(([k]) => !k.startsWith("instrutor_") && !k.endsWith("_cpf")),
+    );
     const m = { marcador: "matricula_no_conselho", rotulo: "Matrícula no conselho", antes: "", ocorrencia: 1 };
-    expect(envio.sugerir_campo(m, certificado.CAMPOS_CERTIFICADO)).toBeNull();
-    const com_novo = { ...certificado.CAMPOS_CERTIFICADO, instrutor_matricula_conselho: { rotulo: "Matrícula no conselho do instrutor" } };
+    expect(envio.sugerir_campo(m, base)).toBeNull();
+    const com_novo = { ...base, instrutor_matricula_conselho: { rotulo: "Matrícula no conselho do instrutor" } };
     expect(envio.sugerir_campo(m, com_novo)).toBe("instrutor_matricula_conselho");
     // o CPF vai para o campo de CPF do participante quando o vocabulário tiver um
     const cpf = { marcador: "campo_000_000_000_00", rotulo: "000.000.000-00", antes: "portador(a) do CPF ", ocorrencia: 1 };
-    expect(envio.sugerir_campo(cpf, certificado.CAMPOS_CERTIFICADO)).toBeNull();
-    expect(envio.sugerir_campo(cpf, { ...certificado.CAMPOS_CERTIFICADO, participante_cpf: { rotulo: "CPF" } })).toBe(
+    expect(envio.sugerir_campo(cpf, base)).toBeNull();
+    expect(envio.sugerir_campo(cpf, certificado.CAMPOS_CERTIFICADO)).toBe(
       "participante_cpf",
     );
   });
@@ -311,6 +318,42 @@ describe("envio pela tela", () => {
     await cliente.post(`/treinamentos/modelos/${modelo.id}/mapa`, { campo__cidade_2: "" }, { seguir: false });
     modelo = await modelo_por_nome("Brigadista");
     expect(modelo.tags.find((t) => t.marcador === "cidade_2")).toBeUndefined();
+  });
+
+  it("o mapa aceita texto fixo, campo da turma e campo do participante", async () => {
+    await entrar(cliente, "coordenador_csso");
+    await enviar();
+    let modelo = await modelo_por_nome("Brigadista");
+    const r = await cliente.post(
+      `/treinamentos/modelos/${modelo.id}/mapa`,
+      {
+        campo__edificacao_ou_setor_para_o_qual_houve_a: "@TURMA",
+        detalhe__edificacao_ou_setor_para_o_qual_houve_a: "Local de atuação do brigadista",
+        obrigatorio__edificacao_ou_setor_para_o_qual_houve_a: "1",
+        campo__campo: "@PARTICIPANTE",
+        detalhe__campo: "Nota – Prevenção e combate a incêndio",
+        campo__credenciamento_cbmmg_n_registro_crea_mg: "@TEXTO_FIXO",
+        detalhe__credenciamento_cbmmg_n_registro_crea_mg: "Registro CREA-MG nº 12345",
+      },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    modelo = await modelo_por_nome("Brigadista");
+    const por = Object.fromEntries(modelo.tags.map((t) => [t.marcador, t]));
+    const local = por["edificacao_ou_setor_para_o_qual_houve_a"]!;
+    expect([local.tipo, local.rotulo, local.obrigatorio]).toEqual(["TURMA", "Local de atuação do brigadista", true]);
+    expect([por["campo"]!.tipo, por["campo"]!.rotulo]).toEqual(["PARTICIPANTE", "Nota – Prevenção e combate a incêndio"]);
+    const fixo = por["credenciamento_cbmmg_n_registro_crea_mg"]!;
+    expect([fixo.tipo, fixo.texto_fixo]).toEqual(["TEXTO_FIXO", "Registro CREA-MG nº 12345"]);
+    // a ficha mostra a escolha gravada no seletor
+    expect((await cliente.get(`/treinamentos/modelos/${modelo.id}`)).text).toContain('value="@TURMA" selected');
+
+    // sem o nome do campo, recusa sem gravar
+    const sem_nome = await cliente.post(`/treinamentos/modelos/${modelo.id}/mapa`, {
+      campo__campo_2: "@PARTICIPANTE",
+      detalhe__campo_2: "",
+    });
+    expect(sem_nome.text).toContain("Dê um nome ao campo");
   });
 
   it("campo fora do vocabulário é recusado sem salvar meio mapa", async () => {
