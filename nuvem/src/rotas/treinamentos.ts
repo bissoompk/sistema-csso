@@ -28,12 +28,15 @@ import {
 import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as certificado from "../servicos/certificado.js";
+import * as envio from "../servicos/modelo_certificado_envio.js";
+import { obterArmazenamento } from "../servicos/armazenamento.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as textos from "../servicos/textos.js";
 import { normalizar_decimal } from "../servicos/presenca.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { COM_TAGS } from "../servicos/turma.js";
 import { pagina, redirecionar, salvar_com_diff } from "../web.js";
+import { baixar } from "./turmas.js";
 import {
   data_iso,
   erro as _erro,
@@ -287,12 +290,57 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
 // =====================================================================
 // Modelos de certificado e o dicionário de tags
 // =====================================================================
+/**
+ * NUVEM: lê, converte e grava o .docx enviado. Devolve a mensagem de recusa
+ * (texto) quando o arquivo não serve. O convertido vai para o armazenamento
+ * endereçado pelo conteúdo — o mesmo arquivo enviado duas vezes ocupa um só.
+ */
+async function _guardar_envio(docx: File) {
+  if (!docx.name.toLowerCase().endsWith(".docx")) {
+    return "Envie um arquivo .docx (documento do Word). PDF, .doc e .odt não servem como modelo.";
+  }
+  let preparado: ReturnType<typeof envio.preparar_envio>;
+  try {
+    preparado = envio.preparar_envio(new Uint8Array(await docx.arrayBuffer()));
+  } catch (e) {
+    if (e instanceof envio.ModeloInvalido) return e.message;
+    throw e;
+  }
+  const chave = envio.chave_no_armazenamento(preparado.enviado.sha256_convertido);
+  const armazenamento = obterArmazenamento();
+  if (!(await armazenamento.existe(chave))) await armazenamento.gravar(chave, preparado.convertido, envio.TIPO_DOCX);
+  return { ...preparado, arquivo: envio.nome_do_arquivo(docx.name) };
+}
+
+/**
+ * Uma linha por marcador do arquivo, na ordem do documento: o rótulo, o trecho
+ * ao redor, o campo mapeado (se houver) e a sugestão. Lê o vocabulário inteiro
+ * a cada vez — campo novo em `CAMPOS_CERTIFICADO` aparece aqui sem mexer na tela.
+ */
+function _linhas_do_mapa(modelo: any) {
+  const por_marcador = new Map<string, any>((modelo.tags as any[]).map((t) => [t.marcador, t]));
+  return certificado.marcadores_detalhados(modelo).map((m) => {
+    const tag = por_marcador.get(m.marcador) ?? null;
+    const sugestao = certificado.sugerir_campo(m);
+    return {
+      ...m,
+      tag,
+      campo: tag ? (tag.campo as string) : null,
+      sugestao,
+      sugestao_rotulo: sugestao ? certificado.CAMPOS_CERTIFICADO[sugestao]!.rotulo : null,
+      // o que o seletor mostra escolhido: o mapa gravado, senão a sugestão
+      escolhido: tag ? (tag.campo as string) : (sugestao ?? ""),
+    };
+  });
+}
+
 async function _tela_modelos(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) {
   const tx = c.get("tx");
   return pagina(c, "paginas/certificado_modelos.html", usuario, {
     itens: await _modelos_ordenados(tx),
     treinamentos: await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
     arquivos: certificado.arquivos_de_modelo(),
+    limite_mb: envio.LIMITE_BYTES / 1024 / 1024,
     orientacoes: ORIENTACOES,
     mensagem: d.mensagem ?? null,
     erro: d.erro ?? null,
@@ -325,8 +373,17 @@ rotas.post(MODELOS, async (c) => {
   };
   const recusar = (mensagem: string) => _tela_modelos(c, usuario, { erro: mensagem, digitado });
   const nome_limpo = digitado.nome.trim();
-  const arquivo_limpo = _arquivo_de_modelo(digitado.arquivo);
-  if (arquivo_limpo === null) return recusar("O modelo é um .docx de app/templates/certificados/.");
+  if (!nome_limpo) return recusar("Dê um nome ao modelo.");
+  // NUVEM: o .docx enviado pela tela; sem ele, um dos layouts que vêm com o sistema
+  const docx = f.arquivo("docx");
+  let enviado: Exclude<Awaited<ReturnType<typeof _guardar_envio>>, string> | null = null;
+  if (docx) {
+    const recebido = await _guardar_envio(docx);
+    if (typeof recebido === "string") return recusar(recebido);
+    enviado = recebido;
+  }
+  const arquivo_limpo = enviado ? enviado.arquivo : _arquivo_de_modelo(digitado.arquivo);
+  if (arquivo_limpo === null) return recusar("Escolha o arquivo .docx do modelo.");
   if (!(ORIENTACOES as readonly string[]).includes(digitado.orientacao)) return recusar("Orientação inválida.");
   const alvo = id_opcional(digitado.treinamento_id);
   const [ja] = await tx
@@ -341,6 +398,8 @@ rotas.post(MODELOS, async (c) => {
       treinamento_id: alvo,
       nome: nome_limpo,
       arquivo: arquivo_limpo,
+      arquivo_sha256: enviado ? enviado.sha256_origem : null,
+      arquivo_enviado: enviado ? enviado.enviado : null,
       orientacao: digitado.orientacao,
       observacao: texto_ou_nulo(digitado.observacao),
       criado_por: usuario.id,
@@ -350,10 +409,18 @@ rotas.post(MODELOS, async (c) => {
     entidade: "certificado_modelo",
     entidade_id: modelo!.id,
     tipo_evento: "CERTIFICADO_MODELO_CRIADO",
-    descricao: `${CertificadoModelo.rotulo(modelo!)} · ${modelo!.arquivo}`,
+    descricao:
+      `${CertificadoModelo.rotulo(modelo!)} · ${modelo!.arquivo}` +
+      (enviado ? ` (enviado pela tela, ${enviado.enviado.marcadores.length} marcadores)` : ""),
     usuario,
   });
-  return _volta(c, `${MODELOS}/${modelo!.id}`, "Modelo cadastrado. Monte o dicionário de tags.");
+  return _volta(
+    c,
+    `${MODELOS}/${modelo!.id}`,
+    enviado
+      ? `Modelo cadastrado com ${enviado.enviado.marcadores.length} marcador(es). Escolha o dado de cada um e salve.`
+      : "Modelo cadastrado. Escolha o dado de cada marcador e salve.",
+  );
 });
 
 rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
@@ -363,12 +430,17 @@ rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
   const modelo = await _modelo(tx, Number(c.req.param("modelo_id")));
   if (!modelo) return redirecionar(c, MODELOS);
   vista_modelo(modelo);
-  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.mapa_de_tags(modelo));
+  const conferencia = certificado.conferir_modelo(modelo, CertificadoModelo.mapa_de_tags(modelo));
+  const linhas = conferencia.arquivo_encontrado ? _linhas_do_mapa(modelo) : [];
   return pagina(c, "paginas/certificado_modelo.html", usuario, {
     modelo,
     conferencia,
-    // os sem mapa que o "mapear sugeridos" resolve
-    com_sugestao: conferencia.sem_mapa.filter((m) => Object.hasOwn(certificado.MAPA_SUGERIDO, m)),
+    linhas,
+    faltam: linhas.filter((l) => !l.tag).length,
+    enviado: Boolean(modelo.arquivo_enviado),
+    limite_mb: envio.LIMITE_BYTES / 1024 / 1024,
+    // os sem mapa que o "aplicar sugestões" resolve
+    com_sugestao: linhas.filter((l) => !l.tag && l.sugestao),
     campos_por_grupo: certificado.campos_por_grupo(),
     campos: certificado.CAMPOS_CERTIFICADO,
     arquivos: certificado.arquivos_de_modelo(),
@@ -396,8 +468,9 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
   if (!modelo.vigente) {
     return _erro(c, volta, "Versão superada não se edita — ela é o layout de certificados já emitidos.");
   }
-  const arquivo_limpo = _arquivo_de_modelo(f.texto("arquivo"));
-  if (arquivo_limpo === null) return _erro(c, volta, "O modelo é um .docx de app/templates/certificados/.");
+  // o arquivo enviado pela tela só muda publicando uma versão nova com outro .docx
+  const arquivo_limpo = modelo.arquivo_enviado ? modelo.arquivo : _arquivo_de_modelo(f.texto("arquivo"));
+  if (arquivo_limpo === null) return _erro(c, volta, "Escolha o arquivo .docx do modelo.");
   const orientacao = f.texto("orientacao") || "PAISAGEM";
   if (!(ORIENTACOES as readonly string[]).includes(orientacao)) return _erro(c, volta, "Orientação inválida.");
   const nome_limpo = f.texto("nome").trim();
@@ -453,6 +526,15 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
       "Versão superada não se edita — publique a nova versão a partir da que está vigente, para não perder o mapa dela.",
     );
   }
+  const f = await formulario(c);
+  // NUVEM: a versão nova pode trazer outro .docx; sem ele, o layout continua o mesmo
+  const docx = f.arquivo("docx");
+  let novo_arquivo: Exclude<Awaited<ReturnType<typeof _guardar_envio>>, string> | null = null;
+  if (docx) {
+    const recebido = await _guardar_envio(docx);
+    if (typeof recebido === "string") return _erro(c, `${MODELOS}/${modelo_id}`, recebido);
+    novo_arquivo = recebido;
+  }
   const irmas = await tx
     .select()
     .from(tabela_modelo)
@@ -465,7 +547,9 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
     .values({
       treinamento_id: atual.treinamento_id,
       nome: atual.nome,
-      arquivo: atual.arquivo,
+      arquivo: novo_arquivo ? novo_arquivo.arquivo : atual.arquivo,
+      arquivo_sha256: novo_arquivo ? novo_arquivo.sha256_origem : atual.arquivo_sha256,
+      arquivo_enviado: novo_arquivo ? novo_arquivo.enviado : atual.arquivo_enviado,
       orientacao: atual.orientacao,
       observacao: atual.observacao,
       versao: Math.max(...irmas.map((m) => m.versao)) + 1,
@@ -473,7 +557,10 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
       criado_por: usuario.id,
     })
     .returning();
-  for (const tag of atual.tags as (typeof tabela_tag.$inferSelect)[]) {
+  // com arquivo novo, só vai junto o mapa dos marcadores que ele ainda tem
+  const no_novo = novo_arquivo ? new Set(novo_arquivo.enviado.marcadores.map((m) => m.marcador)) : null;
+  const levadas = (atual.tags as (typeof tabela_tag.$inferSelect)[]).filter((t) => !no_novo || no_novo.has(t.marcador));
+  for (const tag of levadas) {
     await tx.insert(tabela_tag).values({
       modelo_id: nova!.id,
       marcador: tag.marcador,
@@ -486,7 +573,9 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
     entidade: "certificado_modelo",
     entidade_id: nova!.id,
     tipo_evento: "CERTIFICADO_MODELO_VERSIONADO",
-    descricao: `${CertificadoModelo.rotulo(nova!)} a partir de v${atual.versao} (${atual.tags.length} tags)`,
+    descricao:
+      `${CertificadoModelo.rotulo(nova!)} a partir de v${atual.versao} (${levadas.length} tags)` +
+      (novo_arquivo ? ` · arquivo novo ${novo_arquivo.arquivo}` : ""),
     usuario,
   });
   // Repontar é escolha de quem publica, feita na hora e um evento por
@@ -494,7 +583,7 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
   // o certificado seguia saindo com o layout superado até alguém lembrar de
   // trocar no catálogo (dívida técnica fechada em 18/10/2026).
   let repontados = 0;
-  if ((await formulario(c)).texto("repontar") === "1") {
+  if (f.texto("repontar") === "1") {
     const alvo = await tx.select().from(tabela_treinamento).where(eq(tabela_treinamento.modelo_vigente_id, atual.id));
     for (const t of alvo) {
       await tx.update(tabela_treinamento).set({ modelo_vigente_id: nova!.id }).where(eq(tabela_treinamento.id, t.id));
@@ -573,15 +662,16 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
   const modelo = await _modelo(tx, modelo_id);
   if (!modelo) return redirecionar(c, MODELOS);
   if (!modelo.vigente) return _erro(c, volta, "Versão superada não se edita.");
-  const conferencia = certificado.conferir_modelo(modelo.arquivo, CertificadoModelo.mapa_de_tags(modelo));
+  const conferencia = certificado.conferir_modelo(modelo, CertificadoModelo.mapa_de_tags(modelo));
   if (!conferencia.arquivo_encontrado) {
     return _erro(c, volta, `O arquivo '${modelo.arquivo}' não foi encontrado — não há marcadores para mapear.`);
   }
-  const a_mapear = conferencia.sem_mapa.filter((m) => Object.hasOwn(certificado.MAPA_SUGERIDO, m));
-  if (!a_mapear.length) return _erro(c, volta, "Nenhum marcador sem mapa tem sugestão — mapeie à mão.");
+  const sem_tag = _linhas_do_mapa(modelo).filter((l) => !l.tag);
+  const a_mapear = sem_tag.filter((l) => l.sugestao);
+  if (!a_mapear.length) return _erro(c, volta, "Nenhum marcador sem dado tem sugestão — escolha à mão.");
   let ordem = modelo.tags.length;
-  for (const marcador of a_mapear) {
-    const campo = certificado.MAPA_SUGERIDO[marcador]!;
+  for (const { marcador, sugestao } of a_mapear) {
+    const campo = sugestao!;
     const [tag] = await tx
       .insert(tabela_tag)
       .values({
@@ -589,7 +679,8 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
         marcador,
         campo,
         ordem: ++ordem,
-        obrigatorio: certificado.OBRIGATORIOS.includes(marcador),
+        // no modelo enviado, todo dado escolhido bloqueia se vier vazio (menos "deixar em branco")
+        obrigatorio: certificado.OBRIGATORIOS.includes(marcador) || (!!modelo.arquivo_enviado && campo !== "em_branco"),
       })
       .returning();
     await auditoria.registrar(tx, {
@@ -600,12 +691,117 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
       usuario,
     });
   }
-  const restam = conferencia.sem_mapa.length - a_mapear.length;
+  const restam = sem_tag.length - a_mapear.length;
   return _volta(
     c,
     volta,
-    `${a_mapear.length} marcador(es) mapeado(s) pela sugestão.` + (restam ? ` ${restam} sem sugestão: mapeie à mão.` : ""),
+    `${a_mapear.length} marcador(es) ligado(s) pela sugestão.` + (restam ? ` Faltam ${restam}: escolha o dado de cada um.` : ""),
   );
+});
+
+/**
+ * NUVEM: salva o mapa inteiro de uma vez — um seletor por marcador do arquivo
+ * (`campo__<marcador>`; vazio = sem dado) e a caixa "vazio bloqueia"
+ * (`obrigatorio__<marcador>`). Linha nova é um `MODELO_TAG_MAPEADA`, troca de
+ * campo vai para a trilha campo a campo, e esvaziar remove a linha.
+ */
+rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/mapa`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const tx = c.get("tx");
+  const modelo_id = Number(c.req.param("modelo_id"));
+  const volta = `${MODELOS}/${modelo_id}`;
+  const f = await formulario(c);
+  const modelo = await _modelo(tx, modelo_id);
+  if (!modelo) return redirecionar(c, MODELOS);
+  if (!modelo.vigente) return _erro(c, volta, "Versão superada não se edita.");
+  const linhas = certificado.conferir_modelo(modelo, {}).arquivo_encontrado ? _linhas_do_mapa(modelo) : [];
+  if (!linhas.length) {
+    return _erro(c, volta, `O arquivo '${modelo.arquivo}' não foi encontrado — não há marcadores para mapear.`);
+  }
+  // confere tudo antes de gravar: um campo desconhecido não deixa meio mapa salvo
+  for (const l of linhas) {
+    const campo = f.texto(`campo__${l.marcador}`);
+    if (campo && !Object.hasOwn(certificado.CAMPOS_CERTIFICADO, campo)) {
+      return _erro(c, volta, `Campo desconhecido: '${campo}'.`);
+    }
+  }
+  let ordem = Math.max(0, ...(modelo.tags as { ordem: number }[]).map((t) => t.ordem));
+  let mudou = 0;
+  let faltam = 0;
+  for (const l of linhas) {
+    const tag = l.tag as typeof tabela_tag.$inferSelect | null;
+    // linha que não veio no formulário fica como está
+    if (!f.tem(`campo__${l.marcador}`)) {
+      if (!tag) faltam += 1;
+      continue;
+    }
+    const campo = f.texto(`campo__${l.marcador}`);
+    const obrigatorio = campo !== "em_branco" && marcado(f.texto(`obrigatorio__${l.marcador}`));
+    if (!campo) {
+      faltam += 1;
+      if (!tag) continue;
+      await auditoria.registrar(tx, {
+        entidade: "certificado_modelo_tag",
+        entidade_id: tag.id,
+        tipo_evento: "MODELO_TAG_REMOVIDA",
+        descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${tag.marcador} }} ← ${tag.campo}`,
+        usuario,
+      });
+      await tx.delete(tabela_tag).where(eq(tabela_tag.id, tag.id));
+      mudou += 1;
+      continue;
+    }
+    if (!tag) {
+      const [nova] = await tx
+        .insert(tabela_tag)
+        .values({ modelo_id: modelo.id, marcador: l.marcador, campo, ordem: ++ordem, obrigatorio })
+        .returning();
+      await auditoria.registrar(tx, {
+        entidade: "certificado_modelo_tag",
+        entidade_id: nova!.id,
+        tipo_evento: "MODELO_TAG_MAPEADA",
+        descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${l.marcador} }} ← ${campo}`,
+        usuario,
+      });
+      mudou += 1;
+      continue;
+    }
+    if (tag.campo === campo && tag.obrigatorio === obrigatorio) continue;
+    await tx.update(tabela_tag).set({ campo, obrigatorio }).where(eq(tabela_tag.id, tag.id));
+    await auditoria.registrar_diferencas(tx, {
+      entidade: "certificado_modelo_tag",
+      entidade_id: tag.id,
+      antes: { campo: tag.campo, obrigatorio: tag.obrigatorio },
+      depois: { campo, obrigatorio },
+      usuario,
+    });
+    mudou += 1;
+  }
+  return _volta(
+    c,
+    volta,
+    (mudou ? `Mapa salvo (${mudou} alteração(ões)).` : "Nada mudou no mapa.") +
+      (faltam
+        ? ` Faltam ${faltam} marcador(es) sem dado — a emissão fica bloqueada até completar.`
+        : " Todos os marcadores têm dado."),
+  );
+});
+
+/** NUVEM: o .docx do modelo preenchido com os valores de exemplo, para conferir o layout. */
+rotas.get(`${MODELOS}/:modelo_id{[0-9]+}/exemplo`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const tx = c.get("tx");
+  const modelo_id = Number(c.req.param("modelo_id"));
+  const modelo = await _modelo(tx, modelo_id);
+  if (!modelo) return redirecionar(c, MODELOS);
+  if (!certificado.conferir_modelo(modelo, {}).arquivo_encontrado) {
+    return _erro(c, `${MODELOS}/${modelo_id}`, `O arquivo '${modelo.arquivo}' não foi encontrado — não há o que preencher.`);
+  }
+  const bytes = await certificado.renderizar_exemplo(modelo);
+  const nome = `exemplo_${textos.slug_ascii(modelo.nome).toLowerCase() || "modelo"}_v${modelo.versao}.docx`;
+  return baixar(c, bytes, nome, envio.TIPO_DOCX);
 });
 
 rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/:tag_id{[0-9]+}`, async (c) => {

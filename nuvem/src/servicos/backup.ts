@@ -40,6 +40,7 @@ import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   anexo as tabela_anexo,
+  certificado_modelo as tabela_certificado_modelo,
   laudo_tecnico,
   parecer_tecnico,
   processo as tabela_processo,
@@ -48,7 +49,7 @@ import {
 } from "../db/esquema/index.js";
 import { UnidadeUorg } from "../dominio/organizacao.js";
 import { RegraViolada } from "../nucleo/erros.js";
-import { chave_no_armazenamento } from "./anexos.js";
+import { chave_do_blob, chave_no_armazenamento } from "./anexos.js";
 import { ArquivoAusente, obterArmazenamento } from "./armazenamento.js";
 import { linha_csv } from "./csv.js";
 
@@ -264,14 +265,34 @@ export async function restaurar_no_banco(tx: Executor, dump: Map<string, string>
   return contagem;
 }
 
+/**
+ * Os `storage_key` a copiar: o de cada anexo e, NUVEM, o do .docx de modelo de
+ * certificado enviado pela tela — que mora no mesmo endereçamento por SHA-256
+ * (`anexos/ab/abc...`) sem linha em `anexo`. Sem ele, um backup restaurado não
+ * reimprimiria o certificado emitido com aquele modelo.
+ */
+async function _chaves_de_arquivo(tx: Executor): Promise<string[]> {
+  const linhas = await tx.select({ storage_key: tabela_anexo.storage_key }).from(tabela_anexo).orderBy(asc(tabela_anexo.id));
+  const modelos = await tx
+    .select({ enviado: tabela_certificado_modelo.arquivo_enviado })
+    .from(tabela_certificado_modelo)
+    .where(isNotNull(tabela_certificado_modelo.arquivo_enviado))
+    .orderBy(asc(tabela_certificado_modelo.id));
+  return [
+    ...new Set([
+      ...linhas.map((l) => l.storage_key),
+      ...modelos.map((m) => (m.enviado ? chave_do_blob(m.enviado.sha256_convertido) : "")),
+    ]),
+  ].filter(Boolean);
+}
+
 /** Os anexos: `[nome no pacote, bytes]`. Blob ausente não derruba o backup — mas é contado fora. */
 async function _arquivos_de_anexo(tx: Executor): Promise<{ arquivos: [string, Uint8Array][]; ausentes: string[] }> {
   const arm = obterArmazenamento();
   const vistos = new Set<string>();
   const arquivos: [string, Uint8Array][] = [];
   const ausentes: string[] = [];
-  const linhas = await tx.select({ storage_key: tabela_anexo.storage_key }).from(tabela_anexo).orderBy(asc(tabela_anexo.id));
-  for (const { storage_key } of linhas) {
+  for (const storage_key of await _chaves_de_arquivo(tx)) {
     if (!storage_key || vistos.has(storage_key)) continue;
     vistos.add(storage_key);
     try {
@@ -360,8 +381,7 @@ export async function fazer_backup_diario(
   const limite = Date.now() + (opcoes.prazo_anexos_ms ?? PRAZO_ANEXOS_MS);
   const arm = obterArmazenamento();
   const dump = await despejar_banco(tx);
-  const linhas = await tx.select({ storage_key: tabela_anexo.storage_key }).from(tabela_anexo).orderBy(asc(tabela_anexo.id));
-  const chaves = [...new Set(linhas.map((l) => l.storage_key).filter(Boolean))];
+  const chaves = await _chaves_de_arquivo(tx);
 
   const ja = new Set((await arm.listar(PREFIXO_BACKUP_ANEXOS)).map((i) => i.chave));
   const sal = randomBytes(16);

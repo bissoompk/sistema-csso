@@ -40,6 +40,7 @@ import {
 
 import {
   ALFABETO_IDENTIFICADOR,
+  type ArquivoEnviado,
   ORIENTACOES,
   ORIGENS_EMAIL,
   ORIGENS_INSCRICAO,
@@ -149,6 +150,9 @@ export const certificado_modelo = pgTable(
     // nome do arquivo do modelo, mesmo padrao de parecer_tecnico.modelo_arquivo
     arquivo: varchar('arquivo', { length: 120 }).notNull(),
     arquivo_sha256: varchar('arquivo_sha256', { length: 64 }),
+    // NUVEM: .docx enviado pela tela (convertido, marcadores e trecho de cada
+    // um); NULL = arquivo embutido em modelos-docx/certificados/
+    arquivo_enviado: JSONTexto<ArquivoEnviado>('arquivo_enviado'),
     orientacao: varchar('orientacao', { length: 10 }).notNull().default('PAISAGEM'),
     versao: integer('versao').notNull().default(1),
     vigente: boolean('vigente').notNull().default(true),

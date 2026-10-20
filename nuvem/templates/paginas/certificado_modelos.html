@@ -25,14 +25,14 @@
       <h1>Modelos de certificado</h1>
       <p class="sub">
         {%- if itens %}{{ itens|length }} modelo(s). {% endif -%}
-        O certificado é um <code>.docx</code> desenhado no Word, guardado em
-        <code>app/templates/certificados/</code>.</p>
-      {% call ui.info('dicionario-de-tags', 'o que liga o .docx ao dado do sistema') %}
-        <p>O que liga o marcador do documento ao dado do sistema é o
-          <strong>dicionário de tags</strong>, que é dado e não código: trocar o layout
-          não pede alteração de programa.</p>
-        <p>O dicionário de cada modelo está na ficha dele — abra o modelo na coluna
-          <em>Modelo</em> para ver, conferir contra o arquivo e mapear o que faltar.</p>
+        O certificado é um documento do Word (<code>.docx</code>) com marcadores no
+        lugar dos dados.</p>
+      {% call ui.info('dicionario-de-tags', 'como montar um modelo') %}
+        <p>Escreva o certificado no Word e, no lugar de cada dado, ponha um texto entre
+          « e » — por exemplo <strong>«NOME COMPLETO DO PARTICIPANTE»</strong> ou
+          <strong>«DD/MM/AAAA»</strong>. Envie o arquivo em “Cadastrar modelo”.</p>
+        <p>Na ficha do modelo, escolha qual dado do sistema vai em cada marcador (o
+          sistema já sugere) e baixe um exemplo preenchido para conferir.</p>
       {% endcall %}
     </div>
   </div>
@@ -41,7 +41,7 @@
   <table>
     <thead>
       <tr><th scope="col">Modelo</th><th scope="col">Treinamento</th><th scope="col">Arquivo <code>.docx</code></th>
-          <th scope="col">Orientação</th><th scope="col">Tags no mapa</th><th scope="col">Versão</th></tr>
+          <th scope="col">Orientação</th><th scope="col">Marcadores ligados</th><th scope="col">Versão</th></tr>
     </thead>
     {% for m in itens %}
     <tr>
@@ -60,8 +60,8 @@
     {{ ui.vazio_de_lista(
          'Nenhum modelo cadastrado ainda.',
          'O modelo é o .docx com os marcadores que a emissão preenche — sem um
-          vigente, emitir certificado é recusado com a turma inteira já
-          realizada. Use “' ~ CADASTRAR ~ '”, no canto superior direito.', 6) }}
+          modelo, o certificado não sai. Use “' ~ CADASTRAR ~ '”, no canto
+          superior direito, e envie o arquivo do Word.', 6) }}
     {% endfor %}
   </table>
   </div>
@@ -72,21 +72,30 @@
    participaria do `gap` dela. #}
 {% call ui.popup_cadastro('novo-modelo', CADASTRAR, '/treinamentos/modelos',
                           CADASTRAR, aberto=recusado, erro=erro_cadastro,
-                          nota='o dicionário de tags se monta depois, na ficha') %}
+                          enctype='multipart/form-data',
+                          nota='depois você escolhe o dado de cada marcador') %}
   {# O nome é o que a recusa de duplicata cita ("'X' já existe — publique uma
      nova versão"), e é nele que o foco cai na reabertura. #}
   <div class="campo {{ 'com-erro' if recusado }}">
     <label for="modelo-nome">Nome do modelo</label>
     <input id="modelo-nome" name="nome" required placeholder="Certificado padrão CSSO"
            value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}></div>
+  {# O arquivo enviado tem precedência; sem ele, vale um dos layouts que vêm com o sistema. #}
+  <div class="campo"><label for="modelo-docx">Arquivo do Word (.docx)</label>
+    <input id="modelo-docx" type="file" name="docx"
+           accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+           aria-describedby="dica-docx">
+    <span class="dica" id="dica-docx">Até {{ limite_mb }} MB. No lugar de cada dado, escreva um
+      texto entre « e », como «NOME COMPLETO DO PARTICIPANTE».</span></div>
   <div class="linha-campos">
-    {# A lista vem do manifesto da conversão: só o que a emissão consegue abrir. #}
-    <div class="campo codigo"><label for="modelo-arquivo">Arquivo .docx</label>
-      <select id="modelo-arquivo" name="arquivo" required aria-describedby="dica-arquivo">
+    {% if arquivos %}
+    <div class="campo codigo"><label for="modelo-arquivo">Ou use um layout pronto</label>
+      <select id="modelo-arquivo" name="arquivo" aria-describedby="dica-arquivo">
+        <option value="">— nenhum: vou enviar o arquivo —</option>
         {% for a in arquivos %}<option value="{{ a }}"{{ ui.sel(d['arquivo'], a) }}>{{ a }}</option>{% endfor %}
       </select>
-      <span class="dica" id="dica-arquivo">Os layouts publicados com o sistema. Layout
-        novo entra pelo <code>ferramentas/converter-modelos-docx.ts</code>.</span></div>
+      <span class="dica" id="dica-arquivo">Vale só se nenhum arquivo for enviado acima.</span></div>
+    {% endif %}
     <div class="campo"><label for="modelo-orientacao">Orientação</label>
       <select id="modelo-orientacao" name="orientacao">
         {% for o in orientacoes %}<option value="{{ o }}"{{ ui.sel(d['orientacao'], o) }}>{{ o|capitalize }}</option>{% endfor %}
