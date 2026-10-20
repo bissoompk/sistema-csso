@@ -7,7 +7,9 @@ e não cria finalidade nem categoria nova. O que muda — e é o que esta emenda
 registra — é **onde o dado está, quem o processa em nome da UFVJM e por qual
 caminho ele passa**.
 
-**Versão:** 1.0, de 25/09/2026 (revisão de privacidade para produção).
+**Versão:** 1.1, de 20/10/2026 — acrescenta o Google como operador (conversor
+de PDF do certificado, §2, §3 e §5.7). Versão 1.0, de 25/09/2026 (revisão de
+privacidade para produção).
 **Controlador:** UFVJM. **Unidade:** CSSO/Sisa. **Encarregado (DPO):** pendente
 (ROPA §9, item 3) — continua pendente.
 
@@ -48,6 +50,7 @@ providenciar está na §7.
 | Aplicação (função) | Netlify Functions | **EUA** hoje (região padrão do Netlify); **São Paulo** planejado | Processa cada requisição **em memória**: recebe o formulário, consulta o banco, monta a página. Não grava dado em disco (a função não tem disco persistente) |
 | Arquivos estáticos (CSS, JS, ícones) | Netlify CDN | Global | Nenhum dado pessoal |
 | Logs da função | Netlify | EUA | Só o que o código escreve em `console` — ver §5.4 |
+| Conversor de PDF (desde 20/10/2026) | Google Cloud Run | **São Paulo** (`southamerica-east1`) | Recebe o .docx de um certificado de modelo enviado, devolve o PDF e descarta os dois — em memória, sem disco persistente. Ver §5.7 |
 
 ### 2.1 Transferência internacional
 
@@ -75,10 +78,14 @@ Não é só "trânsito de rede": a função lê o dado em claro para montar a p�
 |---|---|---|---|
 | Supabase Inc. (EUA) | Postgres gerenciado e Storage | Armazena e processa, por ordem do controlador | Termos de uso da conta pessoal. O Supabase publica DPA; **não firmado em nome da UFVJM** |
 | Netlify Inc. (EUA) | Funções e CDN | Processa em trânsito; guarda logs | Termos de uso da conta pessoal. O Netlify publica DPA; **não firmado em nome da UFVJM** |
+| Google LLC (EUA) | Cloud Run (projeto `csso-conversor-pdf`, serviço `csso-conversor-pdf`) | Converte o certificado .docx em PDF, por ordem do controlador; não guarda o documento | Termos do Google Cloud da conta pessoal (a mesma do Netlify), com o Cloud Data Processing Addendum do Google; **não firmado em nome da UFVJM** |
 
-Não há suboperador acrescentado pelo código: o sistema não chama API de
-terceiro, não envia e-mail e não usa IA (ROPA §5.1 continua valendo para tudo o
-que **não** é a hospedagem).
+O conversor de PDF (§5.7) é a **única** chamada do código a serviço de
+terceiro fora da hospedagem. Fora dela, o sistema não chama API de terceiro,
+não envia e-mail e não usa IA (ROPA §5.1 continua valendo para o resto).
+
+**Registro tardio:** o conversor foi ligado em 20/10/2026, às 12h19, e esta
+emenda é do mesmo dia, depois — o ROPA §5.1 pede emenda **prévia**. Fica dito.
 
 ## 4. Bases legais
 
@@ -179,7 +186,7 @@ e o do responsável pela formação.
 | Base legal | Art. 7º, II (cumprimento de obrigação legal ou regulatória — a regulamentação do CBMMG para o certificado de brigadista) e art. 23 (execução de competência legal do serviço público) |
 | Minimização | Opcional; só entra pelo campo próprio, com dígito verificador conferido; só é congelado quando o modelo o pede |
 | Exibição | Nenhuma tela mostra dígito: só `***.***.***-**`. Fora de lista, busca, CSV, API, log e trilha (a trilha registra "CPF informado/substituído/apagado", sem o valor). A validação pública não o mostra |
-| Saída | Só o documento do certificado (.docx/.pdf), baixado por quem tem `certificado.ver` (ou o próprio titular) |
+| Saída | Só o documento do certificado (.docx/.pdf), baixado por quem tem `certificado.ver` (ou o próprio titular). No modelo enviado, o PDF passa pelo conversor do Google (§5.7), que recebe o .docx com o CPF |
 | Exportação | A exportação em claro (`/config/exportar-tudo`) sai **sem** o CPF; o backup cifrado o leva |
 | Quem altera | Quem gerencia a pessoa: `turma.inscrever` (participante), `assinatura.gerenciar` (instrutor) |
 | Retenção | A do certificado que o exige; apagar é ato próprio na tela (auditado). Certificado já emitido guarda o CPF congelado pelo prazo do certificado |
@@ -191,6 +198,25 @@ Python) em `backups/`, com a senha em variável de ambiente e retenção de 90
 dias + 1 mensal por 5 anos. Fica **no mesmo provedor e na mesma região** do
 banco: protege contra erro e corrupção, não contra perda da conta — ver §7.
 
+### 5.7 Conversor de PDF do certificado (20/10/2026)
+
+O modelo de certificado enviado pela tela (`/treinamentos/modelos`) é um .docx
+com o layout do setor; a Netlify não roda LibreOffice, e o PDF da casa não
+reproduz esse layout. O PDF fiel sai de um **Gotenberg** (LibreOffice atrás de
+uma API) no Cloud Run do Google (`servicos/conversor_pdf.ts`; implantação em
+`PRODUCAO.md` §2.1).
+
+| Item | Registro |
+|---|---|
+| O que vai | O .docx de **um** certificado: nome do participante, dados da turma, notas e frequência e, quando o modelo pede (Brigadista, §5.5.1), o CPF do participante e o do instrutor |
+| Quando | Só quando alguém com acesso ao certificado (`certificado.ver` ou o titular) pede o PDF de um certificado de modelo enviado **e** ele ainda não foi convertido; certificado do modelo da casa não passa por lá |
+| Onde | Cloud Run em São Paulo (`southamerica-east1`); a função da Netlify (§2) chama o conversor |
+| O que fica lá | Nada do documento: a conversão é em memória e o serviço não tem disco persistente. O arquivo vai com nome neutro (`certificado.docx`), para que nome de pessoa não chegue ao log do Cloud Run, que registra só a requisição (hora, status, duração) |
+| O que fica aqui | O PDF convertido, no Storage do Supabase (`certificados-pdf/`, bucket privado, São Paulo), servido pela função depois do RBAC; é regenerável do congelado |
+| Acesso | Autenticação básica com senha só do sistema (variável secreta no Netlify); sem ela o conversor recusa (401). TLS no caminho |
+| Base legal | A do certificado (ROPA §2; para o CPF, §5.5.1): o conversor é meio de emitir o documento, não finalidade nova |
+| Sem o conversor | Desligar é apagar `CSSO_CONVERSOR_PDF_URL` no Netlify: o certificado de modelo enviado volta a sair só em Word, e nada vai ao Google |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -201,6 +227,8 @@ banco: protege contra erro e corrupção, não contra perda da conta — ver §7
 | `backups/` | 90 dias + 1 mensal por 5 anos | Rotina de retenção de backup |
 | `entrada/` (cópia da planilha/JSON importados) | Até o encerramento da migração, como `stg_*` (POLITICA §2.1) | **Manual**: apagar no painel do Storage ao encerrar a migração |
 | `documentos/` (.docx gerados) | Regeneráveis do contexto congelado; sem prazo próprio | — |
+| `certificados-pdf/` (PDF do conversor, §5.7) | Regeneráveis do contexto congelado; sem prazo próprio | — |
+| Documento no conversor do Google (§5.7) | Nenhum: descartado ao fim da conversão | O serviço não grava; log só da requisição, sem dado pessoal |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 
@@ -211,7 +239,7 @@ banco: protege contra erro e corrupção, não contra perda da conta — ver §7
 2. **Indicação e ciência do encarregado (DPO)**, com esta emenda e o ROPA —
    inclusive do CPF guardado para o certificado de brigadista (§5.5.1).
 3. **Instrumento com os operadores** (art. 39): aceitar/firmar os DPAs do
-   Supabase e do Netlify **em nome de quem contrata**, e resolver quem contrata
+   Supabase, do Netlify e do Google Cloud (§5.7) **em nome de quem contrata**, e resolver quem contrata
    — hoje é conta pessoal. Com isso, as cláusulas de transferência
    internacional (art. 33).
 4. **Região**: mover a função do Netlify para São Paulo (encerra a

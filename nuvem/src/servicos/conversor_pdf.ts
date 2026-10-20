@@ -32,11 +32,13 @@ function _cabecalhos(): Record<string, string> {
 }
 
 /** O .docx em PDF pelo LibreOffice do conversor. Lança `ConversorIndisponivel`. */
-export async function converter_docx(bytes: Uint8Array, nome: string): Promise<Uint8Array> {
+export async function converter_docx(bytes: Uint8Array): Promise<Uint8Array> {
   const base = (process.env.CSSO_CONVERSOR_PDF_URL || "").trim().replace(/\/+$/, "");
   if (!base) throw new ConversorIndisponivel("O conversor de PDF não está configurado.");
+  // nome neutro: o do certificado leva o do participante, e o nome do
+  // arquivo pode ir para o log do conversor
   const formulario = new FormData();
-  formulario.append("files", new Blob([bytes as Uint8Array<ArrayBuffer>]), nome.endsWith(".docx") ? nome : `${nome}.docx`);
+  formulario.append("files", new Blob([bytes as Uint8Array<ArrayBuffer>]), "certificado.docx");
   let resposta: Response;
   try {
     resposta = await fetch(`${base}/forms/libreoffice/convert`, {
@@ -70,12 +72,11 @@ export function chave_do_pdf(certificado_id: number, hash_conteudo: string, mode
 /** O PDF guardado na chave ou, sem ele, o convertido agora (e guardado). */
 export async function pdf_guardado_ou_convertido(
   chave: string,
-  gerar_docx: () => Promise<{ bytes: Uint8Array; nome: string }>,
+  gerar_docx: () => Promise<Uint8Array>,
 ): Promise<Uint8Array> {
   const armazenamento = obterArmazenamento();
   if (await armazenamento.existe(chave)) return armazenamento.ler(chave);
-  const docx = await gerar_docx();
-  const pdf = await converter_docx(docx.bytes, docx.nome);
+  const pdf = await converter_docx(await gerar_docx());
   await armazenamento.gravar(chave, pdf, "application/pdf");
   return pdf;
 }

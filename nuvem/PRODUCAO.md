@@ -88,7 +88,8 @@ Com o conversor fora do ar (ou a primeira conversão passando de 20 s, o que
 pode acontecer no primeiro acesso depois de um tempo parado), o botão de PDF
 leva ao Word e o log da função registra o motivo; tentar de novo costuma
 resolver. LGPD: o .docx leva nome e, se o modelo pedir, CPF — o Cloud Run fica
-em São Paulo e não grava o documento; registre o Google como operador no ROPA.
+em São Paulo e não grava o documento; o Google está registrado como operador
+em `docs/ROPA_NUVEM.md` §3 e §5.7.
 
 ## 3. Implantar (uma vez)
 

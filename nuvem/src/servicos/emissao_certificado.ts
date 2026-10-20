@@ -886,10 +886,10 @@ export async function pdf_do_modelo_enviado(
     certificado.hash_conteudo ?? "",
     String(congelado["modelo_sha256"] ?? ""),
   );
-  const bytes = await conversor_pdf.pdf_guardado_ou_convertido(chave, async () => {
-    const via = await segunda_via(tx, usuario, certificado);
-    return { bytes: via.bytes, nome: via.docx.split("/").pop()! };
-  });
+  const bytes = await conversor_pdf.pdf_guardado_ou_convertido(
+    chave,
+    async () => (await segunda_via(tx, usuario, certificado)).bytes,
+  );
   return { nome: caminho_saida(certificado, "pdf").split("/").pop()!, bytes };
 }
 

@@ -506,7 +506,7 @@ describe("emissão com o modelo enviado", () => {
         expect(new TextDecoder().decode(fiel.bytes)).toBe("%PDF-1.7 convertido");
       }
       expect(enviados).toHaveLength(1);
-      expect(enviados[0]).toMatch(/^https:\/\/conversor\.exemplo\.invalid\/forms\/libreoffice\/convert .+\.docx$/);
+      expect(enviados[0]).toMatch(/^https:\/\/conversor\.exemplo\.invalid\/forms\/libreoffice\/convert certificado\.docx$/);
       const com_pdf = (await cliente.get(`/certificados/${emitido.certificado.id}`)).text;
       expect(com_pdf).toContain(`/certificados/${emitido.certificado.id}/pdf"`);
       expect((await cliente.get(`/turmas/${turma.id}?aba=emissao`)).text).toContain(
