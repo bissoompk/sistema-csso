@@ -40,6 +40,7 @@ import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as identificacao from "../servicos/identificacao.js";
 import { atores_para_tela } from "../servicos/privacidade.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
+import * as inscricao_lote from "../servicos/inscricao_lote.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
 import * as servico_participante from "../servicos/participante.js";
 import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js";
@@ -764,6 +765,72 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
     throw erro;
   }
   return _volta(c, volta, `${nome_exibicao(pessoa)} inscrito(a) em ${turma.codigo}.`);
+});
+
+// =====================================================================
+// Inscrição em lote — a lista colada da planilha (`inscricao_lote.ts`)
+// =====================================================================
+async function _tela_lote(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada,
+  d: {
+    texto?: string;
+    vinculo?: string;
+    organizacao?: string;
+    desfechos?: inscricao_lote.Desfecho[] | null;
+    gravado?: boolean;
+    erro?: string | null;
+  } = {},
+) {
+  const desfechos = d.desfechos ?? null;
+  const contagem = { INSCRITA: 0, JA_INSCRITA: 0, RECUSADA: 0 };
+  for (const x of desfechos ?? []) contagem[x.resultado] += 1;
+  return pagina(c, "paginas/turma_lote.html", usuario, {
+    turma: vista_turma(turma),
+    vagas_restantes: await servico_turma.vagas_restantes(c.get("tx"), turma),
+    texto: d.texto ?? "",
+    vinculo: d.vinculo ?? "TERCEIRIZADO",
+    organizacao: d.organizacao ?? "",
+    vinculos: VINCULOS_PARTICIPANTE.filter((v) => v !== "SERVIDOR"),
+    rotulo_vinculo: ROTULO_VINCULO,
+    desfechos,
+    contagem,
+    gravado: d.gravado ?? false,
+    limite: inscricao_lote.LIMITE_LINHAS,
+    casa_nome: usuario.ve_dado_nominal,
+    erro: d.erro ?? null,
+  });
+}
+
+rotas.get(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")));
+  if (!turma) return redirecionar(c, TURMAS);
+  return _tela_lote(c, usuario, turma);
+});
+
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  const tx = c.get("tx");
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  if (!turma) return redirecionar(c, TURMAS);
+  const f = await formulario(c);
+  const d = { texto: f.texto("lista"), vinculo: f.texto("vinculo"), organizacao: f.texto("organizacao").trim() };
+  const gravar = f.texto("acao") === "inscrever";
+  let desfechos: inscricao_lote.Desfecho[];
+  try {
+    desfechos = await inscricao_lote.processar(tx, usuario, turma, d.texto, d, !gravar);
+  } catch (erro) {
+    if (erro instanceof RegraDaTurma) return _tela_lote(c, usuario, turma, { ...d, erro: erro.message });
+    throw erro;
+  }
+  if (!gravar) return _tela_lote(c, usuario, turma, { ...d, desfechos });
+  // gravado: na caixa ficam só as recusadas, para corrigir e mandar de novo
+  const recusadas = desfechos.filter((x) => x.resultado === "RECUSADA").map((x) => x.texto);
+  return _tela_lote(c, usuario, turma, { ...d, texto: recusadas.join("\n"), desfechos, gravado: true });
 });
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async (c) => {

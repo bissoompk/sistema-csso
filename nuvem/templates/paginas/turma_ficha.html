@@ -581,8 +581,11 @@
     <div class="corpo">
       <div class="acoes">
         {{ ui.botao_cadastro('cadastrar-externo', CADASTRAR_EXTERNO, 'secundario') }}
+        {# a turma fechada com a lista pronta: a planilha colada, conferida antes de gravar #}
+        <a class="botao secundario" href="/turmas/{{ turma.id }}/inscricoes/lote">Inscrever em lote</a>
         <p class="discreto sem-margem">Não achou nas duas listas? Terceirizado, discente
-          e visitante não estão no cadastro de servidor — entram por aqui.</p>
+          e visitante não estão no cadastro de servidor — entram por aqui. Com a lista
+          pronta numa planilha, use a inscrição em lote.</p>
       </div>
     </div>
   </section>

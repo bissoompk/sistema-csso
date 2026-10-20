@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Inscrição em lote · {{ turma.codigo }} · CSSO{% endblock %}
+{% block trilha %}
+<a class="mono" href="/turmas/{{ turma.id }}?aba=inscricoes">{{ turma.codigo }}</a>
+<span class="atual" aria-current="page">Inscrição em lote</span>
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Inscrição em lote</h1>
+      <p class="sub"><span class="mono">{{ turma.codigo }}</span> · {{ turma.treinamento.nome }}
+        {%- if vagas_restantes is not none %} · {{ vagas_restantes }} vaga(s) livre(s){% endif %}.
+        Cole a lista da planilha: uma pessoa por linha.</p>
+      {% call ui.info('como-le-a-lista', 'como cada linha é lida') %}
+        <p>As colunas podem vir em qualquer ordem, separadas por tabulação (colar da
+          planilha), ponto e vírgula ou vírgula. Cada célula é reconhecida pelo que é:
+          <strong>sete dígitos são SIAPE</strong>, o que tem @ é <strong>e-mail</strong>,
+          o primeiro texto é o <strong>nome</strong> e o segundo, a <strong>organização</strong>.</p>
+        <p>Servidor da UFVJM entra pelo SIAPE, e o nome vem do cadastro.
+          {% if casa_nome %}Sem SIAPE, o nome também acha o servidor — se houver só um com
+          esse nome.{% else %}Nesta sessão o nome não procura servidor (RN-19): para
+          servidor, ponha o SIAPE na linha.{% endif %}
+          E-mail já conhecido acha quem já participou de outra turma. Quem não for achado
+          entra como participante externo, com o vínculo escolhido abaixo.</p>
+        <p><strong>CPF não entra pela lista.</strong> Quando o certificado exige
+          (brigadista), ele se informa na linha de cada inscrição, no campo próprio.
+          Telefone e cargo também não são guardados.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+
+  {% if desfechos %}
+  <div class="aviso {{ 'aviso-ok' if gravado else 'aviso-info' }}" role="status">
+    {% if gravado %}{{ contagem.INSCRITA }} inscrito(s) em <span class="mono">{{ turma.codigo }}</span>.
+    {% else %}Conferência: {{ contagem.INSCRITA }} seriam inscrito(s). Nada foi gravado ainda.{% endif %}
+    {% if contagem.JA_INSCRITA %}{{ contagem.JA_INSCRITA }} já estava(m) na turma. {% endif %}
+    {% if contagem.RECUSADA %}{{ contagem.RECUSADA }} recusada(s){{ ' — continuam na caixa para corrigir' if gravado }}.{% endif %}
+  </div>
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr><th scope="col">Linha</th><th scope="col">Quem</th><th scope="col">Como foi achado</th>
+          <th scope="col">Resultado</th></tr>
+    </thead>
+    {% for x in desfechos %}
+    <tr>
+      <td class="mono">{{ x.numero }}</td>
+      <td class="nome">{{ x.quem or '—' }}</td>
+      <td>{{ x.como or '—' }}</td>
+      <td>
+        {%- if x.resultado == 'INSCRITA' %}<span class="pilula ok">{{ 'inscrito' if gravado else 'será inscrito' }}</span>
+        {%- elif x.resultado == 'JA_INSCRITA' %}<span class="pilula sem-ponto">já na turma</span>
+        {%- else %}<span class="pilula erro">recusada</span>{% endif %}
+        {% if x.motivo %}<span class="quebra discreto">{{ x.motivo }}</span>{% endif %}
+        {% if x.ignorados|length %}<span class="quebra discreto">não guardado: {{ x.ignorados|join(', ') }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% endif %}
+
+  {% if turma.aceita_inscricao %}
+  <form method="post" action="/turmas/{{ turma.id }}/inscricoes/lote" class="corpo">
+    <div class="campo"><label for="lote-lista">Lista</label>
+      <textarea id="lote-lista" name="lista" rows="12" class="mono" spellcheck="false"
+                placeholder="1110654&#10;Maria Aparecida de Souza; maria@empresa.com.br; Limpa Tudo Ltda&#10;João Pereira	joao@ufvjm.edu.br"
+                aria-describedby="dica-lista">{{ texto }}</textarea>
+      <span class="dica" id="dica-lista">Até {{ limite }} linhas por vez. Uma linha de
+        cabeçalho (“Nome”, …) é ignorada.</span></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="lote-vinculo">Quem não for servidor entra como</label>
+        <select id="lote-vinculo" name="vinculo">
+          {% for v in vinculos %}
+          <option value="{{ v }}"{{ ' selected' if v == vinculo }}>{{ rotulo_vinculo[v] }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="campo"><label for="lote-org">Organização (quando a linha não trouxer)</label>
+        <input id="lote-org" name="organizacao" value="{{ organizacao }}"
+               placeholder="empresa contratada, curso…"></div>
+    </div>
+    <div class="acoes">
+      <button type="submit" name="acao" value="conferir" class="secundario">Conferir a lista</button>
+      <button type="submit" name="acao" value="inscrever">Inscrever todos</button>
+      <a class="botao secundario" href="/turmas/{{ turma.id }}?aba=inscricoes">Voltar às inscrições</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="aviso aviso-alerta">
+    <span class="mono">{{ turma.codigo }}</span> está
+    {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }} e não recebe inscrição.
+  </div>
+  <p><a class="botao secundario" href="/turmas/{{ turma.id }}?aba=inscricoes">Voltar às inscrições</a></p>
+  {% endif %}
+
+</div>
+{% endblock %}

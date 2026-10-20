@@ -863,3 +863,102 @@ describe("permissão", () => {
     expect((await auditor.get(`/turmas/${turma_id}?aba=inscricoes`)).text).not.toContain("Cadastrar participante externo");
   });
 });
+
+// =====================================================================
+// Inscrição em lote
+// =====================================================================
+describe("inscrição em lote", () => {
+  const LISTA = [
+    "Nome\tE-mail\tEmpresa",
+    "1110654",
+    "Gorete Vasconcelos Pimenta",
+    "Maria Aparecida de Souza\tmaria@limpatudo.com.br\tLimpa Tudo Ltda\t(38) 99911-2233",
+    "João Pereira; joao@limpatudo.com.br",
+    "9999999",
+  ].join("\n");
+
+  async function _inscritos(turma_id: number) {
+    return db.select().from(e.inscricao).where(eq(e.inscricao.turma_id, turma_id));
+  }
+
+  it("conferir não grava nada e diz o que cada linha seria", async () => {
+    const { turma_id } = await turma_aberta();
+    await _criar_servidor();
+    await _criar_servidor("2220001", "Gorete Vasconcelos Pimenta");
+    const r = await cliente.post(`/turmas/${turma_id}/inscricoes/lote`, { lista: LISTA, vinculo: "TERCEIRIZADO", acao: "conferir" });
+    expect(r.status).toBe(200);
+    expect(r.text).toContain("Nada foi gravado ainda");
+    expect(r.text).toContain("servidor, pelo SIAPE");
+    expect(r.text).toContain("servidor, pelo nome");
+    expect(r.text).toContain("externo novo");
+    expect(r.text).toContain("SIAPE 9999999 não está no cadastro");
+    expect(r.text).toContain("não guardado: telefone");
+    expect(await _inscritos(turma_id)).toHaveLength(0);
+    expect(await db.select().from(e.participante)).toHaveLength(0);
+  });
+
+  it("inscrever grava as válidas, cria os externos e deixa só a recusada na caixa", async () => {
+    const { turma_id } = await turma_aberta();
+    await _criar_servidor();
+    await _criar_servidor("2220001", "Gorete Vasconcelos Pimenta");
+    const r = await cliente.post(`/turmas/${turma_id}/inscricoes/lote`, {
+      lista: LISTA,
+      vinculo: "TERCEIRIZADO",
+      organizacao: "Contratada",
+      acao: "inscrever",
+    });
+    expect(r.text).toContain("4 inscrito(s)");
+    expect(await _inscritos(turma_id)).toHaveLength(4);
+    const externos = await db.select().from(e.participante).where(eq(e.participante.vinculo, "TERCEIRIZADO"));
+    expect(Object.fromEntries(externos.map((p) => [p.nome, p.organizacao]))).toEqual({
+      "Maria Aparecida de Souza": "Limpa Tudo Ltda",
+      "João Pereira": "Contratada",
+    });
+    // a caixa volta só com a linha recusada
+    expect(r.text).toMatch(/<textarea[^>]*>9999999<\/textarea>/);
+
+    // a mesma lista de novo: ninguém em dobro, e o e-mail acha quem já existe
+    const de_novo = await cliente.post(`/turmas/${turma_id}/inscricoes/lote`, { lista: LISTA, vinculo: "TERCEIRIZADO", acao: "inscrever" });
+    expect(de_novo.text).toContain("0 inscrito(s)");
+    expect(de_novo.text).toContain("4 já estava(m) na turma");
+    expect(de_novo.text).toContain("já participou, pelo e-mail");
+    expect(await db.select().from(e.participante)).toHaveLength(4);
+  });
+
+  it("o CPF colado chega mascarado e não é guardado", async () => {
+    const { turma_id } = await turma_aberta();
+    const r = await cliente.post(`/turmas/${turma_id}/inscricoes/lote`, {
+      lista: "Ana Lima\t529.982.247-25\tana@x.com.br",
+      vinculo: "VISITANTE",
+      acao: "inscrever",
+    });
+    expect(r.text).toContain("não guardado: CPF");
+    expect(r.text).not.toContain("529.982.247-25");
+    const [ana] = await db.select().from(e.participante);
+    expect(ana!.cpf).toBeNull();
+  });
+
+  it("dois servidores com o mesmo nome é recusa, não palpite; e a vaga acaba", async () => {
+    const { turma_id } = await turma_aberta();
+    await cliente.post(`/turmas/${turma_id}`, { ...TURMA, vagas: "1" }, { seguir: false });
+    await _criar_servidor("1110001", "José da Silva");
+    await _criar_servidor("1110002", "José da Silva");
+    await _criar_servidor("1110003", "Ana Lima");
+    await _criar_servidor("1110004", "Bruno Costa");
+    const r = await cliente.post(`/turmas/${turma_id}/inscricoes/lote`, {
+      lista: "José da Silva\nAna Lima\nBruno Costa",
+      vinculo: "OUTRO",
+      acao: "inscrever",
+    });
+    expect(r.text).toContain("Há 2 servidores com este nome: informe o SIAPE.");
+    expect(r.text).toContain("não tem vaga");
+    expect(await _inscritos(turma_id)).toHaveLength(1);
+  });
+
+  it("quem não inscreve não abre a tela", async () => {
+    const { turma_id } = await turma_aberta();
+    await entrar(cliente, "servidor_consulta");
+    expect((await cliente.get(`/turmas/${turma_id}/inscricoes/lote`)).status).toBe(403);
+    expect((await cliente.post(`/turmas/${turma_id}/inscricoes/lote`, { lista: "1110654", vinculo: "OUTRO", acao: "inscrever" })).status).toBe(403);
+  });
+});
