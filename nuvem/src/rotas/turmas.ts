@@ -13,6 +13,7 @@
  * reaberta, a linha da grade) lê o banco como estava antes da ação.
  */
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
@@ -34,6 +35,9 @@ import {
 import { AssinaturaInstrutor, ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import * as servico_emissao from "../servicos/emissao_certificado.js";
+import * as campos_certificado from "../servicos/campos_certificado.js";
+import * as identificacao from "../servicos/identificacao.js";
+import { atores_para_tela } from "../servicos/privacidade.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
 import * as servico_participante from "../servicos/participante.js";
@@ -414,8 +418,22 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
   const tem_busca = Boolean(busca.trim()) && ve_nominal;
   // As leituras da ficha não dependem umas das outras: saem juntas, numa ida
   // ao banco (ver `db/cliente.ts`).
-  const [inscritas, participantes, achados_srv, grade, certificados_por_inscricao, vagas_restantes, instrutores_livres, campi, unidades] =
-    await Promise.all([
+  const na_emissao = aba === "emissao" && ve_nominal;
+  const [
+    inscritas,
+    participantes,
+    achados_srv,
+    grade,
+    certificados_por_inscricao,
+    vagas_restantes,
+    instrutores_livres,
+    campi,
+    unidades,
+    [modelo_emissao],
+    valores_turma,
+    valores_inscritos,
+    trilha_campos,
+  ] = await Promise.all([
       ve_nominal ? servico_turma.inscricoes_da_turma(tx, turma) : Promise.resolve([]),
       // `usuario=` NÃO é opcional na busca: sem ele ela não casa por nome
       tem_busca ? servico_participante.buscar(tx, busca, usuario) : Promise.resolve([]),
@@ -428,6 +446,20 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
       _instrutores_livres(tx, turma),
       tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
       tx.select().from(tabela_unidade).orderBy(asc(tabela_unidade.nome_extenso)),
+      // NUVEM: campos de turma/participante do modelo (aba Emissão)
+      na_emissao ? servico_emissao.modelo_da_turma(tx, turma) : Promise.resolve([null, ""] as const),
+      na_emissao ? campos_certificado.valores_da_turma(tx, turma.id) : Promise.resolve({}),
+      na_emissao ? campos_certificado.valores_dos_inscritos(tx, turma.id) : Promise.resolve({}),
+      na_emissao
+        ? campos_certificado.trilha_da_turma(tx, turma.id).then((eventos) =>
+            atores_para_tela(
+              tx,
+              eventos,
+              usuario,
+              identificacao.semente_de({ cookies: { get: (n: string) => getCookie(c, n) ?? null } }),
+            ),
+          )
+        : Promise.resolve([]),
     ]);
   const inscricoes = inscritas.map(vista_inscricao);
   const achados = participantes.map(vista_participante);
@@ -449,7 +481,14 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
 
   const aptidao: Record<number, servico_emissao.Validacao> = {};
   if (aba === "emissao") {
-    const validacoes = await Promise.all(inscricoes.map((inscricao) => servico_emissao.validar(tx, inscricao)));
+    const validacoes = await Promise.all(
+      inscricoes.map((inscricao) =>
+        servico_emissao.validar(tx, inscricao, {
+          valores_turma,
+          valores_inscricao: (valores_inscritos as Record<number, campos_certificado.Valores>)[inscricao.id] ?? {},
+        }),
+      ),
+    );
     inscricoes.forEach((inscricao, i) => (aptidao[inscricao.id] = validacoes[i]!));
   }
   for (const linha of grade) vista_inscricao(linha.inscricao);
@@ -493,6 +532,15 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     // --- aba 4: a mesma função que a emissão usa decide quem aparece como apto
     aptidao,
     certificados,
+    // NUVEM: campos que o modelo pede à turma e a cada participante
+    modelo_emissao,
+    campos_turma: campos_certificado.campos_da_turma(modelo_emissao),
+    campos_participante: campos_certificado.campos_do_participante(modelo_emissao),
+    valores_turma,
+    valores_inscritos,
+    trilha_campos,
+    pode_preencher_turma: campos_certificado.pode_preencher_turma(usuario),
+    pode_preencher_participante: usuario.pode(campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE),
     ...recados(c),
   });
 });
@@ -951,6 +999,81 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
   // nada emitido é o retorno de uma ação que não aconteceu: sai em vermelho
   if (!relatorio.itens.length) return _erro(c, volta, "Ninguém apto a emitir nesta turma.");
   return _volta(c, volta, `${turma.codigo}: ${relatorio.resumo}.`);
+});
+
+/**
+ * NUVEM: os campos de turma que o modelo de certificado declara (ex.: "Local
+ * de atuação do brigadista"). Cada campo vem como `v_<marcador>`.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-certificado`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}?aba=emissao`;
+  const [modelo] = await servico_emissao.modelo_da_turma(tx, turma);
+  if (!modelo) return _erro(c, volta, "A turma não tem modelo de certificado.");
+  const digitados: campos_certificado.Valores = {};
+  for (const tag of campos_certificado.campos_da_turma(modelo)) {
+    // campo enviado em branco apaga; campo ausente fica como está
+    if (f.tem(`v_${tag.marcador}`)) digitados[tag.marcador] = f.texto(`v_${tag.marcador}`);
+  }
+  let mudaram = 0;
+  try {
+    mudaram = await _no_savepoint(c, (sp) => campos_certificado.gravar_valores_turma(sp, usuario, turma, modelo, digitados));
+  } catch (erro) {
+    if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message, "#campos-turma");
+    throw erro;
+  }
+  return _volta(c, volta, mudaram ? `${mudaram} campo(s) da turma salvo(s).` : "Nada mudou.", "#campos-turma");
+});
+
+/**
+ * NUVEM: os campos de participante (ex.: nota de cada disciplina), numa grade
+ * só. Cada célula vem como `v_<inscricao_id>_<marcador>`; cada inscrição grava
+ * no seu savepoint — a que tem certificado válido é recusada sem derrubar as
+ * outras.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-participante`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir(campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE);
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}?aba=emissao`;
+  const [modelo] = await servico_emissao.modelo_da_turma(tx, turma);
+  if (!modelo) return _erro(c, volta, "A turma não tem modelo de certificado.");
+  const tags = campos_certificado.campos_do_participante(modelo);
+  const [inscricoes, atuais] = await Promise.all([
+    servico_turma.inscricoes_da_turma(tx, turma),
+    campos_certificado.valores_dos_inscritos(tx, turma.id),
+  ]);
+  let mudaram = 0;
+  const recusas: string[] = [];
+  for (const inscricao of inscricoes) {
+    const digitados: campos_certificado.Valores = {};
+    for (const tag of tags) {
+      const nome = `v_${inscricao.id}_${tag.marcador}`;
+      if (f.tem(nome)) digitados[tag.marcador] = f.texto(nome);
+    }
+    if (!Object.keys(digitados).length) continue;
+    try {
+      mudaram += await _no_savepoint(c, (sp) =>
+        campos_certificado.gravar_valores_inscricao(sp, usuario, inscricao, modelo, digitados, atuais[inscricao.id] ?? {}),
+      );
+    } catch (erro) {
+      if (erro instanceof RegraDaTurma) recusas.push(erro.message);
+      else throw erro;
+    }
+  }
+  if (recusas.length) {
+    return _erro(c, volta, `${mudaram} valor(es) salvo(s). Recusado: ${recusas.join(" ")}`, "#campos-participante");
+  }
+  return _volta(c, volta, mudaram ? `${mudaram} valor(es) salvo(s).` : "Nada mudou.", "#campos-participante");
 });
 
 /** Os certificados vigentes da turma num PDF só, para imprimir de uma vez. */

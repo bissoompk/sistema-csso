@@ -181,6 +181,12 @@ export const certificado_modelo = pgTable(
 /**
  * O MAPEAMENTO_TAGS do legado, virado tabela. `marcador` e o que esta escrito no
  * .docx; `campo` e o codigo do dado do sistema que o alimenta.
+ *
+ * NUVEM: `tipo` diz de onde vem o valor. SISTEMA usa `campo`; TEXTO_FIXO usa
+ * `texto_fixo` (vale para todo certificado do modelo); TURMA e PARTICIPANTE
+ * sao campos que o modelo declara com `rotulo` e cada turma (ou cada
+ * inscricao) preenche — os valores moram em `certificado_valor_turma` e
+ * `certificado_valor_inscricao`. Fora de SISTEMA, `campo` fica vazio.
  */
 export const certificado_modelo_tag = pgTable(
   'certificado_modelo_tag',
@@ -188,10 +194,13 @@ export const certificado_modelo_tag = pgTable(
     id: integer('id').notNull().generatedByDefaultAsIdentity(),
     modelo_id: integer('modelo_id').notNull(),
     marcador: varchar('marcador', { length: 60 }).notNull(),
-    campo: varchar('campo', { length: 60 }).notNull(),
+    campo: varchar('campo', { length: 60 }).notNull().default(''),
     ordem: smallint('ordem').notNull().default(1),
     // vazio neste campo bloqueia a emissao, como DadosIncompletos no parecer
     obrigatorio: boolean('obrigatorio').notNull().default(true),
+    tipo: varchar('tipo', { length: 12 }).notNull().default('SISTEMA'),
+    texto_fixo: text('texto_fixo'),
+    rotulo: varchar('rotulo', { length: 120 }),
   },
   (t) => [
     primaryKey({ name: 'pk_certificado_modelo_tag', columns: [t.id] }),
@@ -203,6 +212,9 @@ export const certificado_modelo_tag = pgTable(
     unique('uq_modelo_tag').on(t.modelo_id, t.marcador),
     check_regex('ck_modelo_tag_marcador', 'marcador', PADRAO_MARCADOR),
     index('ix_modelo_tag_campo').on(t.campo),
+    check('ck_modelo_tag_tipo', sql.raw(`tipo IN ('SISTEMA','TEXTO_FIXO','TURMA','PARTICIPANTE')`)),
+    check('ck_modelo_tag_campo', sql.raw(`tipo <> 'SISTEMA' OR campo <> ''`)),
+    check('ck_modelo_tag_rotulo', sql.raw(`tipo NOT IN ('TURMA','PARTICIPANTE') OR rotulo IS NOT NULL`)),
   ],
 );
 
@@ -790,5 +802,60 @@ export const certificado = pgTable(
     uniqueIndex('uq_certificado_ativo')
       .on(t.inscricao_id)
       .where(sql.raw(`situacao <> 'ANULADO'`)),
+  ],
+);
+
+// =====================================================================
+// NUVEM — valores dos campos que o modelo declara (tipo TURMA/PARTICIPANTE)
+// =====================================================================
+
+/**
+ * O valor de um campo de turma do modelo (ex.: "Local de atuação do
+ * brigadista"). A chave e o MARCADOR, e nao a linha do dicionario: a versao
+ * nova do modelo clona o dicionario, e o valor ja digitado continua valendo.
+ * Certificado emitido nao le daqui — le do contexto congelado.
+ */
+export const certificado_valor_turma = pgTable(
+  'certificado_valor_turma',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    turma_id: integer('turma_id').notNull(),
+    marcador: varchar('marcador', { length: 60 }).notNull(),
+    valor: text('valor').notNull(),
+    atualizado_por: integer('atualizado_por'),
+    atualizado_em: MomentoUTC('atualizado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_certificado_valor_turma', columns: [t.id] }),
+    foreignKey({ name: 'fk_valor_turma_turma', columns: [t.turma_id], foreignColumns: [turma.id] }).onDelete('cascade'),
+    foreignKey({ name: 'fk_valor_turma_usuario', columns: [t.atualizado_por], foreignColumns: [usuario.id] }),
+    unique('uq_valor_turma').on(t.turma_id, t.marcador),
+  ],
+);
+
+/**
+ * O valor de um campo de participante do modelo (ex.: a nota de cada
+ * disciplina), por inscricao. Dado pessoal: le-se e grava-se com as mesmas
+ * permissoes da nota final.
+ */
+export const certificado_valor_inscricao = pgTable(
+  'certificado_valor_inscricao',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    inscricao_id: integer('inscricao_id').notNull(),
+    marcador: varchar('marcador', { length: 60 }).notNull(),
+    valor: text('valor').notNull(),
+    atualizado_por: integer('atualizado_por'),
+    atualizado_em: MomentoUTC('atualizado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_certificado_valor_inscricao', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_valor_inscricao_inscricao',
+      columns: [t.inscricao_id],
+      foreignColumns: [inscricao.id],
+    }).onDelete('cascade'),
+    foreignKey({ name: 'fk_valor_inscricao_usuario', columns: [t.atualizado_por], foreignColumns: [usuario.id] }),
+    unique('uq_valor_inscricao').on(t.inscricao_id, t.marcador),
   ],
 );

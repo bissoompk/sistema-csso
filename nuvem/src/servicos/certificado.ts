@@ -119,6 +119,18 @@ export interface InstrutorCongelado {
   rubrica_sha256?: string | null;
 }
 
+/**
+ * NUVEM: o valor congelado de um marcador que não é campo do sistema — texto
+ * fixo do modelo, campo da turma ou campo do participante. Vai no contexto
+ * com o rótulo, para a segunda via e a mensagem de "falta preencher" não
+ * dependerem do dicionário de hoje.
+ */
+export interface CampoLivreCongelado {
+  tipo: string;
+  rotulo: string;
+  valor: string;
+}
+
 export function linha_do_instrutor(instrutor: InstrutorCongelado): string {
   const partes = [instrutor.nome || ""];
   if (instrutor.titulo) partes.push(instrutor.titulo);
@@ -146,6 +158,7 @@ export interface DadosContextoCertificado {
   turma_local: string;
   turma_unidade_promotora: string;
   turma_campus: string;
+  turma_campus_cidade?: string;
   data_base_vencimento: string;
   nota_final: string | null;
   frequencia_percentual: string | null;
@@ -169,6 +182,7 @@ export interface DadosContextoCertificado {
   modelo_chave?: string | null;
   modelo_versao: number;
   mapa_tags: Record<string, string>;
+  campos_livres?: Record<string, CampoLivreCongelado>;
   tags_obrigatorias?: readonly string[];
   avisos?: string[];
 }
@@ -179,12 +193,12 @@ const CAMPOS_CONGELADOS = [
   "treinamento_nome", "treinamento_norma", "treinamento_conteudo",
   "validade_meses", "turma_codigo", "turma_data_inicio", "turma_data_fim",
   "carga_horaria", "turma_local", "turma_unidade_promotora", "turma_campus",
-  "data_base_vencimento", "nota_final", "frequencia_percentual",
+  "turma_campus_cidade", "data_base_vencimento", "nota_final", "frequencia_percentual",
   "nota_minima", "frequencia_minima", "instrutores", "numero", "ano",
   "data_emissao", "chave_validacao", "data_vencimento", "url_validacao",
   "setor_sigla", "setor_nome", "setor_endereco", "cidade", "modelo_id",
   "modelo_arquivo", "modelo_sha256", "modelo_versao", "mapa_tags",
-  "tags_obrigatorias", "modelo_chave",
+  "campos_livres", "tags_obrigatorias", "modelo_chave",
 ] as const;
 
 const _DATAS = ["turma_data_inicio", "turma_data_fim", "data_base_vencimento", "data_emissao", "data_vencimento"] as const;
@@ -212,6 +226,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   turma_local!: string;
   turma_unidade_promotora!: string;
   turma_campus!: string;
+  turma_campus_cidade = "";
   data_base_vencimento!: string;
   nota_final!: string | null;
   frequencia_percentual!: string | null;
@@ -234,6 +249,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   modelo_chave: string | null = null;
   modelo_versao!: number;
   mapa_tags!: Record<string, string>;
+  campos_livres: Record<string, CampoLivreCongelado> = {};
   tags_obrigatorias: readonly string[] = [];
   avisos: string[] = [];
 
@@ -242,6 +258,11 @@ export class ContextoCertificado implements DadosContextoCertificado {
   constructor(d: DadosContextoCertificado) {
     Object.assign(this, d);
     this.modelo_chave = d.modelo_chave ?? null;
+    // certificado emitido antes destes campos não os tem no congelado
+    this.turma_campus_cidade = d.turma_campus_cidade ?? "";
+    this.campos_livres = Object.fromEntries(
+      Object.entries(d.campos_livres ?? {}).map(([k, v]) => [k, { ...v }]),
+    );
     this.tags_obrigatorias = [...(d.tags_obrigatorias ?? [])];
     this.avisos = [...(d.avisos ?? [])];
   }
@@ -262,6 +283,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
     for (const campo of _DECIMAIS) dados[campo] = dados[campo] !== null ? String(dados[campo]) : null;
     dados.instrutores = this.instrutores.map((i) => ({ ...i }));
     dados.mapa_tags = { ...this.mapa_tags };
+    dados.campos_livres = Object.fromEntries(Object.entries(this.campos_livres).map(([k, v]) => [k, { ...v }]));
     dados.tags_obrigatorias = [...this.tags_obrigatorias];
     return dados;
   }
@@ -273,6 +295,8 @@ export class ContextoCertificado implements DadosContextoCertificado {
     for (const campo of _DECIMAIS) valores[campo] = valores[campo] !== null ? String(valores[campo]) : null;
     valores.tags_obrigatorias = [...((valores.tags_obrigatorias as string[] | null) ?? [])];
     valores.mapa_tags = { ...((valores.mapa_tags as Record<string, string> | null) ?? {}) };
+    valores.campos_livres = { ...((valores.campos_livres as Record<string, CampoLivreCongelado> | null) ?? {}) };
+    valores.turma_campus_cidade = (valores.turma_campus_cidade as string | null) ?? "";
     valores.instrutores = [...((valores.instrutores as InstrutorCongelado[] | null) ?? [])];
     return new ContextoCertificado(valores as unknown as DadosContextoCertificado);
   }
@@ -296,6 +320,10 @@ export class ContextoCertificado implements DadosContextoCertificado {
     for (const [marcador, campo] of Object.entries(this.mapa_tags)) {
       saida[marcador] = CAMPOS_CERTIFICADO[exigir_campo(campo)]!.obter(this);
     }
+    // NUVEM: texto fixo e campos de turma/participante, já resolvidos na emissão
+    for (const [marcador, livre] of Object.entries(this.campos_livres)) {
+      saida[marcador] = livre.valor.includes("\n") ? _rich(livre.valor) : livre.valor;
+    }
     return saida;
   }
 
@@ -303,6 +331,11 @@ export class ContextoCertificado implements DadosContextoCertificado {
   async obrigatorios_faltantes(): Promise<string[]> {
     const faltam: string[] = [];
     for (const marcador of this.tags_obrigatorias) {
+      if (Object.hasOwn(this.campos_livres, marcador)) {
+        const livre = this.campos_livres[marcador]!;
+        if (!livre.valor.trim()) faltam.push(`${marcador} (${livre.rotulo})`);
+        continue;
+      }
       const campo = Object.hasOwn(this.mapa_tags, marcador) ? this.mapa_tags[marcador] : undefined;
       if (campo === undefined || !Object.hasOwn(CAMPOS_CERTIFICADO, campo)) {
         faltam.push(`${marcador} (campo desconhecido)`);
@@ -386,8 +419,8 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     _periodo_extenso(c.turma_data_inicio, c.turma_data_fim),
   ),
   turma_local: _c("Turma", "Local", "Auditório do Campus JK", (c) => c.turma_local),
-  // NUVEM: o campus já ia no congelado; faltava o campo que o imprime
   turma_campus: _c("Turma", "Campus", "Campus JK", (c) => c.turma_campus),
+  turma_campus_cidade: _c("Turma", "Cidade do campus", "Diamantina", (c) => c.turma_campus_cidade),
   turma_unidade_promotora: _c(
     "Turma",
     "Unidade promotora",

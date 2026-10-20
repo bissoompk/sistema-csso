@@ -171,6 +171,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   ASSINATURA_INSTRUTOR_CRIADA: "Assinatura de instrutor cadastrada",
   MODELO_TAG_MAPEADA: "Marcador do modelo mapeado",
   MODELO_TAG_REMOVIDA: "Marcador do modelo removido",
+  CERTIFICADO_CAMPO_TURMA_ALTERADO: "Campo do certificado preenchido na turma",
+  CERTIFICADO_CAMPO_PARTICIPANTE_ALTERADO: "Campo do certificado preenchido para o participante",
   // --- EPI: catálogo e estoque ---
   EPI_ITEM_CRIADO: "Item cadastrado no catálogo de EPI",
   EPI_MOTIVO_RECUSA_CRIADO: "Motivo de recusa cadastrado",

@@ -1,1 +1,0 @@
-ALTER TABLE "certificado_modelo" ADD COLUMN "arquivo_enviado" jsonb;

@@ -96,8 +96,8 @@
 
     <table class="mapa-tags">
       <thead>
-        <tr><th scope="col">Marcador</th><th scope="col">Dado do sistema</th><th scope="col">Ordem</th>
-            <th scope="col">Vazio bloqueia</th>
+        <tr><th scope="col">Marcador</th><th scope="col">Preenchimento</th><th scope="col">De onde vem o valor</th>
+            <th scope="col">Ordem</th><th scope="col">Vazio bloqueia</th>
             {% if modelo.vigente %}<th scope="col"></th><th scope="col"></th>{% endif %}</tr>
       </thead>
       {% for tag in modelo.tags %}
@@ -108,17 +108,27 @@
           {% if modelo.vigente %}
           <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/{{ tag.id }}" id="{{ fid }}"></form>
           {% endif %}</td>
+        {% set tipo = tag.tipo or 'SISTEMA' %}
         {% if modelo.vigente %}
+        <td><select form="{{ fid }}" name="tipo" aria-label="Preenchimento de {{ tag.marcador }}">
+            {% for codigo, rotulo in tipos_tag %}
+            <option value="{{ codigo }}" {% if tipo == codigo %}selected{% endif %}>{{ rotulo }}</option>
+            {% endfor %}
+          </select></td>
         <td><span class="para"><span class="seta" aria-hidden="true">→</span>
           <select form="{{ fid }}" name="campo" aria-label="Dado que vai em {{ tag.marcador }}">
             {% for grupo, lista in campos_por_grupo %}
             <optgroup label="{{ grupo }}">
               {% for codigo, campo in lista %}
-              <option value="{{ codigo }}" {% if tag.campo == codigo %}selected{% endif %}>{{ campo.rotulo }}</option>
+              <option value="{{ codigo }}" {% if tipo == 'SISTEMA' and tag.campo == codigo %}selected{% endif %}>{{ campo.rotulo }}</option>
               {% endfor %}
             </optgroup>
             {% endfor %}
-          </select></span></td>
+          </select></span>
+          {# uma caixa só: o texto, no texto fixo; o nome do campo, na turma/participante #}
+          <input form="{{ fid }}" name="detalhe" value="{{ tag.texto_fixo or tag.rotulo or '' }}"
+                 placeholder="texto fixo, ou nome do campo da turma/participante"
+                 aria-label="Texto fixo ou nome do campo de {{ tag.marcador }}"></td>
         <td><input class="campo-curto" form="{{ fid }}" name="ordem" value="{{ tag.ordem }}"
                    aria-label="Ordem de {{ tag.marcador }}"></td>
         <td><label class="discreto"><input form="{{ fid }}" type="checkbox" name="obrigatorio" value="1"
@@ -184,7 +194,7 @@
     <table class="mapa-tags">
       <thead>
         <tr><th scope="col">Marcador no documento</th><th scope="col">Onde aparece</th>
-            <th scope="col">Dado do sistema</th><th scope="col">Vazio bloqueia</th>
+            <th scope="col">O que vai no lugar</th><th scope="col">Vazio bloqueia</th>
             <th scope="col">Situação</th></tr>
       </thead>
       {% for l in linhas %}
@@ -194,8 +204,13 @@
         <td class="trecho">{% if l.antes or l.depois %}{{ l.antes }} <mark>{{ l.rotulo }}</mark> {{ l.depois }}
             {%- else %}<span class="discreto">—</span>{% endif %}</td>
         {% if modelo.vigente %}
-        <td><select form="f-mapa" name="campo__{{ l.marcador }}" aria-label="Dado que vai em {{ l.rotulo }}">
-            <option value=""{{ ' selected' if not l.escolhido }}>— escolha o dado —</option>
+        <td><select form="f-mapa" name="campo__{{ l.marcador }}" aria-label="O que vai em {{ l.rotulo }}">
+            <option value=""{{ ' selected' if not l.escolhido }}>— escolha —</option>
+            <optgroup label="Preenchido à parte">
+              <option value="@TEXTO_FIXO"{{ ' selected' if l.escolhido == '@TEXTO_FIXO' }}>Texto fixo (igual em todo certificado)</option>
+              <option value="@TURMA"{{ ' selected' if l.escolhido == '@TURMA' }}>Campo da turma (preenchido em cada turma)</option>
+              <option value="@PARTICIPANTE"{{ ' selected' if l.escolhido == '@PARTICIPANTE' }}>Campo do participante (ex.: nota de disciplina)</option>
+            </optgroup>
             {% for grupo, lista in campos_por_grupo %}
             <optgroup label="{{ grupo }}">
               {% for codigo, campo in lista %}
@@ -204,11 +219,15 @@
               {% endfor %}
             </optgroup>
             {% endfor %}
-          </select></td>
+          </select>
+          {# o texto, no texto fixo; o nome do campo, na turma/participante #}
+          <input form="f-mapa" name="detalhe__{{ l.marcador }}" value="{{ l.detalhe }}"
+                 placeholder="texto fixo, ou nome do campo" aria-label="Texto fixo ou nome do campo de {{ l.rotulo }}"></td>
         <td><label class="discreto"><input form="f-mapa" type="checkbox" name="obrigatorio__{{ l.marcador }}" value="1"
             {% if (l.tag and l.tag.obrigatorio) or (not l.tag and l.escolhido != 'em_branco') %}checked{% endif %}> bloqueia</label></td>
         {% else %}
-        <td>{% if l.tag %}<span class="campo-fixo">{{ campos[l.campo].rotulo if l.campo in campos else l.campo }}</span>
+        <td>{% if l.tag and l.tipo != 'SISTEMA' %}<span class="campo-fixo">{{ rotulo_tipo_tag[l.tipo] }}: {{ l.detalhe }}</span>
+            {%- elif l.tag %}<span class="campo-fixo">{{ campos[l.campo].rotulo if l.campo in campos else l.campo }}</span>
             {%- else %}<span class="discreto">—</span>{% endif %}</td>
         <td>{% if l.tag %}{{ ui.pilula_sim_nao(l.tag.obrigatorio, 'bloqueia', 'não bloqueia') }}{% endif %}</td>
         {% endif %}
@@ -282,8 +301,15 @@
              aria-describedby="dica-marcador">
       <span class="dica" id="dica-marcador">Sem as chaves: só o nome de dentro
         delas.</span></div>
-    <div class="campo"><label for="novo-campo">Dado do sistema</label>
-      <select id="novo-campo" name="campo" required>
+    <div class="campo"><label for="novo-tipo">Preenchimento</label>
+      <select id="novo-tipo" name="tipo">
+        {% for codigo, rotulo in tipos_tag %}<option value="{{ codigo }}">{{ rotulo }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="novo-campo">Campo do sistema</label>
+      <select id="novo-campo" name="campo" aria-describedby="dica-campo">
+        <option value="">— só para campo do sistema —</option>
         {% for grupo, lista in campos_por_grupo %}
         <optgroup label="{{ grupo }}">
           {% for codigo, campo in lista %}
@@ -291,10 +317,20 @@
           {% endfor %}
         </optgroup>
         {% endfor %}
-      </select></div>
+      </select>
+      <span class="dica" id="dica-campo">Usado só quando o preenchimento é “campo do sistema”.</span></div>
     <div class="campo"><label for="nova-ordem">Ordem</label>
       <input id="nova-ordem" name="ordem" value="{{ modelo.tags|length + 1 }}"></div>
   </div>
+  <div class="campo"><label for="novo-texto-fixo">Texto fixo</label>
+    <textarea id="novo-texto-fixo" name="texto_fixo" rows="2" aria-describedby="dica-texto-fixo"
+              placeholder="10 (dez) tempos"></textarea>
+    <span class="dica" id="dica-texto-fixo">Só para “texto fixo”: sai igual em todo certificado deste modelo.</span></div>
+  <div class="campo"><label for="novo-rotulo">Nome do campo</label>
+    <input id="novo-rotulo" name="rotulo" maxlength="120" aria-describedby="dica-rotulo"
+           placeholder="Local de atuação do brigadista">
+    <span class="dica" id="dica-rotulo">Só para “campo da turma” ou “do participante”: é o
+      nome que aparece no formulário da turma.</span></div>
   <div class="campo">
     <label class="discreto"><input type="checkbox" name="obrigatorio" value="1" checked>
       vazio neste campo bloqueia a emissão</label></div>

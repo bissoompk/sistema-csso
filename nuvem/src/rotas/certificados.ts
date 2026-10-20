@@ -11,7 +11,7 @@ import { and, asc, count, desc, eq, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import { certificado as tabela_certificado, treinamento as tabela_treinamento } from "../db/esquema/index.js";
-import { Certificado as C, ROTULO_CERTIFICADO, SITUACOES_CERTIFICADO } from "../dominio/treinamento.js";
+import { Certificado as C, ROTULO_CERTIFICADO, ROTULO_TIPO_TAG, SITUACOES_CERTIFICADO } from "../dominio/treinamento.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
 import { CAMPOS_CERTIFICADO, normalizar_chave } from "../servicos/certificado.js";
@@ -152,6 +152,7 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}`, async (c) => {
     certificado: vista_certificado(certificado as Record<string, any>),
     contexto,
     campos: CAMPOS_CERTIFICADO,
+    rotulo_tipo_tag: ROTULO_TIPO_TAG,
     substituto,
     hoje,
     situacao_publica: C.situacao_publica(certificado, hoje),

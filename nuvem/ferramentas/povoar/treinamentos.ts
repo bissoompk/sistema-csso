@@ -19,6 +19,7 @@ import type { Executor } from "../../src/db/cliente.js";
 import * as e from "../../src/db/esquema/index.js";
 import { hoje_iso, somar_dias } from "../../src/dominio/datas.js";
 import type { UsuarioAtual } from "../../src/servicos/rbac.js";
+import * as campos_certificado from "../../src/servicos/campos_certificado.js";
 import * as emissao_certificado from "../../src/servicos/emissao_certificado.js";
 import * as servico_participante from "../../src/servicos/participante.js";
 import * as presenca from "../../src/servicos/presenca.js";
@@ -79,6 +80,12 @@ export async function povoar_treinamentos(tx: Executor, ctx: ContextoPovoar): Pr
     criado_por: coord.id,
   });
   await tx.update(e.treinamento).set({ modelo_vigente_id: especifico.id }).where(eq(e.treinamento.id, catalogo[0]!.id));
+  // NUVEM: um campo de turma e um de participante (opcionais), para a aba
+  // Emissão e a varredura de privacidade terem o que mostrar
+  await tx.insert(e.certificado_modelo_tag).values([
+    { modelo_id: especifico.id, marcador: "local_atuacao", tipo: "TURMA", rotulo: "Local de atuação", ordem: 90, obrigatorio: false },
+    { modelo_id: especifico.id, marcador: "nota_pratica", tipo: "PARTICIPANTE", rotulo: "Nota da prática", ordem: 91, obrigatorio: false },
+  ]);
   await semear_modelo_certificado(tx);
 
   // instrutor interno aponta para um servidor (`ck_assinatura_vinculo`)
@@ -214,6 +221,11 @@ export async function povoar_treinamentos(tx: Executor, ctx: ContextoPovoar): Pr
   const recarregada = (await servico_turma.carregar_turma(tx, concluida.id))!;
   // na ordem do banco (id), como a consulta do Python — a numeração depende dela
   const da_turma = (await servico_turma.inscricoes_da_turma(tx, recarregada)).sort((a, b) => a.id - b.id);
+  const modelo_nr35 = (await emissao_certificado.modelo_da_turma(tx, recarregada))[0]!;
+  await campos_certificado.gravar_valores_turma(tx, coord, recarregada, modelo_nr35, { local_atuacao: "Prédio da Reitoria" });
+  for (const [inscricao, nota] of da_turma.slice(0, 2).map((i, n) => [i, n ? "8,0" : "9,0"] as const)) {
+    await campos_certificado.gravar_valores_inscricao(tx, coord, inscricao, modelo_nr35, { nota_pratica: nota }, {});
+  }
   for (const inscricao of da_turma) {
     if ((await emissao_certificado.validar(tx, inscricao)).ok) {
       await emissao_certificado.emitir(tx, coord, inscricao, { gerar_pdf: false });

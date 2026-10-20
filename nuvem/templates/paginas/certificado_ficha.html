@@ -218,7 +218,7 @@
   <section class="cartao liso">
     <div class="cabecalho-cartao">
       <h2>O dicionário de tags congelado</h2>
-      <span class="contador">{{ contexto.mapa_tags|length }} marcadores</span>
+      <span class="contador">{{ contexto.mapa_tags|length + contexto.campos_livres|length }} marcadores</span>
       <span class="nota">qual campo alimentou qual marcador, na emissão</span>
     </div>
     <table class="mapa-tags">
@@ -236,7 +236,21 @@
             {% else %}<span class="discreto">—</span>{% endif %}</td>
       </tr>
       {% else %}
+      {% if not contexto.campos_livres|length %}
       <tr><td colspan="3" class="nada">Sem dicionário congelado.</td></tr>
+      {% endif %}
+      {% endfor %}
+      {# texto fixo e campos de turma/participante: o VALOR é que foi congelado #}
+      {% for marcador, livre in contexto.campos_livres|dictsort %}
+      <tr>
+        <td><span class="marcador-docx">{{ '{{' }} {{ marcador }} {{ '}}' }}</span></td>
+        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
+          <span class="campo-fixo">{{ livre.rotulo }}
+            <span class="quebra discreto">{{ rotulo_tipo_tag[livre.tipo] }}: {{ livre.valor or '(vazio)' }}</span></span></span></td>
+        <td>{% if marcador in contexto.tags_obrigatorias %}
+            <span class="pilula sem-ponto">bloqueava</span>
+            {% else %}<span class="discreto">—</span>{% endif %}</td>
+      </tr>
       {% endfor %}
     </table>
   </section>

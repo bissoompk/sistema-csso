@@ -23,10 +23,14 @@ import {
   ORIENTACOES,
   PADRAO_CODIGO_TREINAMENTO,
   PADRAO_MARCADOR,
+  ROTULO_TIPO_TAG,
+  TIPOS_TAG,
+  type TipoTag,
   Treinamento,
 } from "../dominio/treinamento.js";
 import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import * as auditoria from "../servicos/auditoria.js";
+import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as certificado from "../servicos/certificado.js";
 import * as envio from "../servicos/modelo_certificado_envio.js";
 import { obterArmazenamento } from "../servicos/armazenamento.js";
@@ -322,14 +326,19 @@ function _linhas_do_mapa(modelo: any) {
   return certificado.marcadores_detalhados(modelo).map((m) => {
     const tag = por_marcador.get(m.marcador) ?? null;
     const sugestao = certificado.sugerir_campo(m);
+    const tipo: string = tag?.tipo ?? "SISTEMA";
     return {
       ...m,
       tag,
+      tipo,
       campo: tag ? (tag.campo as string) : null,
       sugestao,
       sugestao_rotulo: sugestao ? certificado.CAMPOS_CERTIFICADO[sugestao]!.rotulo : null,
-      // o que o seletor mostra escolhido: o mapa gravado, senão a sugestão
-      escolhido: tag ? (tag.campo as string) : (sugestao ?? ""),
+      // o que o seletor mostra escolhido: o mapa gravado, senão a sugestão;
+      // preenchimento à parte aparece como "@TIPO"
+      escolhido: tag ? (tipo === "SISTEMA" ? (tag.campo as string) : `@${tipo}`) : (sugestao ?? ""),
+      // texto fixo ou nome do campo; sem nada gravado, o próprio texto do Word
+      detalhe: (tag?.texto_fixo || tag?.rotulo || (m.rotulo !== m.marcador ? m.rotulo : "")) as string,
     };
   });
 }
@@ -430,9 +439,11 @@ rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
   const modelo = await _modelo(tx, Number(c.req.param("modelo_id")));
   if (!modelo) return redirecionar(c, MODELOS);
   vista_modelo(modelo);
-  const conferencia = certificado.conferir_modelo(modelo, CertificadoModelo.mapa_de_tags(modelo));
+  const conferencia = certificado.conferir_modelo(modelo, CertificadoModelo.marcadores_mapeados(modelo));
   const linhas = conferencia.arquivo_encontrado ? _linhas_do_mapa(modelo) : [];
   return pagina(c, "paginas/certificado_modelo.html", usuario, {
+    tipos_tag: TIPOS_TAG.map((t) => [t, ROTULO_TIPO_TAG[t]]),
+    rotulo_tipo_tag: ROTULO_TIPO_TAG,
     modelo,
     conferencia,
     linhas,
@@ -557,24 +568,30 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
       criado_por: usuario.id,
     })
     .returning();
-  // com arquivo novo, só vai junto o mapa dos marcadores que ele ainda tem
+  // o dicionário inteiro, inclusive o tipo de preenchimento, o texto fixo e o
+  // rótulo dos campos de turma/participante (os valores digitados nas turmas
+  // são guardados pelo marcador e continuam valendo); com arquivo novo, só vai
+  // junto o mapa dos marcadores que ele ainda tem
   const no_novo = novo_arquivo ? new Set(novo_arquivo.enviado.marcadores.map((m) => m.marcador)) : null;
-  const levadas = (atual.tags as (typeof tabela_tag.$inferSelect)[]).filter((t) => !no_novo || no_novo.has(t.marcador));
-  for (const tag of levadas) {
-    await tx.insert(tabela_tag).values({
+  const clonadas = (atual.tags as (typeof tabela_tag.$inferSelect)[])
+    .filter((t) => !no_novo || no_novo.has(t.marcador))
+    .map((tag) => ({
       modelo_id: nova!.id,
       marcador: tag.marcador,
       campo: tag.campo,
       ordem: tag.ordem,
       obrigatorio: tag.obrigatorio,
-    });
-  }
+      tipo: tag.tipo,
+      texto_fixo: tag.texto_fixo,
+      rotulo: tag.rotulo,
+    }));
+  if (clonadas.length) await tx.insert(tabela_tag).values(clonadas);
   await auditoria.registrar(tx, {
     entidade: "certificado_modelo",
     entidade_id: nova!.id,
     tipo_evento: "CERTIFICADO_MODELO_VERSIONADO",
     descricao:
-      `${CertificadoModelo.rotulo(nova!)} a partir de v${atual.versao} (${levadas.length} tags)` +
+      `${CertificadoModelo.rotulo(nova!)} a partir de v${atual.versao} (${clonadas.length} tags)` +
       (novo_arquivo ? ` · arquivo novo ${novo_arquivo.arquivo}` : ""),
     usuario,
   });
@@ -608,6 +625,21 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/versao`, async (c) => {
   );
 });
 
+/**
+ * NUVEM: a linha do dicionário como foi digitada. Na tabela da ficha o texto
+ * fixo e o nome do campo dividem uma caixa só (`detalhe`), lida conforme o tipo.
+ */
+function _tag_digitada(f: Formulario, tipo_padrao: string) {
+  const tipo = f.texto("tipo") || tipo_padrao;
+  const detalhe = f.texto("detalhe");
+  return campos_certificado.dados_da_tag({
+    tipo,
+    campo: f.texto("campo"),
+    texto_fixo: f.texto("texto_fixo") || (tipo === "TEXTO_FIXO" ? detalhe : ""),
+    rotulo: f.texto("rotulo") || (tipo === "TURMA" || tipo === "PARTICIPANTE" ? detalhe : ""),
+  });
+}
+
 rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("treinamento.gerenciar");
@@ -619,7 +651,6 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
   if (!modelo) return redirecionar(c, MODELOS);
   if (!modelo.vigente) return _erro(c, volta, "Versão superada não se edita.");
   const limpo = f.texto("marcador").trim();
-  const campo = f.texto("campo");
   if (!confere_regex(limpo, PADRAO_MARCADOR)) {
     return _erro(
       c,
@@ -627,25 +658,27 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags`, async (c) => {
       `Marcador inválido: '${limpo}'. Use letra ou sublinhado no começo, depois letras, números e sublinhado.`,
     );
   }
-  // nunca chutar a chave: campo desconhecido sairia em branco no papel
-  if (!Object.hasOwn(certificado.CAMPOS_CERTIFICADO, campo)) return _erro(c, volta, `Campo desconhecido: '${campo}'.`);
-  if (Object.hasOwn(CertificadoModelo.mapa_de_tags(modelo), limpo)) {
+  // tipo do sistema: campo fechado no vocabulário (nunca chutar a chave)
+  const [dados, recusa] = _tag_digitada(f, "SISTEMA");
+  if (!dados) return _erro(c, volta, recusa);
+  if (Object.hasOwn(CertificadoModelo.marcadores_mapeados(modelo), limpo)) {
     return _erro(c, volta, `O marcador '${limpo}' já está mapeado neste modelo.`);
   }
   // default vazio: sem número, a tag cai no fim da lista
   const posicao = _inteiro(f.texto("ordem"), 1) || modelo.tags.length + 1;
   const [tag] = await tx
     .insert(tabela_tag)
-    .values({ modelo_id: modelo.id, marcador: limpo, campo, ordem: posicao, obrigatorio: marcado(f.texto("obrigatorio")) })
+    .values({ modelo_id: modelo.id, marcador: limpo, ...dados, ordem: posicao, obrigatorio: marcado(f.texto("obrigatorio")) })
     .returning();
+  const destino = campos_certificado.descrever_tag(tag!);
   await auditoria.registrar(tx, {
     entidade: "certificado_modelo_tag",
     entidade_id: tag!.id,
     tipo_evento: "MODELO_TAG_MAPEADA",
-    descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${limpo} }} ← ${campo}`,
+    descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${limpo} }} ← ${destino}`,
     usuario,
   });
-  return _volta(c, volta, `Marcador '${limpo}' mapeado para ${campo}.`);
+  return _volta(c, volta, `Marcador '${limpo}' mapeado para ${destino}.`);
 });
 
 /**
@@ -662,7 +695,7 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
   const modelo = await _modelo(tx, modelo_id);
   if (!modelo) return redirecionar(c, MODELOS);
   if (!modelo.vigente) return _erro(c, volta, "Versão superada não se edita.");
-  const conferencia = certificado.conferir_modelo(modelo, CertificadoModelo.mapa_de_tags(modelo));
+  const conferencia = certificado.conferir_modelo(modelo, CertificadoModelo.marcadores_mapeados(modelo));
   if (!conferencia.arquivo_encontrado) {
     return _erro(c, volta, `O arquivo '${modelo.arquivo}' não foi encontrado — não há marcadores para mapear.`);
   }
@@ -719,12 +752,35 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/mapa`, async (c) => {
   if (!linhas.length) {
     return _erro(c, volta, `O arquivo '${modelo.arquivo}' não foi encontrado — não há marcadores para mapear.`);
   }
-  // confere tudo antes de gravar: um campo desconhecido não deixa meio mapa salvo
-  for (const l of linhas) {
-    const campo = f.texto(`campo__${l.marcador}`);
-    if (campo && !Object.hasOwn(certificado.CAMPOS_CERTIFICADO, campo)) {
-      return _erro(c, volta, `Campo desconhecido: '${campo}'.`);
+  // "@TIPO" no seletor é preenchimento à parte (texto fixo, campo da turma ou
+  // do participante), com o texto/nome na caixa ao lado; o resto é campo do sistema
+  type Escolha = { tipo: string; campo: string; texto_fixo: string | null; rotulo: string | null };
+  const escolha_de = (marcador: string): Escolha | string | null => {
+    const valor = f.texto(`campo__${marcador}`);
+    if (!valor) return null;
+    const detalhe = f.texto(`detalhe__${marcador}`).trim();
+    if (valor.startsWith("@")) {
+      const tipo = valor.slice(1);
+      if (!(TIPOS_TAG as readonly string[]).includes(tipo) || tipo === "SISTEMA") return `Preenchimento desconhecido: '${valor}'.`;
+      if (!detalhe) {
+        return tipo === "TEXTO_FIXO"
+          ? `Escreva o texto fixo de “${marcador}”.`
+          : `Dê um nome ao campo de “${marcador}” (é o que aparece na turma).`;
+      }
+      return tipo === "TEXTO_FIXO"
+        ? { tipo, campo: "", texto_fixo: detalhe, rotulo: null }
+        : { tipo, campo: "", texto_fixo: null, rotulo: detalhe };
     }
+    if (!Object.hasOwn(certificado.CAMPOS_CERTIFICADO, valor)) return `Campo desconhecido: '${valor}'.`;
+    return { tipo: "SISTEMA", campo: valor, texto_fixo: null, rotulo: null };
+  };
+  // confere tudo antes de gravar: uma escolha inválida não deixa meio mapa salvo
+  const escolhas = new Map<string, Escolha | null>();
+  for (const l of linhas) {
+    if (!f.tem(`campo__${l.marcador}`)) continue;
+    const e = escolha_de(l.marcador);
+    if (typeof e === "string") return _erro(c, volta, e);
+    escolhas.set(l.marcador, e);
   }
   let ordem = Math.max(0, ...(modelo.tags as { ordem: number }[]).map((t) => t.ordem));
   let mudou = 0;
@@ -732,48 +788,57 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/mapa`, async (c) => {
   for (const l of linhas) {
     const tag = l.tag as typeof tabela_tag.$inferSelect | null;
     // linha que não veio no formulário fica como está
-    if (!f.tem(`campo__${l.marcador}`)) {
+    if (!escolhas.has(l.marcador)) {
       if (!tag) faltam += 1;
       continue;
     }
-    const campo = f.texto(`campo__${l.marcador}`);
-    const obrigatorio = campo !== "em_branco" && marcado(f.texto(`obrigatorio__${l.marcador}`));
-    if (!campo) {
+    const e = escolhas.get(l.marcador)!;
+    if (!e) {
       faltam += 1;
       if (!tag) continue;
       await auditoria.registrar(tx, {
         entidade: "certificado_modelo_tag",
         entidade_id: tag.id,
         tipo_evento: "MODELO_TAG_REMOVIDA",
-        descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${tag.marcador} }} ← ${tag.campo}`,
+        descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${tag.marcador} }} ← ${tag.campo || tag.rotulo || tag.texto_fixo}`,
         usuario,
       });
       await tx.delete(tabela_tag).where(eq(tabela_tag.id, tag.id));
       mudou += 1;
       continue;
     }
+    const obrigatorio = e.campo !== "em_branco" && marcado(f.texto(`obrigatorio__${l.marcador}`));
+    const valores = { ...e, obrigatorio };
+    const descreve = e.tipo === "SISTEMA" ? e.campo : `${ROTULO_TIPO_TAG[e.tipo as TipoTag]}: ${e.texto_fixo ?? e.rotulo}`;
     if (!tag) {
       const [nova] = await tx
         .insert(tabela_tag)
-        .values({ modelo_id: modelo.id, marcador: l.marcador, campo, ordem: ++ordem, obrigatorio })
+        .values({ modelo_id: modelo.id, marcador: l.marcador, ordem: ++ordem, ...valores })
         .returning();
       await auditoria.registrar(tx, {
         entidade: "certificado_modelo_tag",
         entidade_id: nova!.id,
         tipo_evento: "MODELO_TAG_MAPEADA",
-        descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${l.marcador} }} ← ${campo}`,
+        descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${l.marcador} }} ← ${descreve}`,
         usuario,
       });
       mudou += 1;
       continue;
     }
-    if (tag.campo === campo && tag.obrigatorio === obrigatorio) continue;
-    await tx.update(tabela_tag).set({ campo, obrigatorio }).where(eq(tabela_tag.id, tag.id));
+    const antes = {
+      tipo: tag.tipo,
+      campo: tag.campo,
+      texto_fixo: tag.texto_fixo,
+      rotulo: tag.rotulo,
+      obrigatorio: tag.obrigatorio,
+    };
+    if (Object.entries(valores).every(([k, v]) => (antes as Record<string, unknown>)[k] === v)) continue;
+    await tx.update(tabela_tag).set(valores).where(eq(tabela_tag.id, tag.id));
     await auditoria.registrar_diferencas(tx, {
       entidade: "certificado_modelo_tag",
       entidade_id: tag.id,
-      antes: { campo: tag.campo, obrigatorio: tag.obrigatorio },
-      depois: { campo, obrigatorio },
+      antes,
+      depois: valores,
       usuario,
     });
     mudou += 1;
@@ -821,20 +886,21 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/:tag_id{[0-9]+}`, async (c) => {
       entidade: "certificado_modelo_tag",
       entidade_id: tag.id,
       tipo_evento: "MODELO_TAG_REMOVIDA",
-      descricao: `${CertificadoModelo.rotulo(modelo!)}: {{ ${tag.marcador} }} ← ${tag.campo}`,
+      descricao: `${CertificadoModelo.rotulo(modelo!)}: {{ ${tag.marcador} }} ← ${campos_certificado.descrever_tag(tag)}`,
       usuario,
     });
     await tx.delete(tabela_tag).where(eq(tabela_tag.id, tag.id));
     return _volta(c, volta, `Marcador '${tag.marcador}' removido do mapa.`);
   }
-  const campo = f.texto("campo");
-  if (!Object.hasOwn(certificado.CAMPOS_CERTIFICADO, campo)) return _erro(c, volta, `Campo desconhecido: '${campo}'.`);
+  // formulário antigo (sem `tipo`) continua sendo campo do sistema
+  const [dados, recusa] = _tag_digitada(f, tag.tipo);
+  if (!dados) return _erro(c, volta, recusa);
   return salvar_com_diff(
     c,
     usuario,
     tabela_tag,
     tag_id,
-    { campo, ordem: _inteiro(f.texto("ordem"), 1) || tag.ordem, obrigatorio: marcado(f.texto("obrigatorio")) },
+    { ...dados, ordem: _inteiro(f.texto("ordem"), 1) || tag.ordem, obrigatorio: marcado(f.texto("obrigatorio")) },
     { permissao: "treinamento.gerenciar", rotulo: "Mapa de tags", volta },
   );
 });
