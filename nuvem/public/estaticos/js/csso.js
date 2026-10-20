@@ -421,10 +421,46 @@
   });
 
   // -------------------------------------------------------------------
+  // 5. Reaproveitar a descrição da turma anterior
+  //
+  // Contrato: `<button type="button" data-reusar-descricao="<id da caixa>">`,
+  // com o texto em `data-texto`, ou com `data-de="<id do select>"` — e aí o
+  // texto vem do `data-descricao` da opção escolhida (a última turma daquele
+  // treinamento). O botão nasce `hidden`: sem JavaScript ele não faria nada.
+  // A caixa com texto não é sobrescrita sem confirmação de quem digitou — o
+  // botão só preenche caixa vazia; com texto, acrescenta embaixo.
+  // -------------------------------------------------------------------
+  document.addEventListener('click', function (e) {
+    var botao = e.target.closest && e.target.closest('button[data-reusar-descricao]');
+    if (!botao) return;
+    var caixa = document.getElementById(botao.getAttribute('data-reusar-descricao'));
+    if (!caixa) return;
+    var texto = botao.getAttribute('data-texto') || '';
+    var de = botao.getAttribute('data-de');
+    if (de) {
+      var select = document.getElementById(de);
+      var opcao = select && select.options[select.selectedIndex];
+      texto = (opcao && opcao.getAttribute('data-descricao')) || '';
+    }
+    var aviso = document.getElementById(botao.id + '-aviso');
+    if (!texto) {
+      if (aviso) aviso.textContent = de && select && !select.value
+        ? 'Escolha o treinamento primeiro.'
+        : 'Nenhuma turma anterior deste treinamento tem descrição.';
+      return;
+    }
+    caixa.value = caixa.value.trim() ? caixa.value.replace(/\s+$/, '') + '\n\n' + texto : texto;
+    if (aviso) aviso.textContent = 'Descrição da turma anterior copiada — ajuste o que mudou.';
+    caixa.focus();
+  });
+
+  // -------------------------------------------------------------------
   // arranque
   // -------------------------------------------------------------------
   function arrancar() {
     reporRascunhos();
+    var reusar = document.querySelectorAll('button[data-reusar-descricao]');
+    for (var j = 0; j < reusar.length; j++) reusar[j].hidden = false;
     var nups = document.querySelectorAll('input[data-nup]');
     for (var i = 0; i < nups.length; i++) if (nups[i].value) atualizarNup(nups[i]);
   }

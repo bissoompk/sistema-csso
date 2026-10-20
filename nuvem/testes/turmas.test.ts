@@ -962,3 +962,42 @@ describe("inscrição em lote", () => {
     expect((await cliente.post(`/turmas/${turma_id}/inscricoes/lote`, { lista: "1110654", vinculo: "OUTRO", acao: "inscrever" })).status).toBe(403);
   });
 });
+
+// =====================================================================
+// Descrição do evento
+// =====================================================================
+describe("descrição do evento", () => {
+  const TEXTO = "Formação de brigadistas, com prática de combate a incêndio & evacuação";
+
+  it("nasce com a turma, aparece na ficha e a próxima turma do treinamento a oferece", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const treinamento_id = await _criar_treinamento(cliente);
+    expect((await _criar_turma(cliente, treinamento_id, { descricao: TEXTO })).status).toBe(303);
+    const primeira = await _id_da_turma();
+    expect((await _turma(primeira)).descricao).toBe(TEXTO);
+    expect((await cliente.get(`/turmas/${primeira}`)).text).toContain("Formação de brigadistas, com prática de combate a incêndio &amp; evacuação");
+
+    // a lista põe a última descrição na opção do treinamento, para o botão copiar
+    const lista = (await cliente.get("/turmas")).text;
+    expect(lista).toMatch(new RegExp(`<option value="${treinamento_id}"[^>]*data-descricao="Formação de brigadistas`));
+    expect(lista).toContain('data-reusar-descricao="nova-descricao"');
+
+    // a segunda turma, sem descrição, oferece a da primeira na edição
+    expect((await _criar_turma(cliente, treinamento_id)).status).toBe(303);
+    const segunda = await _id_da_turma(SEGUNDA);
+    expect((await _turma(segunda)).descricao).toBeNull();
+    const ficha = (await cliente.get(`/turmas/${segunda}`)).text;
+    expect(ficha).toContain('id="reusar-descricao-ficha"');
+    expect(ficha).toContain(`data-texto="Formação de brigadistas`);
+    // a primeira não oferece a si mesma
+    expect((await cliente.get(`/turmas/${primeira}`)).text).not.toContain('id="reusar-descricao-ficha"');
+  });
+
+  it("editar a turma grava a descrição, e apagar o texto apaga", async () => {
+    const { turma_id } = await turma_aberta();
+    await cliente.post(`/turmas/${turma_id}`, { ...TURMA, descricao: "Turma do Campus JK" }, { seguir: false });
+    expect((await _turma(turma_id)).descricao).toBe("Turma do Campus JK");
+    await cliente.post(`/turmas/${turma_id}`, { ...TURMA, descricao: "  " }, { seguir: false });
+    expect((await _turma(turma_id)).descricao).toBeNull();
+  });
+});

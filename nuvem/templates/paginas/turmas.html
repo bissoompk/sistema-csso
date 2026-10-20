@@ -146,7 +146,8 @@
     <select id="nova-treinamento" name="treinamento_id" required{{ ' autofocus' if recusado }}>
       <option value="">escolha o treinamento</option>
       {% for t in treinamentos %}
-      <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|num }} h)</option>
+      <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}
+              {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|num }} h)</option>
       {% endfor %}
     </select></div>
   <div class="linha-campos">
@@ -199,6 +200,13 @@
            aria-describedby="dica-base">
     <span class="dica" id="dica-base">Vazio usa o término da turma. Preencha só quando a
       norma contar da avaliação prática, e não do fim do curso.</span></div>
+  <div class="campo"><label for="nova-descricao">Descrição do evento</label>
+    <textarea id="nova-descricao" name="descricao" rows="4"
+              aria-describedby="dica-descricao">{{ d['descricao'] or '' }}</textarea>
+    <span class="dica" id="dica-descricao">Texto livre sobre o evento; pode sair no certificado.
+      <button type="button" class="secundario compacto" id="reusar-descricao"
+              data-reusar-descricao="nova-descricao" data-de="nova-treinamento" hidden>usar a da última turma deste treinamento</button>
+      <span id="reusar-descricao-aviso" role="status"></span></span></div>
   <div class="campo"><label for="nova-obs">Observações</label>
     <textarea id="nova-obs" name="observacoes" rows="2">{{ d['observacoes'] or '' }}</textarea></div>
 {% endcall %}

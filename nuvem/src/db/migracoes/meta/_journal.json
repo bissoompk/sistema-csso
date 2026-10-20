@@ -50,6 +50,13 @@
       "when": 1792455743149,
       "tag": "0006_modelos_certificado",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792515095418,
+      "tag": "0007_descricao_turma",
+      "breakpoints": true
     }
   ]
 }

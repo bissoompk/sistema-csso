@@ -886,3 +886,23 @@ describe("fila de emissão entre turmas", () => {
     expect((await cliente.post("/certificados/fila/emitir", { inscricao_id: ["1"] })).status).toBe(403);
   });
 });
+
+describe("descrição do evento no certificado", () => {
+  it("é congelada na emissão e o marcador «descrição do evento» a sugere", async () => {
+    const usuario = await _usuario(db);
+    const cen = await _cenario(db, usuario);
+    await db.update(e.turma).set({ descricao: "Formação de brigadistas do Campus JK" }).where(eq(e.turma.id, cen.turma.id));
+    const inscricao = (await servico_turma.carregar_inscricao(db, cen.inscricao.id))!;
+    const { certificado } = await servico.emitir(db, usuario, inscricao, { gerar_pdf: false });
+    expect(certificado.contexto_congelado.turma_descricao).toBe("Formação de brigadistas do Campus JK");
+    const contexto = servico.montar_contexto(db, certificado);
+    expect(servico_certificado.CAMPOS_CERTIFICADO.turma_descricao!.obter(contexto)).toBe("Formação de brigadistas do Campus JK");
+    // o certificado emitido antes do campo lê vazio, sem quebrar
+    const antigo = { ...certificado.contexto_congelado };
+    delete antigo.turma_descricao;
+    expect(servico_certificado.ContextoCertificado.descongelar(antigo).turma_descricao).toBe("");
+    expect(
+      servico_certificado.sugerir_campo({ marcador: "descricao", rotulo: "descrição do evento", antes: "", depois: "", ocorrencia: 1 }),
+    ).toBe("turma_descricao");
+  });
+});

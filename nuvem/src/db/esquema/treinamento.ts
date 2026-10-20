@@ -427,6 +427,9 @@ export const turma = pgTable(
     carga_horaria_horas: numeric('carga_horaria_horas', { precision: 5, scale: 1, mode: 'string' }),
 
     local: varchar('local', { length: 160 }),
+    // o que o evento é, em texto livre (o "sobre o curso" do cartaz e do
+    // certificado); a turma seguinte do mesmo treinamento costuma reaproveitar
+    descricao: text('descricao'),
     // o campus e o que faz o escopo por unidade funcionar sobre a turma sem caso
     // especial
     campus_id: integer('campus_id'),

@@ -138,6 +138,7 @@
     </div>
     <dl class="tabela-dados">
       <dt>Treinamento</dt><dd>{{ turma.treinamento.nome }}</dd>
+      {% if turma.descricao %}<dt>Descrição do evento</dt><dd><span class="texto-literal">{{ turma.descricao }}</span></dd>{% endif %}
       <dt>Período</dt>
       <dd class="mono">{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
       <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
@@ -1104,6 +1105,13 @@
              aria-describedby="dica-base">
       <span class="dica" id="dica-base">Vazio usa o término.</span></div>
   </div>
+  <div class="campo"><label for="descricao">Descrição do evento</label>
+    <textarea id="descricao" name="descricao" rows="4" aria-describedby="dica-descricao">{{ turma.descricao or '' }}</textarea>
+    <span class="dica" id="dica-descricao">Texto livre sobre o evento; pode sair no certificado
+      (campo “Descrição do evento” do modelo).
+      {% if descricao_anterior %}<button type="button" class="secundario compacto" id="reusar-descricao-ficha"
+        data-reusar-descricao="descricao" data-texto="{{ descricao_anterior }}" hidden>usar a da turma anterior</button>
+      <span id="reusar-descricao-ficha-aviso" role="status"></span>{% endif %}</span></div>
   <div class="campo"><label for="observacoes">Observações</label>
     <textarea id="observacoes" name="observacoes" rows="2">{{ turma.observacoes or '' }}</textarea></div>
 {% endcall %}

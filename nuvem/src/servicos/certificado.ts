@@ -161,6 +161,7 @@ export interface DadosContextoCertificado {
   turma_data_fim: string;
   carga_horaria: string;
   turma_local: string;
+  turma_descricao?: string;
   turma_unidade_promotora: string;
   turma_campus: string;
   turma_campus_cidade?: string;
@@ -197,7 +198,7 @@ const CAMPOS_CONGELADOS = [
   "participante_organizacao", "participante_siape", "participante_lotacao",
   "participante_cpf", "treinamento_nome", "treinamento_norma", "treinamento_conteudo",
   "validade_meses", "turma_codigo", "turma_data_inicio", "turma_data_fim",
-  "carga_horaria", "turma_local", "turma_unidade_promotora", "turma_campus",
+  "carga_horaria", "turma_local", "turma_descricao", "turma_unidade_promotora", "turma_campus",
   "turma_campus_cidade", "data_base_vencimento", "nota_final", "frequencia_percentual",
   "nota_minima", "frequencia_minima", "instrutores", "numero", "ano",
   "data_emissao", "chave_validacao", "data_vencimento", "url_validacao",
@@ -230,6 +231,8 @@ export class ContextoCertificado implements DadosContextoCertificado {
   turma_data_fim!: string;
   carga_horaria!: string;
   turma_local!: string;
+  // NUVEM: entrou depois; o congelado antigo não tem, e lê vazio
+  turma_descricao = "";
   turma_unidade_promotora!: string;
   turma_campus!: string;
   turma_campus_cidade = "";
@@ -266,6 +269,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
     this.modelo_chave = d.modelo_chave ?? null;
     // certificado emitido antes destes campos não os tem no congelado
     this.turma_campus_cidade = d.turma_campus_cidade ?? "";
+    this.turma_descricao = d.turma_descricao ?? "";
     this.campos_livres = Object.fromEntries(
       Object.entries(d.campos_livres ?? {}).map(([k, v]) => [k, { ...v }]),
     );
@@ -303,6 +307,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
     valores.mapa_tags = { ...((valores.mapa_tags as Record<string, string> | null) ?? {}) };
     valores.campos_livres = { ...((valores.campos_livres as Record<string, CampoLivreCongelado> | null) ?? {}) };
     valores.turma_campus_cidade = (valores.turma_campus_cidade as string | null) ?? "";
+    valores.turma_descricao = (valores.turma_descricao as string | null) ?? "";
     valores.instrutores = [...((valores.instrutores as InstrutorCongelado[] | null) ?? [])];
     return new ContextoCertificado(valores as unknown as DadosContextoCertificado);
   }
@@ -430,6 +435,12 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     _periodo_extenso(c.turma_data_inicio, c.turma_data_fim),
   ),
   turma_local: _c("Turma", "Local", "Auditório do Campus JK", (c) => c.turma_local),
+  turma_descricao: _c(
+    "Turma",
+    "Descrição do evento",
+    "Formação de brigadistas do Campus JK, com prática de combate a incêndio",
+    (c) => c.turma_descricao,
+  ),
   turma_campus: _c("Turma", "Campus", "Campus JK", (c) => c.turma_campus),
   // para o modelo que já escreve "Campus «...»": "Campus JK / Diamantina" vira "JK"
   turma_campus_curto: _c("Turma", "Campus sem a palavra “Campus”", "JK", (c) =>

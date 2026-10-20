@@ -452,6 +452,7 @@ export function sugerir_campo(
     [tem("tecnico", "engenheir", "cargo", "titulo", "formacao profissional") && !tem("credenciamento", "registro"), _o_que_houver(campos, "instrutor_titulo", "assinante_titulo")],
     [tem("credenciamento", "registro no conselho", "registro crea", "registro profissional"), _o_que_houver(campos, "instrutor_registro")],
     [tem("carga horaria", "horas"), "treinamento_carga_horaria"],
+    [tem("descricao do evento", "descricao da turma", "descricao do curso", "sobre o evento"), _o_que_houver(campos, "turma_descricao")],
     [tem("conteudo"), "treinamento_conteudo"],
     [tem("periodo"), "turma_periodo_extenso"],
     [tem("chave", "codigo de validacao"), "certificado_chave"],

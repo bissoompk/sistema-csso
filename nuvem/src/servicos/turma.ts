@@ -252,6 +252,7 @@ export interface DadosTurma {
   data_inicio: string;
   data_fim: string;
   local?: string | null;
+  descricao?: string | null;
   campus_id?: number | null;
   unidade_promotora_id?: number | null;
   carga_horaria_horas?: string | null;
@@ -299,6 +300,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
       data_base_vencimento: d.data_base_vencimento ?? null,
       carga_horaria_horas: d.carga_horaria_horas ?? null,
       local: d.local ?? null,
+      descricao: d.descricao ?? null,
       campus_id: d.campus_id ?? null,
       unidade_promotora_id: d.unidade_promotora_id ?? null,
       vagas: d.vagas ?? null,

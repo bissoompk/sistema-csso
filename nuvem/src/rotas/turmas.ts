@@ -14,7 +14,7 @@
  */
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -233,6 +233,7 @@ async function _tela_lista(
     treinamentos_do_filtro: treinamentos,
     campi,
     unidades,
+    descricoes: await _ultimas_descricoes(tx),
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
@@ -240,6 +241,25 @@ async function _tela_lista(
     mensagem: d.mensagem ?? null,
     erro: d.erro ?? null,
   });
+}
+
+/**
+ * A descrição da turma mais recente de cada treinamento (`{treinamento_id:
+ * texto}`), para "usar a da turma anterior". `fora` deixa a própria turma de
+ * fora, na edição.
+ */
+async function _ultimas_descricoes(tx: Executor, fora: number | null = null): Promise<Record<number, string>> {
+  const linhas = await tx
+    .select({ treinamento_id: tabela_turma.treinamento_id, descricao: tabela_turma.descricao, id: tabela_turma.id })
+    .from(tabela_turma)
+    .where(isNotNull(tabela_turma.descricao))
+    .orderBy(desc(tabela_turma.data_inicio), desc(tabela_turma.id));
+  const saida: Record<number, string> = {};
+  for (const l of linhas) {
+    if (l.id === fora || Object.hasOwn(saida, l.treinamento_id)) continue;
+    saida[l.treinamento_id] = l.descricao!;
+  }
+  return saida;
 }
 
 rotas.get(TURMAS, async (c) => {
@@ -342,6 +362,7 @@ rotas.post(TURMAS, async (c) => {
     "data_inicio",
     "data_fim",
     "local",
+    "descricao",
     "campus_id",
     "unidade_promotora_id",
     "carga_horaria_horas",
@@ -370,6 +391,7 @@ rotas.post(TURMAS, async (c) => {
         data_inicio: inicio,
         data_fim: fim,
         local: texto_ou_nulo(digitado.local),
+        descricao: texto_ou_nulo(digitado.descricao),
         campus_id: id_opcional(digitado.campus_id),
         unidade_promotora_id: id_opcional(digitado.unidade_promotora_id),
         carga_horaria_horas: _decimal(digitado.carga_horaria_horas!, "a carga horária"),
@@ -505,6 +527,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
 
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
+    descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
     certificados_em_word,
     aba,
     abas,
@@ -568,6 +591,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
         data_inicio: _data(f.texto("data_inicio"), "a data de início")!,
         data_fim: _data(f.texto("data_fim"), "a data de término")!,
         local: texto_ou_nulo(f.texto("local")),
+        descricao: texto_ou_nulo(f.texto("descricao")),
         campus_id: id_opcional(f.texto("campus_id")),
         unidade_promotora_id: id_opcional(f.texto("unidade_promotora_id")),
         carga_horaria_horas: _decimal(f.texto("carga_horaria_horas"), "a carga horária"),
