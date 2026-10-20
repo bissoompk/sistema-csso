@@ -10,7 +10,7 @@
  * emissão (`emissao_certificado.validar` + o modelo da turma), com os motivos
  * dela. Os passos do IntegraSST ("gerar protocolo", "gerar PDF", "disparar
  * e-mail") aqui são um só: emitir dá número e chave, e o PDF sai do congelado
- * quando alguém o pede. O sistema não envia e-mail (ROPA).
+ * quando alguém o pede. O e-mail é outro passo, à parte (`envio_certificado.ts`).
  */
 import { and, eq, inArray, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";

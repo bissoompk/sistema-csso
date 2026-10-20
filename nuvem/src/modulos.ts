@@ -298,6 +298,12 @@ export const MODULOS: readonly Modulo[] = [
         "Aprovados sem certificado, travados e emitidos, de todas as turmas.",
       ),
       new Item(
+        "E-mails",
+        "/certificados/emails",
+        "certificado.emitir",
+        "Certificados e avisos enviados por e-mail: na fila, enviados e com falha.",
+      ),
+      new Item(
         "Reciclagem",
         "/certificados/vencimentos",
         "certificado.ver",
@@ -337,11 +343,9 @@ export const MODULOS: readonly Modulo[] = [
     // metade é não continuar declarando o que já chegou — e esta linha, em
     // particular, era a mais cara de manter: o endereço já saía impresso em
     // todo certificado emitido, e a lista dizia que ele não existia.
-    // A inscrição pública por link saiu também: existe, sem e-mail — a CSSO
-    // confere cada pedido (`servicos/inscricao_publica.ts`). O e-mail, que ela
-    // dispensou, é o que continua faltando.
+    // A inscrição pública por link saiu também (a CSSO confere cada pedido,
+    // `servicos/inscricao_publica.ts`), e o envio por e-mail (`servicos/email.ts`).
     itens_previstos: [
-      "Envio do certificado e de avisos por e-mail",
       "Acesso do participante externo aos próprios certificados",
     ],
   }),

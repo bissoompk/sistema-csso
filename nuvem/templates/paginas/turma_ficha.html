@@ -965,6 +965,12 @@
     <a class="botao compacto" href="/turmas/{{ turma.id }}/certificados.pdf"
        data-baixar="Gerando os PDFs…">Baixar todos em PDF</a>
     {% endif %}
+    {% if usuario.pode('certificado.emitir') %}
+    {# só os ainda não enviados; reenviar é pela ficha de cada certificado #}
+    <form method="post" action="/turmas/{{ turma.id }}/certificados/email" class="em-linha">
+      <button type="submit" class="secundario compacto">Enviar por e-mail os não enviados</button>
+    </form>
+    {% endif %}
     {% endif %}
     {% call ui.info('certificado-congelado', 'o que o certificado congela') %}
       <p>O certificado <strong>congela</strong> tudo o que imprime — conteúdo,
@@ -1004,6 +1010,10 @@
         {% if emitido.so_word and not pdf_fiel() %}<a class="discreto" href="/certificados/{{ emitido.id }}/documento">Word</a>
         {% else %}<a class="discreto" href="/certificados/{{ emitido.id }}/pdf">PDF</a>{% endif %}
         <span class="quebra discreto mono">{{ emitido.chave_validacao }}</span>
+        {% if envios[emitido.id] %}
+        <span class="quebra"><span class="pilula {{ 'ok' if envios[emitido.id] == 'ENVIADO' else ('erro' if envios[emitido.id] == 'FALHOU' else 'sem-ponto') }}">
+          e-mail: {{ rotulo_envio[envios[emitido.id]]|lower }}</span></span>
+        {% endif %}
         {% else %}<span class="discreto">—</span>{% endif %}
       </td>
       <td>

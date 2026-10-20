@@ -1178,6 +1178,14 @@ describe("inscrição pública por link", () => {
     const [recusada] = await db.select().from(e.inscricao).where(eq(e.inscricao.id, b!.id));
     expect(recusada!.situacao).toBe("CANCELADA");
     expect(recusada!.conferida_por).toBeNull();
+    // quem deixou e-mail fica sabendo; o motivo escrito para a trilha não vai
+    const avisos = await db.select().from(e.email_saida).orderBy(asc(e.email_saida.id));
+    expect(avisos.map((x) => [x.tipo, x.destinatario, x.inscricao_id])).toEqual([
+      ["INSCRICAO_ACEITA", "joana@empresa.com.br", a!.id],
+      ["INSCRICAO_RECUSADA", "pedro@x.com", b!.id],
+    ]);
+    expect(avisos[0]!.corpo).toContain("A vaga é sua");
+    expect(avisos[1]!.corpo).not.toContain("turma cheia");
   });
 
   it("o banco recusa tirar o pedido da espera sem conferência", async () => {

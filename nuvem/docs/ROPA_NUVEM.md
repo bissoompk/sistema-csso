@@ -7,8 +7,11 @@ e não cria finalidade nem categoria nova. O que muda — e é o que esta emenda
 registra — é **onde o dado está, quem o processa em nome da UFVJM e por qual
 caminho ele passa**.
 
-**Versão:** 1.2, de 20/10/2026 — acrescenta a inscrição pública por link, um
-canal de coleta aberto a quem não tem conta (§5.8 e §6). Versão 1.1, de
+**Versão:** 1.3, de 20/10/2026 — acrescenta o envio de e-mail (certificado e
+aviso da inscrição pelo link; §3, §5.9 e §6), **desligado até o controlador
+escolher e registrar o provedor de SMTP**. Versão 1.2, de 20/10/2026: a
+inscrição pública por link, um canal de coleta aberto a quem não tem conta
+(§5.8 e §6). Versão 1.1, de
 20/10/2026: o Google como operador (conversor de PDF do certificado, §2, §3 e
 §5.7). Versão 1.0, de 25/09/2026 (revisão de
 privacidade para produção).
@@ -82,9 +85,11 @@ Não é só "trânsito de rede": a função lê o dado em claro para montar a p�
 | Netlify Inc. (EUA) | Funções e CDN | Processa em trânsito; guarda logs | Termos de uso da conta pessoal. O Netlify publica DPA; **não firmado em nome da UFVJM** |
 | Google LLC (EUA) | Cloud Run (projeto `csso-conversor-pdf`, serviço `csso-conversor-pdf`) | Converte o certificado .docx em PDF, por ordem do controlador; não guarda o documento | Termos do Google Cloud da conta pessoal (a mesma do Netlify), com o Cloud Data Processing Addendum do Google; **não firmado em nome da UFVJM** |
 
-O conversor de PDF (§5.7) é a **única** chamada do código a serviço de
-terceiro fora da hospedagem. Fora dela, o sistema não chama API de terceiro,
-não envia e-mail e não usa IA (ROPA §5.1 continua valendo para o resto).
+| *a definir* (§5.9) | SMTP (institucional, Gmail do setor ou serviço de envio) | Entrega o e-mail, por ordem do controlador | **Nenhum ainda: o envio fica desligado até o provedor ser escolhido e registrado nesta tabela** |
+
+O conversor de PDF (§5.7) e o SMTP (§5.9) são as **únicas** chamadas do código
+a serviço de terceiro fora da hospedagem. Fora delas, o sistema não chama API
+de terceiro e não usa IA (ROPA §5.1 continua valendo para o resto).
 
 **Registro tardio:** o conversor foi ligado em 20/10/2026, às 12h19, e esta
 emenda é do mesmo dia, depois — o ROPA §5.1 pede emenda **prévia**. Fica dito.
@@ -236,6 +241,18 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | O link | Token de 192 bits mostrado uma vez; o banco guarda só o SHA-256. Para de funcionar no fim do dia de "inscrições até", quando a turma sai de "inscrições abertas", ou quando a CSSO o troca ou desliga. Página com `noindex`, `no-store` e `no-referrer` |
 | Abuso | Limite de envios por IP (na memória da instância, como em `/validar`; ver `DESVIOS.md`) e teto de 200 pedidos em espera por turma; campo-armadilha para robô |
 
+### 5.9 Envio de e-mail (20/10/2026)
+
+| Item | Registro |
+|---|---|
+| O que sai | (a) O certificado, com o PDF (ou o Word) anexado, ao e-mail do próprio participante — pedido por quem tem `certificado.emitir`, um a um (ficha) ou os da turma (aba Emissão); (b) o aviso de "inscrição confirmada" ou "pedido não aceito" a quem pediu vaga pelo link público (§5.8) e deixou e-mail. Nada sai sem um ato de alguém da CSSO |
+| Para quem | Só o titular do dado, no endereço que ele ou a CSSO cadastrou. Sem cópia a terceiros |
+| O que leva | Nome, treinamento, turma, período, número e chave do certificado; no anexo, o certificado inteiro (com CPF, quando o modelo o exige — §5.5.1). O aviso de recusa **não** leva o motivo escrito na trilha |
+| Base legal | A do certificado e da inscrição (ROPA §2): o e-mail é meio de entregar o documento ao titular, não finalidade nova |
+| Onde fica | A caixa de saída (`email_saida`, Supabase, São Paulo): destinatário, assunto, texto, situação e o erro (sem dado pessoal). O anexo não fica: é montado na hora do envio |
+| Provedor | SMTP configurado no Netlify (`PRODUCAO.md` §2.2). **Pendente**: escolher e registrar no §3 — o institucional, se o TI da UFVJM liberar, é o que não acrescenta operador |
+| Desligar | Apagar `CSSO_SMTP_URL` no Netlify: os pedidos ficam na fila e nada sai |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -250,6 +267,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Documento no conversor do Google (§5.7) | Nenhum: descartado ao fim da conversão | O serviço não grava; log só da requisição, sem dado pessoal |
 | IP do pedido pelo link público (§5.8) | 90 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `expurgar_ip_de_inscricao`) |
 | Participante e pedido recusado pelo link (§5.8) | Os da inscrição (POLITICA §2) | O pedido recusado fica cancelado com o motivo, como a inscrição interna |
+| Texto do e-mail na caixa de saída (§5.9) | 90 dias do pedido (enviado, falhado ou cancelado) | Rotina noturna (`EXPURGO_PRIVACIDADE`, `email.expurgar_corpos`); a linha fica sem o texto, como registro do envio |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 
@@ -274,5 +292,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 7. **Prazo do registro de acesso** (90 dias × 6 meses do Marco Civil): decisão
    do encarregado com a procuradoria (§5.3).
 8. **Apagar `entrada/`** quando a migração do legado for dada por encerrada.
-9. **Divulgar o canal do titular** (e-mail do setor) onde o servidor o encontre
+9. **Escolher o provedor de SMTP** (§5.9) e registrá-lo no §3, com o
+   instrumento dele, antes de configurar o envio de e-mail.
+10. **Divulgar o canal do titular** (e-mail do setor) onde o servidor o encontre
    (ROPA §7).

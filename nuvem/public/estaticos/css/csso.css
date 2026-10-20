@@ -2769,3 +2769,6 @@ details > summary { cursor: pointer; }
 .primeiros-passos li.proximo .marca-passo { background: var(--acento); border-color: var(--acento); color: #fff; }
 .primeiros-passos li.proximo a { font-weight: 600; }
 .primeiros-passos .texto-passo { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+
+/* o formulário de um botão só, ao lado de links no cabeçalho do cartão */
+form.em-linha { display: inline-flex; margin: 0; }

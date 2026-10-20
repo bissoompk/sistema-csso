@@ -7,9 +7,11 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, integer, pgTable, smallint, text, varchar } from 'drizzle-orm/pg-core';
+import { boolean, check, foreignKey, index, integer, pgTable, smallint, text, varchar } from 'drizzle-orm/pg-core';
 
 import { MomentoUTC, agora_utc } from './base';
+import { usuario } from './seguranca';
+import { certificado, inscricao } from './treinamento';
 
 /**
  * A marca de produção: UMA linha (id = 1), gravada por
@@ -58,4 +60,46 @@ export const rotina_execucao = pgTable(
     detalhe: text('detalhe'),
   },
   (t) => [index('ix_rotina_execucao_rotina').on(t.rotina, t.id)],
+);
+
+/**
+ * A caixa de saída de e-mail (NUVEM). Quem pede o envio grava a linha; quem
+ * envia é a função de fundo `email-background` (e, de reserva, a agendada
+ * `email-agendado`), fora da requisição — o PDF do certificado e o SMTP não
+ * cabem no tempo de uma tela. Ver `servicos/email.ts`.
+ *
+ * `corpo` leva o nome da pessoa; a rotina de privacidade o apaga depois de
+ * 90 dias e a linha fica como registro de que houve o envio.
+ */
+export const email_saida = pgTable(
+  'email_saida',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    tipo: varchar('tipo', { length: 30 }).notNull(),
+    destinatario: varchar('destinatario', { length: 160 }).notNull(),
+    assunto: varchar('assunto', { length: 200 }).notNull(),
+    corpo: text('corpo'),
+    certificado_id: integer('certificado_id'),
+    inscricao_id: integer('inscricao_id'),
+    situacao: varchar('situacao', { length: 12 }).notNull().default('PENDENTE'),
+    tentativas: smallint('tentativas').notNull().default(0),
+    // também é a "posse": quem pega a linha a empurra para frente, e outro
+    // envio em paralelo não a vê até lá
+    proxima_tentativa_em: MomentoUTC('proxima_tentativa_em').notNull().$defaultFn(agora_utc),
+    ultimo_erro: text('ultimo_erro'),
+    criado_por: integer('criado_por'),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+    enviado_em: MomentoUTC('enviado_em'),
+  },
+  (t) => [
+    foreignKey({ name: 'fk_email_saida_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
+    foreignKey({ name: 'fk_email_saida_certificado', columns: [t.certificado_id], foreignColumns: [certificado.id] }),
+    foreignKey({ name: 'fk_email_saida_inscricao', columns: [t.inscricao_id], foreignColumns: [inscricao.id] }).onDelete(
+      'set null',
+    ),
+    check('ck_email_saida_situacao', sql.raw(`situacao IN ('PENDENTE','ENVIADO','FALHOU','CANCELADO')`)),
+    check('ck_email_saida_enviado', sql.raw(`situacao <> 'ENVIADO' OR enviado_em IS NOT NULL`)),
+    index('ix_email_saida_fila').on(t.situacao, t.proxima_tentativa_em),
+    index('ix_email_saida_certificado').on(t.certificado_id),
+  ],
 );

@@ -42,6 +42,8 @@ import { atores_para_tela } from "../servicos/privacidade.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as inscricao_lote from "../servicos/inscricao_lote.js";
 import * as inscricao_publica from "../servicos/inscricao_publica.js";
+import * as email from "../servicos/email.js";
+import * as envio_certificado from "../servicos/envio_certificado.js";
 import { qr_png } from "../servicos/qr.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
 import * as servico_participante from "../servicos/participante.js";
@@ -526,12 +528,22 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
   );
   // algum de modelo enviado: o "todos" sai em Word (.zip), não no PDF da casa
   const certificados_em_word = Object.values(certificados).some((cert) => cert.so_word);
+  // NUVEM: o último envio por e-mail de cada certificado (aba Emissão)
+  const envios =
+    aba === "emissao" && usuario.pode("certificado.emitir")
+      ? await envio_certificado.ultimo_envio_por_certificado(
+          tx,
+          Object.values(certificados).map((cert) => cert.id),
+        )
+      : {};
 
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
     descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
     link_no_ar: inscricao_publica.link_no_ar(turma),
     certificados_em_word,
+    envios,
+    rotulo_envio: email.ROTULO_SITUACAO,
     aba,
     abas,
     abas_previstas: ABAS_PREVISTAS,
@@ -1153,6 +1165,24 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/notas`, async (c) => {
  * Emite um certificado, ou o lote inteiro quando `inscricao_id` vem vazio. O
  * lote isola cada certificado num savepoint, dentro do serviço.
  */
+/**
+ * Envia por e-mail os certificados emitidos da turma que ainda não foram (o
+ * que já foi não sai de novo: reenviar é pela ficha do certificado).
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados/email`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.emitir");
+  const tx = c.get("tx");
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}?aba=emissao`;
+  const ids = Object.values(await servico_emissao.certificados_da_turma(tx, turma)).map((cert) => cert.id);
+  if (!ids.length) return _erro(c, volta, "Nenhum certificado emitido nesta turma.");
+  const r = await envio_certificado.pedir_envio(tx, usuario, ids);
+  if (r.enfileirados) await email.acordar_envio();
+  return (r.enfileirados ? _volta : _erro)(c, volta, envio_certificado.resumo(r));
+});
+
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("certificado.emitir");

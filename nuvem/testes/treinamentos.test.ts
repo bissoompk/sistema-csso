@@ -732,6 +732,7 @@ describe("o módulo no menu e no mapa", () => {
       ["/certificados/meus", "treinamento.ver"],
       ["/certificados", "certificado.ver"],
       ["/certificados/fila", "certificado.ver"],
+      ["/certificados/emails", "certificado.emitir"],
       ["/certificados/vencimentos", "certificado.ver"],
       ["/treinamentos/indicadores", "indicador.ver"],
       ["/treinamentos/catalogo", "treinamento.ver"],

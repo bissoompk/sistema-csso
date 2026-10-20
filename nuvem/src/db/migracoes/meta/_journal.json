@@ -64,6 +64,13 @@
       "when": 1792516718360,
       "tag": "0008_inscricao_publica_conferida",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792518184406,
+      "tag": "0009_caixa_de_saida_email",
+      "breakpoints": true
     }
   ]
 }

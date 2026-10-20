@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}E-mails enviados · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>E-mails</h1>
+      <p class="sub">{{ contagem.PENDENTE }} na fila · {{ contagem.ENVIADO }} enviado(s) ·
+        {{ contagem.FALHOU }} com falha.</p>
+      {% call ui.info('como-sai-o-email', 'como o e-mail sai') %}
+        <p>Pedir o envio põe a mensagem nesta fila; quem envia é o servidor, em segundo
+          plano, em geral em menos de um minuto — e, de reserva, a cada 10 minutos.
+          Certificado vai com o PDF anexado (ou o Word, para modelo enviado sem o
+          conversor).</p>
+        <p>Falha de rede ou do provedor é tentada de novo até 5 vezes, com espera
+          crescente; depois disso fica aqui como <strong>falhou</strong>, com o motivo, e
+          pode voltar para a fila.</p>
+        <p>O texto da mensagem é apagado depois de 90 dias; a linha fica como registro do
+          envio.</p>
+      {% endcall %}
+    </div>
+    {% if email_configurado() and contagem.PENDENTE %}
+    <form method="post" action="/certificados/emails/processar">
+      <button type="submit" class="secundario">Enviar a fila agora</button></form>
+    {% endif %}
+  </div>
+
+  {% if not email_configurado() %}
+  <div class="aviso aviso-alerta">
+    <strong>O envio de e-mail não está configurado.</strong> Os pedidos ficam na fila e
+    saem quando o SMTP for ligado (variáveis <code>CSSO_SMTP_URL</code> e
+    <code>CSSO_EMAIL_REMETENTE</code> no Netlify; ver <code>PRODUCAO.md</code>).
+  </div>
+  {% endif %}
+
+  <div class="fileira">
+    <span class="rotulo-grupo">Situação</span>
+    <a class="ficha-filtro {{ 'ativa' if not filtro }}" href="/certificados/emails">Todas</a>
+    {% for codigo, rotulo in rotulos|items %}
+    <a class="ficha-filtro {{ 'ativa' if filtro == codigo }}" href="/certificados/emails?situacao={{ codigo }}">{{ rotulo }}
+      <span class="discreto">{{ contagem[codigo] }}</span></a>
+    {% endfor %}
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr><th scope="col">Pedido em</th><th scope="col">Para</th><th scope="col">Assunto</th>
+          <th scope="col">Situação</th><th scope="col"></th></tr>
+    </thead>
+    {% for e in itens %}
+    <tr>
+      <td class="mono">{{ e.criado_em|momento }}</td>
+      <td class="mono">{{ e.destinatario }}</td>
+      <td>{{ e.assunto }}
+        {% if e.certificado_id %}<span class="quebra"><a class="discreto" href="/certificados/{{ e.certificado_id }}">ver o certificado</a></span>{% endif %}</td>
+      <td><span class="pilula {{ 'ok' if e.situacao == 'ENVIADO' else ('erro' if e.situacao == 'FALHOU' else 'sem-ponto') }}">
+          {{ rotulos[e.situacao]|lower }}</span>
+        {% if e.enviado_em %}<span class="quebra discreto">{{ e.enviado_em|momento }}</span>{% endif %}
+        {% if e.ultimo_erro and e.situacao != 'ENVIADO' %}
+        <span class="quebra discreto">{{ e.tentativas }} tentativa(s): {{ e.ultimo_erro }}</span>{% endif %}</td>
+      <td>
+        {% if e.situacao == 'FALHOU' %}
+        <form method="post" action="/certificados/emails/{{ e.id }}/tentar" class="em-linha">
+          <button type="submit" class="secundario compacto">Tentar de novo</button></form>
+        {% endif %}
+        {% if e.situacao in ['PENDENTE', 'FALHOU'] %}
+        <form method="post" action="/certificados/emails/{{ e.id }}/cancelar" class="em-linha">
+          <button type="submit" class="perigo-discreto compacto">Cancelar</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista('Nenhum e-mail aqui.', 'Envie um certificado pela ficha dele ou pela aba Emissão da turma.', 5) }}
+    {% endfor %}
+  </table>
+  </div>
+  <p class="discreto">Mostrando os 200 mais recentes.</p>
+</div>
+{% endblock %}

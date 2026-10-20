@@ -4,7 +4,9 @@
  *
  * DESVIO da fatia 6 do desenho: lá o pedido saía da espera quando a pessoa
  * clicava no link do e-mail de confirmação — a trava que impede inscrever
- * alguém no endereço alheio. A nuvem não envia e-mail (ROPA). A trava passa a
+ * alguém no endereço alheio. Aqui a trava não é o e-mail (o endereço digitado
+ * nem precisa existir, e mandar e-mail a endereço digitado por anônimo faria do
+ * link um canhão de spam). A trava passa a
  * ser a CSSO: todo pedido nasce em `AGUARDANDO_EMAIL` ("pedido pelo link, a
  * conferir"), NÃO ocupa vaga, abre a pendência do setor e só vira inscrição
  * quando alguém com `turma.inscrever` o aceita (`conferida_por`, ver a CHECK

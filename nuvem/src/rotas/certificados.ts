@@ -31,6 +31,8 @@ import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as conversor_pdf from "../servicos/conversor_pdf.js";
 import * as reciclagem from "../servicos/reciclagem.js";
 import * as fila_emissao from "../servicos/fila_emissao.js";
+import * as email from "../servicos/email.js";
+import * as envio_certificado from "../servicos/envio_certificado.js";
 import { parece_cpf } from "../servicos/textos.js";
 import { baixar } from "./turmas.js";
 import { erro as _erro, id_opcional, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
@@ -41,6 +43,7 @@ export const CERTIFICADOS = "/certificados";
 export const MEUS = `${CERTIFICADOS}/meus`;
 export const VENCIMENTOS = `${CERTIFICADOS}/vencimentos`;
 export const FILA = `${CERTIFICADOS}/fila`;
+export const EMAILS = `${CERTIFICADOS}/emails`;
 
 /** Os certificados de uma página, com o que a lista lê (participante e treinamento). */
 async function _pagina_de_certificados(c: Ctx, onde: SQL | undefined) {
@@ -266,6 +269,9 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}`, async (c) => {
     situacao_publica: C.situacao_publica(certificado, hoje),
     rotulo_certificado: ROTULO_CERTIFICADO,
     eventos: await servico.trilha(tx, certificado.id),
+    envios: usuario.pode("certificado.emitir") ? await envio_certificado.envios_do_certificado(tx, certificado.id) : [],
+    destinatario: usuario.pode("certificado.emitir") ? await envio_certificado.destinatario(tx, certificado) : "",
+    rotulo_envio: email.ROTULO_SITUACAO,
     ...recados(c),
   });
 });
@@ -308,6 +314,62 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/pdf`, async (c) => {
   }
   const resultado = await servico.pdf_do_certificado(tx, usuario, certificado);
   return baixar(c, resultado.bytes, resultado.nome, TIPO_PDF);
+});
+
+// =====================================================================
+// Envio por e-mail
+// =====================================================================
+/** Envia (ou reenvia) este certificado ao e-mail do participante. */
+rotas.post(`${CERTIFICADOS}/:certificado_id{[0-9]+}/email`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.emitir");
+  const certificado_id = Number(c.req.param("certificado_id"));
+  const destino = `${CERTIFICADOS}/${certificado_id}`;
+  const r = await envio_certificado.pedir_envio(c.get("tx"), usuario, [certificado_id], { reenviar: true });
+  if (!r.enfileirados) {
+    return _erro(c, destino, r.sem_email ? "O participante não tem e-mail cadastrado." : "Este certificado não pode ser enviado.");
+  }
+  await email.acordar_envio();
+  return _volta(c, destino, envio_certificado.resumo(r));
+});
+
+/** A caixa de saída: o que foi, o que está na fila, o que falhou. */
+rotas.get(EMAILS, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.emitir");
+  const tx = c.get("tx");
+  const situacao = c.req.query("situacao") ?? "";
+  const filtro = Object.hasOwn(email.ROTULO_SITUACAO, situacao) ? situacao : "";
+  return pagina(c, "paginas/emails.html", usuario, {
+    itens: await email.caixa(tx, { situacao: filtro || undefined }),
+    contagem: await email.contagem(tx),
+    filtro,
+    rotulos: email.ROTULO_SITUACAO,
+    ...recados(c),
+  });
+});
+
+rotas.post(`${EMAILS}/processar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.emitir");
+  // na transação da tela (o pool é de uma conexão): cada envio, um savepoint
+  const r = await email.processar_fila(c.get("tx"), { prazo_ms: 8_000, limite: 10 });
+  if (r.desligado) return _erro(c, EMAILS, "O envio de e-mail não está configurado.");
+  return _volta(c, EMAILS, `${r.enviados} enviado(s), ${r.falhas} falha(s) nesta rodada.`);
+});
+
+rotas.post(`${EMAILS}/:email_id{[0-9]+}/:acao{tentar|cancelar}`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.emitir");
+  const tx = c.get("tx");
+  const id = Number(c.req.param("email_id"));
+  if (c.req.param("acao") === "tentar") {
+    if (!(await email.reenfileirar(tx, id))) return _erro(c, EMAILS, "Só e-mail que falhou volta para a fila.");
+    await email.acordar_envio();
+    return _volta(c, EMAILS, "De volta à fila.");
+  }
+  if (!(await email.cancelar(tx, id))) return _erro(c, EMAILS, "Só e-mail na fila ou que falhou pode ser cancelado.");
+  return _volta(c, EMAILS, "Envio cancelado.");
 });
 
 // =====================================================================

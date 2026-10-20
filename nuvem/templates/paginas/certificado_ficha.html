@@ -145,6 +145,38 @@
           {% endif %}
         </div>
       </section>
+
+      {% if usuario.pode('certificado.emitir') %}
+      <section class="cartao" id="envio-email">
+        <div class="titulo-cartao"><h2>Envio por e-mail</h2></div>
+        {% if not email_configurado() %}
+        <p class="discreto">O envio de e-mail ainda não está configurado: o pedido fica na
+          fila e sai quando for ligado.</p>
+        {% endif %}
+        {% if envios %}
+        <ul class="sem-margem">
+          {% for e in envios %}
+          <li><span class="pilula {{ 'ok' if e.situacao == 'ENVIADO' else ('erro' if e.situacao == 'FALHOU' else 'sem-ponto') }}">
+              {{ rotulo_envio[e.situacao]|lower }}</span>
+            <span class="mono">{{ e.destinatario }}</span>
+            <span class="discreto">· pedido em {{ e.criado_em|momento }}
+              {%- if e.enviado_em %} · enviado em {{ e.enviado_em|momento }}{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if certificado.situacao == 'EMITIDO' %}
+        {% if destinatario %}
+        <form method="post" action="/certificados/{{ certificado.id }}/email">
+          <div class="acoes"><button type="submit" class="secundario">
+            {{- 'Enviar de novo' if envios else 'Enviar' }} para <span class="mono">{{ destinatario }}</span></button></div>
+        </form>
+        {% else %}
+        <p class="discreto">O participante não tem e-mail cadastrado. Cadastre-o na inscrição
+          da turma para enviar por aqui.</p>
+        {% endif %}
+        {% endif %}
+      </section>
+      {% endif %}
     </div>
 
     <section class="cartao liso">

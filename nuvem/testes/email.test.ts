@@ -1,0 +1,174 @@
+/**
+ * O envio de e-mail (NUVEM): a caixa de saída, o certificado anexado e as
+ * telas. O SMTP é trocado por um transporte que guarda a mensagem.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { asc, eq } from "drizzle-orm";
+import * as e from "../src/db/esquema/index.js";
+import type { Banco } from "../src/db/cliente.js";
+import * as email from "../src/servicos/email.js";
+import * as servico from "../src/servicos/emissao_certificado.js";
+import * as servico_participante from "../src/servicos/participante.js";
+import { definirArmazenamento } from "../src/servicos/armazenamento.js";
+import { bancoLimpo, contas, entrar, type Cliente } from "./ajuda.js";
+import { TODAS, _cenario, _usuario } from "./ajuda_certificado.js";
+
+definirArmazenamento(null);
+
+let db: Banco;
+let cliente: Cliente;
+let enviadas: email.Mensagem[];
+
+await bancoLimpo();
+beforeEach(async () => {
+  const amb = await bancoLimpo();
+  db = amb.db;
+  cliente = amb.cliente;
+  enviadas = [];
+});
+afterEach(() => email.definir_transporte(null));
+
+function _guardar() {
+  email.definir_transporte(async (m) => {
+    enviadas.push(m);
+  });
+}
+
+/** Turma concluída com dois aprovados emitidos; só Marco tem e-mail. */
+async function cenario() {
+  await contas(db);
+  const montador = await _usuario(db, TODAS, "montador");
+  const d = await _cenario(db, montador, { extras: [["2220001", "Ana Lima", "8"]] });
+  await servico.emitir_lote(db, montador, d.turma);
+  const marco = (await servico_participante.carregar(db, d.inscricao.participante_id))!;
+  await servico_participante.registrar_email(db, marco, "marco@ufvjm.edu.br");
+  const certificados = await db.select().from(e.certificado).orderBy(asc(e.certificado.id));
+  const do_marco = certificados.find((c) => c.participante_id === marco.id)!;
+  return { turma_id: d.turma.id, do_marco, montador };
+}
+
+/** Pede o envio pela ficha, como o coordenador (a conta que o envio relê). */
+async function pedir(certificado_id: number) {
+  await entrar(cliente, "coordenador_csso");
+  const r = await cliente.post(`/certificados/${certificado_id}/email`, {}, { seguir: false });
+  expect(r.status).toBe(303);
+}
+
+async function _caixa() {
+  return db.select().from(e.email_saida).orderBy(asc(e.email_saida.id));
+}
+
+describe("pedido de envio", () => {
+  it("a turma enfileira quem tem e-mail, diz quem ficou de fora e não manda duas vezes", async () => {
+    const h = await cenario();
+    await entrar(cliente, "coordenador_csso");
+    const r = await cliente.post(`/turmas/${h.turma_id}/certificados/email`, {});
+    expect(r.text).toContain("1 certificado(s) na fila de envio; 1 sem e-mail cadastrado.");
+    expect(r.text).toContain("ainda não está ligado");
+    const [linha] = await _caixa();
+    expect(linha!.situacao).toBe("PENDENTE");
+    expect(linha!.destinatario).toBe("marco@ufvjm.edu.br");
+    expect(linha!.certificado_id).toBe(h.do_marco.id);
+    expect(linha!.corpo).toContain("Olá, Marco Antônio Alves Schetino.");
+    expect(linha!.corpo).toContain("/validar/");
+    const de_novo = await cliente.post(`/turmas/${h.turma_id}/certificados/email`, {});
+    expect(de_novo.text).toContain("1 já enviado(s) antes");
+    expect(await _caixa()).toHaveLength(1);
+    // a aba e a ficha mostram a fila
+    expect((await cliente.get(`/turmas/${h.turma_id}?aba=emissao`)).text).toContain("e-mail: na fila");
+    const ficha = (await cliente.get(`/certificados/${h.do_marco.id}`)).text;
+    expect(ficha).toContain("Envio por e-mail");
+    expect(ficha).toContain("Enviar de novo");
+    // a ficha reenvia
+    await cliente.post(`/certificados/${h.do_marco.id}/email`, {});
+    expect(await _caixa()).toHaveLength(2);
+  });
+
+  it("quem só vê certificado não envia nem abre a caixa", async () => {
+    const h = await cenario();
+    await entrar(cliente, "auditor_interno");
+    expect((await cliente.post(`/certificados/${h.do_marco.id}/email`, {})).status).toBe(403);
+    expect((await cliente.get("/certificados/emails")).status).toBe(403);
+    expect((await cliente.post(`/turmas/${h.turma_id}/certificados/email`, {})).status).toBe(403);
+    expect(await _caixa()).toHaveLength(0);
+  });
+});
+
+describe("envio", () => {
+  it("sai com o PDF anexado e a trilha diz quem mandou", async () => {
+    const h = await cenario();
+    await pedir(h.do_marco.id);
+    expect((await email.processar_fila(db)).desligado).toBe(true);
+    _guardar();
+    const r = await email.processar_fila(db);
+    expect(r).toEqual({ enviados: 1, falhas: 0, desligado: false });
+    expect(enviadas).toHaveLength(1);
+    const [m] = enviadas;
+    expect(m!.para).toBe("marco@ufvjm.edu.br");
+    expect(m!.anexos).toHaveLength(1);
+    expect(m!.anexos[0]!.tipo).toBe("application/pdf");
+    expect(new TextDecoder().decode(m!.anexos[0]!.bytes.slice(0, 5))).toBe("%PDF-");
+    const [linha] = await _caixa();
+    expect(linha!.situacao).toBe("ENVIADO");
+    expect(linha!.enviado_em).not.toBeNull();
+    const trilha = await db.select().from(e.historico_evento).where(eq(e.historico_evento.entidade_id, h.do_marco.id));
+    expect(trilha.map((t) => t.tipo_evento)).toContain("CERTIFICADO_ENVIO_PEDIDO");
+    expect(trilha.map((t) => t.tipo_evento)).toContain(servico.CERTIFICADO_SEGUNDA_VIA);
+    // fila vazia: nada mais sai
+    expect((await email.processar_fila(db)).enviados).toBe(0);
+  });
+
+  it("a falha volta à fila com espera; depois de 5 tentativas, falhou — e volta pela tela", async () => {
+    const h = await cenario();
+    await pedir(h.do_marco.id);
+    email.definir_transporte(async () => {
+      throw new Error("conexão recusada pelo SMTP");
+    });
+    let agora = Date.now();
+    for (let n = 1; n <= email.MAXIMO_TENTATIVAS; n++) {
+      const r = await email.processar_fila(db, { agora: () => new Date(agora) });
+      expect(r.falhas).toBe(1);
+      const [linha] = await _caixa();
+      expect(linha!.tentativas).toBe(n);
+      expect(linha!.ultimo_erro).toContain("conexão recusada");
+      expect(linha!.situacao).toBe(n < email.MAXIMO_TENTATIVAS ? "PENDENTE" : "FALHOU");
+      // antes da espera, não tenta de novo
+      expect((await email.processar_fila(db, { agora: () => new Date(agora) })).falhas).toBe(0);
+      agora += 2 * 3_600_000;
+    }
+    await entrar(cliente, "coordenador_csso");
+    const caixa = (await cliente.get("/certificados/emails?situacao=FALHOU")).text;
+    expect(caixa).toContain("marco@ufvjm.edu.br");
+    expect(caixa).toContain("Tentar de novo");
+    const [linha] = await _caixa();
+    await cliente.post(`/certificados/emails/${linha!.id}/tentar`, {});
+    _guardar();
+    const r = await cliente.post("/certificados/emails/processar", {});
+    expect(r.text).toContain("1 enviado(s), 0 falha(s)");
+    expect((await _caixa())[0]!.situacao).toBe("ENVIADO");
+  });
+
+  it("certificado anulado depois do pedido não sai", async () => {
+    const h = await cenario();
+    await pedir(h.do_marco.id);
+    await db.transaction((tx) => servico.anular(tx, h.montador, h.do_marco, "emitido com erro de digitação"));
+    _guardar();
+    expect((await email.processar_fila(db)).falhas).toBe(1);
+    expect(enviadas).toHaveLength(0);
+    expect((await _caixa())[0]!.ultimo_erro).toContain("anulado");
+  });
+
+  it("cancelar tira da fila; o texto sai depois de 90 dias e a linha fica", async () => {
+    const h = await cenario();
+    await pedir(h.do_marco.id);
+    const [linha] = await _caixa();
+    await entrar(cliente, "coordenador_csso");
+    await cliente.post(`/certificados/emails/${linha!.id}/cancelar`, {});
+    expect((await _caixa())[0]!.situacao).toBe("CANCELADO");
+    expect(await email.expurgar_corpos(db)).toBe(0);
+    expect(await email.expurgar_corpos(db, new Date(Date.now() + 91 * 86_400_000))).toBe(1);
+    const [depois] = await _caixa();
+    expect(depois!.corpo).toBeNull();
+    expect(depois!.destinatario).toBe("marco@ufvjm.edu.br");
+  });
+});

@@ -37,6 +37,7 @@ Site configuration > Environment variables. Marque as secretas como *secret*
 | `CSSO_BUCKET` | `csso-producao` (bucket novo e vazio; o `csso` antigo tem arquivos de teste) | sim |
 | `CSSO_URL_PUBLICA` | a mesma URL passada ao `producao-iniciar` (recuo; o que vale é o parâmetro do banco) | recomendada |
 | `CSSO_CONVERSOR_PDF_URL`, `CSSO_CONVERSOR_PDF_USUARIO`, `CSSO_CONVERSOR_PDF_SENHA` | o conversor de PDF do modelo enviado (§2.1) | não (sem ele, o modelo enviado sai em Word) |
+| `CSSO_SMTP_URL` (secret), `CSSO_EMAIL_REMETENTE`, `CSSO_EMAIL_RESPONDER_PARA` | o envio de e-mail (§2.2) | não (sem elas os pedidos de envio ficam na fila) |
 | `CSSO_COOKIE_SEGURO` | `auto` (padrão) ou `sim`; **nunca** `nao` (produção recusa subir)² | não |
 | `CSSO_SESSAO_HORAS` (12), `CSSO_SESSAO_INATIVIDADE_MINUTOS` (120; 0 desliga), `CSSO_MAX_TENTATIVAS`, `CSSO_BLOQUEIO_MINUTOS`, `CSSO_MAX_FALHAS_IP`, `CSSO_JANELA_IP_MINUTOS`, `CSSO_LOG_RETENCAO_DIAS`, `CSSO_EPI_LOCAL_RETIRADA`, `CSSO_FUSO_EXIBICAO` | padrões servem | não |
 
@@ -90,6 +91,27 @@ leva ao Word e o log da função registra o motivo; tentar de novo costuma
 resolver. LGPD: o .docx leva nome e, se o modelo pedir, CPF — o Cloud Run fica
 em São Paulo e não grava o documento; o Google está registrado como operador
 em `docs/ROPA_NUVEM.md` §3 e §5.7.
+
+### 2.2 Envio de e-mail (opcional)
+
+O certificado (com o PDF anexado) e o aviso a quem pediu vaga pelo link
+público saem por **SMTP** — qualquer um: o do e-mail institucional, uma conta
+Gmail do setor com *senha de app* (Conta Google > Segurança > Verificação em
+duas etapas > Senhas de app), ou um serviço de envio (Brevo, Resend…). No
+Netlify:
+
+| Variável | Exemplo |
+|---|---|
+| `CSSO_SMTP_URL` (secret) | `smtps://csso.ufvjm%40gmail.com:SENHA-DE-APP@smtp.gmail.com:465` — o `@` do usuário vira `%40`; porta 587 usa `smtp://` |
+| `CSSO_EMAIL_REMETENTE` | `"CSSO UFVJM" <csso.ufvjm@gmail.com>` — o mesmo endereço da conta do SMTP, ou o provedor recusa |
+| `CSSO_EMAIL_RESPONDER_PARA` | opcional: o e-mail do setor que lê as respostas |
+
+Publique de novo. Quem envia é a função de fundo `email-background`, acordada a
+cada pedido (precisa de `CSSO_ROTINA_SEGREDO`), e a agendada `email-agendado`,
+a cada 10 min. Sem as duas variáveis, os pedidos ficam na fila (`/certificados/emails`)
+e saem quando forem configuradas. Falhas ficam na mesma tela, com o motivo, e
+voltam para a fila por ela. O provedor é **operador** (LGPD): registre qual em
+`docs/ROPA_NUVEM.md` §3 antes de ligar.
 
 ## 3. Implantar (uma vez)
 

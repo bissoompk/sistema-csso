@@ -45,6 +45,7 @@ import {
 import { AssinaturaInstrutor, Turma as T } from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
+import * as avisos_inscricao from "./avisos_inscricao.js";
 import * as datas_br from "./datas_br.js";
 import * as numeracao from "./numeracao.js";
 import * as pendencias from "./pendencias.js";
@@ -667,6 +668,7 @@ export async function mudar_situacao_inscricao(
   // NUVEM: o pedido do link público sai da espera pela conferência da CSSO
   // (não há e-mail a confirmar) — e só então passa a ocupar vaga
   const aceitando_pedido = origem === "AGUARDANDO_EMAIL" && destino === "INSCRITA";
+  const recusando_pedido = origem === "AGUARDANDO_EMAIL" && destino === "CANCELADA";
   if (aceitando_pedido) {
     if (!T.aceita_inscricao(inscricao.turma)) {
       throw new RegraDaTurma(
@@ -707,6 +709,10 @@ export async function mudar_situacao_inscricao(
   // aceitar o pedido do link também — a conferência foi o ato que ela pedia
   if (aceitando_pedido) await fechar_pendencia_de_confirmacao(tx, inscricao, usuario, { mesmo_inscrita: true });
   else await fechar_pendencia_de_confirmacao(tx, inscricao, usuario);
+  // quem pediu pelo link e deixou e-mail fica sabendo (`avisos_inscricao.ts`)
+  if (aceitando_pedido || recusando_pedido) {
+    await avisos_inscricao.avisar(tx, inscricao, aceitando_pedido, usuario.id);
+  }
   return inscricao;
 }
 
