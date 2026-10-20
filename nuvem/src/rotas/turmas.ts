@@ -41,6 +41,8 @@ import * as identificacao from "../servicos/identificacao.js";
 import { atores_para_tela } from "../servicos/privacidade.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as inscricao_lote from "../servicos/inscricao_lote.js";
+import * as inscricao_publica from "../servicos/inscricao_publica.js";
+import { qr_png } from "../servicos/qr.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
 import * as servico_participante from "../servicos/participante.js";
 import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js";
@@ -528,6 +530,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
     descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
+    link_no_ar: inscricao_publica.link_no_ar(turma),
     certificados_em_word,
     aba,
     abas,
@@ -855,6 +858,47 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
   // gravado: na caixa ficam só as recusadas, para corrigir e mandar de novo
   const recusadas = desfechos.filter((x) => x.resultado === "RECUSADA").map((x) => x.texto);
   return _tela_lote(c, usuario, turma, { ...d, texto: recusadas.join("\n"), desfechos, gravado: true });
+});
+
+// =====================================================================
+// O link público de inscrição (ver `servicos/inscricao_publica.ts`)
+// =====================================================================
+/**
+ * Gera (ou troca) o link e o mostra NESTA resposta, com o QR: o banco guarda
+ * só o hash, e um 303 com o token na URL o deixaria no histórico e no log.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
+  let token: string;
+  try {
+    token = await _no_savepoint(c, (sp) => inscricao_publica.gerar_link(sp, usuario, turma));
+  } catch (erro) {
+    if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  const endereco = `${await servico_emissao.url_base_validacao(tx)}${inscricao_publica.CAMINHO}/${token}`;
+  const resposta = await pagina(c, "paginas/turma_link.html", usuario, {
+    turma: vista_turma(turma),
+    endereco,
+    qr: `data:image/png;base64,${Buffer.from(qr_png(endereco, 6)).toString("base64")}`,
+  });
+  resposta.headers.set("cache-control", "no-store");
+  return resposta;
+});
+
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/desligar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  if (!turma) return redirecionar(c, TURMAS);
+  await inscricao_publica.desligar_link(tx, usuario, turma);
+  return _volta(c, `${TURMAS}/${turma.id}?aba=inscricoes`, "Link público desligado: o endereço deixou de funcionar.");
 });
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async (c) => {

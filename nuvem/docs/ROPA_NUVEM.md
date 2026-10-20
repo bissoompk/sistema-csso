@@ -7,8 +7,10 @@ e não cria finalidade nem categoria nova. O que muda — e é o que esta emenda
 registra — é **onde o dado está, quem o processa em nome da UFVJM e por qual
 caminho ele passa**.
 
-**Versão:** 1.1, de 20/10/2026 — acrescenta o Google como operador (conversor
-de PDF do certificado, §2, §3 e §5.7). Versão 1.0, de 25/09/2026 (revisão de
+**Versão:** 1.2, de 20/10/2026 — acrescenta a inscrição pública por link, um
+canal de coleta aberto a quem não tem conta (§5.8 e §6). Versão 1.1, de
+20/10/2026: o Google como operador (conversor de PDF do certificado, §2, §3 e
+§5.7). Versão 1.0, de 25/09/2026 (revisão de
 privacidade para produção).
 **Controlador:** UFVJM. **Unidade:** CSSO/Sisa. **Encarregado (DPO):** pendente
 (ROPA §9, item 3) — continua pendente.
@@ -217,6 +219,23 @@ uma API) no Cloud Run do Google (`servicos/conversor_pdf.ts`; implantação em
 | Base legal | A do certificado (ROPA §2; para o CPF, §5.5.1): o conversor é meio de emitir o documento, não finalidade nova |
 | Sem o conversor | Desligar é apagar `CSSO_CONVERSOR_PDF_URL` no Netlify: o certificado de modelo enviado volta a sair só em Word, e nada vai ao Google |
 
+### 5.8 Inscrição pública por link (20/10/2026)
+
+A CSSO pode ligar, por turma, um link (e o QR dele) em que qualquer pessoa,
+sem conta, pede a vaga (`/inscricao/{token}`; `servicos/inscricao_publica.ts`).
+É o canal da fatia 6 do desenho, com uma diferença: lá o pedido se confirmava
+por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
+
+| Item | Registro |
+|---|---|
+| Titulares | Servidores, terceirizados, discentes e visitantes que pedem vaga em treinamento — as mesmas categorias da inscrição interna |
+| O que se coleta | Nome, vínculo, SIAPE (só servidor), organização e, opcional, e-mail; o **IP** de onde o pedido saiu. **Sem CPF**: o formulário não tem o campo e recusa o número digitado em outro |
+| Finalidade e base legal | As da inscrição em treinamento (ROPA §2: execução de política pública e obrigação legal da NR — LGPD art. 7º, II e III, e art. 23). O IP serve só para apurar abuso do link (art. 7º, IX, legítimo interesse do controlador na segurança do canal). A página diz isso a quem pede, antes do envio, e exige a marcação de ciência |
+| Trava contra pedido em nome alheio | O pedido nasce "a conferir" e **não ocupa vaga**; abre pendência do setor; só vira inscrição quando alguém com `turma.inscrever` o aceita (`conferida_por`, `conferida_em`). O SIAPE ou o e-mail digitados só ligam o pedido a um cadastro existente se o nome conferir; senão nasce um participante novo, para a CSSO mesclar se for o caso |
+| Sem oráculo | A resposta pública é sempre a mesma frase: de fora não se sabe se a pessoa já estava inscrita nem se o SIAPE existe |
+| O link | Token de 192 bits mostrado uma vez; o banco guarda só o SHA-256. Para de funcionar no fim do dia de "inscrições até", quando a turma sai de "inscrições abertas", ou quando a CSSO o troca ou desliga. Página com `noindex`, `no-store` e `no-referrer` |
+| Abuso | Limite de envios por IP (na memória da instância, como em `/validar`; ver `DESVIOS.md`) e teto de 200 pedidos em espera por turma; campo-armadilha para robô |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -229,6 +248,8 @@ uma API) no Cloud Run do Google (`servicos/conversor_pdf.ts`; implantação em
 | `documentos/` (.docx gerados) | Regeneráveis do contexto congelado; sem prazo próprio | — |
 | `certificados-pdf/` (PDF do conversor, §5.7) | Regeneráveis do contexto congelado; sem prazo próprio | — |
 | Documento no conversor do Google (§5.7) | Nenhum: descartado ao fim da conversão | O serviço não grava; log só da requisição, sem dado pessoal |
+| IP do pedido pelo link público (§5.8) | 90 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `expurgar_ip_de_inscricao`) |
+| Participante e pedido recusado pelo link (§5.8) | Os da inscrição (POLITICA §2) | O pedido recusado fica cancelado com o motivo, como a inscrição interna |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 

@@ -22,6 +22,8 @@ import type { Banco } from "../src/db/cliente.js";
 import * as numeracao from "../src/servicos/numeracao.js";
 import * as servico_participante from "../src/servicos/participante.js";
 import * as servico_turma from "../src/servicos/turma.js";
+import * as inscricao_publica from "../src/servicos/inscricao_publica.js";
+import * as privacidade from "../src/servicos/privacidade.js";
 import { PermissaoNegada, UsuarioAtual } from "../src/servicos/rbac.js";
 import { bancoLimpo, contas, entrar, naTransacao, type Campos, type Cliente, type Resposta } from "./ajuda";
 
@@ -999,5 +1001,229 @@ describe("descrição do evento", () => {
     expect((await _turma(turma_id)).descricao).toBe("Turma do Campus JK");
     await cliente.post(`/turmas/${turma_id}`, { ...TURMA, descricao: "  " }, { seguir: false });
     expect((await _turma(turma_id)).descricao).toBeNull();
+  });
+});
+
+// =====================================================================
+// Inscrição pública por link
+// =====================================================================
+describe("inscrição pública por link", () => {
+  beforeEach(() => inscricao_publica.limpar_limites());
+
+  const PEDIDO = {
+    nome: "Joana Prestes da Silva",
+    vinculo: "TERCEIRIZADO",
+    siape: "",
+    email: "joana@empresa.com.br",
+    organizacao: "Limpeza & Cia",
+    consentimento: "sim",
+  };
+
+  /** Turma em inscrições abertas, com prazo, e o link gerado pela tela. */
+  async function com_link(campos: Partial<typeof e.turma.$inferInsert> = {}) {
+    const { turma_id } = await turma_aberta();
+    await db
+      .update(e.turma)
+      .set({ situacao: "INSCRICOES_ABERTAS", inscricao_aberta_ate: somar_dias(hoje_iso(), 10), ...campos })
+      .where(eq(e.turma.id, turma_id));
+    const r = await cliente.post(`/turmas/${turma_id}/link-publico`, {});
+    expect(r.status, r.text.slice(0, 500)).toBe(200);
+    const token = r.text.match(/\/inscricao\/([A-Za-z0-9_-]{20,})/)![1]!;
+    return { turma_id, token, pagina: r };
+  }
+
+  async function _pendencias_da_turma(turma_id: number) {
+    return db.select().from(e.pendencia).where(eq(e.pendencia.entidade_id, turma_id));
+  }
+
+  it("gera o link uma vez, guarda só o hash, e o público vê a turma sem sessão", async () => {
+    const { turma_id, token, pagina } = await com_link();
+    expect(pagina.text).toContain("data:image/png;base64,");
+    expect(pagina.cabecalho("cache-control")).toBe("no-store");
+    const turma = await _turma(turma_id);
+    expect(turma.inscricao_publica).toBe(true);
+    expect(turma.inscricao_token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(turma.inscricao_token_hash).not.toContain(token);
+
+    const publico = novoCliente();
+    const r = await publico.get(`/inscricao/${token}`);
+    expect(r.status).toBe(200);
+    expect(r.text).toContain("Trabalho em Altura");
+    expect(r.text).toContain("Pedir a vaga");
+    expect(r.cabecalho("x-robots-tag")).toContain("noindex");
+    expect(r.cabecalho("cache-control")).toBe("no-store");
+    expect((await publico.get("/inscricao/token-que-nao-existe")).status).toBe(404);
+    // a ficha diz que está no ar, sem o token
+    const ficha = (await cliente.get(`/turmas/${turma_id}?aba=inscricoes`)).text;
+    expect(ficha).toContain("no ar até");
+    expect(ficha).not.toContain(token);
+  });
+
+  it("sem data de fechamento, ou com a turma fora de inscrições abertas, não há link", async () => {
+    const { turma_id } = await turma_aberta();
+    const r = await cliente.post(`/turmas/${turma_id}/link-publico`, {}, { seguir: false });
+    expect(await _msg(cliente, r)).toContain("Defina antes até quando");
+    await db.update(e.turma).set({ inscricao_aberta_ate: somar_dias(hoje_iso(), 5) }).where(eq(e.turma.id, turma_id));
+    const r2 = await cliente.post(`/turmas/${turma_id}/link-publico`, {}, { seguir: false });
+    expect(await _msg(cliente, r2)).toContain("só se pede vaga em turma com inscrições abertas");
+    expect((await _turma(turma_id)).inscricao_publica).toBe(false);
+  });
+
+  it("o pedido fica a conferir, não ocupa vaga, abre a pendência e guarda o IP", async () => {
+    const { turma_id, token } = await com_link({ vagas: 1 });
+    const publico = novoCliente();
+    const IP = { cabecalhos: { "x-nf-client-connection-ip": "200.131.1.10" } };
+    const r = await publico.post(`/inscricao/${token}`, PEDIDO, IP);
+    expect(r.status, r.text.slice(0, 500)).toBe(200);
+    expect(_texto(r.text)).toContain(inscricao_publica.RESPOSTA_PADRAO);
+    const [i] = await _inscricoes();
+    expect(i!.situacao).toBe("AGUARDANDO_EMAIL");
+    expect(i!.origem).toBe("PUBLICA");
+    expect(i!.ip_inscricao).toBe("200.131.1.10");
+    expect(i!.inscrito_por).toBeNull();
+    const [p] = await _participantes();
+    expect(p!.nome).toBe("Joana Prestes da Silva");
+    expect(p!.vinculo).toBe("TERCEIRIZADO");
+    const [email] = await db.select().from(e.participante_email);
+    expect(email!.origem).toBe("INSCRICAO_PUBLICA");
+    expect(email!.confirmado_em).toBeNull();
+    const turma = await _turma(turma_id);
+    await naTransacao(async (tx) => expect(await servico_turma.vagas_restantes(tx, turma)).toBe(1));
+    const [pendencia] = await _pendencias_da_turma(turma_id);
+    expect(pendencia!.tipo).toBe("TURMA_INSCRICAO_A_CONFIRMAR");
+    expect(pendencia!.descricao).toContain("pelo link público");
+    expect(pendencia!.descricao).not.toContain("Joana");
+    expect(pendencia!.responsavel_id).toBeNull();
+    // a mesma pessoa de novo: nenhum segundo registro, e a mesma resposta
+    const de_novo = await publico.post(`/inscricao/${token}`, PEDIDO);
+    expect(_texto(de_novo.text)).toContain(inscricao_publica.RESPOSTA_PADRAO);
+    expect(await _inscricoes()).toHaveLength(1);
+    expect(await _participantes()).toHaveLength(1);
+    // na ficha, como pedido pelo link
+    const ficha = (await cliente.get(`/turmas/${turma_id}?aba=inscricoes`)).text;
+    expect(ficha).toContain("Pedido pelo link (a conferir)");
+    expect(ficha).toContain("Aceitar o pedido");
+  });
+
+  it("o SIAPE só liga ao cadastro do servidor quando o nome confere", async () => {
+    const { token } = await com_link();
+    const servidor_id = await _criar_servidor();
+    const publico = novoCliente();
+    // SIAPE de outra pessoa: vira participante novo, com a nota para a CSSO
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Fulano de Tal", vinculo: "SERVIDOR", siape: "1110654", email: "" });
+    let [p] = await _participantes();
+    expect(p!.servidor_id).toBeNull();
+    expect(p!.vinculo).toBe("OUTRO");
+    expect((await _inscricoes())[0]!.observacao).toContain("não confere");
+    // o próprio: o pedido entra no participante do servidor
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "marco schetino", vinculo: "SERVIDOR", siape: "1110654", email: "" });
+    const participantes = await _participantes();
+    expect(participantes).toHaveLength(2);
+    expect(participantes[1]!.servidor_id).toBe(servidor_id);
+    expect((await _inscricoes())[1]!.observacao).toBeNull();
+  });
+
+  it("recusa CPF, nome incompleto e pedido sem a ciência — sem gravar nada", async () => {
+    const { token } = await com_link();
+    const publico = novoCliente();
+    const cpf = await publico.post(`/inscricao/${token}`, { ...PEDIDO, organizacao: "123.456.789-09" });
+    expect(cpf.status).toBe(422);
+    expect(cpf.text).toContain("Não informe CPF");
+    expect((await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Joana" })).text).toContain("nome completo");
+    const sem = await publico.post(`/inscricao/${token}`, { ...PEDIDO, consentimento: "" });
+    expect(sem.text).toContain("concordar");
+    // o que foi digitado volta (menos o que não deve)
+    expect(sem.text).toContain('value="Joana Prestes da Silva"');
+    expect(await _inscricoes()).toHaveLength(0);
+    expect(await _participantes()).toHaveLength(0);
+  });
+
+  it("robô no campo-armadilha recebe a mesma resposta e não grava", async () => {
+    const { token } = await com_link();
+    const r = await novoCliente().post(`/inscricao/${token}`, { ...PEDIDO, site: "http://spam" });
+    expect(_texto(r.text)).toContain(inscricao_publica.RESPOSTA_PADRAO);
+    expect(await _inscricoes()).toHaveLength(0);
+  });
+
+  it("limita os envios por IP", async () => {
+    const { token } = await com_link();
+    const publico = novoCliente();
+    for (let n = 0; n < inscricao_publica.LIMITE_POR_JANELA; n++) {
+      await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Joana", consentimento: "" });
+    }
+    const r = await publico.post(`/inscricao/${token}`, PEDIDO);
+    expect(r.status).toBe(429);
+    expect(await _inscricoes()).toHaveLength(0);
+  });
+
+  it("aceitar põe a pessoa como inscrita, diz quem conferiu e fecha a pendência; sem vaga, recusa", async () => {
+    const { turma_id, token } = await com_link({ vagas: 1 });
+    const publico = novoCliente();
+    await publico.post(`/inscricao/${token}`, PEDIDO);
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Pedro Alvares Cabral", email: "pedro@x.com" });
+    const [a, b] = await _inscricoes();
+    const r = await cliente.post(`/turmas/${turma_id}/inscricoes/${a!.id}`, { destino: "INSCRITA" }, { seguir: false });
+    expect(await _msg(cliente, r)).toContain("inscrita");
+    const [aceita] = await db.select().from(e.inscricao).where(eq(e.inscricao.id, a!.id));
+    expect(aceita!.situacao).toBe("INSCRITA");
+    expect(aceita!.conferida_por).not.toBeNull();
+    expect(aceita!.conferida_em).not.toBeNull();
+    const pendencias = await _pendencias_da_turma(turma_id);
+    expect(pendencias.find((x) => x.chave === `inscricao-${a!.id}-a-confirmar`)!.concluida).toBe(true);
+    // a única vaga foi: o segundo pedido não entra
+    const cheia = await cliente.post(`/turmas/${turma_id}/inscricoes/${b!.id}`, { destino: "INSCRITA" }, { seguir: false });
+    expect(await _msg(cliente, cheia)).toContain("não tem vaga");
+    // recusar é cancelar com motivo
+    await cliente.post(`/turmas/${turma_id}/inscricoes/${b!.id}`, { destino: "CANCELADA", motivo: "turma cheia" }, { seguir: false });
+    const [recusada] = await db.select().from(e.inscricao).where(eq(e.inscricao.id, b!.id));
+    expect(recusada!.situacao).toBe("CANCELADA");
+    expect(recusada!.conferida_por).toBeNull();
+  });
+
+  it("o banco recusa tirar o pedido da espera sem conferência", async () => {
+    const { token } = await com_link();
+    await novoCliente().post(`/inscricao/${token}`, PEDIDO);
+    const [i] = await _inscricoes();
+    await expect(db.update(e.inscricao).set({ situacao: "INSCRITA" }).where(eq(e.inscricao.id, i!.id))).rejects.toThrow();
+  });
+
+  it("trocar o link mata o anterior; desligar mata o atual", async () => {
+    const { turma_id, token } = await com_link();
+    const r = await cliente.post(`/turmas/${turma_id}/link-publico`, {});
+    const novo = r.text.match(/\/inscricao\/([A-Za-z0-9_-]{20,})/)![1]!;
+    expect(novo).not.toBe(token);
+    const publico = novoCliente();
+    expect((await publico.get(`/inscricao/${token}`)).status).toBe(404);
+    expect((await publico.get(`/inscricao/${novo}`)).status).toBe(200);
+    await cliente.post(`/turmas/${turma_id}/link-publico/desligar`, {}, { seguir: false });
+    expect((await publico.get(`/inscricao/${novo}`)).status).toBe(404);
+    expect((await _turma(turma_id)).inscricao_token_hash).toBeNull();
+  });
+
+  it("prazo vencido ou turma em andamento: o link mostra que fechou e não grava", async () => {
+    const { turma_id, token } = await com_link();
+    await db.update(e.turma).set({ situacao: "EM_ANDAMENTO" }).where(eq(e.turma.id, turma_id));
+    const r = await novoCliente().post(`/inscricao/${token}`, PEDIDO);
+    expect(r.status).toBe(200);
+    expect(r.text).not.toContain("Pedir a vaga");
+    expect(await _inscricoes()).toHaveLength(0);
+  });
+
+  it("quem não edita turma não gera nem desliga o link", async () => {
+    const { turma_id } = await turma_aberta();
+    await entrar(cliente, "servidor_consulta");
+    expect((await cliente.post(`/turmas/${turma_id}/link-publico`, {})).status).toBe(403);
+    expect((await cliente.post(`/turmas/${turma_id}/link-publico/desligar`, {})).status).toBe(403);
+  });
+
+  it("o IP do pedido sai depois de 90 dias", async () => {
+    const { token } = await com_link();
+    await novoCliente().post(`/inscricao/${token}`, PEDIDO, { cabecalhos: { "x-nf-client-connection-ip": "200.131.1.10" } });
+    await naTransacao(async (tx) => {
+      expect(await privacidade.expurgar_ip_de_inscricao(tx)).toBe(0);
+      const daqui = new Date(Date.now() + 91 * 86_400_000);
+      expect(await privacidade.expurgar_ip_de_inscricao(tx, daqui)).toBe(1);
+    });
+    expect((await _inscricoes())[0]!.ip_inscricao).toBeNull();
   });
 });

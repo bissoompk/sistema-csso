@@ -488,7 +488,8 @@ export const TRANSICOES_INSCRICAO: Transicoes = {
 };
 
 export const ROTULO_INSCRICAO: Rotulos = {
-  AGUARDANDO_EMAIL: 'Aguardando confirmacao de e-mail',
+  // NUVEM: sem e-mail, o pedido do link espera a conferencia da CSSO
+  AGUARDANDO_EMAIL: 'Pedido pelo link, a conferir',
   INSCRITA: 'Inscrita',
   CONFIRMADA: 'Confirmada',
   PRESENTE: 'Presente',

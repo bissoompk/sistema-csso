@@ -216,7 +216,11 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
     db,
     ROTINA_PRIVACIDADE,
     (tx) => expurgos_de_privacidade(tx),
-    (r) => [true, `${r.acessos} linha(s) de registro de acesso e ${r.exportacoes} exportação(ões) apagada(s)`],
+    (r) => [
+      true,
+      `${r.acessos} linha(s) de registro de acesso e ${r.exportacoes} exportação(ões) apagada(s); ` +
+        `IP de ${r.ips} pedido(s) pelo link limpo(s)`,
+    ],
   );
   passos.push({ rotina: ROTINA_PRIVACIDADE, ok: expurgos.ok, detalhe: expurgos.detalhe });
 

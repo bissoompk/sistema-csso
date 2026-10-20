@@ -154,6 +154,11 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // desistiu dela?" são fatos diferentes de "a secretaria inscreveu".
   INSCRICAO_PEDIDA_PELO_TITULAR: "Inscrição pedida pelo próprio servidor",
   INSCRICAO_DESISTIDA: "Desistência do próprio inscrito",
+  // NUVEM: a inscrição pública por link (sem e-mail; a CSSO confere o pedido)
+  INSCRICAO_LINK_GERADO: "Link público de inscrição gerado",
+  INSCRICAO_LINK_DESLIGADO: "Link público de inscrição desligado",
+  INSCRICAO_PEDIDA_PELO_LINK: "Inscrição pedida pelo link público",
+  INSCRICAO_PEDIDO_CONFERIDO: "Pedido do link público aceito pela CSSO",
   PARTICIPANTE_CRIADO: "Participante externo cadastrado",
   // o fato, nunca o valor: a trilha diz que o CPF mudou, e não qual é
   PARTICIPANTE_CPF_ALTERADO: "CPF do participante (certificado) alterado",

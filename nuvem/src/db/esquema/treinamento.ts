@@ -559,6 +559,10 @@ export const inscricao = pgTable(
     confirmacao_expira_em: MomentoUTC('confirmacao_expira_em'),
     email_confirmado_em: MomentoUTC('email_confirmado_em'),
     ip_inscricao: Inet('ip_inscricao'),
+    // NUVEM: sem envio de e-mail, quem tira o pedido do link da espera é a
+    // CSSO, que o confere — e fica dito quem e quando
+    conferida_por: integer('conferida_por'),
+    conferida_em: MomentoUTC('conferida_em'),
 
     inscrito_em: MomentoUTC('inscrito_em').notNull().$defaultFn(agora_utc),
     inscrito_por: integer('inscrito_por'),
@@ -593,6 +597,11 @@ export const inscricao = pgTable(
       columns: [t.confirmada_por],
       foreignColumns: [usuario.id],
     }),
+    foreignKey({
+      name: 'fk_inscricao_conferida_por',
+      columns: [t.conferida_por],
+      foreignColumns: [usuario.id],
+    }),
     unique('uq_inscricao').on(t.turma_id, t.participante_id),
     check(
       'ck_inscricao_situacao',
@@ -615,11 +624,14 @@ export const inscricao = pgTable(
       sql.raw(`situacao <> 'CANCELADA' OR motivo_cancelamento IS NOT NULL`),
     ),
     // inscricao publica so sai de AGUARDANDO_EMAIL depois de confirmada: e a
-    // trava que impede inscrever alguem no e-mail alheio
+    // trava que impede inscrever alguem no e-mail alheio. NUVEM: sem envio de
+    // e-mail, a confirmacao e a conferencia da CSSO (`conferida_por`); recusar
+    // o pedido (CANCELADA) nao precisa de nenhuma das duas
     check(
       'ck_inscricao_email_confirmado',
       sql.raw(
-        `origem = 'INTERNA' OR situacao = 'AGUARDANDO_EMAIL' OR email_confirmado_em IS NOT NULL`,
+        `origem = 'INTERNA' OR situacao IN ('AGUARDANDO_EMAIL','CANCELADA') ` +
+          `OR email_confirmado_em IS NOT NULL OR conferida_por IS NOT NULL`,
       ),
     ),
     primaryKey({ name: 'pk_inscricao', columns: [t.id] }),

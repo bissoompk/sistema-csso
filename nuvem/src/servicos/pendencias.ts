@@ -55,7 +55,7 @@ export const TIPOS: Record<string, readonly [string, number]> = {
   // o aviso de QUEM DEMANDOU, quando a CSSO encerra (só se ele tem conta)
   DEMANDA_DESFECHO_A_LER: ["Ler o desfecho da sua demanda", 15],
   // nasce SEM responsável: é do setor
-  TURMA_INSCRICAO_A_CONFIRMAR: ["Confirmar inscrição pedida pelo próprio servidor", 10],
+  TURMA_INSCRICAO_A_CONFIRMAR: ["Confirmar inscrição pedida pelo próprio participante", 10],
   // o prazo real é o próprio vencimento; nasce sem responsável (é do setor)
   CERTIFICADO_A_VENCER: ["Programar a reciclagem de certificado a vencer", 30],
 };

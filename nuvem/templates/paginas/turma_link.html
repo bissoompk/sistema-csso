@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Link de inscrição · {{ turma.codigo }} · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Link público de inscrição</h1>
+      <p class="sub"><a class="mono" href="/turmas/{{ turma.id }}?aba=inscricoes">{{ turma.codigo }}</a>
+        · {{ turma.treinamento.nome }} · vale até {{ turma.inscricao_aberta_ate|data }}</p>
+    </div>
+  </div>
+
+  <div class="aviso aviso-alerta">
+    <strong>Copie agora.</strong> O sistema guarda só a impressão digital do link, não o
+    link: esta tela não volta. Perdeu? Gere outro na aba Inscrições — o anterior para de
+    funcionar.
+  </div>
+
+  <section class="cartao">
+    <div class="campo">
+      <label for="link-publico">Endereço para o cartaz, o e-mail ou o grupo</label>
+      <input id="link-publico" class="mono" value="{{ endereco }}" readonly>
+    </div>
+    <p><img src="{{ qr }}" alt="QR Code do link de inscrição de {{ turma.codigo }}"
+            width="240" height="240"></p>
+    <p class="discreto">Para imprimir o QR: botão direito sobre ele, “salvar imagem”.</p>
+  </section>
+
+  <section class="cartao">
+    <h2>O que acontece com cada pedido</h2>
+    <ul>
+      <li>Quem abre o link vê a turma e pede a vaga com nome, vínculo, SIAPE (servidor)
+        e, se quiser, e-mail. CPF não entra.</li>
+      <li>O pedido aparece na aba Inscrições como <strong>pedido pelo link, a
+        conferir</strong>, e abre uma pendência do setor. Ele <strong>não ocupa
+        vaga</strong> até alguém aceitar.</li>
+      <li>Aceitar põe a pessoa como inscrita (se houver vaga); recusar cancela o pedido
+        com o motivo. O sistema não envia e-mail: avise a pessoa, se for o caso.</li>
+      <li>O link para de funcionar depois de {{ turma.inscricao_aberta_ate|data }}, quando
+        a turma sai de “inscrições abertas”, ou quando alguém o desliga ou troca.</li>
+    </ul>
+  </section>
+
+  <div class="acoes">
+    <a class="botao" href="/turmas/{{ turma.id }}?aba=inscricoes">Voltar à turma</a>
+  </div>
+</div>
+{% endblock %}

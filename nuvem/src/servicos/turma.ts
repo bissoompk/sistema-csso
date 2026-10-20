@@ -664,10 +664,26 @@ export async function mudar_situacao_inscricao(
     );
   }
 
+  // NUVEM: o pedido do link público sai da espera pela conferência da CSSO
+  // (não há e-mail a confirmar) — e só então passa a ocupar vaga
+  const aceitando_pedido = origem === "AGUARDANDO_EMAIL" && destino === "INSCRITA";
+  if (aceitando_pedido) {
+    if (!T.aceita_inscricao(inscricao.turma)) {
+      throw new RegraDaTurma(
+        `${inscricao.turma.codigo} está ${ROTULO_TURMA[inscricao.turma.situacao]!.toLowerCase()} e não recebe inscrição.`,
+      );
+    }
+    await _conferir_vaga(tx, inscricao.turma);
+  }
+
   const campos: Partial<InscricaoRegistro> = {
     situacao: destino,
     motivo_cancelamento: destino === "CANCELADA" ? limpo : null,
   };
+  if (aceitando_pedido) {
+    campos.conferida_em = opcoes.quando ?? agora_utc();
+    campos.conferida_por = usuario.id;
+  }
   if (destino === "CONFIRMADA") {
     campos.confirmada_em = opcoes.quando ?? agora_utc();
     campos.confirmada_por = usuario.id;
@@ -687,8 +703,10 @@ export async function mudar_situacao_inscricao(
     comentario: limpo,
     usuario,
   });
-  // sair de INSCRITA é o que a CSSO tinha para fazer: confirmar (ou cancelar)
-  await fechar_pendencia_de_confirmacao(tx, inscricao, usuario);
+  // sair de INSCRITA é o que a CSSO tinha para fazer: confirmar (ou cancelar);
+  // aceitar o pedido do link também — a conferência foi o ato que ela pedia
+  if (aceitando_pedido) await fechar_pendencia_de_confirmacao(tx, inscricao, usuario, { mesmo_inscrita: true });
+  else await fechar_pendencia_de_confirmacao(tx, inscricao, usuario);
   return inscricao;
 }
 
@@ -735,14 +753,16 @@ export async function abrir_pendencia_de_confirmacao(
   tx: Executor,
   inscricao: InscricaoCarregada,
   usuario: UsuarioAtual | null = null,
+  pelo_link = false,
 ): Promise<void> {
   const turma = inscricao.turma;
   const pendencia = await pendencias.abrir(tx, {
     tipo: TIPO_PENDENCIA_CONFIRMAR,
     chave: chave_da_pendencia_de_confirmacao(inscricao),
     descricao:
-      `${turma.codigo} · ${turma.treinamento.nome} · pedida pelo próprio ` +
-      `participante ${inscricao.participante.identificador_publico}`,
+      `${turma.codigo} · ${turma.treinamento.nome} · pedida ` +
+      (pelo_link ? "pelo link público · " : "pelo próprio participante ") +
+      inscricao.participante.identificador_publico,
     usuario,
     entidade: "turma",
     entidade_id: turma.id,
@@ -761,8 +781,9 @@ export async function fechar_pendencia_de_confirmacao(
   tx: Executor,
   inscricao: InscricaoRegistro,
   usuario: UsuarioAtual,
+  opcoes: { mesmo_inscrita?: boolean } = {},
 ): Promise<void> {
-  if (inscricao.situacao === "INSCRITA") return;
+  if (inscricao.situacao === "INSCRITA" && !opcoes.mesmo_inscrita) return;
   const [existente] = await tx
     .select()
     .from(tabela_pendencia)

@@ -337,8 +337,12 @@ export const MODULOS: readonly Modulo[] = [
     // metade é não continuar declarando o que já chegou — e esta linha, em
     // particular, era a mais cara de manter: o endereço já saía impresso em
     // todo certificado emitido, e a lista dizia que ele não existia.
+    // A inscrição pública por link saiu também: existe, sem e-mail — a CSSO
+    // confere cada pedido (`servicos/inscricao_publica.ts`). O e-mail, que ela
+    // dispensou, é o que continua faltando.
     itens_previstos: [
-      "Inscrição pública por link, com e-mail confirmado",
+      "Envio do certificado e de avisos por e-mail",
+      "Acesso do participante externo aos próprios certificados",
     ],
   }),
   new Modulo({

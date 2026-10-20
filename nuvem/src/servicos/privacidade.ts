@@ -4,9 +4,9 @@
  * (`servicos/rotinas.ts`); cada um devolve o que apagou, e nada daqui escreve
  * nome de pessoa em lugar nenhum.
  */
-import { inArray } from "drizzle-orm";
+import { and, inArray, isNotNull, lt } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { usuario as tabela_usuario } from "../db/esquema/index.js";
+import { inscricao as tabela_inscricao, usuario as tabela_usuario } from "../db/esquema/index.js";
 import { pode_ver_nominal } from "./identificacao.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { identificador_opaco } from "./textos.js";
@@ -56,14 +56,36 @@ export async function expurgar_exportacoes(
   return apagadas;
 }
 
-/** Os dois expurgos, para a rotina noturna. */
+/** Por quanto tempo o IP de quem pediu vaga pelo link público fica no pedido. */
+export const DIAS_DO_IP_DA_INSCRICAO = 90;
+
+/**
+ * O IP do pedido pelo link (`inscricao_publica.ts`) serve para apurar abuso
+ * do link enquanto ele está em uso; passado o prazo, sai. O pedido fica.
+ */
+export async function expurgar_ip_de_inscricao(
+  tx: Executor,
+  agora: Date = new Date(),
+  dias: number = DIAS_DO_IP_DA_INSCRICAO,
+): Promise<number> {
+  const limite = new Date(agora.getTime() - dias * 86_400_000);
+  const limpas = await tx
+    .update(tabela_inscricao)
+    .set({ ip_inscricao: null })
+    .where(and(isNotNull(tabela_inscricao.ip_inscricao), lt(tabela_inscricao.inscrito_em, limite)))
+    .returning({ id: tabela_inscricao.id });
+  return limpas.length;
+}
+
+/** Os expurgos, para a rotina noturna. */
 export async function expurgos_de_privacidade(
   tx: Executor,
   arm: Armazenamento = obterArmazenamento(),
-): Promise<{ acessos: number; exportacoes: number }> {
+): Promise<{ acessos: number; exportacoes: number; ips: number }> {
   const acessos = await expurgar_registro_acesso(tx);
   const exportacoes = (await expurgar_exportacoes(arm)).length;
-  return { acessos, exportacoes };
+  const ips = await expurgar_ip_de_inscricao(tx);
+  return { acessos, exportacoes, ips };
 }
 
 /**

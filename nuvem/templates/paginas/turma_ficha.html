@@ -310,6 +310,31 @@
 
 {# ===================== aba 2 — inscrições ===================== #}
 {% if aba == 'inscricoes' %}
+{% if usuario.pode('turma.criar') and (turma.aceita_inscricao or turma.inscricao_publica) %}
+{# o link público: o token não mora no banco, então aqui só se diz se há um no ar #}
+<section class="cartao" id="link-publico">
+  <div class="cabecalho-cartao">
+    <h2>Inscrição pública por link</h2>
+    {% if link_no_ar %}<span class="pilula ok">no ar até {{ turma.inscricao_aberta_ate|data }}</span>
+    {% elif turma.inscricao_publica %}<span class="pilula alerta">ligado, mas fora do prazo ou da situação</span>
+    {% else %}<span class="pilula sem-ponto">desligado</span>{% endif %}
+  </div>
+  <p class="discreto">Quem tem o link pede a vaga sem conta. Cada pedido entra aqui como
+    <strong>pedido pelo link, a conferir</strong>, não ocupa vaga e abre uma pendência;
+    vira inscrição quando alguém o aceita. Só funciona com a turma em “inscrições
+    abertas” e até a data de “inscrições até”.</p>
+  <div class="acoes">
+    <form method="post" action="/turmas/{{ turma.id }}/link-publico">
+      <button type="submit" class="secundario">
+        {{- 'Gerar um link novo (o atual para de funcionar)' if turma.inscricao_publica else 'Gerar o link e o QR' -}}
+      </button></form>
+    {% if turma.inscricao_publica %}
+    <form method="post" action="/turmas/{{ turma.id }}/link-publico/desligar">
+      <button type="submit" class="perigo">Desligar o link</button></form>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
 <section class="cartao liso">
   <div class="cabecalho-cartao">
     <h2>Inscrições</h2>
@@ -356,11 +381,13 @@
           {{- (i.participante.email_exibicao or '—') if nominal else '—' -}}</span></td>
       <td>{{ ui.pilula_inscricao(i.situacao) }}
         {% if i.motivo_cancelamento %}
-        <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}</td>
-      <td class="discreto">{{ i.origem|lower }}</td>
+        <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}
+        {% if i.situacao == 'AGUARDANDO_EMAIL' and i.observacao %}
+        <span class="quebra discreto">{{ i.observacao }}</span>{% endif %}</td>
+      <td class="discreto">{{ 'link público' if i.origem == 'PUBLICA' else i.origem|lower }}</td>
       {% if pode_inscrever %}
       <td>
-        {% if i.situacao in ['INSCRITA', 'CONFIRMADA'] %}
+        {% if i.situacao in ['INSCRITA', 'CONFIRMADA', 'AGUARDANDO_EMAIL'] %}
         {# A gaveta que virou camada: os dois formulários da linha moravam numa
            célula de ~190px, e o campo de motivo do cancelamento saía com 140px de
            largura para uma frase. Ver `popup_gaveta` em `partes/macros.html` — a
@@ -373,6 +400,17 @@
                                 'Ações · ' ~ (i.participante.nome_exibicao
                                               if nominal else quem.nome),
                                 nota=(ui.ROTULO_INSCRICAO_TELA[i.situacao] or i.situacao)|lower) %}
+          {% if i.situacao == 'AGUARDANDO_EMAIL' %}
+          {# o pedido do link: a conferência da CSSO é a trava que o e-mail seria #}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
+            <h3>Aceitar o pedido</h3>
+            <p class="discreto">Confira se a pessoa é quem diz ser (nome, SIAPE, vínculo).
+              Aceito, o pedido vira inscrição e passa a ocupar vaga.</p>
+            <input type="hidden" name="destino" value="INSCRITA">
+            <div class="acoes"><button type="submit" class="secundario compacto">
+              Aceitar</button></div>
+          </form>
+          {% endif %}
           {% if i.situacao == 'INSCRITA' %}
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
             <h3>Confirmar a inscrição</h3>
@@ -382,14 +420,14 @@
           </form>
           {% endif %}
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
-            <h3>Cancelar a inscrição</h3>
+            <h3>{{ 'Recusar o pedido' if i.situacao == 'AGUARDANDO_EMAIL' else 'Cancelar a inscrição' }}</h3>
             <input type="hidden" name="destino" value="CANCELADA">
             <div class="campo">
               <label for="motivo-cancelar-{{ i.id }}">Motivo do cancelamento</label>
               <input id="motivo-cancelar-{{ i.id }}" name="motivo" required
                      placeholder="desistiu, remanejado, turma cheia…"></div>
             <div class="acoes"><button type="submit" class="perigo compacto">
-              Cancelar inscrição</button></div>
+              {{ 'Recusar' if i.situacao == 'AGUARDANDO_EMAIL' else 'Cancelar inscrição' }}</button></div>
           </form>
         {% endcall %}
         {% endif %}
