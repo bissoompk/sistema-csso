@@ -419,7 +419,7 @@ export function sugerir_campo(
   if (/^[_\s]*%[_\s]*$|^[_\s]+%$/.test(r) || (r.includes("%") && !/[a-z]/.test(r))) {
     const f = ultima("frequ");
     const nota = ultima("nota", "aproveitamento", "media");
-    if (f >= 0 || nota >= 0) return existe(f > nota ? "frequencia_percentual" : "nota_final");
+    if (f >= 0 || nota >= 0) return existe(f > nota ? "frequencia_percentual" : _o_que_houver(campos, "nota_final_percentual", "nota_final"));
   }
   const parece_cpf = /^[0\s.\-x]+$/.test(r) && r.replace(/\D/g, "").length === 11;
   if (tem("cpf") || parece_cpf) {

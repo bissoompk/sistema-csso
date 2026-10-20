@@ -477,6 +477,10 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     (c) => _data(c.data_vencimento) || SEM_VENCIMENTO,
   ),
   nota_final: _c("Resultado", "Nota final", "9,5", (c) => (c.nota_final !== null ? numero_br(c.nota_final) : "")),
+  // a nota é de 0 a 10; o modelo que pede «___ %» quer o aproveitamento (9,5 -> 95%)
+  nota_final_percentual: _c("Resultado", "Nota final em %", "95%", (c) =>
+    c.nota_final !== null ? `${numero_br(Number(c.nota_final) * 10)}%` : "",
+  ),
   frequencia_percentual: _c("Resultado", "Frequência", "100%", (c) =>
     c.frequencia_percentual !== null ? `${numero_br(c.frequencia_percentual)}%` : "",
   ),

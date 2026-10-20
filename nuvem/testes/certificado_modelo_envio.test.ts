@@ -200,7 +200,7 @@ describe("sugestão de campo", () => {
     });
     // «___ %»: nota final e frequência se separam pelo que vem antes
     const pct = marcadores.filter((m) => m.rotulo === "___ %").map((m) => sugestao[m.marcador]);
-    expect(pct).toEqual(["nota_final", "frequencia_percentual"]);
+    expect(pct).toEqual(["nota_final_percentual", "frequencia_percentual"]);
     // o que não tem par no vocabulário fica sem sugestão, e não com um chute
     expect(sugestao["edificacao_ou_setor_para_o_qual_houve_a"]).toBeNull();
     expect(sugestao["campo"]).toBeNull();
@@ -233,6 +233,11 @@ describe("sugestão de campo", () => {
     expect(sugestao["qr_code"]).toBe("certificado_qrcode");
     // «endereço completo do local do curso» continua sendo o local da turma
     expect(sugestao["endereco_completo_do_local_do_curso"]).toBe("turma_local");
+    // «___ %» depois de "Nota final" é o aproveitamento: a nota de 0 a 10 vezes 10
+    const pct = certificado.CAMPOS_CERTIFICADO.nota_final_percentual!.obter;
+    expect(pct({ nota_final: "9.50" } as never)).toBe("95%");
+    expect(pct({ nota_final: "8.33" } as never)).toBe("83,3%");
+    expect(pct({ nota_final: null } as never)).toBe("");
   });
 });
 
