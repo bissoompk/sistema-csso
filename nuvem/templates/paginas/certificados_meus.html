@@ -70,8 +70,8 @@
         {% else %}<span class="selo">não expira</span>{% endif %}
       </td>
       <td>{{ ui.pilula_certificado(situacao_publica[c.id]) }}</td>
-      <td>{% if not congelado['modelo_chave'] %}<a class="botao compacto" href="/certificados/{{ c.id }}/pdf">PDF</a>{% endif %}
-        <a class="botao {{ 'compacto' if congelado['modelo_chave'] else 'secundario compacto' }}"
+      <td>{% if not congelado['modelo_chave'] or pdf_fiel() %}<a class="botao compacto" href="/certificados/{{ c.id }}/pdf">PDF</a>{% endif %}
+        <a class="botao {{ 'compacto' if congelado['modelo_chave'] and not pdf_fiel() else 'secundario compacto' }}"
            href="/certificados/{{ c.id }}/documento">Word</a></td>
     </tr>
     {% else %}

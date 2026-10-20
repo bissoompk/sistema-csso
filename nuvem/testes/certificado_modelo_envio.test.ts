@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import PizZip from "pizzip";
 import type { Banco } from "../src/db/cliente.js";
@@ -486,6 +486,52 @@ describe("emissão com o modelo enviado", () => {
     const nomes = Object.keys(dentro.files);
     expect(nomes).toHaveLength(1);
     expect(texto(dentro.file(nomes[0]!)!.asUint8Array())).toContain("Marco Antônio Alves Schetino");
+
+    // com o conversor ligado, o PDF é o .docx passado pelo LibreOffice — uma
+    // vez só: a segunda leitura sai do armazenamento
+    const fetch_original = globalThis.fetch;
+    const enviados: string[] = [];
+    vi.stubEnv("CSSO_CONVERSOR_PDF_URL", "https://conversor.exemplo.invalid/");
+    vi.stubGlobal("fetch", async (url: unknown, init?: RequestInit) => {
+      if (!String(url).startsWith("https://conversor.exemplo.invalid")) return fetch_original(url as string, init);
+      const arquivo = (init!.body as FormData).get("files") as File;
+      enviados.push(`${String(url)} ${arquivo.name}`);
+      expect(texto(new Uint8Array(await arquivo.arrayBuffer()))).toContain("Marco Antônio Alves Schetino");
+      return new Response("%PDF-1.7 convertido", { status: 200 });
+    });
+    try {
+      for (let vez = 0; vez < 2; vez++) {
+        const fiel = await baixar(`/certificados/${emitido.certificado.id}/pdf`);
+        expect([fiel.status, fiel.tipo]).toEqual([200, "application/pdf"]);
+        expect(new TextDecoder().decode(fiel.bytes)).toBe("%PDF-1.7 convertido");
+      }
+      expect(enviados).toHaveLength(1);
+      expect(enviados[0]).toMatch(/^https:\/\/conversor\.exemplo\.invalid\/forms\/libreoffice\/convert .+\.docx$/);
+      const com_pdf = (await cliente.get(`/certificados/${emitido.certificado.id}`)).text;
+      expect(com_pdf).toContain(`/certificados/${emitido.certificado.id}/pdf"`);
+      expect((await cliente.get(`/turmas/${turma.id}?aba=emissao`)).text).toContain(
+        `/certificados/${emitido.certificado.id}/pdf"`,
+      );
+
+      // conversor fora do ar: o link não quebra, leva ao Word
+      await obterArmazenamento().remover(
+        (await import("../src/servicos/conversor_pdf.js")).chave_do_pdf(
+          emitido.certificado.id,
+          emitido.certificado.hash_conteudo ?? "",
+          String(congelado.modelo_sha256 ?? ""),
+        ),
+      );
+      vi.stubGlobal("fetch", async (url: unknown, init?: RequestInit) =>
+        String(url).startsWith("https://conversor.exemplo.invalid")
+          ? new Response("fora", { status: 502 })
+          : fetch_original(url as string, init),
+      );
+      const fora = await cliente.get(`/certificados/${emitido.certificado.id}/pdf`, { seguir: false });
+      expect([fora.status, fora.location]).toEqual([303, `/certificados/${emitido.certificado.id}/documento`]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
 
     // o arquivo do modelo vai no backup, junto com os anexos
     const feito = await backup.fazer_backup(db, { senha: "senha-do-teste" });

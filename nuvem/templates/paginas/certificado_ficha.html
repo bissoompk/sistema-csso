@@ -14,7 +14,7 @@
 {% block acoes_cabecalho %}
 {# modelo enviado pela tela: o papel é o próprio .docx do setor; o PDF da casa
    não tem o layout nem os campos livres dele #}
-{% if contexto.modelo_chave %}
+{% if contexto.modelo_chave and not pdf_fiel() %}
 <a class="botao" href="/certificados/{{ certificado.id }}/documento"
    data-baixar="Gerando a segunda via…">Baixar Word (.docx)</a>
 {% else %}
@@ -136,7 +136,7 @@
           {% endcall %}
         </div>
         <div class="acoes">
-          {% if contexto.modelo_chave %}
+          {% if contexto.modelo_chave and not pdf_fiel() %}
           <a class="botao" href="/certificados/{{ certificado.id }}/documento">Baixar Word (.docx)</a>
           {% else %}
           <a class="botao" href="/certificados/{{ certificado.id }}/pdf">Baixar PDF</a>

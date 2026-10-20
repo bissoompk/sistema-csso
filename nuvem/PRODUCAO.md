@@ -36,6 +36,7 @@ Site configuration > Environment variables. Marque as secretas como *secret*
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings > API > service_role | sim |
 | `CSSO_BUCKET` | `csso-producao` (bucket novo e vazio; o `csso` antigo tem arquivos de teste) | sim |
 | `CSSO_URL_PUBLICA` | a mesma URL passada ao `producao-iniciar` (recuo; o que vale é o parâmetro do banco) | recomendada |
+| `CSSO_CONVERSOR_PDF_URL`, `CSSO_CONVERSOR_PDF_USUARIO`, `CSSO_CONVERSOR_PDF_SENHA` | o conversor de PDF do modelo enviado (§2.1) | não (sem ele, o modelo enviado sai em Word) |
 | `CSSO_COOKIE_SEGURO` | `auto` (padrão) ou `sim`; **nunca** `nao` (produção recusa subir)² | não |
 | `CSSO_SESSAO_HORAS` (12), `CSSO_SESSAO_INATIVIDADE_MINUTOS` (120; 0 desliga), `CSSO_MAX_TENTATIVAS`, `CSSO_BLOQUEIO_MINUTOS`, `CSSO_MAX_FALHAS_IP`, `CSSO_JANELA_IP_MINUTOS`, `CSSO_LOG_RETENCAO_DIAS`, `CSSO_EPI_LOCAL_RETIRADA`, `CSSO_FUSO_EXIBICAO` | padrões servem | não |
 
@@ -55,6 +56,39 @@ no log da função diz qual variável (nunca o valor).
 (`gru`)** — a mesma região do Supabase (`sa-east-1`). Cada requisição faz várias
 idas ao banco; entre `us-east` e São Paulo isso é ~120 ms a cada uma. Depois de
 trocar, publique de novo.
+
+### 2.1 Conversor de PDF do modelo enviado (opcional)
+
+O modelo enviado pela tela (`/treinamentos/modelos`) é um .docx com o layout
+do setor. O PDF da casa não o reproduz, e a Netlify não roda LibreOffice; o
+PDF fiel sai de um **Gotenberg** (LibreOffice atrás de uma API) no Google
+Cloud Run, em São Paulo. Sem ele, o certificado de modelo enviado sai só em
+Word — nada quebra. O conversor não guarda nada: recebe o .docx, devolve o
+PDF; o sistema guarda o PDF no Storage e não converte de novo.
+
+Uma vez, com o `gcloud` num projeto com faturamento (o uso do setor cabe na
+camada gratuita do Cloud Run):
+
+```sh
+SENHA=$(node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))")
+gcloud run deploy csso-conversor-pdf \
+  --image=gotenberg/gotenberg:8 --region=southamerica-east1 \
+  --port=3000 --memory=2Gi --cpu=1 --min-instances=0 --max-instances=2 \
+  --allow-unauthenticated \
+  --set-env-vars=GOTENBERG_API_BASIC_AUTH_USERNAME=csso,GOTENBERG_API_BASIC_AUTH_PASSWORD=$SENHA \
+  --command=gotenberg --args=--api-enable-basic-auth
+```
+
+`--allow-unauthenticated` só abre o endereço: a senha (autenticação básica)
+continua exigida em toda conversão. No Netlify: `CSSO_CONVERSOR_PDF_URL` = a
+URL que o comando imprime, `CSSO_CONVERSOR_PDF_USUARIO=csso` e
+`CSSO_CONVERSOR_PDF_SENHA` = a senha (secret). Publique de novo.
+
+Com o conversor fora do ar (ou a primeira conversão passando de 20 s, o que
+pode acontecer no primeiro acesso depois de um tempo parado), o botão de PDF
+leva ao Word e o log da função registra o motivo; tentar de novo costuma
+resolver. LGPD: o .docx leva nome e, se o modelo pedir, CPF — o Cloud Run fica
+em São Paulo e não grava o documento; registre o Google como operador no ROPA.
 
 ## 3. Implantar (uma vez)
 

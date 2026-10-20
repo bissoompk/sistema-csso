@@ -959,7 +959,7 @@
       <td>
         {% if emitido %}
         <a class="mono" href="/certificados/{{ emitido.id }}">{{ emitido.rotulo }}</a>
-        {% if emitido.so_word %}<a class="discreto" href="/certificados/{{ emitido.id }}/documento">Word</a>
+        {% if emitido.so_word and not pdf_fiel() %}<a class="discreto" href="/certificados/{{ emitido.id }}/documento">Word</a>
         {% else %}<a class="discreto" href="/certificados/{{ emitido.id }}/pdf">PDF</a>{% endif %}
         <span class="quebra discreto mono">{{ emitido.chave_validacao }}</span>
         {% else %}<span class="discreto">—</span>{% endif %}

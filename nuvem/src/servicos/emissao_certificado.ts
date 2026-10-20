@@ -44,6 +44,7 @@ import * as numeracao from "./numeracao.js";
 import { setor_emissor_vigente } from "./parecer.js";
 import { nome_exibicao } from "./participante.js";
 import * as certificado_pdf from "./certificado_pdf.js";
+import * as conversor_pdf from "./conversor_pdf.js";
 import * as servico_presenca from "./presenca.js";
 import * as servico_servidores from "./servidores.js";
 import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
@@ -865,6 +866,31 @@ export async function pdf_do_certificado(
  */
 export function do_modelo_enviado(certificado: { contexto_congelado: Record<string, unknown> }): boolean {
   return Boolean(certificado.contexto_congelado?.["modelo_chave"]);
+}
+
+/**
+ * O PDF fiel do certificado de modelo enviado: a segunda via em .docx passa
+ * pelo conversor (LibreOffice) uma vez e fica guardada. Lança
+ * `ConversorIndisponivel` sem conversor ou com ele fora do ar.
+ */
+export async function pdf_do_modelo_enviado(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  certificado: CertificadoRegistro,
+): Promise<{ nome: string; bytes: Uint8Array }> {
+  // o guardado não passa pela segunda via: a leitura é conferida aqui
+  exigir_leitura_do_certificado(usuario, certificado.servidor_id);
+  const congelado = certificado.contexto_congelado as Record<string, unknown>;
+  const chave = conversor_pdf.chave_do_pdf(
+    certificado.id,
+    certificado.hash_conteudo ?? "",
+    String(congelado["modelo_sha256"] ?? ""),
+  );
+  const bytes = await conversor_pdf.pdf_guardado_ou_convertido(chave, async () => {
+    const via = await segunda_via(tx, usuario, certificado);
+    return { bytes: via.bytes, nome: via.docx.split("/").pop()! };
+  });
+  return { nome: caminho_saida(certificado, "pdf").split("/").pop()!, bytes };
 }
 
 /** Os .docx vigentes da turma num .zip, na ordem do número (o "todos" do Word). */

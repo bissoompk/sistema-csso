@@ -21,6 +21,7 @@ import { COM_PARTICIPANTE } from "../servicos/participante.js";
 import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
 import { numeroDaPagina, pagina, recortarConsulta, redirecionar } from "../web.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
+import * as conversor_pdf from "../servicos/conversor_pdf.js";
 import { baixar } from "./turmas.js";
 import { erro as _erro, id_opcional, recados, volta as _volta, vista_certificado } from "./treinamento_vistas.js";
 
@@ -184,8 +185,20 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/pdf`, async (c) => {
   const tx = c.get("tx");
   const [certificado] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
   if (!certificado) return redirecionar(c, _volta_da_ficha(usuario));
-  // modelo enviado: o PDF da casa não é o papel dele; o link antigo leva ao Word
-  if (servico.do_modelo_enviado(certificado)) return redirecionar(c, `${CERTIFICADOS}/${certificado.id}/documento`);
+  // modelo enviado: o PDF da casa não é o papel dele. Sai o do conversor
+  // (LibreOffice); sem ele, ou com ele fora do ar, o link leva ao Word
+  if (servico.do_modelo_enviado(certificado)) {
+    if (conversor_pdf.configurado()) {
+      try {
+        const fiel = await servico.pdf_do_modelo_enviado(tx, usuario, certificado);
+        return baixar(c, fiel.bytes, fiel.nome, TIPO_PDF);
+      } catch (erro) {
+        if (!(erro instanceof conversor_pdf.ConversorIndisponivel)) throw erro;
+        console.error(`[certificado ${certificado.id}] ${erro.message}`);
+      }
+    }
+    return redirecionar(c, `${CERTIFICADOS}/${certificado.id}/documento`);
+  }
   const resultado = await servico.pdf_do_certificado(tx, usuario, certificado);
   return baixar(c, resultado.bytes, resultado.nome, TIPO_PDF);
 });
