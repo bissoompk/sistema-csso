@@ -333,6 +333,12 @@ export const MODULOS: readonly Modulo[] = [
         "assinatura.gerenciar",
         "Quem assina o certificado: nome, título e rubrica.",
       ),
+      new Item(
+        "Participantes",
+        "/treinamentos/participantes",
+        "participante.mesclar",
+        "Cadastros que parecem a mesma pessoa, para juntar.",
+      ),
     ],
     // o módulo já está em uso, mas entregue por fatias: o que falta continua
     // declarado, pelo mesmo motivo que módulo previsto aparece na lista —

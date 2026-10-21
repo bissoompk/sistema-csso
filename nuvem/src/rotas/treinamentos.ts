@@ -28,12 +28,15 @@ import {
   TIPOS_TAG,
   type TipoTag,
   Treinamento,
+  ROTULO_VINCULO,
 } from "../dominio/treinamento.js";
 import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as exclusao_cadastro from "../servicos/exclusao_cadastro.js";
+import * as mesclagem from "../servicos/mesclagem.js";
+import * as servico_participante from "../servicos/participante.js";
 import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as certificado from "../servicos/certificado.js";
 import * as envio from "../servicos/modelo_certificado_envio.js";
@@ -66,6 +69,7 @@ export const rotas = new Hono<Ambiente>();
 export const CATALOGO = "/treinamentos/catalogo";
 export const MODELOS = "/treinamentos/modelos";
 export const ASSINATURAS = "/treinamentos/assinaturas";
+export const PARTICIPANTES = "/treinamentos/participantes";
 
 // NUVEM: o início de vigência de quem foi cadastrado sem data ("desde sempre").
 // `vigencia_inicio` é NOT NULL; uma data bem anterior a qualquer turma basta.
@@ -1280,3 +1284,60 @@ rotas.get(INDICADORES, async (c) => {
 function textos_numero(n: number): string {
   return `${String(n).replace(".", ",")}%`;
 }
+
+// =====================================================================
+// Participantes — juntar cadastros da mesma pessoa
+// =====================================================================
+/** Os possíveis duplicados e a busca, para escolher quem fica e quem se junta. */
+rotas.get(PARTICIPANTES, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("participante.mesclar");
+  const tx = c.get("tx");
+  const busca = (c.req.query("busca") ?? "").trim();
+  const achados = busca ? await mesclagem.fichas(tx, await servico_participante.buscar(tx, busca, usuario, 30)) : [];
+  const grupos = busca ? [] : await mesclagem.possiveis_duplicados(tx);
+  return pagina(c, "paginas/participantes.html", usuario, {
+    busca,
+    achados,
+    sugerido_achados: achados.length ? mesclagem.sugerido(achados) : null,
+    grupos: grupos.map((g) => ({ fichas: g, sugerido: mesclagem.sugerido(g) })),
+    rotulo_vinculo: ROTULO_VINCULO,
+    ...recados(c),
+  });
+});
+
+rotas.post(`${PARTICIPANTES}/mesclar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("participante.mesclar");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const volta = f.texto("volta").startsWith(PARTICIPANTES) ? f.texto("volta") : PARTICIPANTES;
+  const mantido = Number(f.texto("mantido_id"));
+  const absorvidos = f
+    .todos("absorvido_id")
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id !== mantido);
+  if (!Number.isInteger(mantido) || !absorvidos.length) {
+    return _erro(c, volta, "Marque quem fica (“manter”) e ao menos um cadastro para juntar a ele.");
+  }
+  const total = { inscricoes: 0, certificados: 0, emails: 0 };
+  try {
+    await tx.transaction(async (sp) => {
+      for (const id of absorvidos) {
+        const r = await mesclagem.mesclar(sp as Executor, usuario, mantido, id, f.texto("motivo"));
+        total.inscricoes += r.inscricoes;
+        total.certificados += r.certificados;
+        total.emails += r.emails;
+      }
+    });
+  } catch (erro) {
+    if (erro instanceof mesclagem.MesclagemRecusada) return _erro(c, volta, `Nada foi juntado. ${erro.message}`);
+    throw erro;
+  }
+  return _volta(
+    c,
+    volta,
+    `${absorvidos.length} cadastro(s) juntado(s): ${total.inscricoes} inscrição(ões), ` +
+      `${total.certificados} certificado(s) e ${total.emails} e-mail(s) passaram para quem ficou.`,
+  );
+});

@@ -88,12 +88,16 @@ export const PERMISSOES: Record<string, string> = {
   // responde pela turma.
   "turma.avaliar": "Lancar presenca e nota",
   // --- Certificados e Treinamentos (fatia 4) ---
-  // `participante.mesclar` (fatia 6) e `vencimento.ver` (fatia 7) continuam
-  // fora pela mesma razao de sempre: semear cedo e conceder acesso que so sai
-  // por SQL manual.
+  // `vencimento.ver` (fatia 7) continua fora pela mesma razao de sempre:
+  // semear cedo e conceder acesso que so sai por SQL manual.
+  // `participante.mesclar` entrou em 20/10/2026, com a tela (abaixo).
   "certificado.emitir": "Emitir certificado (consome numero)",
   "certificado.anular": "Anular certificado emitido",
   "certificado.ver": "Ver certificado nominal e dados do participante",
+  // NUVEM (20/10/2026): a fatia da mesclagem chegou. Juntar dois cadastros
+  // move inscrições e certificados de uma pessoa para outra: é decisão de
+  // quem responde pelo certificado, e por isso mora com `certificado.anular`.
+  "participante.mesclar": "Juntar cadastros duplicados do mesmo participante",
   // --- Gestao de EPI (fatia 1) ---
   // So as que protegem tela em cada fatia. As duas que faltavam do SS8 do
   // desenho (`epi.requisitar` e `epi.analisar`) entraram na fatia 4, que e a
@@ -190,6 +194,7 @@ const PERMISSOES_COORDENADOR: string[] = [
   "certificado.emitir",
   "certificado.anular",
   "certificado.ver",
+  "participante.mesclar",
   "epi.ver",
   "epi.catalogo",
   "epi.entregar",
@@ -274,6 +279,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "turma.avaliar",
       "certificado.emitir",
       "certificado.anular",
+      "participante.mesclar",
       "certificado.ver",
       // le a ficha (o EPI recebido sustenta ou derruba a alegacao de
       // neutralizacao no parecer) e nao entrega: quem opera o balcao do
@@ -323,6 +329,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "turma.avaliar",
       "certificado.emitir",
       "certificado.anular",
+      "participante.mesclar",
       "certificado.ver",
       // ve o catalogo de EPI (indica EPI no exame ocupacional) e nao o
       // edita: cadastrar CA e quantidade e ato do tecnico de seguranca e
@@ -572,6 +579,7 @@ export const MODULO_POR_PERMISSAO: Record<string, string> = {
   "turma.avaliar": "TREINAMENTOS",
   "certificado.emitir": "TREINAMENTOS",
   "certificado.anular": "TREINAMENTOS",
+  "participante.mesclar": "TREINAMENTOS",
   "certificado.ver": "TREINAMENTOS",
   "epi.ver": "EPI",
   "epi.catalogo": "EPI",

@@ -738,6 +738,7 @@ describe("o módulo no menu e no mapa", () => {
       ["/treinamentos/catalogo", "treinamento.ver"],
       ["/treinamentos/modelos", "treinamento.gerenciar"],
       ["/treinamentos/assinaturas", "assinatura.gerenciar"],
+      ["/treinamentos/participantes", "participante.mesclar"],
     ]);
     // as fatias declaradas chegaram todas: a lista do que falta esvaziou
     expect(modulo.itens_previstos).toEqual([]);

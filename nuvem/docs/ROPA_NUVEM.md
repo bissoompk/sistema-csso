@@ -7,7 +7,9 @@ e não cria finalidade nem categoria nova. O que muda — e é o que esta emenda
 registra — é **onde o dado está, quem o processa em nome da UFVJM e por qual
 caminho ele passa**.
 
-**Versão:** 1.5, de 20/10/2026 — acrescenta ao §5.9 o aviso de reciclagem
+**Versão:** 1.6, de 20/10/2026 — acrescenta a correção de dados do
+participante, com reemissão do certificado, e a junção de cadastros duplicados
+(§5.11). Versão 1.5, de 20/10/2026: acrescenta ao §5.9 o aviso de reciclagem
 por e-mail ao participante (manual, ou automático quando a CSSO o liga).
 Versão 1.4, de 20/10/2026: acrescenta o acesso do participante sem
 conta aos próprios certificados, por link enviado ao e-mail cadastrado (§5.10
@@ -269,6 +271,16 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Base legal | A do certificado (ROPA §2): é o titular recebendo o próprio documento (LGPD art. 18, II) |
 | Limite conhecido | Um e-mail ainda não confirmado pode estar em mais de um participante (duplicata a mesclar); o link mostra os certificados de todos eles. Quem recebe é sempre o dono da caixa — o risco é ver o certificado de um homônimo cadastrado por engano com o e-mail dele, e a correção é a mesclagem/limpeza do cadastro |
 | Depende de | O envio de e-mail ligado (§5.9). Desligado, a página diz que o acesso está indisponível |
+
+### 5.11 Correção de dados e junção de cadastros (20/10/2026)
+
+| Item | Registro |
+|---|---|
+| Correção (LGPD art. 18, III) | O nome, o vínculo, a organização e o CPF do certificado do participante externo se corrigem na inscrição (`turma.inscrever`) ou na ficha do certificado. Na ficha, o certificado antigo é anulado e sai um substituto com número e chave novos (`certificado.anular` + `certificado.emitir`). O nome de servidor se corrige no cadastro de servidores |
+| O que fica do dado antigo | O certificado anulado guarda o nome com que saiu (é o papel que circulou, e a validação pública passa a dizer "anulado, substituído por N/AAAA"). A trilha registra **que** o nome foi corrigido, nunca qual era (RN-19) |
+| Junção de cadastros | `participante.mesclar`: inscrições, certificados e e-mails do cadastro duplicado passam para o que fica; o duplicado sai das listas, aponta para o que ficou e **perde o CPF** (minimização). Nada se apaga |
+| Travas | Não se juntam dois servidores, cadastros com CPFs diferentes, nem dois inscritos na mesma turma |
+| Efeito no §5.10 | A junção resolve o limite conhecido do acesso por link: depois dela, o e-mail aponta para uma pessoa só |
 
 ## 6. Retenção — o que a nuvem acrescenta à política
 

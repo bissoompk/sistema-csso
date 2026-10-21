@@ -147,6 +147,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   TREINAMENTO_EXCLUIDO: "Treinamento excluído do catálogo",
   TURMA_CRIADA: "Turma criada",
   TURMA_EXCLUIDA: "Turma excluída",
+  TURMA_RETIFICADA: "Turma concluída corrigida",
   TURMA_APURADA: "Turma apurada",
   TURMA_REALIZADA_REGISTRADA: "Turma já realizada registrada",
   TURMA_INSTRUTOR_VINCULADO: "Instrutor vinculado à turma",
@@ -163,6 +164,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   INSCRICAO_PEDIDO_CONFERIDO: "Pedido do link público aceito pela CSSO",
   PARTICIPANTE_CRIADO: "Participante externo cadastrado",
   PARTICIPANTE_CORRIGIDO: "Dados do participante corrigidos",
+  PARTICIPANTE_MESCLADO: "Cadastros do participante juntados",
   // o fato, nunca o valor: a trilha diz que o CPF mudou, e não qual é
   PARTICIPANTE_CPF_ALTERADO: "CPF do participante (certificado) alterado",
   PRESENCA_LANCADA: "Presença lançada",

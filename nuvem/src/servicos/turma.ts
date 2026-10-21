@@ -347,9 +347,12 @@ export async function editar_turma(
   usuario: UsuarioAtual,
   turma: TurmaCarregada,
   campos: Partial<TurmaRegistro>,
+  // NUVEM: a correção da turma CONCLUÍDA passa por aqui com as mesmas regras de
+  // período e de ano; quem a chama (`retificacao.retificar_turma`) exige o motivo
+  opcoes: { concluida?: boolean } = {},
 ): Promise<TurmaCarregada> {
   usuario.exigir("turma.criar");
-  if (T.encerrada(turma)) {
+  if (T.encerrada(turma) && !(opcoes.concluida && turma.situacao === "CONCLUIDA")) {
     throw new RegraDaTurma(
       `Turma ${ROTULO_TURMA[turma.situacao]!.toLowerCase()} não se edita — ` +
         "o que ela diz já foi comunicado a quem participou.",

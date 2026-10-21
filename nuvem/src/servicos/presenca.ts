@@ -385,6 +385,23 @@ async function _reapurar(tx: Executor, usuario: UsuarioAtual, inscricao: Inscric
   return nova;
 }
 
+/**
+ * NUVEM: a carga da turma concluída foi corrigida (`retificacao.retificar_turma`)
+ * — a frequência e o resultado de quem já tem um saem de novo, com o motivo.
+ */
+export async function reapurar_inscricao(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  inscricao: InscricaoCarregada,
+  motivo: string,
+): Promise<boolean> {
+  await recalcular_frequencia(tx, inscricao);
+  if (!INSCRICAO_COM_RESULTADO.has(inscricao.situacao)) return false;
+  const antes = inscricao.situacao;
+  await _reapurar(tx, usuario, inscricao, motivo);
+  return inscricao.situacao !== antes;
+}
+
 /** PRESENTE (passando por CONFIRMADA) ou AUSENTE, conforme os lançamentos. */
 async function _normalizar_comparecimento(tx: Executor, usuario: UsuarioAtual, inscricao: InscricaoCarregada) {
   const destino = I.compareceu(inscricao) ? "PRESENTE" : "AUSENTE";

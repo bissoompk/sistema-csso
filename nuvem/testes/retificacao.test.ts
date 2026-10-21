@@ -10,6 +10,7 @@ import type { Banco } from "../src/db/cliente.js";
 import * as servico from "../src/servicos/emissao_certificado.js";
 import * as retificacao from "../src/servicos/retificacao.js";
 import * as exclusao from "../src/servicos/exclusao_cadastro.js";
+import * as mesclagem from "../src/servicos/mesclagem.js";
 import * as servico_turma from "../src/servicos/turma.js";
 import * as servico_participante from "../src/servicos/participante.js";
 import * as validacao from "../src/servicos/validacao_certificado.js";
@@ -261,5 +262,120 @@ describe("excluir treinamento e instrutor nunca usados", () => {
     expect(eventos.map((ev) => ev.tipo_evento)).toEqual(
       expect.arrayContaining(["TREINAMENTO_EXCLUIDO", "ASSINATURA_INSTRUTOR_EXCLUIDA"]),
     );
+  });
+});
+
+describe("corrigir a turma concluída e reemitir a turma", () => {
+  it("corrige o local com motivo, e a reemissão em lote leva o local novo", async () => {
+    await contas(db);
+    const u = await _usuario(db, TODAS, "montador");
+    const d = await _cenario(db, u, { extras: [["2220001", "Ana Lima", "8"]] });
+    await servico.emitir_lote(db, u, d.turma);
+    await expect(retificacao.retificar_turma(db, u, d.turma, { local: "Sala 2" }, "")).rejects.toThrow("exige o motivo");
+    const r = await retificacao.retificar_turma(db, u, d.turma, { local: "Sala 2" }, "local errado");
+    expect(r).toEqual({ mudou: true, reapurados: 0, em_vigor: 2 });
+    const [turma] = await db.select().from(e.turma).where(eq(e.turma.id, d.turma.id));
+    expect(turma!.local).toBe("Sala 2");
+    const [evento] = await _eventos("TURMA_RETIFICADA");
+    expect(evento!.descricao).toContain("(local)");
+
+    const fresca = (await servico_turma.carregar_turma(db, d.turma.id))!;
+    const lote = await retificacao.retificar_certificados_da_turma(db, u, fresca, "local da turma corrigido");
+    expect(lote.reemitidos).toHaveLength(2);
+    expect(lote.travados).toEqual([]);
+    const ativos = await db.select().from(e.certificado).where(eq(e.certificado.situacao, "EMITIDO"));
+    expect(ativos).toHaveLength(2);
+    for (const c of ativos) expect(servico.montar_contexto(null, c).turma_local).toBe("Sala 2");
+  });
+
+  it("recusa o período que deixa presença de fora e a carga que reprovaria quem tem certificado", async () => {
+    await contas(db);
+    const u = await _usuario(db, TODAS, "montador");
+    const d = await _cenario(db, u);
+    const amanha = datas_br.somar_dias(d.turma.data_inicio, 1);
+    await expect(
+      retificacao.retificar_turma(db, u, d.turma, { data_inicio: amanha, data_fim: amanha }, "data errada"),
+    ).rejects.toThrow("fora do período novo");
+    await servico.emitir(db, u, d.inscricao);
+    await expect(
+      retificacao.retificar_turma(db, u, d.turma, { carga_horaria_horas: "16" }, "carga errada"),
+    ).rejects.toThrow("mudaria(m) de resultado");
+  });
+
+  it("sem certificado, a carga nova reapura o resultado", async () => {
+    await contas(db);
+    const u = await _usuario(db, TODAS, "montador");
+    const d = await _cenario(db, u);
+    const r = await retificacao.retificar_turma(db, u, d.turma, { carga_horaria_horas: "16" }, "carga era 16 h");
+    expect(r.reapurados).toBe(1);
+    const [i] = await db.select().from(e.inscricao).where(eq(e.inscricao.id, d.inscricao.id));
+    expect(i!.situacao).toBe("REPROVADO");
+    expect(i!.frequencia_percentual).toBe("50.00");
+  });
+
+  it("pela tela: a turma concluída oferece a correção e a aba Emissão, a reemissão", async () => {
+    await contas(db);
+    const u = await _usuario(db, TODAS, "montador");
+    const d = await _cenario(db, u);
+    await servico.emitir(db, u, d.inscricao);
+    await entrar(cliente, "coordenador_csso");
+    expect((await cliente.get(`/turmas/${d.turma.id}?aba=turma`)).text).toContain("Corrigir dados da turma");
+    expect((await cliente.get(`/turmas/${d.turma.id}?aba=emissao`)).text).toContain("Reemitir os certificados");
+    const r = await cliente.post(`/turmas/${d.turma.id}/retificar`, {
+      data_inicio: d.turma.data_inicio,
+      data_fim: d.turma.data_fim,
+      local: "Sala 3",
+      carga_horaria_horas: "",
+      motivo: "local errado",
+    });
+    expect(r.text).toContain("dados corrigidos");
+    expect(r.text).toContain("1 certificado(s) em vigor continuam com o dado antigo");
+    const lote = await cliente.post(`/turmas/${d.turma.id}/certificados/retificar`, { motivo: "local corrigido" });
+    expect(lote.text).toContain("1 certificado(s) reemitido(s)");
+  });
+});
+
+describe("juntar cadastros da mesma pessoa", () => {
+  it("o externo se junta ao servidor: inscrições, certificados e e-mails passam para ele", async () => {
+    const { u, d, externo, certificado } = await emitido_para_externo();
+    await servico_participante.registrar_email(db, externo, "joana@exemplo.com");
+    const servidor = (await servico_participante.carregar(db, (await db.select().from(e.participante).where(eq(e.participante.servidor_id, d.servidor.id)))[0]!.id))!;
+    // o participante-servidor do cenário ficou sem inscrição (a inscrição foi para o externo)
+    await expect(mesclagem.mesclar(db, u, externo.id, servidor.id, "mesma")).rejects.toThrow("Mantenha o cadastro de servidor");
+    const r = await mesclagem.mesclar(db, u, servidor.id, externo.id, "mesma pessoa, antes do SIAPE");
+    expect(r).toEqual({ inscricoes: 1, certificados: 1, emails: 1 });
+    const c = await _certificado(certificado.id);
+    expect([c.participante_id, c.servidor_id]).toEqual([servidor.id, d.servidor.id]);
+    // o papel não muda
+    expect(servico.montar_contexto(null, c).participante_nome).toBe("Joana Silv");
+    const [absorvido] = await db.select().from(e.participante).where(eq(e.participante.id, externo.id));
+    expect([absorvido!.mesclado_em_id, absorvido!.ativo]).toEqual([servidor.id, false]);
+    // o absorvido sai das listas; quem acha pelo e-mail dela agora é o servidor
+    expect((await servico_participante.buscar(db, "Joana", u)).map((p) => p.id)).toEqual([servidor.id]);
+    expect((await _eventos("PARTICIPANTE_MESCLADO")).length).toBe(2);
+  });
+
+  it("recusa dois servidores e os dois na mesma turma; a tela sugere os duplicados", async () => {
+    await contas(db);
+    const u = await _usuario(db, TODAS, "montador");
+    const d = await _cenario(db, u, { extras: [["2220001", "Ana Lima", "8"]] });
+    const [a, b] = await db.select().from(e.participante).orderBy(asc(e.participante.id));
+    await expect(mesclagem.mesclar(db, u, a!.id, b!.id, "x")).rejects.toThrow("SIAPEs diferentes");
+
+    const j1 = await servico_participante.criar_externo(db, { nome: "Joana da Silva", vinculo: "VISITANTE", usuario: u });
+    const j2 = await servico_participante.criar_externo(db, { nome: "JOANA SILVA", vinculo: "TERCEIRIZADO", usuario: u });
+    const semana = datas_br.somar_dias(datas_br.hoje(), 7);
+    const turma = await servico_turma.criar_turma(db, u, { treinamento: d.treinamento, data_inicio: semana, data_fim: semana });
+    await servico_turma.inscrever(db, u, turma, j1);
+    await servico_turma.inscrever(db, u, turma, j2);
+    await expect(mesclagem.mesclar(db, u, j1.id, j2.id, "mesma")).rejects.toThrow("duas vezes na turma");
+
+    const grupos = await mesclagem.possiveis_duplicados(db);
+    expect(grupos.map((g) => g.map((f) => f.id).sort())).toEqual([[j1.id, j2.id].sort()]);
+
+    await entrar(cliente, "coordenador_csso");
+    const tela = await cliente.get("/treinamentos/participantes");
+    expect(tela.text).toContain("Possíveis duplicados");
+    expect(tela.text).toContain(j2.identificador_publico);
   });
 });

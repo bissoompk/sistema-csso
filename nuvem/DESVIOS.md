@@ -996,3 +996,16 @@ Nada disto existe no Python. Saiu da comparação, função por função, com o 
   - O treinamento não pode ter turma, certificado nem modelo próprio.
   - O instrutor não pode estar em turma. Se ele era o instrutor padrão de algum treinamento, o treinamento só perde a sugestão.
   - O resto se desativa, como antes.
+- **Corrigir turma concluída** (`POST /turmas/:id/retificar`, `retificacao.retificar_turma`, `turma.concluir`, com motivo). No Python, turma concluída não se editava.
+  - Aqui se corrige o que sai no papel: período (no mesmo ano), carga, local, campus, unidade promotora, data base, descrição e observações.
+  - Vagas, prazo de inscrição, nota e frequência mínimas ficam de fora, porque mudariam quem passou.
+  - Travas: o período novo tem de conter todo dia de presença lançado, e a carga nova não pode mudar o resultado de quem já tem certificado em vigor.
+  - Sem certificado, a carga nova recalcula a frequência e o resultado (`presenca.reapurar_inscricao`, com `RESULTADO_RETIFICADO`).
+  - Os certificados emitidos não mudam.
+- **Reemitir os certificados da turma** (`POST /turmas/:id/certificados/retificar`): cada certificado em vigor passa pela `retificar` de sempre, cada um no seu savepoint. O que trava fica como estava, e o relatório diz qual e por quê.
+- **Juntar cadastros** (`/treinamentos/participantes`, `servicos/mesclagem.ts`, permissão nova `participante.mesclar` nos perfis com `certificado.anular`).
+  - A fatia 6 do desenho previa a mesclagem; o esquema (`mesclado_em_id`, origem `MESCLAGEM`) já existia, mas faltava o código.
+  - Inscrições, certificados (`participante_id` e `servidor_id`) e e-mails passam para quem fica. O absorvido aponta para ele, sai das listas e perde o CPF.
+  - O congelado e a chave de cada certificado não mudam.
+  - Recusa: dois servidores, CPFs diferentes, os dois na mesma turma, e servidor como absorvido (o cadastro de servidor é sempre o que fica).
+  - A tela sugere os possíveis duplicados (mesmo nome sem acento e sem partícula, ou mesmo e-mail) e tem busca para os nomes que não batem.

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Participantes · CSSO{% endblock %}
+
+{# A tabela de um grupo: escolhe quem fica (rádio) e quem se junta a ele
+   (caixa). Cada grupo é um formulário próprio, com o seu motivo. #}
+{% macro grupo(fichas, sugerido, alvo, volta, rotulo_vinculo) %}
+<form method="post" action="/treinamentos/participantes/mesclar" class="cartao liso">
+  <input type="hidden" name="volta" value="{{ volta }}">
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr><th scope="col">Manter</th><th scope="col">Juntar</th><th scope="col">Participante</th>
+          <th scope="col">Identificador</th><th scope="col">Vínculo</th><th scope="col">E-mail</th>
+          <th scope="col">Inscrições</th><th scope="col">Certificados</th></tr>
+    </thead>
+    {% for f in fichas %}
+    <tr>
+      <td><input type="radio" name="mantido_id" value="{{ f.id }}" aria-label="Manter {{ f.identificador }}"
+                 {% if f.id == sugerido %}checked{% endif %} required></td>
+      <td><input type="checkbox" name="absorvido_id" value="{{ f.id }}" aria-label="Juntar {{ f.identificador }}"
+                 {% if f.id != sugerido and alvo == 'grupo' %}checked{% endif %}></td>
+      <td class="nome">{{ f.nome }}
+        {% if f.organizacao %}<span class="quebra discreto">{{ f.organizacao }}</span>{% endif %}</td>
+      <td class="mono">{{ f.identificador }}{% if f.siape %}<span class="quebra discreto">SIAPE {{ f.siape }}</span>{% endif %}</td>
+      <td>{{ rotulo_vinculo[f.vinculo] or f.vinculo }}</td>
+      <td>{{ f.emails|join(', ') or '—' }}</td>
+      <td class="mono">{{ f.inscricoes }}</td>
+      <td class="mono">{{ f.certificados }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <div class="corpo">
+    <div class="linha-campos">
+      <div class="campo"><label for="motivo-{{ alvo }}-{{ fichas[0].id }}">Motivo</label>
+        <input id="motivo-{{ alvo }}-{{ fichas[0].id }}" name="motivo" required
+               placeholder="mesma pessoa, cadastrada pelo link e pela lista…"></div>
+    </div>
+    <div class="acoes"><button type="submit" class="secundario">Juntar os marcados a quem fica</button></div>
+  </div>
+</form>
+{% endmacro %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Participantes</h1>
+      <p class="sub">Cadastros que parecem a mesma pessoa, para juntar num só.</p>
+      {% call ui.info('juntar-cadastros', 'o que juntar faz') %}
+        <p>As inscrições, os certificados e os e-mails de quem se junta passam para quem fica.
+          <strong>Nada se apaga</strong>: o cadastro juntado sai das listas e aponta para o que
+          ficou, e cada certificado continua com o nome com que foi emitido e com a mesma chave.</p>
+        <p>Não se juntam dois servidores (SIAPEs diferentes são pessoas diferentes), cadastros com
+          CPFs diferentes, nem os dois que estão na mesma turma. O cadastro de servidor é sempre o
+          que fica, porque o nome dele vem do SIAPE.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  <form method="get" action="/treinamentos/participantes" class="filtro-inline">
+    <label class="oculto" for="busca-participante">Procurar participante</label>
+    <input id="busca-participante" type="search" name="busca" value="{{ busca }}"
+           placeholder="nome, SIAPE, e-mail ou PTC-…">
+    <button type="submit" class="secundario">Procurar</button>
+    {% if busca %}<a class="botao secundario" href="/treinamentos/participantes">ver os possíveis duplicados</a>{% endif %}
+  </form>
+
+  {% if busca %}
+  <h2>Resultado da busca</h2>
+  {% if achados.length > 1 %}
+  <p class="discreto">Marque quem fica e quem se junta a ele.</p>
+  {{ grupo(achados, sugerido_achados, 'busca', '/treinamentos/participantes?busca=' ~ (busca|urlencode), rotulo_vinculo) }}
+  {% elif achados.length == 1 %}
+  <p class="discreto">Só um cadastro com “{{ busca }}”. Para juntar, procure por um termo que traga os dois.</p>
+  {% else %}
+  <p class="discreto">Nenhum cadastro com “{{ busca }}”.</p>
+  {% endif %}
+  {% else %}
+  <h2>Possíveis duplicados</h2>
+  {% for g in grupos %}
+  {{ grupo(g.fichas, g.sugerido, 'grupo', '/treinamentos/participantes', rotulo_vinculo) }}
+  {% else %}
+  <div class="vazio">
+    <strong>Nenhum cadastro com nome ou e-mail repetido</strong>
+    <span>Se a mesma pessoa está com nomes diferentes, procure pelos dois acima.</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+</div>
+{% endblock %}

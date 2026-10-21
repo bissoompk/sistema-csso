@@ -32,6 +32,8 @@
 {% set EDITAR_TURMA = 'Editar dados da turma' %}
 {% set CANCELAR_TURMA = 'Cancelar turma' %}
 {% set EXCLUIR_TURMA = 'Excluir turma' %}
+{% set CORRIGIR_TURMA = 'Corrigir dados da turma' %}
+{% set REEMITIR_TURMA = 'Reemitir os certificados' %}
 {% set CONCLUIR_TURMA = 'Concluir turma' %}
 {% set VINCULAR_INSTRUTOR = 'Vincular instrutor' %}
 {% set CADASTRAR_EXTERNO = 'Cadastrar participante externo' %}
@@ -46,6 +48,8 @@
 {% set pode_lancar = pode_avaliar and (not retificando or usuario.pode('turma.concluir'))
                      and lancamento_aberto %}
 {% set editavel = pode_editar and not turma.encerrada %}
+{# a turma concluída com dado errado: corrige-se com motivo (`retificacao.ts`) #}
+{% set corrigivel = pode_editar and turma.situacao == 'CONCLUIDA' and usuario.pode('turma.concluir') %}
 
 {# =====================================================================
    RN-19 NESTA FICHA — quem pode ler o nome de quem está na turma
@@ -131,10 +135,12 @@
   <section class="cartao liso">
     <div class="cabecalho-cartao">
       <h2>Dados da turma</h2>
-      {% if turma.encerrada and pode_editar %}
+      {% if turma.encerrada and pode_editar and not corrigivel %}
       <span class="pilula" title="turma encerrada não se edita">somente leitura</span>{% endif %}
       {% if editavel %}
       {{ ui.botao_cadastro('editar-turma', EDITAR_TURMA, 'secundario compacto a-direita') }}
+      {% elif corrigivel %}
+      {{ ui.botao_cadastro('corrigir-turma', CORRIGIR_TURMA, 'secundario compacto a-direita') }}
       {% endif %}
     </div>
     <dl class="tabela-dados">
@@ -1001,6 +1007,9 @@
       <button type="submit" class="secundario compacto">Enviar por e-mail os não enviados</button>
     </form>
     {% endif %}
+    {% if usuario.pode('certificado.emitir') and usuario.pode('certificado.anular') %}
+    {{ ui.botao_cadastro('reemitir-turma', REEMITIR_TURMA ~ '…', 'secundario compacto') }}
+    {% endif %}
     {% endif %}
     {% call ui.info('certificado-congelado', 'o que o certificado congela') %}
       <p>O certificado <strong>congela</strong> tudo o que imprime — conteúdo,
@@ -1126,6 +1135,57 @@
    oferece, pelo mesmo motivo que o botão sai.
    =================================================================== #}
 {% if aba == 'turma' %}
+{% if corrigivel %}
+{% call ui.popup_cadastro('corrigir-turma', CORRIGIR_TURMA,
+                          '/turmas/' ~ turma.id ~ '/retificar', 'Gravar a correção',
+                          nota='turma concluída: com motivo, e sem mudar quem passou') %}
+  <div class="aviso">
+    <p>Os certificados já emitidos <strong>não mudam</strong>: cada papel continua dizendo o que
+      dizia. Depois de corrigir, use “{{ REEMITIR_TURMA }}”, na aba Emissão, para anular os
+      antigos e emitir os substitutos com os dados certos.</p>
+    <p>Vagas, nota e frequência mínimas não se corrigem aqui: mudariam quem passou. Presença
+      ou nota errada se corrige na aba Presença e notas.</p>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="r-data_inicio">Início</label>
+      <input id="r-data_inicio" type="date" name="data_inicio" value="{{ turma.data_inicio }}" required></div>
+    <div class="campo"><label for="r-data_fim">Término</label>
+      <input id="r-data_fim" type="date" name="data_fim" value="{{ turma.data_fim }}" required></div>
+    <div class="campo"><label for="r-carga">Carga horária da turma</label>
+      <input id="r-carga" name="carga_horaria_horas"
+             value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
+             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
+             aria-describedby="r-dica-carga">
+      <span class="dica" id="r-dica-carga">Mudá-la recalcula a frequência de cada inscrito.</span></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="r-local">Local</label>
+      <input id="r-local" name="local" value="{{ turma.local or '' }}"></div>
+    <div class="campo"><label for="r-campus_id">Campus</label>
+      <select id="r-campus_id" name="campus_id"><option value="">—</option>
+        {% for c in campi %}
+        <option value="{{ c.id }}" {% if turma.campus_id == c.id %}selected{% endif %}>{{ c.nome }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo"><label for="r-unidade_promotora_id">Unidade promotora</label>
+      <select id="r-unidade_promotora_id" name="unidade_promotora_id"><option value="">—</option>
+        {% for u in unidades %}
+        <option value="{{ u.id }}" {% if turma.unidade_promotora_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}</option>
+        {% endfor %}
+      </select></div>
+  </div>
+  <div class="campo"><label for="r-data_base_vencimento">Data base do vencimento</label>
+    <input id="r-data_base_vencimento" type="date" name="data_base_vencimento"
+           value="{{ turma.data_base_vencimento if turma.data_base_vencimento else '' }}">
+    <span class="dica">Vazio usa o término.</span></div>
+  <div class="campo"><label for="r-descricao">Descrição do evento</label>
+    <textarea id="r-descricao" name="descricao" rows="3">{{ turma.descricao or '' }}</textarea></div>
+  <div class="campo"><label for="r-observacoes">Observações</label>
+    <textarea id="r-observacoes" name="observacoes" rows="2">{{ turma.observacoes or '' }}</textarea></div>
+  <div class="campo"><label for="r-motivo">Motivo da correção</label>
+    <input id="r-motivo" name="motivo" required placeholder="local digitado errado, carga trocada…"></div>
+{% endcall %}
+{% endif %}
 {% if editavel %}
 {% call ui.popup_cadastro('editar-turma', EDITAR_TURMA,
                           '/turmas/' ~ turma.id, 'Salvar turma',
@@ -1373,6 +1433,23 @@
       mesmo jeito — aviso não é bloqueio. Quem tiver bloqueio não está nesta
       lista.</p>
   </div>
+{% endcall %}
+{% endif %}
+
+{% if aba == 'emissao' and certificados|length and usuario.pode('certificado.emitir') and usuario.pode('certificado.anular') %}
+{% call ui.popup_cadastro('reemitir-turma', REEMITIR_TURMA ~ ' de ' ~ turma.codigo,
+                          '/turmas/' ~ turma.id ~ '/certificados/retificar',
+                          'Anular e reemitir os ' ~ certificados|length, largo=true, classe_botao='perigo') %}
+  <div class="aviso aviso-alerta">
+    <p><strong>Cada um dos {{ certificados|length }} certificado(s) em vigor é anulado e
+      substituído por outro, com número e chave novos</strong> e os dados de hoje: da turma,
+      do cadastro de cada pessoa, do modelo e da assinatura.</p>
+    <p>É o passo depois de “{{ CORRIGIR_TURMA }}”. Os papéis antigos passam a dizer, na
+      validação pública, que foram substituídos. O que travar (assinatura fora da vigência,
+      por exemplo) fica como estava, e o relatório diz qual e por quê.</p>
+  </div>
+  <div class="campo"><label for="motivo-reemitir">Motivo</label>
+    <input id="motivo-reemitir" name="motivo" required placeholder="local da turma corrigido, carga corrigida…"></div>
 {% endcall %}
 {% endif %}
 {% endblock %}

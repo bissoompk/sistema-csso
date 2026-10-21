@@ -38,6 +38,7 @@ export const TODAS: ReadonlySet<string> = new Set([
   "certificado.emitir",
   "certificado.anular",
   "certificado.ver",
+  "participante.mesclar",
 ]);
 
 /** Um `UsuarioAtual` com linha real em `usuario` (as FKs da trilha apontam para ela). */

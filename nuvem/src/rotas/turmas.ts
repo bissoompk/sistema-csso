@@ -659,6 +659,82 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
   return _volta(c, volta, `${turma.codigo}: ${rotulo}.`);
 });
 
+/** A turma CONCLUÍDA com dado errado, corrigida com motivo (`retificacao.retificar_turma`). */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/retificar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.concluir");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const destino = `${TURMAS}/${turma_id}`;
+  let r: retificacao.ResultadoTurma;
+  try {
+    r = await _no_savepoint(c, (sp) =>
+      retificacao.retificar_turma(
+        sp,
+        usuario,
+        turma,
+        {
+          data_inicio: _data(f.texto("data_inicio"), "a data de início")!,
+          data_fim: _data(f.texto("data_fim"), "a data de término")!,
+          local: texto_ou_nulo(f.texto("local")),
+          descricao: texto_ou_nulo(f.texto("descricao")),
+          campus_id: id_opcional(f.texto("campus_id")),
+          unidade_promotora_id: id_opcional(f.texto("unidade_promotora_id")),
+          carga_horaria_horas: _decimal(f.texto("carga_horaria_horas"), "a carga horária"),
+          data_base_vencimento: _data(f.texto("data_base_vencimento"), "a data base", false),
+          observacoes: texto_ou_nulo(f.texto("observacoes")),
+        },
+        f.texto("motivo"),
+      ),
+    );
+  } catch (erro) {
+    if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma) return _erro(c, destino, erro.message);
+    throw erro;
+  }
+  if (!r.mudou) return _volta(c, destino, "Nada a corrigir: os dados são os mesmos.");
+  let frase = `${turma.codigo}: dados corrigidos.`;
+  if (r.reapurados) frase += ` O resultado de ${r.reapurados} inscrito(s) mudou com a carga nova.`;
+  if (r.em_vigor) {
+    return _volta(
+      c,
+      `${destino}?aba=emissao`,
+      frase + ` ${r.em_vigor} certificado(s) em vigor continuam com o dado antigo: use “Reemitir os certificados”.`,
+    );
+  }
+  return _volta(c, destino, frase);
+});
+
+/** Anula e reemite todos os certificados em vigor da turma, com os dados de hoje. */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados/retificar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.anular");
+  usuario.exigir("certificado.emitir");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}?aba=emissao`;
+  let r: retificacao.ResultadoLote;
+  try {
+    r = await retificacao.retificar_certificados_da_turma(tx, usuario, turma, f.texto("motivo"));
+  } catch (erro) {
+    if (erro instanceof retificacao.RetificacaoRecusada) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  let frase = `${r.reemitidos.length} certificado(s) reemitido(s)`;
+  if (r.reemitidos.length) frase += `: ${r.reemitidos.map((x) => `${x.antigo} → ${x.novo}`).join(", ")}`;
+  frase += ".";
+  if (r.travados.length) {
+    frase += ` ${r.travados.length} ficaram como estavam: ` + r.travados.map((x) => `${x.certificado} (${x.motivo})`).join("; ");
+    return _erro(c, volta, frase);
+  }
+  return _volta(c, volta, frase);
+});
+
 /**
  * Excluir a turma aberta por engano, antes de acontecer (`excluir_turma`). A que
  * já tem história — presença, certificado, pedido do próprio participante —
