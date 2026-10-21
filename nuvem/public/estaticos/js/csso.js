@@ -455,12 +455,42 @@
   });
 
   // -------------------------------------------------------------------
+  // Copiar para a área de transferência — o link público, a mensagem de
+  // divulgação. Como no IntegraSST, um botão ao lado do campo.
+  //
+  // Contrato: `<button type="button" data-copiar="<id do campo>">`. O botão
+  // nasce `hidden`: sem JavaScript o campo continua lá, selecionável. Sem a
+  // API (página fora de HTTPS), cai no `select()` + `execCommand`.
+  // -------------------------------------------------------------------
+  document.addEventListener('click', function (e) {
+    var botao = e.target.closest && e.target.closest('button[data-copiar]');
+    if (!botao) return;
+    var campo = document.getElementById(botao.getAttribute('data-copiar'));
+    if (!campo) return;
+    var rotulo = botao.getAttribute('data-rotulo') || botao.textContent;
+    botao.setAttribute('data-rotulo', rotulo);
+    function pronto() {
+      botao.textContent = 'Copiado ✓';
+      setTimeout(function () { botao.textContent = rotulo; }, 2000);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(campo.value).then(pronto, function () {
+        campo.select(); document.execCommand('copy'); pronto();
+      });
+    } else {
+      campo.select(); document.execCommand('copy'); pronto();
+    }
+  });
+
+  // -------------------------------------------------------------------
   // arranque
   // -------------------------------------------------------------------
   function arrancar() {
     reporRascunhos();
     var reusar = document.querySelectorAll('button[data-reusar-descricao]');
     for (var j = 0; j < reusar.length; j++) reusar[j].hidden = false;
+    var copiar = document.querySelectorAll('button[data-copiar]');
+    for (var k = 0; k < copiar.length; k++) copiar[k].hidden = false;
     var nups = document.querySelectorAll('input[data-nup]');
     for (var i = 0; i < nups.length; i++) if (nups[i].value) atualizarNup(nups[i]);
   }

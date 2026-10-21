@@ -1009,3 +1009,19 @@ Nada disto existe no Python. Saiu da comparação, função por função, com o 
   - O congelado e a chave de cada certificado não mudam.
   - Recusa: dois servidores, CPFs diferentes, os dois na mesma turma, e servidor como absorvido (o cadastro de servidor é sempre o que fica).
   - A tela sugere os possíveis duplicados (mesmo nome sem acento e sem partícula, ou mesmo e-mail) e tem busca para os nomes que não batem.
+
+## Aparência do IntegraSST e o fluxo do link (21/10/2026)
+
+O pedido foi deixar o sistema com a cara do IntegraSST e fechar o que ainda faltava no fluxo do link público. A comparação, feita sobre o código baixado do Apps Script (`entrada/integrasst`, fora do git), achou o resto do módulo coberto.
+
+- **Tema** (`public/estaticos/css/tema.css`, carregado depois de `csso.css`): fonte Inter, o verde-azulado do IntegraSST, cantos de 8 a 14 px, sombra macia, lateral em ardósia com o item ativo preenchido, títulos de página coloridos e popup com cabeçalho escuro. `csso.css` continua sendo a estrutura; trocar a aparência é trocar um arquivo.
+  - O verde do IntegraSST (`#0d9488`) dá 3,7:1 com branco. Ele ficou para ícone, borda e barra; texto e botão usam `#0f766e` (5,5:1).
+- **Ícones** (`public/estaticos/img/icones.svg`): os mesmos Bootstrap Icons (MIT), numa folha de símbolos servida pelo sistema, porque a CSP é `'self'` e fonte de ícone por CDN não carrega. A lista fica em `ferramentas/icones.txt`, e `node ferramentas/gerar-icones.mjs` refaz a folha. O ícone de cada tela está em `modulos.ts` (`ICONES`, global `icone_de`); no template, `ui.icone('nome')`.
+- **Início do módulo** (`/treinamentos`, `servicos/hub_treinamentos.ts`, `certificado.ver`): o "Centro de Certificações e Inscrições", com os 4 passos e os cartões numerados. Cada cartão traz a contagem da tela de destino (fila de emissão, monitor de reciclagem, caixa de e-mails, pedidos a conferir), calculada pela mesma função dela. É a porta de entrada de quem opera; o servidor comum continua entrando por `/turmas`.
+- **Pedidos pelo link** (`/turmas/pedidos`, `servicos/pedidos_link.ts`, `turma.inscrever`): os pedidos a conferir de todas as turmas, agrupados, para aceitar ou recusar marcando de uma vez. Na ficha da turma há também «Aceitar os N pedidos». Cada pedido roda a regra de sempre (`mudar_situacao_inscricao`, com a vaga conferida sob trava) no seu savepoint; quem não coube fica a conferir, com o motivo. No IntegraSST o link inscrevia sem conferência; a trava da CSSO (fatia 6) continua.
+- **Turma lotada fecha o link** (`inscricao_publica.turma_do_token` e `pedir`). Antes a pessoa recebia «pedido recebido» e a recusa só aparecia no aceite. Conta só quem já foi aceito, porque o pedido em espera não ocupa vaga.
+- **Abrir a turma já com link** (o choice-card do IntegraSST): no «Abrir turma», «Aberta com link público» cria a turma em inscrições abertas e gera o link num savepoint só (tudo ou nada). Exige «inscrições até».
+- **Tela do link**: «Copiar link» (`data-copiar` em `csso.js`, que nasce oculto e funciona sem JavaScript), «Abrir o formulário», «Baixar o QR (PNG)» e uma mensagem pronta para o grupo ou o e-mail. O link continua aparecendo uma vez só.
+- **Lista de turmas**: o instrutor e o setor promotor na linha, os pedidos a conferir como pílula, «link no ar até…» ou «prazo de inscrição acabou», ações rápidas (inscrições, presença, emissão) e o filtro por setor promotor.
+- **Cartaz público**: instrutor, setor promotor e o aviso de que o nome sai no certificado como for digitado.
+- **Ficou como estava, de propósito:** a validação pública continua sem mostrar nome, nota ou PDF (`validacao_certificado.ts`), e inscrição não se apaga, só se cancela com motivo.

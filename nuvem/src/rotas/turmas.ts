@@ -14,13 +14,14 @@
  */
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import {
   assinatura_instrutor as tabela_assinatura,
   campus as tabela_campus,
   certificado as tabela_certificado,
+  inscricao as tabela_inscricao,
   servidor as tabela_servidor,
   treinamento as tabela_treinamento,
   turma as tabela_turma,
@@ -30,6 +31,7 @@ import {
   ESTADOS_TURMA,
   ROTULO_INSCRICAO,
   ROTULO_TURMA,
+  ROTULO_TURMA_TELA,
   TransicaoInvalida,
   destinos_de_turma,
 } from "../dominio/estados.js";
@@ -50,6 +52,8 @@ import { qr_png } from "../servicos/qr.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
 import * as servico_participante from "../servicos/participante.js";
 import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js";
+import * as pedidos_link from "../servicos/pedidos_link.js";
+import { RegraViolada } from "../nucleo/erros.js";
 import * as servico_presenca from "../servicos/presenca.js";
 import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
@@ -165,6 +169,7 @@ async function _tela_lista(
   d: {
     situacao?: string;
     treinamento_id?: string;
+    setor?: string;
     mensagem?: string | null;
     erro?: string | null;
     digitado?: Record<string, string> | null;
@@ -177,6 +182,9 @@ async function _tela_lista(
   if ((ESTADOS_TURMA as readonly string[]).includes(situacao)) filtros.push(eq(tabela_turma.situacao, situacao));
   const alvo = id_opcional(treinamento_id);
   if (alvo !== null) filtros.push(eq(tabela_turma.treinamento_id, alvo));
+  // o setor promotor, como o filtro do IntegraSST
+  const setor = id_opcional(d.setor ?? "");
+  if (setor !== null) filtros.push(eq(tabela_turma.unidade_promotora_id, setor));
   const itens = (
     (await tx.query.turma.findMany({
       where: and(...filtros),
@@ -188,7 +196,7 @@ async function _tela_lista(
   // oferecer "Abrir turma" sem treinamento para escolher.
   const comecando = !itens.length && !situacao && alvo === null && usuario.pode("turma.criar");
   // tudo junto: uma ida ao banco, e não uma por turma (ver `db/cliente.ts`)
-  const [ocupadas, treinamentos, campi, unidades, [instrutor]] = await Promise.all([
+  const [ocupadas, treinamentos, campi, unidades, [instrutor], setores_usados] = await Promise.all([
     Promise.all(itens.map((turma) => servico_turma.inscricoes_que_ocupam_vaga(tx, turma))),
     tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
     tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
@@ -196,9 +204,27 @@ async function _tela_lista(
     comecando
       ? tx.select({ id: tabela_assinatura.id }).from(tabela_assinatura).where(eq(tabela_assinatura.ativo, true)).limit(1)
       : Promise.resolve([]),
+    tx
+      .selectDistinct({ id: tabela_turma.unidade_promotora_id })
+      .from(tabela_turma)
+      .where(and(servico_turma.consulta_no_escopo(usuario), isNotNull(tabela_turma.unidade_promotora_id))),
   ]);
+  const usados_como_setor = new Set(setores_usados.map((s) => s.id));
   const inscritos: Record<number, number> = {};
   itens.forEach((turma, i) => (inscritos[turma.id] = ocupadas[i]!));
+  // os pedidos do link a conferir, por turma: o que pede ação na linha
+  const pedidos: Record<number, number> = {};
+  if (itens.length) {
+    const linhas = await tx
+      .select({ turma_id: tabela_inscricao.turma_id, n: count() })
+      .from(tabela_inscricao)
+      .where(and(inArray(tabela_inscricao.turma_id, itens.map((x) => x.id)), eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL")))
+      .groupBy(tabela_inscricao.turma_id);
+    for (const l of linhas) pedidos[l.turma_id] = Number(l.n);
+  }
+  const hoje = datas_br.hoje();
+  const link_no_ar: Record<number, boolean> = {};
+  for (const turma of itens) link_no_ar[turma.id] = inscricao_publica.link_no_ar(turma, hoje);
   let primeiros_passos: { rotulo: string; feito: boolean; href: string | null; dica: string }[] | null = null;
   if (comecando) {
     const tem_treinamento = treinamentos.some((t) => t.ativo);
@@ -233,6 +259,12 @@ async function _tela_lista(
     primeiros_passos,
     itens,
     inscritos,
+    pedidos,
+    link_no_ar,
+    hoje,
+    pode_inscrever: usuario.pode("turma.inscrever"),
+    filtro_setor: setor ? String(setor) : "",
+    setores_do_filtro: unidades.filter((u) => usados_como_setor.has(u.id)),
     // só treinamento ativo entra no seletor de nova turma
     treinamentos: treinamentos.filter((t) => t.ativo),
     // o filtro lista todos: turma antiga de curso desativado continua encontrável
@@ -240,7 +272,7 @@ async function _tela_lista(
     campi,
     unidades,
     descricoes: await _ultimas_descricoes(tx),
-    situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
+    situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
     digitado: d.digitado ?? {},
@@ -274,6 +306,7 @@ rotas.get(TURMAS, async (c) => {
   return _tela_lista(c, usuario, {
     situacao: c.req.query("situacao") ?? "",
     treinamento_id: c.req.query("treinamento_id") ?? "",
+    setor: c.req.query("setor") ?? "",
     ...recados(c),
   });
 });
@@ -281,6 +314,62 @@ rotas.get(TURMAS, async (c) => {
 // =====================================================================
 // "Meus treinamentos" — a tela do próprio servidor (antes de /turmas/{id})
 // =====================================================================
+// =====================================================================
+// Pedidos pelo link — conferir de uma vez, de todas as turmas
+// =====================================================================
+export const PEDIDOS = `${TURMAS}/pedidos`;
+
+async function _tela_pedidos(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string | null; erro?: string | null; travados?: pedidos_link.ResultadoLote["travados"] } = {}) {
+  return pagina(c, "paginas/turmas_pedidos.html", usuario, {
+    turmas: await pedidos_link.a_conferir(c.get("tx"), usuario),
+    rotulo_vinculo: ROTULO_VINCULO,
+    travados: d.travados ?? [],
+    ...recados(c),
+    ...(d.mensagem ? { mensagem: d.mensagem } : {}),
+    ...(d.erro ? { erro: d.erro } : {}),
+  });
+}
+
+rotas.get(PEDIDOS, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  return _tela_pedidos(c, usuario);
+});
+
+/**
+ * Aceitar ou recusar os pedidos marcados. Vem desta tela ou da aba Inscrições
+ * da turma (`volta`); o que travar (turma lotada, por exemplo) fica como
+ * estava e volta na tela com o motivo.
+ */
+rotas.post(PEDIDOS, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  const f = await formulario(c);
+  const volta_turma = id_opcional(f.texto("turma_id"));
+  const volta = volta_turma ? `${TURMAS}/${volta_turma}?aba=inscricoes` : PEDIDOS;
+  const ids = [...new Set(f.todos("inscricao_id").map((v) => id_opcional(v)).filter((v): v is number => v !== null))];
+  if (!ids.length) return _erro(c, volta, "Marque os pedidos.");
+  const aceitar = f.texto("acao") !== "recusar";
+  let resultado: pedidos_link.ResultadoLote;
+  try {
+    resultado = await pedidos_link.decidir(c.get("tx"), usuario, ids, aceitar ? "INSCRITA" : "CANCELADA", f.texto("motivo") || null);
+  } catch (erro) {
+    if (erro instanceof RegraViolada) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  const frase =
+    `${resultado.feitos} pedido(s) ${aceitar ? "aceito(s): já ocupam vaga" : "recusado(s)"}` +
+    (resultado.travados.length
+      ? `; ${resultado.travados.length} não ${resultado.travados.length > 1 ? "puderam" : "pôde"}: ` +
+        resultado.travados.map((x) => `${x.quem} — ${x.motivo.replace(/\.$/, "")}`).join("; ")
+      : "") +
+    ".";
+  if (resultado.travados.length && !volta_turma) {
+    return _tela_pedidos(c, usuario, { [resultado.feitos ? "mensagem" : "erro"]: frase, travados: resultado.travados });
+  }
+  return resultado.feitos ? _volta(c, volta, frase) : _erro(c, volta, frase);
+});
+
 export const MINHAS = `${TURMAS}/minhas`;
 
 rotas.get(MINHAS, async (c) => {
@@ -378,6 +467,7 @@ rotas.post(TURMAS, async (c) => {
     "nota_minima_aprovacao",
     "frequencia_minima_percentual",
     "observacoes",
+    "abertura",
   ];
   const digitado: Record<string, string> = Object.fromEntries(campos.map((k) => [k, f.texto(k)]));
   const recusar = (mensagem: string) => _tela_lista(c, usuario, { erro: mensagem, digitado });
@@ -387,12 +477,17 @@ rotas.post(TURMAS, async (c) => {
     .from(tabela_treinamento)
     .where(eq(tabela_treinamento.id, id_opcional(digitado.treinamento_id) ?? 0));
   if (!treinamento) return recusar("Escolha o treinamento da turma.");
+  const com_link = digitado.abertura === "LINK";
+  if (com_link && !digitado.inscricao_aberta_ate) {
+    return recusar("Turma aberta com link precisa de “inscrições até”: é a data em que o link deixa de funcionar.");
+  }
   let turma: TurmaCarregada;
+  let token: string | null = null;
   try {
     turma = await _no_savepoint(c, async (sp) => {
       const inicio = _data(digitado.data_inicio!, "a data de início")!;
       const fim = _data(digitado.data_fim!, "a data de término")!;
-      return servico_turma.criar_turma(sp, usuario, {
+      let criada = await servico_turma.criar_turma(sp, usuario, {
         treinamento,
         data_inicio: inicio,
         data_fim: fim,
@@ -408,11 +503,20 @@ rotas.post(TURMAS, async (c) => {
         frequencia_minima_percentual: _decimal(digitado.frequencia_minima_percentual!, "a frequência mínima", "75")!,
         observacoes: texto_ou_nulo(digitado.observacoes),
       });
+      // o atalho "turma aberta com link": tudo ou nada, no mesmo savepoint
+      if (com_link) {
+        criada = await servico_turma.mudar_situacao(sp, usuario, criada, "INSCRICOES_ABERTAS");
+        token = await inscricao_publica.gerar_link(sp, usuario, criada);
+      }
+      return criada;
     });
   } catch (erro) {
-    if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma) return recusar(erro.message);
+    if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma || erro instanceof TransicaoInvalida) {
+      return recusar(erro.message);
+    }
     throw erro;
   }
+  if (token) return _tela_link(c, usuario, turma, token);
   return _volta(c, `${TURMAS}/${turma.id}`, `Turma ${turma.codigo} aberta.`);
 });
 
@@ -563,7 +667,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     // de planejada direto a concluída, só turma que já terminou (a guarda é do serviço)
     destinos: destinos_de_turma(turma.situacao)
       .filter((codigo) => !(turma.situacao === "PLANEJADA" && codigo === "CONCLUIDA" && turma.data_fim > datas_br.hoje()))
-      .map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
+      .map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     // o atalho "turma já realizada": datas passadas e nada lançado ainda
     ja_realizada:
       ["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"].includes(turma.situacao) &&
@@ -655,7 +759,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
   if (turma.situacao === "CONCLUIDA") {
     return _volta(c, `${volta}?aba=emissao`, `${turma.codigo}: concluída. Confira os dados e emita os certificados.`);
   }
-  const rotulo = { INSCRICOES_ABERTAS: "inscrições abertas" }[turma.situacao as string] ?? ROTULO_TURMA[turma.situacao]!.toLowerCase();
+  const rotulo = ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase();
   return _volta(c, volta, `${turma.codigo}: ${rotulo}.`);
 });
 
@@ -1001,15 +1105,20 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico`, async (c) => {
     if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
     throw erro;
   }
-  const endereco = `${await servico_emissao.url_base_validacao(tx)}${inscricao_publica.CAMINHO}/${token}`;
+  return _tela_link(c, usuario, turma, token);
+});
+
+/** A única vez em que o link aparece: o endereço, o QR e a mensagem pronta. */
+async function _tela_link(c: Ctx, usuario: UsuarioAtual, turma: TurmaCarregada, token: string): Promise<Response> {
+  const endereco = `${await servico_emissao.url_base_validacao(c.get("tx"))}${inscricao_publica.CAMINHO}/${token}`;
   const resposta = await pagina(c, "paginas/turma_link.html", usuario, {
     turma: vista_turma(turma),
     endereco,
-    qr: `data:image/png;base64,${Buffer.from(qr_png(endereco, 6)).toString("base64")}`,
+    qr: `data:image/png;base64,${Buffer.from(qr_png(endereco, 8)).toString("base64")}`,
   });
   resposta.headers.set("cache-control", "no-store");
   return resposta;
-});
+}
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/desligar`, async (c) => {
   const usuario = await usuarioLogado(c);

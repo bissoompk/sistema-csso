@@ -2,11 +2,23 @@
 {% import "partes/macros.html" as ui with context %}
 {% block titulo %}Link de inscrição · {{ turma.codigo }} · CSSO{% endblock %}
 
+{# A mensagem pronta para o grupo ou o e-mail, como o IntegraSST oferecia ao
+   gerar o link: o que é, quando, onde e o endereço. #}
+{% set periodo = (turma.data_inicio|data) ~ ((' a ' ~ (turma.data_fim|data)) if turma.data_fim != turma.data_inicio else '') %}
+{% set mensagem_divulgacao -%}
+Inscrições abertas: {{ turma.treinamento.nome }}
+Data: {{ periodo }}{% if turma.local %}
+Local: {{ turma.local }}{% endif %}
+Carga horária: {{ turma.carga_efetiva|num }} h
+Inscreva-se até {{ turma.inscricao_aberta_ate|data }} pelo link:
+{{ endereco }}
+{%- endset %}
+
 {% block conteudo %}
 <div class="tela">
   <div class="cabecalho-pagina">
     <div class="titulo">
-      <h1>Link público de inscrição</h1>
+      <h1>{{ ui.icone('link-45deg') }} Link público de inscrição</h1>
       <p class="sub"><a class="mono" href="/turmas/{{ turma.id }}?aba=inscricoes">{{ turma.codigo }}</a>
         · {{ turma.treinamento.nome }} · vale até {{ turma.inscricao_aberta_ate|data }}</p>
     </div>
@@ -18,34 +30,62 @@
     funcionar.
   </div>
 
-  <section class="cartao">
-    <div class="campo">
-      <label for="link-publico">Endereço para o cartaz, o e-mail ou o grupo</label>
-      <input id="link-publico" class="mono" value="{{ endereco }}" readonly>
-    </div>
-    <p><img src="{{ qr }}" alt="QR Code do link de inscrição de {{ turma.codigo }}"
-            width="240" height="240"></p>
-    <p class="discreto">Para imprimir o QR: botão direito sobre ele, “salvar imagem”.</p>
-  </section>
+  <div class="lado-a-lado principal">
+    <section class="cartao">
+      <h2>{{ ui.icone('link-45deg') }} Endereço</h2>
+      <div class="campo">
+        <label for="link-publico">Para o cartaz, o e-mail ou o grupo</label>
+        <input id="link-publico" class="mono" value="{{ endereco }}" readonly>
+      </div>
+      <div class="acoes">
+        <button type="button" class="redondo" data-copiar="link-publico" hidden>
+          {{ ui.icone('clipboard') }} Copiar link</button>
+        <a class="botao secundario redondo" href="{{ endereco }}" target="_blank" rel="noopener noreferrer">
+          {{ ui.icone('eye') }} Abrir o formulário</a>
+      </div>
+
+      <h2>{{ ui.icone('send') }} Mensagem pronta</h2>
+      <div class="campo">
+        <label for="mensagem-divulgacao">Cole no grupo ou no e-mail de divulgação</label>
+        <textarea id="mensagem-divulgacao" rows="7" readonly>{{ mensagem_divulgacao }}</textarea>
+      </div>
+      <div class="acoes">
+        <button type="button" class="secundario redondo" data-copiar="mensagem-divulgacao" hidden>
+          {{ ui.icone('clipboard') }} Copiar mensagem</button>
+      </div>
+    </section>
+
+    <section class="cartao qr-cartao">
+      <h2>{{ ui.icone('qr-code') }} QR Code</h2>
+      <p><img src="{{ qr }}" alt="QR Code do link de inscrição de {{ turma.codigo }}"
+              width="240" height="240"></p>
+      <div class="acoes">
+        <a class="botao secundario redondo" href="{{ qr }}" download="QR-inscricao-{{ turma.codigo }}.png">
+          {{ ui.icone('download') }} Baixar o QR (PNG)</a>
+      </div>
+      <p class="discreto">Para o cartaz impresso ou o slide de abertura.</p>
+    </section>
+  </div>
 
   <section class="cartao">
     <h2>O que acontece com cada pedido</h2>
     <ul>
       <li>Quem abre o link vê a turma e pede a vaga com nome, vínculo, SIAPE (servidor)
         e, se quiser, e-mail. CPF não entra.</li>
-      <li>O pedido aparece na aba Inscrições como <strong>pedido pelo link, a
-        conferir</strong>, e abre uma pendência do setor. Ele <strong>não ocupa
-        vaga</strong> até alguém aceitar.</li>
+      <li>O pedido aparece em <a href="/turmas/pedidos">Pedidos pelo link</a> e na aba
+        Inscrições como <strong>pedido pelo link, a conferir</strong>. Ele <strong>não ocupa
+        vaga</strong> até alguém aceitar — e dá para aceitar todos de uma vez.</li>
       <li>Aceitar põe a pessoa como inscrita (se houver vaga); recusar cancela o pedido
         com o motivo. Quem deixou e-mail recebe o aviso das duas coisas (o motivo não
         vai); quem não deixou, avise por outro meio.</li>
       <li>O link para de funcionar depois de {{ turma.inscricao_aberta_ate|data }}, quando
-        a turma sai de “inscrições abertas”, ou quando alguém o desliga ou troca.</li>
+        as vagas se esgotam, quando a turma sai de “inscrições abertas”, ou quando alguém
+        o desliga ou troca.</li>
     </ul>
   </section>
 
   <div class="acoes">
-    <a class="botao" href="/turmas/{{ turma.id }}?aba=inscricoes">Voltar à turma</a>
+    <a class="botao" href="/turmas/{{ turma.id }}?aba=inscricoes">{{ ui.icone('arrow-left') }} Voltar à turma</a>
   </div>
 </div>
 {% endblock %}

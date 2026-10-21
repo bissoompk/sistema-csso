@@ -41,7 +41,7 @@
       <p class="sub">Cada concessão de perfil registra o ato normativo que a autoriza
         (Resolução Consu 11/2026, art. 11, IX); sem ele, fica “pendente” até ser
         informado em Gerir.
-        <a href="/perfis">Ver matriz de perfis »</a></p>
+        {% if usuario.pode('processo.ver') %}<a href="/perfis">Ver matriz de perfis »</a>{% endif %}</p>
     </div>
   </div>
 

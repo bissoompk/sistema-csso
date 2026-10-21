@@ -1188,6 +1188,63 @@ describe("inscrição pública por link", () => {
     expect(avisos[1]!.corpo).not.toContain("turma cheia");
   });
 
+  it("aceita os pedidos marcados de uma vez; o que não cabe na vaga fica a conferir, com o motivo", async () => {
+    const { turma_id, token } = await com_link({ vagas: 2 });
+    const publico = novoCliente();
+    await publico.post(`/inscricao/${token}`, PEDIDO);
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Pedro Alvares Cabral", email: "pedro@x.com" });
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Maria Quitéria de Jesus", email: "maria@x.com" });
+    const [a, b, c] = await _inscricoes();
+    const tela = (await cliente.get("/turmas/pedidos")).text;
+    expect(tela).toContain("Joana Prestes da Silva");
+    expect(tela).toContain("3 pedido(s)");
+    const r = await cliente.post("/turmas/pedidos", { acao: "aceitar", inscricao_id: [String(a!.id), String(b!.id), String(c!.id)] });
+    expect(r.status, r.text.slice(0, 500)).toBe(200);
+    expect(_texto(r.text)).toContain("2 pedido(s) aceito(s)");
+    expect(_texto(r.text)).toContain("Maria Quitéria de Jesus — TUR-");
+    const situacoes = (await _inscricoes()).map((x) => x.situacao);
+    expect(situacoes).toEqual(["INSCRITA", "INSCRITA", "AGUARDANDO_EMAIL"]);
+    // recusar sem motivo não passa; com motivo, cancela
+    const sem = await cliente.post("/turmas/pedidos", { acao: "recusar", inscricao_id: String(c!.id) }, { seguir: false });
+    expect(await _msg(cliente, sem)).toContain("escreva o motivo");
+    await cliente.post(
+      "/turmas/pedidos",
+      { acao: "recusar", motivo: "turma cheia", inscricao_id: String(c!.id), turma_id: String(turma_id) },
+      { seguir: false },
+    );
+    expect((await _inscricoes())[2]!.situacao).toBe("CANCELADA");
+  });
+
+  it("turma lotada fecha o link: o cartaz avisa e o pedido não grava", async () => {
+    const { turma_id, token } = await com_link({ vagas: 1 });
+    const publico = novoCliente();
+    await publico.post(`/inscricao/${token}`, PEDIDO);
+    const [a] = await _inscricoes();
+    await cliente.post(`/turmas/${turma_id}/inscricoes/${a!.id}`, { destino: "INSCRITA" }, { seguir: false });
+    const cartaz = await publico.get(`/inscricao/${token}`);
+    expect(_texto(cartaz.text)).toContain("se esgotaram");
+    expect(cartaz.text).not.toContain("Pedir a vaga");
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Pedro Alvares Cabral", email: "pedro@x.com" });
+    expect(await _inscricoes()).toHaveLength(1);
+  });
+
+  it("abrir a turma já com link: nasce com inscrições abertas e mostra o link uma vez", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const treinamento_id = await _criar_treinamento(cliente);
+    const sem_prazo = await _criar_turma(cliente, treinamento_id, { abertura: "LINK" });
+    expect(_texto(sem_prazo.text)).toContain("precisa de “inscrições até”");
+    expect(await _turmas()).toHaveLength(0);
+    const r = await _criar_turma(cliente, treinamento_id, { abertura: "LINK", inscricao_aberta_ate: somar_dias(hoje_iso(), 10) });
+    expect(r.status, r.text.slice(0, 500)).toBe(200);
+    expect(r.text).toContain("Copiar link");
+    expect(r.text).toContain("Mensagem pronta");
+    const token = r.text.match(/\/inscricao\/([A-Za-z0-9_-]{20,})/)![1]!;
+    const turma = await _turma(await _id_da_turma());
+    expect(turma.situacao).toBe("INSCRICOES_ABERTAS");
+    expect(turma.inscricao_publica).toBe(true);
+    expect((await novoCliente().get(`/inscricao/${token}`)).text).toContain("Pedir a vaga");
+  });
+
   it("o banco recusa tirar o pedido da espera sem conferência", async () => {
     const { token } = await com_link();
     await novoCliente().post(`/inscricao/${token}`, PEDIDO);
@@ -1233,5 +1290,22 @@ describe("inscrição pública por link", () => {
       expect(await privacidade.expurgar_ip_de_inscricao(tx, daqui)).toBe(1);
     });
     expect((await _inscricoes())[0]!.ip_inscricao).toBeNull();
+  });
+});
+
+describe("início do módulo", () => {
+  it("mostra os passos e o que espera em cada um; quem não vê certificado não entra", async () => {
+    const { turma_id } = await turma_aberta();
+    await db.update(e.turma).set({ situacao: "INSCRICOES_ABERTAS" }).where(eq(e.turma.id, turma_id));
+    const r = await cliente.get("/treinamentos");
+    expect(r.status, r.text.slice(0, 500)).toBe(200);
+    const texto = _texto(r.text);
+    expect(texto).toContain("Centro de Certificações e Inscrições");
+    expect(texto).toContain("1 com inscrição aberta");
+    expect(texto).toContain("0 a conferir");
+    expect(texto).toContain(PRIMEIRA);
+    const servidor = novoCliente();
+    await entrar(servidor, "servidor_consulta");
+    expect((await servidor.get("/treinamentos", { seguir: false })).status).toBe(403);
   });
 });

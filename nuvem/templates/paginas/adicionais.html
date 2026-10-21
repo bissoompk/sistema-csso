@@ -80,7 +80,7 @@
       <td class="mono">{{ v.percentual.rotulo if v.percentual }}</td>
       <td>
         {% if v.parecer and v.parecer.laudo %}
-        <a class="mono" href="/laudos/{{ v.parecer.laudo_id }}">{{ v.parecer.laudo.numero_siape }}</a>
+        {% if usuario.pode('laudo.ver') %}<a class="mono" href="/laudos/{{ v.parecer.laudo_id }}">{{ v.parecer.laudo.numero_siape }}</a>{% else %}<span class="mono">{{ v.parecer.laudo.numero_siape }}</span>{% endif %}
         {% else %}<span class="discreto">—</span>{% endif %}
       </td>
       <td><span class="recorte" title="{{ v.portaria_concessao or '' }}">

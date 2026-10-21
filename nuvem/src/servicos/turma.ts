@@ -41,6 +41,7 @@ import {
   INSCRICAO_OCUPA_VAGA,
   ROTULO_INSCRICAO,
   ROTULO_TURMA,
+  ROTULO_TURMA_TELA,
   exigir_transicao_inscricao,
   exigir_transicao_turma,
 } from "../dominio/estados.js";
@@ -354,7 +355,7 @@ export async function editar_turma(
   usuario.exigir("turma.criar");
   if (T.encerrada(turma) && !(opcoes.concluida && turma.situacao === "CONCLUIDA")) {
     throw new RegraDaTurma(
-      `Turma ${ROTULO_TURMA[turma.situacao]!.toLowerCase()} não se edita — ` +
+      `Turma ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()} não se edita — ` +
         "o que ela diz já foi comunicado a quem participou.",
     );
   }
@@ -500,7 +501,7 @@ export async function impedimentos_da_exclusao(tx: Executor, turma: TurmaRegistr
   const motivos: string[] = [];
   if (!SITUACOES_EXCLUIVEIS.includes(turma.situacao)) {
     motivos.push(
-      `a turma está ${(ROTULO_TURMA[turma.situacao] ?? turma.situacao).toLowerCase()}: só se exclui a ` +
+      `a turma está ${(ROTULO_TURMA_TELA[turma.situacao] ?? turma.situacao).toLowerCase()}: só se exclui a ` +
         "planejada ou com inscrições abertas — a que já começou ou acabou tem história",
     );
   }
@@ -727,7 +728,7 @@ export async function inscrever(
   usuario.exigir("turma.inscrever");
   if ((opcoes.origem ?? "INTERNA") !== "INTERNA") throw new RegraDaTurma("Nesta versão só existe inscrição interna.");
   if (!T.aceita_inscricao(turma)) {
-    throw new RegraDaTurma(`${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()} e não recebe inscrição.`);
+    throw new RegraDaTurma(`${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()} e não recebe inscrição.`);
   }
   if (!participante.ativo || participante.mesclado_em_id !== null) {
     throw new RegraDaTurma(
@@ -793,7 +794,7 @@ export async function mudar_situacao_inscricao(
   }
   if (destino === "CONFIRMADA" && T.encerrada(inscricao.turma)) {
     throw new RegraDaTurma(
-      `${inscricao.turma.codigo} está ${ROTULO_TURMA[inscricao.turma.situacao]!.toLowerCase()}: não há o que confirmar.`,
+      `${inscricao.turma.codigo} está ${ROTULO_TURMA_TELA[inscricao.turma.situacao]!.toLowerCase()}: não há o que confirmar.`,
     );
   }
 
@@ -804,7 +805,7 @@ export async function mudar_situacao_inscricao(
   if (aceitando_pedido) {
     if (!T.aceita_inscricao(inscricao.turma)) {
       throw new RegraDaTurma(
-        `${inscricao.turma.codigo} está ${ROTULO_TURMA[inscricao.turma.situacao]!.toLowerCase()} e não recebe inscrição.`,
+        `${inscricao.turma.codigo} está ${ROTULO_TURMA_TELA[inscricao.turma.situacao]!.toLowerCase()} e não recebe inscrição.`,
       );
     }
     await _conferir_vaga(tx, inscricao.turma);
@@ -955,7 +956,7 @@ export function aberta_a_pedido_proprio(turma: TurmaRegistro, hoje: string | nul
   const dia = hoje ?? datas_br.hoje();
   if (turma.situacao !== "INSCRICOES_ABERTAS") {
     return (
-      `${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}: só se ` +
+      `${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()}: só se ` +
       "pede vaga em turma com inscrições abertas. Fale com a CSSO."
     );
   }

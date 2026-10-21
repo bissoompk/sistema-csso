@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}CSSO · Sisa/UFVJM{% endblock %}</title>
   <link rel="stylesheet" href="/estaticos/css/csso.css">
+  {# O tema do IntegraSST por cima da folha de base: cores, cantos, sombras,
+     fonte e ícones. Separado para que a troca de aparência seja um arquivo. #}
+  <link rel="stylesheet" href="/estaticos/css/tema.css">
   {# O HTMX injeta, ao carregar, um `<style>` com as regras do
      `.htmx-indicator` — e a CSP declara `style-src-elem 'self'`, então esse
      elemento é recusado e vira uma violação no console de TODA tela. Medido
@@ -65,6 +68,7 @@
    topo e recebe o cabeçalho escuro de 58px no lugar da lateral e da trilha.
    Quem não declara nada continua com a casca inteira. #}
 {% set com_casca = usuario and not sem_casca %}
+{% macro ico(nome) %}{% if nome %}<svg class="ico" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>{% endif %}{% endmacro %}
 {% if com_casca %}
 {# A navegação é uma lateral escura fixa: o menu horizontal já estava com onze
    itens em duas barras, e cada módulo novo piorava. Na vertical há lugar para
@@ -112,13 +116,13 @@
     {% set e_ativo = m.codigo == modulo_ativo.codigo %}
     {% if m.disponivel and m.itens_de(usuario)|length %}
     <a href="{{ porta_de_entrada(m, usuario) }}"
-       class="modulo {{ 'atual' if e_ativo }} {{ 'lembrado' if e_ativo and not no_modulo }}">{{ m.nome }}</a>
+       class="modulo {{ 'atual' if e_ativo }} {{ 'lembrado' if e_ativo and not no_modulo }}">{{ ico(icone_de(m.codigo)) }}<span>{{ m.nome }}</span></a>
     {% if e_ativo and itens_modulo %}
     <div class="menu menu-modulo" aria-label="Telas de {{ m.nome }}">
       {% for item in itens_modulo %}
       <a href="{{ item.caminho }}" title="{{ item.descricao }}"
          class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
-         {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ item.rotulo }}</a>
+         {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ ico(icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
       {% endfor %}
     </div>
     {% endif %}
@@ -133,7 +137,7 @@
     {% for item in itens_base %}
     <a href="{{ item.caminho }}" title="{{ item.descricao }}"
        class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
-       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ item.rotulo }}</a>
+       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ ico(icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
     {% endfor %}
   </nav>
   {% endif %}

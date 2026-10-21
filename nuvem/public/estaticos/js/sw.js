@@ -14,11 +14,14 @@
    abertura seguinte; o cache só fala quando a rede não fala. O nome do cache
    carrega a versão para o cache velho ser apagado na ativação.
    ===================================================================== */
-var VERSAO = 'csso-celular-v1';
+var VERSAO = 'csso-celular-v2';
 var CASCA = [
   '/celular',
   '/estaticos/css/csso.css',
+  '/estaticos/css/tema.css',
   '/estaticos/css/celular.css',
+  '/estaticos/fontes/inter-latin.woff2',
+  '/estaticos/img/icones.svg',
   '/estaticos/js/csso.js',
   '/estaticos/js/celular.js'
 ];

@@ -160,6 +160,13 @@ export async function turma_do_token(
   if (!fechada && turma.inscricao_token_expira_em !== null && turma.inscricao_token_expira_em <= agora) {
     fechada = `As inscrições de ${turma.codigo} pelo link encerraram.`;
   }
+  // turma lotada não recebe pedido: no IntegraSST a lotação fechava a
+  // inscrição; aqui a pessoa recebia "pedido recebido" e a recusa só aparecia
+  // quando a CSSO tentava aceitar. O pedido em espera não ocupa vaga, então
+  // conta só quem já foi aceito.
+  if (!fechada && (await servico_turma.vagas_restantes(tx, turma)) === 0) {
+    fechada = `As vagas de ${turma.codigo} se esgotaram.`;
+  }
   return { turma, fechada };
 }
 
@@ -257,6 +264,9 @@ export async function pedir(
   const p = _ler(dados);
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
   if (impedimento) throw new RegraDaTurma(impedimento.replace(" Fale com a CSSO.", ""));
+  if ((await servico_turma.vagas_restantes(tx, turma)) === 0) {
+    throw new RegraDaTurma(`As vagas de ${turma.codigo} se esgotaram.`);
+  }
   const [em_espera] = await tx
     .select({ n: count() })
     .from(tabela_inscricao)

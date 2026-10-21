@@ -38,7 +38,7 @@
           precisam de resposta do mesmo jeito.</p>
         <p><strong>Não entra processo SEI.</strong> Processo tem NUP, tem os dezenove
           estados da instrução do adicional e tem prazo de norma: ele vive em
-          <a href="/processos">Processos</a>. Registrar aqui uma coisa que já é
+          {% if usuario.pode('processo.ver') %}<a href="/processos">Processos</a>{% else %}Processos{% endif %}. Registrar aqui uma coisa que já é
           processo produziria duas listas para o mesmo trabalho, e a conferência
           entre elas seria manual para sempre.</p>
         <p><strong>Também não é lista de tarefas.</strong> A tarefa que nasce de uma

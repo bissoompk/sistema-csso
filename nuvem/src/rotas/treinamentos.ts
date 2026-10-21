@@ -44,6 +44,7 @@ import { obterArmazenamento } from "../servicos/armazenamento.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as textos from "../servicos/textos.js";
 import * as indicadores from "../servicos/treinamento_indicadores.js";
+import * as hub from "../servicos/hub_treinamentos.js";
 import { LIMIAR_SUPRESSAO, MARCA_SUPRIMIDO, suprimir } from "./relatorios.js";
 import { dicionario } from "../dicionario.js";
 import { normalizar_decimal } from "../servicos/presenca.js";
@@ -66,6 +67,7 @@ import {
 
 export const rotas = new Hono<Ambiente>();
 
+export const INICIO = "/treinamentos";
 export const CATALOGO = "/treinamentos/catalogo";
 export const MODELOS = "/treinamentos/modelos";
 export const ASSINATURAS = "/treinamentos/assinaturas";
@@ -179,6 +181,20 @@ async function _tela_catalogo(c: Ctx, usuario: UsuarioAtual, d: Recado = {}): Pr
     digitado: d.digitado ?? {},
   });
 }
+
+// =====================================================================
+// Início — o "Centro de Certificações e Inscrições" do IntegraSST
+// =====================================================================
+/** Os passos do trabalho em cartões, cada um com o que espera nele. */
+rotas.get(INICIO, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("certificado.ver");
+  const hoje = datas_br.hoje();
+  return pagina(c, "paginas/treinamentos_inicio.html", usuario, {
+    r: await hub.resumo(c.get("tx"), usuario, hoje),
+    hoje,
+  });
+});
 
 rotas.get(CATALOGO, async (c) => {
   const usuario = await usuarioLogado(c);

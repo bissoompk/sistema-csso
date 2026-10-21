@@ -252,7 +252,17 @@ export const MODULOS: readonly Modulo[] = [
       "inscrição, presença e nota, emissão do certificado e o controle de " +
       "reciclagem — quem venceu, quem vence, quem nunca fez.",
     itens: [
+      // A porta de entrada de quem opera o módulo, como o hub do IntegraSST:
+      // os passos do trabalho e o que está esperando em cada um. O servidor
+      // comum não tem `certificado.ver` e continua entrando por `/turmas`.
+      new Item("Início", "/treinamentos", "certificado.ver", "Os passos do trabalho e o que espera por você em cada um."),
       new Item("Turmas", "/turmas", "treinamento.ver", "Da abertura das inscrições ao fecho da turma."),
+      new Item(
+        "Pedidos pelo link",
+        "/turmas/pedidos",
+        "turma.inscrever",
+        "Quem se inscreveu pelo link público e espera a conferência, de todas as turmas.",
+      ),
       new Item(
         // `treinamento.ver`, exatamente como a rota `/turmas/minhas`
         // exige — e NÃO `turma.inscrever_se`: a tela responde "o que é
@@ -577,6 +587,60 @@ export function navegacao(
   };
 }
 
+/**
+ * O ícone de cada tela e de cada módulo na lateral (Bootstrap Icons, os do
+ * IntegraSST; a folha é `public/estaticos/img/icones.svg`). Fica fora de
+ * `Item` porque é desenho, não regra: a tela sem ícone aqui só fica sem ícone.
+ */
+const ICONES: Readonly<Record<string, string>> = {
+  [PROCESSOS_SEI]: "folder2-open",
+  epis: "shield-plus",
+  certificados: "award",
+  acidentes: "heart-pulse",
+  cissp: "people",
+  pgr: "clipboard-data",
+  "/": "grid-1x2",
+  "/kanban": "kanban",
+  "/processos": "file-earmark-text",
+  "/laudos": "clipboard-data",
+  "/adicionais": "cash-coin",
+  "/relatorios": "bar-chart",
+  "/importar": "cloud-upload",
+  "/epis": "grid-1x2",
+  "/epis/entregas/nova": "box-seam",
+  "/epis/requisicoes": "inbox",
+  "/epis/requisicoes/nova": "journal-plus",
+  "/epis/fichas/minha": "person-vcard",
+  "/epis/fichas": "person-vcard",
+  "/epis/estoque": "boxes",
+  "/epis/catalogo": "tags",
+  "/epis/relatorios": "bar-chart",
+  "/treinamentos": "grid-1x2",
+  "/turmas": "collection",
+  "/turmas/minhas": "mortarboard",
+  "/turmas/pedidos": "person-check",
+  "/certificados/meus": "patch-check",
+  "/certificados": "file-earmark-check",
+  "/certificados/fila": "printer",
+  "/certificados/emails": "envelope",
+  "/certificados/vencimentos": "shield-exclamation",
+  "/treinamentos/indicadores": "bar-chart",
+  "/treinamentos/catalogo": "journal-bookmark",
+  "/treinamentos/modelos": "file-earmark-easel",
+  "/treinamentos/assinaturas": "pen",
+  "/treinamentos/participantes": "people",
+  "/pendencias": "bell",
+  "/demandas": "list-check",
+  "/servidores": "person-badge",
+  "/catalogos": "list-ul",
+  "/auditoria": "clock-history",
+  "/usuarios": "gear",
+};
+
+export function icone_de(chave: string): string | null {
+  return ICONES[chave] ?? null;
+}
+
 // ---------------------------------------------------------------------
 // Ligação com a casca (`web.ts`): o que no Python era `web.py` importando
 // `modulos` diretamente. Aqui o sentido é o inverso para não haver ciclo.
@@ -586,3 +650,4 @@ ganchos.cookieModulo = COOKIE_MODULO;
 // O seletor da lateral precisa saber por onde se entra em cada módulo; a
 // decisão tem de ser a mesma que `/inicio` toma.
 global("porta_de_entrada", porta_de_entrada);
+global("icone_de", icone_de);

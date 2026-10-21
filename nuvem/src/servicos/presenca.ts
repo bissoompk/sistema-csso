@@ -33,6 +33,7 @@ import {
   INSCRICAO_FORA_DA_APURACAO,
   ROTULO_INSCRICAO,
   ROTULO_TURMA,
+  ROTULO_TURMA_TELA,
   exigir_transicao_inscricao,
 } from "../dominio/estados.js";
 import { Certificado as C, Inscricao as I, Turma as T } from "../dominio/treinamento.js";
@@ -308,7 +309,7 @@ async function _exigir_lancamento(
   }
   if (!aceita_lancamento(turma)) {
     throw new RegraDaTurma(
-      `${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}: passe a ` +
+      `${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()}: passe a ` +
         "turma para em andamento antes de lançar presença ou nota.",
     );
   }
@@ -663,7 +664,7 @@ export async function registrar_turma_realizada(
   usuario.exigir("turma.avaliar");
   usuario.exigir("turma.concluir");
   if (!["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"].includes(turma.situacao)) {
-    throw new RegraDaTurma(`${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}.`);
+    throw new RegraDaTurma(`${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()}.`);
   }
   if (turma.data_fim > datas_br.hoje()) {
     throw new RegraDaTurma(

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Pedidos pelo link · CSSO{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ ui.icone('person-check') }} Pedidos pelo link</h1>
+      <p class="sub">Quem se inscreveu pelo link público e espera a conferência, de todas as turmas.</p>
+      {% call ui.info('pedidos-do-link', 'o que conferir') %}
+        <p>O link público não inscreve sozinho: o pedido só ocupa vaga depois de aceito.
+          Confira se a pessoa é quem diz ser (nome, SIAPE ou e-mail, vínculo) e se o pedido não
+          repete uma inscrição que já existe.</p>
+        <p>Aceitar vários de uma vez faz o mesmo que aceitar um por um, na ordem da lista:
+          se a turma lotar no meio, quem ficou de fora continua aqui com o motivo.
+          Recusar pede o motivo, que fica registrado na inscrição.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {% if travados|length %}
+  <div class="aviso aviso-alerta">
+    <strong>Não puderam ser decididos:</strong>
+    <ul class="sem-margem">
+      {% for t in travados %}<li>{{ t.quem }} — {{ t.motivo }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if turmas|length %}
+  <form method="post" action="/turmas/pedidos" id="f-pedidos"></form>
+
+  {% for t in turmas %}
+  <div class="cartao liso">
+    <div class="cabecalho-cartao">
+      <div class="titulo-cartao">
+        <h2><a class="mono" href="/turmas/{{ t.id }}?aba=inscricoes">{{ t.codigo }}</a> · {{ t.treinamento }}</h2>
+      </div>
+      <span class="a-direita">
+        <span class="pilula sem-ponto">{{ t.data_inicio|data }}</span>
+        {% if t.vagas is not none %}
+        <span class="pilula {{ 'erro' if t.vagas_restantes == 0 else ('alerta' if t.vagas_restantes < t.pedidos|length else 'ok') }}">
+          {{ t.vagas_restantes }} vaga(s) de {{ t.vagas }}</span>
+        {% endif %}
+        <span class="pilula alerta">{{ t.pedidos|length }} pedido(s)</span>
+      </span>
+    </div>
+    <table>
+      <thead><tr>
+        <th scope="col"><span class="oculto">Marcar</span></th>
+        <th scope="col">Nome</th><th scope="col">Vínculo</th><th scope="col">E-mail</th><th scope="col">Pedido em</th>
+      </tr></thead>
+      {% for p in t.pedidos %}
+      <tr>
+        <td><input form="f-pedidos" type="checkbox" name="inscricao_id" value="{{ p.inscricao_id }}" checked
+                   aria-label="Decidir o pedido de {{ p.nome }}"></td>
+        <td class="nome">{{ p.nome }}
+          {% if p.observacao %}<span class="quebra discreto">{{ p.observacao }}</span>{% endif %}</td>
+        <td>{{ rotulo_vinculo[p.vinculo] or p.vinculo }}
+          {% if p.organizacao %}<span class="quebra discreto">{{ p.organizacao }}</span>{% endif %}</td>
+        <td><span class="recorte" title="{{ p.email }}">{{ p.email or '—' }}</span></td>
+        <td class="mono">{{ p.criado_em|momento }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+
+  <div class="cartao">
+    <div class="acoes sem-margem">
+      <button form="f-pedidos" type="submit" name="acao" value="aceitar">
+        {{ ui.icone('check-circle') }} Aceitar os marcados</button>
+      <p class="discreto">Aceitos, viram inscrição e passam a ocupar vaga.</p>
+    </div>
+    <hr>
+    <div class="linha-campos">
+      <div class="campo">
+        <label for="motivo-recusa">Motivo da recusa</label>
+        <input form="f-pedidos" id="motivo-recusa" name="motivo" type="text" maxlength="300"
+               placeholder="ex.: pedido em duplicidade; não é do público da turma">
+      </div>
+    </div>
+    <div class="acoes sem-margem">
+      <button form="f-pedidos" type="submit" name="acao" value="recusar" class="perigo-discreto">
+        {{ ui.icone('x-circle') }} Recusar os marcados</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="vazio"><strong>Nenhum pedido a conferir.</strong>
+    <span>Quando alguém se inscrever pelo link público de uma turma, o pedido aparece aqui.</span></div>
+  {% endif %}
+
+</div>
+{% endblock %}

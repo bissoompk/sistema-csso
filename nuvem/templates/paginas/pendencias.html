@@ -123,9 +123,9 @@
                cabeçalho, em `base.html`). Sem isso a volta era o botão do
                navegador ou procurar "Pendências" na lateral — e para quem
                opera só o EPI a lateral nem tem o item. #}
-            {% if p.processo_id %}<a href="/processos/{{ p.processo_id }}?de=pendencias">processo</a>{% endif %}
-            {% if p.parecer_id %} <a href="/pareceres/{{ p.parecer_id }}?de=pendencias">parecer</a>{% endif %}
-            {% if p.laudo_id %} <a href="/laudos/{{ p.laudo_id }}?de=pendencias">laudo</a>{% endif %}
+            {% if p.processo_id and usuario.pode('processo.ver') %}<a href="/processos/{{ p.processo_id }}?de=pendencias">processo</a>{% endif %}
+            {% if p.parecer_id and usuario.pode('parecer.ver') %} <a href="/pareceres/{{ p.parecer_id }}?de=pendencias">parecer</a>{% endif %}
+            {% if p.laudo_id and usuario.pode('laudo.ver') %} <a href="/laudos/{{ p.laudo_id }}?de=pendencias">laudo</a>{% endif %}
             {# Âncora dos módulos sem processo. Entidade cuja tela já existe vira
                link; a que ainda não tem tela mostra o que é, em vez de oferecer
                porta trancada. Módulo novo acrescenta uma linha ao mapa quando

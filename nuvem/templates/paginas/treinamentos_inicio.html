@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Certificados e Treinamentos · CSSO{% endblock %}
+
+{# A porta de entrada de quem opera o módulo: o "Centro de Certificações e
+   Inscrições" do IntegraSST. Os quatro passos explicam a ordem do trabalho;
+   cada cartão leva à tela e diz quanto espera nela. As contagens são as
+   mesmas das telas de destino (`servicos/hub_treinamentos.ts`). #}
+{% set abertas = (r.turmas.INSCRICOES_ABERTAS or 0) %}
+{% set andamento = (r.turmas.EM_ANDAMENTO or 0) %}
+{% set planejadas = (r.turmas.PLANEJADA or 0) %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="hub-titulo">
+    <h1>{{ ui.icone('award-fill') }} Centro de Certificações e Inscrições</h1>
+    <div class="ao-lado">
+      {% if usuario.pode('turma.criar') %}
+      <a class="botao redondo" href="/turmas#nova-turma">{{ ui.icone('plus-circle') }} Abrir turma</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <ol class="passos-hub">
+    <li class="passo-hub p1"><span class="n">01</span>
+      <h2>Catálogo e modelo</h2>
+      <p>O treinamento, a carga, a validade da reciclagem e o modelo do certificado.</p></li>
+    <li class="passo-hub p2"><span class="n">02</span>
+      <h2>Turmas e inscrições</h2>
+      <p>Abra a turma, inscreva pela lista ou divulgue o link público com QR.</p></li>
+    <li class="passo-hub p3"><span class="n">03</span>
+      <h2>Presença e notas</h2>
+      <p>Lance a presença de cada dia e a nota; ao concluir, o resultado sai sozinho.</p></li>
+    <li class="passo-hub p4"><span class="n">04</span>
+      <h2>Emita e envie</h2>
+      <p>Emita os certificados dos aprovados e mande cada um por e-mail.</p></li>
+  </ol>
+
+  <h2 class="secao-hub">{{ ui.icone('grid-1x2') }} Ações e telas</h2>
+  <div class="acoes-hub">
+    <a class="acao-hub roxo" href="/treinamentos/catalogo">
+      {{ ui.icone('journal-bookmark') }}
+      <strong>1. Catálogo e modelos</strong>
+      <span>Treinamentos, validade e o .docx do certificado.</span>
+    </a>
+    <a class="acao-hub amarelo" href="/turmas">
+      {{ ui.icone('collection-fill') }}
+      <strong>2. Turmas</strong>
+      <span>Criar, inscrever, link público e concluir.</span>
+      <span class="contagem {{ 'atencao' if abertas else '' }}">{{ abertas }} com inscrição aberta · {{ andamento }} em andamento</span>
+    </a>
+    {% if usuario.pode('turma.inscrever') %}
+    <a class="acao-hub escuro" href="/turmas/pedidos">
+      {{ ui.icone('person-check') }}
+      <strong>3. Pedidos pelo link</strong>
+      <span>Quem se inscreveu pelo link e espera a conferência.</span>
+      <span class="contagem {{ 'urgente' if r.pedidos_a_conferir else 'ok' }}">{{ r.pedidos_a_conferir }} a conferir</span>
+    </a>
+    {% endif %}
+    <a class="acao-hub teal" href="/turmas?situacao=EM_ANDAMENTO">
+      {{ ui.icone('clipboard2-check-fill') }}
+      <strong>4. Presença e notas</strong>
+      <span>As turmas em andamento, para lançar e concluir.</span>
+      <span class="contagem">{{ andamento }} em andamento</span>
+    </a>
+    <a class="acao-hub verde" href="/certificados/fila">
+      {{ ui.icone('printer-fill') }}
+      <strong>5. Fila de emissão</strong>
+      <span>Aprovados sem certificado, de todas as turmas.</span>
+      <span class="contagem {{ 'atencao' if r.fila.AGUARDANDO else 'ok' }}">{{ r.fila.AGUARDANDO }} aguardando{% if r.fila.TRAVADO %} · {{ r.fila.TRAVADO }} travado(s){% endif %}</span>
+    </a>
+    <a class="acao-hub vermelho" href="/certificados/vencimentos">
+      {{ ui.icone('shield-exclamation') }}
+      <strong>6. Vencimentos (NR)</strong>
+      <span>Quem venceu e quem vence em 30 dias.</span>
+      <span class="contagem {{ 'urgente' if r.reciclagem.VENCIDO else '' }}">{{ r.reciclagem.VENCIDO or 0 }} vencido(s) · {{ r.reciclagem.A_VENCER or 0 }} a vencer</span>
+    </a>
+    {% if usuario.pode('assinatura.gerenciar') %}
+    <a class="acao-hub escuro" href="/treinamentos/assinaturas">
+      {{ ui.icone('pen-fill') }}
+      <strong>7. Instrutores e assinaturas</strong>
+      <span>Quem assina o certificado, com a rubrica.</span>
+    </a>
+    {% endif %}
+    {% if usuario.pode('indicador.ver') %}
+    <a class="acao-hub laranja" href="/treinamentos/indicadores">
+      {{ ui.icone('bar-chart-fill') }}
+      <strong>8. Indicadores</strong>
+      <span>Turmas, participantes e emissão por período.</span>
+    </a>
+    {% endif %}
+    <a class="acao-hub azul" href="/certificados">
+      {{ ui.icone('file-earmark-check') }}
+      <strong>Certificados emitidos</strong>
+      <span>Busca, segunda via, corrigir e anular.</span>
+      <span class="contagem">{{ r.fila.EMITIDO }} emitido(s)</span>
+    </a>
+    {% if r.emails %}
+    <a class="acao-hub azul" href="/certificados/emails">
+      {{ ui.icone('envelope-paper') }}
+      <strong>E-mails</strong>
+      <span>O que foi enviado, o que está na fila e o que falhou.</span>
+      <span class="contagem {{ 'urgente' if r.emails.FALHOU else '' }}">{{ r.emails.PENDENTE }} na fila{% if r.emails.FALHOU %} · {{ r.emails.FALHOU }} com falha{% endif %}</span>
+    </a>
+    {% endif %}
+  </div>
+
+  <h2 class="secao-hub">{{ ui.icone('calendar-event') }} Próximas turmas</h2>
+  {% if r.proximas|length %}
+  <div class="tabela-cartao">
+    <table>
+      <thead><tr><th>Turma</th><th>Treinamento</th><th>Período</th><th>Local</th><th>Situação</th></tr></thead>
+      <tbody>
+      {% for t in r.proximas %}
+      <tr>
+        <td><a class="mono" href="/turmas/{{ t.id }}">{{ t.codigo }}</a></td>
+        <td>{{ t.treinamento }}</td>
+        <td class="mono">{{ t.data_inicio|data }}{% if t.data_fim != t.data_inicio %} a {{ t.data_fim|data }}{% endif %}</td>
+        <td>{{ t.local or '—' }}</td>
+        <td>{{ ui.pilula_turma(t.situacao) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="vazio"><strong>Nenhuma turma por vir.</strong>
+    <span>Planejadas, com inscrição aberta ou em andamento aparecem aqui.</span></div>
+  {% endif %}
+
+</div>
+{% endblock %}

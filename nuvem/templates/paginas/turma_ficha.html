@@ -362,6 +362,22 @@
       identificação suprimida</span>
     {% endif %}
   </div>
+  {# Os pedidos do link de uma vez, como no IntegraSST (lá o link inscrevia
+     sozinho). A mesma rota de /turmas/pedidos; o que travar volta com o motivo. #}
+  {% set pedidos_link = inscricoes|selectattr('situacao', 'equalto', 'AGUARDANDO_EMAIL')|list %}
+  {% if pode_inscrever and pedidos_link|length %}
+  <div class="corpo">
+    <form method="post" action="/turmas/pedidos" class="aviso aviso-alerta sem-margem">
+      <input type="hidden" name="turma_id" value="{{ turma.id }}">
+      {% for i in pedidos_link %}<input type="hidden" name="inscricao_id" value="{{ i.id }}">{% endfor %}
+      <p><strong>{{ pedidos_link|length }} pedido(s) pelo link a conferir.</strong>
+        Conferidos na lista abaixo, aceite todos de uma vez; para recusar um, use “ações” na linha.</p>
+      <div class="acoes sem-margem">
+        <button type="submit" name="acao" value="aceitar" class="compacto">{{ ui.icone('check-circle') }} Aceitar os {{ pedidos_link|length }} pedidos</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
   {% if inscricoes %}
   <table>
     <thead>

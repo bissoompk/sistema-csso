@@ -105,7 +105,7 @@
         </thead>
         {% for laudo, meses in laudos_fila %}
         <tr>
-          <td><a class="mono" href="/laudos/{{ laudo.id }}">{{ laudo.numero_siape }}</a></td>
+          <td>{% if usuario.pode('laudo.ver') %}<a class="mono" href="/laudos/{{ laudo.id }}">{{ laudo.numero_siape }}</a>{% else %}<span class="mono">{{ laudo.numero_siape }}</span>{% endif %}</td>
           <td>{{ laudo.unidade.nome_extenso if laudo.unidade else '—' }}</td>
           <td>{% if laudo.data_ultima_conferencia %}<span class="mono">{{ laudo.data_ultima_conferencia|data }}</span>
               {% else %}<span class="discreto">nunca</span>{% endif %}</td>

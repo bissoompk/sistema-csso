@@ -1259,3 +1259,10 @@
 </nav>
 {%- endif -%}
 {% endmacro %}
+
+{# Ícone da folha `icones.svg` (Bootstrap Icons, os do IntegraSST). Decorativo:
+   quem nomeia o botão ou o link é o texto ao lado, então o SVG sai do leitor
+   de tela. Herda a cor do texto (`currentColor`). #}
+{% macro icone(nome, classe='') -%}
+<svg class="ico {{ classe }}" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>
+{%- endmacro %}

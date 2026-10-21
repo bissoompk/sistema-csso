@@ -727,7 +727,9 @@ describe("o módulo no menu e no mapa", () => {
     const modulo = modulos.por_codigo("certificados")!;
     expect(modulo.disponivel).toBe(true);
     expect(modulo.itens.map((i) => [i.caminho, i.permissao])).toEqual([
+      ["/treinamentos", "certificado.ver"],
       ["/turmas", "treinamento.ver"],
+      ["/turmas/pedidos", "turma.inscrever"],
       ["/turmas/minhas", "treinamento.ver"],
       ["/certificados/meus", "treinamento.ver"],
       ["/certificados", "certificado.ver"],

@@ -33,6 +33,9 @@
     {% if turma.carga_efetiva %}<dt>Carga horária</dt><dd><span class="mono">{{ turma.carga_efetiva|num }} h</span></dd>{% endif %}
     {% if turma.local or turma.campus %}<dt>Local</dt>
     <dd>{{ turma.local or '' }}{% if turma.local and turma.campus %} · {% endif %}{{ turma.campus.nome if turma.campus else '' }}</dd>{% endif %}
+    {% if turma.instrutores|length %}<dt>{{ 'Instrutores' if turma.instrutores|length > 1 else 'Instrutor' }}</dt>
+    <dd>{% for v in turma.instrutores %}{{ v.instrutor.nome_exibicao }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    {% if turma.unidade_promotora %}<dt>Promoção</dt><dd>{{ turma.unidade_promotora.nome_extenso }}</dd>{% endif %}
     {% if turma.inscricao_aberta_ate %}<dt>Inscrições até</dt><dd>{{ turma.inscricao_aberta_ate|data }}</dd>{% endif %}
   </dl>
   {% if turma.descricao %}<p><span class="texto-literal">{{ turma.descricao }}</span></p>{% endif %}
@@ -58,7 +61,8 @@
   <form method="post" action="{{ acao }}">
     <div class="campo"><label for="p-nome">Nome completo</label>
       <input id="p-nome" name="nome" value="{{ pedido.nome }}" required maxlength="160"
-             autocomplete="name"></div>
+             autocomplete="name" aria-describedby="dica-p-nome">
+      <span class="dica" id="dica-p-nome">Escreva como deve sair no certificado, sem abreviar.</span></div>
     <div class="campo"><label for="p-vinculo">Vínculo com a UFVJM</label>
       <select id="p-vinculo" name="vinculo">
         {% for v in vinculos %}

@@ -440,6 +440,16 @@ export const ROTULO_TURMA: Rotulos = {
   CANCELADA: 'Cancelada',
 };
 
+// O de cima entra na descricao da trilha (texto conferido por digest) e nao
+// muda; este e o que a pessoa le nas mensagens e nas telas. Mesmas chaves.
+export const ROTULO_TURMA_TELA: Rotulos = {
+  PLANEJADA: 'Planejada',
+  INSCRICOES_ABERTAS: 'Inscrições abertas',
+  EM_ANDAMENTO: 'Em andamento',
+  CONCLUIDA: 'Concluída',
+  CANCELADA: 'Cancelada',
+};
+
 // Situacoes em que a turma ainda aceita inscricao. EM_ANDAMENTO entra porque
 // treinamento de NR recebe retardatario no primeiro dia; CONCLUIDA e CANCELADA
 // nao, porque inscrever em turma fechada e reescrever historia.
