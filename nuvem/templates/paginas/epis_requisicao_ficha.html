@@ -295,6 +295,16 @@
           <dt>Enviado em</dt>
           <dd class="mono">{{ requisicao.enviada_em|momento or '—' }}</dd>
 
+          {# Fatia B: quem declarou o termo NR-06, quando e qual versão do texto. #}
+          {% if requisicao.termo_aceito_em %}
+          <dt>Termo NR-06</dt>
+          <dd>declarado por {{ termo_por or '—' }}
+            <span class="discreto mono">{{ requisicao.termo_aceito_em|momento }} · versão {{ requisicao.termo_versao }}</span></dd>
+          {% elif not requisicao.termo_exigido %}
+          <dt>Termo NR-06</dt>
+          <dd class="discreto">pedido anterior ao termo</dd>
+          {% endif %}
+
           <dt>Analisado por</dt>
           <dd>{{ nomes.get(requisicao.analisado_por, '—') }}
             <span class="discreto mono">{{ requisicao.analisado_em|momento or '' }}</span></dd>
@@ -390,12 +400,21 @@
            motivo — o serviço recusaria do mesmo jeito. #}
         <p class="discreto sem-margem">O pedido ganha número, vai para a fila do
           SESMT e <strong>deixa de ser editável</strong>.</p>
-        <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/enviar" class="acoes">
-          <button type="submit"{{ ' disabled' if not itens|length }}>Enviar pedido</button>
-          {% if not itens|length %}
-          <span class="dica"><strong>Botão desabilitado:</strong> acrescente ao
-            menos um item abaixo.</span>
-          {% endif %}
+        <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/enviar">
+          {# O termo NR-06 (fatia B, Decisão 3): desmarcado de saída; quem envia
+             declara — o servidor, ou quem pede por ele. #}
+          <p class="discreto">{{ texto_termo_nr06() }}
+            <span class="mono">({{ termo_nr06_vigente }})</span></p>
+          <label for="termo-aceito">
+            <input id="termo-aceito" type="checkbox" name="termo_aceito" value="1">
+            Li e declaro</label>
+          <div class="acoes">
+            <button type="submit"{{ ' disabled' if not itens|length }}>Enviar pedido</button>
+            {% if not itens|length %}
+            <span class="dica"><strong>Botão desabilitado:</strong> acrescente ao
+              menos um item abaixo.</span>
+            {% endif %}
+          </div>
         </form>
 
         {% elif passo == 'pegar' %}
@@ -428,7 +447,8 @@
         {% else %}
         <p class="discreto sem-margem">O trabalho deste estado não é do envelope,
           e sim de cada linha: reservar o lote e entregar. Tudo isso mora no botão
-          <strong>ações</strong> de cada linha da tabela de itens, logo abaixo.</p>
+          <strong>ações</strong> de cada linha da tabela de itens, logo abaixo{% if pode_estocar and separaveis %}
+          — ou, de uma vez, no botão <strong>Separar todos</strong> no topo da lista{% endif %}.</p>
         <div class="acoes">
           <a class="botao" href="#itens-do-pedido">Ir para os itens</a>
         </div>
@@ -548,6 +568,8 @@
       <span class="nota">só enquanto for rascunho</span>
     </div>
     <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/itens">
+      {# a finalidade do pedido vai na troca do item: dela sai o motivo sugerido #}
+      <input type="hidden" id="finalidade-do-pedido" name="finalidade" value="{{ requisicao.finalidade }}">
       {% if erro_item_novo %}<div class="aviso aviso-erro" role="alert">{{ erro_item_novo }}</div>{% endif %}
       <div class="campo{{ ' com-erro' if erro_item_novo and not dn.get('item_id') }}">
         <label for="item_id">Equipamento</label>
@@ -556,7 +578,7 @@
                 hx-get="/epis/requisicoes/item-opcoes"
                 hx-target="#opcoes-do-item"
                 hx-trigger="change"
-                hx-include="this">
+                hx-include="this, #finalidade-do-pedido">
           <option value="">—</option>
           {% for c in catalogo %}
           <option value="{{ c.id }}"{{ sel(dn.get('item_id'), c.id) }}>{{ c.nome }}{% if c.modelo %} · {{ c.modelo }}{% endif %}</option>

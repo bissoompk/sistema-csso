@@ -199,7 +199,7 @@ export async function pedido_pronto(
     servidor: cen.servidor,
     descricao_atividade: "Manipulação de reagentes no laboratório de análises",
   });
-  await servico.adicionar_item(tx, u, requisicao, {
+  await servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL",
     item: cen.item,
     quantidade: o.quantidade ?? 2,
     tamanho: "M",

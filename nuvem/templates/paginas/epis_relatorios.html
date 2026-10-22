@@ -21,7 +21,7 @@
 
 {% block acoes_cabecalho %}
 {% if pode_exportar %}
-<a class="botao secundario" data-baixar="Exportando…" href="/epis/relatorios/exportar?exercicio={{ exercicio }}">Exportar (CSV)</a>
+<a class="botao secundario" data-baixar="Exportando…" href="/epis/relatorios/exportar?{{ consulta }}">Exportar (CSV)</a>
 {% endif %}
 {% endblock %}
 
@@ -35,21 +35,35 @@
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Indicadores de EPI</h1>
-      <p class="sub">Exercício {{ exercicio }} · {{ dados.inicio|data }} a {{ dados.fim|data }}.
+      <p class="sub">{% if exercicio %}Exercício {{ exercicio }}{% else %}Período livre{% endif %}
+        · {{ dados.inicio|data }} a {{ dados.fim|data }}.
         Cada célula conta <strong>servidores atendidos</strong>, não peças.</p>
     </div>
-    {# O exercício era só pela URL (`?exercicio=`). Formulário GET comum: troca
-       sem JavaScript, e o endereço continua sendo o que se compartilha. #}
-    <form method="get" action="/epis/relatorios" class="ao-lado filtro-inline">
-      <label for="exercicio">Exercício</label>
-      <select id="exercicio" name="exercicio">
-        {% for a in exercicios %}
-        <option value="{{ a }}"{{ ' selected' if a == exercicio }}>{{ a }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="secundario">Ver</button>
-    </form>
   </div>
+
+  {# O recorte. O exercício era só pela URL (`?exercicio=`) e continua sendo o
+     atalho (01/01 a 31/12); "Período livre" abre as duas datas (fatia D, até
+     cinco anos). Formulário GET comum: troca sem JavaScript, e o endereço
+     continua sendo o que se compartilha. Sem JavaScript as datas ficam à
+     vista, e o servidor dá preferência ao ano escolhido no seletor. #}
+  <form method="get" action="/epis/relatorios" class="cartao filtros">
+    <div class="linha-campos">
+      <div><label for="exercicio">Recorte</label>
+        <select id="exercicio" name="exercicio">
+          {% for a in exercicios %}
+          <option value="{{ a }}"{{ ' selected' if a == exercicio }}>Exercício {{ a }}</option>
+          {% endfor %}
+          <option value="livre"{{ ' selected' if not exercicio }}>Período livre</option>
+        </select></div>
+      <div data-mostra-quando="exercicio=livre"><label for="f-inicio">De</label>
+        <input id="f-inicio" type="date" name="inicio" value="{{ dados.inicio if not exercicio else '' }}"></div>
+      <div data-mostra-quando="exercicio=livre"><label for="f-fim">Até</label>
+        <input id="f-fim" type="date" name="fim" value="{{ dados.fim if not exercicio else '' }}"></div>
+    </div>
+    <div class="acoes">
+      <button type="submit" class="secundario">Ver</button>
+    </div>
+  </form>
 
   {% if suprime %}
   {# O FATO fica: quem lê estes números precisa saber, ao lê-los, que há células
@@ -82,6 +96,70 @@
   </div>
   {% endif %}
 
+  {# Fatia D — o total do período (o legado somava as quantidades; aqui a soma
+     sai das entregas válidas: o estorno e a linha estornada ficam fora). Com
+     menos de cinco servidores atendidos o próprio total é a célula pequena. #}
+  <div class="grade grade-kpi">
+    <div class="kpi">
+      <div class="rotulo">Peças entregues</div>
+      <div class="medida"><span class="valor">{{ total_entregue }}</span>
+        <span class="nota">soma das quantidades, sem os estornos</span></div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Servidores atendidos</div>
+      <div class="medida"><span class="valor">{{ total_servidores }}</span>
+        <span class="nota">pessoas distintas no período</span></div>
+    </div>
+  </div>
+
+  {# Os blocos novos são barras (`ui.distribuicao`), e não tabelas: cabem a
+     360px sem rolar de lado, e as tabelas de número desta tela são só as duas
+     de `coluna-fixa` (P8). #}
+  <div class="grade grade-2">
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Entregue por EPI</h2>
+        {% call ui.info('ranking-epi', 'como este ranking é ordenado') %}
+          <p>Do EPI que mais saiu para o que menos saiu, pela soma das
+            <strong>peças</strong> entregues; o nome é o do catálogo no dia da
+            entrega.</p>
+          <p>Onde o EPI foi entregue a menos de {{ limiar }} servidores, peças e
+            servidores saem como <span class="mono">—</span> e a linha vai para o
+            <strong>fim</strong>: no meio do ranking, a posição dela diria quanto
+            ela esconde.</p>
+        {% endcall %}
+        <span class="contador">{{ ranking_epi|length }}</span>
+      </div>
+      {% if ranking_epi|length %}
+      <p class="discreto sem-margem">À direita, as <strong>peças
+        entregues</strong>; em cinza, ao lado do nome, os <strong>servidores
+        atendidos</strong>.</p>
+      {% endif %}
+      {{ ui.distribuicao(barras_epi.valores, limiar,
+                         'Nenhuma entrega ' ~ recorte_texto ~ '.', barras_epi.notas) }}
+    </section>
+
+    <section class="cartao">
+      <div class="titulo-cartao">
+        <h2>Entregue por cargo</h2>
+        {% call ui.info('leitura-cargo', 'de onde vem o cargo e por que há traço') %}
+          <p>O cargo é o do servidor <strong>no dia da entrega</strong>, congelado
+            na ficha: quem mudou de cargo depois continua contado no de antes.</p>
+          <p>Cargo raro aponta a pessoa: com menos de {{ limiar }} servidores a
+            célula sai como <span class="mono">—</span> para quem não vê dados
+            nominais.</p>
+        {% endcall %}
+        <span class="contador">{{ por_cargo|length }}</span>
+      </div>
+      {% if por_cargo|length %}
+      <p class="discreto sem-margem">À direita, <strong>servidores
+        atendidos</strong>; em cinza, ao lado do nome, as <strong>peças
+        entregues</strong>.</p>
+      {% endif %}
+      {{ ui.distribuicao(por_cargo, limiar, 'Nenhuma entrega ' ~ recorte_texto ~ '.', pecas_cargo) }}
+    </section>
+  </div>
+
   <div class="grade grade-2">
     <section class="cartao">
       <div class="titulo-cartao">
@@ -101,7 +179,7 @@
         entregues</strong>.</p>
       {% endif %}
       {{ ui.distribuicao(por_categoria, limiar,
-                         'Nenhuma entrega no exercício.', pecas_categoria) }}
+                         'Nenhuma entrega ' ~ recorte_texto ~ '.', pecas_categoria) }}
     </section>
 
     <section class="cartao">
@@ -154,15 +232,15 @@
         </tr>
         {% endfor %}
       {% else %}
-      {# A janela desta tela é o exercício inteiro e nada mais — `?exercicio=` na
-         URL, com o ano corrente por padrão. Vazio aqui quase nunca é "não houve
-         entrega": é entrega lançada noutro ano, e sem dizê-lo alguém conclui que
-         o módulo não registrou nada. #}
+      {# A janela desta tela é o recorte do alto — o exercício corrente por
+         padrão. Vazio aqui quase nunca é "não houve entrega": é entrega lançada
+         noutro período, e sem dizê-lo alguém conclui que o módulo não
+         registrou nada. #}
       {{ ui.vazio_de_lista(
-           'Nenhuma entrega em ' ~ exercicio ~ '.',
-           'A janela é o exercício inteiro, de ' ~ dados.inicio|data ~ ' a '
-           ~ dados.fim|data ~ ', pela data da entrega. Para ver outro ano, escolha
-            o exercício no alto da página.', 2) }}
+           'Nenhuma entrega ' ~ recorte_texto ~ '.',
+           'A janela vai de ' ~ dados.inicio|data ~ ' a '
+           ~ dados.fim|data ~ ', pela data da entrega. Para ver outro período,
+            troque o recorte no alto da página.', 2) }}
       {% endfor %}
     </table>
   </section>
@@ -208,7 +286,7 @@
            recebido em janeiro cai no exercício seguinte, e é isso que faz esta
            tabela parecer vazia com o almoxarifado cheio. #}
         {{ ui.vazio_de_lista(
-             'Nenhum lote recebido em ' ~ exercicio ~ '.',
+             'Nenhum lote recebido ' ~ recorte_texto ~ '.',
              'Conta a data de ENTRADA do lote, de ' ~ dados.inicio|data ~ ' a '
              ~ dados.fim|data ~ ' — não a do empenho nem a da entrega. Lote
               empenhado em dezembro e recebido em janeiro aparece no exercício
@@ -233,6 +311,26 @@
       {{ ui.distribuicao(recusas_unidade, limiar, 'Nenhuma recusa registrada.') }}
     </section>
   </div>
+
+  {# Fatia D — devoluções e extravios. O extravio sai do motivo CODIFICADO da
+     ficha, que só existe a partir da migração 0015: registro antigo tem o
+     motivo nulo e não entra (não se adivinha motivo de texto livre). #}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Devoluções e extravios</h2>
+      {% call ui.info('devolucoes-extravios', 'o que este quadro conta') %}
+        <p><strong>Devoluções</strong> são os registros de devolução da ficha;
+          <strong>extravios informados</strong> são os registros cujo motivo
+          codificado é “Extraviado”.</p>
+        <p>Registros anteriores ao motivo codificado não têm motivo e não
+          entram como extravio. Estornos e registros estornados ficam fora, como
+          em toda a tela.</p>
+      {% endcall %}
+      <span class="contador">{{ movimentos|length }}</span>
+    </div>
+    {{ ui.distribuicao(barras_movimentos.valores, limiar,
+                       'Nenhuma devolução ou extravio ' ~ recorte_texto ~ '.', barras_movimentos.notas) }}
+  </section>
 
   <div class="aviso aviso-info">
     <strong>A contagem das recusas sai da trilha de auditoria</strong>, e não das

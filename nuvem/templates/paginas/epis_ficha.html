@@ -98,6 +98,16 @@
   </div>
   {% endif %}
 
+  {% if comunicada and comunicada.aberta and comunicada.link_troca %}
+  {# Logo depois de comunicar (fatia A): o pedido de troca já sai preenchido
+     com o item, o tamanho e o motivo — e fica ligado à comunicação. #}
+  <div class="aviso aviso-info" role="status">
+    <strong>Precisa de outro equipamento?</strong> O pedido de troca já sai
+    preenchido com o item, o tamanho e o motivo que você comunicou.
+    <a class="botao secundario compacto" href="{{ comunicada.link_troca }}">Pedir a troca</a>
+  </div>
+  {% endif %}
+
   {% if titular %}
   {# A VISÃO DO TITULAR — o que ele recebeu e o que ELE precisa fazer. #}
   <div class="grade-resumo">
@@ -249,12 +259,18 @@
           {# a lotação é a do SERVIDOR no dia da entrega, e por isso mora na
              linha do equipamento, com rótulo — colada ao nome do operador em
              "Entregou" ela se lia como a unidade de quem entregou #}
-          {% if not titular and r.unidade_snapshot %}<span class="quebra discreto">lotação na entrega: {{ r.unidade_snapshot }}</span>{% endif %}</td>
+          {% if not titular and r.unidade_snapshot %}<span class="quebra discreto">lotação na entrega: {{ r.unidade_snapshot }}</span>{% endif %}
+          {# fatia C (Decisão 4): o PDF de orientação CONGELADO na entrega — o
+             que valia no dia, mesmo que o catálogo já tenha trocado o arquivo #}
+          {% if r.orientacao_anexo_id %}<span class="quebra"><a href="/epis/fichas/registros/{{ r.id }}/orientacao">Orientação (PDF)</a></span>{% endif %}</td>
         <td data-coluna="Data">{{ r.data_evento|data }}
           {% if r.previsao_troca and r.tipo == 'ENTREGA' and not l.estornado %}
           <span class="quebra discreto">troca: {{ r.previsao_troca|data }}</span>
           {% endif %}</td>
         <td data-coluna="{{ 'O que foi' if titular else 'Evento' }}">{{ ui.pilula_ficha(r.tipo) }}
+          {% if l.sem_treinamento_confirmado and not titular %}
+          <span class="quebra"><span class="pilula alerta">entregue sem treinamento em vigor (confirmado)</span></span>
+          {% endif %}
           {% if l.estornado %}
           <span class="quebra"><span class="pilula erro"
             title="{{ l.estornado_por.motivo }}">{{ 'registro corrigido' if titular else 'estornado pelo nº ' ~ l.estornado_por.id }}</span></span>
@@ -262,7 +278,8 @@
           {% if l.estorna and not titular %}
           <span class="quebra discreto">estorna o nº {{ l.estorna.id }}</span>
           {% endif %}
-          {% if not titular %}<span class="quebra discreto mono">nº {{ r.id }}</span>{% endif %}</td>
+          {% if not titular %}<span class="quebra discreto mono">nº {{ r.id }}</span>{% endif %}
+          {% include "partes/epi_comunicacao_linha.html" %}</td>
         <td data-coluna="{{ 'CA' if titular else 'CA · lote' }}" class="mono">{{ r.numero_ca_snapshot or '—' }}
           <span class="quebra">{{ r.validade_ca_snapshot|data or 'sem validade' }}</span>
           {# o lote e o tamanho na mesma célula do CA: são os três dados da
@@ -307,6 +324,21 @@
           {% endif %}
         </td>
         <td class="acao-linha">
+          {% set abertas_da_linha = (comunicacoes[r.id] or [])|selectattr('aberta')|list %}
+          {% if propria and l.vigente and not abertas_da_linha|length %}
+          {{ ui.botao_cadastro('comunicar-' ~ r.id, 'Comunicar', 'secundario compacto') }}
+          {% endif %}
+          {% for x in abertas_da_linha %}
+          {% if x.link_troca %}
+          <a class="botao secundario compacto" href="{{ x.link_troca }}">Pedir a troca</a>
+          {% endif %}
+          {% if x.pode_tratar %}
+          {{ ui.botao_cadastro('tratar-comunicacao-' ~ x.c.id, 'Tratar', 'compacto') }}
+          {% endif %}
+          {% if x.pode_retirar %}
+          {{ ui.botao_cadastro('retirar-comunicacao-' ~ x.c.id, 'Retirar', 'secundario compacto') }}
+          {% endif %}
+          {% endfor %}
           {% if titular %}
           {% if l.troca_vencida_em(hoje) and pode_pedir %}
           <a class="botao secundario compacto" href="/epis/requisicoes/nova?item={{ r.epi_item_id }}">Pedir troca</a>
@@ -359,6 +391,18 @@
                     <input id="data-dev-{{ r.id }}" type="date" name="data_evento"
                            value="{{ hoje }}" min="{{ r.data_evento }}" max="{{ hoje }}">
                   </div>
+                </div>
+                {# o motivo CODIFICADO (fatia A) conta nos indicadores sem ler
+                   texto; vem pré-escolhido quando o titular comunicou #}
+                {% set comunicado = abertas_da_linha[0].c.tipo if abertas_da_linha|length else '' %}
+                <div class="campo">
+                  <label for="cod-dev-{{ r.id }}">Motivo</label>
+                  <select id="cod-dev-{{ r.id }}" name="motivo_codigo" required>
+                    <option value="">Escolha…</option>
+                    {% for codigo, rotulo in motivos_ficha %}
+                    <option value="{{ codigo }}"{{ ui.sel(comunicado, codigo) }}>{{ rotulo }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
                 <div class="campo">
                   <label for="mot-dev-{{ r.id }}">Por que voltou</label>
@@ -438,6 +482,8 @@
    `.tela`: o diálogo é camada, não bloco da coluna. O tipo é conferido pelos
    BYTES no servidor (PDF, PNG ou JPEG), e não pela extensão nem pelo que o
    navegador diz — um texto chamado `falso.pdf` era guardado como prova. #}
+{% include "partes/epi_comunicacao_popups.html" %}
+
 {% if pode_entregar and not titular %}
 {% for l in pendentes %}
 {% set r = l.registro %}

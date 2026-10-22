@@ -41,7 +41,7 @@ export const CATEGORIAS_PROCESSO = [
 // Categoria não é rótulo: é ela que decide QUANDO o arquivo pode ser
 // eliminado (`docs/POLITICA_RETENCAO.md` §2.1) — daí RUBRICA_INSTRUTOR ter
 // nome próprio em vez de 'FOTO'.
-export const CATEGORIAS_EPI = ["MANUAL_EPI", "FICHA_EPI"] as const;
+export const CATEGORIAS_EPI = ["MANUAL_EPI", "FICHA_EPI", "EPI_CATALOGO"] as const;
 export const CATEGORIAS_CERTIFICADOS = ["RUBRICA_INSTRUTOR", "LISTA_PRESENCA", "CERTIFICADO"] as const;
 export const CATEGORIAS_ACIDENTES = ["CAT_SP", "RELATORIO_INVESTIGACAO", "EVIDENCIA_ACIDENTE"] as const;
 

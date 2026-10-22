@@ -274,6 +274,22 @@ export const ROTULO_EVENTO: Record<string, string> = {
   EPI_ITEM_RESERVA_SOLTA: "Reserva do item solta",
   EPI_ITEM_SEM_ESTOQUE: "Item do pedido sem estoque",
   EPI_ITEM_ENTREGUE: "Item do pedido entregue",
+  // --- EPI: paridade com o IntegraSST (22/10/2026, migração 0015) ---
+  // A: o titular comunica o EPI que está com ele (texto neutro — Decisão 5)
+  EPI_COMUNICACAO_REGISTRADA: "Situação do EPI comunicada pelo titular",
+  EPI_COMUNICACAO_RETIRADA: "Comunicação do titular retirada",
+  EPI_COMUNICACAO_TRATADA: "Comunicação do titular tratada pela equipe",
+  // B: o termo NR-06 declarado por quem envia o pedido
+  EPI_REQUISICAO_TERMO_ACEITO: "Termo NR-06 declarado no envio do pedido",
+  // C: foto e PDF de orientação do catálogo
+  EPI_ITEM_IMAGEM_ENVIADA: "Foto do EPI enviada ao catálogo",
+  EPI_ITEM_ORIENTACAO_ENVIADA: "Orientação (PDF) do EPI enviada ao catálogo",
+  // E: treinamento exigido pelo EPI (avisa, não bloqueia — Decisão 2)
+  EPI_ITEM_TREINAMENTO_VINCULADO: "Treinamento exigido vinculado ao EPI",
+  EPI_ITEM_TREINAMENTO_DESVINCULADO: "Treinamento exigido desvinculado do EPI",
+  EPI_SEM_TREINAMENTO_CONFIRMADO: "Entrega sem treinamento em vigor confirmada",
+  // F: e-mail do pedido (enfileirado na caixa de saída)
+  EPI_EMAIL_ENFILEIRADO: "E-mail do pedido de EPI posto na fila",
 };
 
 /** `str.capitalize()` do Python: primeira maiúscula, o resto minúsculo. */

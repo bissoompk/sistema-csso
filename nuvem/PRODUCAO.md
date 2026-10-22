@@ -38,6 +38,7 @@ Site configuration > Environment variables. Marque as secretas como *secret*
 | `CSSO_URL_PUBLICA` | a mesma URL passada ao `producao-iniciar` (recuo; o que vale é o parâmetro do banco) | recomendada |
 | `CSSO_CONVERSOR_PDF_URL`, `CSSO_CONVERSOR_PDF_USUARIO`, `CSSO_CONVERSOR_PDF_SENHA` | o conversor de PDF do modelo enviado (§2.1) | não (sem ele, o modelo enviado sai em Word) |
 | `CSSO_SMTP_URL` (secret), `CSSO_EMAIL_REMETENTE`, `CSSO_EMAIL_RESPONDER_PARA` | o envio de e-mail (§2.2) | não (sem elas os pedidos de envio ficam na fila) |
+| `CSSO_EPI_EMAIL` (`sim` liga; padrão desligado), `CSSO_EPI_EMAIL_SETOR` | e-mail do pedido de EPI: aviso ao setor na abertura e ao requerente na abertura e na decisão (paridade com o IntegraSST, 22/10/2026) | não (desligado, só o sino avisa) |
 | `CSSO_COOKIE_SEGURO` | `auto` (padrão) ou `sim`; **nunca** `nao` (produção recusa subir)² | não |
 | `CSSO_SESSAO_HORAS` (12), `CSSO_SESSAO_INATIVIDADE_MINUTOS` (60; 0 desliga), `CSSO_MAX_TENTATIVAS`, `CSSO_BLOQUEIO_MINUTOS`, `CSSO_MAX_FALHAS_IP`, `CSSO_JANELA_IP_MINUTOS`, `CSSO_LOG_RETENCAO_DIAS`, `CSSO_EPI_LOCAL_RETIRADA`, `CSSO_FUSO_EXIBICAO` | padrões servem | não |
 

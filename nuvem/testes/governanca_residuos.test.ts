@@ -223,6 +223,8 @@ describe("D9: o ato acha a linha pelo alcance DELE", () => {
         protocolo: "EPI-2026-9001",
         numero: 9001,
         ano: 2026,
+        // pedido montado à mão, fora do envio: não passa pelo termo NR-06 (0015)
+        termo_exigido: false,
       })
       .returning();
     const tec = await criarUsuario(amb.db, { login: "tec_a", perfis: ["tecnico_seguranca"], campus_id: A });

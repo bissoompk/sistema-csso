@@ -79,8 +79,8 @@ describe("numeracao", () => {
       // só o número importa: FKs e travas desligadas nesta transação de teste
       await tx.execute(sql`SET LOCAL session_replication_role = replica`);
       await tx.execute(
-        sql`INSERT INTO epi_requisicao (protocolo, numero, ano, servidor_id, solicitado_por_id, entrou_no_estado_em, criado_em, estado, enviada_em)
-            VALUES ('EPI-2060-0002', 2, 2060, 999999, 999999, now(), now(), 'ENVIADA', now())`,
+        sql`INSERT INTO epi_requisicao (protocolo, numero, ano, servidor_id, solicitado_por_id, entrou_no_estado_em, criado_em, estado, enviada_em, termo_exigido)
+            VALUES ('EPI-2060-0002', 2, 2060, 999999, 999999, now(), now(), 'ENVIADA', now(), false)`,
       );
     });
     const r = await naTransacao(async (tx) => [

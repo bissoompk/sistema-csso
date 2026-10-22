@@ -55,6 +55,22 @@ type EpiItem = typeof epi_item.$inferSelect;
 export const SEM_UNIDADE = "(sem unidade)";
 export const SEM_CAMPUS = "(sem campus)";
 export const SEM_EMPENHO = "(sem empenho)";
+export const SEM_CARGO = "(sem cargo)";
+export const SEM_NOME_EPI = "(sem nome)";
+export const MOVIMENTO_DEVOLUCAO = "Devoluções";
+export const MOVIMENTO_EXTRAVIO = "Extravios informados";
+
+/**
+ * Fatia D: o período livre de `/epis/relatorios` vai até cinco anos. Mais do
+ * que isso a tela deixa de ser indicador e vira levantamento — e a leitura da
+ * lotação, uma consulta por (servidor, dia), cresce com a janela.
+ */
+export const ANOS_MAXIMOS_DO_PERIODO = 5;
+
+/** O último dia aceito como fim de um período que começa em `inicio`. */
+export function ultimo_dia_do_periodo(inicio: string): string {
+  return datas_br.somar_dias(datas_br.somar_meses(inicio, 12 * ANOS_MAXIMOS_DO_PERIODO), -1);
+}
 
 // Os dois eventos que registram uma negativa de EPI, e é preciso somar os dois.
 // `EPI_ITEM_RECUSADO` é a recusa de item de requisição (fatia 4);
@@ -218,6 +234,15 @@ export async function entregas_do_mes(tx: Executor, quando: string | null = null
 }
 
 async function _entregas_validas(tx: Executor, inicio: string, fim: string): Promise<EpiFichaRegistro[]> {
+  return (await _registros_validos(tx, inicio, fim)).filter((r) => r.tipo === "ENTREGA");
+}
+
+/**
+ * Os registros da ficha na janela que valem como fato: sem a linha de ESTORNO
+ * e sem a linha que um estorno anulou. Fatia D: as devoluções e os extravios
+ * saem daqui também, com a mesma regra das entregas.
+ */
+async function _registros_validos(tx: Executor, inicio: string, fim: string): Promise<EpiFichaRegistro[]> {
   const registros = await tx
     .select()
     .from(epi_ficha_registro)
@@ -232,7 +257,7 @@ async function _entregas_validas(tx: Executor, inicio: string, fim: string): Pro
         .where(and(eq(epi_ficha_registro.tipo, "ESTORNO"), isNotNull(epi_ficha_registro.registro_estornado_id)))
     ).map((r) => r.id),
   );
-  return registros.filter((r) => r.tipo === "ENTREGA" && !estornados.has(r.id));
+  return registros.filter((r) => r.tipo !== "ESTORNO" && !estornados.has(r.id));
 }
 
 // =====================================================================
@@ -310,7 +335,21 @@ export class LinhaEmpenho {
 export interface Relatorio {
   inicio: string;
   fim: string;
+  /** Fatia D: peças entregues no período (soma das quantidades de ENTREGA válidas). */
+  total_entregue: number;
+  /** Fatia D: servidores distintos atendidos no período — o que decide se o total aparece. */
+  total_servidores: number;
   por_categoria: Celulas;
+  /** Fatia D: o ranking por EPI, pelo nome congelado na entrega (`nome_epi_snapshot`). */
+  por_epi: Celulas;
+  /** Fatia D: a distribuição por cargo, pelo cargo congelado na entrega (`cargo_snapshot`). */
+  por_cargo: Celulas;
+  /**
+   * Fatia D: devoluções (tipo DEVOLUCAO) e extravios (motivo codificado
+   * EXTRAVIADO, gravado a partir da 0015; os registros antigos têm o motivo nulo
+   * e não entram). Mesma célula: servidores distintos e peças.
+   */
+  movimentos: Celulas;
   /**
    * `{campus: {unidade: servidores}}` — a hierarquia inteira, porque o total do
    * campus é a MARGEM das unidades dele e as duas têm de ser suprimidas juntas.
@@ -340,8 +379,15 @@ export async function relatorio(
   const fim = opcoes.fim ?? hoje();
   const inicio = opcoes.inicio ?? `${fim.slice(0, 4)}-01-01`;
 
-  const entregas = await _entregas_validas(tx, inicio, fim);
+  const validos = await _registros_validos(tx, inicio, fim);
+  const entregas = validos.filter((r) => r.tipo === "ENTREGA");
   const por_categoria = _celulas(entregas, (r) => r.categoria_snapshot || "(sem categoria)");
+  const por_epi = _celulas(entregas, (r) => r.nome_epi_snapshot || SEM_NOME_EPI);
+  const por_cargo = _celulas(entregas, (r) => (r.cargo_snapshot || "").trim() || SEM_CARGO);
+  const movimentos = _celulas(
+    validos.filter((r) => r.tipo === "DEVOLUCAO" || r.motivo_codigo === "EXTRAVIADO"),
+    (r) => (r.tipo === "DEVOLUCAO" ? MOVIMENTO_DEVOLUCAO : MOVIMENTO_EXTRAVIO),
+  );
 
   const onde = await _lotacoes(tx, entregas);
   const por_campus = new Map<string, Map<string, Set<number>>>();
@@ -363,7 +409,12 @@ export async function relatorio(
   return {
     inicio,
     fim,
+    total_entregue: entregas.reduce((soma, r) => soma + r.quantidade, 0),
+    total_servidores: new Set(entregas.map((r) => r.servidor_id)).size,
     por_categoria,
+    por_epi,
+    por_cargo,
+    movimentos,
     por_campus: campus_ordenado,
     empenhos: await custo_por_empenho(tx, inicio, fim),
     recusas_por_motivo: recusas_motivo,

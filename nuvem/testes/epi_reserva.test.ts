@@ -126,8 +126,8 @@ async function pedido_analisado(
     servidor: o.servidor ?? cen.servidor,
     descricao_atividade: "Manipulação de reagentes no laboratório de análises",
   });
-  await servico.adicionar_item(tx, u, requisicao, { item: cen.item, quantidade: o.quantidade ?? 2, tamanho: "M" });
-  await servico.enviar(tx, u, requisicao);
+  await servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: o.quantidade ?? 2, tamanho: "M" });
+  await servico.enviar(tx, u, requisicao, { termo_aceito: true });
   await servico.iniciar_analise(tx, u, requisicao);
   const linha = (await itens(tx, requisicao))[0]!;
   await servico.aprovar_item(tx, u, linha);
@@ -535,8 +535,8 @@ describe("as transições da reserva", () => {
         servidor: cen.servidor,
         descricao_atividade: "Manipulação de reagentes",
       });
-      await servico.adicionar_item(tx, u, requisicao, { item: cen.item, quantidade: 1, tamanho: "M" });
-      await servico.enviar(tx, u, requisicao);
+      await servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "M" });
+      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
       const solicitada = (await itens(tx, requisicao))[0]!;
       for (const destino of ["RESERVADO", "SEM_ESTOQUE"]) {
         await recusa(

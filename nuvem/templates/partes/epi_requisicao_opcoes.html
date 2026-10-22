@@ -18,6 +18,15 @@
 <p class="discreto">Escolha o equipamento para ver quantidade, tamanhos e saldo.</p>
 {% else %}
 
+{# fatia C: a foto do catálogo ajuda quem pede a escolher o equipamento certo,
+   e o PDF de orientação diz como usar, guardar e higienizar #}
+{% if item.imagem_anexo_id or item.orientacao_anexo_id %}
+<div class="epi-item-arquivos">
+  {% if item.imagem_anexo_id %}<img class="epi-miniatura grande" src="/epis/catalogo/{{ item.id }}/imagem?v={{ item.imagem_anexo_id }}" alt="Foto de {{ item.nome }}" width="72" height="72" loading="lazy">{% endif %}
+  {% if item.orientacao_anexo_id %}<a href="/epis/catalogo/{{ item.id }}/orientacao?v={{ item.orientacao_anexo_id }}">Orientação (PDF)</a>{% endif %}
+</div>
+{% endif %}
+
 <div class="linha-campos">
   <div class="campo">
     <label for="quantidade">Quantidade</label>
@@ -49,6 +58,23 @@
   </div>
 </div>
 
+{# FATIA B — O MOTIVO DESTE ITEM (o "motivo" de cada linha do legado). A
+   finalidade do pedido continua existindo; daqui sai só a SUGESTÃO, marcada
+   já escolhida porque é o caso comum — e quem pede confere. O serviço recusa o
+   item sem motivo. #}
+{% set motivo_escolhido = dg.get('motivo') or motivo_sugerido|default('') %}
+<div class="campo">
+  <label for="motivo">Motivo do item</label>
+  <select id="motivo" name="motivo" required aria-describedby="dica-motivo">
+    <option value="">—</option>
+    {% for codigo, rotulo in motivos_item %}
+    <option value="{{ codigo }}"{{ ' selected' if motivo_escolhido == codigo }}>{{ rotulo }}</option>
+    {% endfor %}
+  </select>
+  <span class="dica" id="dica-motivo">{% if motivo_sugerido|default('') and not dg.get('motivo') %}Sugerido pela
+    finalidade do pedido — confira.{% else %}Primeira entrega ou troca, e por quê.{% endif %}</span>
+</div>
+
 <div id="saldo-do-item">
   {% include "partes/epi_requisicao_saldo.html" %}
 </div>
@@ -77,9 +103,12 @@
 {% endif %}
 
 {% if item.exige_treinamento %}
+{# fatia E: quem analisa vê só se a pessoa tem ou não certificado em vigor do
+   treinamento que o catálogo exige — nunca o certificado #}
 <div class="aviso aviso-alerta">
-  <strong>Este item exige treinamento comprovado.</strong> O cruzamento
-  automático depende do módulo de Treinamentos; até lá, quem analisar confere.
+  <strong>Este item exige treinamento.</strong> Quem analisar o pedido confere
+  se a pessoa tem certificado em vigor; sem ele, a entrega ainda pode sair, com
+  a confirmação de quem entrega registrada.
 </div>
 {% endif %}
 

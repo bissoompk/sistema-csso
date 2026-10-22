@@ -44,12 +44,14 @@ import {
 } from './dominios';
 import {
   epi_categoria,
+  epi_comunicacao_titular,
   epi_entrada_estoque,
   epi_ficha_registro,
   epi_item,
   epi_motivo_recusa,
   epi_requisicao,
   epi_requisicao_item,
+  epi_item_treinamento,
 } from './epi';
 import {
   campus,
@@ -491,6 +493,23 @@ export const epi_requisicao_item_relacoes = relations(epi_requisicao_item, ({ on
   motivo_recusa: one(epi_motivo_recusa, {
     fields: [epi_requisicao_item.motivo_recusa_id],
     references: [epi_motivo_recusa.id],
+  }),
+}));
+
+// 0015 (paridade com o IntegraSST)
+export const epi_comunicacao_titular_relacoes = relations(epi_comunicacao_titular, ({ one }) => ({
+  registro: one(epi_ficha_registro, {
+    fields: [epi_comunicacao_titular.registro_id],
+    references: [epi_ficha_registro.id],
+  }),
+  servidor: one(servidor, { fields: [epi_comunicacao_titular.servidor_id], references: [servidor.id] }),
+}));
+
+export const epi_item_treinamento_relacoes = relations(epi_item_treinamento, ({ one }) => ({
+  item: one(epi_item, { fields: [epi_item_treinamento.epi_item_id], references: [epi_item.id] }),
+  treinamento: one(treinamento, {
+    fields: [epi_item_treinamento.treinamento_id],
+    references: [treinamento.id],
   }),
 }));
 

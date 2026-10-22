@@ -28,7 +28,9 @@ import { obterConfig } from "../config.js";
 import { dicionario, type Dicionario } from "../dicionario.js";
 import { comMensagem, fragmento, global, pagina, redirecionar } from "../web.js";
 import {
+  epi_comunicacao_titular,
   epi_entrada_estoque,
+  epi_ficha_registro,
   epi_item,
   epi_motivo_recusa,
   epi_requisicao,
@@ -37,7 +39,22 @@ import {
   servidor as tabela_servidor,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
-import { EpiItem as EpiItemDominio, FINALIDADES_REQUISICAO, URGENCIAS_REQUISICAO } from "../dominio/epi.js";
+import {
+  EpiItem as EpiItemDominio,
+  FINALIDADES_REQUISICAO,
+  FINALIDADE_POR_COMUNICACAO,
+  MOTIVOS_ITEM_REQUISICAO,
+  MOTIVO_ITEM_POR_COMUNICACAO,
+  MOTIVO_ITEM_POR_FINALIDADE,
+  ROTULO_COMUNICACAO_TITULAR,
+  ROTULO_MOTIVO_ITEM,
+  TERMO_NR06_VIGENTE,
+  URGENCIAS_REQUISICAO,
+  texto_termo_nr06,
+  type TipoComunicacaoTitular,
+} from "../dominio/epi.js";
+import { RegraViolada } from "../nucleo/erros.js";
+import { vincular_requisicao } from "../servicos/epi_comunicacao.js";
 import {
   EPI_ITEM_DECIDIDO,
   EPI_REQUISICAO_CANCELAVEL,
@@ -49,6 +66,7 @@ import {
 import * as auditoria from "../servicos/auditoria.js";
 import * as epi_estoque from "../servicos/epi_estoque.js";
 import * as epi_ficha from "../servicos/epi_ficha.js";
+import * as epi_treinamento from "../servicos/epi_treinamento.js";
 import * as identificacao from "../servicos/identificacao.js";
 import * as servico from "../servicos/epi_requisicao.js";
 import * as servico_servidores from "../servicos/servidores.js";
@@ -93,6 +111,27 @@ export function dic(origem: Record<string, unknown> | Map<unknown, unknown> = {}
 // o `{}` do Jinja (`d if ... else {}`, `digitado or {}`): o literal do
 // Nunjucks não tem `.get`, então os templates desta tela usam este vazio
 global("sem_digitado", Object.freeze(dic({})));
+
+// Fatia B (paridade IntegraSST): o motivo de cada item e o termo NR-06 — globais
+// porque a lista de itens também é servida solta, como fragmento HTMX.
+global(
+  "motivos_item",
+  MOTIVOS_ITEM_REQUISICAO.map((cod) => [cod, ROTULO_MOTIVO_ITEM[cod]]),
+);
+global("rotulo_motivo_item", Object.freeze(dic(ROTULO_MOTIVO_ITEM)));
+global("termo_nr06_vigente", TERMO_NR06_VIGENTE);
+global("texto_termo_nr06", texto_termo_nr06);
+
+/** A sugestão do motivo do item a partir da finalidade do pedido (só sugestão). */
+export function motivo_sugerido(finalidade: string | null | undefined): string {
+  return (MOTIVO_ITEM_POR_FINALIDADE as Record<string, string>)[finalidade ?? ""] ?? "";
+}
+
+/** Valor de uma lista fechada, ou vazio — o prefill ignora o que não conhece. */
+function _da_lista(valor: string | null | undefined, lista: readonly string[]): string {
+  const limpo = (valor ?? "").trim();
+  return lista.includes(limpo) ? limpo : "";
+}
 
 // =====================================================================
 // As `@property` do modelo, vestidas para o template
@@ -288,7 +327,7 @@ async function _motivo(tx: Tx, motivo_id: number | null) {
  * discorde do outro (o CA reconferido na data de hoje é a conta que uma cópia
  * esqueceria).
  */
-async function _lotes_e_reservas(tx: Tx, requisicao: RequisicaoTela, dia: string) {
+async function _lotes_e_reservas(tx: Tx, requisicao: RequisicaoTela, dia: string, usuario: UsuarioAtual) {
   const lotes = new Map<number, epi_estoque.LoteDisponivel[]>();
   const reservas = new Map<number, typeof epi_entrada_estoque.$inferSelect>();
   const impedidas = new Map<number, string>();
@@ -304,7 +343,37 @@ async function _lotes_e_reservas(tx: Tx, requisicao: RequisicaoTela, dia: string
       }
     }
   }
-  return { lotes: dic(lotes), reservas: dic(reservas), reservas_impedidas: dic(impedidas) };
+  // Fatia E: "tem ou não tem treinamento em vigor", por linha — só para quem
+  // analisa ou entrega, e numa consulta para a lista inteira (no máximo duas
+  // idas ao banco, nenhuma quando nenhum item exige treinamento)
+  const treinamentos = new Map<number, epi_treinamento.SituacaoTreinamento>();
+  if (usuario.pode("epi.analisar") || usuario.pode("epi.entregar")) {
+    const situacoes = await epi_treinamento.situacoes_de_treinamento(
+      tx,
+      requisicao.itens.map((l) => ({ servidor_id: requisicao.servidor_id, item: l.item })),
+      dia,
+    );
+    for (const l of requisicao.itens) {
+      const s = situacoes.get(epi_treinamento.chave(requisicao.servidor_id, l.item.id));
+      if (s && s.codigo !== "SEM_EXIGENCIA") treinamentos.set(l.id, s);
+    }
+  }
+  // "Separar todos": quantos itens o ato reservaria agora — a MESMA escolha de
+  // lote do serviço (`lote_sugerido`), para o botão não aparecer à toa
+  let separaveis = 0;
+  if (usuario.pode("epi.estoque") && servico.ATENDIVEL.includes(requisicao.estado)) {
+    for (const linha of requisicao.itens) {
+      if (!servico.separavel(linha)) continue;
+      if (servico.lote_sugerido(lotes.get(linha.id) ?? [], servico.quantidade_devida(linha))) separaveis += 1;
+    }
+  }
+  return {
+    separaveis,
+    lotes: dic(lotes),
+    reservas: dic(reservas),
+    reservas_impedidas: dic(impedidas),
+    treinamentos: dic(treinamentos),
+  };
 }
 
 async function _secao_dos_itens(
@@ -316,7 +385,7 @@ async function _secao_dos_itens(
   const tx = c.get("tx");
   const requisicao = (await carregar(tx, requisicao_id))!;
   const dia = hoje();
-  const extras = await _lotes_e_reservas(tx, requisicao, dia);
+  const extras = await _lotes_e_reservas(tx, requisicao, dia, usuario);
   return fragmento(c, "partes/itens_do_pedido.html", {
     usuario,
     requisicao,
@@ -489,7 +558,20 @@ async function _tela_nova(
   const digitado = opcoes.digitado ?? {};
   const item_id = opcoes.item_id ?? _id(String(digitado["item_id"] ?? ""));
   const item = await _item_do_catalogo(tx, item_id);
+  // o pedido de troca que nasce de uma comunicação do titular (fatia A → B)
+  const comunicacao_id = _id(String(digitado["comunicacao_id"] ?? ""));
+  const comunicacao = comunicacao_id === null ? null : await _comunicacao_utilizavel(tx, usuario, comunicacao_id);
   return pagina(c, "paginas/epis_requisicao_nova.html", usuario, {
+    comunicacao: comunicacao
+      ? {
+          id: comunicacao.id,
+          rotulo: ROTULO_COMUNICACAO_TITULAR[comunicacao.tipo as TipoComunicacaoTitular] ?? comunicacao.tipo,
+          criado_em: comunicacao.criado_em,
+        }
+      : null,
+    // pediu-se um vínculo que não vale: a tela avisa que o pedido segue sem ele
+    comunicacao_ignorada: comunicacao_id !== null && !comunicacao,
+    motivo_sugerido: motivo_sugerido(String(digitado["finalidade"] ?? "ROTINA")),
     proprio,
     eu: eu ?? null,
     // a lista de servidores só existe para quem pede por outro
@@ -507,6 +589,75 @@ async function _tela_nova(
   });
 }
 
+/**
+ * A comunicação do titular que pode virar pedido de troca POR ESTA CONTA: aberta
+ * (nem retirada, nem tratada, sem pedido) e de um servidor para quem a conta
+ * pode pedir (`exigir_requerente_permitido`). Qualquer outra coisa é `null` —
+ * sem dizer qual das condições falhou, para não confirmar a quem não pode que
+ * a comunicação existe.
+ */
+async function _comunicacao_utilizavel(tx: Tx, usuario: UsuarioAtual, comunicacao_id: number) {
+  const [com] = await tx.select().from(epi_comunicacao_titular).where(eq(epi_comunicacao_titular.id, comunicacao_id));
+  if (!com || com.retirada_em !== null || com.tratada_em !== null || com.requisicao_id !== null) return null;
+  try {
+    await servico.exigir_requerente_permitido(tx, usuario, { id: com.servidor_id });
+  } catch (erro) {
+    if (erro instanceof PermissaoNegada || erro instanceof RegraViolada) return null;
+    throw erro;
+  }
+  return com;
+}
+
+/**
+ * O pedido de troca já preenchido (fatia B): `item`, `tamanho`, `motivo`,
+ * `finalidade` e `comunicacao` na query. Tudo é conferido — valor fora da
+ * lista, item inativo ou tamanho que o item não tem são IGNORADOS (o campo
+ * vem vazio, como sem o parâmetro). Com `comunicacao` válida, o que não veio
+ * explícito sai dela: o servidor, o item e o tamanho da linha da ficha, e o
+ * motivo e a finalidade do tipo comunicado.
+ */
+async function _prefill(c: Ctx, usuario: UsuarioAtual): Promise<Record<string, string>> {
+  const tx = c.get("tx");
+  const digitado: Record<string, string> = {};
+  const comunicacao_id = _id(c.req.query("comunicacao"));
+  let base: { servidor_id?: number; item_id?: number; tamanho?: string | null; tipo?: TipoComunicacaoTitular } = {};
+  if (comunicacao_id !== null) {
+    // o id fica no formulário mesmo se não valer: a tela diz que foi ignorado
+    digitado["comunicacao_id"] = String(comunicacao_id);
+    const com = await _comunicacao_utilizavel(tx, usuario, comunicacao_id);
+    if (com) {
+      const [registro] = await tx
+        .select({ epi_item_id: epi_ficha_registro.epi_item_id, tamanho: epi_ficha_registro.tamanho_snapshot })
+        .from(epi_ficha_registro)
+        .where(eq(epi_ficha_registro.id, com.registro_id));
+      base = {
+        servidor_id: com.servidor_id,
+        item_id: registro?.epi_item_id,
+        tamanho: registro?.tamanho ?? null,
+        tipo: com.tipo as TipoComunicacaoTitular,
+      };
+    }
+  }
+  if (base.servidor_id !== undefined) digitado["servidor_id"] = String(base.servidor_id);
+
+  const finalidade =
+    _da_lista(c.req.query("finalidade"), FINALIDADES_REQUISICAO) ||
+    (base.tipo ? FINALIDADE_POR_COMUNICACAO[base.tipo] : "");
+  if (finalidade) digitado["finalidade"] = finalidade;
+  const motivo =
+    _da_lista(c.req.query("motivo"), MOTIVOS_ITEM_REQUISICAO) || (base.tipo ? MOTIVO_ITEM_POR_COMUNICACAO[base.tipo] : "");
+  if (motivo) digitado["motivo"] = motivo;
+
+  const item = await _item_do_catalogo(tx, _id(c.req.query("item")) ?? base.item_id ?? null);
+  if (item && item.ativo) {
+    digitado["item_id"] = String(item.id);
+    const tamanhos = EpiItemDominio.lista_de_tamanhos(item);
+    const tamanho = _da_lista(c.req.query("tamanho") || base.tamanho || "", tamanhos);
+    if (tamanho) digitado["tamanho"] = tamanho;
+  }
+  return digitado;
+}
+
 rotas.get(NOVA, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.requisitar");
@@ -514,8 +665,8 @@ rotas.get(NOVA, async (c) => {
     q: c.req.query("q") ?? "",
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
-    // "Pedir troca", da ficha do titular, chega com o item já escolhido
-    item_id: _id(c.req.query("item")),
+    // "Pedir troca", da ficha do titular, chega com o item (e o resto) já escolhido
+    digitado: await _prefill(c, usuario),
   });
 });
 
@@ -548,6 +699,8 @@ rotas.get("/epis/requisicoes/item-opcoes", async (c) => {
     usuario,
     item: item ? vestir_item(item) : null,
     hoje: hoje(),
+    // a sugestão do motivo do item sai da finalidade escolhida (fatia B)
+    motivo_sugerido: motivo_sugerido(c.req.query("finalidade")),
   });
 });
 
@@ -595,7 +748,11 @@ rotas.post(FILA, async (c) => {
     quantidade: f.texto("quantidade"),
     tamanho: f.texto("tamanho"),
     justificativa: f.texto("justificativa"),
+    motivo: f.texto("motivo"),
+    comunicacao_id: f.texto("comunicacao_id"),
+    // o termo NR-06 NÃO volta marcado na recusa: declarar é ato de quem envia
   };
+  const termo_aceito = _marcado(f.texto("termo_aceito"));
   const acao = f.texto("acao");
   const recusar = (erro: string) => _tela_nova(c, usuario, { q, erro, digitado });
 
@@ -619,6 +776,8 @@ rotas.post(FILA, async (c) => {
   const quantas = item ? _inteiro(digitado.quantidade) : null;
   if (item && quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
 
+  const comunicacao_id = _id(digitado.comunicacao_id);
+  let sem_vinculo = false;
   const r = await tentar(c, async (sp) => {
     const requisicao = await servico.criar_rascunho(sp, usuario, {
       servidor,
@@ -629,31 +788,47 @@ rotas.post(FILA, async (c) => {
       urgencia: digitado.urgencia,
       justificativa_urgencia: digitado.justificativa_urgencia,
     });
+    if (comunicacao_id !== null) {
+      // a comunicação que originou o pedido de troca: a recusa do vínculo não
+      // derruba o pedido (o savepoint próprio desfaz só a tentativa)
+      try {
+        await sp.transaction(async (sp2) => {
+          await vincular_requisicao(sp2 as unknown as Tx, comunicacao_id, requisicao);
+        });
+      } catch (erro) {
+        if (!(erro instanceof RegraViolada)) throw erro;
+        sem_vinculo = true;
+      }
+    }
     if (item) {
       await servico.adicionar_item(sp, usuario, requisicao, {
         item,
         quantidade: quantas!,
         tamanho: digitado.tamanho,
         justificativa: digitado.justificativa,
+        motivo: digitado.motivo,
       });
     }
-    if (acao === "enviar") await servico.enviar(sp, usuario, requisicao);
+    if (acao === "enviar") await servico.enviar(sp, usuario, requisicao, { termo_aceito });
     return requisicao;
   });
   if (!r.ok) return recusar(_motivos(r.falha));
+  const aviso_vinculo = sem_vinculo
+    ? " A comunicação de origem não pôde ser ligada a este pedido (já tratada, retirada ou com outro pedido): o pedido segue sem o vínculo."
+    : "";
   if (acao === "enviar") {
     return _volta(
       c,
       _ficha(r.valor.id),
-      `Pedido enviado ao SESMT com o protocolo ${r.valor.protocolo}. Você acompanha a análise por aqui.`,
+      `Pedido enviado ao SESMT com o protocolo ${r.valor.protocolo}. Você acompanha a análise por aqui.` + aviso_vinculo,
     );
   }
   return _volta(
     c,
     _ficha(r.valor.id),
-    item
+    (item
       ? `Rascunho salvo com '${item.nome}'. Acrescente outros itens abaixo e envie quando terminar.`
-      : "Rascunho salvo. Acrescente os itens e envie — o número do pedido só é gerado no envio.",
+      : "Rascunho salvo. Acrescente os itens e envie — o número do pedido só é gerado no envio.") + aviso_vinculo,
   );
 });
 
@@ -740,7 +915,7 @@ async function _tela_ficha(
   const tx = c.get("tx");
   const requisicao = (await carregar(tx, requisicao_id))!;
   const dia = hoje();
-  const extras = await _lotes_e_reservas(tx, requisicao, dia);
+  const extras = await _lotes_e_reservas(tx, requisicao, dia, usuario);
   return pagina(c, "paginas/epis_requisicao_ficha.html", usuario, {
     requisicao,
     itens: requisicao.itens,
@@ -799,6 +974,11 @@ async function _tela_ficha(
     digitado: dic(opcoes.digitado ?? {}),
     item_escolhido: opcoes.item_escolhido ? vestir_item(opcoes.item_escolhido) : null,
     corrigir_item_id: opcoes.corrigir_item_id ?? null,
+    // fatia B: o motivo sugerido para o item novo, e quem declarou o termo
+    motivo_sugerido: motivo_sugerido(requisicao.finalidade),
+    termo_por: requisicao.termo_aceito_por
+      ? (await _nomes_de(tx, [requisicao.termo_aceito_por], { c, usuario })).get(requisicao.termo_aceito_por, "—")
+      : null,
   });
 }
 
@@ -911,6 +1091,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens`, async (c) => {
     quantidade: f.texto("quantidade"),
     tamanho: f.texto("tamanho"),
     justificativa: f.texto("justificativa"),
+    motivo: f.texto("motivo"),
   };
   const recusar = (mensagem: string) =>
     _tela_ficha(c, usuario, requisicao.id, { erro: mensagem, digitado, item_escolhido: item });
@@ -923,6 +1104,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens`, async (c) => {
       quantidade: quantas,
       tamanho: digitado.tamanho,
       justificativa: digitado.justificativa,
+      motivo: digitado.motivo,
     }),
   );
   if (!r.ok) return recusar(_motivos(r.falha));
@@ -944,6 +1126,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}`, async (c) =
     quantidade: f.texto("quantidade"),
     tamanho: f.texto("tamanho"),
     justificativa: f.texto("justificativa"),
+    motivo: f.texto("motivo"),
   };
   const recusar = (mensagem: string) => _tela_ficha(c, usuario, requisicao_id, { erro: mensagem, digitado });
   const quantas = _inteiro(digitado.quantidade);
@@ -953,6 +1136,8 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}`, async (c) =
       quantidade: quantas,
       tamanho: digitado.tamanho,
       justificativa: digitado.justificativa,
+      // campo ausente (formulário antigo) mantém o motivo da linha
+      motivo: digitado.motivo || undefined,
     }),
   );
   if (!r.ok) return recusar(_motivos(r.falha));
@@ -980,13 +1165,16 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/enviar`, async (c) => {
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
-  const r = await tentar(c, (sp) => servico.enviar(sp, usuario, requisicao));
+  const f = await formulario(c);
+  // o termo NR-06 vem DESMARCADO da tela; sem a marca o serviço recusa
+  const termo_aceito = _marcado(f.texto("termo_aceito"));
+  const r = await tentar(c, (sp) => servico.enviar(sp, usuario, requisicao, { termo_aceito }));
   if (!r.ok) return _erro(c, destino, _motivos(r.falha));
   return _volta(
     c,
     destino,
     `Pedido protocolado como ${r.valor.protocolo}. A lotação, o cargo e a ` +
-      "função ficaram congelados como estavam hoje.",
+      "função ficaram congelados como estavam hoje, e a declaração do termo NR-06 ficou registrada.",
   );
 });
 
@@ -1231,6 +1419,54 @@ acao_de_item({
     "outros pedidos e continuam no saldo físico — reserva não é movimento.",
 });
 
+/** "3 × Luva (tamanho M)": o item no recado do "Separar todos". */
+function _item_no_recado(nome: string, tamanho: string | null): string {
+  return `'${nome}'` + (tamanho ? ` (tamanho ${tamanho})` : "");
+}
+
+/** O recado do "Separar todos": quantos saíram e o que ficou, com o motivo. */
+export function recado_da_separacao(r: servico.ResultadoSeparacao): string {
+  const partes: string[] = [];
+  const n = r.separados.length;
+  if (n) {
+    partes.push(
+      `${n === 1 ? "1 item separado" : `${n} itens separados`}: ` +
+        r.separados.map((s) => `${s.quantidade} × ${_item_no_recado(s.nome, s.tamanho)} no lote ${s.lote}`).join("; ") +
+        ". As unidades saíram do disponível dos outros pedidos e continuam no saldo físico.",
+    );
+  } else {
+    partes.push("Nenhum item separado.");
+  }
+  if (r.faltaram.length) {
+    partes.push(
+      `${r.faltaram.length === 1 ? "Faltou 1 item" : `Faltaram ${r.faltaram.length} itens`}, ` +
+        "que continuam como estavam: " +
+        r.faltaram.map((f) => `${_item_no_recado(f.nome, f.tamanho)} — ${f.motivo}`).join("; ") +
+        ".",
+    );
+  }
+  return partes.join(" ");
+}
+
+/**
+ * "Separar todos": a reserva de cada item reservável com lote disponível, num
+ * ato só (um e-mail de retirada, não um por item). Mesma porta e mesmo
+ * alcance da reserva item a item (`epi.estoque`). Sem troca parcial: a
+ * primeira reserva move o envelope para EM_ATENDIMENTO, que mora fora da seção.
+ */
+rotas.post(`${FILA}/:requisicao_id{[0-9]+}/separar-todos`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  _exigir_ato(usuario, "epi.estoque");
+  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.estoque");
+  if (!requisicao) return redirecionar(c, FILA);
+  const destino = _ficha(requisicao.id);
+  const r = await tentar(c, (sp) => servico.reservar_todos(sp, usuario, requisicao));
+  if (!r.ok) return _erro(c, destino, _motivos(r.falha), ANCORA_ITENS);
+  const recado = recado_da_separacao(r.valor);
+  if (!r.valor.separados.length) return _erro(c, destino, recado, ANCORA_ITENS);
+  return _volta(c, destino, recado, ANCORA_ITENS);
+});
+
 /** RESERVADO → SEM_ESTOQUE, com o motivo por escrito. */
 acao_de_item({
   sufixo: "soltar-reserva",
@@ -1276,6 +1512,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/entregar`, as
         entrada,
         quantidade: quantas,
         observacao: f.texto("observacao"),
+        confirmar_sem_treinamento: _marcado(f.texto("confirmar_sem_treinamento")),
       }),
     // a entrega delegada levanta a exceção da FICHA (CA do lote, janela)
     epi_ficha.EntregaBloqueada,

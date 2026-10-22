@@ -13,6 +13,20 @@
 <p class="discreto">Escolha o item para ver tamanhos, lotes e quantidade padrão.</p>
 {% else %}
 
+{# fatia C: a foto do catálogo ajuda a conferir que é o equipamento certo na
+   prateleira; o PDF de orientação vai para a ficha congelado nesta entrega #}
+{% if item.imagem_anexo_id or item.orientacao_anexo_id %}
+<div class="epi-item-arquivos">
+  {% if item.imagem_anexo_id %}
+  <img class="epi-miniatura grande" src="/epis/catalogo/{{ item.id }}/imagem?v={{ item.imagem_anexo_id }}"
+       alt="Foto de {{ item.nome }}" width="72" height="72" loading="lazy">
+  {% endif %}
+  {% if item.orientacao_anexo_id %}
+  <a href="/epis/catalogo/{{ item.id }}/orientacao?v={{ item.orientacao_anexo_id }}">Orientação (PDF)</a>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="linha-campos">
   <div class="campo">
     <label for="quantidade">Quantidade</label>
@@ -114,11 +128,43 @@
 </div>
 {% endif %}
 
-{% if item.exige_treinamento %}
+{# FATIA E (Decisão 2): o treinamento que o catálogo exige, conferido em quem
+   recebe — só "tem ou não tem certificado em vigor"; o certificado (número,
+   data, nota, turma) não chega a esta tela. Avisa e NÃO bloqueia: negar o EPI
+   deixaria a pessoa exposta. Sem a caixa marcada a entrega volta com o aviso;
+   marcada, a confirmação vai para a trilha e para a linha da ficha. A recusa
+   continua possível no cartão de baixo, pelo motivo “Treinamento não
+   comprovado”. `treinamento` só existe quando o servidor já foi escolhido; sem
+   ele, a conferência acontece no envio. #}
+{% set treino = treinamento|default(none) %}
+{% if treino and treino.codigo == 'SEM_TREINAMENTO' %}
+<div class="aviso aviso-alerta" role="status">
+  <span class="pilula erro">sem treinamento em vigor</span>
+  <strong>Quem recebe não tem certificado em vigor</strong> de
+  {% for t in treino.faltam %}{{ t.nome }}{% if not loop.last %}, {% endif %}{% endfor %},
+  que este item exige.
+  <label class="confirmacao-treinamento" for="confirmar_sem_treinamento">
+    <input id="confirmar_sem_treinamento" type="checkbox" name="confirmar_sem_treinamento" value="1"
+      {{- ' checked' if d.confirmar_sem_treinamento == '1' }}>
+    Entrego mesmo sem treinamento em vigor</label>
+  <span class="dica">A confirmação fica registrada com o seu nome. Para não
+    entregar, use a recusa fundamentada abaixo, motivo “Treinamento não
+    comprovado”.</span>
+</div>
+{% elif treino and treino.codigo == 'EM_VIGOR' %}
+<p><span class="pilula ok">treinamento em vigor</span>
+  <span class="discreto">quem recebe tem certificado em vigor do que o item exige.</span></p>
+{% elif treino and treino.codigo == 'SEM_VINCULO' %}
 <div class="aviso aviso-alerta">
-  <strong>Este item exige treinamento comprovado.</strong> O cruzamento
-  automático depende do módulo de Treinamentos; até lá, confira antes de
-  entregar.
+  <strong>Este item exige treinamento, mas o catálogo não diz qual</strong> —
+  o sistema não tem o que conferir. Confira antes de entregar e
+  <a href="/epis/catalogo?item_id={{ item.id }}">vincule o treinamento no catálogo</a>.
+</div>
+{% elif item.exige_treinamento %}
+<div class="aviso aviso-alerta">
+  <strong>Este item exige treinamento.</strong> Escolhido quem recebe, o
+  sistema confere se a pessoa tem certificado em vigor — ao registrar, se não
+  antes.
 </div>
 {% endif %}
 

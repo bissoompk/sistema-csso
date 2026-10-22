@@ -105,7 +105,9 @@
             só acha para quem tem permissão de ler a identificação nominal.</span>
         </div>
 
-        <div class="campo" id="lista-de-servidores">
+        {# trocar quem recebe recarrega o bloco do item (a etiqueta de
+           treinamento depende da pessoa) — `data-ao-trocar-dispara`, csso.js #}
+        <div class="campo" id="lista-de-servidores" data-ao-trocar-dispara="#item_id">
           {# `set` antes do include (o Nunjucks não tem `with`), e não confiança no escopo: o mesmo fragmento é servido solto
              pela rota HTMX da busca, onde não há nada escolhido. #}
           {% set escolhido = servidor_escolhido.id if servidor_escolhido else none %}
@@ -117,12 +119,14 @@
           <label for="item_id">Equipamento</label>
           {# Ao trocar o item, o bloco abaixo é recarregado sozinho: tamanhos,
              lotes e quantidade padrão dependem dele, e recarregar a página
-             inteira perderia o servidor já escolhido. #}
+             inteira perderia o servidor já escolhido. O servidor vai junto
+             (fatia E): com ele, o bloco já diz se a pessoa tem o treinamento
+             que o item exige. #}
           <select id="item_id" name="item_id" required
                   hx-get="/epis/entregas/opcoes"
                   hx-target="#opcoes-do-item"
                   hx-trigger="change"
-                  hx-include="this">
+                  hx-include="this, #servidor_id">
             <option value="">—</option>
             {% for i in itens %}
             <option value="{{ i.id }}" {% if item and item.id == i.id %}selected{% endif %}>

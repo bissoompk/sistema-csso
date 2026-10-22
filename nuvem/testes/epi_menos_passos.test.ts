@@ -37,11 +37,11 @@ describe("aprovar tudo como pedido", () => {
       const requerente = await usuario(tx, { login: "requerente", permissoes: REQUERENTE });
       const analista = await usuario(tx, { login: "analista", permissoes: ANALISTA });
       const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: 3 });
-      await servico.adicionar_item(tx, requerente, requisicao, {
+      await servico.adicionar_item(tx, requerente, requisicao, { motivo: "USO_INICIAL",
         item: await outro_item(tx, cen, "Óculos de proteção", "55555"),
         quantidade: 1,
       });
-      await servico.enviar(tx, requerente, requisicao);
+      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
 
       await servico.aprovar_tudo(tx, analista, requisicao);
 
@@ -67,7 +67,7 @@ describe("aprovar tudo como pedido", () => {
       const requerente = await usuario(tx, { login: "requerente", permissoes: REQUERENTE });
       const proprio = await usuario(tx, { login: "proprio", permissoes: ANALISTA, servidor_id: cen.servidor.id });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao);
+      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
       await recusa(servico.aprovar_tudo(tx, proprio, requisicao), PermissaoNegada);
       expect(requisicao.estado).toBe("ENVIADA");
     }));
@@ -78,7 +78,7 @@ describe("aprovar tudo como pedido", () => {
       const c = await cenario(tx);
       const requerente = await usuario(tx, { login: "requerente", permissoes: REQUERENTE });
       const r = await pedido_pronto(tx, c, requerente);
-      await servico.enviar(tx, requerente, r);
+      await servico.enviar(tx, requerente, r, { termo_aceito: true });
       return r;
     });
     const cliente = await entrar(amb.novoCliente(), "coordenador_csso");

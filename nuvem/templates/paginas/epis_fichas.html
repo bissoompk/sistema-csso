@@ -43,6 +43,16 @@
     </form>
   </div>
 
+  {% if comunicacoes_abertas %}
+  {# fatia A: o titular comunicou extravio ou pediu troca; cada comunicação é
+     uma pendência do setor e aparece na linha da entrega, na ficha dele #}
+  <div class="aviso aviso-info">
+    <strong>{{ comunicacoes_abertas }} comunicação(ões) de titulares esperando o
+      almoxarifado.</strong> Cada uma está nas <a href="/pendencias">pendências</a>
+    e na linha da entrega, na ficha do servidor, com o botão "Tratar".
+  </div>
+  {% endif %}
+
   {% if pendentes %}
   <div class="aviso aviso-alerta">
     <strong>{{ pendentes }} entrega(s) sem comprovante assinado.</strong>

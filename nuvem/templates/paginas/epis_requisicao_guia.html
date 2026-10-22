@@ -98,7 +98,8 @@
       <tr>
         <td class="nome">{{ i.item.nome }}
           {% if i.item.modelo %}<span class="discreto"> · {{ i.item.modelo }}</span>{% endif %}
-          <span class="quebra discreto">CA {{ i.item.numero_ca or '—' }}</span></td>
+          <span class="quebra discreto">CA {{ i.item.numero_ca or '—' }}</span>
+          {% if i.motivo %}<span class="quebra discreto">Motivo: {{ rotulo_motivo_item.get(i.motivo, i.motivo) }}</span>{% endif %}</td>
         <td>{{ i.tamanho or '—' }}</td>
         <td class="mono">{{ i.quantidade_solicitada }}</td>
         <td class="mono">{{ i.quantidade_aprovada if i.quantidade_aprovada is not none else '—' }}</td>

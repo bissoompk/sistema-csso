@@ -1,0 +1,28 @@
+{# As comunicações do titular sobre UMA linha da ficha (fatia A), dentro da
+   célula do evento. Incluído no laço de `epis_ficha.html`: lê `r`,
+   `comunicacoes`, `propria` e `titular` do contexto.
+
+   O texto é neutro (Decisão 5): a comunicação não cobra, não mexe na ficha nem
+   no estoque — é um recado ao almoxarifado, e a linha da entrega continua como
+   estava. Nada some: a retirada e o tratamento ficam à mostra. #}
+{% for x in comunicacoes[r.id] or [] %}
+<span class="quebra" id="comunicacao-{{ x.c.id }}">
+  {%- if x.aberta %}
+  <span class="pilula alerta" title="comunicação nº {{ x.c.id }}">{{ 'você comunicou' if propria else 'titular comunicou' }}: {{ x.rotulo }}</span>
+  {%- elif x.c.tratada_em %}
+  <span class="pilula ok" title="comunicação nº {{ x.c.id }}">comunicação tratada</span>
+  {%- else %}
+  <span class="pilula sem-ponto" title="comunicação nº {{ x.c.id }}">comunicação retirada</span>
+  {%- endif %}
+</span>
+{% if x.aberta %}
+<span class="quebra discreto">em {{ x.c.criado_em|momento }}
+  {%- if propria and x.pode_retirar and not x.pode_tratar %} · pode retirar até {{ x.retirada_ate|momento }}{% endif %}</span>
+{% elif x.c.tratada_em %}
+<span class="quebra discreto">{{ x.rotulo }} · {{ x.c.tratamento }}</span>
+{% else %}
+<span class="quebra discreto">{{ x.rotulo }} · retirada em {{ x.c.retirada_em|momento }}</span>
+{% endif %}
+{% if x.c.observacao %}<span class="quebra discreto">“{{ x.c.observacao }}”</span>{% endif %}
+{% if x.c.requisicao_id %}<span class="quebra discreto">pedido de troca nº {{ x.c.requisicao_id }}</span>{% endif %}
+{% endfor %}
