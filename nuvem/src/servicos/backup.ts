@@ -118,7 +118,7 @@ Este pacote contém dados pessoais. NÃO o coloque em nuvem pessoal ou de
 terceiros. Qualquer destino em nuvem exige autorização formal da UFVJM e
 contrato de operador.
 
-O processo oficial é o SEI. Este sistema é apoio da CSSO.
+Este sistema é apoio da SISA.
 `;
 
 export class DestinoProibido extends RegraViolada {}
@@ -183,7 +183,7 @@ export function cifrar(conteudo: Uint8Array, senha: string, sal: Uint8Array = ra
 
 export function decifrar(pacote: Uint8Array, senha: string): Uint8Array {
   const b = Buffer.from(pacote);
-  if (!b.subarray(0, 8).equals(MAGICO)) throw new RegraViolada("arquivo não é um backup do sistema CSSO");
+  if (!b.subarray(0, 8).equals(MAGICO)) throw new RegraViolada("arquivo não é um backup do Sistema SISA");
   const sal = b.subarray(8, 24);
   const nonce = b.subarray(24, 36);
   const dados = b.subarray(36, b.length - 16);
@@ -626,7 +626,7 @@ export function sem_credenciais(dump: Map<string, string>): Map<string, string> 
 export async function exportar_tudo(tx: Executor, opcoes: { destino?: string } = {}): Promise<ResultadoExportacao> {
   const pasta = opcoes.destino ?? PREFIXO_EXPORTACAO;
   _conferir_destino(pasta);
-  const nome = `csso-export-${_carimbo()}.zip`;
+  const nome = `sisa-export-${_carimbo()}.zip`;
 
   const linhas = await _linhas_planilha(tx);
   const zip = new PizZip();

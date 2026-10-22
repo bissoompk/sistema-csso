@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Laudo {{ laudo.numero_siape }} · CSSO{% endblock %}
+{% block titulo %}Laudo {{ laudo.numero_siape }} · SISA{% endblock %}
 {# o número do laudo em mono: número que se confere dígito a dígito nunca sai
    em texto corrido — nem no h1, nem na trilha #}
 {% block trilha %}<span class="atual mono" aria-current="page">{{ laudo.numero_siape }}</span>{% endblock %}

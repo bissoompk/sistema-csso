@@ -1,6 +1,6 @@
 # Produção — runbook
 
-Como pôr o CSSO na nuvem com **dado real de servidor** (LGPD) e mantê-lo de pé.
+Como pôr o Sistema SISA na nuvem com **dado real de servidor** (LGPD) e mantê-lo de pé.
 Site: `https://cssosisa.netlify.app` (Netlify, função `csso` + duas rotinas) e
 banco/arquivos no Supabase. Decisões técnicas em `DESVIOS.md`, seções
 "Produção — segurança" e "Produção — operação".
@@ -39,7 +39,7 @@ Site configuration > Environment variables. Marque as secretas como *secret*
 | `CSSO_CONVERSOR_PDF_URL`, `CSSO_CONVERSOR_PDF_USUARIO`, `CSSO_CONVERSOR_PDF_SENHA` | o conversor de PDF do modelo enviado (§2.1) | não (sem ele, o modelo enviado sai em Word) |
 | `CSSO_SMTP_URL` (secret), `CSSO_EMAIL_REMETENTE`, `CSSO_EMAIL_RESPONDER_PARA` | o envio de e-mail (§2.2) | não (sem elas os pedidos de envio ficam na fila) |
 | `CSSO_COOKIE_SEGURO` | `auto` (padrão) ou `sim`; **nunca** `nao` (produção recusa subir)² | não |
-| `CSSO_SESSAO_HORAS` (12), `CSSO_SESSAO_INATIVIDADE_MINUTOS` (120; 0 desliga), `CSSO_MAX_TENTATIVAS`, `CSSO_BLOQUEIO_MINUTOS`, `CSSO_MAX_FALHAS_IP`, `CSSO_JANELA_IP_MINUTOS`, `CSSO_LOG_RETENCAO_DIAS`, `CSSO_EPI_LOCAL_RETIRADA`, `CSSO_FUSO_EXIBICAO` | padrões servem | não |
+| `CSSO_SESSAO_HORAS` (12), `CSSO_SESSAO_INATIVIDADE_MINUTOS` (60; 0 desliga), `CSSO_MAX_TENTATIVAS`, `CSSO_BLOQUEIO_MINUTOS`, `CSSO_MAX_FALHAS_IP`, `CSSO_JANELA_IP_MINUTOS`, `CSSO_LOG_RETENCAO_DIAS`, `CSSO_EPI_LOCAL_RETIRADA`, `CSSO_FUSO_EXIBICAO` | padrões servem | não |
 
 **Não** defina `CSSO_PRIMEIRO_ACESSO_REMOTO` (o primeiro acesso é pela linha de
 comando, §3) nem `CSSO_DIR_ARQUIVOS` (é de desenvolvimento).
@@ -103,8 +103,13 @@ Netlify:
 | Variável | Exemplo |
 |---|---|
 | `CSSO_SMTP_URL` (secret) | `smtps://csso.ufvjm%40gmail.com:SENHA-DE-APP@smtp.gmail.com:465` — o `@` do usuário vira `%40`; porta 587 usa `smtp://` |
-| `CSSO_EMAIL_REMETENTE` | `"CSSO UFVJM" <csso.ufvjm@gmail.com>` — o mesmo endereço da conta do SMTP, ou o provedor recusa |
+| `CSSO_EMAIL_REMETENTE` | `"Sistema SISA · UFVJM" <csso.ufvjm@gmail.com>` — o mesmo endereço da conta do SMTP, ou o provedor recusa |
 | `CSSO_EMAIL_RESPONDER_PARA` | opcional: o e-mail do setor que lê as respostas |
+
+O nome que aparece como remetente (o que vai entre aspas) vem só desta
+variável — o código não o define. Para trocá-lo (por exemplo, de "CSSO UFVJM"
+para "Sistema SISA · UFVJM"), edite `CSSO_EMAIL_REMETENTE` no painel do
+Netlify e publique de novo.
 
 Publique de novo. Quem envia é a função de fundo `email-background`, acordada a
 cada pedido (precisa de `CSSO_ROTINA_SEGREDO`), e a agendada `email-agendado`,

@@ -48,7 +48,8 @@ import * as certificado_pdf from "./certificado_pdf.js";
 import * as conversor_pdf from "./conversor_pdf.js";
 import * as servico_presenca from "./presenca.js";
 import * as servico_servidores from "./servidores.js";
-import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import * as setor_equipe from "./setor_equipe.js";
 import * as textos from "./textos.js";
 import PizZip from "pizzip";
 import {
@@ -144,12 +145,43 @@ export async function no_escopo(
   tx: Executor,
   usuario: UsuarioAtual,
   certificado_id: number,
+  // a LEITURA, por padrão. O ato passa a dele (`certificado.anular` em anular e
+  // corrigir): pelo alcance da leitura, o perfil recortado num campus agia em
+  // outro quando outra concessão alargava a leitura (D9) — e, com a concessão
+  // do titular (D16), corrigia o próprio certificado emitido fora do campus dele
+  permissao: string | readonly string[] = ["certificado.ver", "treinamento.ver"],
 ): Promise<CertificadoRegistro | null> {
   const [achado] = await tx
     .select()
     .from(tabela_certificado)
-    .where(and(aplicar_escopo(usuario, tabela_certificado), eq(tabela_certificado.id, certificado_id)));
+    .where(
+      and(
+        // o próprio pela `treinamento.ver`, o de outro pela `certificado.ver`:
+        // o alcance de cada uma é o dela (D1/D9), e o rigor decide abaixo
+        aplicar_escopo(usuario, tabela_certificado, permissao),
+        // NUVEM: o alcance de equipe só chega ao certificado das turmas do
+        // setor (`setor_equipe.ts`); o do próprio titular, de qualquer setor
+        usuario.escopo_de(permissao) === ESCOPO_PROPRIO
+          ? undefined
+          : setor_equipe.condicao_setor_certificado(usuario, true),
+        eq(tabela_certificado.id, certificado_id),
+      ),
+    );
   return achado ?? null;
+}
+
+/**
+ * Segregação nos atos sobre o documento (D9/D16): ninguém anula nem corrige o
+ * PRÓPRIO certificado. Corrigir é anular e reemitir com o dado novo — sobre o
+ * próprio, é dar a si mesmo um documento que outra pessoa não conferiu.
+ * Devolve o motivo, ou `null`.
+ */
+export function recusa_de_ato_sobre_o_proprio(
+  usuario: UsuarioAtual,
+  certificado: Pick<CertificadoRegistro, "servidor_id">,
+): string | null {
+  if (usuario.servidor_id === null || certificado.servidor_id !== usuario.servidor_id) return null;
+  return "Este certificado é seu: anular ou corrigir o próprio certificado é ato de outra pessoa da equipe.";
 }
 
 /**

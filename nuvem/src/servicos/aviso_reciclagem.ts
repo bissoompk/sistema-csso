@@ -1,6 +1,6 @@
 /**
  * O aviso de reciclagem por e-mail ao participante: "o seu certificado vence
- * (ou venceu) — procure a CSSO".
+ * (ou venceu) — procure o setor que promoveu o treinamento".
  *
  * Duas portas, a mesma função:
  *
@@ -8,7 +8,7 @@
  *   marca e avisa;
  * - **automática**, desligada até alguém com `treinamento.gerenciar` a ligar:
  *   a varredura noturna (`reciclagem.varrer`) avisa uma vez, no dia em que o
- *   certificado entra na janela de 30 dias. Ligar é o ato da CSSO que o ROPA
+ *   certificado entra na janela de 30 dias. Ligar é o ato da equipe que o ROPA
  *   pede para todo e-mail que sai (§5.9).
  *
  * Um aviso por certificado: o que já foi (ou está na fila) não sai de novo
@@ -98,9 +98,11 @@ function _mensagem(certificado: CertificadoRegistro, hoje: string): { assunto: s
       `Olá, ${c.participante_nome}.\n\n` +
       `O seu certificado do treinamento ${c.treinamento_nome} (nº ${C.rotulo(certificado)}, ` +
       `turma ${c.turma_codigo}) ${venceu ? "venceu" : "vence"} em ${datas_br.numerica(vence)}.\n\n` +
-      "Para manter a capacitação em dia, procure a CSSO para se inscrever na próxima turma de reciclagem.\n\n" +
-      "Coordenação de Saúde e Segurança Ocupacional (CSSO) — UFVJM\n" +
-      "Mensagem enviada pelo Sistema CSSO.\n",
+      "Para manter a capacitação em dia, procure o setor que promoveu o treinamento" +
+      (c.turma_unidade_promotora ? ` (${c.turma_unidade_promotora})` : "") +
+      " para se inscrever na próxima turma de reciclagem.\n\n" +
+      `${c.turma_unidade_promotora || "Superintendência Integrada de Saúde (Sisa)"} — UFVJM\n` +
+      "Mensagem enviada pelo Sistema SISA.\n",
   };
 }
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Participantes · CSSO{% endblock %}
+{% block titulo %}Juntar cadastros duplicados · SISA{% endblock %}
 
 {# A tabela de um grupo: escolhe quem fica (rádio) e quem se junta a ele
    (caixa). Cada grupo é um formulário próprio, com o seu motivo. Os cadastros
@@ -53,7 +53,7 @@
 
   <div class="cabecalho-pagina">
     <div class="titulo">
-      <h1>Participantes</h1>
+      <h1>Juntar cadastros duplicados</h1>
       <p class="sub">Cadastros que parecem a mesma pessoa, para juntar num só.</p>
       {% call ui.info('juntar-cadastros', 'o que juntar faz') %}
         <p>As inscrições, os certificados e os e-mails de quem se junta passam para quem fica.

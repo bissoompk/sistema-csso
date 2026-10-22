@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Minha conta · SISA{% endblock %}
+
+{# A conta vista pela própria pessoa (22/10/2026). Abre para toda conta logada:
+   o que muda aqui é sempre a conta da sessão. Perfis e vínculo de servidor
+   ficam só para leitura — quem os corrige é a coordenação, em /usuarios. #}
+
+{# Quem não tem o "Meu espaço" (a equipe sem vínculo de servidor) chega pelo
+   nome no cabeçalho, e a trilha não tem item para nomear a tela: o nome entra
+   aqui. Quem tem o bloco já vê "Meu espaço / Minha conta". #}
+{% block trilha %}
+{%- if not (item_ativo and item_ativo.caminho == '/minha-conta') -%}
+<span class="atual" aria-current="page">Minha conta</span>
+{%- endif -%}
+{% endblock %}
+
+{% set d = digitado or {} %}
+
+{% block conteudo %}
+<div class="tela formulario">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Minha conta</h1>
+      <p class="sub">Seus dados de contato, o e-mail com que você entra, a senha e
+        os perfis que a sua conta tem.</p>
+    </div>
+  </div>
+
+  {# ---------- dados pessoais ---------- #}
+  <section class="cartao" aria-labelledby="t-dados">
+    <div class="titulo-cartao"><h2 id="t-dados">Dados pessoais</h2></div>
+    {% if erro_dados %}<div class="aviso aviso-erro" role="alert">{{ erro_dados }}</div>{% endif %}
+    <form method="post" action="/minha-conta/dados">
+      <div class="campo">
+        <label for="nome">Nome</label>
+        <input id="nome" name="nome" type="text" required maxlength="160" autocomplete="name"
+               value="{{ d.nome if d.nome is defined else conta.nome }}">
+      </div>
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="telefone">Telefone <span class="discreto">(opcional)</span></label>
+          <input id="telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel"
+                 maxlength="{{ TELEFONE_MAX }}" pattern="[0-9 \(\)\+\-]*" aria-describedby="dica-telefone"
+                 value="{{ d.telefone if d.telefone is defined else (conta.telefone or '') }}">
+          <span class="dica" id="dica-telefone">Com DDD, por exemplo (38) 99999-1234.</span>
+        </div>
+        <div class="campo">
+          <label for="ramal">Ramal <span class="discreto">(opcional)</span></label>
+          <input id="ramal" name="ramal" type="text" inputmode="numeric"
+                 maxlength="{{ RAMAL_MAX }}" pattern="[0-9 \(\)\+\-]*" aria-describedby="dica-ramal"
+                 value="{{ d.ramal if d.ramal is defined else (conta.ramal or '') }}">
+          <span class="dica" id="dica-ramal">O ramal da sua sala, se houver.</span>
+        </div>
+      </div>
+      {# A finalidade, dita antes de a pessoa digitar (LGPD art. 6º, I e art. 9º). #}
+      <p class="aviso-legal sem-margem">Telefone e ramal são usados só para a equipe do
+        setor falar com você sobre treinamentos, EPIs e processos. Não aparecem para
+        outros servidores e podem ser apagados quando quiser: basta deixar o campo em
+        branco e salvar.</p>
+      <div class="acoes">
+        <button type="submit">Salvar dados</button>
+      </div>
+    </form>
+  </section>
+
+  {# ---------- e-mail ---------- #}
+  <section class="cartao" aria-labelledby="t-email">
+    <div class="titulo-cartao"><h2 id="t-email">E-mail de entrada</h2></div>
+    <p class="sub">É com ele que você entra no sistema. Para trocá-lo, confirme a sua
+      senha atual.</p>
+    {% if erro_email %}<div class="aviso aviso-erro" role="alert">{{ erro_email }}</div>{% endif %}
+    <form method="post" action="/minha-conta/email">
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" required maxlength="160" autocomplete="email"
+                 value="{{ d.email if d.email is defined else conta.email }}">
+        </div>
+        <div class="campo">
+          <label for="senha-email">Senha atual</label>
+          <input id="senha-email" name="senha_atual" type="password" required
+                 autocomplete="current-password" aria-describedby="dica-senha-email">
+          <span class="dica" id="dica-senha-email">Errar a senha aqui conta como tentativa
+            de entrada, como no login.</span>
+        </div>
+      </div>
+      <div class="acoes">
+        <button type="submit">Trocar e-mail</button>
+      </div>
+    </form>
+  </section>
+
+  {# ---------- senha ---------- #}
+  <section class="cartao" aria-labelledby="t-senha">
+    <div class="titulo-cartao"><h2 id="t-senha">Senha</h2></div>
+    <p class="sub">A senha nova vale na hora. As outras sessões abertas desta conta são
+      encerradas; esta continua aberta.</p>
+    <div class="acoes"><a class="botao secundario" href="/trocar-senha">Trocar senha</a></div>
+  </section>
+
+  {# ---------- perfis ---------- #}
+  <section class="cartao liso" aria-labelledby="t-perfis">
+    <div class="cabecalho-cartao">
+      <h2 id="t-perfis">Perfis e acessos</h2>
+      <span class="contador">{{ perfis|length }}</span>
+    </div>
+    {% if perfis|length %}
+    <div class="lista-linhas">
+      {% for p in perfis %}
+      <div>
+        <span class="quem">
+          <strong>{{ p.nome }}</strong>
+          <span class="discreto">{{ p.coordenadoria }}</span>
+        </span>
+        <span class="onde">{{ (p.campus.sigla ~ ' — ' ~ p.campus.nome) if p.campus else 'todos os campi' }}</span>
+        <span class="discreto">
+          {%- if p.futura %}começa em {{ p.vigencia_inicio|data }}
+          {%- else %}desde {{ p.vigencia_inicio|data }}{% if p.vigencia_fim %} até {{ p.vigencia_fim|data }}{% endif %}
+          {%- endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="corpo"><p class="sem-margem">Nenhum perfil concedido a esta conta.</p></div>
+    {% endif %}
+    <div class="corpo">
+      <p class="discreto sem-margem">Só leitura. Para corrigir, fale com a coordenação.</p>
+    </div>
+  </section>
+
+  {# ---------- vínculo de servidor ---------- #}
+  <section class="cartao liso" aria-labelledby="t-servidor">
+    <div class="cabecalho-cartao"><h2 id="t-servidor">Vínculo de servidor</h2></div>
+    {% if servidor %}
+    <dl class="tabela-dados">
+      <dt>Nome</dt><dd>{{ servidor.nome }}</dd>
+      <dt>SIAPE</dt><dd class="mono">{{ servidor.siape }}</dd>
+      <dt>Cargo</dt><dd>{{ servidor.cargo.nome if servidor.cargo else 'não informado' }}</dd>
+      <dt>Lotação</dt><dd>{{ servidor.unidade.nome_extenso if servidor.unidade else 'não informada' }}</dd>
+      {% if postos|length %}<dt>Posto de trabalho</dt><dd>{{ postos|map(attribute='nome')|join(' / ') }}</dd>{% endif %}
+    </dl>
+    {% else %}
+    <div class="corpo"><p class="sem-margem">Esta conta não está ligada a um cadastro de servidor.</p></div>
+    {% endif %}
+    <div class="corpo">
+      <p class="discreto sem-margem">Dados funcionais, só leitura. Para corrigir, fale com a coordenação.</p>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

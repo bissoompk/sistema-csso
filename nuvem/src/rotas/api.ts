@@ -292,8 +292,8 @@ rotas.post(`${PREFIXO}/epis/entregas`, async (c) => {
 rotas.get(`${PREFIXO}/epis/fichas/:servidor_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
   const servidor_id = id(c, "servidor_id");
-  epi_ficha.exigir_leitura_da_ficha(usuario, servidor_id);
   const tx = c.get("tx");
+  await epi_ficha.exigir_leitura_da_ficha(tx, usuario, servidor_id);
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, servidor_id));
   if (!servidor) throw new RecusaDaApi(404, "Servidor não encontrado.");
   // a MESMA linha de leitura nominal da tela (`/epis/fichas/{id}`): o campo e a
@@ -358,7 +358,7 @@ rotas.get(`${PREFIXO}/turmas`, async (c) => {
     throw new RecusaDaApi(422, `Situação desconhecida: ${situacao}.`, Object.keys(ROTULO_TURMA).sort());
   }
   const turmas = await c.get("tx").query.turma.findMany({
-    where: and(servico_turma.consulta_no_escopo(usuario), eq(tabela_turma.situacao, situacao)),
+    where: and(servico_turma.consulta_no_escopo(usuario, "turma.avaliar"), eq(tabela_turma.situacao, situacao)),
     with: { treinamento: true },
     orderBy: [desc(tabela_turma.data_inicio)],
   });
@@ -404,7 +404,8 @@ async function _grade(c: Ctx, turma: servico_turma.TurmaCarregada, usuario: Usua
 rotas.get(`${PREFIXO}/turmas/:turma_id{[0-9]+}/presencas`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.avaliar");
-  const turma = await servico_turma.no_escopo(c.get("tx"), usuario, id(c, "turma_id"));
+  // o alcance do ato (`turma.avaliar`), e não o da leitura (D9)
+  const turma = await servico_turma.no_escopo(c.get("tx"), usuario, id(c, "turma_id"), "turma.avaliar");
   if (!turma) throw new RecusaDaApi(404, "Turma não encontrada ou fora do seu escopo.");
   return c.json(await _grade(c, turma, usuario));
 });
@@ -420,7 +421,7 @@ rotas.post(`${PREFIXO}/turmas/:turma_id{[0-9]+}/presencas`, async (c) => {
   const corpo = contrato.nova_presenca(await contrato.corpo_json(c.req));
   usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
-  const turma = await servico_turma.no_escopo(tx, usuario, id(c, "turma_id"));
+  const turma = await servico_turma.no_escopo(tx, usuario, id(c, "turma_id"), "turma.avaliar");
   if (!turma) throw new RecusaDaApi(404, "Turma não encontrada ou fora do seu escopo.");
   const inscricao = (await servico_turma.inscricoes_da_turma(tx, turma)).find((i) => i.id === corpo.inscricao_id);
   if (!inscricao) throw new RecusaDaApi(422, "Inscrição não encontrada nesta turma.");
@@ -446,6 +447,6 @@ rotas.post(`${PREFIXO}/turmas/:turma_id{[0-9]+}/presencas`, async (c) => {
     throw erro;
   }
   // a grade relida do banco, com a presença que acabou de entrar
-  const fresca = (await servico_turma.no_escopo(tx, usuario, turma.id))!;
+  const fresca = (await servico_turma.no_escopo(tx, usuario, turma.id, "turma.avaliar"))!;
   return c.json(await _grade(c, fresca, usuario));
 });

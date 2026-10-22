@@ -19,9 +19,9 @@ export { expurgar_registro_acesso };
 /** Por quanto tempo a cópia da exportação completa fica no armazenamento. */
 export const HORAS_DA_EXPORTACAO = 24;
 
-const NOME_EXPORTACAO = /^csso-export-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.zip$/;
+const NOME_EXPORTACAO = /^(?:sisa|csso)-export-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.zip$/;
 
-/** O instante do nome `csso-export-AAAAMMDD-HHMMSS.zip` (UTC), ou null. */
+/** O instante do nome `sisa-export-AAAAMMDD-HHMMSS.zip` (ou `csso-export-`, antigos) (UTC), ou null. */
 export function momento_da_exportacao(nome: string): Date | null {
   const m = nome.match(NOME_EXPORTACAO);
   if (!m) return null;

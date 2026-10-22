@@ -60,11 +60,19 @@ async function postos_ordenados(tx: Executor) {
  * `Servidor` por id das telas de cadastro: era o `s.get` espalhado que fazia a
  * lista apertar e a ficha continuar aberta.
  */
-export async function _servidor_no_escopo(tx: Executor, usuario: UsuarioAtual, servidor_id: number) {
+export async function _servidor_no_escopo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  servidor_id: number,
+  // a permissão da tela que lê (ou escreve): o alcance é o dela, e não o da
+  // conta (D1/D9) — quem lê o próprio cadastro pela concessão do titular não
+  // corrige o dos outros por ter `processo.editar` em outro alcance
+  permissao = "processo.ver",
+) {
   const [sv] = await tx
     .select()
     .from(tabela_servidor)
-    .where(and(aplicar_escopo(usuario, tabela_servidor), eq(tabela_servidor.id, servidor_id)));
+    .where(and(aplicar_escopo(usuario, tabela_servidor, permissao), eq(tabela_servidor.id, servidor_id)));
   return sv ?? null;
 }
 
@@ -83,7 +91,7 @@ async function _tela_lista(c: Ctx, usuario: UsuarioAtual, q = "", extra: { erro?
   // `ESCOPO_PROPRIO` devolve o titular e mais nada. Supressão de nome não é
   // supressão de pessoa.
   let itens = await tx.query.servidor.findMany({
-    where: aplicar_escopo(usuario, tabela_servidor),
+    where: aplicar_escopo(usuario, tabela_servidor, "processo.ver"),
     with: { cargo: true, unidade: true, uorg: true },
     orderBy: [asc(tabela_servidor.nome)],
   });
@@ -259,7 +267,7 @@ rotas.post("/servidores/:id{[0-9]+}", async (c) => {
   usuario.exigir("exposicao.ver");
   const id = Number(c.req.param("id"));
   const tx = c.get("tx");
-  const servidor = await _servidor_no_escopo(tx, usuario, id);
+  const servidor = await _servidor_no_escopo(tx, usuario, id, "processo.editar");
   if (!servidor) return redirecionar(c, "/servidores");
   const f = await formulario(c);
   try {
@@ -283,7 +291,7 @@ rotas.post("/servidores/:id{[0-9]+}/lotacao", async (c) => {
   usuario.exigir("processo.editar");
   const id = Number(c.req.param("id"));
   const tx = c.get("tx");
-  const servidor = await _servidor_no_escopo(tx, usuario, id);
+  const servidor = await _servidor_no_escopo(tx, usuario, id, "processo.editar");
   if (!servidor) return redirecionar(c, "/servidores");
   const f = await formulario(c);
   const inteiro = (chave: string) => {

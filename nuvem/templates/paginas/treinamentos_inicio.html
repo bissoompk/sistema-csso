@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Certificados e Treinamentos · CSSO{% endblock %}
+{% block titulo %}Certificados e Treinamentos · SISA{% endblock %}
 
 {# A porta de entrada de quem opera o módulo (o "Centro de Certificações e
    Inscrições" do IntegraSST). Um bloco só de cartões, na ordem do trabalho e
@@ -21,6 +21,8 @@
   </div>
   <p class="sub">Do catálogo ao certificado, na ordem do trabalho: o treinamento, a
     turma, a presença e a nota, a emissão e a reciclagem. Cada cartão diz quanto espera nele.</p>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   <div class="acoes-hub">
     {% for x in cartoes %}

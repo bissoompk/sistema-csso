@@ -122,9 +122,19 @@ function _quem(usuario: UsuarioAtual, pessoa: ParticipanteCarregado): string {
   return nome_exibicao(pessoa);
 }
 
-/** Quem pode casar pelo nome: casar diria de quem é o nome (RN-19). */
-function _casa_nome(usuario: UsuarioAtual): boolean {
-  return usuario.ve_dado_nominal;
+/**
+ * Quem pode casar pelo nome: casar diria de quem é o nome (RN-19).
+ *
+ * D29: é a mesma pergunta que a turma faz para MOSTRAR o nome
+ * (`participante.pode_identificar`): `certificado.ver` — quem opera a emissão
+ * lê o nome de quem está na turma — ou `exposicao.ver`. Era `ve_dado_nominal`,
+ * e a secretaria lia o nome do inscrito na ficha e não conseguia inscrever o
+ * mesmo nome em lote; o almoxarife, com `epi.ficha`, conseguia, embora turma
+ * não seja tela de EPI. Exportada para a tela do lote dizer o mesmo que o
+ * serviço faz.
+ */
+export function casa_nome(usuario: UsuarioAtual): boolean {
+  return usuario.pode("certificado.ver") || usuario.pode("exposicao.ver");
 }
 
 async function _por_nome(tx: Executor, nome: string): Promise<[ParticipanteCarregado | null, string]> {
@@ -165,7 +175,7 @@ async function _pessoa(
     const pessoa = await servico_participante.por_email(tx, l.email);
     if (pessoa) return [pessoa, "já participou, pelo e-mail"];
   }
-  if (l.nome && _casa_nome(usuario)) {
+  if (l.nome && casa_nome(usuario)) {
     const [pessoa, como] = await _por_nome(tx, l.nome);
     if (pessoa) {
       await servico_participante.registrar_email(tx, pessoa, l.email);

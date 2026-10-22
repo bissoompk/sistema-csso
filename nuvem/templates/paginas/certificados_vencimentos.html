@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Reciclagem · CSSO{% endblock %}
+{% block titulo %}Reciclagem · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
@@ -35,6 +35,8 @@
             title="aviso de reciclagem por e-mail, pela varredura da madrugada">aviso automático {{ 'ligado' if automatico else 'desligado' }}</span>
     </div>
   </div>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   <div class="fileira">
     <span class="rotulo-grupo">Situação</span>
@@ -129,7 +131,7 @@
   <div class="acoes">
     <button form="f-avisar" type="submit">Avisar por e-mail os marcados</button>
     <p class="discreto sem-margem">Vai ao e-mail do participante: o certificado, a data de
-      vencimento e o pedido para procurar a CSSO. Os “a vencer” vêm marcados; os vencidos,
+      vencimento e o pedido para procurar o setor que promoveu o treinamento. Os “a vencer” vêm marcados; os vencidos,
       não. Quem já foi avisado não recebe de novo.
       {%- if not email_configurado() %} <strong>O envio ainda não está configurado:</strong>
       os avisos ficam na fila e saem quando for ligado.{% endif %}</p>

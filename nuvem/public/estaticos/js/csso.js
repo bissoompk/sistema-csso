@@ -736,6 +736,92 @@
     }
   });
 
+  // -------------------------------------------------------------------
+  // 10. O menu do celular fecha como camada
+  //
+  // Contrato: `<summary data-menu-celular>` dentro do `<details>` do "Menu"
+  // (`base.html`). Abaixo de 900px o menu aberto é uma camada do tamanho da
+  // tela, e camada que só fecha no próprio botão prende quem abriu sem querer:
+  // `Esc` fecha e devolve o foco ao "Menu" (quem está no teclado continua de
+  // onde saiu), e o toque fora da lateral fecha sem engolir o toque — o link
+  // tocado continua sendo seguido. Não fecha por cima de um popup aberto: ali o
+  // `Esc` é do popup. Sem JavaScript o "Menu" abre e fecha como sempre.
+  // -------------------------------------------------------------------
+  function menuCelularAberto() {
+    var resumo = document.querySelector('summary[data-menu-celular]');
+    var menu = resumo && resumo.parentElement;
+    return (menu && menu.open) ? menu : null;
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    var menu = menuCelularAberto();
+    if (!menu || document.querySelector('dialog[open]')) return;
+    menu.open = false;
+    var resumo = menu.querySelector('summary[data-menu-celular]');
+    if (resumo) resumo.focus();
+    e.preventDefault();
+  });
+
+  document.addEventListener('click', function (e) {
+    var menu = menuCelularAberto();
+    if (!menu || !e.target || !e.target.closest) return;
+    var lateral = menu.parentElement;
+    if (lateral && !lateral.contains(e.target)) menu.open = false;
+  });
+
+  // -------------------------------------------------------------------
+  // 11. Recolher a lateral (só no computador)
+  //
+  // Contrato: `<button data-recolher-lateral aria-expanded>` no alto da
+  // lateral (`base.html`). O clique, ou `Ctrl+B` (`Cmd+B` no Mac), troca a
+  // classe `lateral-recolhida` do <html>, o `aria-expanded` e o `title` do
+  // botão, e grava a escolha no cookie `csso_lateral` por um ano. Quem desenha
+  // a faixa é a folha; quem aplica a classe ao carregar a tela é o SERVIDOR,
+  // que lê o mesmo cookie (`base.html`) — por isso a página não "pisca"
+  // aberta antes de recolher. Este bloco só alterna e grava.
+  //
+  // O atalho não vale com o foco num campo de texto nem no editor do parecer
+  // (`contenteditable`): ali `Ctrl+B` é negrito. Também não vale no celular
+  // (até 900px), onde a lateral é o "Menu" e a classe é ignorada, nem por cima
+  // de um popup aberto. Expandir APAGA o cookie: aberta é o padrão.
+  // -------------------------------------------------------------------
+  var COOKIE_LATERAL = 'csso_lateral';
+  var naMesa = window.matchMedia ? window.matchMedia('(min-width: 901px)') : null;
+
+  function alternarLateral() {
+    var raiz = document.documentElement;
+    var recolher = !raiz.classList.contains('lateral-recolhida');
+    raiz.classList.toggle('lateral-recolhida', recolher);
+    var botoes = document.querySelectorAll('[data-recolher-lateral]');
+    for (var i = 0; i < botoes.length; i++) {
+      botoes[i].setAttribute('aria-expanded', recolher ? 'false' : 'true');
+      botoes[i].title = (recolher ? 'Expandir' : 'Recolher') + ' o menu (Ctrl+B)';
+    }
+    var seguro = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = recolher
+      ? COOKIE_LATERAL + '=recolhida; Max-Age=31536000; Path=/; SameSite=Lax' + seguro
+      : COOKIE_LATERAL + '=; Max-Age=0; Path=/; SameSite=Lax' + seguro;
+  }
+
+  document.addEventListener('click', function (e) {
+    var botao = e.target.closest && e.target.closest('[data-recolher-lateral]');
+    if (!botao) return;
+    e.preventDefault();
+    alternarLateral();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    if (e.key !== 'b' && e.key !== 'B') return;
+    if (ehCampoDeTexto(e.target)) return;
+    if (naMesa && !naMesa.matches) return;
+    if (document.querySelector('dialog[open]')) return;
+    if (!document.querySelector('[data-recolher-lateral]')) return;  // tela sem casca
+    e.preventDefault();
+    alternarLateral();
+  });
+
   // o que entra por troca parcial nasce sem a avaliação do arranque
   document.addEventListener('htmx:afterSwap', function (e) {
     var raiz = (e.detail && e.detail.target) || document;
@@ -744,6 +830,249 @@
     for (var i = 0; i < mestres.length; i++) sincronizarMestre(mestres[i]);
     atualizarBarrasDeLote();
   });
+
+  // -------------------------------------------------------------------
+  // 12. O desligamento por inatividade — o aviso antes de a sessão cair
+  //
+  // Contrato: `<body data-sessao-inatividade="60">`, escrito pela casca
+  // (`base.html`) só em página logada e só com o limite ligado
+  // (`CSSO_SESSAO_INATIVIDADE_MINUTOS`). Quem derruba a sessão é o SERVIDOR
+  // (`sessao_valida`); este bloco só avisa antes e, no fim, leva ao login com a
+  // explicação escrita (`/login?motivo=inatividade`). Sem JavaScript a sessão
+  // cai do mesmo jeito e o próximo clique leva ao login com "sessão expirou".
+  //
+  // O QUE CONTA COMO ATIVIDADE é o que o servidor conta: pedido. Carregar a
+  // página, enviar formulário, a troca parcial do HTMX, o download do bloco 4 e
+  // o "Continuar conectado". Mexer o mouse não conta — o servidor não vê o
+  // mouse, e contar aqui o que lá não conta faria o aviso prometer um prazo que
+  // a sessão não tem. A exceção é DIGITAR num campo: o parecer e as atas se
+  // escrevem por mais de uma hora sem envio, e a sessão vencida no salvamento
+  // perderia o texto. Digitar renova a sessão no servidor com um GET leve a
+  // `/quem-sou-eu` (que passa por `sessao_valida` e regrava o último uso), no
+  // máximo um a cada 5 minutos — é a mesma requisição do botão.
+  //
+  // VÁRIAS ABAS: o horário da última atividade vai para o `localStorage`
+  // (`sisa.sessao.ultima-atividade`), e cada aba conta a partir do mais recente
+  // entre o dela e o guardado. A aba esquecida não derruba a sessão que outra
+  // aba está usando, e o evento `storage` fecha o aviso nas outras abas quando
+  // uma renova. Sem `localStorage` (bloqueado, modo privado) cada aba conta só
+  // o que é dela.
+  //
+  // O aviso abre 5 minutos antes, com contagem regressiva e o foco em
+  // "Continuar conectado". `Esc` NÃO desconecta: ele vale como "continuar" (é
+  // gesto de quem está ali). Com `prefers-reduced-motion` a contagem não corre
+  // de segundo em segundo: mostra os minutos. O leitor de tela ouve o texto ao
+  // abrir e um lembrete por minuto, não um número por segundo.
+  // -------------------------------------------------------------------
+  (function () {
+    var corpo = document.body;
+    var minutos = corpo ? parseInt(corpo.getAttribute('data-sessao-inatividade') || '', 10) : NaN;
+    if (!(minutos > 0)) return;
+    var LIMITE = minutos * 60000;
+    var ANTECEDENCIA = Math.min(5 * 60000, LIMITE / 2);
+    var RENOVA_DIGITANDO = 5 * 60000;
+    var CHAVE = 'sisa.sessao.ultima-atividade';
+    var poucoMovimento = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+
+    var ultima = Date.now();
+    var dialogo = null;
+    var focoAntes = null;
+    var saindo = false;
+    var renovando = false;
+    var ultimoFalado = null;
+
+    function guardada() {
+      try {
+        var v = parseInt(localStorage.getItem(CHAVE) || '', 10);
+        // valor do futuro é relógio mexido ou chave escrita à mão: não adia nada
+        return isFinite(v) ? Math.min(v, Date.now()) : 0;
+      } catch (e) { return 0; }
+    }
+
+    function guardar() {
+      try { if (guardada() < ultima) localStorage.setItem(CHAVE, String(ultima)); } catch (e) { /* sem armazenamento */ }
+    }
+
+    function marcar() {
+      ultima = Date.now();
+      guardar();
+      verificar();
+    }
+
+    function irAoLogin() {
+      saindo = true;
+      location.replace('/login?motivo=inatividade&proximo=' +
+        encodeURIComponent(location.pathname + location.search));
+    }
+
+    // No prazo, a sessão é encerrada no servidor também (o servidor a daria por
+    // vencida sozinho no minuto seguinte — `sessao_valida` tolera um passo do
+    // último uso); quem chega ao login não deixa uma sessão viva para trás.
+    function encerrar() {
+      if (saindo) return;
+      saindo = true;
+      try {
+        fetch('/sair', { method: 'POST', credentials: 'same-origin', redirect: 'manual', keepalive: true })
+          .then(irAoLogin, irAoLogin);
+      } catch (e) { irAoLogin(); }
+    }
+
+    function texto(ms) {
+      var min = Math.max(1, Math.ceil(ms / 60000));
+      return min === 1 ? '1 minuto' : min + ' minutos';
+    }
+
+    function construir() {
+      dialogo = document.createElement('dialog');
+      dialogo.className = 'popup popup-info popup-inatividade';
+      dialogo.setAttribute('role', 'alertdialog');
+      dialogo.setAttribute('aria-labelledby', 'inatividade-titulo');
+      dialogo.setAttribute('aria-describedby', 'inatividade-texto');
+      dialogo.innerHTML =
+        '<div class="popup-caixa popup-caixa-info">' +
+          '<div class="popup-topo"><div class="popup-titulo">' +
+            '<h2 id="inatividade-titulo">Você ainda está aí?</h2></div></div>' +
+          '<div class="popup-corpo">' +
+            '<p id="inatividade-texto">Por segurança, você será desconectado em ' +
+              '<span data-inatividade-prazo>5 minutos</span> por inatividade.</p>' +
+            '<p class="contagem-inatividade" aria-hidden="true">Tempo restante: ' +
+              '<strong data-inatividade-contagem>5:00</strong></p>' +
+            '<p class="oculto" aria-live="polite" data-inatividade-falado></p>' +
+            '<div class="aviso aviso-erro" role="alert" data-inatividade-erro hidden></div>' +
+          '</div>' +
+          '<div class="acoes popup-acoes">' +
+            '<button type="button" data-inatividade-continuar>Continuar conectado</button>' +
+            '<form method="post" action="/sair"><button type="submit" class="secundario">Sair agora</button></form>' +
+          '</div>' +
+        '</div>';
+      dialogo.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('[data-inatividade-continuar]')) continuar();
+      });
+      // o `Esc` nativo do <dialog> (evento `cancel`) fecharia sem renovar nada
+      dialogo.addEventListener('cancel', function (e) { e.preventDefault(); continuar(); });
+      document.body.appendChild(dialogo);
+    }
+
+    function parte(nome) { return dialogo.querySelector('[data-inatividade-' + nome + ']'); }
+
+    function atualizar(restante) {
+      var s = Math.max(0, Math.ceil(restante / 1000));
+      var reduzido = poucoMovimento && poucoMovimento.matches;
+      parte('contagem').textContent = reduzido
+        ? texto(restante)
+        : Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+      // um lembrete por minuto (e nos 30 s finais) para o leitor de tela
+      var marco = s <= 30 ? '30s' : String(Math.ceil(s / 60));
+      if (marco !== ultimoFalado) {
+        if (ultimoFalado !== null) {
+          parte('falado').textContent = marco === '30s'
+            ? 'Faltam 30 segundos para a desconexão.'
+            : 'Faltam ' + texto(restante) + ' para a desconexão.';
+        }
+        ultimoFalado = marco;
+      }
+    }
+
+    function abrirAviso(restante) {
+      if (!dialogo) construir();
+      if (!dialogo.open) {
+        parte('prazo').textContent = texto(restante);
+        parte('erro').hidden = true;
+        parte('falado').textContent = '';
+        ultimoFalado = null;
+        focoAntes = document.activeElement;
+        if (typeof dialogo.showModal === 'function') dialogo.showModal();
+        else dialogo.setAttribute('open', '');
+        parte('continuar').focus();
+      }
+      atualizar(restante);
+    }
+
+    function fecharAviso() {
+      if (!dialogo || !dialogo.open) return;
+      if (typeof dialogo.close === 'function') dialogo.close();
+      else dialogo.removeAttribute('open');
+      if (focoAntes && focoAntes.focus && document.contains(focoAntes)) focoAntes.focus();
+      focoAntes = null;
+    }
+
+    function verificar() {
+      if (saindo) return;
+      var outra = guardada();
+      if (outra > ultima) ultima = outra;
+      var restante = ultima + LIMITE - Date.now();
+      if (restante <= 0) encerrar();
+      else if (restante <= ANTECEDENCIA) abrirAviso(restante);
+      else fecharAviso();
+    }
+
+    // O GET passa por `sessao_valida`, que regrava o último uso. Devolve
+    // `true` (renovada), `false` (a sessão já tinha caído) ou rejeita (rede).
+    function renovar() {
+      return fetch('/quem-sou-eu', {
+        credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' },
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j && j.autenticado) { marcar(); return true; }
+        return false;
+      });
+    }
+
+    function continuar() {
+      if (renovando || saindo) return;
+      renovando = true;
+      var botao = parte('continuar');
+      botao.setAttribute('aria-busy', 'true');
+      renovar().then(function (ok) {
+        renovando = false;
+        botao.removeAttribute('aria-busy');
+        if (!ok) irAoLogin();
+      }, function () {
+        renovando = false;
+        botao.removeAttribute('aria-busy');
+        var erro = parte('erro');
+        erro.textContent = 'Não foi possível falar com o servidor agora. Confira a conexão e tente de novo.';
+        erro.hidden = false;
+      });
+    }
+
+    // Esc com o aviso aberto: na CAPTURA, antes do tratador dos popups de
+    // `base.html` (que fecharia a camada de cima sem renovar a sessão)
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !dialogo || !dialogo.open) return;
+      e.preventDefault();
+      e.stopPropagation();
+      continuar();
+    }, true);
+
+    document.addEventListener('submit', function (e) {
+      // o "Sair agora" é o único formulário do aviso: dali não se volta
+      if (dialogo && dialogo.contains(e.target)) { saindo = true; return; }
+      marcar();
+    }, true);
+    document.addEventListener('htmx:afterRequest', function (e) {
+      var xhr = e.detail && e.detail.xhr;
+      if (xhr && xhr.status > 0) marcar();
+    });
+    document.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('a[data-baixar]')) marcar();
+    }, true);
+    document.addEventListener('input', function (e) {
+      var alvo = e.target;
+      if (!alvo || (dialogo && dialogo.open) || renovando || saindo) return;
+      if (!(ehCampoDeTexto(alvo) && (alvo.form || alvo.isContentEditable))) return;
+      if (Date.now() - ultima < RENOVA_DIGITANDO) return;
+      renovando = true;
+      // falha aqui não leva a lugar nenhum: tirar a pessoa da tela no meio do
+      // texto é o que esta renovação existe para evitar; o prazo segue valendo
+      renovar().then(function () { renovando = false; }, function () { renovando = false; });
+    }, true);
+    window.addEventListener('storage', function (e) { if (e.key === CHAVE) verificar(); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) verificar(); });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) verificar(); });
+
+    marcar();
+    setInterval(verificar, 1000);
+  })();
 
   // -------------------------------------------------------------------
   // arranque

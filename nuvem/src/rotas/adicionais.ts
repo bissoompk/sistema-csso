@@ -47,7 +47,7 @@ rotas.get("/adicionais", async (c) => {
   // `order_by` explícito: lista paginada sem ordem definida repete e perde
   // linhas. `adicional_vigencia` tem `servidor_id`, a coluna que o escopo usa.
   const vigencias = await tx.query.adicional_vigencia.findMany({
-    where: and(aplicar_escopo(usuario, adicional_vigencia), estado ? eq(adicional_vigencia.estado, estado) : undefined),
+    where: and(aplicar_escopo(usuario, adicional_vigencia, "processo.ver"), estado ? eq(adicional_vigencia.estado, estado) : undefined),
     with: {
       servidor: true,
       tipo_adicional: true,
@@ -64,7 +64,7 @@ rotas.get("/adicionais", async (c) => {
     await tx.query.parecer_tecnico.findMany({
       where: and(
         inArray(parecer_tecnico.situacao, ["EMITIDO", "ASSINADO"]),
-        aplicar_escopo(usuario, parecer_tecnico),
+        aplicar_escopo(usuario, parecer_tecnico, "parecer.ver"),
       ),
       with: { servidor: true, laudo: true },
       orderBy: [asc(parecer_tecnico.id)],
@@ -94,7 +94,7 @@ rotas.get("/adicionais", async (c) => {
     // O titular (escopo próprio) vê o PRÓPRIO adicional: um cartão com a frase
     // inteira, e não a tabela de gestão com filtros de estado e uma coluna de
     // ações vazia para uma linha só.
-    vista_do_titular: usuario.escopo === ESCOPO_PROPRIO,
+    vista_do_titular: usuario.escopo_de("processo.ver") === ESCOPO_PROPRIO,
     hoje: datas_br.hoje(),
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
@@ -131,7 +131,7 @@ rotas.post("/adicionais/propor/:parecer_id{[0-9]+}", async (c) => {
   const tx = c.get("tx");
   const parecer = await tx.query.parecer_tecnico.findFirst({
     // o escopo da leitura vale para a escrita: parecer fora dele "não existe"
-    where: and(eq(parecer_tecnico.id, _id(c, "parecer_id")), aplicar_escopo(usuario, parecer_tecnico)),
+    where: and(eq(parecer_tecnico.id, _id(c, "parecer_id")), aplicar_escopo(usuario, parecer_tecnico, "parecer.emitir")),
     with: {
       tipo_adicional: true,
       tipo_movimento: true,

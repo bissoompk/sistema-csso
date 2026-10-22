@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Certificados · CSSO{% endblock %}
+{% block titulo %}Certificados emitidos · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
     <div class="titulo">
-      <h1>Certificados</h1>
+      <h1>Certificados emitidos</h1>
       <p class="sub">
         {#- `recorte.total` é a seleção; `itens` virou a página. -#}
         {%- if not recorte.total %}Nenhum certificado nesta seleção.
@@ -32,6 +32,8 @@
       {% endcall %}
     </div>
   </div>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   <div class="fileira">
     <span class="rotulo-grupo">Situação</span>

@@ -41,7 +41,8 @@ import {
   tipo_risco,
   unidade_uorg,
 } from "../db/esquema/index.js";
-import { MATRIZ_PERFIS, PERMISSOES, modulo_da_permissao } from "./rbac.js";
+import { MATRIZ_PERFIS, PERMISSOES, PERMISSOES_RETIRADAS, modulo_da_permissao } from "./rbac.js";
+import * as auditoria from "./auditoria.js";
 import {
   MAPA_SUGERIDO,
   MODELO_PADRAO_ARQUIVO,
@@ -126,6 +127,11 @@ export async function semear_rbac(tx: Executor): Promise<void> {
   const permissoes = new Map((await tx.select().from(permissao)).map((p) => [p.codigo, p]));
 
   for (const [codigo, dados] of Object.entries(MATRIZ_PERFIS)) {
+    // O perfil que nasce agora recebe as permissões da matriz, e isso não é
+    // fato de trilha (é o semeio da base). O que JÁ estava gravado e ganha uma
+    // permissão no deploy é: o alcance de quem tem o perfil cresce sem que
+    // ninguém tenha concedido nada (D21).
+    const [ja_gravado] = await tx.select({ id: perfil.id }).from(perfil).where(eq(perfil.codigo, codigo)).limit(1);
     const pf = await _obter_ou_criar(
       tx,
       perfil,
@@ -148,8 +154,44 @@ export async function semear_rbac(tx: Executor): Promise<void> {
       if (!atuais.has(cod)) {
         await tx.insert(perfil_permissao).values({ perfil_id: pf.id, permissao_id: permissoes.get(cod)!.id });
         atuais.add(cod);
+        if (ja_gravado) {
+          await auditoria.registrar(tx, {
+            entidade: "perfil",
+            entidade_id: pf.id,
+            tipo_evento: auditoria.PERMISSAO_ACRESCENTADA_AO_PERFIL,
+            descricao: `Permissão '${cod}' acrescentada ao perfil '${codigo}' pela atualização do sistema (semeio).`,
+            campo: "permissao",
+            valor_novo: cod,
+          });
+        }
       }
     }
+  }
+
+  // A retirada é a outra metade, e só acontece declarada: `semear_rbac` não
+  // tira o que a matriz deixou de listar (ver `PERMISSOES_RETIRADAS`). Tirar é
+  // fato de trilha pela mesma razão de acrescentar — o alcance de quem tem o
+  // perfil muda sem ninguém ter encerrado nada —, e no banco que nasce agora a
+  // permissão nunca entrou, então não há o que gravar.
+  for (const r of PERMISSOES_RETIRADAS) {
+    const [pf] = await tx.select({ id: perfil.id }).from(perfil).where(eq(perfil.codigo, r.perfil)).limit(1);
+    const p = permissoes.get(r.permissao);
+    if (!pf || !p) continue;
+    const tiradas = await tx
+      .delete(perfil_permissao)
+      .where(and(eq(perfil_permissao.perfil_id, pf.id), eq(perfil_permissao.permissao_id, p.id)))
+      .returning({ perfil_id: perfil_permissao.perfil_id });
+    if (!tiradas.length) continue;
+    await auditoria.registrar(tx, {
+      entidade: "perfil",
+      entidade_id: pf.id,
+      tipo_evento: auditoria.PERMISSAO_RETIRADA_DO_PERFIL,
+      descricao:
+        `Permissão '${r.permissao}' retirada do perfil '${r.perfil}' pela atualização do sistema ` +
+        `(semeio; decisão de ${r.desde}: ${r.motivo}).`,
+      campo: "permissao",
+      valor_anterior: r.permissao,
+    });
   }
 }
 

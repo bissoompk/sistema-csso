@@ -1,6 +1,6 @@
 /**
  * O aviso por e-mail a quem pediu vaga pelo link público (`inscricao_publica.ts`):
- * aceito ou recusado. Só para o pedido do link — a inscrição interna a CSSO
+ * aceito ou recusado. Só para o pedido do link — a inscrição interna a equipe
  * combina por outros meios —, e só quando a pessoa deixou e-mail.
  *
  * O motivo da recusa NÃO vai no e-mail: ele é escrito para a trilha, por quem
@@ -23,6 +23,7 @@ interface InscricaoDoAviso {
     data_fim: string;
     local: string | null;
     treinamento: { nome: string };
+    unidade_promotora?: { sigla: string | null; nome_extenso: string } | null;
   };
   participante: {
     nome: string | null;
@@ -30,6 +31,13 @@ interface InscricaoDoAviso {
     email_principal?: { email: string } | null;
     emails: ReadonlyArray<{ email: string }>;
   };
+}
+
+const SISA = "Superintendência Integrada de Saúde (Sisa)";
+
+/** Assinatura: o setor que promoveu a turma, ou a Sisa sem esse dado. */
+function _assinatura(promotor: string): string {
+  return `${promotor || SISA} — UFVJM\n` + "Mensagem enviada pelo Sistema SISA.\n";
 }
 
 /** Enfileira o aviso; devolve se havia para quem mandar. */
@@ -43,6 +51,8 @@ export async function avisar(
   const para = Participante.email_exibicao(inscricao.participante);
   if (!email.email_valido(para)) return false;
   const t = inscricao.turma;
+  const promotor = t.unidade_promotora ?? null;
+  const equipe = promotor?.sigla ? `A equipe da ${promotor.sigla}` : "A equipe responsável";
   const nome = inscricao.participante.servidor?.nome ?? inscricao.participante.nome ?? "";
   const periodo =
     t.data_inicio === t.data_fim
@@ -52,13 +62,12 @@ export async function avisar(
   const corpo =
     `Olá, ${nome}.\n\n` +
     (aceita
-      ? `A CSSO confirmou a sua inscrição no treinamento ${t.treinamento.nome} ` +
+      ? `${equipe} confirmou a sua inscrição no treinamento ${t.treinamento.nome} ` +
         `(turma ${t.codigo}, ${periodo}${t.local ? `, ${t.local}` : ""}). A vaga é sua.\n\n` +
-        "Se não puder comparecer, avise a CSSO para que a vaga passe a outra pessoa.\n\n"
+        "Se não puder comparecer, avise a equipe responsável para que a vaga passe a outra pessoa.\n\n"
       : `O seu pedido de vaga no treinamento ${t.treinamento.nome} (turma ${t.codigo}, ${periodo}) ` +
-        "não pôde ser aceito. Em caso de dúvida, fale com a CSSO.\n\n") +
-    "Coordenação de Saúde e Segurança Ocupacional (CSSO) — UFVJM\n" +
-    "Mensagem enviada pelo Sistema CSSO.\n";
+        "não pôde ser aceito. Em caso de dúvida, fale com a equipe responsável.\n\n") +
+    _assinatura(promotor?.nome_extenso ?? "");
   await email.enfileirar(tx, {
     tipo: aceita ? TIPO_ACEITA : TIPO_RECUSADA,
     destinatario: para,

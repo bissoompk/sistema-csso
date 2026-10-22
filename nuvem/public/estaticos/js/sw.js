@@ -45,12 +45,12 @@ var CASCA = [
 var SEM_REDE =
   '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-  '<title>CSSO no celular — sem rede</title>' +
+  '<title>SISA no celular — sem rede</title>' +
   '<link rel="stylesheet" href="/estaticos/css/csso.css">' +
   '<link rel="stylesheet" href="/estaticos/css/tema.css">' +
   '<link rel="stylesheet" href="/estaticos/css/celular.css">' +
   '</head><body><div class="area">' +
-  '<header class="cabecalho-marca"><span class="nome">CSSO · Sisa/UFVJM</span></header>' +
+  '<header class="cabecalho-marca"><span class="nome">Sistema SISA · UFVJM</span></header>' +
   '<main class="conteudo celular" id="conteudo"><div class="app-celular">' +
   '<h1>Sem rede</h1>' +
   '<div class="aviso aviso-alerta" role="status"><strong>O celular está sem conexão.</strong> ' +

@@ -30,6 +30,7 @@ import * as backup from "./backup.js";
 import * as epi_estoque from "./epi_estoque.js";
 import * as epi_ficha from "./epi_ficha.js";
 import * as reciclagem from "./reciclagem.js";
+import * as governanca from "./governanca.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { obterArmazenamento, type Armazenamento } from "./armazenamento.js";
 import { ambienteDeProducao } from "./instalacao.js";
@@ -150,6 +151,8 @@ export async function varrer_pendencias(tx: Executor, quando: string | null = nu
   }
   // o certificado que entra na janela de 30 dias da reciclagem
   resultado.certificados = await reciclagem.varrer(tx, quando ?? hoje_iso());
+  // D17: a concessão de `perfil.conceder` que vence pela data sem ninguém escrever nada
+  await governanca.sincronizar_aviso_de_cobertura(tx, quando ?? hoje_iso());
   resultado.depois = await _contar(tx);
   return resultado;
 }

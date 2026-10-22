@@ -3,19 +3,35 @@
 {# Sem lateral, mas com "sair" no cabeçalho: a pessoa está logada e pode
    desistir. #}
 {% set sem_casca = true %}
-{% block titulo %}Trocar senha · CSSO{% endblock %}
+{% block titulo %}Trocar senha · SISA{% endblock %}
 {% block classe_conteudo %}tela-auxiliar{% endblock %}
 
 {# São três campos e a rota manda uma mensagem só: no topo, ela obriga a pessoa
    a adivinhar qual dos três recusou. Cada mensagem volta para o campo de onde
    veio; o que não for reconhecido continua sendo faixa, porque errar o campo é
    pior do que não apontar nenhum. #}
-{% set erro_atual = erro if erro and 'atual' in erro else none %}
+{# A recusa de repetir a senha atual fala da "atual", mas é a NOVA que está
+   errada: ela é conferida primeiro, e a do campo da atual só pega o resto. #}
+{% set erro_nova = erro if erro and (erro.startsWith('Senha fraca') or erro.startsWith('A senha nova')) else none %}
+{% set erro_atual = erro if erro and not erro_nova and 'atual' in erro else none %}
 {% set erro_conf = erro if erro and 'confirmação' in erro else none %}
-{% set erro_nova = erro if erro and erro.startsWith('Senha fraca') else none %}
 {% set erro = none if (erro_atual or erro_conf or erro_nova) else erro %}
 
 {% block conteudo %}
+{# A volta da troca (`?feita=N`): a confirmação, com o que aconteceu às outras
+   sessões (D8). Sem ela a troca terminava em /inicio sem uma palavra, e quem
+   trocou por desconfiança não sabia se a outra máquina tinha saído. #}
+{% if encerradas is number %}
+<div class="cartao">
+  <h1>Senha trocada</h1>
+  <p class="sub">A senha nova já vale.
+    {%- if encerradas == 0 %} Não havia outra sessão aberta desta conta.
+    {%- elif encerradas == 1 %} 1 outra sessão aberta desta conta (em outro navegador ou aparelho) foi encerrada.
+    {%- else %} {{ encerradas }} outras sessões abertas desta conta (em outros navegadores ou aparelhos) foram encerradas.
+    {%- endif %} Esta continua aberta.</p>
+  <div class="acoes"><a class="botao largo" href="/inicio">Continuar</a></div>
+</div>
+{% else %}
 <div class="cartao">
   <h1>Trocar senha</h1>
   <p class="sub">
@@ -23,7 +39,8 @@
     Sua senha é provisória, ou não atende mais à política de senha, e precisa
     ser trocada antes de continuar.
     {%- else -%}
-    A senha nova passa a valer na hora; as sessões abertas continuam abertas.
+    A senha nova passa a valer na hora. As outras sessões abertas desta conta
+    (em outro navegador ou aparelho) são encerradas; esta continua aberta.
     {%- endif -%}
   </p>
 
@@ -41,8 +58,8 @@
              autocomplete="new-password" aria-describedby="dica-nova">
       {{ senha.barra('nova') }}
       {% if erro_nova %}<span class="erro-campo">{{ erro_nova }}</span>{% endif %}
-      <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase
-        curta é mais fácil de lembrar e mais difícil de adivinhar.</span>
+      <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres, diferente
+        da atual. Uma frase curta é mais fácil de lembrar e mais difícil de adivinhar.</span>
     </div>
 
     <div class="campo {{ 'com-erro' if erro_conf }}">
@@ -72,4 +89,5 @@
     bloqueada por um tempo.</p>
 </div>
 {{ senha.script() }}
+{% endif %}
 {% endblock %}

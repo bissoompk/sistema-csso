@@ -126,7 +126,9 @@ async function _painel_pessoal(c: Ctx, usuario: UsuarioAtual): Promise<Response>
 rotas.get(PAINEL, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.ver");
-  if (usuario.escopo === ESCOPO_PROPRIO) return _painel_pessoal(c, usuario);
+  // pelo escopo de `epi.ver`, e não da conta (D1): quem só alcança o próprio
+  // EPI (a concessão do titular) tem o painel pessoal
+  if (usuario.escopo_de("epi.ver") === ESCOPO_PROPRIO) return _painel_pessoal(c, usuario);
   const tx = c.get("tx");
   const ve_ficha = usuario.pode("epi.ficha");
   const opera = usuario.pode("epi.catalogo") || usuario.pode("epi.entregar");
@@ -179,7 +181,7 @@ rotas.get(PAINEL, async (c) => {
     pode_indicador: usuario.pode("indicador.ver"),
     // o link do protocolo só para quem abre o pedido: o painel já recorta pelo
     // escopo, e o agregado (admin) lê o número sem abrir pedido de ninguém
-    abre_pedido: usuario.escopo !== ESCOPO_AGREGADO,
+    abre_pedido: usuario.escopo_de("epi.ver") !== ESCOPO_AGREGADO,
   });
 });
 
@@ -191,7 +193,11 @@ export async function _contexto(tx: Executor, usuario: UsuarioAtual, exercicio: 
   const inicio = `${String(ano).padStart(4, "0")}-01-01`;
   const fim = `${String(ano).padStart(4, "0")}-12-31`;
   const dados = await servico.relatorio(tx, { inicio, fim });
-  const nominal = usuario.ve_dado_nominal;
+  // o relatório conta a instituição inteira (sem recorte de linha): sem
+  // supressão só para quem lê o nome em todo campus — `epi.ficha` vale aqui,
+  // que é tela de EPI. Era `ve_dado_nominal`: a permissão em qualquer campus
+  // bastava para ler as contagens pequenas dos outros (D9)
+  const nominal = usuario.ve_dado_nominal_sem_recorte(["exposicao.ver", "epi.ficha"]);
   const por_categoria = suprimir(dados.por_categoria.servidores, nominal);
   const quantidade_categoria = _atrelar(dados.por_categoria, por_categoria);
   const por_campus = suprimir_aninhado(dados.por_campus, nominal);
@@ -255,6 +261,9 @@ async function _exercicios(tx: Executor): Promise<number[]> {
 rotas.get(RELATORIOS, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("indicador.ver");
+  // o relatório é do módulo de EPI: "sem acesso" a ele fecha também esta tela
+  // (liberação por módulo, 22/10/2026; o item de menu declara as duas)
+  usuario.exigir_na_equipe("epi.ver");
   const exercicio = _exercicio(c);
   const tx = c.get("tx");
   const ctx = await _contexto(tx, usuario, exercicio);

@@ -26,7 +26,8 @@ import { Certificado, DIAS_AVISO_RECICLAGEM } from "../dominio/treinamento.js";
 import * as datas_br from "./datas_br.js";
 import * as aviso_reciclagem from "./aviso_reciclagem.js";
 import * as pendencias from "./pendencias.js";
-import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import * as setor_equipe from "./setor_equipe.js";
 import * as textos from "./textos.js";
 
 export const TIPO_PENDENCIA = "CERTIFICADO_A_VENCER";
@@ -101,7 +102,10 @@ export async function monitor(
   hoje: string,
   filtros: Filtros = {},
 ): Promise<{ itens: LinhaReciclagem[]; contagem: Record<string, number> }> {
-  const onde: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_certificado)];
+  // o monitor é a tela de `certificado.ver`: o alcance é o dela (D1/D9)
+  const onde: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_certificado, "certificado.ver")];
+  // NUVEM: a equipe vê o vencimento das turmas do próprio setor (`setor_equipe.ts`)
+  if (usuario.escopo_de("certificado.ver") !== ESCOPO_PROPRIO) onde.push(setor_equipe.condicao_setor_certificado(usuario));
   if (filtros.treinamento_id) onde.push(eq(tabela_certificado.treinamento_id, filtros.treinamento_id));
   const termo = textos.chave_busca(filtros.busca ?? "");
   let itens: LinhaReciclagem[] = (await _em_vigor(tx, and(...onde))).map((l) => ({

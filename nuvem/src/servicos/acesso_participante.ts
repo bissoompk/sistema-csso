@@ -5,7 +5,7 @@
  * e baixa os certificados EMITIDOS de quem tem aquele e-mail cadastrado.
  *
  * Quem prova ser o dono é a caixa de e-mail: o link só vai ao endereço que já
- * está no cadastro (pela CSSO, pela inscrição ou pelo SIAPE), nunca a um
+ * está no cadastro (pela equipe, pela inscrição ou pelo SIAPE), nunca a um
  * endereço novo. Por isso o envio de e-mail tem de estar ligado
  * (`email.ts`); sem ele, a página diz que o acesso está indisponível.
  *
@@ -21,7 +21,7 @@
  * mesmo e-mail pode estar em mais de um cadastro (a duplicata ainda não
  * mesclada, ou duas pessoas que deram o mesmo endereço): com um cadastro só,
  * lista os dele; com mais de um, não lista nenhum — a caixa de e-mail não diz
- * qual das pessoas a abriu — e a página orienta a procurar a CSSO.
+ * qual das pessoas a abriu — e a página orienta a procurar a equipe responsável.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { and, asc, count, eq, gt, inArray, lt } from "drizzle-orm";
@@ -44,7 +44,7 @@ export const DIAS_DO_REGISTRO = 7;
 export const TIPO_EMAIL = "ACESSO_CERTIFICADOS";
 
 export const RESPOSTA_PADRAO =
-  "Se este e-mail estiver cadastrado em algum certificado emitido pela CSSO, " +
+  "Se este e-mail estiver cadastrado em algum certificado emitido pelo Sistema SISA, " +
   "enviamos para ele um link de acesso, válido por 2 horas. Confira também a caixa de spam.";
 
 type CertificadoRegistro = typeof tabela_certificado.$inferSelect;
@@ -116,7 +116,7 @@ export async function pedir_link(
   await email.enfileirar(tx, {
     tipo: TIPO_EMAIL,
     destinatario: cadastrado?.email ?? digitado,
-    assunto: "Seus certificados — CSSO UFVJM",
+    assunto: "Seus certificados — Sistema SISA · UFVJM",
     corpo:
       "Olá.\n\n" +
       "Alguém (provavelmente você) pediu acesso aos certificados de treinamento ligados a este e-mail. " +
@@ -127,8 +127,8 @@ export async function pedir_link(
         ? "Este e-mail está no cadastro de mais de uma pessoa; o link explica como seguir. "
         : `Há ${certificados.length} certificado(s). `) +
       "Se não foi você, ignore esta mensagem: sem o link, ninguém os vê.\n\n" +
-      "Coordenação de Saúde e Segurança Ocupacional (CSSO) — UFVJM\n" +
-      "Mensagem enviada pelo Sistema CSSO.\n",
+      "Superintendência Integrada de Saúde (Sisa) — UFVJM\n" +
+      "Mensagem enviada pelo Sistema SISA.\n",
   });
 }
 

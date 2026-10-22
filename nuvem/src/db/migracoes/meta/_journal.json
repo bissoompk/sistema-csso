@@ -85,6 +85,27 @@
       "when": 1792669951581,
       "tag": "0011_setor_promotor",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792680489844,
+      "tag": "0012_usuario_login_email_sem_caixa",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792690534592,
+      "tag": "0013_usuario_telefone_ramal",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792692116887,
+      "tag": "0014_niveis_modulo_setores",
+      "breakpoints": true
     }
   ]
 }

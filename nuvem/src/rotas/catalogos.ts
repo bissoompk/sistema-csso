@@ -253,13 +253,14 @@ async function _tela(
 
 rotas.get("/catalogos", async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("processo.ver");
+  // tela da equipe: o `processo.ver` do titular (D16) não a abre
+  usuario.exigir_na_equipe("processo.ver");
   return pagina(c, "paginas/catalogos.html", usuario, { catalogos: CATALOGOS });
 });
 
 rotas.get("/catalogos/:nome", async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("processo.ver");
+  usuario.exigir_na_equipe("processo.ver");
   return _tela(c, usuario, c.req.param("nome"), {
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,

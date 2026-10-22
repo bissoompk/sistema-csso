@@ -71,7 +71,9 @@ rotas.get("/", async (c) => {
   const exercicio = Number(hoje.slice(0, 4));
   // Lido ANTES de disparar as consultas: perfil sem escopo declarado lança aqui,
   // e lançar no meio da lista abaixo deixaria as já disparadas sem dono.
-  const so_o_proprio = usuario.escopo === ESCOPO_PROPRIO;
+  // Pela permissão do painel, e não pela conta (D1): o `admin_ti` ligado a
+  // servidor lê só os próprios processos, e o painel dele é o do titular.
+  const so_o_proprio = usuario.escopo_de("processo.ver") === ESCOPO_PROPRIO;
   // Quem só alcança o PRÓPRIO dado (servidor) não tem painel de setor: os KPIs
   // da instituição, a distribuição por risco e os "Últimos eventos" (que para
   // ele eram dez linhas de "conteúdo suprimido" sobre o que ele mesmo fez) não
@@ -92,7 +94,7 @@ rotas.get("/", async (c) => {
         where: and(
           inArray(parecer_tecnico.situacao, ["EMITIDO", "ASSINADO"]),
           eq(parecer_tecnico.ano, exercicio),
-          aplicar_escopo(usuario, parecer_tecnico),
+          aplicar_escopo(usuario, parecer_tecnico, "parecer.ver"),
         ),
         with: { processo: true },
         orderBy: [asc(parecer_tecnico.id)],
@@ -103,7 +105,7 @@ rotas.get("/", async (c) => {
         .innerJoin(parecer_tecnico, eq(parecer_tecnico.id, exposicao.parecer_id))
         .innerJoin(agente_nocivo, eq(agente_nocivo.id, exposicao.agente_nocivo_id))
         .innerJoin(tipo_risco, eq(tipo_risco.id, agente_nocivo.tipo_risco_id))
-        .where(aplicar_escopo(usuario, parecer_tecnico))
+        .where(aplicar_escopo(usuario, parecer_tecnico, "parecer.ver"))
         .groupBy(tipo_risco.nome),
       // O cartão "Precisam de você hoje" e o link dele contam a MESMA coisa,
       // porque são a mesma consulta: o filtro `precisam` do repositório aplica
@@ -144,7 +146,10 @@ rotas.get("/", async (c) => {
   // lá sai suprimido fazia do painel a porta dos fundos da supressão.
   const contagem_por_risco: Record<string, number> = {};
   for (const { nome, n } of contagem_risco) contagem_por_risco[nome] = n;
-  const por_risco = suprimir(contagem_por_risco, usuario.ve_dado_nominal);
+  // nominal pela leitura de parecer (D1/D9): quem lê o nome só em parte dos
+  // pareceres que conta lê a distribuição suprimida
+  const nominal_risco = usuario.ve_dado_nominal_em("parecer.ver");
+  const por_risco = suprimir(contagem_por_risco, nominal_risco);
 
   const [resumos, eventos] = await Promise.all([
     resumir_varios(tx, lista),
@@ -175,6 +180,7 @@ rotas.get("/", async (c) => {
     exercicio,
     por_mes: dicionario(por_mes),
     por_risco: dicionario(por_risco),
+    nominal_risco,
     limiar: LIMIAR_SUPRESSAO,
     precisam_de_voce,
     total_precisam,

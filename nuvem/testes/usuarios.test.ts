@@ -29,7 +29,9 @@ const MATRIZ: [string, string, string | null][] = [
   ["/auditoria", "auditor_interno", "secretaria_csso"],
   ["/config", "coordenador_csso", "almoxarife_sesmt"],
   ["/config", "admin_ti", null],
-  ["/perfis", "coordenador_csso", "admin_ti"],
+  // D24: o admin_ti, que cria conta, abre a matriz; quem não governa acesso nem lê processo, não
+  ["/perfis", "coordenador_csso", "almoxarife_sesmt"],
+  ["/perfis", "admin_ti", null],
   ["/usuarios", "superintendente", "secretaria_csso"],
   ["/usuarios", "admin_ti", null],
 ];
@@ -80,12 +82,13 @@ describe("contas", () => {
   });
 
   it("resetar senha revoga as sessões e força a troca", async () => {
+    // a conta comum (só o servidor_consulta): o admin_ti redefine; a de equipe não (D4)
     const outro = amb.novoCliente();
-    await entrar(outro, "secretaria_csso");
-    const [alvo] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "secretaria_csso"));
+    await entrar(outro, "servidor_consulta");
+    const [alvo] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "servidor_consulta"));
     await entrar(amb.cliente, "admin_ti");
     const r = await amb.cliente.post(`/usuarios/${alvo!.id}/senha`);
-    expect(r.text).toContain("Nova senha provisória de secretaria_csso");
+    expect(r.text).toContain("Nova senha provisória de servidor_consulta");
     // a sessão aberta caiu
     expect((await outro.get("/demandas", { seguir: false })).status).toBe(303);
     const [depois] = await amb.db.select().from(e.usuario).where(eq(e.usuario.id, alvo!.id));
@@ -191,6 +194,9 @@ describe("perfil e habilitação", () => {
     expect(depois!.usuario_id).toBe(h!.usuario_id);
     // e a conta que existe, escolhida no popup, grava como antes
     const [conta] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "engenheiro_seguranca"));
+    // a habilitação interna se liga à conta do servidor do mesmo SIAPE (D3)
+    const [sv] = await amb.db.insert(e.servidor).values({ siape: h!.siape!, nome: h!.nome }).returning();
+    await amb.db.update(e.usuario).set({ servidor_id: sv!.id }).where(eq(e.usuario.id, conta!.id));
     const ok = await amb.cliente.post(`/habilitacoes/${h!.id}/conta`, { usuario_id: String(conta!.id) }, { seguir: false });
     expect(ok.status).toBe(303);
     const tela = (await amb.cliente.get("/usuarios")).text;

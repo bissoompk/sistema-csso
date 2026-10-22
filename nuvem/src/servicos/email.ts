@@ -12,7 +12,7 @@
  *
  * - `CSSO_SMTP_URL` — `smtps://usuario:senha@smtp.exemplo.com:465` (ou
  *   `smtp://…:587`, que sobe para TLS). Segredo: só no painel.
- * - `CSSO_EMAIL_REMETENTE` — `"CSSO UFVJM" <csso@exemplo.com>`.
+ * - `CSSO_EMAIL_REMETENTE` — `"Sistema SISA · UFVJM" <csso@exemplo.com>`.
  * - `CSSO_EMAIL_RESPONDER_PARA` — opcional: para onde vai a resposta.
  *
  * Sem as duas primeiras o envio está desligado: os pedidos ficam na caixa,

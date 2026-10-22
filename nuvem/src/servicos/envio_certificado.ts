@@ -11,7 +11,7 @@
  * segunda via de quem pediu o envio — a trilha do certificado diz quem o
  * mandou, como diria quem o baixou.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import { certificado as tabela_certificado, email_saida as tabela_email } from "../db/esquema/index.js";
 import { Certificado as C, Participante } from "../dominio/treinamento.js";
@@ -23,6 +23,7 @@ import * as email from "./email.js";
 import * as servico from "./emissao_certificado.js";
 import * as servico_participante from "./participante.js";
 import { carregar_usuario_atual, type UsuarioAtual } from "./rbac.js";
+import * as setor_equipe from "./setor_equipe.js";
 
 export const TIPO = "CERTIFICADO";
 
@@ -51,8 +52,8 @@ function _corpo(certificado: CertificadoRegistro): { assunto: string; corpo: str
       `${c.url_validacao}\n\n` +
       "Guarde este arquivo: ele é o documento do treinamento. Para baixá-lo de novo, " +
       `peça o link em ${c.url_validacao.replace(/\/validar\/.*$/, "")}/certificados/acesso\n\n` +
-      "Coordenação de Saúde e Segurança Ocupacional (CSSO) — UFVJM\n" +
-      "Mensagem enviada pelo Sistema CSSO.\n",
+      `${c.turma_unidade_promotora || "Superintendência Integrada de Saúde (Sisa)"} — UFVJM\n` +
+      "Mensagem enviada pelo Sistema SISA.\n",
   };
 }
 
@@ -159,6 +160,52 @@ email.registrar_anexador(TIPO, async (tx, mensagem) => {
   const pdf = await servico.pdf_do_certificado(tx, usuario, certificado);
   return [{ nome: pdf.nome, tipo: TIPO_PDF, bytes: pdf.bytes }];
 });
+
+// ---------------------------------------------------------------------
+// NUVEM: a caixa de envios pelo setor promotor (`setor_equipe.ts`)
+// ---------------------------------------------------------------------
+/**
+ * A caixa de saída (`email.caixa`) recortada pelo setor de quem a lê: o e-mail
+ * de certificado ou de inscrição das turmas do setor; o que não aponta para
+ * turma nenhuma fica com a CSSO. Quem vê todos os setores vê a caixa inteira.
+ */
+export async function caixa_do_setor(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  opcoes: { situacao?: string; limite?: number } = {},
+) {
+  const setor = setor_equipe.condicao_setor_email(usuario);
+  if (setor === undefined) return email.caixa(tx, opcoes);
+  return tx
+    .select()
+    .from(tabela_email)
+    .where(and(opcoes.situacao ? eq(tabela_email.situacao, opcoes.situacao) : undefined, setor))
+    .orderBy(desc(tabela_email.id))
+    .limit(opcoes.limite ?? 200);
+}
+
+/** A contagem por situação da caixa, com o mesmo recorte (`email.contagem`). */
+export async function contagem_do_setor(tx: Executor, usuario: UsuarioAtual): Promise<Record<string, number>> {
+  const setor = setor_equipe.condicao_setor_email(usuario);
+  if (setor === undefined) return email.contagem(tx);
+  const linhas = await tx
+    .select({ situacao: tabela_email.situacao, n: count() })
+    .from(tabela_email)
+    .where(setor)
+    .groupBy(tabela_email.situacao);
+  const saida: Record<string, number> = { PENDENTE: 0, ENVIADO: 0, FALHOU: 0, CANCELADO: 0 };
+  for (const l of linhas) saida[l.situacao] = Number(l.n);
+  return saida;
+}
+
+/** O e-mail da caixa está no setor de quem age sobre ele (tentar de novo, cancelar)? */
+export async function email_no_setor(tx: Executor, usuario: UsuarioAtual, email_id: number): Promise<boolean> {
+  const [achado] = await tx
+    .select({ id: tabela_email.id })
+    .from(tabela_email)
+    .where(and(eq(tabela_email.id, email_id), setor_equipe.condicao_setor_email(usuario)));
+  return Boolean(achado);
+}
 
 /** A frase que a tela devolve depois do pedido. */
 export function resumo(r: ResultadoPedido): string {

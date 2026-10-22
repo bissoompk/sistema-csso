@@ -17,7 +17,7 @@
    A trilha não tem bloco próprio: o item ativo do menu já é esta página, e a
    casca o escreve (o bloco aqui repetia "Meus treinamentos" duas vezes). #}
 
-{% block titulo %}Meus treinamentos · CSSO{% endblock %}
+{% block titulo %}Meus treinamentos · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
@@ -31,20 +31,20 @@
         {%- else %}Nenhuma turma aberta agora — veja o <a href="/treinamentos/catalogo">catálogo de treinamentos</a>.{% endif %}
         {% if inscricoes|length %}Abaixo, as suas inscrições.{% endif %}</p>
       {% call ui.info('pedir-vaga', 'como funciona pedir a própria vaga') %}
-        <p>Pedir vaga é ato seu; <strong>confirmar é ato da CSSO</strong> — a mesma
-          divisão do pedido de EPI, em que quem pede não decide. Enquanto a CSSO não
+        <p>Pedir vaga é ato seu; <strong>confirmar é ato da equipe responsável</strong> — a mesma
+          divisão do pedido de EPI, em que quem pede não decide. Enquanto a equipe não
           confirma, sua inscrição fica como <strong>inscrita</strong>.</p>
         <p><strong>A vaga já é sua desde o pedido.</strong> Ela sai da conta de vagas
           no mesmo instante, e não só na confirmação: segurar a vaga só depois faria o
           sistema aceitar trinta pedidos para vinte lugares.</p>
         <p>Só a turma com <strong>inscrições abertas</strong>, dentro do prazo e que
           ainda não começou recebe pedido seu. Turma planejada ou já em andamento
-          continua recebendo inscrição <em>pela CSSO</em>, que tem o contexto na mão.</p>
+          continua recebendo inscrição <em>pela equipe responsável</em>, que tem o contexto na mão.</p>
         <p><strong>Desistir</strong> vale até a véspera do início, e não apaga nada: a
           inscrição fica cancelada, com o motivo escrito e o registro na trilha. Depois
           do início, faltar deixa de ser decisão e passa a ser ausência — que é fato, e
           se registra em vez de se desfazer. Desistência é definitiva nesta turma:
-          voltar atrás pede a CSSO. O pedido feito pelo link público, enquanto a CSSO
+          voltar atrás pede a equipe responsável. O pedido feito pelo link público, enquanto a equipe
           não o confere, também se retira por aqui.</p>
       {% endcall %}
     </div>
@@ -109,9 +109,9 @@
     {% else %}
     {{ ui.vazio_de_lista(
          'Nenhuma turma aberta agora.',
-         'Veja no catálogo de treinamentos (menu Certificados e Treinamentos) o que a
-          CSSO oferece: a turma é a oferta com data, e aparece aqui quando abre
-          inscrições. Turma que já começou é inscrita pela CSSO.', 6) }}
+         'Veja no catálogo de treinamentos (menu Certificados e Treinamentos) o que os
+          setores da Sisa oferecem: a turma é a oferta com data, e aparece aqui quando abre
+          inscrições. Turma que já começou é inscrita pela equipe responsável.', 6) }}
     {% endfor %}
     </tbody>
   </table>
@@ -138,9 +138,9 @@
         {%- if i.situacao == 'AGUARDANDO_EMAIL' %}<span class="pilula alerta">Pedido em análise</span>
         {%- else %}{{ ui.pilula_inscricao(i.situacao) }}{% endif %}
         {%- if i.situacao == 'INSCRITA' %}
-        <span class="quebra discreto">aguardando confirmação da CSSO</span>{% endif %}
+        <span class="quebra discreto">aguardando confirmação{% if i.turma.unidade_promotora %} da {{ i.turma.unidade_promotora.sigla or i.turma.unidade_promotora.nome_extenso }}{% endif %}</span>{% endif %}
         {%- if i.situacao == 'AGUARDANDO_EMAIL' %}
-        <span class="quebra discreto">pedido pelo link: a CSSO confere antes de reservar a vaga</span>{% endif %}
+        <span class="quebra discreto">pedido pelo link: a equipe confere antes de reservar a vaga</span>{% endif %}
         {%- if i.situacao == 'CANCELADA' and i.motivo_cancelamento %}
         <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}</td>
       <td class="acao-linha">
@@ -165,7 +165,7 @@
     {{ ui.vazio_de_lista(
          'Você ainda não tem inscrição.',
          'Escolha uma turma na tabela acima e clique em “Quero me inscrever”. Turma
-          fora do prazo ou já em andamento é inscrita pela CSSO — fale com o setor
+          fora do prazo ou já em andamento é inscrita pela equipe responsável — fale com o setor
           com o código da turma.', 4) }}
     {% endif %}
     {% endfor %}
@@ -187,11 +187,11 @@
                           classe_botao='perigo', nota=i.turma.treinamento.nome) %}
   <div class="aviso aviso-alerta">
     {% if e_pedido %}
-    <p><strong>O pedido sai da fila da CSSO.</strong> Ele fica registrado como
+    <p><strong>O pedido sai da fila da equipe.</strong> Ele fica registrado como
       retirado, com o motivo, e não volta.</p>
     {% else %}
     <p><strong>A vaga volta para a turma.</strong> A desistência é definitiva nesta
-      turma: para voltar, só falando com a CSSO.</p>
+      turma: para voltar, só falando com a equipe responsável.</p>
     {% endif %}
   </div>
   <div class="campo"><label for="motivo-{{ i.id }}">Motivo (opcional)</label>

@@ -22,7 +22,8 @@ describe("primeiro acesso", () => {
       { seguir: false },
     );
     const [u] = await db.select().from(e.usuario).where(eq(e.usuario.login, "sisa"));
-    expect(u!.precisa_trocar_senha).toBe(true);
+    // D28: a senha foi escolhida agora, nesta tela — não é provisória
+    expect(u!.precisa_trocar_senha).toBe(false);
     const atribuicoes = await db.select().from(e.atribuicao).where(eq(e.atribuicao.usuario_id, u!.id));
     expect(atribuicoes.length).toBe(1);
     expect(atribuicoes[0]!.ato_normativo).toBe("BOOTSTRAP — substituir pelo ato real");
@@ -59,10 +60,10 @@ describe("primeiro acesso", () => {
     expect(r.text).toContain('value="x@y.z"');
   });
 
-  it("senha de dez caracteres é aceita; a de seis, não", async () => {
+  it("senha de seis caracteres ou mais é aceita; a de cinco, não", async () => {
     const { cliente } = await bancoLimpo();
-    const curta = await cliente.post("/primeiro-acesso", { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "csso26" });
-    expect(curta.text).toContain("mínimo de 10 caracteres");
+    const curta = await cliente.post("/primeiro-acesso", { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "cs26x" });
+    expect(curta.text).toContain("mínimo de 6 caracteres");
     const r = await cliente.post(
       "/primeiro-acesso",
       { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "csso-sisa-26" },

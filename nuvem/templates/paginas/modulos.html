@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {# O mapa está acima dos módulos: dizer "Processos SEI / Módulos" seria falso. #}
 {% set trilha_raiz = 'Módulos' %}
-{% block titulo %}Módulos · CSSO{% endblock %}
+{% block titulo %}Módulos · SISA{% endblock %}
 {% block conteudo %}
 <div class="tela">
 
@@ -34,14 +34,20 @@
 
       {% if m.disponivel %}
       {% if itens %}
+      {# Os mesmos grupos da lateral, para o mapa e o menu falarem igual. Aqui o
+         subtítulo é <h3>, porque fica abaixo do <h2> do cartão; o contador
+         acima continua sendo o total de telas. #}
+      {% for g in m.grupos_de(usuario) %}
+      {% if g.titulo %}<h3 class="rotulo-grupo-mapa">{{ g.titulo }}</h3>{% endif %}
       <div class="grade-telas">
-        {% for item in itens %}
+        {% for item in g.itens %}
         <a class="tela" href="{{ item.caminho }}">
           <strong>{{ item.rotulo }}</strong>
           <span class="discreto">{{ item.descricao }}</span>
         </a>
         {% endfor %}
       </div>
+      {% endfor %}
       {% else %}
       {# Módulo em uso que não abre nenhuma tela para esta pessoa: a caixa diz
          que a ausência é de permissão, e não de módulo vazio. #}

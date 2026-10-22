@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Painel · CSSO{% endblock %}
+{% block titulo %}Painel · SISA{% endblock %}
 
 {% block acoes_cabecalho %}
 {% if usuario.pode('processo.criar') %}<a class="botao" href="/processos/novo">Novo processo</a>{% endif %}
@@ -28,7 +28,7 @@
 
   {% if not tem_servidor %}
   <div class="aviso aviso-alerta">Esta conta não está vinculada a um cadastro de
-    servidor: os cartões abaixo ficam vazios até a CSSO fazer o vínculo.</div>
+    servidor: os cartões abaixo ficam vazios até a equipe responsável fazer o vínculo.</div>
   {% endif %}
 
   {# O contrato de `.grade-resumo > .cartao-resumo` (csso.css): `.rotulo` diz o
@@ -105,7 +105,7 @@
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Painel</h1>
-      <p class="sub">Processos SEI · exercício {{ exercicio }} · o processo oficial continua sendo o SEI</p>
+      <p class="sub">Processos SEI · exercício {{ exercicio }}</p>
     </div>
   </div>
 
@@ -220,7 +220,7 @@
          (`suprimir`) e o desenho é o mesmo macro. #}
       <section class="cartao">
         <div class="titulo-cartao"><h2>Distribuição por tipo de risco</h2>
-          {% if not usuario.ve_dado_nominal and por_risco %}
+          {% if not nominal_risco and por_risco %}
           {# O traço na célula é o que se vê; por que ele está lá se lê uma vez. #}
           {% call ui.info('supressao-do-painel', 'por que algumas células saem como traço') %}
             <p>Célula com menos de {{ limiar }} servidores aparece como

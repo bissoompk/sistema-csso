@@ -2,7 +2,7 @@
 {% import "partes/macros.html" as ui with context %}
 {# Sem lateral, como /validar: quem abre não tem conta neste sistema. #}
 {% set sem_casca = true %}
-{% block titulo %}Meus certificados · CSSO{% endblock %}
+{% block titulo %}Meus certificados · SISA{% endblock %}
 {% block classe_conteudo %}tela-auxiliar{% endblock %}
 
 {% block conteudo %}
@@ -16,14 +16,14 @@
      certificado de uma à outra (`acesso_participante.ts`). #}
   <div class="aviso aviso-alerta" role="status">
     <p><strong>Este e-mail está no cadastro de mais de uma pessoa.</strong> Por
-      segurança, os certificados não são listados por aqui até a CSSO conferir de
+      segurança, os certificados não são listados por aqui até a equipe responsável conferir de
       quem é o endereço.</p>
-    <p>Fale com a CSSO e informe o seu nome completo e o treinamento: ela confirma
+    <p>Fale com a equipe responsável e informe o seu nome completo e o treinamento: ela confirma
       o seu e-mail e, a partir daí, este acesso passa a listar os seus certificados.</p>
   </div>
   {% else %}
   <p class="sub">{% if titular %}Certificados de <strong>{{ titular }}</strong>, emitidos
-    pela CSSO/UFVJM.{% else %}Os certificados de treinamento emitidos pela CSSO/UFVJM
+    pela Sisa/UFVJM.{% else %}Os certificados de treinamento emitidos pela Sisa/UFVJM
     para o seu e-mail.{% endif %}
     Este link vence às <strong>{{ vence_as }}</strong> (daqui a {{ falta }}); depois, peça outro.</p>
   {% if itens|length %}
@@ -46,7 +46,7 @@
   </table>
   </div>
   {% else %}
-  <p>Nenhum certificado em vigor ligado a este e-mail. Se algum foi anulado, a CSSO
+  <p>Nenhum certificado em vigor ligado a este e-mail. Se algum foi anulado, a equipe responsável
     emitiu (ou vai emitir) outro no lugar.</p>
   {% endif %}
   {% endif %}
@@ -63,19 +63,19 @@
   {% else %}
   {# sem envio de e-mail, "pedir um link novo" levaria a um beco sem saída #}
   <p>O link de acesso vale por 2 horas, e o envio de um link novo por e-mail está
-    indisponível no momento. Peça o seu certificado diretamente à CSSO.</p>
+    indisponível no momento. Peça o seu certificado diretamente ao setor que promoveu o treinamento.</p>
   {% endif %}
 </div>
 
 {% else %}
 <div class="cartao">
   <h1>Meus certificados</h1>
-  <p class="sub">Para quem fez treinamento com a CSSO/UFVJM e não tem conta no sistema
+  <p class="sub">Para quem fez treinamento com a Sisa/UFVJM e não tem conta no sistema
     (terceirizado, estudante, visitante). Servidor da UFVJM também pode usar.</p>
 
   {% if not disponivel %}
   <div class="aviso aviso-alerta">O acesso por e-mail está indisponível no momento.
-    Peça o seu certificado diretamente à CSSO.</div>
+    Peça o seu certificado diretamente ao setor que promoveu o treinamento.</div>
 
   {% elif excedeu %}
   <div class="aviso aviso-alerta" role="alert">Pedidos demais deste endereço de rede.
@@ -83,8 +83,8 @@
 
   {% elif recebido %}
   <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
-  <p class="discreto">Não chegou? O link só vai para o e-mail que a CSSO tem no seu
-    cadastro. Se você não deu e-mail na inscrição, ou ele mudou, fale com a CSSO.</p>
+  <p class="discreto">Não chegou? O link só vai para o e-mail que a equipe responsável tem no seu
+    cadastro. Se você não deu e-mail na inscrição, ou ele mudou, fale com a equipe responsável.</p>
 
   {% else %}
   {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}

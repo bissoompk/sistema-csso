@@ -7,7 +7,8 @@
 import { describe, expect, it } from "vitest";
 import { and, count, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
-import { MATRIZ_PERFIS, PERMISSOES, modulo_da_permissao } from "../src/servicos/rbac.js";
+import { MATRIZ_PERFIS, PERMISSOES, PERMISSOES_RETIRADAS, _conferir_retiradas, modulo_da_permissao } from "../src/servicos/rbac.js";
+import * as auditoria from "../src/servicos/auditoria.js";
 import { semear, semear_rbac, TEXTO_NR15_AX14 } from "../src/servicos/sementes.js";
 import { conferir_modelo } from "../src/servicos/certificado.js";
 import { bancoLimpo, naTransacao } from "./ajuda";
@@ -141,6 +142,47 @@ describe("sementes", () => {
     expect(ainda.some((l) => l.permissao_id === extra!.id)).toBe(true);
     await db.delete(e.perfil_permissao).where(eq(e.perfil_permissao.permissao_id, extra!.id));
     await naTransacao((tx) => semear_rbac(tx)); // recoloca no admin_ti
+  });
+
+  it("a retirada declarada sai do perfil já gravado, com evento na trilha, e só uma vez", async () => {
+    // o banco como estava antes de 22/10/2026: o admin_ti com indicador.ver
+    const [admin] = await db.select().from(e.perfil).where(eq(e.perfil.codigo, "admin_ti"));
+    const [indicador] = await db.select().from(e.permissao).where(eq(e.permissao.codigo, "indicador.ver"));
+    await db.insert(e.perfil_permissao).values({ perfil_id: admin!.id, permissao_id: indicador!.id });
+    await naTransacao((tx) => semear_rbac(tx));
+    await naTransacao((tx) => semear_rbac(tx));
+    const ainda = await db
+      .select()
+      .from(e.perfil_permissao)
+      .where(and(eq(e.perfil_permissao.perfil_id, admin!.id), eq(e.perfil_permissao.permissao_id, indicador!.id)));
+    expect(ainda).toEqual([]);
+    const eventos = await db
+      .select()
+      .from(e.historico_evento)
+      .where(
+        and(
+          eq(e.historico_evento.tipo_evento, auditoria.PERMISSAO_RETIRADA_DO_PERFIL),
+          eq(e.historico_evento.entidade, "perfil"),
+          eq(e.historico_evento.entidade_id, admin!.id),
+        ),
+      );
+    expect(eventos).toHaveLength(1);
+    expect(eventos[0]!.valor_anterior).toBe("indicador.ver");
+    expect(eventos[0]!.descricao).toContain("'indicador.ver' retirada do perfil 'admin_ti'");
+    expect(auditoria.ROTULO_EVENTO[auditoria.PERMISSAO_RETIRADA_DO_PERFIL]).toBe("Permissão retirada do perfil");
+    // os outros perfis com indicador.ver continuam com ela
+    const [coordenador] = await db.select().from(e.perfil).where(eq(e.perfil.codigo, "coordenador_csso"));
+    const do_coordenador = await db
+      .select()
+      .from(e.perfil_permissao)
+      .where(and(eq(e.perfil_permissao.perfil_id, coordenador!.id), eq(e.perfil_permissao.permissao_id, indicador!.id)));
+    expect(do_coordenador).toHaveLength(1);
+  });
+
+  it("retirada e concessão da mesma permissão ao mesmo perfil não convivem", () => {
+    expect(PERMISSOES_RETIRADAS).toContainEqual(expect.objectContaining({ perfil: "admin_ti", permissao: "indicador.ver" }));
+    expect(MATRIZ_PERFIS.admin_ti!.permissoes).not.toContain("indicador.ver");
+    expect(() => _conferir_retiradas()).not.toThrow();
   });
 
   it("textos literais com aspas curvas, byte a byte", async () => {

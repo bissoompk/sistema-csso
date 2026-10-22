@@ -182,7 +182,7 @@ rotas.post("/config/exportar-tudo", async (c) => {
     throw new PermissaoNegada(
       "exportar",
       "A exportação completa (o banco inteiro, em claro) é só de quem responde pelo sistema: " +
-        "superintendência ou coordenação da CSSO.",
+        "a superintendência (Sisa) ou a coordenação da CSSO.",
     );
   }
   // RN-19 (revisão de privacidade, 25/09/2026): o zip é o banco em claro, com

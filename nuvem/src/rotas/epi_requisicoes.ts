@@ -435,7 +435,7 @@ rotas.get(FILA, async (c) => {
     pode_analisar: usuario.pode("epi.analisar"),
     // a conta de escopo próprio só vê os próprios pedidos: para ela a tela é
     // "Meus pedidos", e não a fila do setor
-    meus_pedidos: usuario.escopo === ESCOPO_PROPRIO,
+    meus_pedidos: usuario.escopo_de("epi.ver") === ESCOPO_PROPRIO,
     filtro_ignorado: bruto_estado && !estado_valido ? bruto_estado : null,
     mensagem: c.req.query("mensagem") ?? null,
     erro: recado,
@@ -479,7 +479,9 @@ async function _tela_nova(
 ): Promise<Response> {
   const tx = c.get("tx");
   const q = opcoes.q ?? "";
-  const proprio = usuario.escopo === ESCOPO_PROPRIO;
+  // pelo escopo de `epi.requisitar`, e não da conta (D16): o almoxarife pede
+  // só para si, pela concessão do titular
+  const proprio = usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO;
   const [eu] =
     proprio && usuario.servidor_id !== null
       ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id))
@@ -577,7 +579,7 @@ rotas.post(FILA, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const q = f.texto("q");
-  const proprio = usuario.escopo === ESCOPO_PROPRIO;
+  const proprio = usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO;
   // tudo o que foi digitado, guardado antes da primeira recusa
   const digitado = {
     // escopo próprio: o campo travado manda o próprio id; vazio vale o mesmo.
@@ -658,16 +660,31 @@ rotas.post(FILA, async (c) => {
 // =====================================================================
 // A ficha do pedido
 // =====================================================================
-/** A requisição desta URL, no escopo de quem pediu — ou `null`. */
-async function _requisicao(c: Ctx, usuario: UsuarioAtual, requisicao_id: number | null) {
+/**
+ * A requisição desta URL, no escopo de quem pediu — ou `null`. `permissao` é
+ * a do ato: mexer no pedido é `epi.requisitar`, e o alcance é o dela (D16) —
+ * o almoxarife lê a fila do setor e edita só o próprio pedido.
+ */
+async function _requisicao(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  requisicao_id: number | null,
+  permissao: string | readonly string[] = "epi.ver",
+) {
   if (requisicao_id === null) return null;
-  return servico.no_escopo(c.get("tx"), usuario, requisicao_id);
+  return servico.no_escopo(c.get("tx"), usuario, requisicao_id, permissao);
 }
 
 /** A linha, conferida contra a requisição da URL — e contra o escopo dela. */
-async function _linha(c: Ctx, usuario: UsuarioAtual, requisicao_id: number | null, linha_id: number | null) {
+async function _linha(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  requisicao_id: number | null,
+  linha_id: number | null,
+  permissao: string | readonly string[] = "epi.ver",
+) {
   if (requisicao_id === null || linha_id === null) return null;
-  if ((await _requisicao(c, usuario, requisicao_id)) === null) return null;
+  if ((await _requisicao(c, usuario, requisicao_id, permissao)) === null) return null;
   const [linha] = await c.get("tx").select().from(epi_requisicao_item).where(eq(epi_requisicao_item.id, linha_id));
   if (!linha || linha.requisicao_id !== requisicao_id) return null;
   return linha;
@@ -747,7 +764,7 @@ async function _tela_ficha(
     eventos: await _trilha_para_tela(c, usuario, await _trilha(tx, requisicao)),
     // a lista da chefia só existe para quem edita o rascunho e não é de escopo próprio
     servidores:
-      servico.EDITAVEL.has(requisicao.estado) && usuario.escopo !== ESCOPO_PROPRIO
+      servico.EDITAVEL.has(requisicao.estado) && usuario.escopo_de("epi.requisitar") !== ESCOPO_PROPRIO
         ? await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome))
         : [],
     editavel: servico.EDITAVEL.has(requisicao.estado),
@@ -756,7 +773,7 @@ async function _tela_ficha(
       EPI_REQUISICAO_CANCELAVEL.has(requisicao.estado) && !requisicao.itens.some((l) => l.quantidade_entregue > 0),
     pode_requisitar: usuario.pode("epi.requisitar"),
     pode_analisar: usuario.pode("epi.analisar"),
-    proprio: usuario.escopo === ESCOPO_PROPRIO,
+    proprio: usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO,
     // requerente, quem abriu ou quem analisa — a mesma pergunta que o serviço faz
     pode_cancelar: servico.pode_cancelar(usuario, requisicao),
     // o botão de indeferir só aparece quando ele funciona
@@ -837,7 +854,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
   // a permissão vem ANTES da busca, em toda rota de escrita
   usuario.exigir("epi.requisitar");
-  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"));
+  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
   const f = await formulario(c);
   const digitado = {
@@ -868,7 +885,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}`, async (c) => {
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/excluir`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.requisitar");
-  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"));
+  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
   const r = await tentar(c, (sp) => servico.excluir_rascunho(sp, usuario, requisicao));
   if (!r.ok) return _erro(c, _ficha(requisicao.id), _motivos(r.falha));
@@ -884,7 +901,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/excluir`, async (c) => {
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.requisitar");
-  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"));
+  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
   const f = await formulario(c);
   const item = await _item_do_catalogo(c.get("tx"), _id(f.texto("item_id")));
@@ -918,7 +935,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}`, async (c) =
   const requisicao_id = _param_id(c, "requisicao_id")!;
   const linha_id = _param_id(c, "linha_id")!;
   const destino = _ficha(requisicao_id);
-  const linha = await _linha(c, usuario, requisicao_id, linha_id);
+  const linha = await _linha(c, usuario, requisicao_id, linha_id, "epi.requisitar");
   if (!linha) return redirecionar(c, destino);
   const f = await formulario(c);
   // a forma leva o id da linha: o formulário de editar se repete por item
@@ -948,7 +965,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/remover`, asy
   usuario.exigir("epi.requisitar");
   const requisicao_id = _param_id(c, "requisicao_id")!;
   const destino = _ficha(requisicao_id);
-  const linha = await _linha(c, usuario, requisicao_id, _param_id(c, "linha_id"));
+  const linha = await _linha(c, usuario, requisicao_id, _param_id(c, "linha_id"), "epi.requisitar");
   if (!linha) return redirecionar(c, destino);
   const nome = (await _item_do_catalogo(c.get("tx"), linha.epi_item_id))!.nome;
   const r = await tentar(c, (sp) => servico.remover_item(sp, usuario, linha));
@@ -960,7 +977,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/remover`, asy
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/enviar`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.requisitar");
-  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"));
+  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
   const r = await tentar(c, (sp) => servico.enviar(sp, usuario, requisicao));
@@ -977,16 +994,28 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/enviar`, async (c) => {
 // A análise — envelope. `AutoanaliseProibida` NÃO é capturada: sobe até o
 // `onError`, que a rende como 403 com a mensagem inteira (as duas saídas).
 // =====================================================================
+/**
+ * A permissão do ATO: a porta (basta uma da lista) e o alcance com que a linha
+ * se procura. Era só a porta, e a linha se achava pelo alcance de `epi.ver`
+ * (D9): o técnico recortado no campus JK que também tinha `consulta_progep`
+ * (sem campus) analisava e entregava pedido de todos os campi — e, com a
+ * concessão do titular (D16), o próprio pedido feito em outro campus.
+ */
+function _exigir_ato(usuario: UsuarioAtual, ato: string | readonly string[]): void {
+  const lista = typeof ato === "string" ? [ato] : ato;
+  if (!lista.some((p) => usuario.pode(p))) throw new PermissaoNegada(lista[0]!);
+}
+
 function acao_de_envelope(
   sufixo: string,
   executar: (sp: Tx, usuario: UsuarioAtual, requisicao: servico.EpiRequisicao, f: Form) => Promise<unknown>,
   recado: (requisicao: servico.EpiRequisicao) => string,
-  permissao: (usuario: UsuarioAtual) => void = (u) => u.exigir("epi.analisar"),
+  ato: string | readonly string[] = "epi.analisar",
 ) {
   rotas.post(`${FILA}/:requisicao_id{[0-9]+}/${sufixo}`, async (c) => {
     const usuario = await usuarioLogado(c);
-    permissao(usuario);
-    const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"));
+    _exigir_ato(usuario, ato);
+    const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), ato);
     if (!requisicao) return redirecionar(c, FILA);
     const destino = _ficha(requisicao.id);
     const f = await formulario(c);
@@ -1031,7 +1060,7 @@ acao_de_envelope(
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/indeferir`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.analisar");
-  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"));
+  const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.analisar");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
   const f = await formulario(c);
@@ -1072,9 +1101,7 @@ acao_de_envelope(
   () => "Pedido cancelado, com o motivo registrado.",
   // a primeira porta é a permissão; quem, entre os que a têm, pode cancelar
   // ESTE pedido é o serviço que decide (`servico.pode_cancelar`)
-  (u) => {
-    if (!(u.pode("epi.requisitar") || u.pode("epi.analisar"))) throw new PermissaoNegada("epi.requisitar");
-  },
+  ["epi.requisitar", "epi.analisar"],
 );
 
 // =====================================================================
@@ -1084,7 +1111,8 @@ type Preparo = { recusa: string } | { dados: Record<string, any> };
 
 interface AcaoDeItem {
   sufixo: string;
-  permissao: (usuario: UsuarioAtual) => void;
+  /** a permissão do ato (basta uma da lista): a porta e o alcance da linha */
+  permissao: string | readonly string[];
   /** a recusa de FORMATO, antes do serviço, ou os dados já convertidos */
   preparar?: (c: Ctx, f: Form) => Promise<Preparo>;
   executar: (
@@ -1100,11 +1128,11 @@ interface AcaoDeItem {
 function acao_de_item(a: AcaoDeItem) {
   rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/${a.sufixo}`, async (c) => {
     const usuario = await usuarioLogado(c);
-    a.permissao(usuario);
+    _exigir_ato(usuario, a.permissao);
     const requisicao_id = _param_id(c, "requisicao_id")!;
     const linha_id = _param_id(c, "linha_id")!;
     const destino = _ficha(requisicao_id);
-    const linha = await _linha(c, usuario, requisicao_id, linha_id);
+    const linha = await _linha(c, usuario, requisicao_id, linha_id, a.permissao);
     if (!linha) return redirecionar(c, destino);
     const nome = (await _item_do_catalogo(c.get("tx"), linha.epi_item_id))!.nome;
     const parcial = _e_htmx(c);
@@ -1125,7 +1153,7 @@ function acao_de_item(a: AcaoDeItem) {
 /** SOLICITADO → APROVADO, com a RN-26 contada na ficha. */
 acao_de_item({
   sufixo: "aprovar",
-  permissao: (u) => u.exigir("epi.analisar"),
+  permissao: "epi.analisar",
   preparar: async (_c, f) => {
     const bruto = f.texto("quantidade_aprovada");
     const quantas = _inteiro(bruto);
@@ -1152,7 +1180,7 @@ acao_de_item({
 /** SOLICITADO → RECUSADO. RN-27: fundamentada, catalogada e congelada. */
 acao_de_item({
   sufixo: "recusar",
-  permissao: (u) => u.exigir("epi.analisar"),
+  permissao: "epi.analisar",
   preparar: async (c, f) => {
     const motivo = await _motivo(c.get("tx"), _id(f.texto("motivo_id")));
     if (!motivo) {
@@ -1172,9 +1200,7 @@ acao_de_item({
 /** A linha sai do pedido sem virar recusa. Motivo obrigatório. */
 acao_de_item({
   sufixo: "cancelar",
-  permissao: (u) => {
-    if (!(u.pode("epi.requisitar") || u.pode("epi.analisar"))) throw new PermissaoNegada("epi.analisar");
-  },
+  permissao: ["epi.analisar", "epi.requisitar"],
   executar: (sp, usuario, linha, f) => servico.cancelar_item(sp, usuario, linha, f.texto("motivo")),
   recado: (_linha, nome) => `'${nome}' cancelado no pedido, com o motivo na trilha.`,
 });
@@ -1182,7 +1208,7 @@ acao_de_item({
 /** APROVADO ou SEM_ESTOQUE → RESERVADO. RN-24 e RN-25 na porta. */
 acao_de_item({
   sufixo: "reservar",
-  permissao: (u) => u.exigir("epi.estoque"),
+  permissao: "epi.estoque",
   preparar: async (c, f) => {
     const entrada = await _entrada(c.get("tx"), _id(f.texto("entrada_id")));
     if (!entrada) {
@@ -1208,7 +1234,7 @@ acao_de_item({
 /** RESERVADO → SEM_ESTOQUE, com o motivo por escrito. */
 acao_de_item({
   sufixo: "soltar-reserva",
-  permissao: (u) => u.exigir("epi.estoque"),
+  permissao: "epi.estoque",
   executar: (sp, usuario, linha, f) => servico.soltar_reserva(sp, usuario, linha, f.texto("motivo")),
   recado: (_linha, nome) =>
     `Reserva de '${nome}' solta, com o motivo na trilha. O item voltou a ` +
@@ -1218,7 +1244,7 @@ acao_de_item({
 /** APROVADO → SEM_ESTOQUE: o item é devido e a prateleira não tem. */
 acao_de_item({
   sufixo: "sem-estoque",
-  permissao: (u) => u.exigir("epi.estoque"),
+  permissao: "epi.estoque",
   executar: (sp, usuario, linha, f) =>
     servico.marcar_sem_estoque(sp, usuario, linha, { complemento: f.texto("complemento") }),
   recado: (_linha, nome) =>
@@ -1236,7 +1262,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/entregar`, as
   usuario.exigir("epi.entregar");
   const requisicao_id = _param_id(c, "requisicao_id")!;
   const destino = _ficha(requisicao_id);
-  const linha = await _linha(c, usuario, requisicao_id, _param_id(c, "linha_id"));
+  const linha = await _linha(c, usuario, requisicao_id, _param_id(c, "linha_id"), "epi.entregar");
   if (!linha) return redirecionar(c, destino);
   const f = await formulario(c);
   const entrada = await _entrada(c.get("tx"), _id(f.texto("entrada_id")));

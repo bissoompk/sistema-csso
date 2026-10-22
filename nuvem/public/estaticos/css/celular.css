@@ -84,3 +84,9 @@ body { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 .lista-toque.chamada .marcador.ativo { background: var(--acento); color: #fff; border-color: var(--acento); }
 
 .sem-rede { position: sticky; top: 0; z-index: 4; }
+
+/* Os dois links de saida para o sistema completo ("Minha ficha de EPI" e
+   "sistema completo") eram texto de 14px corrido, alvo de ~20px de altura. Sao
+   a unica porta desta tela para o resto do sistema: alvo de dedo, sem mudar o
+   desenho de link. */
+.app-celular .discreto a { display: inline-flex; align-items: center; min-height: 44px; }

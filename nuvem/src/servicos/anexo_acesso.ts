@@ -67,7 +67,7 @@ export interface Portas {
   /** `parecer.no_escopo`. */
   parecer_no_escopo?: (tx: Executor, usuario: UsuarioAtual, id: number) => Promise<ComServidor | null>;
   /** `epi_ficha.exigir_leitura_da_ficha` — levanta quando não pode. */
-  exigir_leitura_da_ficha?: (usuario: UsuarioAtual, servidor_id: number) => void;
+  exigir_leitura_da_ficha?: (tx: Executor, usuario: UsuarioAtual, servidor_id: number) => Promise<void>;
   /** `emissao_certificado.no_escopo`. */
   certificado_no_escopo?: (tx: Executor, usuario: UsuarioAtual, id: number) => Promise<ComServidor | null>;
   /** `emissao_certificado.exigir_leitura_do_certificado` — levanta quando não pode. */
@@ -120,7 +120,7 @@ async function dono_ficha_epi(tx: Executor, usuario: UsuarioAtual, anexo: Anexo)
     .from(epi_ficha_registro)
     .where(eq(epi_ficha_registro.id, anexo.entidade_id));
   if (!registro) throw new AnexoForaDeAlcance();
-  exigir(usuario, registro.servidor_id);
+  await exigir(tx, usuario, registro.servidor_id);
   return {
     entidade: "epi_ficha_registro",
     servidor_id: registro.servidor_id,

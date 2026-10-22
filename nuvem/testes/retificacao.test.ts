@@ -177,7 +177,7 @@ describe("corrigir o participante pela inscrição", () => {
   });
 });
 
-/** Turma planejada para a semana que vem, com uma inscrição lançada pela CSSO. */
+/** Turma planejada para a semana que vem, com uma inscrição lançada pela equipe. */
 async function turma_planejada(u: UsuarioAtual) {
   const d = await _cenario(db, u);
   const semana = datas_br.somar_dias(datas_br.hoje(), 7);
@@ -188,7 +188,7 @@ async function turma_planejada(u: UsuarioAtual) {
 }
 
 describe("excluir a turma aberta por engano", () => {
-  it("apaga a turma e a inscrição lançada pela CSSO, com o retrato na trilha", async () => {
+  it("apaga a turma e a inscrição lançada pela equipe, com o retrato na trilha", async () => {
     await contas(db);
     const u = await _usuario(db, TODAS, "montador");
     const { turma } = await turma_planejada(u);
@@ -199,7 +199,7 @@ describe("excluir a turma aberta por engano", () => {
     expect(await db.select().from(e.inscricao).where(eq(e.inscricao.turma_id, turma.id))).toEqual([]);
     const [evento] = await _eventos("TURMA_EXCLUIDA");
     expect(evento!.descricao).toContain(`${turma.codigo}`);
-    expect(evento!.descricao).toContain("1 inscrição(ões) lançada(s) pela CSSO");
+    expect(evento!.descricao).toContain("1 inscrição(ões) lançada(s) pela equipe");
     expect(evento!.descricao).toContain("aberta com o treinamento errado");
   });
 

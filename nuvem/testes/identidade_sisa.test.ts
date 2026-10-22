@@ -32,7 +32,7 @@ describe("identidade visual da Sisa", () => {
     const base = ler("templates/base.html");
     const img = '<img src="/estaticos/img/marca-sisa.png" width="80" height="80" alt="">';
     expect(base.split(img).length - 1).toBe(2);
-    expect(base).toContain("<strong>CSSO</strong><span>Sisa · UFVJM</span>");
+    expect(base).toContain("<strong>Sistema SISA</strong><span>UFVJM</span>");
     expect(base).not.toContain("partes/marca.svg");
   });
 

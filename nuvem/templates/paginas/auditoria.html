@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Auditoria · CSSO{% endblock %}
+{% block titulo %}Auditoria · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
@@ -78,10 +78,19 @@
 
   <form class="cartao filtros" method="get" action="/auditoria">
     <div class="linha-campos">
-      <div><label for="f-usuario">Usuário</label>
+      {# Dois filtros de conta, e não um (D21): "Quem agiu" é o autor do evento;
+         "Conta afetada" é a conta de que o evento fala — a senha trocada, o
+         bloqueio, o perfil concedido a ela, mesmo que outra pessoa tenha agido.
+         É o destino do "Histórico desta conta" de /usuarios. #}
+      <div><label for="f-usuario">Quem agiu</label>
         <select id="f-usuario" name="usuario_id"><option value="">todos</option>
           {% for u in usuarios %}
           <option value="{{ u.id }}" {% if filtro_usuario == u.id %}selected{% endif %}>{{ u.nome }}</option>
+          {% endfor %}</select></div>
+      <div><label for="f-conta">Conta afetada</label>
+        <select id="f-conta" name="conta_id"><option value="">todas</option>
+          {% for u in usuarios %}
+          <option value="{{ u.id }}" {% if filtro_conta == u.id %}selected{% endif %}>{{ u.nome }}</option>
           {% endfor %}</select></div>
       <div><label for="f-entidade">Entidade</label>
         <select id="f-entidade" name="entidade"><option value="">todas</option>
@@ -151,11 +160,12 @@
            'A trilha não conta o total (o comentário abaixo diz por quê), então
             “próxima” existe sempre e a página seguinte à última abre vazia. Volte
             uma com “anterior”; o filtro continua o mesmo.', 5) }}
-      {% elif filtro_usuario or filtro_entidade or filtro_tipo %}
+      {% elif filtro_usuario or filtro_conta or filtro_entidade or filtro_tipo %}
       {{ ui.vazio_de_lista(
            'Nenhum evento neste filtro.',
-           'Os três seletores valem ao mesmo tempo: usuário E entidade E tipo de
-            evento. “Limpar”, ao lado de Filtrar, devolve a trilha inteira.', 5) }}
+           'Os seletores valem ao mesmo tempo: quem agiu E conta afetada E
+            entidade E tipo de evento. “Limpar”, ao lado de Filtrar, devolve a
+            trilha inteira.', 5) }}
       {% else %}
       {{ ui.vazio_de_lista(
            'A trilha ainda não tem evento nenhum.',

@@ -2,12 +2,12 @@
 {# Sem lateral: ninguém navega nesta tela, e ela é anterior à sessão. A casca
    entrega no lugar o cabeçalho escuro de 58px, só com a marca. #}
 {% set sem_casca = true %}
-{% block titulo %}Entrar · CSSO{% endblock %}
+{% block titulo %}Entrar · SISA{% endblock %}
 {% block classe_conteudo %}tela-auxiliar estreita{% endblock %}
 {% block conteudo %}
 <div class="cartao">
   <h1>Entrar</h1>
-  <p class="sub">Sistema de apoio da Coordenadoria de Segurança e Saúde Ocupacional.</p>
+  <p class="sub">Sistema de apoio dos setores da Superintendência Integrada de Saúde (Sisa).</p>
   {# o erro é desenhado pelo layout, logo acima do cartão — não repetir aqui #}
   {# A sessão que expirou é o único caso em que chegar aqui tem explicação, e
      ela vai ESCRITA: sem isto, a pessoa que estava no meio de um envio via a
@@ -44,6 +44,6 @@
     administra o sistema — não há redefinição por e-mail.</p>
 </div>
 {# quem fez treinamento e não tem conta não precisa de uma: o link vai por e-mail #}
-<p class="discreto">Fez treinamento com a CSSO e não tem conta?
+<p class="discreto">Fez treinamento com a Sisa e não tem conta?
   <a href="/certificados/acesso">Receba seus certificados por e-mail</a>.</p>
 {% endblock %}

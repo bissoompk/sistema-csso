@@ -9,13 +9,13 @@
  */
 
 export const VERSAO = "2.0.0-nuvem";
-export const RODAPE_INSTITUCIONAL = "Sistema de apoio da CSSO. O processo oficial e o SEI.";
+export const RODAPE_INSTITUCIONAL = "Sistema de apoio da SISA";
 
 export interface Config {
   bancoUrl: string;
   chaveSecreta: string;
   sessaoHoras: number;
-  /** 0 desliga. */
+  /** 0 desliga. 60 desde 22/10/2026 (era 120): com aviso aos 55 no navegador. */
   sessaoInatividadeMinutos: number;
   maxTentativas: number;
   bloqueioMinutos: number;
@@ -131,7 +131,7 @@ export function obterConfig(): Config {
     bancoUrl,
     chaveSecreta,
     sessaoHoras: inteiro("CSSO_SESSAO_HORAS", 12),
-    sessaoInatividadeMinutos: inteiro("CSSO_SESSAO_INATIVIDADE_MINUTOS", 120),
+    sessaoInatividadeMinutos: inteiro("CSSO_SESSAO_INATIVIDADE_MINUTOS", 60),
     maxTentativas: inteiro("CSSO_MAX_TENTATIVAS", 5),
     bloqueioMinutos: inteiro("CSSO_BLOQUEIO_MINUTOS", 15),
     cookieSeguro: (["auto", "sim", "nao"].includes(modo) ? modo : "auto") as Config["cookieSeguro"],

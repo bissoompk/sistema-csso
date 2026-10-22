@@ -1,9 +1,25 @@
 <!doctype html>
-<html lang="pt-BR">
+{# `lateral-recolhida`: a lateral na faixa de ícones, que a pessoa escolheu no
+   botão do alto dela (ou no Ctrl+B) e que o cookie `csso_lateral` lembra. É o
+   SERVIDOR quem escreve a classe, lendo o cookie pelo `request` que
+   `web.pagina` entrega à casca: aplicada pelo script depois do carregamento,
+   a lateral abriria e fecharia diante da pessoa a cada troca de tela. Só a
+   mesa a obedece — no celular e no papel a folha a ignora (`csso.css`, bloco
+   "LATERAL RECOLHIDA"). #}
+{% set lateral_recolhida = request and request.cookies and request.cookies.get('csso_lateral') == 'recolhida' %}
+<html lang="pt-BR"{% if lateral_recolhida %} class="lateral-recolhida"{% endif %}>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block titulo %}CSSO · Sisa/UFVJM{% endblock %}</title>
+  {# `viewport-fit=cover`: a página vai até as bordas do iPhone com entalhe, e
+     quem recua o que não pode ficar embaixo dele é a folha (`env(safe-area-
+     inset-*)` na faixa grudada e no rodapé do popup). `interactive-widget=
+     resizes-content`: o teclado encolhe a página, e o popup de altura inteira
+     encolhe junto — o botão de gravar sobe com o teclado em vez de sumir atrás
+     dele. SEM `maximum-scale`/`user-scalable=no`: o zoom é de quem precisa
+     dele para ler; o que impede o zoom automático ao focar um campo é a fonte
+     de 16px dos campos no celular (`csso.css`, bloco CELULAR). #}
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>{% block titulo %}Sistema SISA · UFVJM{% endblock %}</title>
   <link rel="stylesheet" href="/estaticos/css/csso.css">
   {# O tema do IntegraSST por cima da folha de base: cores, cantos, sombras,
      fonte e ícones. Separado para que a troca de aparência seja um arquivo. #}
@@ -18,6 +34,15 @@
   <link rel="icon" type="image/png" sizes="48x48" href="/estaticos/img/favicon-48.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/estaticos/img/apple-touch-icon.png">
   <meta name="theme-color" content="#0a2a5c">
+  {# O manifesto em TODA tela, e não só na tela de bolso: o "Adicionar à tela
+     inicial" do Android só oferece instalar o app onde o manifesto está, e
+     quem instala costuma estar numa tela qualquer. O app instalado abre em
+     `/celular` (o `start_url` do manifesto), e o resto do sistema continua a
+     um toque de lá. `mobile-web-app-capable` é o nome atual do antigo
+     `apple-mobile-web-app-capable`; o título é o rótulo do ícone no iPhone. #}
+  <link rel="manifest" href="/estaticos/manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="SISA">
   {# O HTMX injeta, ao carregar, um `<style>` com as regras do
      `.htmx-indicator` — e a CSP declara `style-src-elem 'self'`, então esse
      elemento é recusado e vira uma violação no console de TODA tela. Medido
@@ -48,12 +73,13 @@
      em toda outra tela. #}
   {% block cabeca %}{% endblock %}
 </head>
-<body>
+<body{% if usuario and sessao_inatividade_minutos %} data-sessao-inatividade="{{ sessao_inatividade_minutos }}"{% endif %}>
 {# ===================================================================
    O SALTO PARA O CONTEÚDO — o primeiro Tab de toda tela
    ===================================================================
    Contado numa tela com casca, na ordem em que o Tab passa: marca →
-   seletor de módulo → até 13 itens do menu do módulo → itens da base
+   seletor de módulo → até 15 itens do menu do módulo (os
+   subtítulos dos grupos não recebem foco) → itens da base
    compartilhada → trilha → ações da tela → busca → sino → engrenagem →
    sair → **enfim** o conteúdo. São ~17 tabulações, e são as MESMAS 17 em
    cada página: quem navega por teclado atravessa a lateral inteira a cada
@@ -99,7 +125,7 @@
      que é o painel de Processos SEI e exige `processo.ver`: para o almoxarife
      ela era um 403 em TODA tela. `/inicio` não é tela, é despachante — leva
      cada um à primeira tela que abre para ele. #}
-  {# A marca do sistema: o símbolo da Sisa + o logotipo "CSSO / Sisa · UFVJM".
+  {# A marca do sistema: o símbolo da Sisa + o logotipo "Sistema SISA · UFVJM".
      O símbolo é um PNG pequeno (80px, para 34px em tela 2x) sobre uma chapa
      branca (`tema.css`): ele tem partes em azul-marinho, que sumiriam na
      lateral do mesmo tom. `alt=""` e `aria-hidden` porque quem nomeia o link é
@@ -113,9 +139,9 @@
      falsificar identidade institucional, e é por isso que a marca acima é do
      SISTEMA e não da universidade.
      <img class="marca-brasao" src="/estaticos/img/brasao-ufvjm.svg" alt="" aria-hidden="true"> #}
-  <a class="marca" href="/inicio">
+  <a class="marca" href="/inicio" data-rotulo="Sistema SISA · início">
     <span class="marca-sigla" aria-hidden="true"><img src="/estaticos/img/marca-sisa.png" width="80" height="80" alt=""></span>
-    <span class="marca-texto"><strong>CSSO</strong><span>Sisa · UFVJM</span></span>
+    <span class="marca-texto"><strong>Sistema SISA</strong><span>UFVJM</span></span>
   </a>
 
   {# O MENU NO CELULAR. Abaixo de 900px a lateral vira faixa no topo, e com os
@@ -132,23 +158,39 @@
      irmãos de baixo enquanto ele está fechado (`:has`), e na mesa ele nem
      aparece. Sem JavaScript, como o seletor de módulo era; e o leitor de tela
      ouve "Menu, recolhido/expandido", que é o que o <summary> anuncia. Navegador
-     sem `:has` fica com a lateral aberta, que é como ela era. #}
+     sem `:has` fica com a lateral aberta, que é como ela era.
+
+     Aberto, ele é uma camada do tamanho da tela (`csso.css`, bloco CELULAR), e
+     camada se fecha com `Esc` e com toque fora — quem faz isso é `csso.js`
+     (bloco 10), pelo `data-menu-celular` do <summary>. Sem script, fecha-se
+     pelo próprio "Menu", como antes. #}
+  {# RECOLHER A LATERAL (só na mesa). Recolhida, ela vira uma faixa de ícones:
+     os nomes saem da vista mas não do HTML — o <span> de cada item fica no
+     DOM, oculto como `.oculto`, e continua sendo o nome do link para o leitor
+     de tela; quem vê ganha o nome numa etiqueta ao passar o mouse ou chegar
+     pelo Tab (`data-rotulo`, desenhada pela folha). O botão é um interruptor
+     de verdade: nome fixo, e o estado em `aria-expanded`, que é o que o leitor
+     anuncia. `aria-controls` aponta para os blocos de navegação que encolhem
+     (a <aside> não tem `id`: os testes e a casca a reconhecem pela marcação
+     exata). O clique e o Ctrl+B são do `csso.js` (bloco 11), que troca a
+     classe do <html>, este atributo e o `title`, e grava o cookie. Sem script
+     o botão não faz nada — e a lateral continua aberta, como sempre foi. No
+     celular e no papel ele não aparece. #}
+  {% set controla %}{% if not so_meu_espaco and modulo_ativo %}lateral-modulos {% endif %}{% if not so_meu_espaco and itens_base %}lateral-base {% endif %}{% if meu_espaco and meu_espaco|length %}lateral-meu{% endif %}{% endset %}
+  <button type="button" class="recolher-lateral" data-recolher-lateral
+          aria-label="Menu lateral" aria-expanded="{{ 'false' if lateral_recolhida else 'true' }}"
+          aria-controls="{{ controla|trim }}" aria-keyshortcuts="Control+B Meta+B"
+          title="{{ 'Expandir' if lateral_recolhida else 'Recolher' }} o menu (Ctrl+B)">{{ ico('layout-sidebar-inset') }}</button>
+
   <details class="menu-celular">
-    <summary>{{ ico('list') }}<span>Menu</span></summary>
+    <summary data-menu-celular>{{ ico('list') }}<span>Menu</span></summary>
   </details>
 
-  {% if meu_espaco and meu_espaco|length %}
   {# Quem só tem o próprio (o servidor comum) não recebe a lateral da equipe —
-     ver `modulos.MEU_ESPACO`. Um bloco só, com o que é dele. #}
-  <nav class="menu menu-meu" aria-label="Meu espaço">
-    <span class="rotulo-secao">Meu espaço</span>
-    {% for item in meu_espaco %}
-    <a href="{{ item.caminho }}" title="{{ item.descricao }}"
-       class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
-       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ ico(icone_de(item.rotulo) or icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
-    {% endfor %}
-  </nav>
-  {% else %}
+     ver `modulos.MEU_ESPACO`: o bloco "Meu espaço", lá embaixo, é o menu
+     inteiro. A conta de equipe ligada a servidor recebe a lateral e, depois
+     da base, o mesmo bloco com o que é do titular. #}
+  {% if not so_meu_espaco %}
 
   {# Continua sendo <details>/<summary>: abre sem JavaScript. O desenho mostra um
      botão com "▾" — quem imita o botão é o CSS, o mecanismo é o do HTML. #}
@@ -162,19 +204,32 @@
      dele: escondidos num seletor, o de treinamentos não era achado. Módulo
      previsto ("em breve") só aparece no mapa de /modulos, não aqui. #}
   {% if modulo_ativo %}
-  <nav class="modulos-lateral" aria-label="Módulos">
+  <nav class="modulos-lateral" aria-label="Módulos" id="lateral-modulos">
     <span class="rotulo-secao">Módulos</span>
     {% for m in modulos %}
     {% set e_ativo = m.codigo == modulo_ativo.codigo %}
     {% if m.disponivel and m.itens_de(usuario)|length %}
     <a href="{{ porta_de_entrada(m, usuario) }}"
-       class="modulo {{ 'atual' if e_ativo }} {{ 'lembrado' if e_ativo and not no_modulo }}">{{ ico(icone_de(m.codigo)) }}<span>{{ m.nome }}</span></a>
+       class="modulo {{ 'atual' if e_ativo }} {{ 'lembrado' if e_ativo and not no_modulo }}" data-rotulo="{{ m.nome }}">{{ ico(icone_de(m.codigo)) }}<span>{{ m.nome }}</span></a>
     {% if e_ativo and itens_modulo %}
-    <div class="menu menu-modulo" aria-label="Telas de {{ m.nome }}">
-      {% for item in itens_modulo %}
+    {# Em grupos com subtítulo ("Turmas e inscrições", "Cadastros"...), que vêm
+       de `Modulo.grupos_de`. O subtítulo é <span>, e não <h2>/<h3>: não entra
+       no esqueleto de títulos da tela nem recebe foco, e a contagem do salto
+       continua a mesma. Quem o anuncia ao leitor de tela é o `role="group"`
+       com `aria-labelledby`. O `role="group"` de fora existe porque, sem
+       papel, o `aria-label` da <div> era ignorado. Grupo sem título (o
+       "Início", ou o módulo que não se divide) sai sem o invólucro, e o HTML
+       de Processos SEI e de EPI fica o mesmo de antes. #}
+    <div class="menu menu-modulo" role="group" aria-label="Telas de {{ m.nome }}">
+      {% for g in grupos_modulo %}
+      {% if g.titulo %}<div class="menu-grupo" role="group" aria-labelledby="grupo-{{ m.codigo }}-{{ loop.index }}">
+      <span class="rotulo-grupo" id="grupo-{{ m.codigo }}-{{ loop.index }}">{{ g.titulo }}</span>{% endif %}
+      {% for item in g.itens %}
       <a href="{{ item.caminho }}" title="{{ item.descricao }}"
          class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
-         {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ ico(icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
+         {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %} data-rotulo="{{ item.rotulo }}">{{ ico(icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
+      {% endfor %}
+      {% if g.titulo %}</div>{% endif %}
       {% endfor %}
     </div>
     {% endif %}
@@ -184,15 +239,26 @@
   {% endif %}
 
   {% if itens_base %}
-  <nav class="menu menu-base" aria-label="Base compartilhada entre os módulos">
+  <nav class="menu menu-base" aria-label="Base compartilhada entre os módulos" id="lateral-base">
     <span class="rotulo-secao">Base compartilhada</span>
     {% for item in itens_base %}
     <a href="{{ item.caminho }}" title="{{ item.descricao }}"
        class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
-       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ ico(icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
+       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %} data-rotulo="{{ item.rotulo }}">{{ ico(icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
     {% endfor %}
   </nav>
   {% endif %}
+  {% endif %}
+
+  {% if meu_espaco and meu_espaco|length %}
+  <nav class="menu menu-meu {{ 'ao-lado' if not so_meu_espaco }}" aria-label="Meu espaço" id="lateral-meu">
+    <span class="rotulo-secao">Meu espaço</span>
+    {% for item in meu_espaco %}
+    <a href="{{ item.caminho }}" title="{{ item.descricao }}"
+       class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
+       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %} data-rotulo="{{ item.rotulo }}">{{ ico(icone_de(item.rotulo) or icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
+    {% endfor %}
+  </nav>
   {% endif %}
 
   {# Rodapé institucional no fim da lateral: é identidade do sistema, não da
@@ -213,7 +279,7 @@
    tela que existe justamente para ser atravessada. #}
 <header class="cabecalho-marca">
   <span class="marca-sigla" aria-hidden="true"><img src="/estaticos/img/marca-sisa.png" width="80" height="80" alt=""></span>
-  <span class="nome">CSSO · Sisa/UFVJM</span>
+  <span class="nome">Sistema SISA · UFVJM</span>
   {% if usuario %}<form class="form-sair" method="post" action="/sair"><button type="submit" class="sair">sair</button></form>{% endif %}
 </header>
 {% else %}
@@ -232,8 +298,9 @@
     {% set na_base = item_ativo and item_ativo in itens_base %}
     <nav class="trilha" aria-label="Trilha de navegação">
       {# No "Meu espaço" não há módulo nem base para nomear: a raiz é o próprio
-         espaço, e leva ao começo dele. #}
-      {% if meu_espaco and meu_espaco|length and not trilha_raiz %}
+         espaço, e leva ao começo dele. Para a equipe ligada a servidor, só
+         quando a tela é uma do bloco (Meus treinamentos, Minha ficha de EPI). #}
+      {% if (so_meu_espaco or (item_ativo and item_ativo in meu_espaco)) and not trilha_raiz %}
       <a href="/inicio">Meu espaço</a>
       {% else %}
       <a href="/modulos">{{ trilha_raiz or ('Base compartilhada' if na_base else (modulo_ativo.nome if no_modulo else 'Módulos')) }}</a>
@@ -278,7 +345,7 @@
         <input type="search" name="q" id="busca-global"
                aria-label="Buscar em todo o sistema: nome, SIAPE, NUP, laudo, protocolo, turma ou certificado"
                title="Buscar em todo o sistema — nome, SIAPE, NUP, laudo, protocolo, turma, certificado (Ctrl+K)"
-               placeholder="Buscar: nome, SIAPE, NUP, laudo, protocolo…  Ctrl+K"
+               placeholder="Buscar…"
                value="{{ busca or '' }}">
       </form>
       {% endif %}
@@ -317,8 +384,15 @@
       {# `.split()` do Python sem argumento corta em qualquer branco; no JS é a regex. #}
       {% set partes = (usuario.nome|trim or '?').split(r/\s+/) %}
       <div class="usuario">
-        <span class="avatar" aria-hidden="true">{{ ((partes|first)[0] ~ ((partes|last)[0] if partes|length > 1 else ''))|upper }}</span>
-        <span class="nome" title="{{ usuario.perfis|join(', ') }}">{{ usuario.nome }}</span>
+        {# A porta de /minha-conta (22/10/2026): o próprio nome, que é onde todo
+           sistema a põe, e o avatar junto — abaixo de 1040px o nome some e o
+           avatar é o que resta para tocar. Por isso o nome acessível vem do
+           `aria-label`, e não do texto: sem ele, no celular, o link ficaria mudo. #}
+        <a class="conta-propria" href="/minha-conta" aria-label="Minha conta ({{ usuario.nome }})"
+           title="Minha conta · {{ usuario.perfis|join(', ') }}">
+          <span class="avatar" aria-hidden="true">{{ ((partes|first)[0] ~ ((partes|last)[0] if partes|length > 1 else ''))|upper }}</span>
+          <span class="nome">{{ usuario.nome }}</span>
+        </a>
         {# A porta de `/config`. Ela não é item de menu, e o argumento continua
            valendo — o que está lá não é módulo nem base, é o sistema: o setor
            que assina, o SLA que pinta o vermelho de toda lista, o backup. Mas
@@ -400,6 +474,15 @@
     {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
     {% block conteudo %}{% endblock %}
   </main>
+  {# A PORTA PARA A TELA DE BOLSO (`/celular`): só abaixo de 900px e só na tela
+     (`.so-celular`), no pé da página. Para todo usuário logado com casca: quem
+     decide o que aparece lá é a própria rota, que mostra a cada um o que é
+     dele. Fora da lateral de propósito: na faixa grudada ela disputaria os
+     60px com a marca e o "Menu", e o menu da lateral é a lista das telas DO
+     SISTEMA, que os testes da casca conferem item a item. #}
+  {% if com_casca %}
+  <a class="so-celular modo-celular" href="/celular">Modo celular</a>
+  {% endif %}
 
 {% if not com_casca %}
 {# Sem lateral não há onde pendurar o rodapé; aqui ele volta a ser faixa. #}

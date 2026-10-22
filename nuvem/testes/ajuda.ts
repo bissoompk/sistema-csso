@@ -31,7 +31,7 @@ import { redefinirConfig } from "../src/config.js";
 import { fecharBanco, obterBanco, type Banco, type Executor } from "../src/db/cliente.js";
 import * as esquema from "../src/db/esquema/index.js";
 import * as autenticacao from "../src/servicos/autenticacao.js";
-import { carregar_usuario_atual, type UsuarioAtual } from "../src/servicos/rbac.js";
+import { NOME_OFICIAL_CSSO, PERFIS_DA_EQUIPE_CSSO, carregar_usuario_atual, type UsuarioAtual } from "../src/servicos/rbac.js";
 import { obterApp } from "../src/app.js";
 import type { Ambiente } from "../src/nucleo/contexto.js";
 
@@ -319,6 +319,12 @@ export interface NovaConta {
   campus_id?: number | null;
   vigencia_inicio?: string;
   vigencia_fim?: string | null;
+  /**
+   * Siglas dos setores promotores da conta (`equipe_setor_promotor`). Omitido:
+   * a conta com perfil da equipe da CSSO entra na CSSO, como a migração 0014
+   * fez com as contas que já existiam; `[]` = nenhum setor.
+   */
+  setores?: string[];
 }
 
 /** Cria a conta e as atribuições (vigentes desde 2020). Devolve o registro do usuário. */
@@ -346,6 +352,20 @@ export async function criarUsuario(db: Executor, c: NovaConta) {
       vigencia_fim: c.vigencia_fim ?? null,
       ato_normativo: "Ato de teste",
     });
+  }
+  const setores = c.setores ?? ((c.perfis ?? []).some((p) => PERFIS_DA_EQUIPE_CSSO.includes(p)) ? ["CSSO"] : []);
+  for (const sigla of setores) {
+    const [unidade] = await db
+      .select({ id: esquema.unidade_uorg.id })
+      .from(esquema.unidade_uorg)
+      .where(
+        sigla === "CSSO"
+          ? eq(esquema.unidade_uorg.nome_oficial, NOME_OFICIAL_CSSO)
+          : eq(esquema.unidade_uorg.sigla, sigla),
+      )
+      .limit(1);
+    if (!unidade) throw new Error(`setor promotor inexistente: ${sigla}`);
+    await db.insert(esquema.equipe_setor_promotor).values({ usuario_id: conta!.id, unidade_uorg_id: unidade.id });
   }
   return conta!;
 }

@@ -804,22 +804,23 @@ describe("o módulo no menu e no mapa", () => {
   it("módulo declara as telas que existem", () => {
     const modulo = modulos.por_codigo("certificados")!;
     expect(modulo.disponivel).toBe(true);
+    // a ordem é a dos grupos do menu (22/10/2026); caminhos e permissões, os de antes
     expect(modulo.itens.map((i) => [i.caminho, i.permissao])).toEqual([
       ["/treinamentos", "certificado.ver"],
       ["/turmas", "treinamento.ver"],
       ["/turmas/pedidos", "turma.inscrever"],
-      ["/turmas/minhas", "treinamento.ver"],
-      ["/certificados/meus", "treinamento.ver"],
-      ["/certificados", "certificado.ver"],
       ["/certificados/fila", "certificado.ver"],
+      ["/certificados", "certificado.ver"],
       ["/certificados/emails", "certificado.emitir"],
       ["/certificados/vencimentos", "certificado.ver"],
       ["/treinamentos/indicadores", "indicador.ver"],
       ["/treinamentos/catalogo", "treinamento.ver"],
-      ["/treinamentos/setores-promotores", "treinamento.ver"],
       ["/treinamentos/modelos", "treinamento.gerenciar"],
       ["/treinamentos/assinaturas", "assinatura.gerenciar"],
+      ["/treinamentos/setores-promotores", "treinamento.ver"],
       ["/treinamentos/participantes", "participante.mesclar"],
+      ["/turmas/minhas", "treinamento.ver"],
+      ["/certificados/meus", "treinamento.ver"],
     ]);
     // as fatias declaradas chegaram todas: a lista do que falta esvaziou
     expect(modulo.itens_previstos).toEqual([]);

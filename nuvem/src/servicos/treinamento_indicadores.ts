@@ -19,8 +19,8 @@ import {
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
 import { INSCRICAO_OCUPA_VAGA } from "../dominio/estados.js";
-import type { UsuarioAtual } from "./rbac.js";
-import * as servico_turma from "./turma.js";
+import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import * as setor_equipe from "./setor_equipe.js";
 
 export const SEM_SETOR = "(sem setor promotor)";
 export const TOP_TREINAMENTOS = 10;
@@ -53,8 +53,26 @@ export interface Indicadores {
   participantes_por_treinamento: Record<string, number>;
 }
 
+/**
+ * O recorte das turmas que o indicador conta: o alcance de `indicador.ver`, e
+ * não o filtro de linha de `treinamento.ver` (D1, regressão). Com "o agregado
+ * nunca é linha", o `admin_ti` sem servidor contava zero; ligado a servidor,
+ * caía no "cartaz" do titular e contava a instituição inteira — o número
+ * dependia do vínculo. O agregado (A), o total e a unidade sem campus contam
+ * tudo (a supressão RN-19 é da tela); o campus da concessão recorta pelo campus
+ * da turma.
+ */
+function _recorte(usuario: UsuarioAtual): SQL | undefined {
+  // NUVEM: e o setor promotor — cada setor conta as turmas que promove
+  // (`setor_equipe.ts`); quem vê todos os setores conta a instituição
+  const setor = setor_equipe.condicao_setor_turma(usuario);
+  const alcance = usuario.alcance("indicador.ver");
+  if (alcance.total || alcance.unidade || alcance.agregado) return setor;
+  return and(aplicar_escopo(usuario, tabela_turma, "indicador.ver"), setor);
+}
+
 export async function calcular(tx: Executor, usuario: UsuarioAtual, f: Filtros): Promise<Indicadores> {
-  const onde: (SQL | undefined)[] = [servico_turma.consulta_no_escopo(usuario)];
+  const onde: (SQL | undefined)[] = [_recorte(usuario)];
   if (f.de) onde.push(gte(tabela_turma.data_inicio, f.de));
   if (f.ate) onde.push(lte(tabela_turma.data_inicio, f.ate));
   if (f.unidade_promotora_id) onde.push(eq(tabela_turma.unidade_promotora_id, f.unidade_promotora_id));
@@ -149,12 +167,12 @@ export async function calcular(tx: Executor, usuario: UsuarioAtual, f: Filtros):
   return r;
 }
 
-/** Os setores que já promoveram turma, para o filtro. */
-export async function setores_promotores(tx: Executor) {
+/** Os setores que já promoveram turma, para o filtro (só os que a conta alcança). */
+export async function setores_promotores(tx: Executor, usuario: UsuarioAtual | null = null) {
   return tx
     .selectDistinct({ id: tabela_unidade.id, nome: tabela_unidade.nome_extenso, sigla: tabela_unidade.sigla })
     .from(tabela_turma)
     .innerJoin(tabela_unidade, eq(tabela_unidade.id, tabela_turma.unidade_promotora_id))
-    .where(ne(tabela_turma.situacao, "CANCELADA"))
+    .where(and(ne(tabela_turma.situacao, "CANCELADA"), usuario ? _recorte(usuario) : undefined))
     .orderBy(tabela_unidade.nome_extenso);
 }

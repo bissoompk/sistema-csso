@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Pedidos pelo link · CSSO{% endblock %}
+{% block titulo %}Pedidos pelo link · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
@@ -20,6 +20,8 @@
       {% endcall %}
     </div>
   </div>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   {% if travados|length %}
   <div class="aviso aviso-alerta">

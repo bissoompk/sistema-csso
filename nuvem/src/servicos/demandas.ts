@@ -59,7 +59,7 @@ export const PERMISSAO_VER = "demanda.ver";
 export const PERMISSAO_ESCREVER = "demanda.registrar";
 
 export const TIPO_PENDENCIA = "DEMANDA_COM_PRAZO";
-/** O aviso que vai para QUEM DEMANDOU, e não para a CSSO. */
+/** O aviso que vai para QUEM DEMANDOU, e não para a equipe. */
 export const TIPO_AVISO_DESFECHO = "DEMANDA_DESFECHO_A_LER";
 
 /** Recusa de regra de negócio — sai na tela como aviso, não como 500. */
@@ -568,7 +568,7 @@ function _data(iso: string): string {
  *
  * O texto inteiro vai NA descrição, e não num link: quem demandou não tem
  * `demanda.ver` (a fila é do setor, e nomeia outros solicitantes), então a
- * frase é tudo o que ela lê. É o relato que a CSSO escreveu ao encerrar —
+ * frase é tudo o que ela lê. É o relato que a equipe escreveu ao encerrar —
  * escrito, a partir de agora, sabendo que chega a quem pediu. Ela lê a frase
  * como titular (`pendencias.titular_de` resolve a demanda pelo solicitante).
  *
@@ -604,7 +604,7 @@ export async function avisar_quem_demandou(tx: Executor, demanda: Demanda, usuar
   const descricao =
     `Sua demanda “${demanda.assunto}”, recebida em ${_data(demanda.data_chegada)}, foi encerrada: ` +
     `${(ROTULO_DESFECHO_DEMANDA[demanda.desfecho] ?? demanda.desfecho).toLowerCase()}.${detalhe}` +
-    " Dúvidas ou discordância: fale com a CSSO. Marque como concluído depois de ler.";
+    " Dúvidas ou discordância: fale com a equipe que registrou a demanda. Marque como concluído depois de ler.";
 
   await pendencias.abrir(tx, {
     tipo: TIPO_AVISO_DESFECHO,

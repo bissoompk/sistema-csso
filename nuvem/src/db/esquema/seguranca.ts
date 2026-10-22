@@ -14,11 +14,12 @@ import {
   smallint,
   text,
   unique,
+  uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
 
 import { DataPura, Inet, MomentoUTC, agora_utc } from './base';
-import { campus, servidor } from './organizacao';
+import { campus, servidor, unidade_uorg } from './organizacao';
 import { processo } from './processo';
 
 export const usuario = pgTable(
@@ -38,8 +39,22 @@ export const usuario = pgTable(
     bloqueado_ate: MomentoUTC('bloqueado_ate'),
     ultimo_login_em: MomentoUTC('ultimo_login_em'),
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+    // Contato que a PRÓPRIA conta informa em /minha-conta (22/10/2026). Só para
+    // a equipe do setor falar com a pessoa sobre treinamento, EPI e processo
+    // (finalidade declarada na tela, LGPD art. 6º, I); opcionais, e a trilha
+    // registra QUE mudaram, nunca o número.
+    telefone: varchar('telefone', { length: 30 }),
+    ramal: varchar('ramal', { length: 12 }),
   },
-  () => [check('ck_usuario_provedor', sql.raw(`provedor IN ('LOCAL','LDAP','SSO_UFVJM')`))],
+  (t) => [
+    check('ck_usuario_provedor', sql.raw(`provedor IN ('LOCAL','LDAP','SSO_UFVJM')`)),
+    // A entrada compara login e e-mail sem caixa (`autenticacao.autenticar`):
+    // "Fulano" e "fulano" eram duas contas no UNIQUE da coluna e uma credencial
+    // só no login — as falhas de uma bloqueavam a outra (D12). O UNIQUE da
+    // coluna fica; este é o que vale.
+    uniqueIndex('uq_usuario_login_sem_caixa').on(sql`lower(${t.login})`),
+    uniqueIndex('uq_usuario_email_sem_caixa').on(sql`lower(${t.email})`),
+  ],
 );
 
 export const perfil = pgTable('perfil', {
@@ -193,3 +208,70 @@ export const acesso_dado_sensivel = pgTable('acesso_dado_sensivel', {
   finalidade: text('finalidade'),
   ocorrido_em: MomentoUTC('ocorrido_em').notNull().$defaultFn(agora_utc),
 });
+
+/**
+ * Liberação por módulo (22/10/2026): o nível que a coordenação escolheu para um
+ * módulo inteiro num PERFIL — "sem acesso", "consulta" ou "operação". A linha
+ * ausente é o padrão do perfil (as permissões de `perfil_permissao`, como
+ * sempre foram): por isso a implantação não muda o acesso de ninguém, e o
+ * `semear_rbac` de cada deploy não toca esta tabela. O mapa nível → permissões
+ * mora num lugar só, `servicos/niveis_modulo.ts`.
+ */
+export const perfil_nivel_modulo = pgTable(
+  'perfil_nivel_modulo',
+  {
+    perfil_id: integer('perfil_id')
+      .notNull()
+      .references(() => perfil.id),
+    modulo: varchar('modulo', { length: 32 }).notNull(),
+    nivel: varchar('nivel', { length: 12 }).notNull(),
+    alterado_por: integer('alterado_por').references((): AnyPgColumn => usuario.id),
+    alterado_em: MomentoUTC('alterado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ columns: [t.perfil_id, t.modulo] }),
+    check('ck_perfil_nivel_modulo', sql.raw(`nivel IN ('SEM_ACESSO','CONSULTA','OPERACAO')`)),
+  ],
+);
+
+/**
+ * A exceção de UMA conta num módulo: dá ou retira, por cima do nível dos perfis
+ * dela. Linha ausente = "seguir o perfil". O escopo (campus, equipe, próprio),
+ * a assinatura e a habilitação continuam vindo só do perfil.
+ */
+export const usuario_nivel_modulo = pgTable(
+  'usuario_nivel_modulo',
+  {
+    usuario_id: integer('usuario_id')
+      .notNull()
+      .references((): AnyPgColumn => usuario.id),
+    modulo: varchar('modulo', { length: 32 }).notNull(),
+    nivel: varchar('nivel', { length: 12 }).notNull(),
+    alterado_por: integer('alterado_por').references((): AnyPgColumn => usuario.id),
+    alterado_em: MomentoUTC('alterado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ columns: [t.usuario_id, t.modulo] }),
+    check('ck_usuario_nivel_modulo', sql.raw(`nivel IN ('SEM_ACESSO','CONSULTA','OPERACAO')`)),
+  ],
+);
+
+/**
+ * Turmas por setor promotor (22/10/2026): a conta da equipe e os setores
+ * promotores (`unidade_uorg.promove_treinamento`) cujas turmas ela vê e gere.
+ * Uma conta pode estar em mais de um setor.
+ */
+export const equipe_setor_promotor = pgTable(
+  'equipe_setor_promotor',
+  {
+    usuario_id: integer('usuario_id')
+      .notNull()
+      .references((): AnyPgColumn => usuario.id),
+    unidade_uorg_id: integer('unidade_uorg_id')
+      .notNull()
+      .references((): AnyPgColumn => unidade_uorg.id),
+    vinculado_por: integer('vinculado_por').references((): AnyPgColumn => usuario.id),
+    vinculado_em: MomentoUTC('vinculado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [primaryKey({ columns: [t.usuario_id, t.unidade_uorg_id] })],
+);

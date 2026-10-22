@@ -85,12 +85,30 @@ export function semente_de(request: PedidoComCookies): string {
 /**
  * `exposicao.ver` (ou `epi.ficha`) — ou ser o próprio titular. O titular
  * vendo o próprio nome não é vazamento: é a consulta do art. 18, II da LGPD.
+ *
+ * `campus_id` é o da linha, quando a tela o tem (parecer, certificado,
+ * pedido de EPI): a permissão nominal concedida só no campus B não mostra o
+ * nome da linha do campus A (D9, `UsuarioAtual.ve_nome_na_linha`).
  */
-export function pode_ver_nominal(usuario: UsuarioAtual | null | undefined, servidor_id: number | null | undefined): boolean {
+export function pode_ver_nominal(
+  usuario: UsuarioAtual | null | undefined,
+  servidor_id: number | null | undefined,
+  campus_id: number | null = null,
+  nominais?: readonly string[],
+): boolean {
   if (!usuario) return false;
-  if (usuario.ve_dado_nominal) return true;
-  return servidor_id !== null && servidor_id !== undefined && usuario.servidor_id === servidor_id;
+  return usuario.ve_nome_na_linha({ servidor_id: servidor_id ?? null, campus_id }, nominais);
 }
+
+/**
+ * A família nominal das telas que não são de EPI (D15). `epi.ficha` é nominal
+ * na própria definição — "ver a ficha de EPI NOMINAL" —, e só lá: fora dela o
+ * almoxarife lia o nome de quem demanda adicional de insalubridade, e a
+ * secretaria, que atende a mesma fila, via o código opaco. A tela que não é de
+ * EPI passa esta lista a `identificar`/`texto_livre` (no template, pela chave
+ * `nominais_rn19` do contexto; ver `web.ts`).
+ */
+export const NOMINAIS_FORA_DO_EPI: readonly string[] = Object.freeze(["exposicao.ver"]);
 
 export interface ServidorBuscavel {
   id?: number | null;
@@ -127,6 +145,13 @@ export type AlvoIdentificavel =
  * Aceita o `Servidor`, quem aponta para ele ou só o id — a tela às vezes tem
  * o objeto e às vezes só a chave.
  */
+/** O campus da linha, quando o alvo é uma linha que o tem (D9). */
+function campus_de(alvo: AlvoIdentificavel): number | null {
+  if (alvo === null || alvo === undefined || typeof alvo !== "object" || !("campus_id" in alvo)) return null;
+  const campus = (alvo as { campus_id?: unknown }).campus_id;
+  return typeof campus === "number" ? campus : null;
+}
+
 function resolver(alvo: AlvoIdentificavel): [ServidorBuscavel | null, number | null] {
   if (alvo === null || alvo === undefined) return [null, null];
   if (typeof alvo === "number") return [null, alvo];
@@ -146,11 +171,11 @@ function resolver(alvo: AlvoIdentificavel): [ServidorBuscavel | null, number | n
 export function texto_livre(
   texto: string | null | undefined,
   usuario: UsuarioAtual | null | undefined,
-  opcoes: { sobre?: AlvoIdentificavel; vazio?: string } = {},
+  opcoes: { sobre?: AlvoIdentificavel; vazio?: string; nominais?: readonly string[] } = {},
 ): string {
   if (!texto) return opcoes.vazio ?? SEM_SERVIDOR;
   const [, servidor_id] = resolver(opcoes.sobre);
-  if (pode_ver_nominal(usuario, servidor_id)) return texto;
+  if (pode_ver_nominal(usuario, servidor_id, campus_de(opcoes.sobre), opcoes.nominais)) return texto;
   return TEXTO_SUPRIMIDO;
 }
 
@@ -158,14 +183,14 @@ export function identificar(
   alvo: AlvoIdentificavel,
   usuario: UsuarioAtual | null | undefined,
   semente: string,
-  opcoes: { vazio?: string } = {},
+  opcoes: { vazio?: string; nominais?: readonly string[] } = {},
 ): Identificacao {
   let [servidor, servidor_id] = resolver(alvo);
   if (servidor !== null && servidor_id === null) servidor_id = servidor.id ?? null;
   if (servidor === null && servidor_id === null) {
     return new Identificacao(false, opcoes.vazio ?? SEM_SERVIDOR, "");
   }
-  if (servidor !== null && pode_ver_nominal(usuario, servidor_id)) {
+  if (servidor !== null && pode_ver_nominal(usuario, servidor_id, campus_de(alvo), opcoes.nominais)) {
     return new Identificacao(true, servidor.nome, servidor.siape || "", servidor_id);
   }
   // Sem o objeto carregado sobra o id, e com o id só dá para o código opaco —

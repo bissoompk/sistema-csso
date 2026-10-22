@@ -83,6 +83,9 @@ function _filtro(c: Ctx): repo.Filtro {
 
 rotas.get("/kanban", async (c) => {
   const usuario = await usuarioCom(c, "processo.ver");
+  // o quadro do setor (com a lista nominal de responsáveis) é da equipe: o
+  // `processo.ver` do titular (D16) vê os próprios processos em /processos
+  usuario.exigir_na_equipe("processo.ver");
   const tx = c.get("tx");
   const filtro = _filtro(c);
   const colunas = await repo.kanban(tx, usuario, filtro);

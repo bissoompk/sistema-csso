@@ -18,6 +18,8 @@ import { agora_utc } from "../db/esquema/base.js";
 import { obterConfig } from "../config.js";
 import { hoje_iso } from "../dominio/datas.js";
 import * as auditoria from "./auditoria.js";
+import { CONTA_BLOQUEADA, SENHA_TROCADA } from "./auditoria.js";
+import type { UsuarioAtual } from "./rbac.js";
 import { local_formatado } from "./datas_br.js";
 import { global } from "../web.js";
 
@@ -101,9 +103,13 @@ export function _hash_token(token: string): string {
  * 5 chutes por conta a cada 15 minutos, em centenas de contas, acham quem usou
  * `ufvjm2026`. A recomendação atual (NIST SP 800-63B) é comprimento, sem
  * regra de composição, e recusar as senhas que todo mundo tenta primeiro.
+ *
+ * Voltou a 6 a pedido do setor (22/10/2026): dez caracteres era a queixa de
+ * quem usa. O que segura a senha curta passa a ser o resto da política — a
+ * lista de triviais, os caracteres distintos — e o bloqueio por tentativas.
  */
-export const TAMANHO_MINIMO_SENHA = 10;
-/** Caracteres diferentes exigidos: `aaaaaaaaaa` e `1212121212` têm dez, e nada de senha. */
+export const TAMANHO_MINIMO_SENHA = 6;
+/** Caracteres diferentes exigidos: `aaaaaa` e `121212` têm seis, e nada de senha. */
 export const MINIMO_CARACTERES_DISTINTOS = 5;
 
 /**
@@ -319,30 +325,28 @@ export async function autenticar(
     // a lista de e-mails válidos saía pelo cronômetro.
     await _gastar_argon2(senha);
     await registrar_falha_ip(tx, ip, agora);
-    throw new FalhaDeAutenticacao();
+    // O bloqueio também é encenado (D26): só a conta ativa bloqueava, e a
+    // sexta tentativa num e-mail qualquer dizia, pela mensagem, se ele existia.
+    const ate = await _bloqueio_encenado(tx, login, agora);
+    throw new FalhaDeAutenticacao(ate ? _mensagem_de_bloqueio(ate) : ERRO_GENERICO);
   }
 
   if (conta.bloqueado_ate && conta.bloqueado_ate > agora) {
     await _gastar_argon2(senha);
     await registrar_falha_ip(tx, ip, agora);
-    // Dizer a hora e a saída é o que transforma a recusa em instrução.
-    throw new FalhaDeAutenticacao(
-      `Conta bloqueada até ${local_formatado(conta.bloqueado_ate)} por ` +
-        `${cfg.maxTentativas} tentativas malsucedidas seguidas. Espere e tente ` +
-        "de novo; se a senha se perdeu, quem administra o sistema redefine — " +
-        "não há redefinição por e-mail.",
-    );
+    throw new FalhaDeAutenticacao(_mensagem_de_bloqueio(conta.bloqueado_ate));
   }
 
   if (!(await conferir_senha(conta.senha_hash, senha))) {
-    const tentativas = conta.tentativas_falhas + 1;
-    const bloqueado_ate =
-      tentativas >= cfg.maxTentativas ? new Date(agora.getTime() + cfg.bloqueioMinutos * 60_000) : conta.bloqueado_ate;
+    const { tentativas, bloqueado_ate } = _proxima_falha(conta, agora);
     await tx
       .update(usuario)
       .set({ tentativas_falhas: tentativas, bloqueado_ate })
       .where(eq(usuario.id, conta.id));
     await registrar_falha_ip(tx, ip, agora);
+    if (bloqueado_ate && bloqueado_ate !== conta.bloqueado_ate) {
+      await _registrar_bloqueio(tx, conta, bloqueado_ate, "na entrada", { ip, user_agent });
+    }
     // A falha tem de ficar gravada: a rota devolve a tela (retorno normal), e
     // o middleware dá COMMIT — como o `s.flush()` + commit do Python.
     throw new FalhaDeAutenticacao();
@@ -373,6 +377,110 @@ export async function autenticar(
   await expurgar_sessoes(tx, agora);
   await expurgar_limites_ip(tx, agora);
   return [conta, token];
+}
+
+// ---------------------------------------------------------------------
+// Bloqueio da conta: o contador, a mensagem, a trilha e a encenação
+// ---------------------------------------------------------------------
+
+/** Dizer a hora e a saída é o que transforma a recusa em instrução. */
+function _mensagem_de_bloqueio(ate: Date): string {
+  return (
+    `Conta bloqueada até ${local_formatado(ate)} por ` +
+    `${obterConfig().maxTentativas} tentativas malsucedidas seguidas. Espere e tente ` +
+    "de novo; se a senha se perdeu, quem administra o sistema redefine — " +
+    "não há redefinição por e-mail."
+  );
+}
+
+/**
+ * O contador depois de mais uma senha errada. Bloqueio que já venceu recomeça
+ * a conta do zero (D6): sem isto o contador continuava em 5, e o primeiro erro
+ * depois do prazo bloqueava de novo, com a mensagem "5 tentativas seguidas"
+ * para quem tinha errado uma vez.
+ */
+function _proxima_falha(
+  conta: Pick<Usuario, "tentativas_falhas" | "bloqueado_ate">,
+  agora: Date,
+): { tentativas: number; bloqueado_ate: Date | null } {
+  const cfg = obterConfig();
+  const vencido = conta.bloqueado_ate !== null && conta.bloqueado_ate <= agora;
+  const tentativas = (vencido ? 0 : conta.tentativas_falhas) + 1;
+  if (tentativas >= cfg.maxTentativas) {
+    return { tentativas, bloqueado_ate: new Date(agora.getTime() + cfg.bloqueioMinutos * 60_000) };
+  }
+  return { tentativas, bloqueado_ate: vencido ? null : conta.bloqueado_ate };
+}
+
+/**
+ * CONTA_BLOQUEADA na trilha (D21): o bloqueio é o sinal de que alguém tentou
+ * a senha de outra pessoa, e até aqui só existia na coluna da conta, que o
+ * próximo login certo zera. Sem conta na sessão (a entrada), quem age é o
+ * "sistema"; na troca de senha, é a própria sessão.
+ */
+async function _registrar_bloqueio(
+  tx: Executor,
+  conta: Pick<Usuario, "id" | "login">,
+  ate: Date,
+  onde: string,
+  contexto: { usuario?: UsuarioAtual | null; ip?: string | null; user_agent?: string | null } = {},
+): Promise<void> {
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: CONTA_BLOQUEADA,
+    descricao:
+      `Conta '${conta.login}' bloqueada até ${local_formatado(ate)} depois de ` +
+      `${obterConfig().maxTentativas} tentativas malsucedidas seguidas ${onde}.`,
+    campo: "bloqueado_ate",
+    valor_novo: ate.toISOString(),
+    usuario: contexto.usuario ?? null,
+    ip: contexto.ip ?? null,
+    user_agent: contexto.user_agent ?? null,
+  });
+}
+
+/**
+ * A chave do contador encenado: um HMAC do identificador digitado, nunca o
+ * texto (o e-mail que alguém tentou é dado pessoal de quem o digitou, e às
+ * vezes é a senha colada no campo errado). O prefixo separa estas linhas das
+ * de endereço, que dividem a tabela `limite_login_ip`.
+ */
+export const PREFIXO_CHAVE_ENCENADA = "conta:";
+function _chave_encenada(login: string): string {
+  const digest = createHmac("sha256", obterConfig().chaveSecreta).update(casefold(login.trim()), "utf8").digest("hex");
+  return (PREFIXO_CHAVE_ENCENADA + digest).slice(0, 64);
+}
+
+/**
+ * O bloqueio de quem não tem conta ativa, igual ao de quem tem (D26): conta as
+ * falhas seguidas daquele identificador e, no teto, devolve a mesma mensagem
+ * "Conta bloqueada até…" pelo mesmo tempo. Devolve a hora do bloqueio em
+ * curso (ou do que esta falha abriu, que só aparece na tentativa seguinte,
+ * como na conta real), ou `null`.
+ *
+ * Usa a tabela do teto por endereço, com chave própria, para não criar
+ * migração por um contador que se apaga sozinho: `expurgar_limites_ip` já
+ * remove a linha um dia depois da última tentativa. A `janela_inicio` aqui é
+ * a hora da última falha.
+ */
+async function _bloqueio_encenado(tx: Executor, login: string, agora: Date): Promise<Date | null> {
+  if (!login.trim()) return null;
+  const chave = _chave_encenada(login);
+  const [linha] = await tx.select().from(limite_login_ip).where(eq(limite_login_ip.ip, chave)).for("update");
+  if (linha?.bloqueado_ate && linha.bloqueado_ate > agora) return linha.bloqueado_ate;
+  const proxima = _proxima_falha(
+    { tentativas_falhas: linha?.falhas ?? 0, bloqueado_ate: linha?.bloqueado_ate ?? null },
+    agora,
+  );
+  await tx
+    .insert(limite_login_ip)
+    .values({ ip: chave, falhas: proxima.tentativas, janela_inicio: agora, bloqueado_ate: proxima.bloqueado_ate })
+    .onConflictDoUpdate({
+      target: limite_login_ip.ip,
+      set: { falhas: proxima.tentativas, janela_inicio: agora, bloqueado_ate: proxima.bloqueado_ate },
+    });
+  return null;
 }
 
 // ---------------------------------------------------------------------
@@ -476,9 +584,17 @@ const PASSO_ULTIMO_USO_MS = 60_000;
  * A sessão do cookie, se ainda vale. Além do teto absoluto (`expira_em`, 12 h),
  * cai a sessão parada há mais de `sessaoInatividadeMinutos` (revisão de
  * segurança, 25/09/2026): na internet, o computador deixado aberto na sala de
- * outra unidade não pode continuar logado até o fim do expediente. Duas horas,
- * e não quinze minutos, porque o parecer se escreve com o processo SEI aberto
- * do lado — e a recusa por sessão vencida no salvamento perderia o texto.
+ * outra unidade não pode continuar logado até o fim do expediente. Sessenta
+ * minutos desde 22/10/2026 (eram duas horas), e não quinze, porque o parecer se
+ * escreve com o processo SEI aberto do lado: o navegador avisa aos 55 minutos,
+ * e digitar num formulário renova a sessão (csso.js, bloco 12).
+ *
+ * A TOLERÂNCIA DE UM PASSO. O `ultimo_uso_em` só é regravado de minuto em
+ * minuto (`PASSO_ULTIMO_USO_MS`), então ele pode estar até um passo atrás do
+ * último pedido de verdade. Conferir o limite cru contra ele derrubaria a
+ * sessão até um minuto ANTES do que o aviso do navegador promete. Por isso a
+ * sessão cai quando a coluna passa de `limite + passo`: nunca antes de 60
+ * minutos sem pedido, e no máximo aos 61.
  */
 /**
  * A conta da sessão como SUBCONSULTA: carrega-se a identidade junto com a
@@ -496,7 +612,7 @@ export async function sessao_valida(tx: Executor, token: string | null | undefin
   if (!registro || registro.revogada || registro.expira_em <= agora) return null;
   const inatividade_ms = obterConfig().sessaoInatividadeMinutos * 60_000;
   const ultimo = registro.ultimo_uso_em ?? registro.criada_em;
-  if (inatividade_ms > 0 && agora.getTime() - ultimo.getTime() > inatividade_ms) return null;
+  if (inatividade_ms > 0 && agora.getTime() - ultimo.getTime() > inatividade_ms + PASSO_ULTIMO_USO_MS) return null;
   if (agora.getTime() - ultimo.getTime() > PASSO_ULTIMO_USO_MS) {
     await tx.update(sessao).set({ ultimo_uso_em: agora }).where(eq(sessao.id, registro.id));
     registro.ultimo_uso_em = agora;
@@ -546,6 +662,7 @@ export async function conferir_senha_atual(
   tx: Executor,
   conta_id: number,
   senha: string,
+  contexto: { usuario?: UsuarioAtual | null; ip?: string | null; user_agent?: string | null } = {},
 ): Promise<{ mensagem: string; bloqueada: boolean } | null> {
   const cfg = obterConfig();
   const agora = agora_utc();
@@ -557,11 +674,13 @@ export async function conferir_senha_atual(
     if (conta.tentativas_falhas) await tx.update(usuario).set({ tentativas_falhas: 0 }).where(eq(usuario.id, conta.id));
     return null;
   }
-  const tentativas = conta.tentativas_falhas + 1;
+  // o mesmo contador do login, com o mesmo recomeço depois do bloqueio vencido (D6)
+  const { tentativas, bloqueado_ate: proximo_bloqueio } = _proxima_falha(conta, agora);
   if (tentativas >= cfg.maxTentativas) {
-    const bloqueado_ate = new Date(agora.getTime() + cfg.bloqueioMinutos * 60_000);
+    const bloqueado_ate = proximo_bloqueio!;
     await tx.update(usuario).set({ tentativas_falhas: tentativas, bloqueado_ate }).where(eq(usuario.id, conta.id));
     await revogar_do_usuario(tx, conta.id);
+    await _registrar_bloqueio(tx, conta, bloqueado_ate, "na troca de senha", contexto);
     return {
       mensagem:
         `Senha atual incorreta pela ${cfg.maxTentativas}ª vez seguida. Por segurança a conta ficou bloqueada até ` +
@@ -570,7 +689,10 @@ export async function conferir_senha_atual(
       bloqueada: true,
     };
   }
-  await tx.update(usuario).set({ tentativas_falhas: tentativas }).where(eq(usuario.id, conta.id));
+  await tx
+    .update(usuario)
+    .set({ tentativas_falhas: tentativas, bloqueado_ate: proximo_bloqueio })
+    .where(eq(usuario.id, conta.id));
   const restam = cfg.maxTentativas - tentativas;
   return {
     mensagem:
@@ -580,24 +702,53 @@ export async function conferir_senha_atual(
   };
 }
 
+/** A recusa de repetir a senha atual. Começa por "A senha nova": a tela a põe no campo da nova. */
+export const ERRO_SENHA_REPETIDA = "A senha nova é igual à atual: escolha outra.";
+
 /**
  * Grava a senha nova e derruba as OUTRAS sessões. Devolve quantas caíram.
  * Trocar a própria senha é o gesto de quem desconfia que alguém a viu;
  * `token_atual` poupa quem está trocando.
+ *
+ * A senha nova não pode ser a atual (D5). Sem esta recusa, a troca obrigatória
+ * aceitava digitar a provisória de novo, e a provisória — que quem redefiniu
+ * viu e ditou — continuava valendo para sempre. A redefinição pelo
+ * administrador só é contida porque a troca obrigatória tira dele a senha.
+ *
+ * Grava SENHA_TROCADA (D21): a troca pelo próprio dono não deixava rastro, e
+ * é o primeiro fato que se procura quando alguém diz "não fui eu".
  */
 export async function trocar_senha(
   tx: Executor,
   conta: Pick<Usuario, "id">,
   nova: string,
   token_atual: string | null = null,
+  contexto: { usuario?: UsuarioAtual | null; ip?: string | null; user_agent?: string | null } = {},
 ): Promise<number> {
   const problemas = politica_de_senha(nova);
   if (problemas.length) throw new SenhaRecusada("Senha fraca: " + problemas.join("; "));
+  const [atual] = await tx.select().from(usuario).where(eq(usuario.id, conta.id)).for("update");
+  if (!atual) throw new SenhaRecusada("Conta não encontrada.");
+  if (await conferir_senha(atual.senha_hash, nova)) throw new SenhaRecusada(ERRO_SENHA_REPETIDA);
   await tx
     .update(usuario)
     .set({ senha_hash: await gerar_hash(nova), precisa_trocar_senha: false })
     .where(eq(usuario.id, conta.id));
-  return revogar_do_usuario(tx, conta.id, token_atual);
+  const encerradas = await revogar_do_usuario(tx, conta.id, token_atual);
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: atual.id,
+    tipo_evento: SENHA_TROCADA,
+    descricao:
+      `Senha da conta '${atual.login}' trocada pela própria conta` +
+      (atual.precisa_trocar_senha ? " (troca obrigatória)" : "") +
+      `; ${encerradas} outra(s) sessão(ões) encerrada(s).`,
+    usuario: contexto.usuario ?? null,
+    usuario_nome: contexto.usuario ? null : atual.nome,
+    ip: contexto.ip ?? null,
+    user_agent: contexto.user_agent ?? null,
+  });
+  return encerradas;
 }
 
 // ---------------------------------------------------------------------
@@ -608,13 +759,22 @@ export async function existe_algum_usuario(tx: Executor): Promise<boolean> {
   return linhas.length > 0;
 }
 
-/** Única concessão de perfil feita sem `perfil.conceder`. Auditada. */
+/**
+ * Única concessão de perfil feita sem `perfil.conceder`. Auditada.
+ *
+ * `precisa_trocar_senha` vale `true` por padrão: é o caminho da linha de
+ * comando (`producao-iniciar`), que GERA a senha e a mostra no terminal, e a
+ * senha mostrada é provisória de fato. A tela /primeiro-acesso passa `false`
+ * (D28): ali a pessoa acabou de escolher a senha, ninguém mais a viu, e a
+ * troca obrigatória logo na entrada a chamava de "provisória".
+ */
 export async function criar_primeiro_superintendente(
   tx: Executor,
   login: string,
   nome: string,
   email: string,
   senha: string,
+  opcoes: { precisa_trocar_senha?: boolean } = {},
 ): Promise<Usuario> {
   if (await existe_algum_usuario(tx)) {
     throw new PrimeiroAcessoRecusado("já existe usuário cadastrado — use /usuarios");
@@ -624,7 +784,7 @@ export async function criar_primeiro_superintendente(
 
   const [conta] = await tx
     .insert(usuario)
-    .values({ login, nome, email, senha_hash: await gerar_hash(senha), precisa_trocar_senha: true })
+    .values({ login, nome, email, senha_hash: await gerar_hash(senha), precisa_trocar_senha: opcoes.precisa_trocar_senha ?? true })
     .returning();
   const [superintendente] = await tx.select().from(perfil).where(eq(perfil.codigo, "superintendente"));
   if (!superintendente) throw new Error("perfil 'superintendente' ausente: o banco não foi semeado");

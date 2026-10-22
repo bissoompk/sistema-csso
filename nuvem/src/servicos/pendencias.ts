@@ -26,8 +26,8 @@ import { Pendencia as PendenciaDominio } from "../dominio/auditoria.js";
 import { ErroHttp, RegraViolada } from "../nucleo/erros.js";
 import { ganchos } from "../web.js";
 import * as auditoria from "./auditoria.js";
-import { pode_ver_nominal } from "./identificacao.js";
-import { ESCOPO_PROPRIO, PermissaoNegada, type UsuarioAtual } from "./rbac.js";
+import { NOMINAIS_FORA_DO_EPI, pode_ver_nominal } from "./identificacao.js";
+import { ESCOPO_TOTAL, ESCOPO_UNIDADE, PermissaoNegada, type UsuarioAtual } from "./rbac.js";
 
 export type Pendencia = typeof tabela_pendencia.$inferSelect;
 
@@ -58,20 +58,25 @@ export const TIPOS: Record<string, readonly [string, number]> = {
   EPI_RETIRADA_DISPONIVEL: ["Retirar o EPI reservado para você", 15],
   // a demanda com prazo: sem prazo não abre pendência nenhuma
   DEMANDA_COM_PRAZO: ["Demanda com prazo a cumprir", 15],
-  // o aviso de QUEM DEMANDOU, quando a CSSO encerra (só se ele tem conta)
+  // o aviso de QUEM DEMANDOU, quando a equipe encerra (só se ele tem conta)
   DEMANDA_DESFECHO_A_LER: ["Ler o desfecho da sua demanda", 15],
   // nasce SEM responsável: é do setor
   TURMA_INSCRICAO_A_CONFIRMAR: ["Confirmar inscrição pedida pelo próprio participante", 10],
   // o prazo real é o próprio vencimento; nasce sem responsável (é do setor)
   CERTIFICADO_A_VENCER: ["Programar a reciclagem de certificado a vencer", 30],
+  // D17: a última concessão de `perfil.conceder` vence pela data e ninguém
+  // ficaria para conceder perfil; o prazo real é o último dia coberto
+  // (`governanca.sincronizar_aviso_de_cobertura`)
+  COBERTURA_DE_CONCESSAO_A_VENCER: ["Garantir quem conceda perfil depois do vencimento", 30],
 };
 
 // ---------------------------------------------------------------------
 // Quem entra em /pendencias
 // ---------------------------------------------------------------------
 // Uma lista explícita de permissões de LEITURA de módulo — aceitar "qualquer
-// permissão" deixaria entrar o admin_ti, que tem `indicador.ver` e, por decisão
-// de projeto, não vê conteúdo técnico. Módulo novo acrescenta a sua aqui.
+// permissão" deixaria entrar o admin_ti, que tem `auditoria.ver` e
+// `backup.executar` (e tinha `indicador.ver` até 22/10/2026) e, por decisão de
+// projeto, não vê conteúdo técnico. Módulo novo acrescenta a sua aqui.
 // (A história completa de cada entrada está no Python.)
 export const PERMISSOES_VER: readonly string[] = ["processo.ver", "treinamento.ver", "epi.ver", "demanda.ver"];
 
@@ -108,6 +113,7 @@ export const PERMISSAO_CONCLUIR_POR_TIPO: Readonly<Record<string, string>> = Obj
   // quem confirma
   TURMA_INSCRICAO_A_CONFIRMAR: "turma.inscrever",
   CERTIFICADO_A_VENCER: "treinamento.gerenciar",
+  COBERTURA_DE_CONCESSAO_A_VENCER: "perfil.conceder",
 });
 
 export function pode_ver(usuario: UsuarioAtual | null | undefined): boolean {
@@ -304,9 +310,30 @@ export async function concluir(tx: Executor, pendencia: Pendencia, usuario: Usua
  * (`undefined` = sem recorte), e quem consulta faz `where(and(...))`.
  */
 export function no_escopo(usuario: UsuarioAtual | null | undefined): SQL | undefined {
-  if (!usuario || usuario.escopo !== ESCOPO_PROPRIO) return undefined;
+  if (!usuario || ve_a_fila_do_setor(usuario)) return undefined;
   return eq(tabela_pendencia.responsavel_id, usuario.id);
 }
+
+/**
+ * A fila inteira é de quem lê algum módulo ALÉM do próprio dado: uma das
+ * `PERMISSOES_VER` com escopo de unidade ou total. Era o escopo da CONTA
+ * (`usuario.escopo`), e com as funções do titular (D16) toda conta ligada a
+ * servidor passou a ter `processo.ver` e `epi.ver` — o `admin_ti` ligado a
+ * servidor, cuja conta é de escopo A, abria /pendencias e lia a fila inteira do
+ * setor, com texto livre que nomeia terceiros. Agora a pergunta é por
+ * permissão: quem só alcança o próprio (o titular) ou só o agregado (o
+ * `admin_ti`) vê o que a regra atribuiu a ele, e nada mais.
+ */
+export function ve_a_fila_do_setor(usuario: UsuarioAtual): boolean {
+  return PERMISSOES_VER.some((p) => {
+    const nivel = usuario.escopo_de(p);
+    return nivel === ESCOPO_TOTAL || nivel === ESCOPO_UNIDADE;
+  });
+}
+
+// As âncoras de EPI, onde `epi.ficha` é nominal na própria definição; fora
+// delas a família nominal é a das telas que não são de EPI (D15).
+const _ENTIDADES_DE_EPI: readonly string[] = ["epi_requisicao", "epi_requisicao_item", "epi_ficha_registro"];
 
 // A âncora que sabe dizer DE QUEM é a tarefa. Entidade nova entra aqui quando
 // tiver como responder a pergunta — chave ausente cai no lado seguro (`null`).
@@ -501,7 +528,18 @@ export async function leitura(tx: Executor, usuario: UsuarioAtual, itens: Penden
 
     let texto: string;
     if (!p.descricao) texto = "—";
-    else if (pode_ver_nominal(usuario, de_quem.get(p.id) ?? null)) texto = p.descricao;
+    else if (
+      // `epi.ficha` lê o nome só na tarefa de EPI: a descrição da demanda diz
+      // "— demanda de <nome>", e o almoxarife a lia inteira enquanto a
+      // secretaria, na mesma fila, recebia a frase neutra (D15)
+      pode_ver_nominal(
+        usuario,
+        de_quem.get(p.id) ?? null,
+        null,
+        p.entidade && _ENTIDADES_DE_EPI.includes(p.entidade) ? undefined : NOMINAIS_FORA_DO_EPI,
+      )
+    )
+      texto = p.descricao;
     else if (p.entidade === "demanda" && p.entidade_id && usuario.pode("demanda.ver") && demandas.has(p.entidade_id)) {
       texto = `Demanda: ${demandas.get(p.entidade_id)!.assunto}`;
     } else {

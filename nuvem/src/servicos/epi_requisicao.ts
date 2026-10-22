@@ -63,7 +63,7 @@ import * as numeracao from "./numeracao.js";
 import * as pendencias from "./pendencias.js";
 import * as servico_servidores from "./servidores.js";
 import * as textos from "./textos.js";
-import { ESCOPO_PROPRIO, ESCOPO_UNIDADE, PermissaoNegada, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import { PermissaoNegada, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 
 export type EpiRequisicao = typeof epi_requisicao.$inferSelect;
 export type EpiRequisicaoItem = typeof epi_requisicao_item.$inferSelect;
@@ -521,34 +521,51 @@ function _servidor_nos_campi(campi: number[]): SQL {
  *   fila de Teófilo Otoni listava o pedido em digitação de Diamantina, com a
  *   identificação mascarada pela RN-19 mas presente.
  * - Próprio: o pedido tem duas pessoas, e `solicitado_por_id` é a segunda.
+ *
+ * O alcance é o da PERMISSÃO (D1/D9): ler a fila é `epi.ver`, mexer no pedido
+ * é `epi.requisitar`. O almoxarife ligado a servidor lê a fila do setor pela
+ * `epi.ver` do perfil dele e pede EPI só para si pela concessão do titular —
+ * sem com isso editar o rascunho dos outros. Concessões de alcances
+ * diferentes da mesma permissão somam (`OR`).
  */
-export function _no_escopo(usuario: UsuarioAtual): SQL | undefined {
-  if (usuario.escopo === ESCOPO_UNIDADE && usuario.campi.length) {
-    const campi = [...usuario.campi];
+export function _no_escopo(usuario: UsuarioAtual, permissao: string | readonly string[] = "epi.ver"): SQL | undefined {
+  const alcance = usuario.alcance(permissao);
+  if (alcance.total || alcance.unidade) return undefined;
+  const partes: SQL[] = [];
+  if (alcance.campi.length) {
+    const campi = [...alcance.campi];
     const servidor_no_campus = _servidor_nos_campi(campi);
-    return or(
-      inArray(epi_requisicao.campus_id, campi),
-      and(isNull(epi_requisicao.campus_id), or(eq(epi_requisicao.solicitado_por_id, usuario.id), servidor_no_campus)),
+    partes.push(
+      or(
+        inArray(epi_requisicao.campus_id, campi),
+        and(isNull(epi_requisicao.campus_id), or(eq(epi_requisicao.solicitado_por_id, usuario.id), servidor_no_campus)),
+      )!,
     );
   }
-  if (usuario.escopo === ESCOPO_PROPRIO) {
-    return or(
-      eq(epi_requisicao.servidor_id, usuario.servidor_id || -1),
-      eq(epi_requisicao.solicitado_por_id, usuario.id),
+  if (alcance.proprio) {
+    partes.push(
+      or(eq(epi_requisicao.servidor_id, usuario.servidor_id || -1), eq(epi_requisicao.solicitado_por_id, usuario.id))!,
     );
   }
-  return aplicar_escopo(usuario, epi_requisicao);
+  // sem a permissão, ou só o agregado: nenhum pedido (`aplicar_escopo` diz o mesmo)
+  if (!partes.length) return aplicar_escopo(usuario, epi_requisicao, permissao);
+  return partes.length === 1 ? partes[0] : or(...partes);
 }
 
 /**
  * A única leitura de requisição por id. Fora do escopo e inexistente devolvem
- * a mesma coisa de propósito.
+ * a mesma coisa de propósito. `permissao` é a do ato (ver `_no_escopo`).
  */
-export async function no_escopo(tx: Executor, usuario: UsuarioAtual, requisicao_id: number): Promise<EpiRequisicao | null> {
+export async function no_escopo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  requisicao_id: number,
+  permissao: string | readonly string[] = "epi.ver",
+): Promise<EpiRequisicao | null> {
   const [r] = await tx
     .select()
     .from(epi_requisicao)
-    .where(and(eq(epi_requisicao.id, requisicao_id), _no_escopo(usuario)));
+    .where(and(eq(epi_requisicao.id, requisicao_id), _no_escopo(usuario, permissao)));
   return r ?? null;
 }
 
@@ -594,13 +611,19 @@ export interface CamposCabecalho {
  *
  * Conta de escopo próprio sem servidor é recusa de REGRA, e não 403: a pessoa
  * tem a permissão, falta a ligação — a tela diz a quem pedir.
+ *
+ * O escopo é o de `epi.requisitar` (D1/D9/D16), não o da conta: o almoxarife
+ * que a recebe pela concessão do titular pede só para si.
  */
 export async function exigir_requerente_permitido(
   tx: Executor,
   usuario: UsuarioAtual,
   servidor: Pick<Servidor, "id">,
 ): Promise<void> {
-  if (usuario.escopo === ESCOPO_PROPRIO) {
+  const alcance = usuario.alcance("epi.requisitar");
+  if (alcance.total || alcance.unidade) return;
+  if (alcance.proprio && usuario.servidor_id !== null && servidor.id === usuario.servidor_id) return;
+  if (!alcance.campi.length) {
     if (usuario.servidor_id === null) {
       throw new RequisicaoBloqueada([
         "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
@@ -612,19 +635,17 @@ export async function exigir_requerente_permitido(
     }
     return;
   }
-  if (usuario.escopo === ESCOPO_UNIDADE && usuario.campi.length) {
-    const [linha] = await tx
-      .select({ campus_id: unidade_uorg.campus_id })
-      .from(tabela_servidor)
-      .leftJoin(unidade_uorg, eq(unidade_uorg.id, tabela_servidor.unidade_uorg_id))
-      .where(eq(tabela_servidor.id, servidor.id));
-    const campus = linha?.campus_id ?? null;
-    if (campus !== null && !usuario.campi.includes(campus)) {
-      throw new PermissaoNegada(
-        "epi.requisitar",
-        "Este servidor está lotado em outro campus: o pedido dele é aberto por quem atende aquele campus.",
-      );
-    }
+  const [linha] = await tx
+    .select({ campus_id: unidade_uorg.campus_id })
+    .from(tabela_servidor)
+    .leftJoin(unidade_uorg, eq(unidade_uorg.id, tabela_servidor.unidade_uorg_id))
+    .where(eq(tabela_servidor.id, servidor.id));
+  const campus = linha?.campus_id ?? null;
+  if (campus !== null && !alcance.campi.includes(campus)) {
+    throw new PermissaoNegada(
+      "epi.requisitar",
+      "Este servidor está lotado em outro campus: o pedido dele é aberto por quem atende aquele campus.",
+    );
   }
 }
 

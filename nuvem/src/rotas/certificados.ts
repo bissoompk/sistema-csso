@@ -26,7 +26,8 @@ import * as datas_br from "../servicos/datas_br.js";
 import { somar_dias } from "../dominio/datas.js";
 import * as servico from "../servicos/emissao_certificado.js";
 import { COM_PARTICIPANTE } from "../servicos/participante.js";
-import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
+import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
+import * as setor_equipe from "../servicos/setor_equipe.js";
 import { numeroDaPagina, pagina, recortarConsulta, redirecionar } from "../web.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as conversor_pdf from "../servicos/conversor_pdf.js";
@@ -134,7 +135,9 @@ rotas.get(CERTIFICADOS, async (c) => {
   const situacao = c.req.query("situacao") ?? "";
   const treinamento_id = c.req.query("treinamento_id") ?? "";
   const busca = c.req.query("busca") ?? "";
-  const filtros: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_certificado)];
+  const filtros: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_certificado, "certificado.ver")];
+  // NUVEM: a equipe lista os certificados das turmas do próprio setor (`setor_equipe.ts`)
+  if (usuario.escopo_de("certificado.ver") !== ESCOPO_PROPRIO) filtros.push(setor_equipe.condicao_setor_certificado(usuario));
   if ((SITUACOES_CERTIFICADO as readonly string[]).includes(situacao)) filtros.push(eq(tabela_certificado.situacao, situacao));
   const alvo = id_opcional(treinamento_id);
   if (alvo !== null) filtros.push(eq(tabela_certificado.treinamento_id, alvo));
@@ -156,6 +159,7 @@ rotas.get(CERTIFICADOS, async (c) => {
     filtro_treinamento: treinamento_id,
     busca,
     busca_cpf,
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
     ...recados(c),
   });
 });
@@ -199,6 +203,7 @@ rotas.get(VENCIMENTOS, async (c) => {
     filtro_treinamento: treinamento_id,
     busca,
     busca_cpf,
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
     ...recados(c),
   });
 });
@@ -270,6 +275,7 @@ async function _tela_fila(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string 
     treinamentos: await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
     pode_emitir: usuario.pode("certificado.emitir"),
     travados: d.travados ?? [],
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
     ...recados(c),
     ...(d.mensagem ? { mensagem: d.mensagem } : {}),
     ...(d.erro ? { erro: d.erro } : {}),
@@ -515,9 +521,11 @@ rotas.get(EMAILS, async (c) => {
   const situacao = c.req.query("situacao") ?? "";
   const filtro = Object.hasOwn(email.ROTULO_SITUACAO, situacao) ? situacao : "";
   return pagina(c, "paginas/emails.html", usuario, {
-    itens: await email.caixa(tx, { situacao: filtro || undefined }),
-    contagem: await email.contagem(tx),
+    // NUVEM: a caixa do setor de quem lê (`envio_certificado.caixa_do_setor`)
+    itens: await envio_certificado.caixa_do_setor(tx, usuario, { situacao: filtro || undefined }),
+    contagem: await envio_certificado.contagem_do_setor(tx, usuario),
     filtro,
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
     rotulos: email.ROTULO_SITUACAO,
     ...recados(c),
   });
@@ -537,6 +545,8 @@ rotas.post(`${EMAILS}/:email_id{[0-9]+}/:acao{tentar|cancelar}`, async (c) => {
   usuario.exigir("certificado.emitir");
   const tx = c.get("tx");
   const id = Number(c.req.param("email_id"));
+  // NUVEM: o e-mail de turma de outro setor não se mexe daqui (`setor_equipe.ts`)
+  if (!(await envio_certificado.email_no_setor(tx, usuario, id))) return _erro(c, EMAILS, "E-mail não encontrado.");
   if (c.req.param("acao") === "tentar") {
     if (!(await email.reenfileirar(tx, id))) return _erro(c, EMAILS, "Só e-mail que falhou volta para a fila.");
     await email.acordar_envio();
@@ -561,9 +571,11 @@ rotas.post(`${CERTIFICADOS}/:certificado_id{[0-9]+}/corrigir`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const certificado_id = Number(c.req.param("certificado_id"));
-  const certificado = await servico.no_escopo(tx, usuario, certificado_id);
+  const certificado = await servico.no_escopo(tx, usuario, certificado_id, "certificado.anular");
   if (!certificado) return redirecionar(c, CERTIFICADOS);
   const destino = `${CERTIFICADOS}/${certificado_id}`;
+  const proprio = servico.recusa_de_ato_sobre_o_proprio(usuario, certificado);
+  if (proprio) return _erro(c, destino, `Nada foi alterado. ${proprio}`);
   const correcao: retificacao.Correcao = {};
   if (f.tem("nome")) correcao.nome = f.texto("nome");
   if (f.tem("vinculo")) correcao.vinculo = f.texto("vinculo");
@@ -603,9 +615,11 @@ rotas.post(`${CERTIFICADOS}/:certificado_id{[0-9]+}/anular`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const certificado_id = Number(c.req.param("certificado_id"));
-  const certificado = await servico.no_escopo(tx, usuario, certificado_id);
+  const certificado = await servico.no_escopo(tx, usuario, certificado_id, "certificado.anular");
   if (!certificado) return redirecionar(c, CERTIFICADOS);
   const destino = `${CERTIFICADOS}/${certificado_id}`;
+  const proprio = servico.recusa_de_ato_sobre_o_proprio(usuario, certificado);
+  if (proprio) return _erro(c, destino, proprio);
   try {
     await tx.transaction((sp) => servico.anular(sp as Executor, usuario, certificado, f.texto("motivo")));
   } catch (erro) {

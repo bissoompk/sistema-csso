@@ -43,6 +43,9 @@ describe("telas simplificadas", () => {
     await entrar(cliente, "superintendente");
     const [h] = await db.select().from(e.profissional_habilitado).limit(1);
     const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.login, "engenheiro_seguranca"));
+    // a habilitação interna se liga à conta do servidor do mesmo SIAPE (D3)
+    const [sv] = await db.insert(e.servidor).values({ siape: h!.siape!, nome: h!.nome }).returning();
+    await db.update(e.usuario).set({ servidor_id: sv!.id }).where(eq(e.usuario.id, conta!.id));
     const r = await cliente.post(`/habilitacoes/${h!.id}/conta`, { usuario_id: String(conta!.id) }, { seguir: false });
     expect(r.status).toBe(303);
     const [depois] = await db.select().from(e.profissional_habilitado).where(eq(e.profissional_habilitado.id, h!.id));

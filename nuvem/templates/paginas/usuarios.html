@@ -4,7 +4,7 @@
      'ENG_SEG_TRABALHO': 'Engenheiro de Segurança do Trabalho',
      'MED_TRABALHO': 'Médico do Trabalho',
      'ARQ_SEG_TRABALHO': 'Arquiteto de Segurança do Trabalho'} %}
-{% block titulo %}Usuários · CSSO{% endblock %}
+{% block titulo %}Usuários · SISA{% endblock %}
 
 {# Três cadastros na mesma tela, três popups — e por isso o `digitado` traz uma
    FORMA junto com os campos. É o mesmo discriminador de `epi_requisicoes`: sem
@@ -24,6 +24,10 @@
    popup daquela abre, com a conta que se escolheu. #}
 {% set erro_conta_hab = erro if forma == 'conta-hab' else none %}
 {% set editar_conta_hab = usuario.pode('habilitacao.atestar') %}
+{# As outras formas de uma linha só: `dados` (Editar dados da conta, D11) e as
+   duas da habilitação (`hab-corrigir`, `hab-encerrar`, D10). Todas dizem a
+   linha em `usuario_alvo`. #}
+{% set erro_linha = erro if forma in ['dados', 'hab-corrigir', 'hab-encerrar'] else none %}
 {# A recusa que já está dentro de um popup sai da faixa da casca: escrita nos
    dois lugares, ela faz procurar dois problemas. #}
 {% set erro = none if forma else erro %}
@@ -46,9 +50,17 @@
       <p class="sub">Cada concessão de perfil registra o ato normativo que a autoriza
         (Resolução Consu 11/2026, art. 11, IX); sem ele, fica “pendente” até ser
         informado em Gerir.
-        {% if usuario.pode('processo.ver') %}<a href="/perfis">Ver matriz de perfis »</a>{% endif %}</p>
+        {# /perfis abre para quem abre esta tela (D24): é a matriz que diz o
+           que a conta vai abrir. #}
+        <a href="/perfis">Ver matriz de perfis »</a>
+        <a href="/perfis/niveis">Acesso por módulo »</a></p>
     </div>
   </div>
+
+  {% if aviso_cobertura %}
+  {# D17: o sino avisa cada conta que concede; a tela onde se resolve também. #}
+  <div class="aviso aviso-alerta" role="status">{{ aviso_cobertura }}</div>
+  {% endif %}
 
   {# Quem não pode resetar senha nem inativar não ganha a coluna de ações: uma
      coluna vazia em toda linha se lê como funcionalidade quebrada, e não como
@@ -79,8 +91,10 @@
           {% for a in vigentes %}
           {# O ato normativo fica no `title`: é ele que autoriza o perfil, e uma
              coluna a mais para ele deixaria a tabela ilegível. #}
+          {# O campus da concessão ao lado do perfil (D20): é ele que recorta o
+             que o perfil alcança, e a pílula dizia só o nome. #}
           <span class="pilula info sem-ponto"
-                title="{{ a.ato_normativo or 'sem ato normativo registrado' }}">{{ a.perfil.nome }}</span>
+                title="{{ a.ato_normativo or 'sem ato normativo registrado' }}">{{ a.perfil.nome }}<span class="discreto"> · {{ sigla_campus[a.campus_id] if a.campus_id else 'todos os campi' }}</span></span>
           {% else %}
           <span class="discreto">sem perfil vigente</span>
           {% endfor %}
@@ -93,7 +107,9 @@
           {% if u.ativo %}<span class="pilula ok">ativo</span>
           {% else %}<span class="pilula erro">inativo</span>{% endif %}
           {% if u.precisa_trocar_senha %}<span class="pilula alerta">senha provisória</span>{% endif %}
-          {% if u.bloqueado_ate %}<span class="pilula erro">bloqueado</span>{% endif %}
+          {# Só o bloqueio que ainda vale (D7): o `bloqueado_ate` vencido fica
+             gravado até o próximo login certo, e a etiqueta virava eterna. #}
+          {% if bloqueio_ate[u.id] %}<span class="pilula erro">bloqueado até {{ bloqueio_ate[u.id] }}</span>{% endif %}
         </td>
         <td data-coluna="Último acesso" class="discreto"><span class="mono">{{ u.ultimo_login_em|momento or 'nunca' }}</span></td>
         {% if pode_gerir %}
@@ -108,33 +124,68 @@
           {% call ui.popup_gaveta('gerir-conta-' ~ u.id, 'Gerir',
                                   'Gerir a conta de ' ~ u.nome,
                                   nota=u.login) %}
-              {# Mesma regra de `_recusa_de_redefinicao`: conta de administração
-                 só por quem concede perfil, e a própria senha nunca por aqui. #}
               {% set governo = u.id in contas_de_governo %}
+              {% if usuario.pode('usuario.criar_conta') %}
+              {# Nome, login e e-mail se corrigem num popup (D11); a rota recusa
+                 a conta de administração para quem não concede perfil. #}
+              <h3>Dados da conta</h3>
+              <p class="discreto">{{ u.email }}</p>
+              <div class="acoes">{{ ui.botao_cadastro('editar-conta-' ~ u.id, 'Editar dados…', 'secundario compacto') }}</div>
+              {% endif %}
+              {% if usuario.pode('auditoria.ver') %}
+              {# D21: o que fizeram COM esta conta (criação, senha, bloqueio,
+                 concessões, habilitação) — o filtro "Conta afetada" de /auditoria. #}
+              <div class="acoes"><a class="botao secundario compacto"
+                 href="/auditoria?conta_id={{ u.id }}">Histórico desta conta</a></div>
+              {% endif %}
+              {# Mesma regra de `_recusa_de_redefinicao` (D4), já decidida pela
+                 rota em `recusa_senha`: conta de administração, ou com
+                 permissão que quem redefine não tem, só por quem concede
+                 perfil; a própria senha nunca por aqui. #}
               {% if u.id == usuario.id %}
               <p class="discreto">A sua própria senha se troca em <a href="/trocar-senha">Trocar senha</a>.</p>
-              {% elif governo and not usuario.pode('perfil.conceder') and usuario.pode('usuario.resetar_senha') %}
-              <p class="discreto"><strong>Conta de administração.</strong> A senha dela só é
-                redefinida por quem concede perfil (o superintendente).</p>
+              {% elif recusa_senha[u.id] %}
+              <p class="discreto"><strong>{{ 'Conta de administração.' if governo else 'Conta com permissões que você não tem.' }}</strong>
+                A senha dela só é redefinida por quem concede perfil (o superintendente).</p>
               {% elif usuario.pode('perfil.conceder') or usuario.pode('usuario.resetar_senha') %}
-              <form method="post" action="/usuarios/{{ u.id }}/senha">
-                <h3>Resetar senha</h3>
-                <p class="discreto">Gera uma senha provisória, mostrada uma única vez, e
-                  revoga as sessões abertas desta conta.</p>
+              {# Pede confirmação numa camada própria (D19), como Inativar: a
+                 senha atual deixa de valer no clique. #}
+              <h3>Resetar senha</h3>
+              <p class="discreto">Gera uma senha provisória, mostrada uma única vez, e
+                revoga as sessões abertas desta conta.</p>
+              <div class="acoes">{{ ui.botao_cadastro('resetar-senha-' ~ u.id, 'Resetar senha…', 'secundario compacto') }}</div>
+              {% endif %}
+              {% if bloqueio_ate[u.id] and u.id != usuario.id and not recusa_senha[u.id]
+                    and (usuario.pode('perfil.conceder') or usuario.pode('usuario.resetar_senha')) %}
+              {# Desbloquear não revela senha nenhuma: um clique, sem confirmação.
+                 Mas segue a trava de quem redefine (`recusa_senha`): desbloquear
+                 a conta que não se pode redefinir reabria a adivinhação da senha dela. #}
+              <form method="post" action="/usuarios/{{ u.id }}/desbloquear">
+                <h3>Bloqueada até {{ bloqueio_ate[u.id] }}</h3>
+                <p class="discreto">Tentativas de senha erradas demais. Desbloquear zera
+                  as tentativas e mantém a senha atual.</p>
                 <div class="acoes"><button type="submit" class="secundario compacto">
-                  Resetar senha</button></div>
+                  Desbloquear</button></div>
               </form>
               {% endif %}
               {% if usuario.pode('perfil.conceder') %}
               {# Concessões que ainda valem ou vão valer: as encerradas ficam na
                  trilha. Encerrar e corrigir o ato moram aqui, ao lado da conta. #}
               <h3>Perfis</h3>
+              {% if u.ativo and u.id != usuario.id %}
+              {# D13: conceder a partir daqui já chega com esta conta escolhida
+                 (a rota abre o popup pelo `?conceder=`, sem script). #}
+              <div class="acoes"><a class="botao secundario compacto"
+                 href="/usuarios?conceder={{ u.id }}#conceder-perfil">Conceder perfil a esta conta…</a></div>
+              {% endif %}
               {% for a in atribuicoes[u.id] %}
               {% if not a.vigencia_fim or a.vigencia_fim >= hoje %}
               <div class="cartao liso">
                 <p><strong>{{ a.perfil.nome }}</strong>
+                  <span class="discreto">· {{ sigla_campus[a.campus_id] if a.campus_id else 'todos os campi' }}</span>
                   <span class="discreto mono">{{ a.vigencia_inicio|data }} —
-                    {{ a.vigencia_fim|data or 'sem termo' }}</span></p>
+                    {{ a.vigencia_fim|data or 'sem termo' }}</span>
+                  {% if a.vigencia_inicio > hoje %}<span class="pilula alerta">ainda não começou</span>{% endif %}</p>
                 <form method="post" action="/usuarios/atribuicoes/{{ a.id }}/ato">
                   <div class="campo"><label for="ato-{{ a.id }}">Ato normativo</label>
                     <input id="ato-{{ a.id }}" name="ato_normativo" required
@@ -145,7 +196,8 @@
                 {# Encerrar pede confirmação numa camada própria (ao fim da
                    linha): é o perfil que deixa de valer, e a um clique ele
                    saía junto do "Salvar ato", que fica logo acima. #}
-                <div class="acoes">{{ ui.botao_cadastro('encerrar-perfil-' ~ a.id, 'Encerrar perfil…', 'perigo compacto') }}</div>
+                <div class="acoes">{{ ui.botao_cadastro('encerrar-perfil-' ~ a.id,
+                  'Cancelar concessão…' if a.vigencia_inicio > hoje else 'Encerrar perfil…', 'perigo compacto') }}</div>
               </div>
               {% endif %}
               {% else %}
@@ -166,6 +218,63 @@
                 <div class="acoes"><button type="submit" class="secundario compacto">
                   Salvar vínculo</button></div>
               </form>
+              {# Liberação por módulo (22/10/2026): a exceção desta conta por
+                 cima dos perfis — dar ou retirar um módulo. A própria conta
+                 não se edita (ninguém eleva o próprio acesso). #}
+              <h3>Acesso por módulo</h3>
+              {% if u.id == usuario.id %}
+              <p class="discreto">O acesso da sua própria conta só outra pessoa que
+                administra acesso altera.</p>
+              {% else %}
+              {% set dela = excecoes[u.id] or {} %}
+              <form method="post" action="/usuarios/{{ u.id }}/niveis">
+                <p class="discreto">“Seguir o perfil” é o padrão. Os outros níveis dão ou
+                  retiram o módulo só para esta conta; o escopo (campus, equipe), a
+                  assinatura e a habilitação continuam vindo do perfil.
+                  {%- if not tem_perfil_de_equipe[u.id] %} <strong>Esta conta não tem
+                  perfil de equipe:</strong> dar um módulo exige um perfil antes.{% endif %}</p>
+                {% for m in modulos_nivelados %}
+                {% set escolhido = dela[m.codigo] or 'PADRAO' %}
+                <fieldset class="nivel-escolha campo">
+                  <legend>{{ m.nome }}</legend>
+                  <label><input type="radio" name="nivel_{{ m.codigo }}" value="PADRAO"{{ ' checked' if escolhido == 'PADRAO' }}>
+                    <span>Seguir o perfil</span></label>
+                  <label><input type="radio" name="nivel_{{ m.codigo }}" value="SEM_ACESSO"{{ ' checked' if escolhido == 'SEM_ACESSO' }}>
+                    <span>Sem acesso</span></label>
+                  <label><input type="radio" name="nivel_{{ m.codigo }}" value="CONSULTA"{{ ' checked' if escolhido == 'CONSULTA' }}>
+                    <span>Consulta</span></label>
+                  <label><input type="radio" name="nivel_{{ m.codigo }}" value="OPERACAO"{{ ' checked' if escolhido == 'OPERACAO' }}>
+                    <span>Operação</span></label>
+                </fieldset>
+                {% endfor %}
+                <div class="acoes"><button type="submit" class="secundario compacto">
+                  Salvar acesso por módulo</button></div>
+              </form>
+              {% endif %}
+              {# Turmas por setor promotor (22/10/2026): a equipe vê e gere só as
+                 turmas dos setores marcados aqui. #}
+              <h3>Setores promotores</h3>
+              {% if u.id == usuario.id %}
+              <p class="discreto">Os setores da sua própria conta só outra pessoa que
+                administra acesso altera.</p>
+              {% else %}
+              {% set meus_setores = setores_da_conta[u.id] or [] %}
+              <form method="post" action="/usuarios/{{ u.id }}/setores">
+                <p class="discreto">Em Certificados e Treinamentos a conta vê e gere só as
+                  turmas destes setores (quem coordena a Sisa vê todos).</p>
+                <fieldset class="setores-escolha campo">
+                  <legend class="oculto">Setores promotores de {{ u.nome }}</legend>
+                  {% for st in setores %}
+                  <label><input type="checkbox" name="setor" value="{{ st.id }}"{{ ' checked' if st.id in meus_setores }}>
+                    {{ st.sigla }}</label>
+                  {% else %}
+                  <span class="discreto">Nenhum setor promotor cadastrado.</span>
+                  {% endfor %}
+                </fieldset>
+                <div class="acoes"><button type="submit" class="secundario compacto">
+                  Salvar setores</button></div>
+              </form>
+              {% endif %}
               {% endif %}
               {# As travas de `_recusa_de_inativacao` (D66), escritas antes do
                  clique: a própria conta, a conta de administração para quem
@@ -207,6 +316,16 @@
           {% if usuario.pode('perfil.conceder') %}
           {% for a in atribuicoes[u.id] %}
           {% if not a.vigencia_fim or a.vigencia_fim >= hoje %}
+          {% if a.vigencia_inicio > hoje %}
+          {# D23: a concessão que ainda não começou se cancela — "encerrar"
+             gravava um fim anterior ao início. #}
+          {% call ui.popup_cadastro('encerrar-perfil-' ~ a.id, 'Cancelar a concessão de ' ~ a.perfil.nome ~ ' a ' ~ u.nome ~ '?',
+                                    '/usuarios/atribuicoes/' ~ a.id ~ '/encerrar', 'Cancelar a concessão',
+                                    classe_botao='perigo', nota=u.login) %}
+            <p>A concessão começaria em {{ a.vigencia_inicio|data }} e não chega a valer.
+              A linha fica, marcada como cancelada, na trilha.</p>
+          {% endcall %}
+          {% else %}
           {% call ui.popup_cadastro('encerrar-perfil-' ~ a.id, 'Encerrar o perfil ' ~ a.perfil.nome ~ ' de ' ~ u.nome ~ '?',
                                     '/usuarios/atribuicoes/' ~ a.id ~ '/encerrar', 'Encerrar o perfil',
                                     classe_botao='perigo', nota=u.login) %}
@@ -215,7 +334,34 @@
               com o fim, na trilha.</p>
           {% endcall %}
           {% endif %}
+          {% endif %}
           {% endfor %}
+          {% endif %}
+          {% if u.id != usuario.id and not recusa_senha[u.id]
+                and (usuario.pode('perfil.conceder') or usuario.pode('usuario.resetar_senha')) %}
+          {% call ui.popup_cadastro('resetar-senha-' ~ u.id, 'Resetar a senha de ' ~ u.nome ~ '?',
+                                    '/usuarios/' ~ u.id ~ '/senha', 'Resetar a senha',
+                                    classe_botao='perigo', nota=u.login) %}
+            <p>A senha atual deixa de valer agora, as sessões abertas desta conta caem
+              e uma senha provisória aparece uma única vez, no topo da lista. A
+              pessoa troca a provisória no próximo login.</p>
+          {% endcall %}
+          {% endif %}
+          {% if usuario.pode('usuario.criar_conta') %}
+          {% set desta = forma == 'dados' and d['usuario_alvo'] == u.id %}
+          {% call ui.popup_cadastro('editar-conta-' ~ u.id, 'Dados da conta de ' ~ u.nome, '/usuarios/' ~ u.id ~ '/dados',
+                                    'Salvar', aberto=desta, erro=(erro_linha if desta else none),
+                                    nota='login e e-mail são a credencial de entrada') %}
+            <div class="campo"><label for="ed-conta-{{ u.id }}-nome">Nome</label>
+              <input id="ed-conta-{{ u.id }}-nome" name="nome" required
+                     value="{{ d['nome'] if desta else u.nome }}"></div>
+            <div class="campo{{ ' com-erro' if desta }}"><label for="ed-conta-{{ u.id }}-login">Login</label>
+              <input id="ed-conta-{{ u.id }}-login" name="login" required
+                     value="{{ d['login'] if desta else u.login }}"{{ ' autofocus' if desta }}></div>
+            <div class="campo{{ ' com-erro' if desta }}"><label for="ed-conta-{{ u.id }}-email">E-mail</label>
+              <input id="ed-conta-{{ u.id }}-email" name="email" type="email" required
+                     value="{{ d['email'] if desta else u.email }}"></div>
+          {% endcall %}
           {% endif %}
         </td>
         {% endif %}
@@ -273,7 +419,8 @@
         <td data-coluna="Habilitação">{{ HABILITACOES[h.habilitacao] or h.habilitacao }}</td>
         <td data-coluna="Título">{{ h.titulo_assinatura }}</td>
         <td class="mono" data-coluna="Vigência">{{ h.vigencia_inicio|data }} —
-          {{ h.vigencia_fim|data or 'sem termo' }}</td>
+          {{ h.vigencia_fim|data or 'sem termo' }}
+          {%- if h.vigencia_fim and h.vigencia_fim < hoje %} <span class="pilula">encerrada</span>{% endif %}</td>
         <td data-coluna="Externo">{% if h.externo %}<span class="pilula alerta"
                 title="{{ h.justificativa_art10_par5 or 'sem justificativa registrada' }}">art. 10, §5º</span>
             {% else %}<span class="discreto">não</span>{% endif %}</td>
@@ -284,7 +431,12 @@
           {% if not h.usuario_id %}<span class="discreto">{{ 'Sem conta: não assina parecer.' if editar_conta_hab else 'sem conta' }}</span>{% endif %}
         </td>
         {% if editar_conta_hab %}
-        <td class="acao-linha">{{ ui.botao_cadastro('editar-conta-hab-' ~ h.id, 'Editar', 'secundario compacto') }}</td>
+        <td class="acao-linha">{{ ui.botao_cadastro('editar-conta-hab-' ~ h.id, 'Editar', 'secundario compacto') }}
+          {#- Corrigir e encerrar (D10): só enquanto vale ou vai valer. #}
+          {% if not h.vigencia_fim or h.vigencia_fim >= hoje %}
+          {{ ui.botao_cadastro('corrigir-hab-' ~ h.id, 'Corrigir', 'secundario compacto') }}
+          {{ ui.botao_cadastro('encerrar-hab-' ~ h.id, 'Encerrar…', 'perigo compacto') }}
+          {% endif %}</td>
         {% endif %}
       </tr>
       {% endfor %}
@@ -339,7 +491,7 @@
   <div class="linha-campos">
     <div class="campo"><label for="conta-perfil">Perfil (opcional)</label>
       <select id="conta-perfil" name="perfil_id"><option value="">nenhum</option>
-        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.nome }}</option>{% endfor %}</select></div>
+        {% for p in perfis_ativos %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.nome }} — {{ p.escopo }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="conta-campus">Campus (escopo)</label>
       <select id="conta-campus" name="campus_id"><option value="">todos</option>
         {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
@@ -367,13 +519,16 @@
 {% call ui.popup_cadastro('conceder-perfil', CONCEDER_PERFIL, '/usuarios/0/atribuicoes',
                           CONCEDER_PERFIL, aberto=(forma == 'perfil'), erro=erro_perfil,
                           nota='a concessão vale a partir do início da vigência') %}
+  {# Sem conta pré-escolhida (D13): a primeira da lista recebia o perfil de
+     quem não escolheu. Só conta ativa, e não a própria (D2 — a rota recusa). #}
   <div class="campo"><label for="perf-usuario">Usuário</label>
     <select id="perf-usuario" name="usuario_alvo" required>
-      {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d['usuario_alvo'], u.id) }}>{{ u.nome }}</option>{% endfor %}</select></div>
+      <option value="" disabled{{ ' selected' if not d['usuario_alvo'] }}>— escolha a conta —</option>
+      {% for u in contas_que_recebem %}<option value="{{ u.id }}"{{ ui.sel(d['usuario_alvo'], u.id) }}>{{ u.nome }} ({{ u.login }})</option>{% endfor %}</select></div>
   <div class="linha-campos">
     <div class="campo"><label for="perf-perfil">Perfil</label>
       <select id="perf-perfil" name="perfil_id" required>
-        {% for p in perfis %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.nome }}</option>{% endfor %}</select></div>
+        {% for p in perfis_ativos %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.nome }} — {{ p.escopo }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="perf-campus">Campus (escopo)</label>
       <select id="perf-campus" name="campus_id"><option value="">todos</option>
         {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }}</option>{% endfor %}</select></div>
@@ -416,9 +571,41 @@
   <div class="campo{{ ' com-erro' if deste }}"><label for="ed-conta-hab-{{ h.id }}-conta">Conta no sistema</label>
     <select id="ed-conta-hab-{{ h.id }}-conta" name="usuario_id"{{ ' autofocus' if deste }}>
       <option value="">{{ '— ligar a uma conta —' if not h.usuario_id else '— desligar —' }}</option>
-      {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(escolhida, u.id) }}>{{ u.nome }} ({{ u.login }})</option>{% endfor %}
+      {#- Só conta ativa e não a de quem atesta (D3/D25); a já ligada continua
+          na lista para aparecer escolhida. #}
+      {% for u in usuarios %}{% if (u.ativo and u.id != usuario.id) or u.id == h.usuario_id %}<option value="{{ u.id }}"{{ ui.sel(escolhida, u.id) }}>{{ u.nome }} ({{ u.login }})</option>{% endif %}{% endfor %}
     </select></div>
 {% endcall %}
+{% if not h.vigencia_fim or h.vigencia_fim >= hoje %}
+{% set corrigir_deste = forma == 'hab-corrigir' and d['usuario_alvo'] == h.id %}
+{% call ui.popup_cadastro('corrigir-hab-' ~ h.id, 'Corrigir a habilitação de ' ~ h.nome, '/habilitacoes/' ~ h.id ~ '/corrigir',
+                          'Salvar', aberto=corrigir_deste, erro=(erro_linha if corrigir_deste else none),
+                          nota='o que sai na assinatura do parecer') %}
+  <div class="campo{{ ' com-erro' if corrigir_deste }}"><label for="corr-hab-{{ h.id }}-titulo">Título na assinatura</label>
+    <input id="corr-hab-{{ h.id }}-titulo" name="titulo_assinatura" required maxlength="60"
+           value="{{ d['titulo_assinatura'] if corrigir_deste else h.titulo_assinatura }}"{{ ' autofocus' if corrigir_deste }}></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="corr-hab-{{ h.id }}-conselho">Conselho</label>
+      <input id="corr-hab-{{ h.id }}-conselho" name="conselho" maxlength="8"
+             value="{{ d['conselho'] if corrigir_deste else (h.conselho or '') }}"></div>
+    <div class="campo codigo"><label for="corr-hab-{{ h.id }}-registro">Registro</label>
+      <input id="corr-hab-{{ h.id }}-registro" name="registro_conselho" maxlength="30"
+             value="{{ d['registro_conselho'] if corrigir_deste else (h.registro_conselho or '') }}"></div>
+  </div>
+{% endcall %}
+{% set encerrar_deste = forma == 'hab-encerrar' and d['usuario_alvo'] == h.id %}
+{% call ui.popup_cadastro('encerrar-hab-' ~ h.id, 'Encerrar a habilitação de ' ~ h.nome ~ '?', '/habilitacoes/' ~ h.id ~ '/encerrar',
+                          'Encerrar a habilitação', aberto=encerrar_deste, erro=(erro_linha if encerrar_deste else none),
+                          classe_botao='perigo', nota=h.titulo_assinatura) %}
+  <p>Depois do fim, a habilitação deixa de ser escolhível como signatária e a
+    conta ligada a ela não assina mais parecer. A linha fica, com o fim, na trilha.</p>
+  <div class="campo{{ ' com-erro' if encerrar_deste }}"><label for="enc-hab-{{ h.id }}-fim">Último dia de vigência</label>
+    <input id="enc-hab-{{ h.id }}-fim" name="vigencia_fim" type="date"
+           value="{{ d['vigencia_fim'] if encerrar_deste else '' }}"{{ ' autofocus' if encerrar_deste }}
+           aria-describedby="dica-enc-hab-{{ h.id }}">
+    <span class="dica" id="dica-enc-hab-{{ h.id }}">Em branco, ontem: a habilitação já não vale hoje.</span></div>
+{% endcall %}
+{% endif %}
 {% endfor %}
 {% endif %}
 
@@ -451,7 +638,8 @@
   <div class="linha-campos">
     <div class="campo"><label for="hab-conta">Conta do sistema</label>
       <select id="hab-conta" name="usuario_alvo_id"><option value="">—</option>
-        {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(d['usuario_alvo_id'], u.id) }}>{{ u.nome }}</option>{% endfor %}
+        {#- só conta ativa, e nunca a de quem atesta (D3/D25) #}
+        {% for u in contas_que_recebem %}<option value="{{ u.id }}"{{ ui.sel(d['usuario_alvo_id'], u.id) }}>{{ u.nome }}</option>{% endfor %}
       </select></div>
     <div class="campo"><label for="hab-conselho">Conselho</label>
       <input id="hab-conselho" name="conselho" placeholder="CREA"

@@ -38,6 +38,7 @@ import * as servico from "../servicos/demandas.js";
 import * as servico_nup from "../servicos/nup.js";
 import * as servico_processo from "../servicos/processo.js";
 import { MencaoDeSaude } from "../servicos/textos.js";
+import { NOMINAIS_FORA_DO_EPI } from "../servicos/identificacao.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { numeroDaPagina, pagina, recortar, redirecionar } from "../web.js";
@@ -143,10 +144,11 @@ async function _tela_lista(
     rotulo_estado_demanda: ROTULO_DEMANDA,
     rotulo_desfecho: ROTULO_DESFECHO_DEMANDA,
     // quem não vê nome digita o SIAPE (M65): a lista de códigos opacos nem vai
-    servidores: usuario.ve_dado_nominal
+    servidores: _escolhe_pelo_nome(usuario)
       ? await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.id))
       : [],
-    escolhe_por_siape: !usuario.ve_dado_nominal,
+    escolhe_por_siape: !_escolhe_pelo_nome(usuario),
+    nominais_rn19: NOMINAIS_FORA_DO_EPI,
     unidades: await tx.select().from(unidade_uorg).orderBy(asc(unidade_uorg.nome_extenso)),
     pessoas: await _pessoas(tx),
     pode_escrever: usuario.pode(servico.PERMISSAO_ESCREVER),
@@ -162,6 +164,7 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, demanda_id: number, ex
   const [demanda] = await _carregar(tx, [demanda_id]);
   return pagina(c, "paginas/demanda_ficha.html", usuario, {
     demanda,
+    nominais_rn19: NOMINAIS_FORA_DO_EPI,
     hoje: hoje_iso(),
     rotulo_canal: ROTULO_CANAL_DEMANDA,
     rotulo_estado_demanda: ROTULO_DEMANDA,
@@ -200,6 +203,17 @@ export function _data(bruto: string | null | undefined, rotulo: string): string 
 export function _visao(bruto: string | null | undefined): string {
   const codigo = (bruto ?? "").trim();
   return VISOES.some(([c]) => c === codigo) ? codigo : "";
+}
+
+/**
+ * Quem escolhe quem demandou pela lista de nomes do cadastro (M65). D15: é
+ * `exposicao.ver` cobrindo o alcance de `demanda.ver`, e não mais
+ * `ve_dado_nominal` — que inclui `epi.ficha`, e com ela o almoxarife via o
+ * nome de quem demanda adicional enquanto a secretaria, na mesma fila, via o
+ * código opaco. A demanda não é tela de EPI; a família é a de fora dele.
+ */
+function _escolhe_pelo_nome(usuario: UsuarioAtual): boolean {
+  return usuario.ve_dado_nominal_em("demanda.ver");
 }
 
 /**
@@ -303,7 +317,7 @@ rotas.post("/demandas", async (c) => {
   const tx = c.get("tx");
   let demanda: servico.Demanda;
   try {
-    const solicitante_servidor_id = usuario.ve_dado_nominal
+    const solicitante_servidor_id = _escolhe_pelo_nome(usuario)
       ? _id(d.solicitante_servidor_id)
       : await _servidor_do_siape(tx, d.solicitante_siape);
     demanda = await servico.registrar(tx, usuario, {

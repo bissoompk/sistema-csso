@@ -387,8 +387,8 @@ async function desenhar_certificado(
 export async function gerar_pdf(contextos: ContextoCertificado[], tarjas: Tarja[] = []): Promise<Uint8Array> {
   const documento = await PDFDocument.create();
   documento.setTitle(contextos.length === 1 ? `Certificado ${contextos[0]!.rotulo}` : "Certificados");
-  documento.setCreator("Sistema CSSO");
-  documento.setProducer("Sistema CSSO");
+  documento.setCreator("Sistema SISA");
+  documento.setProducer("Sistema SISA");
   const fontes = new Fontes(
     await documento.embedFont(StandardFonts.Helvetica),
     await documento.embedFont(StandardFonts.HelveticaBold),

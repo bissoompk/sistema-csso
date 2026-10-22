@@ -3,18 +3,21 @@
  * Porte de `app/rotas/usuarios.py`.
  */
 import { Hono } from "hono";
-import { and, asc, eq, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
-import { desfazer } from "../nucleo/contexto.js";
 import { ErroHttp } from "../nucleo/erros.js";
 import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import {
   agora_utc,
   atribuicao,
   campus,
+  historico_evento,
   perfil as tabela_perfil,
+  perfil_nivel_modulo,
+  permissao as tabela_permissao,
   profissional_habilitado,
+  usuario_nivel_modulo,
   servidor as tabela_servidor,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
@@ -23,9 +26,22 @@ import { vigente_em } from "../dominio/organizacao.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as autenticacao from "../servicos/autenticacao.js";
 import * as datas_br from "../servicos/datas_br.js";
+import * as governanca from "../servicos/governanca.js";
+import * as liberacao from "../servicos/liberacao_modulo.js";
+import * as niveis_modulo from "../servicos/niveis_modulo.js";
 import {
+  ESCOPO_AGREGADO,
+  ESCOPO_POR_PERFIL,
+  ESCOPO_PROPRIO,
+  ESCOPO_TOTAL,
+  ESCOPO_UNIDADE,
   GRUPOS_PERMISSAO_TELA,
   MATRIZ_PERFIS,
+  PERMISSOES_DO_TITULAR,
+  SO_DO_TECNICO_HABILITADO,
+  aceita_nivel_modulo,
+  alcance_da_concessao,
+  cobre_inteiro,
   eh_conta_de_governo,
   perfis_vigentes,
   type UsuarioAtual,
@@ -38,11 +54,76 @@ export const rotas = new Hono<Ambiente>();
 type Digitado = Record<string, string | number>;
 
 /**
- * A tela, com os três popups de cadastro em branco ou com o digitado.
- * `digitado` traz uma FORMA (`conta`, `perfil`, `habilitacao`) porque a recusa
- * precisa dizer qual deles reabrir. Não entra na URL. A forma `conta-hab` é a
- * edição da conta ligada a um profissional habilitado: um popup por linha, e
- * `usuario_alvo` diz qual.
+ * O alcance de cada escopo, escrito para quem concede perfil (D24). A chave é
+ * a letra de `ESCOPO_POR_PERFIL`; o texto só aparece na tela.
+ */
+export const ESCOPO_TELA: Readonly<Record<string, string>> = {
+  [ESCOPO_TOTAL]: "total — todos os registros, de todos os campi",
+  [ESCOPO_UNIDADE]: "unidade — a coordenadoria, no campus da concessão (ou em todos)",
+  [ESCOPO_AGREGADO]: "agregado — só contagens; nenhuma linha",
+  [ESCOPO_PROPRIO]: "próprio — só o que é do titular",
+};
+
+/** O escopo de um perfil por extenso; perfil sem escopo declarado diz isso. */
+function _escopo_do_perfil(codigo: string): string {
+  const nivel = Object.hasOwn(ESCOPO_POR_PERFIL, codigo) ? ESCOPO_POR_PERFIL[codigo]! : null;
+  return nivel && Object.hasOwn(ESCOPO_TELA, nivel) ? ESCOPO_TELA[nivel]! : "sem escopo declarado — nega tudo";
+}
+
+type PerfilComPermissoes = typeof tabela_perfil.$inferSelect & { permissoes: Set<string> };
+
+/** Todos os perfis com o conjunto de códigos de cada um: uma leitura só por tela. */
+async function _perfis_com_permissoes(tx: Executor): Promise<Map<number, PerfilComPermissoes>> {
+  const perfis = await tx.query.perfil.findMany({ with: { perfil_permissoes: { with: { permissao: true } } } });
+  return new Map(
+    perfis.map(({ perfil_permissoes, ...pf }) => [
+      pf.id,
+      { ...pf, permissoes: new Set(perfil_permissoes.map((pp) => pp.permissao.codigo)) },
+    ]),
+  );
+}
+
+/**
+ * As permissões da concessão que `usuario` NÃO tem — ou tem com alcance menor
+ * do que a concessão daria. As do titular dadas por perfil de escopo próprio
+ * (o `servidor_consulta`) não contam: valem só sobre o que é do próprio dono,
+ * e toda conta ligada a servidor já as tem.
+ *
+ * "Tem" é pelo alcance dos perfis de quem age (`alcance_da_equipe`), e não
+ * por `usuario.pode` (D2, resíduo): o superintendente recortado num campus
+ * concedia perfil sem campus, ou o `auditor_interno` (escopo total), porque o
+ * CONJUNTO de permissões cabia no dele; e a concessão do titular fazia contar
+ * como "tem" o `processo.ver` e o `parecer.ver` do próprio dado.
+ */
+function _alem_do_que_tem(
+  usuario: UsuarioAtual,
+  concessoes: { perfil: string; campus_id?: number | null; permissoes: Iterable<string> }[],
+): string[] {
+  const alem = new Set<string>();
+  for (const c of concessoes) {
+    const proprio = ESCOPO_POR_PERFIL[c.perfil] === ESCOPO_PROPRIO;
+    // perfil sem escopo declarado nega tudo: não alarga nada de ninguém
+    const dela = Object.hasOwn(ESCOPO_POR_PERFIL, c.perfil) ? alcance_da_concessao(c.perfil, c.campus_id ?? null) : null;
+    for (const p of c.permissoes) {
+      if (proprio && PERMISSOES_DO_TITULAR.has(p)) continue;
+      if (usuario.pode(p) && (dela === null || cobre_inteiro(usuario.alcance_da_equipe(p), dela))) continue;
+      alem.add(p);
+    }
+  }
+  return [...alem].sort();
+}
+
+function _lista_curta(codigos: string[]): string {
+  return codigos.length > 3 ? `${codigos.slice(0, 3).join(", ")} e mais ${codigos.length - 3}` : codigos.join(", ");
+}
+
+/**
+ * A tela, com os popups de cadastro em branco ou com o digitado.
+ * `digitado` traz uma FORMA (`conta`, `perfil`, `habilitacao`, `dados`,
+ * `hab-corrigir`, `hab-encerrar`) porque a recusa precisa dizer qual deles
+ * reabrir. Não entra na URL. A forma `conta-hab` é a edição da conta ligada a
+ * um profissional habilitado: um popup por linha, e `usuario_alvo` diz qual —
+ * o mesmo vale para `dados` (a conta) e para as duas formas `hab-*`.
  */
 async function _tela_lista(
   c: Ctx,
@@ -51,8 +132,10 @@ async function _tela_lista(
 ) {
   const tx = c.get("tx");
   const hoje = hoje_iso();
+  const agora = agora_utc();
   const usuarios = await tx.select().from(tabela_usuario).orderBy(asc(tabela_usuario.nome));
   const todas = await tx.query.atribuicao.findMany({ with: { perfil: true }, orderBy: [asc(atribuicao.id)] });
+  const perfis_completos = await _perfis_com_permissoes(tx);
   const atribuicoes: Record<number, typeof todas> = {};
   const vigentes_por_usuario: Record<number, typeof todas> = {};
   for (const u of usuarios) {
@@ -61,16 +144,40 @@ async function _tela_lista(
   }
   // quem a tela marca como conta de administração (a senha só o superintendente redefine)
   const perfis_de_governo = new Set(
-    (await tx.query.perfil.findMany({ with: { perfil_permissoes: { with: { permissao: true } } } }))
-      .filter((pf) => pf.ativo && eh_conta_de_governo(pf.perfil_permissoes.map((pp) => pp.permissao.codigo)))
-      .map((pf) => pf.id),
+    [...perfis_completos.values()].filter((pf) => pf.ativo && eh_conta_de_governo(pf.permissoes)).map((pf) => pf.id),
   );
+  // vigente OU futura (D18): a conta que recebe superintendente com início na
+  // semana que vem já é de administração hoje — é a mesma pergunta da trava
+  const valem_ou_vao_valer = (u: { id: number }) =>
+    atribuicoes[u.id]!.filter((a) => vigente_em(a, hoje) || a.vigencia_inicio > hoje);
   const contas_de_governo = usuarios
-    .filter((u) => vigentes_por_usuario[u.id]!.some((a) => perfis_de_governo.has(a.perfil_id)))
+    .filter((u) => valem_ou_vao_valer(u).some((a) => perfis_de_governo.has(a.perfil_id)))
     .map((u) => u.id);
+  // A recusa de redefinição de cada linha, escrita antes do clique (D4): a
+  // mesma regra de `_recusa_de_redefinicao`, com as concessões já lidas.
+  const recusa_senha: Record<number, string | null> = {};
+  if (usuario.pode("perfil.conceder") || usuario.pode("usuario.resetar_senha")) {
+    for (const u of usuarios) {
+      // com o campus de cada concessão: a comparação é de alcance (D2/D4)
+      const concessoes = valem_ou_vao_valer(u).flatMap((a) => {
+        const pf = perfis_completos.get(a.perfil_id);
+        return pf && pf.ativo ? [{ perfil: pf.codigo, campus_id: a.campus_id ?? null, permissoes: pf.permissoes }] : [];
+      });
+      recusa_senha[u.id] = _motivo_de_redefinicao(usuario, u.id, concessoes);
+    }
+  }
+  // "bloqueado até HH:MM" só enquanto vale (D7): o `bloqueado_ate` vencido fica
+  // gravado até o próximo login certo, e a etiqueta lia-se como bloqueio eterno
+  const bloqueio_ate: Record<number, string> = {};
+  for (const u of usuarios) {
+    if (u.bloqueado_ate && u.bloqueado_ate > agora) {
+      const l = datas_br.local(u.bloqueado_ate)!;
+      bloqueio_ate[u.id] = `${String(l.hora).padStart(2, "0")}:${String(l.minuto).padStart(2, "0")}`;
+    }
+  }
   // A conta que, inativada, deixaria o sistema sem quem conceda perfil: a
   // linha dela não oferece "Inativar" (a rota recusa do mesmo jeito, D66).
-  const ultima_que_concede = (await _contas_que_concedem(tx)).filter((id) => usuarios.some((u) => u.id === id && u.ativo));
+  const ultima_que_concede = await governanca.contas_que_concedem(tx);
   // Nome e SIAPE de todo servidor só vão para a página de quem vincula conta a
   // servidor (`perfil.conceder`) E lê dado nominal (`exposicao.ver`): o
   // `admin_ti` abre esta tela e não lê dado nominal (RN-19). Conceder perfil não
@@ -85,22 +192,73 @@ async function _tela_lista(
     const sugerido = _unico_pelo_email(servidores, usuarios, u.email);
     if (sugerido) sugestao_servidor[u.id] = _rotulo_servidor(sugerido);
   }
+  const campi = await tx.select().from(campus).orderBy(asc(campus.sigla));
+  const sigla_campus: Record<number, string> = {};
+  for (const cp of campi) sigla_campus[cp.id] = cp.sigla;
+  // O sino avisa quem concede; a tela de quem concede avisa também (D17).
+  const fim_cobertura = usuario.pode("perfil.conceder") ? await governanca.fim_da_cobertura(tx, hoje) : null;
+  const aviso_cobertura =
+    fim_cobertura !== null && fim_cobertura <= somar_dias(hoje, governanca.JANELA_DE_AVISO_DIAS)
+      ? governanca.texto_do_aviso(fim_cobertura)
+      : null;
+  // "Conceder perfil" a partir de Gerir chega com o alvo na URL (D13): o popup
+  // abre com a conta escolhida, sem script. Só quem concede, e só conta que
+  // pode receber (ativa e não a própria).
+  let digitado = recado.digitado ?? {};
+  const conceder_a = c.req.method === "GET" ? Number(c.req.query("conceder") ?? "") : NaN;
+  if (
+    !recado.digitado &&
+    usuario.pode("perfil.conceder") &&
+    usuarios.some((u) => u.id === conceder_a && u.ativo && u.id !== usuario.id)
+  ) {
+    digitado = { forma: "perfil", usuario_alvo: conceder_a };
+  }
+  const perfis = await tx.select().from(tabela_perfil).orderBy(asc(tabela_perfil.codigo));
+  // Liberação por módulo e setores promotores (22/10/2026): só para quem
+  // administra acesso, que é quem grava as duas coisas na gaveta "Gerir"
+  const administra = usuario.pode("perfil.conceder");
+  const excecoes = administra ? await liberacao.excecoes_por_conta(tx) : new Map();
+  const setores_da_conta = administra ? await liberacao.setores_por_conta(tx) : new Map();
+  const setores = administra ? await liberacao.setores_promotores(tx) : [];
   return pagina(c, "paginas/usuarios.html", usuario, {
+    excecoes: Object.fromEntries(excecoes),
+    setores_da_conta: Object.fromEntries(setores_da_conta),
+    setores,
+    modulos_nivelados: niveis_modulo.MODULOS_NIVELADOS,
+    rotulo_nivel: niveis_modulo.ROTULO_NIVEL,
+    // a conta tem perfil de equipe vigente ou futuro (a exceção vale sobre ele)
+    tem_perfil_de_equipe: Object.fromEntries(
+      usuarios.map((u) => [
+        u.id,
+        valem_ou_vao_valer(u).some((a) => {
+          const pf = perfis_completos.get(a.perfil_id);
+          return !!pf && pf.ativo && aceita_nivel_modulo(pf.codigo);
+        }),
+      ]),
+    ),
     usuarios,
+    // quem pode RECEBER perfil (D13): ativa e não a própria (D2)
+    contas_que_recebem: usuarios.filter((u) => u.ativo && u.id !== usuario.id),
     contas_de_governo,
+    recusa_senha,
+    bloqueio_ate,
     ultima_que_concede: ultima_que_concede.length === 1 ? ultima_que_concede[0] : null,
-    perfis: await tx.select().from(tabela_perfil).orderBy(asc(tabela_perfil.codigo)),
-    campi: await tx.select().from(campus).orderBy(asc(campus.sigla)),
+    perfis,
+    // o select de concessão só oferece perfil ativo, com o escopo ao lado (D23/D24)
+    perfis_ativos: perfis.filter((p) => p.ativo).map((p) => ({ ...p, escopo: _escopo_do_perfil(p.codigo) })),
+    campi,
+    sigla_campus,
     atribuicoes,
     vigentes_por_usuario,
     habilitados: await tx.select().from(profissional_habilitado).orderBy(asc(profissional_habilitado.id)),
     servidores,
     rotulo_servidor,
     sugestao_servidor,
+    aviso_cobertura,
     hoje,
     mensagem: recado.mensagem ?? null,
     erro: recado.erro ?? null,
-    digitado: recado.digitado ?? {},
+    digitado,
   });
 }
 
@@ -168,6 +326,42 @@ async function _resolver_servidor(
 }
 
 /**
+ * A conta que já usa este login ou este e-mail, SEM caixa (D12): a entrada
+ * compara em minúsculas (`autenticacao.autenticar`), e "Fulano" e "fulano"
+ * eram duas contas disputando a mesma credencial. O índice único em
+ * `lower(login)`/`lower(email)` (migração 0012) segura a corrida; esta
+ * conferência é a que devolve o popup com o digitado.
+ */
+export async function _duplicada(
+  tx: Executor,
+  d: { login: string; email: string },
+  fora: number | null = null,
+): Promise<{ conta: Conta; qual: "login" | "e-mail" } | null> {
+  const [ja] = await tx
+    .select()
+    .from(tabela_usuario)
+    .where(
+      and(
+        // cruzado também (D12, resíduo): a entrada aceita login OU e-mail no
+        // mesmo campo, e o login de uma conta igual ao e-mail de outra era a
+        // mesma credencial disputada — a de menor id ganhava, e as falhas de
+        // uma bloqueavam a outra
+        or(
+          sql`lower(${tabela_usuario.login}) = lower(${d.login})`,
+          sql`lower(${tabela_usuario.email}) = lower(${d.email})`,
+          sql`lower(${tabela_usuario.login}) = lower(${d.email})`,
+          sql`lower(${tabela_usuario.email}) = lower(${d.login})`,
+        ),
+        fora === null ? undefined : ne(tabela_usuario.id, fora),
+      ),
+    )
+    .limit(1);
+  if (!ja) return null;
+  const login = d.login.toLowerCase();
+  return { conta: ja, qual: ja.login.toLowerCase() === login || ja.email.toLowerCase() === login ? "login" : "e-mail" };
+}
+
+/**
  * Ato normativo em branco não barra mais a concessão (19/10/2026): ela entra
  * com o ato "pendente", dizendo quem concedeu e quando, e o ato real se
  * escreve depois em Gerir. A autorização continua na trilha — o que saiu foi a
@@ -177,72 +371,139 @@ export function ato_pendente(usuario: Pick<UsuarioAtual, "login">, hoje: string 
   return `Pendente — informado por ${usuario.login} em ${datas_br.numerica(hoje)}`;
 }
 
-/** Grava a concessão e o evento. Quem chama já conferiu `perfil.conceder`. */
+/**
+ * Segregação de funções na concessão (D2). Quem concede perfil não concede:
+ *
+ * - à própria conta — o superintendente que dava a si mesmo `coordenador_csso`
+ *   passava a assinar parecer, e `auditor_interno`, a ler tudo;
+ * - perfil que dá permissão que ele mesmo não tem: ninguém concede mais do que
+ *   tem. Ficam de fora as do ato técnico (`SO_DO_TECNICO_HABILITADO`), que só
+ *   valem somadas a habilitação atestada — e a habilitação tem a própria
+ *   segregação (D3) —, e as do titular em perfil de escopo próprio.
+ *
+ * Devolve o motivo, ou `null`.
+ */
+function _recusa_de_segregacao(
+  usuario: UsuarioAtual,
+  alvo_id: number | null,
+  perfil: PerfilComPermissoes,
+  campus_id: number | null,
+): string | null {
+  if (alvo_id === usuario.id) {
+    return "ninguém concede perfil à própria conta: peça a outra pessoa que concede perfil.";
+  }
+  const alem = _alem_do_que_tem(usuario, [{ perfil: perfil.codigo, campus_id, permissoes: perfil.permissoes }]).filter(
+    (p) => !SO_DO_TECNICO_HABILITADO.has(p),
+  );
+  if (alem.length) {
+    return (
+      `o perfil ${perfil.nome}${campus_id === null ? "" : " neste campus"} dá permissões que você não tem, ` +
+      `ou com alcance maior que o seu (${_lista_curta(alem)}), e ninguém concede mais do que tem.`
+    );
+  }
+  return null;
+}
+
+/**
+ * O campus escolhido no popup: vazio é "todos os campi"; número, um campus que
+ * existe. Qualquer outra coisa (forjada ou corrompida) é recusada (D23,
+ * resíduo): caía em `null`, e o erro ALARGAVA a concessão em silêncio.
+ */
+async function _campus_escolhido(
+  tx: Executor,
+  bruto: string,
+): Promise<{ campus_id: number | null; sigla: string } | { erro: string }> {
+  const texto = bruto.trim();
+  if (!texto) return { campus_id: null, sigla: "todos os campi" };
+  if (!/^\d+$/.test(texto)) return { erro: "campus inválido." };
+  const [cp] = await tx.select().from(campus).where(eq(campus.id, Number(texto)));
+  if (!cp) return { erro: "campus inexistente." };
+  return { campus_id: cp.id, sigla: `campus ${cp.sigla}` };
+}
+
+interface DadosConcessao {
+  campus_id: string;
+  vigencia_inicio: string;
+  vigencia_fim: string;
+  ato_normativo: string;
+}
+
+/**
+ * Confere e grava a concessão, com o evento. Quem chama já conferiu
+ * `perfil.conceder` e tomou a trava de governança. Devolve o motivo da
+ * recusa (D2, D23), ou `null` se gravou. A recusa de segregação fica na
+ * trilha (`PERFIL_CONCESSAO_RECUSADA`), como a da redefinição de senha.
+ */
 async function _conceder(
   tx: Executor,
   usuario: UsuarioAtual,
-  perfil: { id: number; codigo: string },
-  d: { usuario_id: number; campus_id: string; vigencia_inicio: string; vigencia_fim: string; ato_normativo: string },
-): Promise<void> {
+  perfil: PerfilComPermissoes,
+  alvo: Conta,
+  d: DadosConcessao,
+): Promise<string | null> {
+  const hoje = hoje_iso();
+  if (!perfil.ativo) return `o perfil ${perfil.nome} está inativo e não se concede.`;
+  if (!alvo.ativo) return `a conta de ${alvo.nome} está inativa: reative-a antes de conceder perfil.`;
+  const escolhido = await _campus_escolhido(tx, d.campus_id);
+  if ("erro" in escolhido) return escolhido.erro;
+  const { campus_id, sigla } = escolhido;
+  const segregacao = _recusa_de_segregacao(usuario, alvo.id, perfil, campus_id);
+  if (segregacao) {
+    await auditoria.registrar(tx, {
+      entidade: "usuario",
+      entidade_id: alvo.id,
+      tipo_evento: "PERFIL_CONCESSAO_RECUSADA",
+      descricao: `Concessão do perfil ${perfil.codigo} a '${alvo.login}' recusada: ${segregacao}`,
+      usuario,
+    });
+    return segregacao;
+  }
+  const inicio = _data_ou(d.vigencia_inicio, hoje)!;
+  const fim = _data_ou(d.vigencia_fim, null);
+  if (fim !== null && fim < inicio) return "a vigência termina antes de começar.";
+  if (fim !== null && fim < hoje) return "a vigência já terminou: uma concessão que nunca vale não se grava.";
+  // a mesma concessão (conta, perfil, campus) com vigência que se sobrepõe:
+  // duas linhas iguais na tela e duas para encerrar
+  const sem_termo = "9999-12-31";
+  const repetida = (
+    await tx.select().from(atribuicao).where(and(eq(atribuicao.usuario_id, alvo.id), eq(atribuicao.perfil_id, perfil.id)))
+  ).find(
+    (a) =>
+      (a.campus_id ?? null) === campus_id &&
+      a.vigencia_inicio <= (fim ?? sem_termo) &&
+      (a.vigencia_fim ?? sem_termo) >= inicio,
+  );
+  if (repetida) {
+    return (
+      `${alvo.nome} já tem o perfil ${perfil.nome} (${sigla}) de ${datas_br.numerica(repetida.vigencia_inicio)} ` +
+      `a ${repetida.vigencia_fim ? datas_br.numerica(repetida.vigencia_fim) : "sem termo"}. Encerre aquela concessão antes.`
+    );
+  }
   const ato = d.ato_normativo.trim() || ato_pendente(usuario);
   const [nova] = await tx
     .insert(atribuicao)
     .values({
-      usuario_id: d.usuario_id,
+      usuario_id: alvo.id,
       perfil_id: perfil.id,
-      campus_id: /^\d+$/.test(d.campus_id) ? Number(d.campus_id) : null,
-      vigencia_inicio: _data_ou(d.vigencia_inicio, hoje_iso())!,
-      vigencia_fim: _data_ou(d.vigencia_fim, null),
+      campus_id,
+      vigencia_inicio: inicio,
+      vigencia_fim: fim,
       ato_normativo: ato,
       concedido_por: usuario.id,
     })
     .returning();
+  // D27: a quem, onde e até quando. O texto dos eventos antigos não muda.
   await auditoria.registrar(tx, {
     entidade: "atribuicao",
     entidade_id: nova!.id,
     tipo_evento: "PERFIL_CONCEDIDO",
-    descricao: `Perfil ${perfil.codigo} concedido — ato: ${ato}`,
+    descricao:
+      `Perfil ${perfil.codigo} concedido a '${alvo.login}' (${sigla}; vigência ${datas_br.numerica(inicio)} ` +
+      `a ${fim ? datas_br.numerica(fim) : "sem termo"}) — ato: ${ato}`,
     usuario,
   });
-}
-
-/**
- * As contas ATIVAS com concessão vigente de perfil que tem `perfil.conceder` —
- * opcionalmente sem a atribuição `sem_atribuicao` ou sem a conta `sem_conta`.
- */
-async function _contas_que_concedem(
-  tx: Executor,
-  fora: { sem_atribuicao?: number; sem_conta?: number } = {},
-): Promise<number[]> {
-  const hoje = hoje_iso();
-  const todas = await tx.query.atribuicao.findMany({
-    with: { usuario: true, perfil: { with: { perfil_permissoes: { with: { permissao: true } } } } },
-  });
-  const ids = todas
-    .filter(
-      (a) =>
-        a.id !== fora.sem_atribuicao &&
-        a.usuario_id !== fora.sem_conta &&
-        vigente_em(a, hoje) &&
-        a.usuario.ativo &&
-        a.perfil.ativo &&
-        a.perfil.perfil_permissoes.some((pp) => pp.permissao.codigo === "perfil.conceder"),
-    )
-    .map((a) => a.usuario_id);
-  return [...new Set(ids)];
-}
-
-/**
- * Sobra alguém que concede perfil se a atribuição `sem_atribuicao` deixar de
- * valer, ou se a conta `sem_conta` for inativada? Sem ninguém, o sistema fica
- * sem quem crie conta ou conceda perfil — e só volta por SQL. Conta inativa
- * não conta: ela não entra.
- */
-async function _restaria_quem_concede(
-  tx: Executor,
-  fora: { sem_atribuicao?: number; sem_conta?: number },
-): Promise<boolean> {
-  return (await _contas_que_concedem(tx, fora)).length > 0;
+  if (perfil.permissoes.has("perfil.conceder")) await governanca.sincronizar_aviso_de_cobertura(tx, hoje);
+  return null;
 }
 
 /**
@@ -267,11 +528,19 @@ async function _recusa_de_inativacao(
   if (alvo.ativo && alvo.id === usuario.id) {
     return "a própria conta não se inativa — peça a outra pessoa que administra o sistema.";
   }
-  const { permissoes } = await perfis_vigentes(tx, alvo.id);
-  if (!usuario.pode("perfil.conceder") && eh_conta_de_governo(permissoes)) {
+  // a trava de governo olha também a concessão futura (D18): sem isso, o
+  // `admin_ti` inativava hoje a conta que vira superintendente na semana que vem
+  const { permissoes: vigentes_ou_futuras } = await perfis_vigentes(tx, alvo.id, null, { incluir_futuras: true });
+  if (!usuario.pode("perfil.conceder") && eh_conta_de_governo(vigentes_ou_futuras)) {
     return "é conta de administração; só quem concede perfil (o superintendente) a inativa ou reativa.";
   }
-  if (alvo.ativo && permissoes.has("perfil.conceder") && !(await _restaria_quem_concede(tx, { sem_conta: alvo.id }))) {
+  // a última que concede é a que concede HOJE: a futura ainda não segura o sistema
+  const { permissoes } = await perfis_vigentes(tx, alvo.id);
+  if (
+    alvo.ativo &&
+    permissoes.has("perfil.conceder") &&
+    !(await governanca.contas_que_concedem(tx, { sem_conta: alvo.id })).length
+  ) {
     return (
       "é a última conta ativa que concede perfil, e sem ela ninguém mais cria conta nem concede acesso. " +
       "Conceda esse perfil a outra conta antes."
@@ -287,22 +556,45 @@ async function _recusa_de_inativacao(
  * (revisão de segurança, 25/09/2026). A regra:
  *
  * - a própria senha não se redefine: troca-se em /trocar-senha, sabendo a atual;
- * - conta de administração (`eh_conta_de_governo`) só por quem concede perfil;
- * - as demais, por quem tem `usuario.resetar_senha` ou concede perfil.
+ * - quem concede perfil redefine as demais;
+ * - conta de administração (`eh_conta_de_governo`) só por quem concede perfil —
+ *   contando a concessão com início futuro (D18): redefinida hoje, a conta
+ *   chegaria ao dia do início com `perfil.conceder` e a senha de quem redefiniu;
+ * - as outras, por quem tem `usuario.resetar_senha` E tem tudo o que a conta
+ *   tem (D4). Era "qualquer conta que não seja de governo": o `admin_ti`
+ *   redefinia a do médico, entrava com a provisória, fazia ele mesmo a troca
+ *   obrigatória e passava a ler exposição nominal e assinar parecer.
  *
- * A conta comum continua redefinível pelo `admin_ti` — é ele quem atende a
- * senha esquecida. O que segura esse caso é a troca obrigatória (o dono
- * percebe na próxima entrada) e o evento `SENHA_RESETADA` na trilha.
- * Devolve o motivo da recusa, ou `null`.
+ * A conta comum (só as permissões do titular, ou nenhum perfil) continua
+ * redefinível pelo `admin_ti` — é ele quem atende a senha esquecida. O que
+ * segura esse caso é a troca obrigatória (o dono percebe na próxima entrada)
+ * e o evento `SENHA_RESETADA` na trilha. Devolve o motivo da recusa, ou `null`.
  */
-async function _recusa_de_redefinicao(tx: Executor, usuario: UsuarioAtual, alvo_id: number): Promise<string | null> {
+function _motivo_de_redefinicao(
+  usuario: UsuarioAtual,
+  alvo_id: number,
+  concessoes: { perfil: string; permissoes: Iterable<string> }[],
+): string | null {
   if (alvo_id === usuario.id) return "a própria senha se troca em Trocar senha, informando a atual.";
   if (usuario.pode("perfil.conceder")) return null;
-  const { permissoes } = await perfis_vigentes(tx, alvo_id);
-  if (eh_conta_de_governo(permissoes)) {
+  if (eh_conta_de_governo(concessoes.flatMap((c) => [...c.permissoes]))) {
     return "é conta de administração; só quem concede perfil (o superintendente) redefine.";
   }
-  return usuario.pode("usuario.resetar_senha") ? null : "falta a permissão usuario.resetar_senha.";
+  if (!usuario.pode("usuario.resetar_senha")) return "falta a permissão usuario.resetar_senha.";
+  const alem = _alem_do_que_tem(usuario, concessoes);
+  if (alem.length) {
+    return (
+      `a conta tem permissões que você não tem (${_lista_curta(alem)}); ` +
+      "só quem concede perfil (o superintendente) a redefine."
+    );
+  }
+  return null;
+}
+
+async function _recusa_de_redefinicao(tx: Executor, usuario: UsuarioAtual, alvo_id: number): Promise<string | null> {
+  if (alvo_id === usuario.id || usuario.pode("perfil.conceder")) return _motivo_de_redefinicao(usuario, alvo_id, []);
+  const { concessoes } = await perfis_vigentes(tx, alvo_id, null, { incluir_futuras: true });
+  return _motivo_de_redefinicao(usuario, alvo_id, concessoes);
 }
 
 /** A tela com a senha provisória no recado — e sem cache (`no-store`). */
@@ -336,8 +628,6 @@ rotas.post("/usuarios", async (c) => {
   const f = await formulario(c);
   exigidos(f, "login", "nome", "email");
   const tx = c.get("tx");
-  // Login e e-mail são UNIQUE no banco: sem esta conferência a duplicata subia
-  // como erro de integridade e levava junto o que foi digitado.
   const limpos = { login: f.texto("login").trim(), nome: f.texto("nome").trim(), email: f.texto("email").trim() };
   // Perfil e servidor são opcionais e entram na MESMA transação: conta criada
   // num passo e perfil concedido noutro era conta que nascia sem abrir nada.
@@ -348,15 +638,13 @@ rotas.post("/usuarios", async (c) => {
     servidor: f.texto("servidor").trim(),
   };
   const digitado: Digitado = { forma: "conta", ...limpos, ...extras, perfil_id: perfil_id ?? "" };
-  const [ja] = await tx
-    .select()
-    .from(tabela_usuario)
-    .where(or(eq(tabela_usuario.login, limpos.login), eq(tabela_usuario.email, limpos.email)))
-    .limit(1);
-  if (ja) {
-    const qual = ja.login === limpos.login ? "login" : "e-mail";
-    return _tela_lista(c, usuario, { erro: `Já existe conta com este ${qual}: ${ja.nome}.`, digitado });
+  if (!limpos.login || !limpos.nome || !limpos.email) {
+    return _tela_lista(c, usuario, { erro: "Nome, login e e-mail não ficam em branco.", digitado });
   }
+  // Login e e-mail são UNIQUE no banco (sem caixa, D12): sem esta conferência
+  // a duplicata subia como erro de integridade e levava junto o que foi digitado.
+  const ja = await _duplicada(tx, limpos);
+  if (ja) return _tela_lista(c, usuario, { erro: `Já existe conta com este ${ja.qual}: ${ja.conta.nome}.`, digitado });
   // conceder perfil e vincular a servidor são atos de governo, como em Gerir
   const governa = usuario.pode("perfil.conceder");
   if (!governa && (perfil_id !== null || extras.servidor)) {
@@ -365,10 +653,20 @@ rotas.post("/usuarios", async (c) => {
       digitado,
     });
   }
-  let perfil: typeof tabela_perfil.$inferSelect | undefined;
+  let perfil: PerfilComPermissoes | undefined;
   if (perfil_id !== null) {
-    [perfil] = await tx.select().from(tabela_perfil).where(eq(tabela_perfil.id, perfil_id));
+    perfil = (await _perfis_com_permissoes(tx)).get(perfil_id);
     if (!perfil) throw new ErroHttp(422, "perfil inexistente");
+    // a conta é nova (não é a de quem cria); a segregação que sobra é a do
+    // "mais do que tem" e o perfil inativo — conferidos antes de a conta existir
+    const escolhido = await _campus_escolhido(tx, extras.campus_id);
+    const recusa = !perfil.ativo
+      ? `o perfil ${perfil.nome} está inativo e não se concede.`
+      : "erro" in escolhido
+        ? escolhido.erro
+        : _recusa_de_segregacao(usuario, null, perfil, escolhido.campus_id);
+    if (recusa) return _tela_lista(c, usuario, { erro: `Conta não criada: ${recusa}`, digitado });
+    await governanca.travar(tx);
   }
   let servidor: Servidor | null = null;
   let pelo_email = false;
@@ -398,11 +696,12 @@ rotas.post("/usuarios", async (c) => {
       precisa_trocar_senha: true,
     })
     .returning();
+  // o login APARADO, o que foi gravado (D27); os eventos antigos ficam como estão
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: novo!.id,
     tipo_evento: "USUARIO_CRIADO",
-    descricao: `Conta '${f.texto("login")}' criada.`,
+    descricao: `Conta '${novo!.login}' criada.`,
     usuario,
   });
   if (servidor) {
@@ -418,19 +717,81 @@ rotas.post("/usuarios", async (c) => {
     });
   }
   if (perfil) {
-    await _conceder(tx, usuario, perfil, { usuario_id: novo!.id, vigencia_inicio: "", vigencia_fim: "", ...extras });
+    const recusa = await _conceder(tx, usuario, perfil, novo!, { vigencia_inicio: "", vigencia_fim: "", ...extras });
+    // o campus e a segregação já foram conferidos antes de a conta existir
+    if (recusa) throw new ErroHttp(422, recusa);
   }
   const detalhes = [
     perfil ? `perfil ${perfil.codigo}` : null,
     servidor ? `vinculada a ${servidor.nome}${pelo_email ? " pelo e-mail" : ""}` : null,
   ].filter(Boolean);
+  // A conta criada sem perfil não abre nada: quem a criou sem poder conceder
+  // precisa saber que o próximo passo é de outra pessoa.
+  const sem_perfil = perfil ? "" : " Ela ainda não abre nada: o perfil é concedido por quem concede perfil.";
   // A senha provisória sai no CORPO, nunca na URL: no `?mensagem=` ela ficava
   // no histórico do navegador e em qualquer registro de acesso do caminho.
   return _senha_na_tela(
     c,
     usuario,
-    `Conta criada${detalhes.length ? ` (${detalhes.join("; ")})` : ""}. Senha provisória: ${provisoria}`,
+    `Conta criada${detalhes.length ? ` (${detalhes.join("; ")})` : ""}.${sem_perfil} Senha provisória: ${provisoria}`,
   );
+});
+
+/**
+ * Corrige nome, login e e-mail da conta (D11). O e-mail é a credencial de
+ * entrada e a base do vínculo automático com o servidor; o login também é
+ * credencial. Por isso:
+ *
+ * - conta de administração (vigente ou futura) só por quem concede perfil;
+ * - login e e-mail de OUTRA conta só por quem poderia redefinir a senha dela
+ *   (`_recusa_de_redefinicao`): trocar a credencial é o mesmo poder;
+ * - a duplicidade se confere sem caixa (D12).
+ *
+ * Cada campo mudado é um evento `USUARIO_ALTERADO`, com antes e depois.
+ */
+rotas.post("/usuarios/:id{[0-9]+}/dados", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("usuario.criar_conta");
+  const f = await formulario(c);
+  const tx = c.get("tx");
+  const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
+  if (!alvo) return redirecionar(c, "/usuarios");
+  const novos = { nome: f.texto("nome").trim(), login: f.texto("login").trim(), email: f.texto("email").trim() };
+  const digitado: Digitado = { forma: "dados", usuario_alvo: alvo.id, ...novos };
+  const recusar = (motivo: string) =>
+    _tela_lista(c, usuario, { erro: `Os dados de ${alvo.nome} não foram alterados: ${motivo}`, digitado });
+  if (!novos.nome || !novos.login || !novos.email) return recusar("nome, login e e-mail não ficam em branco.");
+  if (!/^[^\s@]+@[^\s@]+$/.test(novos.email)) return recusar("o e-mail não parece um e-mail.");
+  const proprio = alvo.id === usuario.id;
+  if (!proprio && !usuario.pode("perfil.conceder")) {
+    const { permissoes } = await perfis_vigentes(tx, alvo.id, null, { incluir_futuras: true });
+    if (eh_conta_de_governo(permissoes)) {
+      return recusar("é conta de administração; só quem concede perfil (o superintendente) a altera.");
+    }
+  }
+  const credencial = novos.login !== alvo.login || novos.email.toLowerCase() !== alvo.email.toLowerCase();
+  if (credencial && !proprio) {
+    const recusa = await _recusa_de_redefinicao(tx, usuario, alvo.id);
+    if (recusa) return recusar(`login e e-mail são credenciais, e ${recusa}`);
+  }
+  const ja = await _duplicada(tx, novos, alvo.id);
+  if (ja) return recusar(`já existe conta com este ${ja.qual}: ${ja.conta.nome}.`);
+  const mudou = (["nome", "login", "email"] as const).filter((campo) => novos[campo] !== alvo[campo]);
+  if (!mudou.length) return redirecionar(c, comMensagem("/usuarios", "Nada mudou."));
+  await tx.update(tabela_usuario).set(novos).where(eq(tabela_usuario.id, alvo.id));
+  for (const campo of mudou) {
+    await auditoria.registrar(tx, {
+      entidade: "usuario",
+      entidade_id: alvo.id,
+      tipo_evento: "USUARIO_ALTERADO",
+      descricao: `Conta '${alvo.login}': ${campo} alterado.`,
+      campo,
+      valor_anterior: alvo[campo],
+      valor_novo: novos[campo],
+      usuario,
+    });
+  }
+  return redirecionar(c, comMensagem("/usuarios", `Dados da conta de ${novos.nome} atualizados.`));
 });
 
 /**
@@ -510,10 +871,54 @@ rotas.post("/usuarios/:id{[0-9]+}/senha", async (c) => {
   return _senha_na_tela(c, usuario, `Nova senha provisória de ${alvo.login}: ${provisoria}`);
 });
 
+/**
+ * Desbloqueia a conta presa pelas tentativas falhas (D7), sem trocar a senha:
+ * quem esqueceu a senha usa "Resetar senha"; quem só errou cinco vezes não
+ * precisa perder a que tem.
+ *
+ * Não revela a senha, mas tem a trava de quem redefine (`_recusa_de_redefinicao`):
+ * o bloqueio é o que limita a adivinhação da senha de UMA conta. Se o
+ * `admin_ti` desbloqueasse a do superintendente ou a do médico logo depois de
+ * cada bloqueio, ele adivinharia, sem limite além do teto por IP, a senha
+ * justamente das contas que ele não pode redefinir (D4/D18).
+ */
+rotas.post("/usuarios/:id{[0-9]+}/desbloquear", async (c) => {
+  const usuario = await usuarioLogado(c);
+  if (!usuario.pode("perfil.conceder")) usuario.exigir("usuario.resetar_senha");
+  const tx = c.get("tx");
+  const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
+  if (!alvo) return redirecionar(c, "/usuarios");
+  if (!alvo.bloqueado_ate || alvo.bloqueado_ate <= agora_utc()) {
+    return redirecionar(c, comMensagem("/usuarios", `A conta de ${alvo.nome} não está bloqueada.`));
+  }
+  const recusa =
+    alvo.id === usuario.id
+      ? "a própria conta não se desbloqueia: espere o bloqueio vencer, ou peça a outra pessoa."
+      : await _recusa_de_redefinicao(tx, usuario, alvo.id);
+  if (recusa) return _tela_lista(c, usuario, { erro: `A conta de ${alvo.nome} não foi desbloqueada: ${recusa}` });
+  await tx
+    .update(tabela_usuario)
+    .set({ tentativas_falhas: 0, bloqueado_ate: null })
+    .where(eq(tabela_usuario.id, alvo.id));
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: alvo.id,
+    tipo_evento: "CONTA_DESBLOQUEADA",
+    descricao: `Conta '${alvo.login}' desbloqueada (as tentativas falhas voltaram a zero).`,
+    campo: "bloqueado_ate",
+    valor_anterior: alvo.bloqueado_ate.toISOString(),
+    valor_novo: null,
+    usuario,
+  });
+  return redirecionar(c, comMensagem("/usuarios", `Conta de ${alvo.nome} desbloqueada.`));
+});
+
 rotas.post("/usuarios/:id{[0-9]+}/inativar", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("usuario.criar_conta");
   const tx = c.get("tx");
+  // D17: duas inativações ao mesmo tempo passavam as duas pela trava da última
+  await governanca.travar(tx);
   const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
   if (alvo) {
     const recusa = await _recusa_de_inativacao(tx, usuario, alvo);
@@ -531,6 +936,7 @@ rotas.post("/usuarios/:id{[0-9]+}/inativar", async (c) => {
       descricao: `Conta '${alvo.login}' ${ativo ? "ativada" : "inativada"}.`,
       usuario,
     });
+    await governanca.sincronizar_aviso_de_cobertura(tx);
     return redirecionar(c, comMensagem("/usuarios", `Conta de ${alvo.nome} ${ativo ? "reativada" : "inativada"}.`));
   }
   return redirecionar(c, "/usuarios");
@@ -549,46 +955,77 @@ rotas.post("/usuarios/:id{[0-9]+}/atribuicoes", async (c) => {
   if (usuario_id === 0 && /^\d+$/.test(usuario_alvo)) usuario_id = Number(usuario_alvo);
   const perfil_id = f.inteiro("perfil_id");
   if (perfil_id === null) throw new ErroHttp(422, "perfil_id inválido");
-  const dados = {
-    usuario_id,
+  const dados: DadosConcessao = {
     campus_id: f.texto("campus_id"),
     vigencia_inicio: f.texto("vigencia_inicio"),
     vigencia_fim: f.texto("vigencia_fim"),
     ato_normativo: f.texto("ato_normativo"),
   };
   const digitado: Digitado = { forma: "perfil", usuario_alvo: usuario_id, perfil_id, ...dados };
+  // D17: a concessão entra na mesma fila do encerramento e da inativação
+  await governanca.travar(tx);
   const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario_id));
   if (!alvo) return _tela_lista(c, usuario, { erro: "Escolha a conta que vai receber o perfil.", digitado });
-  const [perfil] = await tx.select().from(tabela_perfil).where(eq(tabela_perfil.id, perfil_id));
+  const perfil = (await _perfis_com_permissoes(tx)).get(perfil_id);
   if (!perfil) throw new ErroHttp(422, "perfil inexistente");
-  await _conceder(tx, usuario, perfil, dados);
+  const recusa = await _conceder(tx, usuario, perfil, alvo, dados);
+  if (recusa) return _tela_lista(c, usuario, { erro: `Perfil não concedido: ${recusa}`, digitado });
   const pendente = !dados.ato_normativo.trim();
-  return redirecionar(
-    c,
-    comMensagem("/usuarios", pendente ? "Perfil concedido, com o ato normativo pendente." : "Perfil concedido."),
-  );
+  let mensagem = pendente ? "Perfil concedido, com o ato normativo pendente." : "Perfil concedido.";
+  // concessão de quem concede com fim marcado: diz já se a cobertura vai acabar
+  if (perfil.permissoes.has("perfil.conceder") && dados.vigencia_fim) {
+    const fim = await governanca.fim_da_cobertura(tx);
+    if (fim !== null) mensagem += ` Atenção: ${governanca.texto_do_aviso(fim)}`;
+  }
+  return redirecionar(c, comMensagem("/usuarios", mensagem));
 });
 
 /**
  * Encerra a concessão. `vigencia_fim` vira ONTEM, e não hoje: a vigência é
  * inclusiva (`vigente_em`), e encerrar com fim hoje deixaria o perfil valendo
  * até a meia-noite. Nada se apaga — a linha fica, com o fim, para a trilha.
+ *
+ * A concessão que ainda nem começou não se "encerra" (D23): o fim de ontem
+ * ficava antes do início. Ela se CANCELA — o fim vira a véspera do início, o
+ * intervalo vazio que diz "nunca valeu", com o evento `PERFIL_CANCELADO`.
  */
 rotas.post("/usuarios/atribuicoes/:id{[0-9]+}/encerrar", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("perfil.conceder");
   const tx = c.get("tx");
+  // D17: dois encerramentos ao mesmo tempo passavam os dois pela trava da última
+  await governanca.travar(tx);
   const a = await tx.query.atribuicao.findFirst({
     where: eq(atribuicao.id, Number(c.req.param("id"))),
     with: { usuario: true, perfil: { with: { perfil_permissoes: { with: { permissao: true } } } } },
   });
   if (!a) return redirecionar(c, "/usuarios");
-  const fim = somar_dias(hoje_iso(), -1);
+  const hoje = hoje_iso();
+  if (a.vigencia_inicio > hoje) {
+    const vespera = somar_dias(a.vigencia_inicio, -1);
+    await tx.update(atribuicao).set({ vigencia_fim: vespera }).where(eq(atribuicao.id, a.id));
+    await auditoria.registrar(tx, {
+      entidade: "atribuicao",
+      entidade_id: a.id,
+      tipo_evento: "PERFIL_CANCELADO",
+      descricao: `Concessão futura do perfil ${a.perfil.codigo} a '${a.usuario.login}' cancelada antes do início.`,
+      campo: "vigencia_fim",
+      valor_anterior: a.vigencia_fim,
+      valor_novo: vespera,
+      usuario,
+    });
+    await governanca.sincronizar_aviso_de_cobertura(tx, hoje);
+    return redirecionar(
+      c,
+      comMensagem("/usuarios", `Concessão futura do perfil ${a.perfil.codigo} de ${a.usuario.nome} cancelada.`),
+    );
+  }
+  const fim = somar_dias(hoje, -1);
   if (a.vigencia_fim !== null && a.vigencia_fim <= fim) {
     return redirecionar(c, comMensagem("/usuarios", "Esta concessão já estava encerrada."));
   }
   const concede = a.perfil.perfil_permissoes.some((pp) => pp.permissao.codigo === "perfil.conceder");
-  if (concede && !(await _restaria_quem_concede(tx, { sem_atribuicao: a.id }))) {
+  if (concede && !(await governanca.contas_que_concedem(tx, { sem_atribuicao: a.id })).length) {
     return _tela_lista(c, usuario, {
       erro:
         `O perfil ${a.perfil.codigo} de ${a.usuario.nome} não foi encerrado: é a última concessão vigente ` +
@@ -606,6 +1043,7 @@ rotas.post("/usuarios/atribuicoes/:id{[0-9]+}/encerrar", async (c) => {
     valor_novo: fim,
     usuario,
   });
+  if (concede) await governanca.sincronizar_aviso_de_cobertura(tx, hoje);
   return redirecionar(c, comMensagem("/usuarios", `Perfil ${a.perfil.codigo} de ${a.usuario.nome} encerrado.`));
 });
 
@@ -637,6 +1075,107 @@ rotas.post("/usuarios/atribuicoes/:id{[0-9]+}/ato", async (c) => {
   return redirecionar(c, comMensagem("/usuarios", "Ato normativo atualizado."));
 });
 
+/**
+ * Segregação e consistência do vínculo entre habilitação e conta (D3, D25).
+ * Quem atesta habilitação NÃO:
+ *
+ * - liga habilitação à própria conta — junto com a autoconcessão (D2), uma
+ *   pessoa só passava a assinar parecer e laudo, contornando a RN-01;
+ * - atesta o próprio SIAPE (a habilitação sem conta, ligada depois).
+ *
+ * - liga habilitação a conta cuja senha ele já conheceu: criada por ele
+ *   (`USUARIO_CRIADO`) ou redefinida por ele (`SENHA_RESETADA`). Era a
+ *   conta-fantoche (D3, resíduo): o superintendente criava uma conta nova com
+ *   perfil de coordenador, via a senha provisória na tela, atestava uma
+ *   habilitação sem SIAPE ligada a ela, entrava como ela, fazia a troca
+ *   obrigatória e assinava parecer e laudo — sozinho.
+ *
+ * E a conta escolhida tem de existir, estar ativa, não ter outra habilitação
+ * vigente, já ter sido assumida pelo dono (sem senha provisória) e, na
+ * habilitação interna, estar vinculada ao servidor do SIAPE da habilitação —
+ * que passa a ser obrigatório. Só a habilitação externa (art. 10, §5º, com a
+ * justificativa registrada) se liga a conta sem servidor; se as duas pontas
+ * dizem o SIAPE, ele tem de bater. Devolve o motivo, ou `null`.
+ * `habilitacao_id` é a linha que se edita (fica fora da conferência de "outra
+ * habilitação").
+ */
+async function _recusa_de_vinculo_habilitacao(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  d: { conta_id: number | null; siape: string | null; habilitacao_id: number | null; externo: boolean },
+): Promise<string | null> {
+  if (d.siape && usuario.servidor_id !== null) {
+    const [meu] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id));
+    if (meu?.siape === d.siape) return "quem atesta habilitação não atesta a própria: peça a outra pessoa que atesta.";
+  }
+  if (d.conta_id === null) return null;
+  if (d.conta_id === usuario.id) {
+    return "quem atesta habilitação não a liga à própria conta: peça a outra pessoa que atesta.";
+  }
+  const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, d.conta_id));
+  if (!conta) return "Conta não encontrada.";
+  if (!conta.ativo) return `a conta de ${conta.nome} está inativa.`;
+  const hoje = hoje_iso();
+  const outra = (
+    await tx.select().from(profissional_habilitado).where(eq(profissional_habilitado.usuario_id, conta.id))
+  ).find((h) => h.id !== d.habilitacao_id && (vigente_em(h, hoje) || h.vigencia_inicio > hoje));
+  if (outra) return `a conta de ${conta.nome} já está ligada à habilitação de ${outra.nome}.`;
+  const conheceu = await tx
+    .select({ id: historico_evento.id })
+    .from(historico_evento)
+    .where(
+      and(
+        eq(historico_evento.entidade, "usuario"),
+        eq(historico_evento.entidade_id, conta.id),
+        eq(historico_evento.usuario_id, usuario.id),
+        inArray(historico_evento.tipo_evento, ["USUARIO_CRIADO", "SENHA_RESETADA"]),
+      ),
+    )
+    .limit(1);
+  if (conheceu.length) {
+    return (
+      `quem atesta habilitação não a liga a conta que ele criou ou cuja senha redefiniu (${conta.login}): ` +
+      "peça a outra pessoa que atesta."
+    );
+  }
+  if (conta.precisa_trocar_senha) {
+    return `a conta de ${conta.nome} ainda está com a senha provisória: o dono precisa entrar e trocá-la antes.`;
+  }
+  if (!d.externo) {
+    if (!d.siape) return "a habilitação interna se liga a uma conta pelo SIAPE do profissional: informe o SIAPE.";
+    if (conta.servidor_id === null) {
+      return `a conta de ${conta.nome} não está vinculada a servidor: vincule-a ao servidor do SIAPE ${d.siape} antes.`;
+    }
+  }
+  if (d.siape && conta.servidor_id !== null) {
+    const [dela] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, conta.servidor_id));
+    if (dela && dela.siape !== d.siape) {
+      return `o SIAPE da habilitação (${d.siape}) não é o do servidor vinculado à conta de ${conta.nome}.`;
+    }
+  }
+  return null;
+}
+
+/** Recusa de segregação vai para a trilha, como a da senha e a do perfil. */
+async function _registrar_recusa_habilitacao(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  entidade_id: number | null,
+  descricao: string,
+): Promise<void> {
+  await auditoria.registrar(tx, {
+    entidade: entidade_id === null ? "usuario" : "profissional_habilitado",
+    entidade_id: entidade_id ?? usuario.id,
+    tipo_evento: "HABILITACAO_RECUSADA",
+    descricao,
+    usuario,
+  });
+}
+
+function _de_segregacao(motivo: string): boolean {
+  return motivo.startsWith("quem atesta");
+}
+
 /** A habilitação confere, não o cargo (IN 15/2022, art. 10, §2º, I). */
 /**
  * Liga (ou desliga) o profissional habilitado a uma conta do sistema. Sem o
@@ -656,22 +1195,36 @@ rotas.post("/habilitacoes/:id{[0-9]+}/conta", async (c) => {
   // Vazio desliga a conta; qualquer outra coisa que não seja número é recusada
   // como conta inexistente, e não lida como "desligar".
   const conta_id = bruto === "" ? null : /^\d+$/.test(bruto) ? Number(bruto) : 0;
+  if (habilitado.usuario_id === conta_id) return redirecionar(c, "/usuarios");
   let conta: { id: number; nome: string } | undefined;
   if (conta_id !== null) {
+    const recusa = await _recusa_de_vinculo_habilitacao(tx, usuario, {
+      conta_id,
+      siape: habilitado.siape,
+      habilitacao_id: habilitado.id,
+      externo: habilitado.externo,
+    });
+    // Volta com o popup DESTA linha aberto e a conta que se escolheu, e não
+    // com a faixa no topo da lista: a recusa é do formulário de edição.
+    if (recusa) {
+      if (_de_segregacao(recusa)) {
+        await _registrar_recusa_habilitacao(
+          tx,
+          usuario,
+          id,
+          `Vínculo de ${habilitado.nome} à conta ${conta_id} recusado: ${recusa}`,
+        );
+      }
+      return _tela_lista(c, usuario, {
+        erro: recusa.charAt(0).toUpperCase() + recusa.slice(1),
+        digitado: { forma: "conta-hab", usuario_alvo: id, usuario_id: bruto },
+      });
+    }
     [conta] = await tx
       .select({ id: tabela_usuario.id, nome: tabela_usuario.nome })
       .from(tabela_usuario)
       .where(eq(tabela_usuario.id, conta_id));
-    // Volta com o popup DESTA linha aberto e a conta que se escolheu, e não
-    // com a faixa no topo da lista: a recusa é do formulário de edição.
-    if (!conta) {
-      return _tela_lista(c, usuario, {
-        erro: "Conta não encontrada.",
-        digitado: { forma: "conta-hab", usuario_alvo: id, usuario_id: bruto },
-      });
-    }
   }
-  if (habilitado.usuario_id === (conta?.id ?? null)) return redirecionar(c, "/usuarios");
   await tx
     .update(profissional_habilitado)
     .set({ usuario_id: conta?.id ?? null })
@@ -694,6 +1247,100 @@ rotas.post("/habilitacoes/:id{[0-9]+}/conta", async (c) => {
   );
 });
 
+/**
+ * Corrige título, conselho e registro da habilitação (D10) — o que sai na
+ * assinatura do parecer. Cada campo mudado é um `HABILITACAO_CORRIGIDA`, com
+ * antes e depois. Quem atesta não corrige a própria (a mesma segregação de D3).
+ */
+rotas.post("/habilitacoes/:id{[0-9]+}/corrigir", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("habilitacao.atestar");
+  const f = await formulario(c);
+  const tx = c.get("tx");
+  const id = Number(c.req.param("id"));
+  const [h] = await tx.select().from(profissional_habilitado).where(eq(profissional_habilitado.id, id));
+  if (!h) return redirecionar(c, "/usuarios");
+  const novos = {
+    titulo_assinatura: f.texto("titulo_assinatura").trim(),
+    conselho: f.texto("conselho").trim() || null,
+    registro_conselho: f.texto("registro_conselho").trim() || null,
+  };
+  const digitado: Digitado = {
+    forma: "hab-corrigir",
+    usuario_alvo: id,
+    titulo_assinatura: novos.titulo_assinatura,
+    conselho: novos.conselho ?? "",
+    registro_conselho: novos.registro_conselho ?? "",
+  };
+  const recusar = (erro: string) => _tela_lista(c, usuario, { erro, digitado });
+  if (!novos.titulo_assinatura) return recusar("O título na assinatura não fica em branco.");
+  if (novos.titulo_assinatura.length > 60) return recusar("O título na assinatura tem no máximo 60 caracteres.");
+  if ((novos.conselho ?? "").length > 8) return recusar("O conselho tem no máximo 8 caracteres (a sigla: CREA, CRM, CAU).");
+  if ((novos.registro_conselho ?? "").length > 30) return recusar("O registro tem no máximo 30 caracteres.");
+  if (h.usuario_id === usuario.id) {
+    return recusar("Quem atesta habilitação não corrige a própria: peça a outra pessoa que atesta.");
+  }
+  const mudou = (["titulo_assinatura", "conselho", "registro_conselho"] as const).filter((k) => novos[k] !== h[k]);
+  if (!mudou.length) return redirecionar(c, comMensagem("/usuarios", "Nada mudou."));
+  await tx.update(profissional_habilitado).set(novos).where(eq(profissional_habilitado.id, id));
+  for (const campo of mudou) {
+    await auditoria.registrar(tx, {
+      entidade: "profissional_habilitado",
+      entidade_id: id,
+      tipo_evento: "HABILITACAO_CORRIGIDA",
+      descricao: `Habilitação de ${h.nome}: ${campo} corrigido.`,
+      campo,
+      valor_anterior: h[campo],
+      valor_novo: novos[campo],
+      usuario,
+    });
+  }
+  return redirecionar(c, comMensagem("/usuarios", `Habilitação de ${h.nome} corrigida.`));
+});
+
+/**
+ * Encerra a habilitação (D10): a aposentadoria, a saída da UFVJM, a
+ * especialização que deixou de valer. O fim padrão é ONTEM, pelo mesmo motivo
+ * do perfil (vigência inclusiva); pode-se informar outra data, desde que não
+ * antes da véspera do início. Depois do fim ela some da escolha de signatário
+ * (`pode_subscrever` e a lista de pareceres olham a vigência). Nada se apaga.
+ */
+rotas.post("/habilitacoes/:id{[0-9]+}/encerrar", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("habilitacao.atestar");
+  const f = await formulario(c);
+  const tx = c.get("tx");
+  const id = Number(c.req.param("id"));
+  const [h] = await tx.select().from(profissional_habilitado).where(eq(profissional_habilitado.id, id));
+  if (!h) return redirecionar(c, "/usuarios");
+  const bruto = f.texto("vigencia_fim");
+  const digitado: Digitado = { forma: "hab-encerrar", usuario_alvo: id, vigencia_fim: bruto };
+  const vespera = somar_dias(h.vigencia_inicio, -1);
+  const ontem = somar_dias(hoje_iso(), -1);
+  const fim = _data_ou(bruto, ontem < vespera ? vespera : ontem)!;
+  if (fim < vespera) {
+    return _tela_lista(c, usuario, {
+      erro: `O fim não pode ser antes de ${datas_br.numerica(h.vigencia_inicio)}, o início da habilitação.`,
+      digitado,
+    });
+  }
+  if (h.vigencia_fim !== null && h.vigencia_fim <= fim) {
+    return redirecionar(c, comMensagem("/usuarios", "Esta habilitação já estava encerrada."));
+  }
+  await tx.update(profissional_habilitado).set({ vigencia_fim: fim }).where(eq(profissional_habilitado.id, id));
+  await auditoria.registrar(tx, {
+    entidade: "profissional_habilitado",
+    entidade_id: id,
+    tipo_evento: "HABILITACAO_ENCERRADA",
+    descricao: `Habilitação de ${h.nome} (${h.titulo_assinatura}) encerrada em ${datas_br.numerica(fim)}.`,
+    campo: "vigencia_fim",
+    valor_anterior: h.vigencia_fim,
+    valor_novo: fim,
+    usuario,
+  });
+  return redirecionar(c, comMensagem("/usuarios", `Habilitação de ${h.nome} encerrada.`));
+});
+
 rotas.post("/habilitacoes", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("habilitacao.atestar");
@@ -714,39 +1361,49 @@ rotas.post("/habilitacoes", async (c) => {
   ];
   const v = Object.fromEntries(campos.map((k) => [k, f.texto(k)])) as Record<string, string>;
   const e_externo = v.externo === "1";
+  // `erro`, e não `mensagem`: a habilitação NÃO foi registrada. E a recusa
+  // devolve os onze campos, que o "voltar" do navegador não devolve.
+  const recusar = (erro: string) => _tela_lista(c, usuario, { erro, digitado: { forma: "habilitacao", ...v } });
   if (e_externo && !v.justificativa_art10_par5!.trim()) {
-    // `erro`, e não `mensagem`: a habilitação NÃO foi registrada. E a recusa
-    // devolve os onze campos, que o "voltar" do navegador não devolve.
-    return _tela_lista(c, usuario, {
-      erro: "Habilitação externa exige justificativa do art. 10, §5º.",
-      digitado: { forma: "habilitacao", ...v },
-    });
+    return recusar("Habilitação externa exige justificativa do art. 10, §5º.");
   }
-  let habilitado;
-  try {
-    [habilitado] = await tx
-      .insert(profissional_habilitado)
-      .values({
-        nome: v.nome!.trim(),
-        siape: v.siape!.trim() || null,
-        habilitacao: v.habilitacao!,
-        titulo_assinatura: v.titulo_assinatura!.trim(),
-        conselho: v.conselho || null,
-        registro_conselho: v.registro_conselho || null,
-        externo: e_externo,
-        justificativa_art10_par5: v.justificativa_art10_par5!.trim() || null,
-        usuario_id: /^\d+$/.test(v.usuario_alvo_id!) ? Number(v.usuario_alvo_id) : null,
-        vigencia_inicio: _data_ou(v.vigencia_inicio!, hoje_iso())!,
-        atestado_por: usuario.id,
-        atestado_em: agora_utc(),
-      })
-      .returning();
-  } catch (erro) {
-    // valor fora do vocabulário do banco (habilitação): 422, como a validação
-    // do FastAPI, e não 500
-    desfazer(c);
-    throw new ErroHttp(422, `Habilitação recusada pelo banco: ${(erro as Error).message}`);
+  // o vocabulário do banco conferido aqui (D25): era o erro cru do Postgres
+  if (!["ENG_SEG_TRABALHO", "MED_TRABALHO", "ARQ_SEG_TRABALHO"].includes(v.habilitacao!)) {
+    return recusar("Habilitação desconhecida.");
   }
+  const siape = v.siape!.trim() || null;
+  if (siape !== null && !/^\d{7}$/.test(siape)) return recusar("O SIAPE tem sete dígitos.");
+  const bruto_conta = v.usuario_alvo_id!.trim();
+  const conta_id = bruto_conta === "" ? null : /^\d+$/.test(bruto_conta) ? Number(bruto_conta) : 0;
+  const recusa = await _recusa_de_vinculo_habilitacao(tx, usuario, {
+    conta_id,
+    siape,
+    habilitacao_id: null,
+    externo: e_externo,
+  });
+  if (recusa) {
+    if (_de_segregacao(recusa)) {
+      await _registrar_recusa_habilitacao(tx, usuario, null, `Atestação de ${v.nome!.trim()} recusada: ${recusa}`);
+    }
+    return recusar(recusa.charAt(0).toUpperCase() + recusa.slice(1));
+  }
+  const [habilitado] = await tx
+    .insert(profissional_habilitado)
+    .values({
+      nome: v.nome!.trim(),
+      siape,
+      habilitacao: v.habilitacao!,
+      titulo_assinatura: v.titulo_assinatura!.trim(),
+      conselho: v.conselho || null,
+      registro_conselho: v.registro_conselho || null,
+      externo: e_externo,
+      justificativa_art10_par5: v.justificativa_art10_par5!.trim() || null,
+      usuario_id: conta_id,
+      vigencia_inicio: _data_ou(v.vigencia_inicio!, hoje_iso())!,
+      atestado_por: usuario.id,
+      atestado_em: agora_utc(),
+    })
+    .returning();
   await auditoria.registrar(tx, {
     entidade: "profissional_habilitado",
     entidade_id: habilitado!.id,
@@ -781,20 +1438,192 @@ function _grupos_de(permissoes: { codigo: string; descricao: string | null }[]) 
   return grupos;
 }
 
+/**
+ * A matriz abre para quem opera (`processo.ver`) e para quem governa acesso
+ * (D24): o `admin_ti` cria conta, e a matriz é o que diz o que a conta vai
+ * abrir — o link estava em /usuarios e dava 403 justamente para ele.
+ */
 rotas.get("/perfis", async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("processo.ver");
+  // `processo.ver` de EQUIPE: a do titular (D16) não abre a matriz de perfis
+  if (!(usuario.pode("usuario.criar_conta") || usuario.pode("perfil.conceder"))) usuario.exigir_na_equipe("processo.ver");
   const tx = c.get("tx");
   const perfis = await tx.query.perfil.findMany({
     orderBy: [asc(tabela_perfil.codigo)],
-    with: { perfil_permissoes: { with: { permissao: true } } },
+    with: { perfil_permissoes: { with: { permissao: true } }, niveis_modulo: true },
   });
+  const todas = new Map((await tx.select().from(tabela_permissao)).map((p) => [p.codigo, p]));
   return pagina(c, "paginas/perfis.html", usuario, {
-    // a `secondary=` do Python: as permissões do perfil, já ordenadas por código
+    // a `secondary=` do Python: as permissões do perfil, já ordenadas por código.
+    // Desde a liberação por módulo (22/10/2026), as que VALEM: as do perfil com
+    // o nível de cada módulo que a coordenação escolheu em /perfis/niveis.
     perfis: perfis.map((p) => {
-      const permissoes = p.perfil_permissoes.map((pp) => pp.permissao).sort((a, b) => (a.codigo < b.codigo ? -1 : 1));
-      return { ...p, permissoes, grupos: _grupos_de(permissoes) };
+      const cruas = p.perfil_permissoes.map((pp) => pp.permissao.codigo);
+      const niveis = niveis_modulo.niveis_de(p.niveis_modulo);
+      const codigos = aceita_nivel_modulo(p.codigo) ? niveis_modulo.permissoes_com_niveis(cruas, niveis) : cruas;
+      const permissoes = codigos
+        .map((codigo) => todas.get(codigo) ?? { codigo, descricao: codigo })
+        .sort((a, b) => (a.codigo < b.codigo ? -1 : 1));
+      return {
+        ...p,
+        permissoes,
+        grupos: _grupos_de(permissoes),
+        escopo: _escopo_do_perfil(p.codigo),
+        ajustado: Object.keys(niveis).length > 0,
+      };
     }),
     matriz: MATRIZ_PERFIS,
+    pode_ajustar: usuario.pode("perfil.conceder"),
   });
+});
+
+// =====================================================================
+// Liberação por módulo (22/10/2026)
+// =====================================================================
+/** O valor do formulário para "linha ausente": padrão do perfil / seguir o perfil. */
+const PADRAO_FORM = "PADRAO";
+
+function _nivel_do_form(bruto: string): niveis_modulo.Nivel | null | undefined {
+  if (bruto === PADRAO_FORM) return null;
+  return niveis_modulo.eh_nivel(bruto) ? bruto : undefined;
+}
+
+/**
+ * A tabela módulo × nível de UM perfil (o da `?perfil=`, ou o primeiro que se
+ * ajusta). Abre para quem abre a matriz; só quem administra acesso grava.
+ */
+async function _tela_niveis(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  recado: { mensagem?: string | null; erro?: string | null; perfil?: string | null } = {},
+) {
+  const tx = c.get("tx");
+  const perfis = await liberacao.perfis_com_niveis(tx, usuario);
+  const ajustaveis = perfis.filter((p) => p.aceita && p.ativo);
+  const pedido = recado.perfil ?? c.req.query("perfil") ?? "";
+  const atual = ajustaveis.find((p) => p.codigo === pedido) ?? ajustaveis[0] ?? null;
+  return pagina(c, "paginas/perfis_niveis.html", usuario, {
+    perfis: ajustaveis,
+    fora: perfis.filter((p) => !p.aceita && p.ativo),
+    atual,
+    pode_ajustar: usuario.pode("perfil.conceder"),
+    rotulo_nivel: niveis_modulo.ROTULO_NIVEL,
+    textos_permissao: Object.fromEntries(GRUPOS_PERMISSAO_TELA.flatMap(([, textos]) => Object.entries(textos))),
+    so_do_perfil: niveis_modulo.PERMISSOES_SO_DO_PERFIL,
+    // não `modulos`: é o nome da navegação da casca
+    modulos_nivelados: niveis_modulo.MODULOS_NIVELADOS,
+    mensagem: recado.mensagem ?? c.req.query("mensagem") ?? null,
+    erro: recado.erro ?? null,
+  });
+}
+
+function _exigir_matriz(usuario: UsuarioAtual): void {
+  // a mesma porta de /perfis
+  if (!(usuario.pode("usuario.criar_conta") || usuario.pode("perfil.conceder"))) usuario.exigir_na_equipe("processo.ver");
+}
+
+rotas.get("/perfis/niveis", async (c) => {
+  const usuario = await usuarioLogado(c);
+  _exigir_matriz(usuario);
+  return _tela_niveis(c, usuario);
+});
+
+/**
+ * Grava o nível de cada módulo de um perfil. Tudo ou nada: a recusa de um
+ * módulo (subir o próprio perfil, dar o que não tem) desfaz os outros, e a
+ * tela volta dizendo qual.
+ */
+rotas.post("/perfis/:id{[0-9]+}/niveis", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("perfil.conceder");
+  const f = await formulario(c);
+  const tx = c.get("tx");
+  const [pf] = await tx.select().from(tabela_perfil).where(eq(tabela_perfil.id, Number(c.req.param("id"))));
+  if (!pf) throw new ErroHttp(404, "perfil inexistente");
+  let recusa: string | null = null;
+  let mudou = 0;
+  try {
+    await tx.transaction(async (sp) => {
+      for (const m of niveis_modulo.MODULOS_NIVELADOS) {
+        if (!f.tem(`nivel_${m.codigo}`)) continue;
+        const nivel = _nivel_do_form(f.texto(`nivel_${m.codigo}`));
+        if (nivel === undefined) throw new ErroHttp(422, `nível inválido para ${m.codigo}`);
+        const antes = await sp.select().from(perfil_nivel_modulo).where(and(eq(perfil_nivel_modulo.perfil_id, pf.id), eq(perfil_nivel_modulo.modulo, m.codigo)));
+        if ((antes[0]?.nivel ?? null) === nivel) continue;
+        const r = await liberacao.alterar_nivel_perfil(sp as Executor, usuario, pf.id, m.codigo, nivel);
+        if (r) {
+          recusa = `${m.nome}: ${r}`;
+          throw new _Desfazer();
+        }
+        mudou += 1;
+      }
+    });
+  } catch (erro) {
+    if (!(erro instanceof _Desfazer)) throw erro;
+  }
+  if (recusa) return _tela_niveis(c, usuario, { erro: `Nada foi gravado. ${recusa}`, perfil: pf.codigo });
+  const msg = mudou ? `Níveis do perfil ${pf.nome} gravados.` : "Nada mudou.";
+  return redirecionar(c, comMensagem(`/perfis/niveis?perfil=${encodeURIComponent(pf.codigo)}`, msg));
+});
+
+/** Desfaz o ponto de salvamento sem ser erro de verdade. */
+class _Desfazer extends Error {}
+
+/** A exceção da conta em cada módulo: dá ou retira, por cima do perfil. */
+rotas.post("/usuarios/:id{[0-9]+}/niveis", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("perfil.conceder");
+  const f = await formulario(c);
+  const tx = c.get("tx");
+  const alvo_id = Number(c.req.param("id"));
+  const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, alvo_id));
+  if (!alvo) throw new ErroHttp(404, "conta inexistente");
+  if (alvo.id === usuario.id) {
+    return _tela_lista(c, usuario, {
+      erro: "Ninguém altera o acesso da própria conta: peça a outra pessoa que administra acesso.",
+    });
+  }
+  let recusa: string | null = null;
+  let mudou = 0;
+  try {
+    await tx.transaction(async (sp) => {
+      const atuais = niveis_modulo.niveis_de(
+        await sp.select().from(usuario_nivel_modulo).where(eq(usuario_nivel_modulo.usuario_id, alvo.id)),
+      );
+      for (const m of niveis_modulo.MODULOS_NIVELADOS) {
+        if (!f.tem(`nivel_${m.codigo}`)) continue;
+        const nivel = _nivel_do_form(f.texto(`nivel_${m.codigo}`));
+        if (nivel === undefined) throw new ErroHttp(422, `nível inválido para ${m.codigo}`);
+        if ((atuais[m.codigo] ?? null) === nivel) continue;
+        const r = await liberacao.alterar_nivel_pessoa(sp as Executor, usuario, alvo.id, m.codigo, nivel);
+        if (r) {
+          recusa = `${m.nome}: ${r}`;
+          throw new _Desfazer();
+        }
+        mudou += 1;
+      }
+    });
+  } catch (erro) {
+    if (!(erro instanceof _Desfazer)) throw erro;
+  }
+  if (recusa) return _tela_lista(c, usuario, { erro: `Acesso de ${alvo.nome} não alterado. ${recusa}` });
+  return redirecionar(
+    c,
+    comMensagem("/usuarios", mudou ? `Acesso por módulo de ${alvo.nome} gravado.` : "Nada mudou no acesso por módulo."),
+  );
+});
+
+/** Os setores promotores da conta: as turmas que ela vê e gere. */
+rotas.post("/usuarios/:id{[0-9]+}/setores", async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("perfil.conceder");
+  const f = await formulario(c);
+  const tx = c.get("tx");
+  const alvo_id = Number(c.req.param("id"));
+  const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, alvo_id));
+  if (!alvo) throw new ErroHttp(404, "conta inexistente");
+  const escolhidos = f.todos("setor").filter((v) => /^\d+$/.test(v)).map(Number);
+  const recusa = await liberacao.definir_setores(tx, usuario, alvo.id, escolhidos);
+  if (recusa) return _tela_lista(c, usuario, { erro: `Setores de ${alvo.nome} não alterados: ${recusa}` });
+  return redirecionar(c, comMensagem("/usuarios", `Setores promotores de ${alvo.nome} gravados.`));
 });

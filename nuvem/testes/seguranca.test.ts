@@ -263,8 +263,7 @@ describe("a tela de erro também é tela", () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
     const r = await cliente.get("/modulos");
-    expect(r.text).toContain("Sistema de apoio da CSSO");
-    expect(r.text).toContain("O processo oficial e o SEI.");
-    expect((await novoCliente().get("/login")).text).toContain("O processo oficial e o SEI.");
+    expect(r.text).toContain("Sistema de apoio da SISA");
+    expect((await novoCliente().get("/login")).text).toContain("Sistema de apoio da SISA");
   });
 });

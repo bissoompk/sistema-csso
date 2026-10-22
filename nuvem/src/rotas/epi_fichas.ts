@@ -119,6 +119,26 @@ rotas.get(FICHAS, async (c) => {
   const tx = c.get("tx");
   const q = c.req.query("q") ?? "";
   let linhas = await servico.servidores_com_ficha(tx);
+  // a lista também se recorta pelo campus da concessão de `epi.ficha` (D9):
+  // nome e SIAPE de quem é lotado fora dele não aparecem
+  const campi = servico.campi_da_ficha(usuario);
+  if (campi !== null) {
+    const ids_unidade = [...new Set(linhas.map(([sv]) => sv.unidade_uorg_id).filter((x): x is number => x !== null))];
+    const campus_da_unidade = new Map(
+      ids_unidade.length
+        ? (
+            await tx
+              .select({ id: unidade_uorg.id, campus_id: unidade_uorg.campus_id })
+              .from(unidade_uorg)
+              .where(inArray(unidade_uorg.id, ids_unidade))
+          ).map((u) => [u.id, u.campus_id])
+        : [],
+    );
+    linhas = linhas.filter(([sv]) => {
+      const campus = sv.unidade_uorg_id === null ? null : (campus_da_unidade.get(sv.unidade_uorg_id) ?? null);
+      return campus === null || campi.includes(campus);
+    });
+  }
   if (q) {
     const alvo = textos.chave_busca(q);
     linhas = linhas.filter(([sv]) => textos.chave_busca(sv.nome).includes(alvo) || sv.siape.includes(alvo));
@@ -455,7 +475,7 @@ async function registro_e_permissao(tx: Executor, usuario: UsuarioAtual, bruto: 
   // de quem recebeu. `epi.entregar` sozinho não é permissão nominal — na matriz
   // ele sempre anda com `epi.ficha`, mas um perfil montado sem ela imprimia o
   // papel nominal de qualquer um. Ler a linha é ler a ficha.
-  servico.exigir_leitura_da_ficha(usuario, registro.servidor_id);
+  await servico.exigir_leitura_da_ficha(tx, usuario, registro.servidor_id);
   return registro;
 }
 
@@ -489,7 +509,7 @@ rotas.get(`${REGISTROS}/:registro_id{[0-9]+}`, async (c) => {
   usuario.exigir("epi.ver");
   const registro = await registro_legivel(c.get("tx"), usuario, c.req.param("registro_id"));
   if (!registro) return erro(c, volta_da_ficha(usuario), NADA_NESTE_ENDERECO);
-  servico.exigir_leitura_da_ficha(usuario, registro.servidor_id);
+  await servico.exigir_leitura_da_ficha(c.get("tx"), usuario, registro.servidor_id);
   return redirecionar(c, `${FICHAS}/${registro.servidor_id}`);
 });
 
@@ -638,7 +658,7 @@ rotas.get(`${FICHAS}/:servidor_id{[0-9]+}`, async (c) => {
     // 403 e não 404: a mesma resposta para id que existe e que não existe
     throw new PermissaoNegada("epi.ficha", "Não há ficha de EPI para consultar neste endereço.");
   }
-  servico.exigir_leitura_da_ficha(usuario, servidor_id);
+  await servico.exigir_leitura_da_ficha(tx, usuario, servidor_id);
   await auditoria.registrar_leitura_nominal(tx, usuario, "epi_ficha", {
     servidor_id: servidor.id,
     finalidade: "consulta da ficha de EPI do servidor",

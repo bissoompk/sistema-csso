@@ -358,6 +358,10 @@ function separarKwargs(args: unknown[]): [unknown[], Record<string, unknown>] {
  * RN-19 no template sem a tela carregar nada: `usuario` e `request` já estão
  * no contexto de toda página e fragmento (Nunjucks chama global com
  * `this.ctx` = contexto). Sem `usuario`, o lado seguro — código opaco.
+ *
+ * `nominais_rn19`, quando a rota o põe no contexto, é a família nominal da
+ * tela (`identificacao.NOMINAIS_FORA_DO_EPI` nas demandas, D15). Ausente,
+ * vale a de sempre (`exposicao.ver` ou `epi.ficha`).
  */
 global("identificar", function (this: { ctx: Record<string, any> }, ...args: unknown[]) {
   const [pos, kw] = separarKwargs(args);
@@ -366,7 +370,7 @@ global("identificar", function (this: { ctx: Record<string, any> }, ...args: unk
     pos[0] as identificacao.AlvoIdentificavel,
     this.ctx?.usuario ?? null,
     identificacao.semente_de(this.ctx?.request),
-    { vazio },
+    { vazio, nominais: this.ctx?.nominais_rn19 },
   );
 });
 
@@ -376,6 +380,7 @@ global("texto_livre", function (this: { ctx: Record<string, any> }, ...args: unk
   return identificacao.texto_livre(pos[0] as string | null, this.ctx?.usuario ?? null, {
     sobre: (kw.sobre ?? pos[1]) as identificacao.AlvoIdentificavel,
     vazio: (kw.vazio ?? pos[2] ?? identificacao.SEM_SERVIDOR) as string,
+    nominais: this.ctx?.nominais_rn19,
   });
 });
 
@@ -463,6 +468,9 @@ export async function pagina(
     sino_abertas: abertas,
     sino_atrasadas: atrasadas,
     busca_visivel: ganchos.podeBuscar?.(usuario) ?? false,
+    // o limite de inatividade, para o aviso do navegador (csso.js, bloco 12);
+    // a casca só o escreve em página logada, e 0 (desligado) não escreve
+    sessao_inatividade_minutos: cfg.sessaoInatividadeMinutos,
     nonce: () => c.get("nonce") ?? "",
     ...navegacao,
     ...contexto,

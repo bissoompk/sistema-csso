@@ -1,7 +1,8 @@
 {
-  "name": "CSSO no celular",
-  "short_name": "CSSO",
-  "description": "Balcão de EPI e chamada de turma — o Sistema CSSO no bolso.",
+  "id": "/celular",
+  "name": "SISA no celular",
+  "short_name": "SISA",
+  "description": "Balcão de EPI e chamada de turma — o Sistema SISA no bolso.",
   "start_url": "/celular",
   "scope": "/",
   "display": "standalone",
