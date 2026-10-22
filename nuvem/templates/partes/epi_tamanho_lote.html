@@ -1,0 +1,32 @@
+{# O tamanho do lote, que depende do item. Fragmento HTMX de
+   `/epis/estoque/tamanhos`, e montado pela própria página na recusa (com o
+   digitado e a marca de erro).
+
+   Era um campo de texto livre com a dica "escrito igual ao do catálogo": "XGG"
+   num item P/M/G gravava um lote que nenhum pedido encontrava, e "m" minúsculo
+   não casava com "M". Agora é a lista do item — e o servidor recusa o que não
+   estiver nela (`epi_estoque.registrar_entrada`). Item sem tamanho no catálogo
+   não tem o que escolher, e o lote sai como tamanho único. #}
+{% set d = digitado|default({}) %}
+{% set marcado = campo_com_erro|default(none) == 'tamanho' %}
+<label for="tamanho">Tamanho</label>
+{% if not item_escolhido %}
+<select id="tamanho" name="tamanho" disabled aria-describedby="dica-tamanho">
+  <option value="">escolha o item primeiro</option>
+</select>
+<span class="dica" id="dica-tamanho">Os tamanhos são os do item no catálogo.</span>
+{% elif tamanhos|length %}
+<select id="tamanho" name="tamanho" required aria-describedby="dica-tamanho"{{ ' autofocus' if marcado }}>
+  <option value="">—</option>
+  {% for t in tamanhos %}
+  <option value="{{ t }}"{{ ' selected' if d.tamanho == t }}>{{ t }}</option>
+  {% endfor %}
+</select>
+<span class="dica" id="dica-tamanho">É por ele que a reserva e a entrega acham
+  este lote.</span>
+{% else %}
+<select id="tamanho" name="tamanho" aria-describedby="dica-tamanho">
+  <option value="">tamanho único</option>
+</select>
+<span class="dica" id="dica-tamanho">Este item não tem tamanhos no catálogo.</span>
+{% endif %}

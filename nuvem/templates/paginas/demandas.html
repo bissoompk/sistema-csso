@@ -106,8 +106,10 @@
     </form>
   </div>
 
+  {# No celular a tabela vira cartões (`table.empilhavel`): o assunto é o
+     título do cartão e cada outra célula diz a própria coluna. #}
   <div class="tabela-cartao lista">
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr>
           <th scope="col">Chegada</th><th scope="col">Assunto</th>
@@ -117,7 +119,7 @@
       </thead>
       {% for dm in demandas %}
       <tr>
-        <td class="mono">{{ dm.data_chegada|data }}
+        <td data-coluna="Chegada" class="mono">{{ dm.data_chegada|data }}
           <span class="discreto">{{ (rotulo_canal[dm.canal] or dm.canal) }}</span></td>
         <td>
           <a href="/demandas/{{ dm.id }}">{{ dm.assunto }}</a>
@@ -126,16 +128,16 @@
            — é servidor, e a regra da casa vale igual aqui. Não havendo, sai o
            texto livre, que é a única identificação que existe e não é de
            servidor sob avaliação: é a chefia, o outro setor, alguém de fora. #}
-        <td>
+        <td data-coluna="Quem demandou">
           <span class="recorte">
             {%- if dm.servidor %}{{ identificar(dm.servidor) }}
             {%- else %}{{ dm.solicitante_nome }}{% endif -%}</span>
           {%- if dm.unidade %}<span class="discreto"> · {{ dm.unidade.sigla }}</span>{% endif %}</td>
-        <td>
+        <td data-coluna="Responsável">
           {%- if dm.responsavel %}<span class="recorte" title="{{ dm.responsavel.nome }}">
             {{- dm.responsavel.nome -}}</span>
           {%- else %}<span class="discreto">sem dono</span>{% endif %}</td>
-        <td>
+        <td data-coluna="Prazo">
           {% if dm.prazo and dm.atrasada(hoje) %}
           <span class="selo erro" title="{{ dias_entre(dm.prazo, hoje) }} dia(s) de atraso">
             {{ dm.prazo|data }}</span>
@@ -145,7 +147,7 @@
           <span class="discreto">sem prazo</span>
           {% endif %}
         </td>
-        <td>{{ ui.pilula_demanda(dm.estado, rotulo_estado_demanda) }}</td>
+        <td data-coluna="Situação">{{ ui.pilula_demanda(dm.estado, rotulo_estado_demanda) }}</td>
       </tr>
       {% else %}
       {{ ui.vazio_de_lista(
@@ -218,8 +220,21 @@
              value="{{ d['solicitante_nome'] or '' }}"
              aria-describedby="dica-solicitante">
       <span class="dica" id="dica-solicitante">Pode ser chefia, outro setor ou
-        alguém de fora. Em branco: o servidor escolhido ao lado, ou “não
-        identificado”.</span></div>
+        alguém de fora. Em branco: o servidor {{ 'do SIAPE' if escolhe_por_siape else 'escolhido' }}
+        ao lado, ou “não identificado”.</span></div>
+    {# M65: quem não vê nome (RN-19) não escolhe numa lista de "SRV-xxxx" —
+       digita o SIAPE, que a rota confere no cadastro. O SIAPE casa para todo
+       mundo, como na busca de /servidores. #}
+    {% if escolhe_por_siape %}
+    <div class="campo">
+      <label for="solicitante_siape">SIAPE do servidor</label>
+      <input id="solicitante_siape" name="solicitante_siape" inputmode="numeric"
+             maxlength="9" autocomplete="off" class="mono"
+             value="{{ d['solicitante_siape'] or '' }}"
+             aria-describedby="dica-vinculo">
+      <span class="dica" id="dica-vinculo">Opcional. Só quando quem pediu está
+        no cadastro: o sistema confere o número.</span></div>
+    {% else %}
     <div class="campo">
       <label for="solicitante_servidor_id">Servidor do cadastro</label>
       <select id="solicitante_servidor_id" name="solicitante_servidor_id"
@@ -232,6 +247,7 @@
       </select>
       <span class="dica" id="dica-vinculo">Opcional. Só quando quem pediu já está
         no cadastro.</span></div>
+    {% endif %}
     <div class="campo">
       <label for="solicitante_unidade_uorg_id">Unidade</label>
       <select id="solicitante_unidade_uorg_id" name="solicitante_unidade_uorg_id">

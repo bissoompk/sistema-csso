@@ -37,12 +37,28 @@
   <section id="tela-inicio" data-tela="inicio">
     <h1>Olá, <span data-eu-nome>{{ usuario.nome.trim().split(' ')[0] }}</span></h1>
     {% if not pode_entregar and not pode_chamada %}
+    {# Quem não entrega EPI nem lança presença — o servidor que pôs o atalho na
+       tela inicial — abria aqui uma caixa vazia que citava duas permissões pelo
+       código. O que ele veio buscar no celular é o que é dele: os atalhos são as
+       telas do "Meu espaço" que cabem em pé, e cada uma só aparece se abre para
+       ele (`rotas/celular.ATALHOS`, a mesma regra do menu). #}
+    {% if atalhos|length %}
+    <p class="sub">O que é seu, a um toque.</p>
+    <div class="grade-resumo atalhos-celular">
+      {% for a in atalhos %}
+      <a class="cartao-resumo" href="{{ a.caminho }}">
+        <span class="valor">{{ a.rotulo }}</span>
+        <span class="detalhe">{{ a.descricao }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
     <div class="vazio">
       <strong>Esta tela ainda não tem trabalho para você.</strong>
-      <span>Ela serve a quem entrega EPI no balcão (<em>epi.entregar</em>) e a quem
-        lança presença de turma (<em>turma.avaliar</em>). O resto do sistema
-        continua no endereço de sempre.</span>
+      <span>Ela serve a quem entrega EPI no balcão e a quem lança a presença das
+        turmas. O resto do sistema continua no endereço de sempre.</span>
     </div>
+    {% endif %}
     {% else %}
     <p class="sub">Duas coisas que se fazem em pé, longe da mesa.</p>
     <div class="cartoes-inicio">
@@ -59,9 +75,9 @@
       </a>
       {% endif %}
     </div>
-    {% endif %}
     {% if tem_ficha %}
     <p class="discreto"><a href="/epis/fichas/minha">Minha ficha de EPI</a> — no sistema completo.</p>
+    {% endif %}
     {% endif %}
     <p class="discreto">Versão {{ VERSAO }} · <a href="/inicio">sistema completo</a></p>
   </section>

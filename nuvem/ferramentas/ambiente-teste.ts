@@ -34,7 +34,10 @@ export const DOMINIO = "csso.teste";
 
 // As contas: uma por perfil, para o dono trocar de login e ver a mesma tela
 // mudar. O `servidor_consulta` fica ligado a um servidor porque sem isso o
-// caminho do titular da LGPD (art. 18, II) não existe.
+// caminho do titular da LGPD (art. 18, II) não existe. O `superintendente` é
+// quem concede e encerra perfil, vincula conta a servidor e atesta habilitação
+// (M71): sem ele a governança de acesso, que é o coração de /usuarios, não se
+// exercitava com conta de teste nenhuma.
 export const CONTAS: readonly (readonly [string, string, string])[] = [
   ["coordenador", "coordenador_csso", "Nádia Quintanilha Serra"],
   ["engenheiro", "engenheiro_seguranca", "Otávio Bengala Freire"],
@@ -43,6 +46,7 @@ export const CONTAS: readonly (readonly [string, string, string])[] = [
   ["secretaria", "secretaria_csso", "Rosalina Teixeira Bopp"],
   ["almoxarife", "almoxarife_sesmt", "Salustiano Vidigal Prado"],
   ["admin", "admin_ti", "Tarcísio Werneck Aguiar"],
+  ["superintendente", "superintendente", "Ubirajara Lacerda Matos"],
   ["servidor", "servidor_consulta", "Adelaide Nunes Prata"],
 ];
 
@@ -102,7 +106,7 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
   const resumo: Record<string, number> = {};
 
   // -----------------------------------------------------------------
-  // Contas, uma por perfil. O hash é um só para as oito: Argon2id de produção
+  // Contas, uma por perfil. O hash é um só para todas: Argon2id de produção
   // custa ~80 ms, e a senha é a mesma (o sal repetido não importa em banco
   // descartável com a senha impressa na tela).
   // -----------------------------------------------------------------

@@ -364,7 +364,7 @@ describe("RN-26", () => {
         servico.aprovar_item(tx, analista, (await itens(tx, requisicao))[0]!, { quantidade_aprovada: 0 }),
         servico.RequisicaoBloqueada,
       );
-      expect(erro.message).toContain("RN-27");
+      expect(erro.message).toContain("recusar com motivo da lista");
     }));
 });
 
@@ -447,7 +447,7 @@ describe("RN-31", () => {
       const requisicao = await pedido_pronto(tx, cen, u);
       await servico.enviar(tx, u, requisicao);
       const erro = await recusa(servico.excluir_rascunho(tx, u, requisicao), servico.RequisicaoBloqueada);
-      expect(erro.message).toContain("RN-31");
+      expect(erro.message).toContain("cancela com motivo");
       await servico.cancelar(tx, u, requisicao, "A compra saiu por outro caminho");
       expect(requisicao.estado).toBe("CANCELADA");
       expect(requisicao.motivo_cancelamento).toBeTruthy();
@@ -586,7 +586,7 @@ describe("as duas máquinas de estado", () => {
         servico.indeferir(tx, analista, requisicao, { motivo: await motivo(tx) }),
         servico.RequisicaoBloqueada,
       );
-      expect(erro.message).toContain("TODO item");
+      expect(erro.message).toContain("já foi aprovado");
     }));
 
   it("a reconsideração traz o indeferido de volta, com motivo", () =>

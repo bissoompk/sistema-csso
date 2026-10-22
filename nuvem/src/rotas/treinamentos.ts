@@ -183,15 +183,17 @@ async function _tela_catalogo(c: Ctx, usuario: UsuarioAtual, d: Recado = {}): Pr
 }
 
 // =====================================================================
-// Início — o "Centro de Certificações e Inscrições" do IntegraSST
+// Início — a porta do módulo (o "Centro de Certificações" do IntegraSST)
 // =====================================================================
 /** Os passos do trabalho em cartões, cada um com o que espera nele. */
 rotas.get(INICIO, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("certificado.ver");
   const hoje = datas_br.hoje();
+  const r = await hub.resumo(c.get("tx"), usuario, hoje);
   return pagina(c, "paginas/treinamentos_inicio.html", usuario, {
-    r: await hub.resumo(c.get("tx"), usuario, hoje),
+    r,
+    cartoes: hub.cartoes(usuario, r),
     hoje,
   });
 });
@@ -1268,22 +1270,34 @@ rotas.get(INDICADORES, async (c) => {
     datas_br.hoje(),
   );
   const setor = id_opcional(c.req.query("setor") ?? "");
+  // intervalo de trás para a frente não se conserta em silêncio: a tela diz
+  const invertido = periodo === "intervalo" && de !== null && ate !== null && de > ate;
   const r = await indicadores.calcular(tx, usuario, { de, ate, unidade_promotora_id: setor });
   const nominal = usuario.ve_dado_nominal;
   // RN-19: contagem de PESSOAS abaixo do limiar vira "—" para quem não vê
   // nome; turma é evento, não pessoa, e sai sempre
-  const pessoas = (n: number) => (nominal || n === 0 || n >= LIMIAR_SUPRESSAO ? String(n) : MARCA_SUPRIMIDO);
+  const suprime = (n: number) => !nominal && n !== 0 && n < LIMIAR_SUPRESSAO;
+  const pessoas = (n: number) => (suprime(n) ? MARCA_SUPRIMIDO : String(n));
+  const cartoes_pessoas = Object.fromEntries(
+    (["participantes", "aguardando_confirmacao", "aprovados", "reprovados", "faltas", "emitidos", "pendentes"] as const).map(
+      (k) => [k, pessoas(r[k])],
+    ),
+  );
   return pagina(c, "paginas/treinamentos_indicadores.html", usuario, {
     r,
-    cartoes_pessoas: Object.fromEntries(
-      (["participantes", "aguardando_confirmacao", "aprovados", "reprovados", "faltas", "emitidos", "pendentes"] as const).map(
-        (k) => [k, pessoas(r[k])],
-      ),
-    ),
-    // taxa sobre poucas pessoas é a mesma reidentificação, em porcentagem
-    taxa: r.taxa_aprovacao === null || (!nominal && r.aprovados + r.reprovados < LIMIAR_SUPRESSAO)
-      ? null
-      : textos_numero(r.taxa_aprovacao),
+    cartoes_pessoas,
+    // o destaque do cartão sai do valor EXIBIDO: "—" amarelo diria que não é zero
+    pendentes_em_alerta: cartoes_pessoas.pendentes !== "0" && cartoes_pessoas.pendentes !== MARCA_SUPRIMIDO,
+    // taxa sobre poucas pessoas é a mesma reidentificação, em porcentagem; e
+    // com um dos dois lados suprimido ela devolveria o lado escondido
+    // (12 aprovados a 85,7% são 2 reprovados)
+    taxa:
+      r.taxa_aprovacao === null ||
+      (!nominal && (r.aprovados + r.reprovados < LIMIAR_SUPRESSAO || suprime(r.aprovados) || suprime(r.reprovados)))
+        ? null
+        : textos_numero(r.taxa_aprovacao),
+    ...(invertido ? { erro: "A data inicial é posterior à final. Troque as datas para ver os números do intervalo." } : {}),
+    invertido,
     turmas_por_setor: dicionario(Object.fromEntries(Object.entries(r.turmas_por_setor).map(([k, v]) => [k, String(v)]))),
     participantes_por_treinamento: dicionario(suprimir(r.participantes_por_treinamento, nominal)),
     setores: await indicadores.setores_promotores(tx),
@@ -1313,14 +1327,43 @@ rotas.get(PARTICIPANTES, async (c) => {
   const achados = busca ? await mesclagem.fichas(tx, await servico_participante.buscar(tx, busca, usuario, 30)) : [];
   const grupos = busca ? [] : await mesclagem.possiveis_duplicados(tx);
   return pagina(c, "paginas/participantes.html", usuario, {
-    busca,
+    // `termo`, e não `busca`: a casca copia `busca` para o campo da busca
+    // global do cabeçalho, e o mesmo texto nos dois campos confundia
+    termo: busca,
     achados,
     sugerido_achados: achados.length ? mesclagem.sugerido(achados) : null,
-    grupos: grupos.map((g) => ({ fichas: g, sugerido: mesclagem.sugerido(g) })),
+    difere_achados: achados.length ? _o_que_difere(achados, mesclagem.sugerido(achados)) : {},
+    grupos: grupos.map((g) => {
+      const sugerido = mesclagem.sugerido(g);
+      return { fichas: g, sugerido, difere: _o_que_difere(g, sugerido) };
+    }),
     rotulo_vinculo: ROTULO_VINCULO,
     ...recados(c),
   });
 });
+
+/**
+ * O que cada cadastro do grupo tem de diferente do que a tela sugere manter —
+ * `{ficha_id: {campo: true}}`. A tela marca essas células, para a comparação
+ * não depender de ler linha por linha; o sugerido não leva marca (é a régua).
+ * Nome sem acento nem caixa: "Joana Ávila" e "joana avila" não diferem.
+ */
+function _o_que_difere(fichas: mesclagem.Ficha[], sugerido: number | null): Record<number, Record<string, boolean>> {
+  const regua = fichas.find((f) => f.id === sugerido) ?? fichas[0];
+  if (!regua) return {};
+  const forma = {
+    nome: (x: mesclagem.Ficha) => textos.chave_busca(x.nome),
+    organizacao: (x: mesclagem.Ficha) => textos.chave_busca(x.organizacao ?? ""),
+    vinculo: (x: mesclagem.Ficha) => x.vinculo,
+    emails: (x: mesclagem.Ficha) => [...x.emails].map((m) => m.toLowerCase()).sort().join(","),
+  };
+  return Object.fromEntries(
+    fichas.map((f) => [
+      f.id,
+      Object.fromEntries(Object.entries(forma).map(([campo, de]) => [campo, f.id !== regua.id && de(f) !== de(regua)])),
+    ]),
+  );
+}
 
 rotas.post(`${PARTICIPANTES}/mesclar`, async (c) => {
   const usuario = await usuarioLogado(c);

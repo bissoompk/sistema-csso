@@ -245,6 +245,55 @@ export async function guardar(
 }
 
 /** O `guardar_arquivo` do Python, a partir do `File` do formulário. */
+/**
+ * Troca a categoria de um anexo — a saída de quem mandou o arquivo certo com a
+ * categoria errada (o reenvio idêntico não duplica: o SHA-256 é o mesmo).
+ *
+ * A categoria decide a retenção e o nível de acesso, por isso a troca fica na
+ * trilha (antes → depois) e segue as mesmas regras do envio: só categorias do
+ * processo; virar PARECER_ASSINADO desativa o assinado anterior (RN-12); e o
+ * nível de acesso só SOBE — trocar FORMULARIO por OUTRO não abre um documento
+ * que nasceu restrito.
+ */
+export async function reclassificar(
+  tx: Executor,
+  anexo: Anexo,
+  categoria: string,
+  usuario: UsuarioAtual,
+  processo_id: number | null = null,
+): Promise<Anexo> {
+  usuario.exigir("anexo.enviar");
+  if (!(CATEGORIAS_PROCESSO as readonly string[]).includes(categoria)) {
+    throw new RegraViolada("Categoria inválida: escolha uma das categorias de anexo do processo.");
+  }
+  if (anexo.categoria === categoria) return anexo;
+  if (categoria === "PARECER_ASSINADO") {
+    await tx
+      .update(tabela_anexo)
+      .set({ ativo: false })
+      .where(
+        and(
+          eq(tabela_anexo.entidade, anexo.entidade),
+          eq(tabela_anexo.entidade_id, anexo.entidade_id),
+          eq(tabela_anexo.categoria, "PARECER_ASSINADO"),
+          eq(tabela_anexo.ativo, true),
+        ),
+      );
+  }
+  const nivel = NIVEL_POR_CATEGORIA[categoria] === "RESTRITO" ? "RESTRITO" : anexo.nivel_acesso;
+  const novos = { categoria, nivel_acesso: nivel };
+  await tx.update(tabela_anexo).set(novos).where(eq(tabela_anexo.id, anexo.id));
+  await auditoria.registrar_diferencas(tx, {
+    entidade: "anexo",
+    entidade_id: anexo.id,
+    antes: { categoria: anexo.categoria, nivel_acesso: anexo.nivel_acesso },
+    depois: novos,
+    usuario,
+    processo_id,
+  });
+  return Object.assign(anexo, novos);
+}
+
 export async function guardar_arquivo(
   tx: Executor,
   arquivo: File,

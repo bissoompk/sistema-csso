@@ -63,9 +63,13 @@
     </div>
   </form>
 
+  {# A barra só aparece depois do primeiro caractere (e nem existe sem
+     JavaScript): "a barra acima" apontava para o que a pessoa ainda não via. #}
   <p class="discreto rodape-cartao sem-margem">A conferência que vale é a do
-    servidor: a barra acima repete a mesma política, mas quem aceita ou recusa a
-    senha é ele.</p>
+    servidor: a que aparece enquanto você digita repete a mesma política, mas
+    quem aceita ou recusa a senha é ele. A senha atual errada conta como
+    tentativa de entrada: depois de {{ max_tentativas }} seguidas a conta é
+    bloqueada por um tempo.</p>
 </div>
 {{ senha.script() }}
 {% endblock %}

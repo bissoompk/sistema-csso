@@ -17,8 +17,12 @@
       vez de responder "nada encontrado", que faria a pessoa concluir que o
       pedido não existe. #}
 
-{% block titulo %}Requisições de EPI · CSSO{% endblock %}
-{% block trilha %}<span class="atual" aria-current="page">Fila</span>{% endblock %}
+{% block titulo %}{{ 'Meus pedidos de EPI' if meus_pedidos else 'Requisições de EPI' }} · CSSO{% endblock %}
+{# Para o servidor comum (escopo próprio) esta tela é "Meus pedidos": ele só vê
+   os dele, e "Fila" é palavra de quem trabalha a fila. #}
+{# No "Meu espaço" o item de menu já é "Meus pedidos de EPI": o bloco só
+   escreve o terceiro nível na fila do setor. #}
+{% block trilha %}{% if not meus_pedidos %}<span class="atual" aria-current="page">Fila</span>{% endif %}{% endblock %}
 
 {% block acoes_cabecalho %}
 {# a entrega direta, sem pedido, é o caminho mais curto — e fica à vista aqui #}
@@ -26,7 +30,7 @@
 <a class="botao" href="/epis/entregas/nova">Entregar direto (sem pedido)</a>
 {% endif %}
 {% if pode_requisitar %}
-<a class="botao{{ ' secundario' if usuario.pode('epi.entregar') }}" href="/epis/requisicoes/nova">Nova requisição</a>
+<a class="botao{{ ' secundario' if usuario.pode('epi.entregar') }}" href="/epis/requisicoes/nova">{{ 'Pedir EPI' if meus_pedidos else 'Nova requisição' }}</a>
 {% endif %}
 {% endblock %}
 
@@ -35,17 +39,29 @@
 
   <div class="cabecalho-pagina">
     <div class="titulo">
+      {% if meus_pedidos %}
+      <h1>Meus pedidos de EPI</h1>
+      <p class="sub">Você acompanha aqui os seus pedidos: em que pé está cada um
+        e o que o SESMT decidiu, item a item.</p>
+      {% else %}
       <h1>Requisições de EPI</h1>
-      <p class="sub">O pedido formal, com protocolo consumido no envio, contexto
-        congelado e decisão <strong>item a item</strong> — aprova-se a luva e
-        recusa-se o respirador do mesmo pedido.</p>
+      <p class="sub">Cada pedido com número, prazo e decisão <strong>item a
+        item</strong> — aprova-se a luva e recusa-se o respirador do mesmo
+        pedido.{% if not pode_analisar %} Você acompanha os pedidos; quem decide
+        é o SESMT.{% endif %}</p>
+      {% endif %}
     </div>
-    {% if not pode_analisar %}
-    <div class="ao-lado">
-      {{ ui.pilula_somente_leitura('epi.analisar', 'decidir pedido') }}
-    </div>
-    {% endif %}
   </div>
+
+  {% if filtro_ignorado %}
+  {# O filtro de estado desconhecido não some calado: a lista vem inteira e a
+     tela diz que o recorte pedido não existe. #}
+  <div class="aviso aviso-alerta" role="status">
+    <strong>O filtro “{{ filtro_ignorado }}” não é um estado de pedido</strong>,
+    e foi ignorado: abaixo estão todos os pedidos. Escolha um dos estados da
+    fileira.
+  </div>
+  {% endif %}
 
   {# A contagem por estado que o §9 pede, e cada número é o próprio filtro:
      contagem que não se pode abrir vira número que ninguém confere contra a
@@ -81,7 +97,7 @@
   </div>
 
   <div class="tabela-cartao lista">
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr>
           <th scope="col">Protocolo · envio</th><th scope="col">Requerente</th><th scope="col">Campus · unidade</th>
@@ -92,30 +108,29 @@
       {% set quem = identificar(r) %}
       <tr>
         <td><a class="mono" href="/epis/requisicoes/{{ r.id }}">{{ r.identificacao }}</a>
-          <span class="quebra discreto mono">{{ r.enviada_em|momento or 'não enviada' }}</span>
+          <span class="quebra discreto mono">{{ r.enviada_em|momento or 'rascunho, não enviado' }}</span>
           {{ ui.pilula_urgencia(r.urgencia, r.justificativa_urgencia or '') }}</td>
-        <td class="nome">
+        <td data-coluna="Requerente" class="nome">
           {% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
           {% else %}{{ quem.nome }}{% endif %}
-          <span class="quebra discreto">{{ r.cargo_snapshot or 'cargo não congelado (rascunho)' }}</span></td>
-        <td><span class="recorte" title="{{ r.unidade.nome_extenso if r.unidade else '' }}">
+          <span class="quebra discreto">{{ r.cargo_snapshot or '—' }}</span></td>
+        <td data-coluna="Campus · unidade"><span class="recorte" title="{{ r.unidade.nome_extenso if r.unidade else '' }}">
             {%- if r.unidade %}{{ r.unidade.campus.sigla }} · {{ r.unidade.nome_extenso }}
             {%- else %}—{% endif -%}</span></td>
-        <td class="mono">{{ r.itens|length }}
+        <td data-coluna="Itens" class="mono">{{ r.itens|length }}
           {% set entregues = r.itens|selectattr('estado', 'equalto', 'ENTREGUE')|list|length %}
           {% if entregues %}<span class="quebra discreto">{{ entregues }} entregue(s)</span>{% endif %}</td>
-        <td>{{ ui.pilula_requisicao(r.estado, rotulos) }}</td>
+        <td data-coluna="Estado">{{ ui.pilula_requisicao(r.estado, rotulos) }}</td>
         {# dias no estado calculado agora, nunca gravado: dias parados é estado,
            e estado gravado é estado que envelhece em silêncio #}
-        <td class="mono">{{ dias.get(r.id, 0) }}d</td>
-        <td><a class="botao secundario compacto" href="/epis/requisicoes/{{ r.id }}">Abrir</a></td>
+        <td data-coluna="Parado há" class="mono">{{ dias.get(r.id, 0) }}d</td>
+        <td class="acao-linha"><a class="botao secundario compacto" href="/epis/requisicoes/{{ r.id }}">Abrir</a></td>
       </tr>
       {% else %}
       <tr><td colspan="7">
         <div class="vazio">
-          <strong>Nenhuma requisição neste filtro.</strong>
-          <span>O pedido de EPI que não passa por aqui está num e-mail: sem
-            protocolo, sem prazo e sem trilha.</span>
+          <strong>{{ 'Você ainda não tem pedido neste filtro.' if meus_pedidos else 'Nenhuma requisição neste filtro.' }}</strong>
+          {% if pode_requisitar %}<span><a href="/epis/requisicoes/nova">{{ 'Pedir EPI' if meus_pedidos else 'Abrir uma requisição' }}</a>.</span>{% endif %}
         </div>
       </td></tr>
       {% endfor %}
@@ -127,23 +142,30 @@
      busca, a dois blocos daqui — repeti-lo no rodapé era a terceira cópia. O que
      ele acrescentava, o "nunca CPF", entrou no (i) abaixo, onde também está o
      motivo. #}
+  {% if not meus_pedidos %}
   <div class="aviso aviso-info">
-    <strong>Quem analisa não é quem requisita (RN-28).</strong> O sistema recusa a
-    análise do próprio pedido, sem exceção.
-    {% call ui.info('rn28-e-busca', 'a RN-28, e o que a busca desta fila aceita') %}
-      <p>Gravar “analisado por X” num pedido de X produziria a aparência de um
-        controle que não houve — e é a aparência de controle, e não a falta dele,
-        que uma fiscalização encontra e não aceita.</p>
+    <strong>Ninguém analisa o próprio pedido.</strong>
+    {% call ui.info('rn28-e-busca', 'quem analisa o pedido, e o que a busca desta fila aceita') %}
+      <p>Quem analisa não é quem requisita (RN-28). Gravar “analisado por X” num
+        pedido de X produziria a aparência de um controle que não houve — e é a
+        aparência de controle, e não a falta dele, que uma fiscalização encontra
+        e não aceita.</p>
+      {# o link só para quem pode abrir o balcão: para os outros perfis ele dava
+         403, e link que não abre é armadilha #}
       <p>Quem trabalha no SESMT e precisa do próprio EPI continua atendido pela
-        <a href="/epis/entregas/nova">entrega avulsa de balcão</a>, que registra a
-        ficha, o lote, o CA e o comprovante assinado do mesmo jeito.</p>
+        {% if usuario.pode('epi.entregar') %}<a href="/epis/entregas/nova">entrega
+        direta de balcão</a>{% else %}entrega direta de balcão{% endif %}, que
+        registra a ficha, o lote, o CA e o comprovante assinado do mesmo
+        jeito.</p>
       <p>A busca desta fila aceita protocolo, nome, SIAPE e e-mail —
         <strong>nunca CPF</strong>: não há coluna de CPF em lugar nenhum deste
         módulo, e uma busca que aceitasse o número ensinaria a digitá-lo.
         Protocolo e SIAPE acham para todo mundo; nome e e-mail só acham para quem
-        já podia ler aquele nome, senão o filtro viraria oráculo (RN-19).</p>
+        já podia ler aquele nome (RN-19): senão a busca diria, pelo resultado,
+        de quem é um pedido cujo nome a tela esconde.</p>
     {% endcall %}
   </div>
+  {% endif %}
 
 </div>
 {% endblock %}

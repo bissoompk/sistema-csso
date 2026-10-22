@@ -102,12 +102,19 @@ export async function a_conferir(tx: Executor, usuario: UsuarioAtual): Promise<T
 export interface ResultadoLote {
   feitos: number;
   travados: { inscricao_id: number; quem: string; motivo: string }[];
+  /** turmas em que se marcou mais pedidos do que há vaga: nenhum deles foi aceito */
+  excedidas: { codigo: string; vagas: number; marcados: number }[];
 }
 
 /**
  * Aceita (`INSCRITA`) ou recusa (`CANCELADA`, com motivo) os pedidos marcados.
  * Pedido fora do escopo, de outra situação ou que não existe é ignorado em
  * silêncio, como a fila de emissão faz com o que não está nela.
+ *
+ * Aceitar mais pedidos de uma turma do que ela tem de vaga livre é recusado
+ * para a turma inteira, antes de aceitar qualquer um: aceitar "na ordem da
+ * lista" decidia por quem marcou quem ficava de fora. A pessoa desmarca o
+ * excesso e escolhe.
  */
 export async function decidir(
   tx: Executor,
@@ -120,11 +127,30 @@ export async function decidir(
   if (destino === "CANCELADA" && !(motivo ?? "").trim()) {
     throw new RegraViolada("Para recusar, escreva o motivo: ele fica registrado na inscrição.");
   }
-  const resultado: ResultadoLote = { feitos: 0, travados: [] };
+  const resultado: ResultadoLote = { feitos: 0, travados: [], excedidas: [] };
+  const validas: servico_turma.InscricaoCarregada[] = [];
   for (const id of [...new Set(ids)].slice(0, LIMITE_LOTE)) {
     const inscricao = await servico_turma.carregar_inscricao(tx, id);
     if (!inscricao || inscricao.situacao !== "AGUARDANDO_EMAIL") continue;
     if (!(await servico_turma.no_escopo(tx, usuario, inscricao.turma_id))) continue;
+    validas.push(inscricao);
+  }
+  const barradas = new Set<number>();
+  if (destino === "INSCRITA") {
+    const por_turma = new Map<number, servico_turma.InscricaoCarregada[]>();
+    for (const i of validas) por_turma.set(i.turma_id, [...(por_turma.get(i.turma_id) ?? []), i]);
+    for (const lista of por_turma.values()) {
+      const turma = lista[0]!.turma;
+      const livres = await servico_turma.vagas_restantes(tx, turma);
+      if (livres !== null && lista.length > livres) {
+        resultado.excedidas.push({ codigo: turma.codigo, vagas: livres, marcados: lista.length });
+        barradas.add(turma.id);
+      }
+    }
+  }
+  for (const inscricao of validas) {
+    if (barradas.has(inscricao.turma_id)) continue;
+    const id = inscricao.id;
     try {
       await tx.transaction(async (sp) =>
         servico_turma.mudar_situacao_inscricao(sp as Executor, usuario, inscricao, destino, { motivo }),

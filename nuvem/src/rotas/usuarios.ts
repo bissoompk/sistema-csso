@@ -23,7 +23,13 @@ import { vigente_em } from "../dominio/organizacao.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as autenticacao from "../servicos/autenticacao.js";
 import * as datas_br from "../servicos/datas_br.js";
-import { MATRIZ_PERFIS, eh_conta_de_governo, perfis_vigentes, type UsuarioAtual } from "../servicos/rbac.js";
+import {
+  GRUPOS_PERMISSAO_TELA,
+  MATRIZ_PERFIS,
+  eh_conta_de_governo,
+  perfis_vigentes,
+  type UsuarioAtual,
+} from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { comMensagem, pagina, redirecionar } from "../web.js";
 
@@ -60,6 +66,9 @@ async function _tela_lista(
   const contas_de_governo = usuarios
     .filter((u) => vigentes_por_usuario[u.id]!.some((a) => perfis_de_governo.has(a.perfil_id)))
     .map((u) => u.id);
+  // A conta que, inativada, deixaria o sistema sem quem conceda perfil: a
+  // linha dela não oferece "Inativar" (a rota recusa do mesmo jeito, D66).
+  const ultima_que_concede = (await _contas_que_concedem(tx)).filter((id) => usuarios.some((u) => u.id === id && u.ativo));
   // Nome e SIAPE de todo servidor só vão para a página de quem vincula conta a
   // servidor (`perfil.conceder`) E lê dado nominal (`exposicao.ver`): o
   // `admin_ti` abre esta tela e não lê dado nominal (RN-19). Conceder perfil não
@@ -77,6 +86,7 @@ async function _tela_lista(
   return pagina(c, "paginas/usuarios.html", usuario, {
     usuarios,
     contas_de_governo,
+    ultima_que_concede: ultima_que_concede.length === 1 ? ultima_que_concede[0] : null,
     perfis: await tx.select().from(tabela_perfil).orderBy(asc(tabela_perfil.codigo)),
     campi: await tx.select().from(campus).orderBy(asc(campus.sigla)),
     atribuicoes,
@@ -195,23 +205,77 @@ async function _conceder(
 }
 
 /**
- * Sobra alguém que concede perfil se a atribuição `sem` deixar de valer? Sem
- * ninguém, o sistema fica sem quem crie conta ou conceda perfil — e só volta
- * por SQL. Conta inativa não conta: ela não entra.
+ * As contas ATIVAS com concessão vigente de perfil que tem `perfil.conceder` —
+ * opcionalmente sem a atribuição `sem_atribuicao` ou sem a conta `sem_conta`.
  */
-async function _restaria_quem_concede(tx: Executor, sem: number): Promise<boolean> {
+async function _contas_que_concedem(
+  tx: Executor,
+  fora: { sem_atribuicao?: number; sem_conta?: number } = {},
+): Promise<number[]> {
   const hoje = hoje_iso();
   const todas = await tx.query.atribuicao.findMany({
     with: { usuario: true, perfil: { with: { perfil_permissoes: { with: { permissao: true } } } } },
   });
-  return todas.some(
-    (a) =>
-      a.id !== sem &&
-      vigente_em(a, hoje) &&
-      a.usuario.ativo &&
-      a.perfil.ativo &&
-      a.perfil.perfil_permissoes.some((pp) => pp.permissao.codigo === "perfil.conceder"),
-  );
+  const ids = todas
+    .filter(
+      (a) =>
+        a.id !== fora.sem_atribuicao &&
+        a.usuario_id !== fora.sem_conta &&
+        vigente_em(a, hoje) &&
+        a.usuario.ativo &&
+        a.perfil.ativo &&
+        a.perfil.perfil_permissoes.some((pp) => pp.permissao.codigo === "perfil.conceder"),
+    )
+    .map((a) => a.usuario_id);
+  return [...new Set(ids)];
+}
+
+/**
+ * Sobra alguém que concede perfil se a atribuição `sem_atribuicao` deixar de
+ * valer, ou se a conta `sem_conta` for inativada? Sem ninguém, o sistema fica
+ * sem quem crie conta ou conceda perfil — e só volta por SQL. Conta inativa
+ * não conta: ela não entra.
+ */
+async function _restaria_quem_concede(
+  tx: Executor,
+  fora: { sem_atribuicao?: number; sem_conta?: number },
+): Promise<boolean> {
+  return (await _contas_que_concedem(tx, fora)).length > 0;
+}
+
+/**
+ * Inativar é tirar a conta do sistema (e derrubar as sessões dela). As travas
+ * são as da redefinição de senha e do encerramento de perfil, pelos mesmos
+ * motivos (D66):
+ *
+ * - a própria conta não se inativa — quem faz isso se tranca fora;
+ * - conta de administração (`eh_conta_de_governo`) só por quem concede perfil:
+ *   sem a trava, o `admin_ti` desligava o superintendente;
+ * - a última conta ativa que concede perfil não se inativa: ninguém mais
+ *   criaria conta nem concederia acesso, e o sistema só voltaria por SQL.
+ *
+ * Reativar passa pela segunda trava também (reabrir conta de administração é
+ * ato de governo); as outras duas não se aplicam. Devolve o motivo, ou `null`.
+ */
+async function _recusa_de_inativacao(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  alvo: { id: number; ativo: boolean },
+): Promise<string | null> {
+  if (alvo.ativo && alvo.id === usuario.id) {
+    return "a própria conta não se inativa — peça a outra pessoa que administra o sistema.";
+  }
+  const { permissoes } = await perfis_vigentes(tx, alvo.id);
+  if (!usuario.pode("perfil.conceder") && eh_conta_de_governo(permissoes)) {
+    return "é conta de administração; só quem concede perfil (o superintendente) a inativa ou reativa.";
+  }
+  if (alvo.ativo && permissoes.has("perfil.conceder") && !(await _restaria_quem_concede(tx, { sem_conta: alvo.id }))) {
+    return (
+      "é a última conta ativa que concede perfil, e sem ela ninguém mais cria conta nem concede acesso. " +
+      "Conceda esse perfil a outra conta antes."
+    );
+  }
+  return null;
 }
 
 /**
@@ -450,6 +514,11 @@ rotas.post("/usuarios/:id{[0-9]+}/inativar", async (c) => {
   const tx = c.get("tx");
   const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
   if (alvo) {
+    const recusa = await _recusa_de_inativacao(tx, usuario, alvo);
+    if (recusa) {
+      const ato = alvo.ativo ? "inativada" : "reativada";
+      return _tela_lista(c, usuario, { erro: `A conta de ${alvo.nome} não foi ${ato}: ${recusa}` });
+    }
     const ativo = !alvo.ativo;
     await tx.update(tabela_usuario).set({ ativo }).where(eq(tabela_usuario.id, alvo.id));
     if (!ativo) await autenticacao.revogar_do_usuario(tx, alvo.id);
@@ -460,6 +529,7 @@ rotas.post("/usuarios/:id{[0-9]+}/inativar", async (c) => {
       descricao: `Conta '${alvo.login}' ${ativo ? "ativada" : "inativada"}.`,
       usuario,
     });
+    return redirecionar(c, comMensagem("/usuarios", `Conta de ${alvo.nome} ${ativo ? "reativada" : "inativada"}.`));
   }
   return redirecionar(c, "/usuarios");
 });
@@ -516,7 +586,7 @@ rotas.post("/usuarios/atribuicoes/:id{[0-9]+}/encerrar", async (c) => {
     return redirecionar(c, comMensagem("/usuarios", "Esta concessão já estava encerrada."));
   }
   const concede = a.perfil.perfil_permissoes.some((pp) => pp.permissao.codigo === "perfil.conceder");
-  if (concede && !(await _restaria_quem_concede(tx, a.id))) {
+  if (concede && !(await _restaria_quem_concede(tx, { sem_atribuicao: a.id }))) {
     return _tela_lista(c, usuario, {
       erro:
         `O perfil ${a.perfil.codigo} de ${a.usuario.nome} não foi encerrado: é a última concessão vigente ` +
@@ -676,6 +746,30 @@ rotas.post("/habilitacoes", async (c) => {
   return redirecionar(c, comMensagem("/usuarios", "Habilitação registrada."));
 });
 
+/**
+ * As permissões do perfil nos grupos de tela (M75), cada uma com o texto em
+ * português e o código ao lado. Permissão que o banco tem e o código não
+ * conhece (semeada por versão futura, ou à mão) vai para "Outras", com a
+ * descrição gravada — some da tela, nunca.
+ */
+function _grupos_de(permissoes: { codigo: string; descricao: string | null }[]) {
+  const codigos = new Set(permissoes.map((p) => p.codigo));
+  const grupos: { rotulo: string; itens: { codigo: string; texto: string }[] }[] = [];
+  const conhecidas = new Set<string>();
+  for (const [rotulo, textos] of GRUPOS_PERMISSAO_TELA) {
+    const itens = Object.entries(textos)
+      .filter(([codigo]) => codigos.has(codigo))
+      .map(([codigo, texto]) => ({ codigo, texto }));
+    for (const codigo of Object.keys(textos)) conhecidas.add(codigo);
+    if (itens.length) grupos.push({ rotulo, itens });
+  }
+  const outras = permissoes
+    .filter((p) => !conhecidas.has(p.codigo))
+    .map((p) => ({ codigo: p.codigo, texto: p.descricao || p.codigo }));
+  if (outras.length) grupos.push({ rotulo: "Outras", itens: outras });
+  return grupos;
+}
+
 rotas.get("/perfis", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("processo.ver");
@@ -686,10 +780,10 @@ rotas.get("/perfis", async (c) => {
   });
   return pagina(c, "paginas/perfis.html", usuario, {
     // a `secondary=` do Python: as permissões do perfil, já ordenadas por código
-    perfis: perfis.map((p) => ({
-      ...p,
-      permissoes: p.perfil_permissoes.map((pp) => pp.permissao).sort((a, b) => (a.codigo < b.codigo ? -1 : 1)),
-    })),
+    perfis: perfis.map((p) => {
+      const permissoes = p.perfil_permissoes.map((pp) => pp.permissao).sort((a, b) => (a.codigo < b.codigo ? -1 : 1));
+      return { ...p, permissoes, grupos: _grupos_de(permissoes) };
+    }),
     matriz: MATRIZ_PERFIS,
   });
 });

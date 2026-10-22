@@ -22,8 +22,20 @@ class Desfeita extends Error {}
 function pedeJson(c: Ctx): boolean {
   return new URL(c.req.url).pathname.startsWith("/api/");
 }
+/**
+ * A resposta de erro sai como tela, e não como `{"detail": ...}`, quando quem
+ * pediu é um navegador NAVEGANDO: `Accept` com `text/html`, ou o `*\/*` de um
+ * link aberto de fora (o leitor de PDF, o app de e-mail, o favorito antigo —
+ * M85: /pareceres/2/docx e /processos/1 mostravam JSON cru ao servidor).
+ * O `*\/*` só conta num GET sem HX-Request nem X-Requested-With e fora de
+ * /api: o HTMX e o `fetch` do quadro leem a resposta como fragmento, e a API
+ * responde JSON sempre.
+ */
 function querHtml(c: Ctx): boolean {
-  return (c.req.header("accept") ?? "").includes("text/html");
+  const aceita = c.req.header("accept") ?? "";
+  if (aceita.includes("text/html")) return true;
+  if (!aceita.includes("*/*") || c.req.method !== "GET" || pedeJson(c)) return false;
+  return !c.req.header("hx-request") && !c.req.header("x-requested-with");
 }
 
 /**

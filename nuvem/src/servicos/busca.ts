@@ -37,6 +37,7 @@ import { Certificado } from "../dominio/treinamento.js";
 import * as repo_processos from "../repositorios/processos.js";
 import * as servico_requisicao from "./epi_requisicao.js";
 import * as identificacao from "./identificacao.js";
+import * as servico_nup from "./nup.js";
 import * as textos from "./textos.js";
 import { normalizar_chave } from "./certificado.js";
 import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
@@ -129,8 +130,18 @@ async function _bloco_servidor(tx: Executor, usuario: UsuarioAtual, q: string, l
   return { codigo: "servidor", rotulo: "Servidores", chaves: "nome e SIAPE", itens, ver_todos: destino, ha_mais };
 }
 
+/**
+ * O NUP colado sem pontuação ("23086100001202601") vira o NUP formatado antes
+ * de comparar — é como o SEI copia, e a busca dizia "Nada encontrado" (M66).
+ * A regra mora em `nup.termo_de_busca`, que a lista de /processos também usa.
+ */
+export function termo_de_nup(q: string): string {
+  return servico_nup.termo_de_busca(q);
+}
+
 /** NUP, observação, URL do SEI, número do laudo e o servidor — a consulta do repositório. */
-async function _bloco_processo(tx: Executor, usuario: UsuarioAtual, q: string, limite: number): Promise<Bloco> {
+async function _bloco_processo(tx: Executor, usuario: UsuarioAtual, bruto: string, limite: number): Promise<Bloco> {
+  const q = termo_de_nup(bruto);
   const [itens, ha_mais] = _cortar(await repo_processos.buscar(tx, usuario, q, limite), limite);
   return {
     codigo: "processo",

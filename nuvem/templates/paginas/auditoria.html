@@ -103,28 +103,40 @@
   <div class="tabela-cartao lista">
     <table>
       <thead>
-        <tr><th scope="col">Quando</th><th scope="col">Usuário</th><th scope="col">Entidade</th><th scope="col">Evento</th><th scope="col">Campo</th>
-            <th scope="col">Antes → depois</th><th scope="col">Descrição</th></tr>
+        {# Cinco colunas, e não sete (M68): entidade sob o evento e o campo junto
+           do "antes → depois". Com sete, a Descrição — a informação principal —
+           ficava fora da tela em 1366px. #}
+        <tr><th scope="col">Quando</th><th scope="col">Usuário</th><th scope="col">Evento</th>
+            <th scope="col">Campo: antes → depois</th><th scope="col">Descrição</th></tr>
       </thead>
       {% for e in eventos %}
       <tr>
         <td class="mono discreto">{{ e.ocorrido_em|momento }}</td>
         <td>{{ e.usuario_nome }}</td>
-        <td class="mono">{{ e.entidade }}#{{ e.entidade_id }}</td>
-        <td class="nome">{{ e.tipo_evento }}</td>
-        <td class="mono">{{ e.campo or '—' }}</td>
+        <td><span class="nome">{{ e.tipo_evento|evento }}</span>
+          <span class="quebra mono discreto">{{ e.tipo_evento }} · {{ e.entidade }}#{{ e.entidade_id }}</span></td>
         <td class="mono discreto">
-          {%- if e.campo %}{{ e.valor_anterior }} → {{ e.valor_novo }}
+          {%- if e.campo %}<span class="quebra">{{ e.campo }}:</span>{{ e.valor_anterior }} → {{ e.valor_novo }}
           {%- else %}—{% endif %}</td>
         {# A trilha inteira, de todas as entidades: nao ha titular a quem
            perguntar, e `auditoria.ver` nao e permissao de ler nome — `admin_ti`
            a tem e a propria base normativa do perfil diz "sem acesso ao
-           conteudo tecnico". O resto da linha (quem, quando, entidade, campo,
-           antes -> depois) continua inteiro, que e do que a conferencia
-           precisa. #}
-        {%- set descricao = texto_livre(e.descricao, vazio='—') %}
-        <td><span class="recorte" title="{{ descricao }}">
-            {{- descricao -}}</span></td>
+           conteudo tecnico". A rota decide a frase (`descricao_na_tela`): os
+           eventos de conta, senha, backup e exportacao saem inteiros, salvo
+           conta ligada a servidor cujo nome quem le nao ve; o resto segue a
+           regra de `texto_livre`.
+
+           A frase curta sai inteira e quebra linha; a longa abre num
+           `details`, e a coluna nao empurra a tabela para fora da tela em
+           1366px (M68). #}
+        {%- set descricao = e.descricao_tela %}
+        <td>
+          {%- if descricao|length > 60 %}
+          <details class="descricao-trilha">
+            <summary>{{ descricao|truncate(48, true, '…') }}</summary>
+            <span class="texto-literal">{{ descricao }}</span>
+          </details>
+          {%- else %}{{ descricao }}{% endif %}</td>
       </tr>
       {% else %}
       {# Aqui a saída tem uma segunda causa que nenhuma outra lista tem: a
@@ -138,18 +150,18 @@
            'Nada nesta página.',
            'A trilha não conta o total (o comentário abaixo diz por quê), então
             “próxima” existe sempre e a página seguinte à última abre vazia. Volte
-            uma com “anterior”; o filtro continua o mesmo.', 7) }}
+            uma com “anterior”; o filtro continua o mesmo.', 5) }}
       {% elif filtro_usuario or filtro_entidade or filtro_tipo %}
       {{ ui.vazio_de_lista(
            'Nenhum evento neste filtro.',
            'Os três seletores valem ao mesmo tempo: usuário E entidade E tipo de
-            evento. “Limpar”, ao lado de Filtrar, devolve a trilha inteira.', 7) }}
+            evento. “Limpar”, ao lado de Filtrar, devolve a trilha inteira.', 5) }}
       {% else %}
       {{ ui.vazio_de_lista(
            'A trilha ainda não tem evento nenhum.',
            'Ela não se preenche por aqui: cada gravação do sistema escreve a
             própria linha. A primeira aparece assim que alguém cadastrar ou mover
-            algo.', 7) }}
+            algo.', 5) }}
       {% endif %}
       {% endfor %}
     </table>
@@ -162,18 +174,17 @@
     <span class="discreto">página <span class="mono">{{ pagina_num }}</span></span>
     <span class="acoes">
       {% if pagina_num > 1 %}
-      <a class="botao secundario compacto" href="/auditoria?pagina_num={{ pagina_num - 1 }}">« anterior</a>
+      <a class="botao secundario compacto" href="/auditoria?pagina_num={{ pagina_num - 1 }}{{ '&' ~ eixos if eixos }}">« anterior</a>
       {% endif %}
-      <a class="botao secundario compacto" href="/auditoria?pagina_num={{ pagina_num + 1 }}">próxima »</a>
+      <a class="botao secundario compacto" href="/auditoria?pagina_num={{ pagina_num + 1 }}{{ '&' ~ eixos if eixos }}">próxima »</a>
     </span>
   </div>
 
   <section class="cartao liso">
     <div class="cabecalho-cartao">
       <h2>Acessos a dado sensível</h2>
-      <span class="contador" title="os 50 mais recentes">{{ acessos|length }}</span>
       <span class="nota">RN-23 — toda leitura nominal fica registrada com a finalidade;
-        aqui, os 50 acessos mais recentes</span>
+        a mais recente primeiro, {{ acessos_por_pagina }} por página</span>
     </div>
     {% if acessos %}
     <table>
@@ -183,13 +194,28 @@
       {% for a in acessos %}
       <tr>
         <td class="mono discreto">{{ a.ocorrido_em|momento }}</td>
-        <td class="mono">#{{ a.usuario_id }}</td>
+        {# O nome da conta que leu, como na coluna "Usuário" da trilha: "#7"
+           obrigava a cruzar com /usuarios para saber quem foi. #}
+        <td>{{ a.usuario_nome or ('#' ~ a.usuario_id) }}</td>
         <td class="mono">{{ a.campo }}</td>
         <td class="mono">{{ a.servidor_id or '—' }}</td>
         <td class="discreto">{{ a.finalidade }}</td>
       </tr>
       {% endfor %}
     </table>
+    {% if pagina_acessos > 1 or acessos_ha_mais %}
+    <div class="paginacao corpo">
+      <span class="discreto">página <span class="mono">{{ pagina_acessos }}</span></span>
+      <span class="acoes">
+        {% if pagina_acessos > 1 %}
+        <a class="botao secundario compacto" href="/auditoria?pagina_acessos={{ pagina_acessos - 1 }}">« anteriores</a>
+        {% endif %}
+        {% if acessos_ha_mais %}
+        <a class="botao secundario compacto" href="/auditoria?pagina_acessos={{ pagina_acessos + 1 }}">mais antigos »</a>
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
     {% else %}
     <div class="corpo">
       <div class="vazio">

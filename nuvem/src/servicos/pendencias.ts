@@ -10,17 +10,23 @@ import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   agora_utc,
+  certificado,
   demanda,
   epi_ficha_registro,
   epi_requisicao,
   epi_requisicao_item,
+  laudo_tecnico,
+  parecer_tecnico,
   pendencia as tabela_pendencia,
+  processo,
+  turma,
 } from "../db/esquema/index.js";
 import { hoje_iso, somar_dias } from "../dominio/datas.js";
 import { Pendencia as PendenciaDominio } from "../dominio/auditoria.js";
-import { RegraViolada } from "../nucleo/erros.js";
+import { ErroHttp, RegraViolada } from "../nucleo/erros.js";
 import { ganchos } from "../web.js";
 import * as auditoria from "./auditoria.js";
+import { pode_ver_nominal } from "./identificacao.js";
 import { ESCOPO_PROPRIO, PermissaoNegada, type UsuarioAtual } from "./rbac.js";
 
 export type Pendencia = typeof tabela_pendencia.$inferSelect;
@@ -69,9 +75,40 @@ export const TIPOS: Record<string, readonly [string, number]> = {
 // (A história completa de cada entrada está no Python.)
 export const PERMISSOES_VER: readonly string[] = ["processo.ver", "treinamento.ver", "epi.ver", "demanda.ver"];
 
-// Fechar pendência dos outros é ato de quem opera o módulo. Fechar a PRÓPRIA
-// pendência não depende desta lista: ver `pode_concluir`.
-export const PERMISSOES_CONCLUIR: readonly string[] = ["processo.editar", "treinamento.gerenciar", "epi.entregar"];
+// Fechar pendência dos outros é ato de quem opera o MÓDULO DELA: a permissão
+// é a de escrita do módulo onde a tarefa se cumpre, tipo a tipo. Era uma lista
+// única ("processo.editar, treinamento.gerenciar, epi.entregar") valendo para
+// todo tipo — e o almoxarife, que só escreve em EPI e demanda, fechava a tarefa
+// de parecer de outra pessoa; a secretaria via "concluir" em troca de EPI que
+// ela nem consegue ler. Fechar a PRÓPRIA pendência não depende deste mapa: ver
+// `pode_concluir`. Tipo novo entra aqui junto com a sua linha em `TIPOS` (um
+// teste confere); tipo fora do mapa só o responsável fecha — o lado seguro.
+export const PERMISSAO_CONCLUIR_POR_TIPO: Readonly<Record<string, string>> = Object.freeze({
+  AVALIACAO_QUANTITATIVA: "processo.editar",
+  REAVALIACAO_LAUDO: "processo.editar",
+  INCLUIR_NO_SEI: "processo.editar",
+  // a conferência do laudo é rota de `laudo.criar`: quem não pode registrá-la
+  // não pode dar a tarefa por feita
+  CONFERIR_LAUDO: "laudo.criar",
+  REGISTRO_DE_OPCAO: "processo.editar",
+  CONFLITO_NUMERACAO: "processo.editar",
+  COMPROVANTE_EPI_PENDENTE: "epi.entregar",
+  CA_A_VENCER: "epi.entregar",
+  // a entrega de EPI só ABRE a tarefa; reavaliar o adicional é ato de parecer
+  // (§7.2 do desenho de EPI), e por isso é do módulo de processos
+  REAVALIAR_ADICIONAL_POR_EPI: "processo.editar",
+  TROCA_EPI_DEVIDA: "epi.entregar",
+  EPI_SEM_ESTOQUE: "epi.entregar",
+  EPI_DECISAO_A_LER: "epi.entregar",
+  EPI_RETIRADA_DISPONIVEL: "epi.entregar",
+  DEMANDA_COM_PRAZO: "demanda.registrar",
+  DEMANDA_DESFECHO_A_LER: "demanda.registrar",
+  // confirmar a inscrição é `turma.inscrever` (é o botão da aba de inscrições);
+  // `treinamento.gerenciar` é o catálogo, e deixaria de fora a secretaria, que é
+  // quem confirma
+  TURMA_INSCRICAO_A_CONFIRMAR: "turma.inscrever",
+  CERTIFICADO_A_VENCER: "treinamento.gerenciar",
+});
 
 export function pode_ver(usuario: UsuarioAtual | null | undefined): boolean {
   return !!usuario && PERMISSOES_VER.some((c) => usuario.pode(c));
@@ -90,27 +127,38 @@ export function exigir_ver(usuario: UsuarioAtual): void {
 }
 
 /**
- * Fecha quem opera o módulo — e sempre o dono da tarefa.
+ * Fecha quem escreve no módulo da tarefa — e sempre o dono dela.
  *
  * O responsável fecha a própria pendência mesmo sem permissão de escrita: foi a
  * ele que a regra atribuiu o trabalho, e tarefa que o dono não consegue riscar
- * da lista vira lista que ninguém lê.
+ * da lista vira lista que ninguém lê. O escopo de leitura não mora aqui: quem
+ * chama já recortou por `no_escopo` (a lista) ou procura a pendência com ele (a
+ * rota de concluir).
  */
-export function pode_concluir(usuario: UsuarioAtual | null | undefined, pendencia: Pick<Pendencia, "responsavel_id">): boolean {
+export function pode_concluir(
+  usuario: UsuarioAtual | null | undefined,
+  pendencia: Pick<Pendencia, "responsavel_id" | "tipo">,
+): boolean {
   if (!pode_ver(usuario)) return false;
   if (pendencia.responsavel_id !== null && pendencia.responsavel_id === usuario!.id) return true;
-  return PERMISSOES_CONCLUIR.some((c) => usuario!.pode(c));
+  const permissao = Object.hasOwn(PERMISSAO_CONCLUIR_POR_TIPO, pendencia.tipo)
+    ? PERMISSAO_CONCLUIR_POR_TIPO[pendencia.tipo]
+    : undefined;
+  return permissao !== undefined && usuario!.pode(permissao);
 }
 
-export function exigir_concluir(usuario: UsuarioAtual, pendencia: Pick<Pendencia, "responsavel_id">): void {
+export function exigir_concluir(usuario: UsuarioAtual, pendencia: Pick<Pendencia, "responsavel_id" | "tipo">): void {
   exigir_ver(usuario); // a mensagem certa para quem nem vê a tela
   if (!pode_concluir(usuario, pendencia)) {
+    const permissao = Object.hasOwn(PERMISSAO_CONCLUIR_POR_TIPO, pendencia.tipo)
+      ? PERMISSAO_CONCLUIR_POR_TIPO[pendencia.tipo]!
+      : null;
+    // sem permissão de módulo declarada não há o que pedir: a tela de 403 não
+    // pode mandar a pessoa buscar uma permissão que não existe
+    if (permissao === null) throw new ErroHttp(403, "Esta pendência só pode ser concluída pelo responsável por ela.");
     throw new PermissaoNegada(
-      PERMISSOES_CONCLUIR[0]!,
-      "Concluir pendência de outra pessoa exige permissão de escrita no " +
-        "módulo: " +
-        PERMISSOES_CONCLUIR.join(", ") +
-        ".",
+      permissao,
+      "Concluir pendência de outra pessoa exige permissão de escrita no módulo desta tarefa.",
     );
   }
 }
@@ -315,6 +363,158 @@ export async function titular_de(tx: Executor, itens: Pendencia[]): Promise<Map<
   return resultado;
 }
 
+// ---------------------------------------------------------------------
+// Como a linha se lê na tela (e na API)
+// ---------------------------------------------------------------------
+/** Um lugar aonde a tarefa leva: o rótulo legível e o link, quando a rota deixa entrar. */
+export interface Ancora {
+  rotulo: string;
+  href: string | null;
+}
+
+/** A frase da tarefa já decidida pela RN-19, e os lugares dela. */
+export interface Leitura {
+  texto: string;
+  onde: Ancora[];
+}
+
+// A âncora dos módulos sem processo: (nome do lugar, prefixo, sufixo, permissão
+// que a rota exige). A permissão entra no mapa porque o link só pode existir
+// para quem a rota deixa entrar — oferecer porta trancada é a mesma mentira do
+// menu. Era um mapa no template e uma cópia dele na API; os dois passaram a
+// ler este. Entidade sem tela (o item do pedido) tem rótulo e não tem link.
+const _LUGAR_DA_ENTIDADE: Readonly<Record<string, readonly [string, string, string, string | null]>> = {
+  epi_ficha_registro: ["Ficha de EPI — entrega nº", "/epis/fichas/registros/", "", "epi.ficha"],
+  epi_entrada_estoque: ["Estoque de EPI — lote nº", "/epis/estoque/", "/movimentos", "epi.ver"],
+  epi_requisicao: ["Pedido de EPI nº", "/epis/requisicoes/", "", "epi.ver"],
+  epi_requisicao_item: ["Item do pedido de EPI nº", "", "", null],
+  demanda: ["Demanda nº", "/demandas/", "", "demanda.ver"],
+  // a tarefa é sobre uma INSCRIÇÃO e a âncora é a TURMA: a inscrição não tem
+  // tela própria, e o botão de confirmar mora na aba de inscrições
+  turma: ["Inscrições da turma", "/turmas/", "?aba=inscricoes", "turma.inscrever"],
+  certificado: ["Certificado", "/certificados/", "", "certificado.ver"],
+};
+
+async function _mapa<T extends { id: number }>(
+  ids: Set<number>,
+  ler: (lista: number[]) => Promise<T[]>,
+): Promise<Map<number, T>> {
+  if (!ids.size) return new Map();
+  return new Map((await ler([...ids])).map((l) => [l.id, l]));
+}
+
+/**
+ * `{pendencia.id: {texto, onde}}` — o que cada linha mostra a ESTE usuário.
+ *
+ * O texto: quem lê o nome (`pode_ver_nominal`, com o titular resolvido por
+ * `titular_de`) lê a descrição gravada. Quem não lê recebia "conteúdo suprimido
+ * (RN-19)" em toda linha, e a lista da secretaria era uma coluna de frases
+ * iguais — inclusive a da demanda que ela mesma registrou. Agora recebe uma
+ * frase NEUTRA montada do tipo e da âncora, que não passa pela descrição e por
+ * isso não carrega nome nenhum: "Demanda: <assunto>" (o assunto é o que
+ * /demandas já mostra a quem tem `demanda.ver`), "Anexar o comprovante
+ * assinado de EPI — entrega nº 7". A descrição gravada não muda (ela entra no
+ * digest da trilha).
+ *
+ * O "onde": rótulo legível no lugar do nome da tabela, e o número de quem tem
+ * a permissão de ler (o NUP só para `processo.ver`, o laudo só para `laudo.ver`).
+ * Uma consulta por tipo de âncora, e não uma por linha.
+ */
+export async function leitura(tx: Executor, usuario: UsuarioAtual, itens: Pendencia[]): Promise<Map<number, Leitura>> {
+  const de_quem = await titular_de(tx, itens);
+  const ids = (f: (p: Pendencia) => number | null, entidade?: string) =>
+    new Set(
+      itens
+        .filter((p) => entidade === undefined || p.entidade === entidade)
+        .map(f)
+        .filter((x): x is number => x !== null && x !== undefined),
+    );
+  const processos = await _mapa(ids((p) => p.processo_id), (l) =>
+    tx.select({ id: processo.id, nup: processo.nup }).from(processo).where(inArray(processo.id, l)),
+  );
+  const pareceres = await _mapa(ids((p) => p.parecer_id), (l) =>
+    tx
+      .select({ id: parecer_tecnico.id, numero: parecer_tecnico.numero, ano: parecer_tecnico.ano })
+      .from(parecer_tecnico)
+      .where(inArray(parecer_tecnico.id, l)),
+  );
+  const laudos = await _mapa(ids((p) => p.laudo_id), (l) =>
+    tx
+      .select({ id: laudo_tecnico.id, numero: laudo_tecnico.numero_siape })
+      .from(laudo_tecnico)
+      .where(inArray(laudo_tecnico.id, l)),
+  );
+  const demandas = await _mapa(ids((p) => p.entidade_id, "demanda"), (l) =>
+    tx.select({ id: demanda.id, assunto: demanda.assunto }).from(demanda).where(inArray(demanda.id, l)),
+  );
+  const turmas = await _mapa(ids((p) => p.entidade_id, "turma"), (l) =>
+    tx.select({ id: turma.id, codigo: turma.codigo }).from(turma).where(inArray(turma.id, l)),
+  );
+  const certificados = await _mapa(ids((p) => p.entidade_id, "certificado"), (l) =>
+    tx
+      .select({ id: certificado.id, numero: certificado.numero, ano: certificado.ano })
+      .from(certificado)
+      .where(inArray(certificado.id, l)),
+  );
+
+  const resultado = new Map<number, Leitura>();
+  for (const p of itens) {
+    const onde: Ancora[] = [];
+    if (p.processo_id) {
+      const ve = usuario.pode("processo.ver");
+      const nup = processos.get(p.processo_id)?.nup;
+      onde.push({
+        rotulo: ve && nup ? `Processo ${nup}` : "Processo SEI",
+        href: ve ? `/processos/${p.processo_id}` : null,
+      });
+    }
+    if (p.parecer_id) {
+      const ve = usuario.pode("parecer.ver");
+      const pa = pareceres.get(p.parecer_id);
+      onde.push({
+        rotulo: ve && pa ? (pa.numero ? `Parecer ${pa.numero}/${pa.ano}` : `Parecer em rascunho (${pa.ano})`) : "Parecer técnico",
+        href: ve ? `/pareceres/${p.parecer_id}` : null,
+      });
+    }
+    if (p.laudo_id) {
+      const ve = usuario.pode("laudo.ver");
+      const la = laudos.get(p.laudo_id);
+      onde.push({ rotulo: ve && la ? `Laudo ${la.numero}` : "Laudo técnico", href: ve ? `/laudos/${p.laudo_id}` : null });
+    }
+    if (p.entidade && p.entidade_id) {
+      const lugar = Object.hasOwn(_LUGAR_DA_ENTIDADE, p.entidade) ? _LUGAR_DA_ENTIDADE[p.entidade] : undefined;
+      if (lugar) {
+        let numero = String(p.entidade_id);
+        if (p.entidade === "turma") numero = turmas.get(p.entidade_id)?.codigo ?? numero;
+        if (p.entidade === "certificado") {
+          const ce = certificados.get(p.entidade_id);
+          if (ce) numero = `nº ${ce.numero}/${ce.ano}`;
+        }
+        const pode = lugar[3] !== null && usuario.pode(lugar[3]);
+        onde.push({ rotulo: `${lugar[0]} ${numero}`, href: pode ? `${lugar[1]}${p.entidade_id}${lugar[2]}` : null });
+      } else {
+        // entidade que ainda não declarou o seu lugar: diz que há registro, sem
+        // o nome da tabela, que não significa nada para quem lê
+        onde.push({ rotulo: `Registro nº ${p.entidade_id}`, href: null });
+      }
+    }
+
+    let texto: string;
+    if (!p.descricao) texto = "—";
+    else if (pode_ver_nominal(usuario, de_quem.get(p.id) ?? null)) texto = p.descricao;
+    else if (p.entidade === "demanda" && p.entidade_id && usuario.pode("demanda.ver") && demandas.has(p.entidade_id)) {
+      texto = `Demanda: ${demandas.get(p.entidade_id)!.assunto}`;
+    } else {
+      const rotulo = Object.hasOwn(TIPOS, p.tipo) ? TIPOS[p.tipo]![0] : "Tarefa";
+      // o rótulo do lugar em minúscula, como continuação da frase do tipo
+      const complemento = onde.length ? onde[onde.length - 1]!.rotulo : "";
+      texto = complemento ? `${rotulo} — ${complemento.charAt(0).toLowerCase()}${complemento.slice(1)}` : rotulo;
+    }
+    resultado.set(p.id, { texto, onde });
+  }
+  return resultado;
+}
+
 export async function abertas(
   tx: Executor,
   usuario: UsuarioAtual | null = null,
@@ -335,9 +535,16 @@ export async function abertas(
   });
 }
 
-/** Devolve [total abertas, atrasadas]. */
-export async function contar_abertas(tx: Executor, usuario: UsuarioAtual | null = null): Promise<[number, number]> {
-  const itens = await abertas(tx, usuario);
+/**
+ * Devolve [total abertas, atrasadas]. `apenas_minhas`: só as que a regra
+ * atribuiu à conta — é a conta do sino.
+ */
+export async function contar_abertas(
+  tx: Executor,
+  usuario: UsuarioAtual | null = null,
+  apenas_minhas = false,
+): Promise<[number, number]> {
+  const itens = await abertas(tx, usuario, apenas_minhas);
   const hoje = hoje_iso();
   return [itens.length, itens.filter((p) => atrasada(p, hoje)).length];
 }
@@ -345,12 +552,16 @@ export async function contar_abertas(tx: Executor, usuario: UsuarioAtual | null 
 // ---------------------------------------------------------------------
 // Ligação com a casca (`web.ts`): o sino do topo é esta regra.
 // ---------------------------------------------------------------------
+// O sino conta as pendências DA PESSOA (responsável = a conta), e não a fila do
+// setor: um número que é o mesmo para todo mundo ("40" em toda tela) deixa de
+// ser aviso pessoal. A fila inteira continua em /pendencias; o sino leva a
+// /pendencias?minhas=1, que é exatamente o que ele contou.
 ganchos.podeVerPendencias = (usuario) => pode_ver(usuario);
 ganchos.sino = async (c, usuario) => {
   const lidas = c.get("sino_antecipado");
-  if (!lidas) return contar_abertas(c.get("tx"), usuario);
-  // o mesmo recorte de `no_escopo`, aplicado às linhas já lidas
-  const itens = usuario.escopo === ESCOPO_PROPRIO ? lidas.filter((p) => p.responsavel_id === usuario.id) : lidas;
+  if (!lidas) return contar_abertas(c.get("tx"), usuario, true);
+  // as linhas já lidas, no mesmo recorte de `abertas(..., apenas_minhas)`
+  const itens = lidas.filter((p) => p.responsavel_id === usuario.id);
   const hoje = hoje_iso();
   return [itens.length, itens.filter((p) => atrasada(p, hoje)).length];
 };

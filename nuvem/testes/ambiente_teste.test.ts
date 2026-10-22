@@ -49,5 +49,15 @@ describe("ambiente de teste", () => {
       expect(r.status, login).toBe(303);
       expect(r.location, login).toBe("/inicio");
     }
+
+    // M71: a governança de acesso tem conta de teste — o superintendente
+    // concede perfil e atesta habilitação, e abre /usuarios com "Conceder perfil"
+    expect(CONTAS.some(([login, perfil]) => login === "superintendente" && perfil === "superintendente")).toBe(true);
+    const sup = novoCliente();
+    await sup.post("/login", { login: "superintendente", senha: SENHA }, { seguir: false });
+    const usuarios = await sup.get("/usuarios");
+    expect(usuarios.status).toBe(200);
+    expect(usuarios.text).toContain("Conceder perfil");
+    expect(usuarios.text).toContain("Atestar habilitação");
   });
 });

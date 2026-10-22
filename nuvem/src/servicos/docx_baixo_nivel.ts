@@ -1,6 +1,6 @@
 /**
  * O que o `docxtpl` e o `python-docx` faziam por baixo do `documento.py`, e o
- * docxtemplater não faz do mesmo jeito. Três peças:
+ * docxtemplater não faz do mesmo jeito. Quatro peças:
  *
  * 1. **Conversão de modelo** (`converter_modelo_docxtpl`): os `.docx` do
  *    sistema foram escritos para o docxtpl (Jinja2 dentro do Word:
@@ -20,6 +20,9 @@
  *    / `tables` / `header` / `footer` do python-docx, com as mesmas regras de
  *    célula mesclada — o `hash_conteudo` e o CA-01 dependem de o texto sair
  *    igual.
+ * 4. **Tarja** (`carimbar_tarja`): o parágrafo em destaque no topo do corpo,
+ *    posto DEPOIS do render — o do certificado anulado. Não entra no hash,
+ *    que é calculado antes.
  */
 import PizZip from "pizzip";
 
@@ -586,4 +589,29 @@ export function extrair_texto_docx(bytes: Uint8Array): string {
     }
   });
   return linhas.join("\n").normalize("NFC");
+}
+
+// =====================================================================
+// 4. Tarja
+// =====================================================================
+function _escapar_xml(texto: string): string {
+  return texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Um parágrafo em destaque (fundo vermelho, letra branca e negrito) no começo
+ * do corpo do .docx já renderizado. Serve ao certificado anulado: o Word sai
+ * dizendo, antes de tudo, que não vale.
+ */
+export function carimbar_tarja(bytes: Uint8Array, texto: string): Uint8Array {
+  const zip = new PizZip(bytes);
+  const parte = zip.file("word/document.xml");
+  if (!parte) return bytes;
+  const paragrafo =
+    '<w:p><w:pPr><w:shd w:val="clear" w:color="auto" w:fill="B71717"/><w:spacing w:before="0" w:after="160"/>' +
+    '<w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="28"/></w:rPr>' +
+    `<w:t xml:space="preserve">${_escapar_xml(texto)}</w:t></w:r></w:p>`;
+  const xml = parte.asText().replace(/<w:body>/, `<w:body>${paragrafo}`);
+  zip.file("word/document.xml", xml);
+  return zip.generate({ type: "uint8array", compression: "DEFLATE" });
 }

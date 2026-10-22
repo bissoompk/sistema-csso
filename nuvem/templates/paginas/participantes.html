@@ -3,8 +3,13 @@
 {% block titulo %}Participantes · CSSO{% endblock %}
 
 {# A tabela de um grupo: escolhe quem fica (rádio) e quem se junta a ele
-   (caixa). Cada grupo é um formulário próprio, com o seu motivo. #}
-{% macro grupo(fichas, sugerido, alvo, volta, rotulo_vinculo) %}
+   (caixa). Cada grupo é um formulário próprio, com o seu motivo. Os cadastros
+   ficam um sob o outro, coluna a coluna, e o que cada um tem de DIFERENTE do
+   sugerido para ficar vem marcado (`difere`, calculado na rota). #}
+{% macro valor(texto, marcado) -%}
+{%- if marcado %}<mark title="difere entre os cadastros">{{ texto }}</mark>{% else %}{{ texto }}{% endif -%}
+{%- endmacro %}
+{% macro grupo(fichas, sugerido, alvo, volta, rotulo_vinculo, difere) %}
 <form method="post" action="/treinamentos/participantes/mesclar" class="cartao liso">
   <input type="hidden" name="volta" value="{{ volta }}">
   <div class="tabela-cartao lista">
@@ -15,16 +20,17 @@
           <th scope="col">Inscrições</th><th scope="col">Certificados</th></tr>
     </thead>
     {% for f in fichas %}
+    {% set d = difere[f.id] or {} %}
     <tr>
       <td><input type="radio" name="mantido_id" value="{{ f.id }}" aria-label="Manter {{ f.identificador }}"
                  {% if f.id == sugerido %}checked{% endif %} required></td>
       <td><input type="checkbox" name="absorvido_id" value="{{ f.id }}" aria-label="Juntar {{ f.identificador }}"
                  {% if f.id != sugerido and alvo == 'grupo' %}checked{% endif %}></td>
-      <td class="nome">{{ f.nome }}
-        {% if f.organizacao %}<span class="quebra discreto">{{ f.organizacao }}</span>{% endif %}</td>
+      <td class="nome">{{ valor(f.nome, d.nome) }}
+        {% if f.organizacao %}<span class="quebra discreto">{{ valor(f.organizacao, d.organizacao) }}</span>{% endif %}</td>
       <td class="mono">{{ f.identificador }}{% if f.siape %}<span class="quebra discreto">SIAPE {{ f.siape }}</span>{% endif %}</td>
-      <td>{{ rotulo_vinculo[f.vinculo] or f.vinculo }}</td>
-      <td>{{ f.emails|join(', ') or '—' }}</td>
+      <td>{{ valor(rotulo_vinculo[f.vinculo] or f.vinculo, d.vinculo) }}</td>
+      <td>{{ valor(f.emails|join(', ') or '—', d.emails) }}</td>
       <td class="mono">{{ f.inscricoes }}</td>
       <td class="mono">{{ f.certificados }}</td>
     </tr>
@@ -60,28 +66,34 @@
     </div>
   </div>
 
-  <form method="get" action="/treinamentos/participantes" class="filtro-inline">
-    <label class="oculto" for="busca-participante">Procurar participante</label>
-    <input id="busca-participante" type="search" name="busca" value="{{ busca }}"
-           placeholder="nome, SIAPE, e-mail ou PTC-…">
-    <button type="submit" class="secundario">Procurar</button>
-    {% if busca %}<a class="botao secundario" href="/treinamentos/participantes">ver os possíveis duplicados</a>{% endif %}
-  </form>
+  {# A lista abre nos possíveis duplicados; a busca é para o par que o sistema
+     não achou sozinho (nomes diferentes da mesma pessoa). #}
+  <div class="fileira">
+    {% if termo %}<a class="ficha-filtro" href="/treinamentos/participantes">Possíveis duplicados</a>
+    {% else %}<span class="ficha-filtro ativa" aria-current="page">Possíveis duplicados <span class="conta">{{ grupos|length }}</span></span>{% endif %}
+    <form method="get" action="/treinamentos/participantes" class="filtro-inline">
+      <label class="oculto" for="busca-participante">Procurar participante</label>
+      <input id="busca-participante" type="search" name="busca" value="{{ termo }}"
+             placeholder="nome, SIAPE, e-mail ou PTC-…">
+      <button type="submit" class="secundario">Procurar</button>
+    </form>
+  </div>
 
-  {% if busca %}
+  {% if termo %}
   <h2>Resultado da busca</h2>
   {% if achados.length > 1 %}
-  <p class="discreto">Marque quem fica e quem se junta a ele.</p>
-  {{ grupo(achados, sugerido_achados, 'busca', '/treinamentos/participantes?busca=' ~ (busca|urlencode), rotulo_vinculo) }}
+  <p class="discreto">Marque quem fica e quem se junta a ele. O que difere do sugerido para ficar vem marcado.</p>
+  {{ grupo(achados, sugerido_achados, 'busca', '/treinamentos/participantes?busca=' ~ (termo|urlencode), rotulo_vinculo, difere_achados) }}
   {% elif achados.length == 1 %}
-  <p class="discreto">Só um cadastro com “{{ busca }}”. Para juntar, procure por um termo que traga os dois.</p>
+  <p class="discreto">Só um cadastro com “{{ termo }}”. Para juntar, procure por um termo que traga os dois.</p>
   {% else %}
-  <p class="discreto">Nenhum cadastro com “{{ busca }}”.</p>
+  <p class="discreto">Nenhum cadastro com “{{ termo }}”.</p>
   {% endif %}
   {% else %}
   <h2>Possíveis duplicados</h2>
+  {% if grupos|length %}<p class="discreto">Cada grupo são cadastros com o mesmo nome ou o mesmo e-mail. O que cada um tem de diferente do sugerido para ficar vem marcado.</p>{% endif %}
   {% for g in grupos %}
-  {{ grupo(g.fichas, g.sugerido, 'grupo', '/treinamentos/participantes', rotulo_vinculo) }}
+  {{ grupo(g.fichas, g.sugerido, 'grupo', '/treinamentos/participantes', rotulo_vinculo, g.difere) }}
   {% else %}
   <div class="vazio">
     <strong>Nenhum cadastro com nome ou e-mail repetido</strong>

@@ -45,6 +45,7 @@ import { setor_emissor_vigente } from "./parecer.js";
 import { declarar_porta } from "./anexo_acesso.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { RegraViolada } from "../nucleo/erros.js";
+import { EpiItem as DominioItem } from "../dominio/epi.js";
 import type { epi_item, epi_motivo_recusa } from "../db/esquema/index.js";
 
 export type EpiFichaRegistro = typeof epi_ficha_registro.$inferSelect;
@@ -789,6 +790,27 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
   textos.exigir_texto_limpo(observacao, "observação da entrega");
   textos.exigir_texto_limpo(justificativa_excecao, "justificativa da exceção");
 
+  // Data futura seria prova de um fato que ainda não aconteceu. A rota do
+  // balcão já recusava; a entrega pela requisição chegava aqui sem a conferência.
+  if (quando > datas_br.hoje()) throw new EntregaBloqueada(["a entrega não pode ter data futura"]);
+
+  // O tamanho da ficha é o da caixa que saiu. Com lote, ele HERDA o tamanho do
+  // lote; digitado diferente, a entrega é recusada — antes a ficha dizia G e o
+  // extrato do lote M baixava uma unidade, e ficha e prateleira divergiam.
+  const digitado = (d.tamanho ?? "").trim();
+  const do_lote = entrada?.tamanho?.trim() || "";
+  if (entrada && do_lote && digitado && digitado !== do_lote) {
+    throw new EntregaBloqueada([
+      `o lote ${entrada.lote || "sem número"} é do tamanho ${do_lote}, e a entrega diz ${digitado}: ` +
+        "escolha o lote do tamanho certo, ou deixe o tamanho em branco para usar o do lote",
+    ]);
+  }
+  const tamanho = do_lote || digitado;
+  const tamanhos = DominioItem.lista_de_tamanhos(item);
+  if (!entrada && tamanho && tamanhos.length && !tamanhos.includes(tamanho)) {
+    throw new EntregaBloqueada([`'${tamanho}' não é um dos tamanhos de '${item.nome}': ${tamanhos.join(", ")}`]);
+  }
+
   const validacao = await validar(tx, { servidor, item, entrada, quantidade, quando, justificativa_excecao });
   if (!validacao.ok) throw new EntregaBloqueada(validacao.bloqueios, validacao.item_a_corrigir);
 
@@ -799,7 +821,7 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
     item,
     entrada,
     quantidade,
-    tamanho: d.tamanho ?? "",
+    tamanho,
     quando,
     tipo,
     entregue_por: usuario.nome,
@@ -1013,7 +1035,7 @@ export async function registrar_devolucao(
   } else if (quando < registro.data_evento) {
     bloqueios.push(
       "a devolução é anterior à entrega: confira a data, porque a ficha é " +
-        "append-only e a linha não se corrige depois",
+        "definitiva e a linha não se corrige depois",
     );
   }
   if (registro.tipo === "ENTREGA") {
@@ -1171,6 +1193,22 @@ async function _hash_da_primeira_impressao(tx: Executor, registro: EpiFichaRegis
 }
 
 /**
+ * O tipo do arquivo pelos PRIMEIROS BYTES, e não pela extensão nem pelo que o
+ * navegador declara: `File.type` sai do nome, e um texto chamado `falso.pdf`
+ * entrava como `application/pdf` e virava prova de entrega permanente. Os três
+ * formatos que um digitalizado tem: PDF (`%PDF-`), PNG e JPEG. Outro qualquer é
+ * `null`.
+ */
+export function tipo_do_comprovante(conteudo: Uint8Array): string | null {
+  const comeca = (assinatura: number[]) =>
+    conteudo.byteLength >= assinatura.length && assinatura.every((b, i) => conteudo[i] === b);
+  if (comeca([0x25, 0x50, 0x44, 0x46, 0x2d])) return "application/pdf";
+  if (comeca([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image/png";
+  if (comeca([0xff, 0xd8, 0xff])) return "image/jpeg";
+  return null;
+}
+
+/**
  * O papel assinado, digitalizado, com SHA-256 — e a janela se fecha.
  * `FICHA_EPI` é guarda permanente e nasce `RESTRITO`. A coluna se preenche
  * uma vez: a trava aceita nulo → valor e recusa a troca.
@@ -1184,22 +1222,31 @@ export async function anexar_comprovante(
   usuario.exigir("epi.entregar");
   if (registro.comprovante_anexo_id !== null) {
     throw new EntregaBloqueada([
-      `o registro ${registro.id} já tem comprovante anexado. Trocar a ` +
-        "prova de uma entrega registrada é estorno, não substituição de " +
-        "arquivo",
+      `o registro ${registro.id} já tem comprovante anexado, e o comprovante não se troca: ` +
+        "se o arquivo está errado, estorne a entrega e registre-a de novo",
     ]);
   }
   if (registro.tipo === "ESTORNO") {
     throw new EntregaBloqueada(["estorno não tem comprovante: o papel assinado é o da entrega"]);
   }
   if (!d.conteudo || !d.conteudo.byteLength) throw new EntregaBloqueada(["o arquivo do comprovante veio vazio"]);
+  // A conferência vem ANTES de guardar, porque a coluna só se preenche uma vez
+  // (trava de banco): arquivo errado aceito aqui não se troca depois.
+  const tipo = tipo_do_comprovante(d.conteudo);
+  if (tipo === null) {
+    throw new EntregaBloqueada([
+      "o arquivo enviado não é um PDF nem uma imagem PNG ou JPEG. Confira se escolheu o " +
+        "comprovante digitalizado — nada foi anexado",
+    ]);
+  }
 
   const resultado = await anexos.guardar(tx, {
     entidade: ENTIDADE,
     entidade_id: registro.id,
     nome_original: d.nome_original,
     conteudo: d.conteudo,
-    mime_type: d.mime_type,
+    // o tipo dos bytes, e não o que o navegador disse
+    mime_type: tipo,
     categoria: CATEGORIA_ANEXO,
     usuario,
     assinado: true,

@@ -25,8 +25,7 @@
            value="{{ dg.get('quantidade') or item.quantidade_padrao }}" aria-describedby="dica-quantidade">
     <span class="dica" id="dica-quantidade">
       Padrão do catálogo: {{ item.quantidade_padrao }} {{ item.unidade_medida|lower }}.
-      Máximo: {{ item.regra_de_quantidade }} — contado pelo que a
-      <strong>ficha</strong> registra, não por pedidos aprovados (RN-26).</span>
+      Máximo: {{ item.regra_de_quantidade }}, contado pelo que já foi entregue.</span>
   </div>
 
   <div class="campo">
@@ -63,9 +62,9 @@
   <textarea id="justificativa" name="justificativa" rows="2" required
             aria-describedby="dica-justificativa">{{ dg.get('justificativa') or '' }}</textarea>
   <span class="dica" id="dica-justificativa">O catálogo marca este item como
-    “exige justificativa”. Diga por que ele é necessário neste posto — o envio
-    recusa a linha sem isso (RN-29). Nada sobre a saúde de quem vai usar: o
-    sistema recusa o texto (RN-21).</span>
+    “exige justificativa”. Diga por que ele é necessário no seu trabalho — o
+    pedido não é enviado sem isso. Nada sobre a saúde de quem vai usar: o
+    sistema recusa o texto.</span>
 </div>
 {% else %}
 <div class="campo">
@@ -73,7 +72,7 @@
   <textarea id="justificativa" name="justificativa" rows="2"
             aria-describedby="dica-justificativa">{{ dg.get('justificativa') or '' }}</textarea>
   <span class="dica" id="dica-justificativa">Ajuda quem vai analisar. Nada sobre
-    a saúde de quem vai usar: o sistema recusa o texto (RN-21).</span>
+    a saúde de quem vai usar: o sistema recusa o texto.</span>
 </div>
 {% endif %}
 

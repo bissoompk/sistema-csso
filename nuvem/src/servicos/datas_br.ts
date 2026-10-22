@@ -14,6 +14,7 @@
  * de exibição é America/Sao_Paulo.
  */
 import { FUSO_NEGOCIO, hoje_iso } from "../dominio/datas.js";
+import { RegraViolada } from "../nucleo/erros.js";
 
 export const MESES: readonly string[] = [
   "janeiro",
@@ -268,4 +269,65 @@ export function comoData(valor: unknown): Data | null {
   if (valor instanceof Date) return data_local(valor);
   const m = RE_ISO.exec(String(valor));
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+// ---------------------------------------------------------------------
+// Datas que chegam de formulário. Regra uniforme do sistema: data de fato
+// ocorrido (autuação, emissão de laudo, chegada e desfecho de demanda,
+// presença, entrega) não passa de hoje no fuso de negócio; data planejada pode
+// ser futura, mas tem de existir e ser coerente com as demais. A recusa é
+// sempre em português — nunca o "Invalid isoformat string" do conversor.
+// ---------------------------------------------------------------------
+const RE_FORM_NUMERICA = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+const RE_FORM_ISO = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+
+/**
+ * Lê a data de um campo de formulário: aceita `dd/mm/aaaa` (digitada ou
+ * colada) e `AAAA-MM-DD` (o que o `<input type="date">` envia). Vazio é
+ * `null` — se o campo é obrigatório, quem chama decide. Formato estranho ou
+ * data inexistente (31/02, mês 13) é `RegraViolada` com o rótulo do campo.
+ */
+export function ler_data_formulario(valor: unknown, rotulo: string): Data | null {
+  if (valor === null || valor === undefined) return null;
+  const bruto = String(valor).trim();
+  if (!bruto) return null;
+  let partes_lidas: [number, number, number] | null = null;
+  let m = RE_FORM_NUMERICA.exec(bruto);
+  if (m) partes_lidas = [Number(m[3]), Number(m[2]), Number(m[1])];
+  m = RE_FORM_ISO.exec(bruto);
+  if (m) partes_lidas = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const [ano, mes, dia] = partes_lidas ?? [NaN, NaN, NaN];
+  // ano de quatro dígitos a partir de 1900: "0026" é erro de digitação, não ano
+  if (partes_lidas && ano >= 1900) {
+    try {
+      return montar(ano, mes, dia);
+    } catch {
+      // cai na recusa abaixo
+    }
+  }
+  throw new RegraViolada(`${rotulo}: data inválida — use dd/mm/aaaa.`);
+}
+
+/** Data de fato ocorrido: não pode ser depois de hoje (fuso de negócio). */
+export function exigir_ate_hoje(data: Data, rotulo: string, referencia: Data = hoje()): void {
+  if (data > referencia) {
+    throw new RegraViolada(`${rotulo} não pode ser posterior a hoje.`);
+  }
+}
+
+/**
+ * O fim não vem antes do início (no mesmo dia vale). O rótulo do início entra
+ * em minúscula no meio da frase, com a contração certa: "Data de chegada" →
+ * "anterior à data de chegada"; "o início" → "anterior ao início"; "a entrega"
+ * → "anterior à entrega"; sem artigo, só "a".
+ */
+export function exigir_ordem(inicio: Data, fim: Data, rotulo_inicio: string, rotulo_fim: string): void {
+  if (fim < inicio) {
+    const alvo = rotulo_inicio.charAt(0).toLowerCase() + rotulo_inicio.slice(1);
+    let complemento = `a ${alvo}`;
+    if (/^data\b/.test(alvo)) complemento = `à ${alvo}`;
+    else if (alvo.startsWith("o ")) complemento = `ao ${alvo.slice(2)}`;
+    else if (alvo.startsWith("a ")) complemento = `à ${alvo.slice(2)}`;
+    throw new RegraViolada(`${rotulo_fim} não pode ser anterior ${complemento}.`);
+  }
 }

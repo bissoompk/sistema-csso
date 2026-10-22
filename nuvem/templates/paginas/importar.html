@@ -47,6 +47,9 @@
             não duplica o que já entrou.</p>
         {% endcall %}
       </div>
+      {# A recusa do arquivo volta para o formulário de onde ele saiu: é aqui que
+         se escolhe outro e se manda de novo. #}
+      {% if erro_planilha %}<div class="aviso aviso-erro" role="alert">{{ erro_planilha }}</div>{% endif %}
       <form method="post" action="/importar/planilha" enctype="multipart/form-data">
         <div class="zona-arquivo">
           <label for="arq-planilha">Arquivo da planilha</label>
@@ -74,6 +77,7 @@
          URLs do Trello expiram. É a decisão do clique, não explicação. #}
       <p class="discreto">Sem marcar o download, cada anexo entra no relatório de
          perdidos com a URL, para você buscar antes que expire.</p>
+      {% if erro_trello %}<div class="aviso aviso-erro" role="alert">{{ erro_trello }}</div>{% endif %}
       <form method="post" action="/importar/trello" enctype="multipart/form-data">
         <div class="zona-arquivo">
           <label for="arq-trello">Arquivo exportado do quadro</label>

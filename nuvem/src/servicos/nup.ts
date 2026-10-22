@@ -105,3 +105,20 @@ export function extrair(texto: string | null | undefined): string[] {
   if (!texto) return [];
   return texto.match(/23086\.\d{6}\/\d{4}-\d{2}/g) ?? [];
 }
+
+/**
+ * O termo de busca que é um NUP inteiro colado sem pontuação vira o NUP
+ * formatado — é como o SEI copia (M66). Só quando o termo é inteiro de dígitos
+ * e separadores e tem os 17 dígitos: qualquer outra coisa (nome, trecho de
+ * observação, NUP parcial) segue como veio. Serve à busca global e à lista de
+ * /processos, para as duas acharem o mesmo processo pelo mesmo texto.
+ */
+export function termo_de_busca(q: string): string {
+  const texto = q.trim();
+  if (!/^[\d.\/\-\s]+$/.test(texto) || texto.replace(/\D/g, "").length !== 17) return q;
+  try {
+    return normalizar(texto);
+  } catch {
+    return q;
+  }
+}

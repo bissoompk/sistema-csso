@@ -12,7 +12,7 @@
  * `unidade`, `uorg`, `cargo` e `postos` carregados (a `@property postos` do
  * Python vira um campo pronto), porque o template não consulta nada sozinho.
  */
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   cargo as tabela_cargo,
@@ -74,6 +74,42 @@ export async function buscar(tx: Executor, q: string | null | undefined, usuario
 
 /** Mudança de lotação que quebraria a linha do tempo (o `ValueError` do Python). */
 export class LotacaoInvalida extends RegraViolada {}
+
+/** O vocabulário da situação funcional — o mesmo `<select>` da ficha. */
+export const SITUACOES_SERVIDOR = ["ATIVO", "APOSENTADO", "EXONERADO", "CEDIDO", "LICENCA"] as const;
+
+const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * O e-mail do cadastro, conferido (D70): formato de endereço e sem repetir o de
+ * outro servidor. O e-mail é o que liga a conta ao servidor
+ * (`_unico_pelo_email` em `rotas/usuarios.ts`): repetido, o vínculo automático
+ * deixa de funcionar para os DOIS. Vazio é ausência (`null`). A recusa cita o
+ * SIAPE, que vale para todo mundo (RN-19), e não o nome.
+ */
+export async function conferir_email(
+  tx: Executor,
+  bruto: string | null | undefined,
+  exceto_id: number | null = null,
+): Promise<string | null> {
+  const email = (bruto ?? "").trim();
+  if (!email) return null;
+  if (!RE_EMAIL.test(email)) {
+    throw new LotacaoInvalida(`“${email}” não é um e-mail: o formato é nome@ufvjm.edu.br`);
+  }
+  const condicao = sql`lower(${tabela_servidor.email}) = lower(${email})`;
+  const [ja] = await tx
+    .select({ siape: tabela_servidor.siape })
+    .from(tabela_servidor)
+    .where(exceto_id === null ? condicao : and(condicao, ne(tabela_servidor.id, exceto_id)));
+  if (ja) {
+    throw new LotacaoInvalida(
+      `o e-mail ${email} já está no cadastro do servidor SIAPE ${ja.siape} — é o e-mail que liga a conta ` +
+        "ao servidor, e repetido não liga nenhum dos dois",
+    );
+  }
+  return email;
+}
 
 export interface Alteracao {
   campo: string;
@@ -220,6 +256,19 @@ export async function atualizar_cadastro(
   const limpo = (d.siape ?? "").replace(/\D/g, "");
   if (!/^\d{7}$/.test(limpo)) throw new LotacaoInvalida("a matrícula SIAPE tem exatamente 7 dígitos");
   if (!(d.nome ?? "").trim()) throw new LotacaoInvalida("o nome não pode ficar em branco");
+  // D71: a situação vem de um <select>, mas o POST forjado gravava "XPTO"
+  const situacao = d.situacao || "ATIVO";
+  if (!(SITUACOES_SERVIDOR as readonly string[]).includes(situacao)) {
+    throw new LotacaoInvalida("escolha a situação na lista (ativo, aposentado, exonerado, cedido ou licença)");
+  }
+  // O e-mail só é conferido quando MUDA: o cadastro antigo com e-mail repetido
+  // (ou fora do formato) não pode travar a correção do nome ou da situação —
+  // quem corrige o e-mail passa pela conferência.
+  const email_digitado = (d.email ?? "").trim();
+  const email =
+    email_digitado.toLowerCase() === (servidor.email ?? "").trim().toLowerCase()
+      ? email_digitado || null
+      : await conferir_email(tx, email_digitado, servidor.id);
 
   if (limpo !== servidor.siape) {
     const [ja] = await tx
@@ -233,8 +282,8 @@ export async function atualizar_cadastro(
   const depois = {
     nome: d.nome.trim(),
     siape: limpo,
-    email: (d.email ?? "").trim() || null,
-    situacao: d.situacao || "ATIVO",
+    email,
+    situacao,
   };
   const [gravado] = await tx.update(tabela_servidor).set(depois).where(eq(tabela_servidor.id, servidor.id)).returning();
   Object.assign(servidor, depois);

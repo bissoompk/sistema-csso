@@ -34,17 +34,29 @@
       <span class="nota a-direita">{{ p.permissoes|length }} permissões</span>
     </div>
     {% if p.base_normativa %}<p class="discreto">{{ p.base_normativa }}</p>{% endif %}
-    <div class="fileira">
-      {% for perm in p.permissoes %}
-      {# `parecer.assinar` sai em alerta porque é a única permissão do sistema
-         que não basta sozinha: sem habilitação técnica vigente ela não assina
-         nada, e quem concede o perfil precisa ver isso aqui. #}
-      <span class="pilula sem-ponto {{ 'alerta' if perm.codigo == 'parecer.assinar' }}"
-            title="{{ perm.descricao or perm.codigo }}">{{ perm.codigo }}</span>
-      {% else %}
-      <span class="discreto">Nenhuma permissão — o perfil existe e não abre nada.</span>
-      {% endfor %}
+    {# Agrupadas como quem concede perfil pensa, e escritas em português (M75):
+       a matriz é lida por gestor, e "epi.requisitar" não diz nada a quem não
+       escreveu o código. O código continua ao lado, em mono discreto — é o que
+       aparece na mensagem de 403 e na conversa com a TI. #}
+    {% for g in p.grupos %}
+    <div class="corpo">
+      <h3>{{ g.rotulo }}</h3>
+      <div class="fileira">
+        {% for perm in g.itens %}
+        {# `parecer.assinar` sai em alerta porque é a única permissão do sistema
+           que não basta sozinha: sem habilitação técnica vigente ela não assina
+           nada, e quem concede o perfil precisa ver isso aqui. #}
+        <span class="pilula sem-ponto {{ 'alerta' if perm.codigo == 'parecer.assinar' }}"
+              title="{{ perm.codigo }}">{{ perm.texto }}
+          <span class="mono discreto">{{ perm.codigo }}</span></span>
+        {% endfor %}
+      </div>
     </div>
+    {% else %}
+    <div class="fileira">
+      <span class="discreto">Nenhuma permissão — o perfil existe e não abre nada.</span>
+    </div>
+    {% endfor %}
     {% if 'parecer.assinar' in p.permissoes|map(attribute='codigo')|list %}
     <p class="discreto rodape-cartao sem-margem">
       <code>parecer.assinar</code> só funciona somada a habilitação técnica vigente

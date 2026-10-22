@@ -45,7 +45,7 @@ import {
   exigir_transicao_inscricao,
   exigir_transicao_turma,
 } from "../dominio/estados.js";
-import { AssinaturaInstrutor, Turma as T } from "../dominio/treinamento.js";
+import { AssinaturaInstrutor, ROTULO_INSCRICAO_TELA, Turma as T } from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
 import * as avisos_inscricao from "./avisos_inscricao.js";
@@ -224,8 +224,31 @@ export async function vagas_restantes(tx: Executor, turma: TurmaRegistro): Promi
 // ---------------------------------------------------------------------
 // Turma
 // ---------------------------------------------------------------------
-function _conferir_periodo(data_inicio: string, data_fim: string): void {
+/** Exportada para a rota da retificação conferir o período antes das outras travas. */
+export function conferir_periodo(data_inicio: string, data_fim: string): void {
   if (data_fim < data_inicio) throw new RegraDaTurma("O fim da turma não pode ser anterior ao início.");
+}
+
+/**
+ * O prazo de inscrição é planejamento, e por isso pode ser futuro — mas não
+ * depois do início: o link ou o pedido próprio que aceita gente com a turma já
+ * acontecendo é o que deixava o cartaz "inscrições até 01/12" numa turma de
+ * 21/10. `novo` diz se o prazo foi digitado agora: o prazo antigo que já passou
+ * não é recusado a cada edição da turma.
+ */
+function _conferir_prazo_de_inscricao(
+  d: { data_inicio: string; inscricao_aberta_ate: string | null },
+  novo: boolean,
+): void {
+  const ate = d.inscricao_aberta_ate;
+  if (ate === null) return;
+  if (novo && ate < datas_br.hoje()) throw new RegraDaTurma("O prazo de inscrição já passou.");
+  if (ate > d.data_inicio) {
+    throw new RegraDaTurma(
+      `As inscrições têm de fechar até o início da turma (${datas_br.numerica(d.data_inicio)}), ` +
+        `e não em ${datas_br.numerica(ate)}.`,
+    );
+  }
 }
 
 function _conferir_numeros(d: {
@@ -278,7 +301,8 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
   if (!treinamento.ativo) {
     throw new RegraDaTurma(`'${treinamento.nome}' está inativo no catálogo — reative-o antes de abrir turma.`);
   }
-  _conferir_periodo(d.data_inicio, d.data_fim);
+  conferir_periodo(d.data_inicio, d.data_fim);
+  _conferir_prazo_de_inscricao({ data_inicio: d.data_inicio, inscricao_aberta_ate: d.inscricao_aberta_ate ?? null }, true);
   const frequencia = d.frequencia_minima_percentual ?? "75";
   _conferir_numeros({
     carga_horaria_horas: d.carga_horaria_horas ?? null,
@@ -363,7 +387,16 @@ export async function editar_turma(
     (k in campos ? campos[k] : turma[k]) as TurmaRegistro[K];
   const novo_inicio = valor("data_inicio");
   const novo_fim = valor("data_fim");
-  _conferir_periodo(novo_inicio, novo_fim);
+  conferir_periodo(novo_inicio, novo_fim);
+  // a turma concluída (retificação) não tem mais prazo de inscrição a respeitar;
+  // e o prazo só se confere quando ele ou o início mudam — a turma antiga com o
+  // prazo depois do início não trava a correção do local (o link e o pedido
+  // próprio dela já fecham no início, `aberta_a_pedido_proprio`)
+  const ate = valor("inscricao_aberta_ate");
+  const prazo_mudou = ate !== turma.inscricao_aberta_ate;
+  if (!opcoes.concluida && (prazo_mudou || novo_inicio !== turma.data_inicio)) {
+    _conferir_prazo_de_inscricao({ data_inicio: novo_inicio, inscricao_aberta_ate: ate }, prazo_mudou);
+  }
   const ano_novo = datas_br.partes(novo_inicio)[0];
   if (ano_novo !== turma.ano) {
     // o número foi tirado da sequência de `turma.ano` e o código está no cartaz
@@ -440,10 +473,14 @@ export async function mudar_situacao(
         "perguntar depois por que a turma não aconteceu.",
     );
   }
-  if (origem === "PLANEJADA" && destino === "CONCLUIDA" && turma.data_fim > datas_br.hoje()) {
+  // concluir libera o certificado, que atesta um curso que TERMINOU: vale para
+  // qualquer origem, e não só para o atalho de planejada direto a concluída
+  if (destino === "CONCLUIDA" && turma.data_fim > datas_br.hoje()) {
     throw new RegraDaTurma(
-      `${turma.codigo} termina em ${datas_br.numerica(turma.data_fim)}: de planejada só se conclui ` +
-        "turma que já aconteceu. Passe-a para em andamento quando começar.",
+      `${turma.codigo} termina em ${datas_br.numerica(turma.data_fim)}: só se conclui turma que já aconteceu.` +
+        (origem === "PLANEJADA"
+          ? " Passe-a para em andamento quando começar."
+          : " Lance a presença de cada dia e conclua a partir dessa data."),
     );
   }
   if (destino === "INSCRICOES_ABERTAS" && turma.data_fim < datas_br.hoje()) {
@@ -563,7 +600,14 @@ export async function excluir_turma(
   }
   const motivos = await impedimentos_da_exclusao(tx, turma);
   if (motivos.length) {
-    throw new RegraDaTurma(`${turma.codigo} não pode ser excluída: ${motivos.join("; ")}. Cancele a turma, com o motivo.`);
+    // a saída depende de onde a turma está: só se cancela a que ainda pode ser cancelada
+    const saida =
+      turma.situacao === "CANCELADA"
+        ? " Ela já está cancelada, e o cancelamento guarda o motivo."
+        : turma.situacao === "CONCLUIDA"
+          ? " Turma concluída fica no histórico: dado errado nela se corrige em “Corrigir dados da turma”."
+          : " Cancele a turma, com o motivo.";
+    throw new RegraDaTurma(`${turma.codigo} não pode ser excluída: ${motivos.join("; ")}.${saida}`);
   }
   const inscricoes = await tx
     .select({ id: tabela_inscricao.id })
@@ -687,18 +731,48 @@ export async function desvincular_instrutor(
 // ---------------------------------------------------------------------
 // Inscrição
 // ---------------------------------------------------------------------
-/** A mesma pessoa não entra duas vezes na mesma turma (a mensagem útil de `uq_inscricao`). */
-async function _conferir_inscricao_unica(tx: Executor, turma: TurmaRegistro, participante: ParticipanteCarregado) {
+/**
+ * A mesma pessoa não entra duas vezes na mesma turma (a mensagem útil de
+ * `uq_inscricao`). `proprio`: quem pede é o titular, e a frase fala com ele —
+ * "Fulano já consta como cancelada" não diz ao servidor que foi ele quem
+ * desistiu, nem o que fazer agora.
+ */
+async function _conferir_inscricao_unica(
+  tx: Executor,
+  turma: TurmaRegistro,
+  participante: ParticipanteCarregado,
+  proprio = false,
+) {
   const [ja] = await tx
     .select()
     .from(tabela_inscricao)
     .where(and(eq(tabela_inscricao.turma_id, turma.id), eq(tabela_inscricao.participante_id, participante.id)));
-  if (ja) {
-    throw new RegraDaTurma(
-      `${nome_exibicao(participante)} já consta em ${turma.codigo} como ` +
-        `${(ROTULO_INSCRICAO[ja.situacao] ?? ja.situacao).toLowerCase()}.`,
-    );
+  if (!ja) return;
+  if (proprio) throw new RegraDaTurma(frase_da_minha_inscricao(ja.situacao, turma.codigo));
+  throw new RegraDaTurma(
+    `${nome_exibicao(participante)} já consta em ${turma.codigo} como ` +
+      `${(ROTULO_INSCRICAO[ja.situacao] ?? ja.situacao).toLowerCase()}.`,
+  );
+}
+
+/**
+ * Onde o titular está numa turma, dito a ele — a mesma frase na coluna de
+ * "Meus treinamentos" e na recusa do "inscrever-me". A desistência é definitiva
+ * nesta turma (`desistir`): voltar atrás é com a CSSO.
+ */
+export function situacao_para_o_titular(situacao: string): string {
+  if (situacao === "CANCELADA") return "Você desistiu — fale com a CSSO";
+  if (situacao === "AGUARDANDO_EMAIL") return "Pedido em análise";
+  if (situacao === "INSCRITA") return "Inscrita, aguardando a CSSO";
+  return ROTULO_INSCRICAO_TELA[situacao] ?? situacao;
+}
+
+function frase_da_minha_inscricao(situacao: string, codigo: string): string {
+  if (situacao === "CANCELADA") {
+    return `Você desistiu de ${codigo}, e a desistência é definitiva nesta turma: para voltar, fale com a CSSO.`;
   }
+  if (situacao === "AGUARDANDO_EMAIL") return `Seu pedido de vaga em ${codigo} já está em análise pela CSSO.`;
+  return `Você já está inscrito(a) em ${codigo}.`;
 }
 
 /**
@@ -963,10 +1037,22 @@ export function aberta_a_pedido_proprio(turma: TurmaRegistro, hoje: string | nul
   if (turma.inscricao_aberta_ate !== null && turma.inscricao_aberta_ate < dia) {
     return `As inscrições de ${turma.codigo} fecharam em ${datas_br.numerica(turma.inscricao_aberta_ate)}.`;
   }
+  // a turma que já começou não recebe pedido de fora, qualquer que seja o prazo
+  // gravado (a turma antiga com "inscrições até" depois do início, por exemplo):
+  // o retardatário do primeiro dia é inscrito pela CSSO, que está na sala. O
+  // dia do início já conta como começada: desistir também vale só até a véspera
+  if (turma.data_inicio <= dia) {
+    const quando = turma.data_inicio === dia ? "começa hoje" : `começou em ${datas_br.numerica(turma.data_inicio)}`;
+    return `${turma.codigo} ${quando} e não recebe mais pedido de vaga.`;
+  }
   return "";
 }
 
-/** O cartaz: as turmas que recebem pedido do próprio, hoje. Sem escopo, e sem nome. */
+/**
+ * O cartaz: as turmas que recebem pedido do próprio, hoje. Sem escopo, e sem
+ * nome. A que já começou sai (`aberta_a_pedido_proprio`); a lotada fica, porque
+ * quem já está nela precisa vê-la — a tela a põe no fim.
+ */
 export async function turmas_abertas(tx: Executor, hoje: string | null = null): Promise<TurmaCarregada[]> {
   const dia = hoje ?? datas_br.hoje();
   const itens = (await tx.query.turma.findMany({
@@ -1013,7 +1099,7 @@ export async function inscrever_se(
   if (impedimento) throw new RegraDaTurma(impedimento);
 
   const pessoa = await servico_participante.de_servidor(tx, servidor, usuario);
-  await _conferir_inscricao_unica(tx, turma, pessoa);
+  await _conferir_inscricao_unica(tx, turma, pessoa, true);
   await _conferir_vaga(tx, turma);
 
   const [linha] = await tx
@@ -1039,14 +1125,17 @@ export async function inscrever_se(
   return inscricao;
 }
 
+/**
+ * O que o titular pode retirar: a inscrição viva e, desde 21/10/2026, o pedido
+ * feito pelo link que a CSSO ainda não conferiu (`AGUARDANDO_EMAIL`) — é o
+ * mesmo arrependimento, e sem esta porta ele só saía pedindo à CSSO.
+ */
+const DESISTIVEIS: ReadonlySet<string> = new Set(["INSCRITA", "CONFIRMADA", "AGUARDANDO_EMAIL"]);
+
 /** Desistir cabe até a véspera do início, e só de inscrição ainda viva. */
 export function pode_desistir(inscricao: InscricaoCarregada, hoje: string | null = null): boolean {
   const dia = hoje ?? datas_br.hoje();
-  return (
-    (inscricao.situacao === "INSCRITA" || inscricao.situacao === "CONFIRMADA") &&
-    !T.encerrada(inscricao.turma) &&
-    dia < inscricao.turma.data_inicio
-  );
+  return DESISTIVEIS.has(inscricao.situacao) && !T.encerrada(inscricao.turma) && dia < inscricao.turma.data_inicio;
 }
 
 /**
@@ -1067,7 +1156,7 @@ export async function desistir(
     throw new RegraDaTurma("Esta inscrição não é sua.");
   }
   if (!pode_desistir(inscricao, hoje)) {
-    if (inscricao.situacao !== "INSCRITA" && inscricao.situacao !== "CONFIRMADA") {
+    if (!DESISTIVEIS.has(inscricao.situacao)) {
       throw new RegraDaTurma(
         `Sua inscrição em ${inscricao.turma.codigo} está ` +
           `${(ROTULO_INSCRICAO[inscricao.situacao] ?? inscricao.situacao).toLowerCase()} ` +
@@ -1081,7 +1170,9 @@ export async function desistir(
     );
   }
 
-  const limpo = (opcoes.motivo ?? "").trim() || "Desistência do próprio inscrito.";
+  const limpo =
+    (opcoes.motivo ?? "").trim() ||
+    (inscricao.situacao === "AGUARDANDO_EMAIL" ? "Pedido retirado pelo próprio." : "Desistência do próprio inscrito.");
   const origem = inscricao.situacao;
   exigir_transicao_inscricao(origem, "CANCELADA");
   await gravar_inscricao(tx, inscricao, { situacao: "CANCELADA", motivo_cancelamento: limpo });

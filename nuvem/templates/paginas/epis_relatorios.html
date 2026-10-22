@@ -16,7 +16,8 @@
    subtração de cabeça. #}
 
 {% block titulo %}Indicadores de EPI · CSSO{% endblock %}
-{% block trilha %}<span class="atual" aria-current="page">Relatórios</span>{% endblock %}
+{# Sem bloco `trilha`: o item de menu já é "Relatórios", e o bloco repetia o
+   rótulo ("Relatórios / Relatórios"). #}
 
 {% block acoes_cabecalho %}
 {% if pode_exportar %}
@@ -37,16 +38,36 @@
       <p class="sub">Exercício {{ exercicio }} · {{ dados.inicio|data }} a {{ dados.fim|data }}.
         Cada célula conta <strong>servidores atendidos</strong>, não peças.</p>
     </div>
+    {# O exercício era só pela URL (`?exercicio=`). Formulário GET comum: troca
+       sem JavaScript, e o endereço continua sendo o que se compartilha. #}
+    <form method="get" action="/epis/relatorios" class="ao-lado filtro-inline">
+      <label for="exercicio">Exercício</label>
+      <select id="exercicio" name="exercicio">
+        {% for a in exercicios %}
+        <option value="{{ a }}"{{ ' selected' if a == exercicio }}>{{ a }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="secundario">Ver</button>
+    </form>
   </div>
 
   {% if suprime %}
   {# O FATO fica: quem lê estes números precisa saber, ao lê-los, que há células
      escondidas — sem isso ele soma errado e conclui errado. Como a supressão
      encadeia (a menor sobrevivente, a margem do campus) é o mecanismo, e
-     mecanismo se lê uma vez. #}
+     mecanismo se lê uma vez. Sem o código da permissão: quem lê é quem não a
+     tem, e o nome dela não lhe diz nada. #}
   <div class="aviso aviso-alerta">
-    Célula com menos de {{ limiar }} servidores aparece como <span class="mono">—</span>
-    para quem não tem <code>exposicao.ver</code> (RN-19).
+    {% if tudo_mascarado %}
+    <strong>Todos os números deste exercício estão escondidos.</strong> Cada um
+    conta menos de {{ limiar }} servidores, e o seu perfil não vê dados que
+    identifiquem pessoas: número pequeno, cruzado com unidade e categoria,
+    aponta quem é. Os números aparecem para quem pode ver dados nominais.
+    {% else %}
+    Número que conta menos de {{ limiar }} servidores aparece como
+    <span class="mono">—</span>: pequeno assim, ele identificaria as pessoas, e o
+    seu perfil não vê dados nominais.
+    {% endif %}
     {% call ui.info('supressao', 'como a supressão da RN-19 encadeia') %}
       <p>Quando só <strong>uma</strong> célula seria suprimida, a menor
         sobrevivente é suprimida junto: senão a diferença entre o total e a soma
@@ -74,13 +95,18 @@
         {% endcall %}
         <span class="contador">{{ por_categoria|length }}</span>
       </div>
+      {% if por_categoria|length %}
+      <p class="discreto sem-margem">À direita, <strong>servidores
+        atendidos</strong>; em cinza, ao lado do nome, as <strong>peças
+        entregues</strong>.</p>
+      {% endif %}
       {{ ui.distribuicao(por_categoria, limiar,
-                         'Nenhuma entrega no exercício.', quantidade_categoria) }}
+                         'Nenhuma entrega no exercício.', pecas_categoria) }}
     </section>
 
     <section class="cartao">
       <div class="titulo-cartao">
-        <h2>Recusas por motivo (RN-27)</h2>
+        <h2>Recusas por motivo</h2>
         {% call ui.info('recusas-por-motivo', 'por que aqui a célula conta negativas, e não pessoas') %}
           <p>Nesta barra a célula conta <strong>negativas</strong>, e não
             servidores: é a decisão que se conta, e dois pedidos recusados da
@@ -135,8 +161,8 @@
       {{ ui.vazio_de_lista(
            'Nenhuma entrega em ' ~ exercicio ~ '.',
            'A janela é o exercício inteiro, de ' ~ dados.inicio|data ~ ' a '
-           ~ dados.fim|data ~ ', pela DATA DA ENTREGA. Para ver outro ano, troque
-            `exercicio` no endereço — por exemplo ?exercicio=' ~ (exercicio - 1) ~ '.', 2) }}
+           ~ dados.fim|data ~ ', pela data da entrega. Para ver outro ano, escolha
+            o exercício no alto da página.', 2) }}
       {% endfor %}
     </table>
   </section>
@@ -161,7 +187,7 @@
       <table>
         <thead>
           <tr><th scope="col">Empenho</th><th scope="col" class="numerico">Lotes</th><th scope="col" class="numerico">Recebido</th>
-            <th scope="col" class="numerico">Custo (R$)</th></tr>
+            <th scope="col" class="numerico">Custo</th></tr>
         </thead>
         {% for linha in dados.empenhos %}
         <tr>
@@ -171,7 +197,7 @@
           <td class="numerico mono">
             {%- if linha.custo is none %}<span class="discreto"
                 title="nenhum lote deste empenho trouxe valor unitário — 'não sei' não é 'custou nada'">—</span>
-            {%- else %}{{ linha.custo_texto }}
+            {%- else %}{{ linha.custo_tela }}
               {%- if linha.incompleto %}<span class="quebra discreto"
                   title="{{ linha.sem_valor }} lote(s) sem valor unitário">piso</span>{% endif %}
             {%- endif %}</td>
@@ -193,10 +219,10 @@
 
     <section class="cartao">
       <div class="titulo-cartao">
-        <h2>Recusas por unidade (RN-27)</h2>
+        <h2>Recusas por unidade</h2>
         {% call ui.info('recusas-por-unidade', 'o que uma unidade concentrando recusas significa') %}
-          <p>Uma unidade que concentra recusas por
-            <code>VINCULO_NAO_ATENDIDO</code> é uma unidade em que alguém está
+          <p>Uma unidade que concentra recusas por “vínculo não atendido” é uma
+            unidade em que alguém está
             pedindo EPI para pessoal terceirizado — e a obrigação, pela NR-6, é da
             <strong>empresa contratante</strong>.</p>
           <p>O número é o insumo do ofício, não o ofício: ele diz onde procurar, e

@@ -18,14 +18,21 @@
  * campus é a margem das unidades dele.
  */
 import { Hono } from "hono";
-import { inArray } from "drizzle-orm";
+import { asc, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
-import { epi_item as tabela_epi_item, servidor as tabela_servidor } from "../db/esquema/index.js";
-import { ROTULO_EPI_ITEM, ROTULO_EPI_REQUISICAO } from "../dominio/estados.js";
+import {
+  epi_entrada_estoque as tabela_entrada,
+  epi_ficha_registro as tabela_ficha,
+  epi_item as tabela_epi_item,
+  servidor as tabela_servidor,
+} from "../db/esquema/index.js";
+import { EPI_REQUISICAO_ENCERRADA, ROTULO_EPI_ITEM, ROTULO_EPI_REQUISICAO } from "../dominio/estados.js";
 import { ErroHttp } from "../nucleo/erros.js";
 import { usuarioLogado } from "../dependencias.js";
-import type { UsuarioAtual } from "../servicos/rbac.js";
+import { ESCOPO_AGREGADO, ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
+import * as epi_ficha from "../servicos/epi_ficha.js";
+import * as epi_requisicao from "../servicos/epi_requisicao.js";
 import * as servico from "../servicos/epi_indicadores.js";
 import { hoje } from "../servicos/datas_br.js";
 import { linha_csv } from "../servicos/csv.js";
@@ -88,14 +95,45 @@ function _exercicio(c: Ctx): number | null {
  * de filtros por estado continua na fila de `/epis/requisicoes`: lá cada número
  * É o filtro. São duas leituras da mesma função, e não dois números.
  */
+/**
+ * O painel de quem só pede EPI (escopo próprio): os pedidos DELE, o que ele
+ * ainda precisa assinar e o que passou do prazo de troca. Os números do setor
+ * (fila, falta de estoque, CA a vencer, entregas do mês) não são dele — e os
+ * estados vazios desses números traziam códigos de permissão ("pede
+ * `epi.ficha`") a quem não sabe o que é permissão.
+ */
+async function _painel_pessoal(c: Ctx, usuario: UsuarioAtual): Promise<Response> {
+  const tx = c.get("tx");
+  const dia = hoje();
+  const pedidos = (await epi_requisicao.fila(tx, usuario)).reverse();
+  const abertos = pedidos.filter((r) => r.estado !== "RASCUNHO" && !EPI_REQUISICAO_ENCERRADA.has(r.estado));
+  const linhas = usuario.servidor_id !== null ? await epi_ficha.linha_do_tempo(tx, usuario.servidor_id) : [];
+  return pagina(c, "paginas/epis_painel.html", usuario, {
+    pessoal: true,
+    hoje: dia,
+    tem_servidor: usuario.servidor_id !== null,
+    pedidos: pedidos.slice(0, 5).map((r) => ({ ...r, identificacao: epi_requisicao.identificacao(r) })),
+    total_pedidos: pedidos.length,
+    abertos: abertos.length,
+    rascunhos: pedidos.filter((r) => r.estado === "RASCUNHO").length,
+    trocas: linhas.filter((l) => l.troca_vencida_em(dia)),
+    falta_assinar: linhas.filter((l) => l.sem_comprovante).length,
+    rotulos: ROTULO_EPI_REQUISICAO,
+    pode_pedir: usuario.pode("epi.requisitar"),
+  });
+}
+
 rotas.get(PAINEL, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.ver");
+  if (usuario.escopo === ESCOPO_PROPRIO) return _painel_pessoal(c, usuario);
   const tx = c.get("tx");
   const ve_ficha = usuario.pode("epi.ficha");
   const opera = usuario.pode("epi.catalogo") || usuario.pode("epi.entregar");
   const [medidas, [item], [alguem]] = await Promise.all([
-    servico.painel(tx),
+    // no escopo de quem lê: o número de pedidos e a fila de falta batem com a
+    // fila de `/epis/requisicoes` dessa pessoa
+    servico.painel(tx, null, usuario),
     opera ? tx.select({ id: tabela_epi_item.id }).from(tabela_epi_item).limit(1) : Promise.resolve([]),
     opera ? tx.select({ id: tabela_servidor.id }).from(tabela_servidor).limit(1) : Promise.resolve([]),
   ]);
@@ -139,6 +177,9 @@ rotas.get(PAINEL, async (c) => {
     // seguro e devolve o código opaco a todo mundo — inclusive ao almoxarife.
     servidores: ve_ficha ? await _servidores_de(tx, [...medidas.trocas_devidas, ...medidas.entregas_do_mes]) : {},
     pode_indicador: usuario.pode("indicador.ver"),
+    // o link do protocolo só para quem abre o pedido: o painel já recorta pelo
+    // escopo, e o agregado (admin) lê o número sem abrir pedido de ninguém
+    abre_pedido: usuario.escopo !== ESCOPO_AGREGADO,
   });
 });
 
@@ -152,26 +193,77 @@ export async function _contexto(tx: Executor, usuario: UsuarioAtual, exercicio: 
   const dados = await servico.relatorio(tx, { inicio, fim });
   const nominal = usuario.ve_dado_nominal;
   const por_categoria = suprimir(dados.por_categoria.servidores, nominal);
+  const quantidade_categoria = _atrelar(dados.por_categoria, por_categoria);
+  const por_campus = suprimir_aninhado(dados.por_campus, nominal);
+  const recusas_motivo = suprimir(dados.recusas_por_motivo, nominal);
+  const recusas_unidade = suprimir(dados.recusas_por_unidade, nominal);
+  // Tudo escondido: com poucos atendimentos, quem não vê nome lê só traços — e
+  // a tela precisa dizer por quê no topo, senão parece defeito.
+  const valores = [
+    ...Object.values(por_categoria),
+    ...Object.values(recusas_motivo),
+    ...Object.values(recusas_unidade),
+    ...por_campus.map((l) => l.valor),
+  ];
+  const tudo_mascarado = !nominal && valores.length > 0 && valores.every((v) => v === MARCA_SUPRIMIDO);
   return {
     exercicio: ano,
     dados,
     por_categoria,
-    quantidade_categoria: _atrelar(dados.por_categoria, por_categoria),
-    por_campus: suprimir_aninhado(dados.por_campus, nominal),
-    recusas_motivo: suprimir(dados.recusas_por_motivo, nominal),
-    recusas_unidade: suprimir(dados.recusas_por_unidade, nominal),
+    quantidade_categoria,
+    // o rótulo cinza da barra, para a TELA: "12 peças" e não um número solto
+    // ao lado de outro número solto. O CSV continua com a quantidade crua.
+    pecas_categoria: Object.fromEntries(
+      Object.entries(quantidade_categoria).map(([rotulo, q]) => [
+        rotulo,
+        q === MARCA_SUPRIMIDO ? q : `${q} ${q === "1" ? "peça" : "peças"}`,
+      ]),
+    ),
+    por_campus,
+    recusas_motivo,
+    recusas_unidade,
     limiar: LIMIAR_SUPRESSAO,
     suprime: !nominal,
+    tudo_mascarado,
   };
+}
+
+/**
+ * Os exercícios do seletor: do ano corrente para trás, até o primeiro ano com
+ * entrega ou lote registrado (no mínimo o corrente e o anterior). Era só pela
+ * URL (`?exercicio=`), e ninguém adivinhava o parâmetro.
+ */
+async function _exercicios(tx: Executor): Promise<number[]> {
+  const ano = Number(hoje().slice(0, 4));
+  const [primeira] = await tx
+    .select({ dia: tabela_ficha.data_evento })
+    .from(tabela_ficha)
+    .orderBy(asc(tabela_ficha.data_evento))
+    .limit(1);
+  const [primeiro_lote] = await tx
+    .select({ dia: tabela_entrada.data_entrada })
+    .from(tabela_entrada)
+    .orderBy(asc(tabela_entrada.data_entrada))
+    .limit(1);
+  const anos = [primeira?.dia, primeiro_lote?.dia].filter((d): d is string => Boolean(d)).map((d) => Number(d.slice(0, 4)));
+  const inicio = Math.min(ano - 1, ...anos);
+  const saida: number[] = [];
+  for (let a = ano; a >= inicio; a--) saida.push(a);
+  return saida;
 }
 
 rotas.get(RELATORIOS, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("indicador.ver");
   const exercicio = _exercicio(c);
+  const tx = c.get("tx");
+  const ctx = await _contexto(tx, usuario, exercicio);
+  const exercicios = await _exercicios(tx);
+  if (!exercicios.includes(ctx.exercicio)) exercicios.push(ctx.exercicio);
   return pagina(c, "paginas/epis_relatorios.html", usuario, {
     pode_exportar: usuario.pode("exportar"),
-    ...(await _contexto(c.get("tx"), usuario, exercicio)),
+    exercicios: exercicios.sort((x, y) => y - x),
+    ...ctx,
   });
 });
 
@@ -210,10 +302,10 @@ export async function exportar(
     ]);
   }
   for (const [rotulo, valor] of Object.entries(ctx.recusas_motivo)) {
-    texto += linha_csv(["Recusas por motivo (RN-27)", rotulo, "", valor, ""]);
+    texto += linha_csv(["Recusas por motivo", rotulo, "", valor, ""]);
   }
   for (const [rotulo, valor] of Object.entries(ctx.recusas_unidade)) {
-    texto += linha_csv(["Recusas por unidade (RN-27)", rotulo, "", valor, ""]);
+    texto += linha_csv(["Recusas por unidade", rotulo, "", valor, ""]);
   }
   // o cabeçalho da supressão vai DENTRO do arquivo: o CSV se descola da tela no
   // primeiro anexo de e-mail

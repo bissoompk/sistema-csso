@@ -13,9 +13,10 @@
         <p>O link público não inscreve sozinho: o pedido só ocupa vaga depois de aceito.
           Confira se a pessoa é quem diz ser (nome, SIAPE ou e-mail, vínculo) e se o pedido não
           repete uma inscrição que já existe.</p>
-        <p>Aceitar vários de uma vez faz o mesmo que aceitar um por um, na ordem da lista:
-          se a turma lotar no meio, quem ficou de fora continua aqui com o motivo.
-          Recusar pede o motivo, que fica registrado na inscrição.</p>
+        <p>Aceitar vários de uma vez faz o mesmo que aceitar um por um. Marcar numa turma
+          mais pedidos do que ela tem de vaga livre não aceita nenhum deles: quem escolhe
+          quem fica de fora é você, e não a ordem da lista. Recusar pede o motivo, que
+          fica registrado na inscrição.</p>
       {% endcall %}
     </div>
   </div>
@@ -30,32 +31,41 @@
   {% endif %}
 
   {% if turmas|length %}
-  <form method="post" action="/turmas/pedidos" id="f-pedidos"></form>
-
-  {% for t in turmas %}
-  <div class="cartao liso">
-    <div class="cabecalho-cartao">
-      <div class="titulo-cartao">
-        <h2><a class="mono" href="/turmas/{{ t.id }}?aba=inscricoes">{{ t.codigo }}</a> · {{ t.treinamento }}</h2>
-      </div>
-      <span class="a-direita">
-        <span class="pilula sem-ponto">{{ t.data_inicio|data }}</span>
-        {% if t.vagas is not none %}
-        <span class="pilula {{ 'erro' if t.vagas_restantes == 0 else ('alerta' if t.vagas_restantes < t.pedidos|length else 'ok') }}">
-          {{ t.vagas_restantes }} vaga(s) de {{ t.vagas }}</span>
-        {% endif %}
-        <span class="pilula alerta">{{ t.pedidos|length }} pedido(s)</span>
-      </span>
-    </div>
-    <table>
-      <thead><tr>
-        <th scope="col"><span class="oculto">Marcar</span></th>
-        <th scope="col">Nome</th><th scope="col">Vínculo</th><th scope="col">E-mail</th><th scope="col">Pedido em</th>
-      </tr></thead>
+  {# UMA tabela, um `<tbody>` por turma: as colunas das turmas ficam alinhadas
+     (eram uma tabela por cartão, cada uma com a sua largura), e o cabeçalho de
+     cada grupo traz as vagas livres e o "marcar todos desta turma". As caixas
+     nascem DESMARCADAS: marcadas de saída, um "Recusar os marcados" recusava
+     os pedidos de todas as turmas de uma vez. A tabela mora dentro do
+     formulário porque o "marcar todos" (`data-marca-grupo`, csso.js) procura
+     as caixas do grupo dentro do formulário do mestre. #}
+  <form method="post" action="/turmas/pedidos" id="f-pedidos">
+  <div class="tabela-cartao lista sem-altura">
+  <table>
+    <thead><tr>
+      <th scope="col"><span class="oculto">Marcar</span></th>
+      <th scope="col">Nome</th><th scope="col">Vínculo</th><th scope="col">E-mail</th><th scope="col">Pedido em</th>
+    </tr></thead>
+    {% for t in turmas %}
+    <tbody>
+      <tr class="grupo-da-tabela">
+        <th scope="row"><input type="checkbox" class="marcar" data-marca-grupo="turma-{{ t.id }}"
+                   aria-label="Marcar todos os pedidos de {{ t.codigo }}" title="Marcar todos desta turma"></th>
+        <th scope="colgroup" colspan="4">
+          <a class="mono" href="/turmas/{{ t.id }}?aba=inscricoes">{{ t.codigo }}</a> · {{ t.treinamento }}
+          <span class="pilula sem-ponto">{{ t.data_inicio|data }}</span>
+          {% if t.vagas is not none %}
+          {# as vagas livres AGORA: aceitar mais pedidos do que isto é recusado
+             para a turma inteira (`pedidos_link.decidir`) #}
+          <span class="pilula {{ 'erro' if t.vagas_restantes == 0 else ('alerta' if t.vagas_restantes < t.pedidos|length else 'ok') }}">
+            {%- if t.vagas_restantes == 0 %}lotada{% elif t.vagas_restantes == 1 %}1 vaga livre{% else %}{{ t.vagas_restantes }} vagas livres{% endif %} de {{ t.vagas }}</span>
+          {% else %}<span class="pilula sem-ponto">sem limite de vagas</span>{% endif %}
+          <span class="pilula alerta">{{ t.pedidos|length }} pedido(s)</span>
+        </th>
+      </tr>
       {% for p in t.pedidos %}
       <tr>
-        <td><input form="f-pedidos" type="checkbox" name="inscricao_id" value="{{ p.inscricao_id }}" checked
-                   aria-label="Decidir o pedido de {{ p.nome }}"></td>
+        <td><input type="checkbox" class="marcar" name="inscricao_id" value="{{ p.inscricao_id }}"
+                   data-grupo="turma-{{ t.id }}" aria-label="Decidir o pedido de {{ p.nome }}"></td>
         <td class="nome">{{ p.nome }}
           {% if p.observacao %}<span class="quebra discreto">{{ p.observacao }}</span>{% endif %}</td>
         <td>{{ rotulo_vinculo[p.vinculo] or p.vinculo }}
@@ -64,29 +74,33 @@
         <td class="mono">{{ p.criado_em|momento }}</td>
       </tr>
       {% endfor %}
-    </table>
+    </tbody>
+    {% endfor %}
+  </table>
   </div>
-  {% endfor %}
 
   <div class="cartao">
     <div class="acoes sem-margem">
-      <button form="f-pedidos" type="submit" name="acao" value="aceitar">
+      <button type="submit" name="acao" value="aceitar">
         {{ ui.icone('check-circle') }} Aceitar os marcados</button>
-      <p class="discreto">Aceitos, viram inscrição e passam a ocupar vaga.</p>
+      <p class="discreto">Aceitos, viram inscrição e passam a ocupar vaga. Mais pedidos
+        marcados do que as vagas livres de uma turma: nenhum pedido dela é aceito, e a
+        tela pede para desmarcar o excesso.</p>
     </div>
     <hr>
     <div class="linha-campos">
       <div class="campo">
         <label for="motivo-recusa">Motivo da recusa</label>
-        <input form="f-pedidos" id="motivo-recusa" name="motivo" type="text" maxlength="300"
+        <input id="motivo-recusa" name="motivo" type="text" maxlength="300"
                placeholder="ex.: pedido em duplicidade; não é do público da turma">
       </div>
     </div>
     <div class="acoes sem-margem">
-      <button form="f-pedidos" type="submit" name="acao" value="recusar" class="perigo-discreto">
+      <button type="submit" name="acao" value="recusar" class="perigo-discreto">
         {{ ui.icone('x-circle') }} Recusar os marcados</button>
     </div>
   </div>
+  </form>
   {% else %}
   <div class="vazio"><strong>Nenhum pedido a conferir.</strong>
     <span>Quando alguém se inscrever pelo link público de uma turma, o pedido aparece aqui.</span></div>

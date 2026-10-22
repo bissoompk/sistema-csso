@@ -15,7 +15,8 @@
  * Carregá-lo liga os ganchos da casca em `web.ts` (`navegacao`, `cookieModulo`)
  * e registra o global `porta_de_entrada`.
  */
-import type { UsuarioAtual } from "./servicos/rbac.js";
+import { ESCOPO_PROPRIO, EscopoNaoDeclarado, type UsuarioAtual } from "./servicos/rbac.js";
+import { PERMISSOES_VER as PERMISSOES_PENDENCIAS } from "./servicos/pendencias.js";
 import { ganchos, global } from "./web.js";
 
 export const PROCESSOS_SEI = "processos-sei";
@@ -418,12 +419,13 @@ export const BASE: readonly Item[] = [
   new Item(
     "Pendências",
     "/pendencias",
-    // Espelha `pendencias.PERMISSOES_VER`. Uma tupla porque a lista de
-    // leitura é explícita e cresce com cada módulo: quem opera treinamento
-    // recebe tarefa de reciclagem e precisa vê-la sem ter `processo.ver`.
-    // Módulo novo acrescenta a sua permissão nos dois lugares, e
-    // `test_link_no_menu_sempre_abre` cobra que os dois digam o mesmo.
-    ["processo.ver", "treinamento.ver", "epi.ver"],
+    // A MESMA tupla da rota, importada e não copiada. Era uma cópia
+    // (`processo.ver`, `treinamento.ver`, `epi.ver`) e já tinha divergido:
+    // a rota aceitava `demanda.ver` e o menu não — só não doía porque nenhum
+    // perfil tem `demanda.ver` sozinha. Uma tupla porque a leitura é
+    // explícita e cresce com cada módulo: quem opera treinamento recebe
+    // tarefa de reciclagem e precisa vê-la sem ter `processo.ver`.
+    PERMISSOES_PENDENCIAS,
     "Tarefas abertas por regra, com dono e prazo — de todos os módulos.",
   ),
   new Item(
@@ -456,6 +458,102 @@ export const BASE: readonly Item[] = [
     "Contas, perfis e permissões.",
   ),
 ];
+
+/**
+ * O MENU DE QUEM SÓ TEM O PRÓPRIO: "Meu espaço".
+ *
+ * O servidor comum (`servidor_consulta`, escopo próprio) via a lateral da
+ * equipe: quinze entradas — Kanban, a lista de Processos, Catálogos,
+ * Servidores, Estoque, Módulos — que ou abriam vazias (o escopo filtra tudo o
+ * que não é dele) ou mostravam o cadastro interno do setor, com uma lista que
+ * só tinha ele. Nenhuma era porta trancada, e é por isso que o teste do menu
+ * nunca reclamou: eram portas para salas vazias.
+ *
+ * Aqui ele ganha um bloco só, com o que é dele, no vocabulário dele. O RBAC
+ * NÃO muda: cada item declara a mesma permissão que a rota exige (a mesma do
+ * item da equipe que aponta para o mesmo caminho), e `visivel_para` continua
+ * sendo o filtro. Quem digitar `/kanban` continua abrindo o que abria — o que
+ * mudou foi só o que o menu oferece.
+ *
+ * A lista de `/processos` volta aqui como "Meus processos": o escopo já a
+ * recorta para os dele, e o que a deixava incompreensível era o nome e a
+ * vizinhança (Kanban, Laudos, Relatórios), não o conteúdo.
+ *
+ * Os itens da equipe que apontam para os mesmos caminhos ("Requisições",
+ * "Nova requisição") não foram renomeados: os textos das telas de EPI e de
+ * treinamento estão alinhados ao menu da equipe, e este bloco é a outra porta.
+ */
+export const MEU_ESPACO: readonly Item[] = [
+  new Item("Início", "/", "processo.ver", "O que é seu no sistema, num relance."),
+  new Item("Meus treinamentos", "/turmas/minhas", "treinamento.ver", "As turmas com inscrição aberta, e as suas inscrições.", true),
+  new Item("Meus certificados", "/certificados/meus", "treinamento.ver", "O que foi emitido em seu nome.", true),
+  new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true),
+  new Item("Meus pedidos de EPI", "/epis/requisicoes", "epi.ver", "Os seus pedidos e em que pé estão.", true),
+  new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true),
+  new Item("Meu adicional", "/adicionais", "processo.ver", "O adicional ocupacional concedido a você.", true),
+  // O pedido de adicional em andamento. O "Início" dele já tem o cartão "Meus
+  // processos" com o link para cá; sem o item, a ficha do processo abria com a
+  // trilha "Meu espaço / Processos", o nome de um item que este menu não tem.
+  new Item("Meus processos", "/processos", "processo.ver", "Os seus pedidos de adicional e em que pé estão.", true),
+];
+
+/**
+ * Quem recebe o "Meu espaço" no lugar da lateral da equipe: quem só alcança o
+ * que é seu — `escopo` próprio, que é o que sai quando TODOS os perfis da
+ * conta são de escopo próprio (um perfil de equipe a mais e a conta volta ao
+ * menu de sempre, porque passa a ver o do setor).
+ */
+export function so_o_proprio(usuario: UsuarioAtual | null | undefined): boolean {
+  if (!usuario) return false;
+  try {
+    return usuario.escopo === ESCOPO_PROPRIO;
+  } catch (erro) {
+    // Perfil sem escopo declarado: o menu não é a barreira (cada rota confere a
+    // permissão, e a consulta no escopo nega com a tela que nomeia o perfil).
+    // Deixar a exceção subir derrubava a casca inteira, inclusive essa tela.
+    if (erro instanceof EscopoNaoDeclarado) return false;
+    throw erro;
+  }
+}
+
+/**
+ * Os itens do "Meu espaço" que abrem para esta pessoa, e o "Meus dados", que
+ * não cabe na lista fixa porque o caminho é o do PRÓPRIO cadastro — a ficha
+ * do servidor, que a rota de `/servidores/{id}` já recorta pelo escopo.
+ */
+export function meu_espaco_de(usuario: UsuarioAtual | null | undefined): Item[] {
+  if (!so_o_proprio(usuario)) return [];
+  const itens = MEU_ESPACO.filter((item) => item.visivel_para(usuario));
+  if (usuario!.servidor_id !== null) {
+    const meus_dados = new Item(
+      "Meus dados",
+      `/servidores/${usuario!.servidor_id}`,
+      "processo.ver",
+      "Seu cadastro: lotação, cargo e posto.",
+      true,
+    );
+    if (meus_dados.visivel_para(usuario)) itens.push(meus_dados);
+  }
+  return itens;
+}
+
+/**
+ * O item do "Meu espaço" a que o caminho pertence, pelo prefixo mais longo.
+ *
+ * `/epis/fichas/minha` redireciona para `/epis/fichas/{servidor_id}`: a ficha
+ * que abre é a mesma "Minha ficha de EPI", e a trilha e o destaque dizem isso
+ * — e não "Fichas", o item da equipe que este menu não tem.
+ */
+function _item_do_meu_espaco(caminho: string, itens: readonly Item[], usuario: UsuarioAtual): Item | null {
+  if (usuario.servidor_id !== null && caminho === `/epis/fichas/${usuario.servidor_id}`) caminho = "/epis/fichas/minha";
+  let melhor: Item | null = null;
+  for (const item of itens) {
+    const alvo = item.caminho;
+    const casa = alvo === "/" ? caminho === "/" : caminho === alvo || caminho.startsWith(alvo + "/");
+    if (casa && (melhor === null || alvo.length > melhor.caminho.length)) melhor = item;
+  }
+  return melhor;
+}
 
 export function por_codigo(codigo: string): Modulo | null {
   return MODULOS.find((m) => m.codigo === codigo) ?? null;
@@ -548,6 +646,8 @@ export interface Navegacao extends Record<string, unknown> {
   item_ativo: Item | null;
   no_modulo: boolean;
   modulo_a_lembrar: string | null;
+  /** vazio para a equipe; para quem só tem o próprio, o menu inteiro */
+  meu_espaco: Item[];
 }
 
 /**
@@ -572,7 +672,10 @@ export function navegacao(
       ativo = _modulo_de_recuo(usuario);
     }
   }
-  const item = item_ativo(caminho);
+  const meu_espaco = meu_espaco_de(usuario);
+  // No "Meu espaço" a trilha e o destaque falam a língua do menu que a pessoa
+  // vê ("Meus pedidos de EPI", e não "Requisições"); fora dele, o de sempre.
+  const item = (meu_espaco.length ? _item_do_meu_espaco(caminho, meu_espaco, usuario!) : null) ?? item_ativo(caminho);
   const no_modulo = do_caminho !== null && do_caminho.disponivel;
   return {
     modulos: MODULOS,
@@ -584,6 +687,7 @@ export function navegacao(
     no_modulo,
     // só caminho de módulo lembra; a base não reescreve de onde a pessoa veio
     modulo_a_lembrar: no_modulo ? do_caminho!.codigo : null,
+    meu_espaco,
   };
 }
 
@@ -635,6 +739,12 @@ const ICONES: Readonly<Record<string, string>> = {
   "/catalogos": "list-ul",
   "/auditoria": "clock-history",
   "/usuarios": "gear",
+  // os do "Meu espaço" que não repetem o da equipe
+  "Início": "house",
+  "Meus pedidos de EPI": "inbox",
+  "Meu adicional": "cash-coin",
+  "Meus dados": "person",
+  "Meus processos": "file-earmark-text",
 };
 
 export function icone_de(chave: string): string | null {

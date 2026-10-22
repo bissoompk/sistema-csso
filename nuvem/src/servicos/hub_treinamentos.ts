@@ -87,3 +87,138 @@ export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string):
     proximas,
   };
 }
+
+// ---------------------------------------------------------------------
+// Os cartões da página
+// ---------------------------------------------------------------------
+export interface CartaoHub {
+  numero: number;
+  href: string;
+  icone: string;
+  cor: string;
+  titulo: string;
+  descricao: string;
+  contagem: { texto: string; classe: string } | null;
+}
+
+/**
+ * Os cartões na ordem do trabalho (catálogo → turma → presença → emissão →
+ * reciclagem), só os que o perfil abre, numerados SEM buraco: a secretaria,
+ * que não vê "Instrutores", não lê 1–6 e 8. Os nomes são os do menu
+ * (`modulos.ts`), e a descrição não promete o que o perfil não faz — "corrigir
+ * e anular" só para quem anula, o ".docx" só para quem cuida dos modelos.
+ */
+export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
+  const abertas = r.turmas.INSCRICOES_ABERTAS ?? 0;
+  const andamento = r.turmas.EM_ANDAMENTO ?? 0;
+  const gerencia = usuario.pode("treinamento.gerenciar");
+  const anula = usuario.pode("certificado.anular");
+  const lista: Omit<CartaoHub, "numero">[] = [];
+  lista.push({
+    href: "/treinamentos/catalogo",
+    icone: "journal-bookmark",
+    cor: "roxo",
+    titulo: gerencia ? "Catálogo e modelos" : "Catálogo",
+    descricao: gerencia
+      ? "Treinamentos, validade da reciclagem e o modelo (.docx) do certificado."
+      : "Treinamentos, carga horária e validade da reciclagem.",
+    contagem: null,
+  });
+  if (usuario.pode("assinatura.gerenciar")) {
+    lista.push({
+      href: "/treinamentos/assinaturas",
+      icone: "pen-fill",
+      cor: "escuro",
+      titulo: "Instrutores",
+      descricao: "Quem assina o certificado: nome, título e rubrica.",
+      contagem: null,
+    });
+  }
+  lista.push({
+    href: "/turmas",
+    icone: "collection-fill",
+    cor: "amarelo",
+    titulo: "Turmas",
+    descricao: usuario.pode("turma.criar")
+      ? "Abrir a turma, inscrever pela lista ou divulgar o link público com QR."
+      : "As turmas, as inscrições e o link público.",
+    contagem: { texto: `${abertas} com inscrição aberta · ${andamento} em andamento`, classe: abertas ? "atencao" : "" },
+  });
+  if (usuario.pode("turma.inscrever")) {
+    lista.push({
+      href: "/turmas/pedidos",
+      icone: "person-check",
+      cor: "escuro",
+      titulo: "Pedidos pelo link",
+      descricao: "Quem se inscreveu pelo link e espera a conferência.",
+      contagem: {
+        texto: `${r.pedidos_a_conferir} a conferir`,
+        classe: r.pedidos_a_conferir ? "urgente" : "ok",
+      },
+    });
+  }
+  lista.push({
+    href: "/turmas?situacao=EM_ANDAMENTO",
+    icone: "list-check",
+    cor: "teal",
+    titulo: "Presença e notas",
+    descricao: "As turmas em andamento: lançar a presença de cada dia, a nota e concluir.",
+    contagem: { texto: `${andamento} em andamento`, classe: "" },
+  });
+  lista.push({
+    href: "/certificados/fila",
+    icone: "printer-fill",
+    cor: "verde",
+    titulo: "Fila de emissão",
+    descricao: usuario.pode("certificado.emitir")
+      ? "Emitir os certificados dos aprovados, de todas as turmas, e mandar por e-mail."
+      : "Aprovados sem certificado, de todas as turmas.",
+    contagem: {
+      texto: `${r.fila.AGUARDANDO} aguardando` + (r.fila.TRAVADO ? ` · ${r.fila.TRAVADO} travado(s)` : ""),
+      classe: r.fila.AGUARDANDO ? "atencao" : "ok",
+    },
+  });
+  lista.push({
+    href: "/certificados",
+    icone: "file-earmark-check",
+    cor: "azul",
+    titulo: "Certificados",
+    descricao: anula ? "Busca, segunda via, corrigir e anular." : "Busca e segunda via dos emitidos.",
+    contagem: { texto: `${r.fila.EMITIDO} emitido(s)`, classe: "" },
+  });
+  if (r.emails) {
+    lista.push({
+      href: "/certificados/emails",
+      icone: "envelope-paper",
+      cor: "azul",
+      titulo: "E-mails",
+      descricao: "O que foi enviado, o que está na fila e o que falhou.",
+      contagem: {
+        texto: `${r.emails.PENDENTE ?? 0} na fila` + (r.emails.FALHOU ? ` · ${r.emails.FALHOU} com falha` : ""),
+        classe: r.emails.FALHOU ? "urgente" : "",
+      },
+    });
+  }
+  lista.push({
+    href: "/certificados/vencimentos",
+    icone: "shield-exclamation",
+    cor: "vermelho",
+    titulo: "Reciclagem",
+    descricao: "Quem venceu e quem vence em 30 dias.",
+    contagem: {
+      texto: `${r.reciclagem.VENCIDO ?? 0} vencido(s) · ${r.reciclagem.A_VENCER ?? 0} a vencer`,
+      classe: r.reciclagem.VENCIDO ? "urgente" : "",
+    },
+  });
+  if (usuario.pode("indicador.ver")) {
+    lista.push({
+      href: "/treinamentos/indicadores",
+      icone: "bar-chart-fill",
+      cor: "laranja",
+      titulo: "Indicadores",
+      descricao: "Turmas, participantes e emissão por período e setor promotor.",
+      contagem: null,
+    });
+  }
+  return lista.map((c, i) => ({ ...c, numero: i + 1 }));
+}

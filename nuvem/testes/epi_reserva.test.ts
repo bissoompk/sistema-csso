@@ -261,7 +261,7 @@ describe("RN-24", () => {
         servico.reservar_item(tx, u, linha, { entrada: cen.entrada!, quantidade: 3 }),
         servico.RequisicaoBloqueada,
       );
-      expect(falha.message).toContain("RN-24");
+      expect(falha.message).toContain("saldo não fica negativo");
       expect(linha.estado).toBe("APROVADO");
       expect(linha.quantidade_reservada).toBe(0);
     }));
@@ -865,9 +865,9 @@ describe("pela tela", () => {
     const corpo = r.text;
     expect(corpo).toContain("Reservado");
     expect(corpo).toContain("Reserva não é movimento");
-    expect(corpo).toContain('<td class="numerico">5</td>');
-    expect(corpo).toContain('<td class="numerico">2</td>');
-    expect(corpo).toContain('<td class="numerico">3</td>');
+    expect(corpo).toContain('<td data-coluna="Físico" class="numerico">5</td>');
+    expect(corpo).toContain('<td data-coluna="Reservado" class="numerico">2</td>');
+    expect(corpo).toContain('<td data-coluna="Disponível" class="numerico">3</td>');
   });
 
   it("a entrada de lote avisa quem espera em vez de reservar sozinha", async () => {

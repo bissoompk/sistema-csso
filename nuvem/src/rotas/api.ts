@@ -34,7 +34,6 @@ import * as contrato from "../esquemas/api.js";
 import {
   epi_entrada_estoque,
   epi_item,
-  pendencia as tabela_pendencia,
   servidor as tabela_servidor,
   turma as tabela_turma,
   usuario as tabela_usuario,
@@ -87,7 +86,7 @@ rotas.get(PREFIXO, async (c) => {
     versao: VERSAO,
     rotas: [
       "GET  /api/v1/eu",
-      "GET  /api/v1/pendencias",
+      "GET  /api/v1/pendencias?minhas=1",
       "GET  /api/v1/epis/servidores?q=",
       "GET  /api/v1/epis/itens",
       "GET  /api/v1/epis/itens/{item_id}/lotes",
@@ -118,35 +117,17 @@ rotas.get(`${PREFIXO}/eu`, async (c) => {
 // =====================================================================
 // A fila de pendências — o "o que eu faço agora?" do app
 // =====================================================================
-// A âncora de cada pendência vai para o SISTEMA COMPLETO. O mapa é o mesmo de
-// `paginas/pendencias.html`, inclusive a permissão que cada porta exige —
-// oferecer porta trancada é a mesma mentira do menu, em JSON.
-const ANCORAS_POR_ENTIDADE: Readonly<Record<string, readonly [string, string, string]>> = {
-  epi_ficha_registro: ["/epis/fichas/registros/", "", "epi.ficha"],
-  epi_entrada_estoque: ["/epis/estoque/", "/movimentos", "epi.ver"],
-  epi_requisicao: ["/epis/requisicoes/", "", "epi.ver"],
-  demanda: ["/demandas/", "", "demanda.ver"],
-  turma: ["/turmas/", "?aba=inscricoes", "turma.inscrever"],
-  certificado: ["/certificados/", "", "certificado.ver"],
-};
-
-type Pendencia = typeof tabela_pendencia.$inferSelect;
-
-function _onde(p: Pendencia, usuario: UsuarioAtual): string | null {
-  if (p.processo_id && usuario.pode("processo.ver")) return `/processos/${p.processo_id}`;
-  if (p.parecer_id && usuario.pode("parecer.ver")) return `/pareceres/${p.parecer_id}`;
-  if (p.laudo_id && usuario.pode("laudo.ver")) return `/laudos/${p.laudo_id}`;
-  const ancora = Object.hasOwn(ANCORAS_POR_ENTIDADE, p.entidade ?? "") ? ANCORAS_POR_ENTIDADE[p.entidade!] : undefined;
-  if (ancora && p.entidade_id && usuario.pode(ancora[2])) return `${ancora[0]}${p.entidade_id}${ancora[1]}`;
-  return null;
-}
-
+// A âncora de cada pendência vai para o SISTEMA COMPLETO, e o mapa é o MESMO
+// da tela: `pendencias.leitura` monta o rótulo, o link (só para quem a rota
+// deixa entrar — porta trancada é a mesma mentira do menu, em JSON) e a frase
+// já decidida pela RN-19. Eram duas cópias do mapa, e a da tela já tinha
+// ganhado a turma e o certificado quando esta ainda não.
 rotas.get(`${PREFIXO}/pendencias`, async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
   servico_pendencias.exigir_ver(usuario);
-  const itens = await servico_pendencias.abertas(tx, usuario);
-  const de_quem = await servico_pendencias.titular_de(tx, itens);
+  const itens = await servico_pendencias.abertas(tx, usuario, c.req.query("minhas") === "1");
+  const leitura = await servico_pendencias.leitura(tx, usuario, itens);
   const ids_responsaveis = [...new Set(itens.map((p) => p.responsavel_id).filter((x): x is number => x !== null))];
   const responsaveis = new Map(
     ids_responsaveis.length
@@ -160,17 +141,25 @@ rotas.get(`${PREFIXO}/pendencias`, async (c) => {
   );
   // "hoje" é o dia em America/Sao_Paulo, não o `date.today()` do processo (UTC na função)
   const dia = hoje();
-  const linhas: contrato.PendenciaResumo[] = itens.map((p) => ({
-    id: p.id,
-    tipo: p.tipo,
-    rotulo_tipo: (Object.hasOwn(servico_pendencias.TIPOS, p.tipo) ? servico_pendencias.TIPOS[p.tipo]![0] : p.tipo),
-    // a descrição pode citar nome e SIAPE: passa pela RN-19 como na tela
-    descricao: String(identificacao.texto_livre(p.descricao, usuario, { sobre: de_quem.get(p.id) ?? null })),
-    prazo: p.prazo,
-    atrasada: Boolean(p.prazo && servico_pendencias.atrasada(p, dia)),
-    responsavel: p.responsavel_id !== null ? (responsaveis.get(p.responsavel_id) ?? null) : null,
-    onde: _onde(p, usuario),
-  }));
+  const linhas: contrato.PendenciaResumo[] = itens.map((p) => {
+    const lida = leitura.get(p.id)!;
+    // o primeiro lugar que a pessoa pode abrir (processo, parecer, laudo e só
+    // então a âncora do módulo — a ordem de antes)
+    const porta = lida.onde.find((a) => a.href !== null) ?? null;
+    return {
+      id: p.id,
+      tipo: p.tipo,
+      rotulo_tipo: Object.hasOwn(servico_pendencias.TIPOS, p.tipo) ? servico_pendencias.TIPOS[p.tipo]![0] : p.tipo,
+      // a descrição pode citar nome e SIAPE: passa pela RN-19 como na tela
+      descricao: lida.texto,
+      prazo: p.prazo,
+      atrasada: Boolean(p.prazo && servico_pendencias.atrasada(p, dia)),
+      responsavel: p.responsavel_id !== null ? (responsaveis.get(p.responsavel_id) ?? null) : null,
+      onde: porta ? porta.href : null,
+      onde_rotulo: (porta ?? lida.onde[0] ?? null)?.rotulo ?? null,
+      concluivel: servico_pendencias.pode_concluir(usuario, p),
+    };
+  });
   const corpo: contrato.Pendencias = {
     abertas: linhas.length,
     atrasadas: linhas.filter((l) => l.atrasada).length,

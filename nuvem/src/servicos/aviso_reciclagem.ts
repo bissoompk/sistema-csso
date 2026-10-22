@@ -38,6 +38,10 @@ export interface ResultadoAviso {
   enfileirados: number;
   sem_email: number;
   ja_avisados: number;
+  // separados, porque cada um pede uma coisa: o anulado já foi substituído, o
+  // sem vencimento não recicla, e o fora do escopo é de outro campus
+  anulados: number;
+  sem_vencimento: number;
   fora: number;
 }
 
@@ -106,14 +110,18 @@ async function _avisar(
   autor: UsuarioAtual | null,
   hoje: string,
 ): Promise<ResultadoAviso> {
-  const r: ResultadoAviso = { enfileirados: 0, sem_email: 0, ja_avisados: 0, fora: 0 };
+  const r: ResultadoAviso = { enfileirados: 0, sem_email: 0, ja_avisados: 0, anulados: 0, sem_vencimento: 0, fora: 0 };
   const avisados = await ja_avisados(
     tx,
     certificados.map((c) => c.id),
   );
   for (const certificado of certificados) {
-    if (certificado.situacao !== "EMITIDO" || certificado.data_vencimento === null) {
-      r.fora += 1;
+    if (certificado.situacao !== "EMITIDO") {
+      r.anulados += 1;
+      continue;
+    }
+    if (certificado.data_vencimento === null) {
+      r.sem_vencimento += 1;
       continue;
     }
     if (avisados.has(certificado.id)) {
@@ -178,7 +186,9 @@ export function resumo(r: ResultadoAviso): string {
   const partes = [`${r.enfileirados} aviso(s) de reciclagem na fila de envio`];
   if (r.ja_avisados) partes.push(`${r.ja_avisados} já avisado(s) antes`);
   if (r.sem_email) partes.push(`${r.sem_email} sem e-mail cadastrado`);
-  if (r.fora) partes.push(`${r.fora} anulado(s), sem vencimento ou fora do seu escopo`);
+  if (r.anulados) partes.push(`${r.anulados} anulado(s), que não recebe(m) aviso`);
+  if (r.sem_vencimento) partes.push(`${r.sem_vencimento} sem vencimento (treinamento que não expira)`);
+  if (r.fora) partes.push(`${r.fora} fora do seu escopo ou inexistente(s)`);
   let frase = partes.join("; ") + ".";
   if (r.enfileirados && !email.configurado()) {
     frase += " O envio de e-mail ainda não está ligado: eles saem quando for configurado.";

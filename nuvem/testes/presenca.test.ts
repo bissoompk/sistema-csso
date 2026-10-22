@@ -689,7 +689,8 @@ describe("troca parcial (HTMX)", () => {
     // a tela escreve o decimal em português, sem casa à toa (filtro `num`)
     expect(corpo).toContain('<td class="mono">8 h</td>');
     expect(corpo).toContain("Presente");
-    expect(corpo.includes('method="post"') && corpo.includes('hx-post="/turmas/')).toBe(true);
+    // a célula é a caixa do dia, marcada, dentro do formulário da folha (M33)
+    expect(corpo).toMatch(new RegExp(`name="presente" value="${inscricao_id}_${INICIO}"[^>]* checked`));
     expect((await inscricao(inscricao_id)).frequencia_percentual).toBe("100.00");
   });
 

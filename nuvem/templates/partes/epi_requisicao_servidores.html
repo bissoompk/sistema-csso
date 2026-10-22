@@ -32,8 +32,8 @@
 {% if recado_cadastro|default('') %}<span class="dica ok" role="status">{{ recado_cadastro }}</span>{% endif %}
 <span class="dica">
   {%- if q and not servidores|length -%}
-  Nada encontrado para “{{ q }}”. O SIAPE acha sempre; o nome só acha para quem
-  tem permissão de ler identificação nominal (RN-19).
+  Nada encontrado para “{{ q }}”. O SIAPE acha sempre; o nome, só para quem
+  pode ver nomes.
   {%- else -%}
   {{ servidores|length }} servidor(es) na lista.
   {%- if nota|default('') %} {{ nota }}{% endif -%}

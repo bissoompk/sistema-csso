@@ -144,7 +144,12 @@ export interface PendenciaResumo {
   prazo: string | null;
   atrasada: boolean;
   responsavel: string | null;
+  /** o link do primeiro lugar que a pessoa pode abrir */
   onde: string | null;
+  /** o rótulo legível desse lugar ("Ficha de EPI — entrega nº 7"), mesmo sem link */
+  onde_rotulo: string | null;
+  /** se esta conta pode concluir a pendência (o mesmo `pode_concluir` da tela) */
+  concluivel: boolean;
 }
 
 export interface Pendencias {

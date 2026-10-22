@@ -108,11 +108,11 @@
     {{ ui.vazio_de_lista(
          'Nenhum motivo de recusa cadastrado.',
          'Recusar item de pedido exige escolher um motivo daqui, e o texto dele é
-          copiado congelado para a negativa (RN-27): sem nenhum, a análise não
+          copiado, sem mudança depois, para a negativa: sem nenhum, a análise não
           consegue recusar nada.'
          ~ (' Rode as sementes, ou use “' ~ CADASTRAR ~ '”, no canto superior
-             direito.' if editavel else ' Cadastrar pede a permissão
-             epi.catalogo.'),
+             direito.' if editavel else ' Cadastrar cabe a quem
+             administra o catálogo de EPI.'),
          7 if editavel else 6) }}
     {% endfor %}
   </table>

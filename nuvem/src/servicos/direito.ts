@@ -17,7 +17,7 @@
  */
 import { and, asc, eq } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { adicional_vigencia, anexo } from "../db/esquema/index.js";
+import { adicional_vigencia, anexo, percentual_aplicavel } from "../db/esquema/index.js";
 import { exigir_transicao_direito } from "../dominio/estados.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
@@ -256,6 +256,17 @@ export async function alterar(
 ): Promise<AdicionalVigencia> {
   usuario.exigir("parecer.emitir");
   _exigir_transicao(vigencia.estado, "ALTERADO");
+  // O percentual é do MESMO adicional: insalubridade não vira irradiação por
+  // alteração de percentual — trocar de adicional é cessar um e propor o outro,
+  // com o registro de opção (RN-09). E "alterar" para o mesmo percentual não é
+  // alteração nenhuma, só um evento a mais na trilha.
+  const [novo] = await tx.select().from(percentual_aplicavel).where(eq(percentual_aplicavel.id, d.percentual_id));
+  if (!novo || novo.tipo_adicional_id !== vigencia.tipo_adicional_id) {
+    throw new RegraDoDireito("o novo percentual tem de ser do mesmo tipo de adicional — escolha um da lista");
+  }
+  if (novo.id === vigencia.percentual_id) {
+    throw new RegraDoDireito("esse já é o percentual atual — escolha outro para alterar");
+  }
   const anterior = vigencia.percentual_id;
   await _gravar(tx, vigencia, { estado: "ALTERADO", percentual_id: d.percentual_id });
   await auditoria.registrar(tx, {

@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as datas_br from "../src/servicos/datas_br";
 import { ambiente } from "../src/web";
+import { RegraViolada } from "../src/nucleo/erros";
 
 describe("datas_br", () => {
   it("ca04 por extenso", () => {
@@ -139,5 +140,48 @@ describe("filtros de template", () => {
     expect(r("{{ d | data_extenso }}", { d: "2026-02-11" })).toBe("11 de fevereiro de 2026");
     expect(r("{{ m | momento }}", { m: new Date(Date.UTC(2026, 5, 18, 15, 0)) })).toBe("18/06/2026 12:00");
     expect(r("{{ m | momento }}", { m: null })).toBe("");
+  });
+});
+
+describe("datas de formulário", () => {
+  it.each([
+    ["21/10/2026", "2026-10-21"],
+    ["1/2/2026", "2026-02-01"],
+    ["2026-10-21", "2026-10-21"],
+    [" 2026-10-21 ", "2026-10-21"],
+  ])("ler_data_formulario(%s)", (entrada, esperado) => {
+    expect(datas_br.ler_data_formulario(entrada, "Data de chegada")).toBe(esperado);
+  });
+
+  it.each([[""], ["   "], [null], [undefined]])("vazio é null (%s)", (entrada) => {
+    expect(datas_br.ler_data_formulario(entrada, "Data")).toBeNull();
+  });
+
+  it.each([["2026-13-45"], ["31/02/2026"], ["ontem"], ["21-10-2026"], ["0026-01-01"], ["2026/10/21"]])(
+    "inválida ou inexistente (%s) recusa em português",
+    (entrada) => {
+      expect(() => datas_br.ler_data_formulario(entrada, "Data de chegada")).toThrow(
+        new RegraViolada("Data de chegada: data inválida — use dd/mm/aaaa."),
+      );
+    },
+  );
+
+  it("exigir_ate_hoje: hoje vale, amanhã não", () => {
+    expect(() => datas_br.exigir_ate_hoje("2026-10-21", "Data de chegada", "2026-10-21")).not.toThrow();
+    expect(() => datas_br.exigir_ate_hoje("2026-10-22", "Data de chegada", "2026-10-21")).toThrow(
+      "Data de chegada não pode ser posterior a hoje.",
+    );
+  });
+
+  it("exigir_ordem: mesmo dia vale; antes recusa", () => {
+    expect(() =>
+      datas_br.exigir_ordem("2026-10-21", "2026-10-21", "Data de chegada", "Data do desfecho"),
+    ).not.toThrow();
+    expect(() =>
+      datas_br.exigir_ordem("2026-10-21", "2026-10-20", "Data de chegada", "Data do desfecho"),
+    ).toThrow("Data do desfecho não pode ser anterior à data de chegada.");
+    expect(() => datas_br.exigir_ordem("2026-10-21", "2026-10-20", "O início", "O fim")).toThrow(
+      "O fim não pode ser anterior ao início.",
+    );
   });
 });

@@ -163,6 +163,99 @@ export const PERMISSOES: Record<string, string> = {
   "demanda.registrar": "Registrar demanda, encaminhamento e encerramento",
 };
 
+/**
+ * O que cada permissão permite, em português de tela, agrupado como quem
+ * concede perfil pensa (M75): a matriz de /perfis é lida por gestor, e
+ * "epi.requisitar" não diz nada a quem não escreveu o código.
+ *
+ * Separado de `PERMISSOES` de propósito: aquele texto é o `descricao` gravado
+ * em `permissao` pela semeadura, em ASCII como no Python, e mudá-lo mexeria no
+ * banco de todas as instalações. Este é só a tela. Toda chave de `PERMISSOES`
+ * está aqui exatamente uma vez — `rbac.test.ts` confere.
+ */
+export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<string, string>>])[] = [
+  [
+    "Processos e adicional ocupacional",
+    {
+      "processo.ver": "Ver processos",
+      "processo.criar": "Cadastrar processo",
+      "processo.editar": "Editar processo e cadastro de servidor",
+      "processo.status": "Mudar a etapa do processo (mover no quadro)",
+      "processo.atribuir": "Definir o responsável pelo processo",
+      "anexo.enviar": "Enviar anexo",
+      "exposicao.ver": "Ver nome, SIAPE e dados de exposição dos servidores",
+    },
+  ],
+  [
+    "Pareceres e laudos",
+    {
+      "parecer.ver": "Ver pareceres",
+      "parecer.criar": "Criar parecer",
+      "parecer.editar": "Editar parecer",
+      "parecer.emitir": "Emitir parecer (consome número)",
+      "parecer.assinar": "Assinar parecer (exige habilitação técnica)",
+      "parecer.anular": "Anular parecer",
+      "laudo.ver": "Ver laudos",
+      "laudo.criar": "Registrar laudo técnico (exige habilitação técnica)",
+    },
+  ],
+  [
+    "Treinamentos e certificados",
+    {
+      "treinamento.ver": "Ver treinamentos, turmas e certificados",
+      "treinamento.gerenciar": "Gerenciar o catálogo de treinamentos e o modelo de certificado",
+      "assinatura.gerenciar": "Cadastrar a assinatura de instrutor",
+      "turma.criar": "Criar e editar turma",
+      "turma.inscrever": "Inscrever e confirmar participantes",
+      "turma.inscrever_se": "Inscrever-se em turma aberta (só a si mesmo)",
+      "turma.concluir": "Concluir ou cancelar turma",
+      "turma.avaliar": "Lançar presença e nota",
+      "certificado.emitir": "Emitir certificado (consome número)",
+      "certificado.anular": "Anular certificado emitido",
+      "certificado.ver": "Ver certificado nominal e dados do participante",
+      "participante.mesclar": "Juntar cadastros duplicados do mesmo participante",
+    },
+  ],
+  [
+    "Gestão de EPI",
+    {
+      "epi.ver": "Ver catálogo, estoque e pedidos de EPI",
+      "epi.catalogo": "Gerenciar o catálogo de EPI: item, CA, quantidade e motivo de recusa",
+      "epi.entregar": "Registrar entrega e emitir a ficha de EPI",
+      "epi.ficha": "Ver a ficha de EPI de qualquer servidor",
+      "epi.estoque": "Registrar entrada, ajuste e descarte de estoque",
+      "epi.requisitar": "Abrir e enviar pedido de EPI",
+      "epi.analisar": "Analisar pedido de EPI: aprovar, recusar e indeferir",
+    },
+  ],
+  [
+    "Demandas",
+    {
+      "demanda.ver": "Ver as demandas do setor",
+      "demanda.registrar": "Registrar, encaminhar e encerrar demanda",
+    },
+  ],
+  [
+    "Catálogos, indicadores e exportação",
+    {
+      "catalogo.gerenciar": "Gerenciar os catálogos e a configuração do setor",
+      "indicador.ver": "Ver indicadores",
+      exportar: "Exportar dados",
+    },
+  ],
+  [
+    "Contas, auditoria e sistema",
+    {
+      "usuario.criar_conta": "Criar e inativar conta",
+      "usuario.resetar_senha": "Redefinir a senha de conta comum",
+      "perfil.conceder": "Conceder e encerrar perfil, vincular conta a servidor",
+      "habilitacao.atestar": "Atestar habilitação técnica",
+      "auditoria.ver": "Ver a trilha de auditoria",
+      "backup.executar": "Fazer backup do sistema",
+    },
+  ],
+];
+
 /** A lista do coordenador — o superintendente parte dela (ver abaixo). */
 const PERMISSOES_COORDENADOR: string[] = [
   "processo.ver",

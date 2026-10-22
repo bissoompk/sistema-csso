@@ -258,6 +258,9 @@ describe("recusas", () => {
     expect(dados.inscricao.situacao).toBe("REPROVADO");
     const msg = await _bloqueio(servico.emitir(db, usuario, dados.inscricao, { gerar_pdf: false }));
     expect(msg.toLowerCase()).toContain("reprovado");
+    // UM motivo, com o gênero neutro: a frequência não sai duas vezes (M34)
+    expect(msg).toContain("reprovado(a)");
+    expect(msg.match(/frequência de 50%/g)).toHaveLength(1);
     expect(await db.select().from(e.certificado)).toHaveLength(0);
   });
 
@@ -376,8 +379,12 @@ describe("anulação e reemissão", () => {
     const antes = _texto(emitido.bytes);
     await servico.anular(db, cen.usuario, emitido.certificado, "reemissão por nome social");
     const segunda = await servico.segunda_via(db, cen.usuario, emitido.certificado);
-    expect(_texto(segunda.bytes)).toBe(antes);
+    // o mesmo texto, com a tarja de ANULADO na frente (posta depois do hash)
+    const tarja = await servico.tarja_do_anulado(db, emitido.certificado);
+    expect(tarja).toMatch(/^ANULADO em \d{2}\/\d{2}\/\d{4} — /);
+    expect(_texto(segunda.bytes)).toBe(`${tarja} ${antes}`);
     expect(segunda.confere).toBe(true);
+    expect(segunda.hash_conteudo).toBe(emitido.certificado.hash_conteudo);
     expect(C.situacao_publica(emitido.certificado, datas_br.hoje())).toBe("ANULADO");
   });
 });

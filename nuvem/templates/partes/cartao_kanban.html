@@ -13,20 +13,29 @@
   <div class="topo">
     {# A coluna já diz o grupo; o ponto diz o estado exato dentro dele. #}
     {{ ui.ponto_estado(p.estado_tecnico) }}
-    <span class="mono" title="{{ p.nup }}">{{ p.nup }}</span>
+    <span class="estado-cartao">{{ p.estado_tecnico|estado }}</span>
     <span class="selo {{ 'erro' if r.atrasado }}"
           title="{{ r.dias_no_estado }} dias neste estado{% if r.atrasado %}; o SLA da coluna é de {{ r.sla }} dias{% endif %}">
       {{ r.dias_no_estado }}d</span>
   </div>
+  {# O NUP INTEIRO, numa linha própria. Recortado em "23086.10000…", ele perdia
+     justamente os dígitos que distinguem um processo do outro — os do meio e o
+     ano. Fora da `.topo` ele não disputa espaço com o selo de dias; no corpo
+     miúdo da `.meta` ele cabe inteiro na coluna do quadro, e o `<wbr>` depois
+     da barra diz ONDE quebrar quando a coluna é ainda mais estreita — nunca
+     no meio do sequencial nem antes do DV. #}
+  {% set partes_nup = p.nup.split('/') %}
+  <div class="meta nup"><span class="mono"><span class="parte">{{ partes_nup[0] }}/</span><wbr><span class="parte">{{ partes_nup.slice(1).join('/') }}</span></span></div>
   <span class="titulo">
     <a href="/processos/{{ p.id }}">{{ identificar(p, vazio=p.nup) }}</a>
   </span>
+  {% if p.prazo or r.anexos or p.observacoes %}
   <div class="meta">
-    <span title="Estado técnico">{{ p.estado_tecnico|estado }}</span>
-    {% if p.prazo %}<span class="ponto">·</span><span title="Prazo" class="mono">{{ p.prazo|data }}</span>{% endif %}
-    {% if r.anexos %}<span class="ponto">·</span><span title="Anexos">{{ r.anexos }} anexo(s)</span>{% endif %}
-    {% if p.observacoes %}<span class="ponto">·</span><span title="Tem observações">obs.</span>{% endif %}
+    {% if p.prazo %}<span title="Prazo" class="mono">prazo {{ p.prazo|data }}</span>{% endif %}
+    {% if r.anexos %}{% if p.prazo %}<span class="ponto">·</span>{% endif %}<span title="Anexos">{{ r.anexos }} anexo(s)</span>{% endif %}
+    {% if p.observacoes %}{% if p.prazo or r.anexos %}<span class="ponto">·</span>{% endif %}<span title="Tem observações">obs.</span>{% endif %}
   </div>
+  {% endif %}
   {{ ui.progresso_checklist(r.checklist_feitos, r.checklist_total) }}
   {# Mover sem arrastar. O arrasto do HTML5 não existe no toque nem no teclado:
      quem estava num tablet ou navegando por Tab precisava sair do quadro e
@@ -39,8 +48,12 @@
      Só saem as colunas que a máquina do TIPO admite a partir do estado atual
      (`r.colunas_destino`): PGR não ganha botão para a cadeia do adicional. #}
   {% if usuario and usuario.pode('processo.status') and r.colunas_destino|length %}
+  {# `.acao-rotulada` com o ícone: o mesmo desenho de ação do resto do tema
+     (era um link solto, "→ mover para…", escrito em texto). Continua sendo o
+     `<summary>` — é por ele que o teclado entra, e o script do quadro devolve o
+     foco a ele depois do movimento. #}
   <details class="mover">
-    <summary>mover para…</summary>
+    <summary class="acao-rotulada">{{ ui.icone('arrow-right') }}<span>Mover para…</span></summary>
     <form method="post" action="/kanban/mover/{{ p.id }}" data-mover>
       {% for destino, rotulo in COLUNAS_KANBAN %}{% if destino in r.colunas_destino %}
       <button type="submit" name="coluna" value="{{ destino }}" class="secundario compacto">{{ rotulo }}</button>

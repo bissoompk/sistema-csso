@@ -350,3 +350,11 @@ td a.mono, td > .mono:only-child { white-space: nowrap; }
   .acao-hub > span:not(.contagem) { display: none; }
   .passos-hub { display: none; }
 }
+
+/* O rótulo da célula empilhada no celular segue a fonte do tema, também
+   quando a célula é `.mono` (csso.css, `table.empilhavel`). */
+@media screen and (max-width: 600px) {
+  table.empilhavel.empilhavel > tbody > tr > td[data-coluna]::before {
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+}

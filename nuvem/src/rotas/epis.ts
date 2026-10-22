@@ -129,17 +129,19 @@ type CamposItem = {
 };
 
 /**
- * Lê o formulário e devolve `[campos, erro]` — um dos dois é sempre vazio.
+ * Lê o formulário e devolve `[campos, erro, campo]` — campos ou erro, nunca os
+ * dois. `campo` é o `name` do campo que falhou: a tela o marca e põe o foco
+ * nele (antes a marca ia sempre para o Nome, qualquer que fosse o erro).
  * Cadastro e edição passam pela MESMA conferência, e ela roda antes do banco
  * para a pessoa ler a regra e não o nome de uma constraint.
  */
-export function _campos_do_item(f: Record<string, string>): [CamposItem | null, string] {
+export function _campos_do_item(f: Record<string, string>): [CamposItem | null, string, string] {
   const nome_limpo = (f.nome || "").trim();
-  if (!nome_limpo) return [null, "O nome do EPI não pode ficar em branco."];
-  if (!/^\d+$/.test((f.categoria_id || "").trim())) return [null, "Escolha a categoria da NR-6."];
+  if (!nome_limpo) return [null, "O nome do EPI não pode ficar em branco.", "nome"];
+  if (!/^\d+$/.test((f.categoria_id || "").trim())) return [null, "Escolha a categoria da NR-6.", "categoria_id"];
 
   const padrao = _inteiro(f.quantidade_padrao);
-  if (padrao === null) return [null, "Quantidade padrão inválida: informe um número maior que zero."];
+  if (padrao === null) return [null, "Quantidade padrão inválida: informe um número maior que zero.", "quantidade_padrao"];
 
   // O par (máxima, janela) anda junto: "2 por ano" é regra, "2" não é nada (RN-26)
   const maxima = _inteiro(f.quantidade_maxima);
@@ -150,16 +152,17 @@ export function _campos_do_item(f: Record<string, string>): [CamposItem | null, 
     return [
       null,
       "Quantidade máxima e período andam juntos: " + "'2 por 12 meses' é regra, '2' sozinho não quer dizer nada.",
+      tem_maxima ? "periodo_maximo_meses" : "quantidade_maxima",
     ];
   }
   if (tem_maxima && (maxima === null || janela === null)) {
-    return [null, "Quantidade máxima e período: informe números maiores que zero."];
+    return [null, "Quantidade máxima e período: informe números maiores que zero.", "quantidade_maxima"];
   }
-  if (maxima !== null && maxima < padrao) return [null, "A quantidade máxima não pode ser menor que a padrão."];
+  if (maxima !== null && maxima < padrao) return [null, "A quantidade máxima não pode ser menor que a padrão.", "quantidade_maxima"];
 
   const vida_util = _inteiro(f.vida_util_meses);
   if ((f.vida_util_meses || "").trim() && vida_util === null) {
-    return [null, "Vida útil inválida: informe meses inteiros maiores que zero."];
+    return [null, "Vida útil inválida: informe meses inteiros maiores que zero.", "vida_util_meses"];
   }
 
   // RN-25 nasce aqui: item que exige CA sem número é item que a entrega não sabe conferir
@@ -169,11 +172,12 @@ export function _campos_do_item(f: Record<string, string>): [CamposItem | null, 
     return [
       null,
       "Item que exige CA precisa do número do CA: " + "sem ele não há o que conferir na hora de entregar.",
+      "numero_ca",
     ];
   }
 
   const validade = _data(f.validade_ca);
-  if ((f.validade_ca || "").trim() && validade === null) return [null, "Data de validade do CA inválida."];
+  if ((f.validade_ca || "").trim() && validade === null) return [null, "Data de validade do CA inválida.", "validade_ca"];
 
   return [
     {
@@ -199,6 +203,7 @@ export function _campos_do_item(f: Record<string, string>): [CamposItem | null, 
       exige_treinamento: _marcado(f.exige_treinamento ?? ""),
     },
     "",
+    "",
   ];
 }
 
@@ -222,6 +227,18 @@ async function _categorias(tx: Executor) {
 // =====================================================================
 // Itens de EPI
 // =====================================================================
+/** O item como o formulário o lê: tudo texto, caixa marcada é `"1"`. */
+function _em_texto(i: typeof epi_item.$inferSelect): Record<string, string> {
+  const texto = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+  const saida: Record<string, string> = {};
+  for (const n of CAMPOS_ITEM) {
+    const v = (i as Record<string, unknown>)[n];
+    saida[n] = typeof v === "boolean" ? (v ? "1" : "") : texto(v);
+  }
+  saida["ativo"] = i.ativo ? "1" : "";
+  return saida;
+}
+
 async function _tela_catalogo(
   c: Ctx,
   usuario: UsuarioAtual,
@@ -231,6 +248,10 @@ async function _tela_catalogo(
     digitado?: Record<string, string> | null;
     /** só este item: é o destino do link "corrigir o CA" da entrega recusada */
     item_id?: number | null;
+    /** de qual popup veio a recusa: o id do item editado, ou nulo (o cadastro) */
+    editando_id?: number | null;
+    /** o campo que a recusa aponta (D21: a marca ia sempre para o Nome) */
+    campo_erro?: string | null;
   } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
@@ -250,8 +271,14 @@ async function _tela_catalogo(
   const com_ca_vencido = itens.filter((i) => i.exige_ca && i.ativo && (i.validade_ca === null || i.validade_ca < hoje));
   const so_um = r.item_id ? itens.filter((i) => i.id === r.item_id) : null;
   const recorte = recortar(so_um ?? itens, numeroDaPagina(c));
+  // cada item da página em TEXTO, na forma do digitado: o popup de editar é o
+  // mesmo formulário do cadastro, e lê os dois do mesmo jeito
+  const itens_em_texto = Object.fromEntries(recorte.itens.map((i) => [i.id, _em_texto(i)]));
   return pagina(c, "paginas/epis_catalogo.html", usuario, {
     so_um: so_um !== null,
+    itens_em_texto,
+    editando_id: r.editando_id ?? null,
+    campo_erro: r.campo_erro ?? null,
     abas: ABAS,
     aba: CATALOGO,
     itens: recorte.itens,
@@ -284,14 +311,18 @@ rotas.post(CATALOGO, async (c) => {
   const tx = c.get("tx");
   const digitado = _campos(await formulario(c), CAMPOS_ITEM);
   // Renderiza a tela de novo com o popup reaberto e o digitado — nunca redireciona
-  const recusar = (mensagem: string) => _tela_catalogo(c, usuario, { erro: mensagem, digitado });
+  const recusar = (mensagem: string, campo_erro: string | null = null) =>
+    _tela_catalogo(c, usuario, { erro: mensagem, digitado, campo_erro });
 
-  const [campos, erro] = _campos_do_item(digitado);
-  if (campos === null) return recusar(erro);
+  const [campos, erro, campo] = _campos_do_item(digitado);
+  if (campos === null) return recusar(erro, campo);
   const [categoria] = await tx.select().from(epi_categoria).where(eq(epi_categoria.id, campos.categoria_id));
-  if (!categoria) return recusar("Categoria não encontrada.");
+  if (!categoria) return recusar("Categoria não encontrada.", "categoria_id");
   if (await _homonimo(tx, campos.nome, campos.modelo)) {
-    return recusar(`Já existe '${campos.nome}' com esse modelo. ` + "Para cadastrar outro, informe o modelo que os distingue.");
+    return recusar(
+      `Já existe '${campos.nome}' com esse modelo. ` + "Para cadastrar outro, informe o modelo que os distingue.",
+      "modelo",
+    );
   }
   const [item] = await tx.insert(epi_item).values(campos).returning();
   await auditoria.registrar(tx, {
@@ -336,6 +367,9 @@ rotas.get(CATEGORIAS, async (c) => {
  */
 rotas.post(`${CATEGORIAS}/:categoria_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
+  // a permissão antes de ler o formulário: quem não pode editar não recebe
+  // "preencha o campo" (o `salvar_com_diff` confere de novo)
+  usuario.exigir("epi.catalogo");
   const f = await formulario(c);
   const numero = _inteiro(f.texto("ordem", "1"));
   return salvar_com_diff(
@@ -427,6 +461,7 @@ rotas.post(MOTIVOS, async (c) => {
  */
 rotas.post(`${MOTIVOS}/:motivo_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.catalogo");
   const f = await formulario(c);
   const corpo = f.texto("texto").trim();
   if (!corpo) return _erro(c, MOTIVOS, "O texto da recusa não pode ficar em branco.");
@@ -457,12 +492,18 @@ rotas.post(`${CATALOGO}/:item_id{[0-9]+}`, async (c) => {
   const tx = c.get("tx");
   const item_id = Number(c.req.param("item_id"));
   const f = await formulario(c);
-  const [campos, erro] = _campos_do_item(_campos(f, CAMPOS_ITEM));
-  if (campos === null) return _erro(c, CATALOGO, erro);
+  const digitado = { ..._campos(f, CAMPOS_ITEM), ativo: f.texto("ativo", "") };
+  // A recusa reabre o popup DESTE item com o digitado e o campo marcado —
+  // antes voltava para a lista com a faixa vermelha, e o que foi escrito no
+  // popup se perdia.
+  const recusar = (mensagem: string, campo_erro: string | null = null) =>
+    _tela_catalogo(c, usuario, { erro: mensagem, digitado, editando_id: item_id, campo_erro });
+  const [campos, erro, campo] = _campos_do_item(digitado);
+  if (campos === null) return recusar(erro, campo);
   const [categoria] = await tx.select().from(epi_categoria).where(eq(epi_categoria.id, campos.categoria_id));
-  if (!categoria) return _erro(c, CATALOGO, "Categoria não encontrada.");
+  if (!categoria) return recusar("Categoria não encontrada.", "categoria_id");
   if (await _homonimo(tx, campos.nome, campos.modelo, item_id)) {
-    return _erro(c, CATALOGO, `Já existe outro item '${campos.nome}' com esse modelo.`);
+    return recusar(`Já existe outro item '${campos.nome}' com esse modelo.`, "modelo");
   }
   campos.ativo = _marcado(f.texto("ativo"));
   return salvar_com_diff(c, usuario, epi_item, item_id, campos, {

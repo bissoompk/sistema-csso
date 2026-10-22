@@ -53,7 +53,7 @@
       <dd>{% if quem.nominal %}{{ quem.nome }}
         <span class="discreto">· SIAPE <span class="mono">{{ quem.siape }}</span></span>
         {% else %}<span class="mono discreto">{{ quem.nome }}</span>
-        <span class="discreto">· identificação suprimida (RN-19)</span>{% endif %}</dd>
+        <span class="discreto">· identificação suprimida</span>{% endif %}</dd>
 
       <dt>Cargo e função</dt>
       <dd>{{ requisicao.cargo_snapshot or '—' }}

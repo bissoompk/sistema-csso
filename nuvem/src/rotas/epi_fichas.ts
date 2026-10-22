@@ -155,8 +155,19 @@ rotas.get(FICHAS, async (c) => {
 rotas.get(MINHA, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.ver");
-  if (usuario.servidor_id === null) return pagina(c, "paginas/epis_ficha_minha.html", usuario);
-  return redirecionar(c, `${FICHAS}/${usuario.servidor_id}`);
+  if (usuario.servidor_id === null) {
+    return pagina(c, "paginas/epis_ficha_minha.html", usuario, {
+      mensagem: c.req.query("mensagem") ?? null,
+      erro: c.req.query("erro") ?? null,
+    });
+  }
+  // o recado viaja junto: é por aqui que volta quem pediu um registro que não é seu
+  let destino = `${FICHAS}/${usuario.servidor_id}`;
+  for (const chave of ["mensagem", "erro"]) {
+    const valor = c.req.query(chave);
+    if (valor) destino = comMensagem(destino, valor, chave);
+  }
+  return redirecionar(c, destino);
 });
 
 // =====================================================================
@@ -431,10 +442,15 @@ async function registro_por_id(tx: Executor, id: number | null) {
   return registro ?? null;
 }
 
+/**
+ * A linha da ficha que uma rota de ESCRITA (ou o comprovante) vai tocar.
+ * `epi.entregar` vem ANTES da busca: quem não pode operar o balcão recebe a
+ * mesma resposta para registro que existe e para registro que não.
+ */
 async function registro_e_permissao(tx: Executor, usuario: UsuarioAtual, bruto: string) {
+  usuario.exigir("epi.entregar");
   const registro = await registro_por_id(tx, inteiro(bruto));
   if (!registro) return null;
-  usuario.exigir("epi.entregar");
   // RN-19 (revisão de privacidade, 25/09/2026): o comprovante leva nome e SIAPE
   // de quem recebeu. `epi.entregar` sozinho não é permissão nominal — na matriz
   // ele sempre anda com `epi.ficha`, mas um perfil montado sem ela imprimia o
@@ -443,11 +459,36 @@ async function registro_e_permissao(tx: Executor, usuario: UsuarioAtual, bruto: 
   return registro;
 }
 
+/**
+ * Para onde volta quem não achou o que procurava: a lista das fichas para quem
+ * pode lê-la, a própria ficha para os outros. Mandar o servidor comum para
+ * `/epis/fichas` era um 403 sem explicação nenhuma.
+ */
+function volta_da_ficha(usuario: UsuarioAtual): string {
+  return usuario.pode("epi.ficha") ? FICHAS : MINHA;
+}
+
+/**
+ * A linha que esta conta pode ler — ou `null`, com a MESMA resposta para
+ * registro inexistente e para registro de outra pessoa (quem não tem
+ * `epi.ficha` não descobre, pela diferença, que o número existe).
+ */
+async function registro_legivel(tx: Executor, usuario: UsuarioAtual, bruto: string) {
+  const registro = await registro_por_id(tx, inteiro(bruto));
+  if (!registro) return null;
+  const propria = usuario.servidor_id !== null && usuario.servidor_id === registro.servidor_id;
+  if (!propria && !usuario.pode("epi.ficha")) return null;
+  return registro;
+}
+
+const NADA_NESTE_ENDERECO = "Não há registro da sua ficha de EPI neste endereço.";
+
 /** A linha aponta para a ficha de quem recebeu (a âncora da pendência). */
 rotas.get(`${REGISTROS}/:registro_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
-  const registro = await registro_por_id(c.get("tx"), inteiro(c.req.param("registro_id")));
-  if (!registro) return redirecionar(c, FICHAS);
+  usuario.exigir("epi.ver");
+  const registro = await registro_legivel(c.get("tx"), usuario, c.req.param("registro_id"));
+  if (!registro) return erro(c, volta_da_ficha(usuario), NADA_NESTE_ENDERECO);
   servico.exigir_leitura_da_ficha(usuario, registro.servidor_id);
   return redirecionar(c, `${FICHAS}/${registro.servidor_id}`);
 });
@@ -483,11 +524,13 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/comprovante`, async (c) => {
   const eh_arquivo = arquivo instanceof File;
   let anexo;
   try {
+    // o tipo que vale é o dos BYTES, conferido no serviço: o do navegador
+    // (`File.type`) sai da extensão, e `falso.pdf` com texto dentro passava
     anexo = await tx.transaction(async (sp) =>
       servico.anexar_comprovante(sp, usuario, registro, {
         conteudo: eh_arquivo ? new Uint8Array(await (arquivo as File).arrayBuffer()) : new Uint8Array(),
         nome_original: (eh_arquivo && (arquivo as File).name) || "comprovante.pdf",
-        mime_type: (eh_arquivo && (arquivo as File).type) || "application/pdf",
+        mime_type: (eh_arquivo && (arquivo as File).type) || "",
       }),
     );
   } catch (falha) {
@@ -495,14 +538,17 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/comprovante`, async (c) => {
     if (falha instanceof anexos.AnexoGrandeDemais) return erro(c, destino, falha.message);
     throw falha;
   }
-  return volta(c, destino, `Comprovante anexado · SHA-256 ${anexo.sha256.slice(0, 12)}. A entrega está completa.`);
+  return volta(c, destino, `Comprovante anexado (SHA-256 ${anexo.sha256.slice(0, 12)}). A entrega está completa.`);
 });
 
 rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/anexo`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.ver");
   const tx = c.get("tx");
-  const registro = await registro_por_id(tx, inteiro(c.req.param("registro_id")));
-  if (!registro || registro.comprovante_anexo_id === null) return redirecionar(c, FICHAS);
+  const registro = await registro_legivel(tx, usuario, c.req.param("registro_id"));
+  if (!registro || registro.comprovante_anexo_id === null) {
+    return erro(c, volta_da_ficha(usuario), "Não há comprovante assinado para baixar neste endereço.");
+  }
   const [anexo] = await tx.select().from(tabela_anexo).where(eq(tabela_anexo.id, registro.comprovante_anexo_id));
   // a MESMA porta de `/anexos/{id}`: confere a leitura da ficha e registra o acesso
   await anexo_acesso.liberar(tx, usuario, anexo);
@@ -568,9 +614,11 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/estorno`, async (c) => {
     if (!recusavel(falha)) throw falha;
     return erro(c, destino, motivos_de(falha));
   }
+  // o saldo do lote NÃO volta no estorno: a ficha avisa e leva ao ajuste
+  const com_lote = registro.entrada_id !== null ? `${destino}?lote_estornado=${registro.entrada_id}` : destino;
   return volta(
     c,
-    destino,
+    com_lote,
     `Registro ${registro.id} estornado pelo registro ${estorno.id}. ` + "A linha original continua na ficha, marcada.",
   );
 });
@@ -598,15 +646,28 @@ rotas.get(`${FICHAS}/:servidor_id{[0-9]+}`, async (c) => {
 
   const linhas = await servico.linha_do_tempo(tx, servidor_id);
   const hoje = datas_br.hoje();
+  // o lote do estorno que acabou de acontecer: a ficha avisa que o saldo não voltou
+  const id_lote = inteiro(c.req.query("lote_estornado"));
+  const [lote_estornado] =
+    id_lote !== null ? await tx.select().from(epi_entrada_estoque).where(eq(epi_entrada_estoque.id, id_lote)) : [];
   return pagina(c, "paginas/epis_ficha.html", usuario, {
     servidor,
     linhas,
     hoje,
+    // a própria ficha: a tela fala com o titular, e não com o almoxarife. Quem
+    // opera o balcão continua vendo a própria ficha como operador — é lá que
+    // ele anexa o comprovante, devolve e estorna, e a visão do titular esconde
+    // essas ações
+    titular: usuario.servidor_id !== null && usuario.servidor_id === servidor_id && !usuario.pode("epi.entregar"),
+    recebidos: linhas.filter((l) => l.registro.tipo === "ENTREGA" && !l.estornado).length,
     pendentes: linhas.filter((l) => l.sem_comprovante),
     vencidos: linhas.filter((l) => l.ca_vencido_em(hoje)),
     trocas: linhas.filter((l) => l.troca_vencida_em(hoje)),
     divergencias: await servico.conferir(tx, servidor_id),
     pode_entregar: usuario.pode("epi.entregar"),
+    pode_pedir: usuario.pode("epi.requisitar"),
+    pode_estocar: usuario.pode("epi.estoque"),
+    lote_estornado: lote_estornado ?? null,
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
   });

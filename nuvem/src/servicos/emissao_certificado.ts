@@ -40,6 +40,7 @@ import { ContextoCertificado } from "./certificado.js";
 import { CAMPO_CPF_INSTRUTOR, CAMPO_CPF_PARTICIPANTE } from "./cpf_certificado.js";
 import * as datas_br from "./datas_br.js";
 import * as documento from "./documento.js";
+import { carimbar_tarja } from "./docx_baixo_nivel.js";
 import * as numeracao from "./numeracao.js";
 import { setor_emissor_vigente } from "./parecer.js";
 import { nome_exibicao } from "./participante.js";
@@ -114,7 +115,8 @@ export async function url_base_validacao(tx: Executor): Promise<string> {
   if (parametro && (parametro.valor ?? "").trim()) return parametro.valor.trim().replace(/\/+$/, "");
   const doAmbiente = (process.env.CSSO_URL_PUBLICA || process.env.URL || "").trim();
   if (doAmbiente) return doAmbiente.replace(/\/+$/, "");
-  return `http://127.0.0.1:${process.env.PORTA || "8765"}`;
+  // a mesma porta do `ferramentas/servidor-local.ts` (que define PORTA quando falta)
+  return `http://127.0.0.1:${(process.env.PORTA ?? "").trim() || "8766"}`;
 }
 
 /**
@@ -231,7 +233,7 @@ export async function modelo_da_turma(tx: Executor, turma: TurmaCarregada): Prom
       genericos[0]!;
     return [
       escolhido,
-      `'${treinamento.nome}' não tem modelo próprio — saiu no modelo genérico ${CertificadoModelo.rotulo(escolhido)}`,
+      `'${treinamento.nome}' não tem modelo próprio — sai no modelo genérico ${CertificadoModelo.rotulo(escolhido)}`,
     ];
   }
   return [null, ""];
@@ -293,10 +295,12 @@ export async function validar(
   if (turma.situacao !== "CONCLUIDA") {
     v.bloqueios.push(`${turma.codigo} ainda não foi concluída — o certificado atesta um curso que terminou`);
   }
-  if (inscricao.situacao === "REPROVADO") {
-    const motivos = servico_presenca.avaliar(turma, inscricao).motivos;
+  // o reprovado leva UM bloqueio, com os motivos do fecho: as conferências de
+  // frequência e nota abaixo repetiriam os mesmos motivos (M34)
+  const reprovado = inscricao.situacao === "REPROVADO";
+  if (reprovado) {
     v.bloqueios.push(
-      `${nome_exibicao(inscricao.participante)} está reprovado` + (motivos.length ? ` (${motivos.join("; ")})` : ""),
+      `${nome_exibicao(inscricao.participante)} está ${servico_presenca.frase_de_reprovacao(turma, inscricao)}`,
     );
   } else if (inscricao.situacao !== "APROVADO") {
     v.bloqueios.push(
@@ -306,13 +310,13 @@ export async function validar(
 
   // reconferidas a partir dos lançamentos, e não lidas da coluna derivada
   const frequencia = servico_presenca.frequencia_de(inscricao);
-  if (servico_presenca.comparar(frequencia, turma.frequencia_minima_percentual) < 0) {
+  if (!reprovado && servico_presenca.comparar(frequencia, turma.frequencia_minima_percentual) < 0) {
     v.bloqueios.push(
       `frequência de ${servico_presenca.numero(frequencia)}% abaixo do ` +
         `mínimo de ${servico_presenca.numero(turma.frequencia_minima_percentual)}%`,
     );
   }
-  if (turma.nota_minima_aprovacao !== null) {
+  if (!reprovado && turma.nota_minima_aprovacao !== null) {
     if (inscricao.nota_final === null) {
       v.bloqueios.push(
         `a turma exige nota mínima de ${servico_presenca.numero(turma.nota_minima_aprovacao)} e não há nota lançada`,
@@ -513,6 +517,8 @@ export async function montar_contexto_para_emitir(
       .map((t) => t.marcador)
       .sort(),
     avisos: [...(d.avisos ?? [])],
+    // o PDF da emissão nova sai com as frases inteiras; o de antes, como saiu
+    redacao: servico_certificado.REDACAO_ATUAL,
   });
 }
 
@@ -785,6 +791,26 @@ export async function anular(
 // ---------------------------------------------------------------------
 // Segunda via
 // ---------------------------------------------------------------------
+/**
+ * A frase da tarja do certificado anulado — "ANULADO em 21/10/2026 —
+ * substituído por 14/2026" —, ou `null` para o que vale. Vai na SAÍDA (PDF e
+ * Word): o congelado e o hash ficam como na emissão.
+ */
+export async function tarja_do_anulado(tx: Executor, certificado: CertificadoRegistro): Promise<string | null> {
+  if (!C.anulado(certificado)) return null;
+  const quando = datas_br.data_local(certificado.anulado_em);
+  let frase = "ANULADO" + (quando ? ` em ${datas_br.numerica(quando)}` : "");
+  if (certificado.substituido_por_id) {
+    const [s] = await tx
+      .select({ numero: tabela_certificado.numero, ano: tabela_certificado.ano })
+      .from(tabela_certificado)
+      .where(eq(tabela_certificado.id, certificado.substituido_por_id));
+    if (s) return `${frase} — substituído por ${s.numero}/${s.ano}`;
+  }
+  frase += " — este certificado não vale mais";
+  return frase;
+}
+
 export interface ResultadoSegundaVia {
   docx: string;
   bytes: Uint8Array;
@@ -796,7 +822,8 @@ export interface ResultadoSegundaVia {
 /**
  * Reimprime do congelado e confere o hash contra o da emissão. Certificado
  * anulado também tem segunda via: quem precisa juntar ao processo o papel que
- * foi anulado precisa do papel.
+ * foi anulado precisa do papel — mas ele sai com a tarja de ANULADO
+ * (`tarja_do_anulado`), para não circular como válido.
  */
 export async function segunda_via(
   tx: Executor,
@@ -864,7 +891,10 @@ async function _reimprimir(
       `(${contexto.participante_identificador}) · ${info.hash_conteudo.slice(0, 12)}${como}`,
     usuario,
   });
-  return { docx: destino, bytes: info.bytes, hash_conteudo: info.hash_conteudo, confere, aviso };
+  // a tarja depois do hash: o texto conferido é o da emissão
+  const tarja = await tarja_do_anulado(tx, certificado);
+  const bytes = tarja ? carimbar_tarja(info.bytes, tarja) : info.bytes;
+  return { docx: destino, bytes, hash_conteudo: info.hash_conteudo, confere, aviso };
 }
 
 /**
@@ -878,7 +908,7 @@ export async function pdf_do_certificado(
   certificado: CertificadoRegistro,
 ): Promise<{ nome: string; bytes: Uint8Array; aviso: string | null }> {
   const via = await segunda_via(tx, usuario, certificado);
-  const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)]);
+  const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)], [await tarja_do_anulado(tx, certificado)]);
   return { nome: caminho_saida(certificado, "pdf").split("/").pop()!, bytes, aviso: via.aviso };
 }
 
@@ -908,6 +938,7 @@ export async function pdf_do_modelo_enviado(
     certificado.id,
     certificado.hash_conteudo ?? "",
     String(congelado["modelo_sha256"] ?? ""),
+    (await tarja_do_anulado(tx, certificado)) ?? "",
   );
   const bytes = await conversor_pdf.pdf_guardado_ou_convertido(
     chave,
@@ -933,6 +964,7 @@ export async function arquivo_do_titular(
         certificado.id,
         certificado.hash_conteudo ?? "",
         String(congelado["modelo_sha256"] ?? ""),
+        (await tarja_do_anulado(tx, certificado)) ?? "",
       );
       const bytes = await conversor_pdf.pdf_guardado_ou_convertido(
         chave,
@@ -944,7 +976,7 @@ export async function arquivo_do_titular(
     return { nome: via.docx.split("/").pop()!, bytes: via.bytes, tipo: TIPO_DOCX };
   }
   await segunda_via_do_titular(tx, certificado);
-  const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)]);
+  const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)], [await tarja_do_anulado(tx, certificado)]);
   return { nome: nome_pdf, bytes, tipo: certificado_pdf.TIPO_PDF };
 }
 

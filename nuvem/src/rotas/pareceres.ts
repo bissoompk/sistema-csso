@@ -48,7 +48,7 @@ import { AVISO_SEM_PDF } from "../servicos/pdf.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import { obterArmazenamento } from "../servicos/armazenamento.js";
 import { TextoProibido } from "../servicos/textos.js";
-import { pode_subscrever, type UsuarioAtual } from "../servicos/rbac.js";
+import { ESCOPO_PROPRIO, pode_subscrever, type UsuarioAtual } from "../servicos/rbac.js";
 import { disposicao } from "./processos.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -231,6 +231,13 @@ async function _desenhar_editor(
 
   const validacao = await servico.validar(tx, parecer);
   const contexto = await servico.montar_contexto(tx, parecer);
+  const catalogos = await _catalogos(c);
+  // O laudo que se sugere: o VIGENTE da unidade do processo (é ele que, em
+  // quase todo caso, sustenta o parecer). Os superados vão para um grupo à
+  // parte no seletor — continuam escolhíveis, porque o sistema não impede, mas
+  // não ficam misturados aos que valem.
+  const unidade_do_processo = parecer.processo?.unidade_uorg_id ?? parecer.unidade_uorg_id;
+  const sugeridos = catalogos.laudos.filter((l) => l.status === "VIGENTE" && l.unidade_uorg_id === unidade_do_processo);
   return pagina(c, "paginas/parecer_editor.html", usuario, {
     parecer,
     contexto,
@@ -248,7 +255,14 @@ async function _desenhar_editor(
     // o botão "Gerar PDF" diz antes do clique se o PDF sai nesta instalação
     pdf_disponivel: servico_pdf.disponivel(),
     AVISO_SEM_PDF,
-    ...(await _catalogos(c)),
+    ...catalogos,
+    laudos_sugeridos: sugeridos.map((l) => l.id),
+    // pré-seleciona só quando não há escolha e a sugestão é uma só: com duas,
+    // escolher por alguém seria adivinhar
+    laudo_sugerido_id: parecer.laudo_id === null && sugeridos.length === 1 ? sugeridos[0]!.id : null,
+    // O titular (escopo próprio) lê o próprio parecer: prévia e documento, sem o
+    // editor e sem o quadro "pronto para emitir", que é de quem emite.
+    vista_do_titular: usuario.escopo === ESCOPO_PROPRIO,
   });
 }
 
@@ -429,10 +443,17 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
     if (portaria) p.data_marco_inicial = portaria.data_publicacao;
   }
 
-  // recomendação: literal (migrada) ou montada do catálogo
+  // recomendação: literal (migrada) ou montada do catálogo. Escolher o modelo e
+  // não ter com o que montá-lo NÃO pode cair no silêncio: a tela voltava a
+  // "manter o texto atual", a validação seguia "falta: recomendação" e ninguém
+  // dizia por quê. O resto do formulário grava; o recado diz o que falta.
   const texto_livre = get("texto_recomendacao");
   const codigo_modelo = get("recomendacao_modelo");
-  if (codigo_modelo && p.data_marco_inicial && !parecer.texto_recomendacao_literal) {
+  let recado_modelo: string | null = null;
+  if (codigo_modelo && parecer.texto_recomendacao_literal) {
+    recado_modelo =
+      "A recomendação deste parecer veio literal da migração e não é remontada pelo modelo — edite o texto.";
+  } else if (codigo_modelo) {
     const [modelo] = await tx
       .select()
       .from(texto_padrao)
@@ -441,7 +462,11 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
     const [tipo] = p.tipo_adicional_id
       ? await tx.select().from(tipo_adicional).where(eq(tipo_adicional.id, p.tipo_adicional_id))
       : [];
-    if (modelo && tipo && principal !== null) {
+    if (!modelo) recado_modelo = "Modelo de recomendação inválido: escolha um da lista.";
+    else if (principal === null) recado_modelo = "Adicione a exposição principal antes de aplicar o modelo de recomendação.";
+    else if (!tipo) recado_modelo = "Escolha o tipo de adicional antes de aplicar o modelo de recomendação.";
+    else if (!p.data_marco_inicial) recado_modelo = "Informe a data do marco inicial antes de aplicar o modelo de recomendação.";
+    else {
       p.texto_recomendacao = servico.montar_recomendacao(
         codigo_modelo,
         tipo.nome_recomendacao,
@@ -449,9 +474,8 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
         p.data_marco_inicial,
         modelo.template,
       );
-    } else if (texto_livre) {
-      p.texto_recomendacao = texto_livre;
     }
+    if (recado_modelo !== null && texto_livre !== null) p.texto_recomendacao = texto_livre || null;
   } else if (texto_livre !== null) {
     p.texto_recomendacao = texto_livre || null;
   }
@@ -500,6 +524,9 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
     usuario,
     processo_id: parecer.processo_id,
   });
+  if (recado_modelo !== null) {
+    return redirecionar(c, `/pareceres/${parecer.id}?erro=${encodeURIComponent(`Rascunho salvo, sem o modelo. ${recado_modelo}`)}`);
+  }
   return redirecionar(c, `/pareceres/${parecer.id}`);
 });
 
@@ -718,7 +745,9 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes/:exposicao_id{[0-9]+}/excl
 });
 
 rotas.post("/pareceres/:parecer_id{[0-9]+}/emitir", async (c) => {
-  const usuario = await usuarioLogado(c);
+  // a permissão na primeira linha (o serviço confere de novo); a recusa por
+  // habilitação (RN-01) continua no serviço, que grava o ASSINATURA_NEGADA
+  const usuario = await usuarioCom(c, "parecer.emitir");
   const tx = c.get("tx");
   const parecer_id = _id(c);
   const parecer = await servico.no_escopo(tx, usuario, parecer_id);
@@ -739,7 +768,12 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/emitir", async (c) => {
 });
 
 rotas.post("/pareceres/:parecer_id{[0-9]+}/assinar", async (c) => {
-  const usuario = await usuarioLogado(c);
+  // `parecer.ver` na primeira linha, e não `parecer.assinar`, de propósito: a
+  // recusa de quem LÊ o parecer e não pode assiná-lo é registrada na trilha
+  // (ASSINATURA_NEGADA, RN-01) pelo serviço, e uma recusa aqui em cima a
+  // apagaria. Quem nem lê pareceres recebe 403 antes de qualquer consulta — para
+  // ele o parecer "não existe", e não havia recusa a registrar.
+  const usuario = await usuarioCom(c, "parecer.ver");
   const tx = c.get("tx");
   const parecer_id = _id(c);
   const parecer = await servico.no_escopo(tx, usuario, parecer_id);
@@ -757,7 +791,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/assinar", async (c) => {
 });
 
 rotas.post("/pareceres/:parecer_id{[0-9]+}/anular", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "parecer.anular");
   const tx = c.get("tx");
   const parecer_id = _id(c);
   const f = await formulario(c);

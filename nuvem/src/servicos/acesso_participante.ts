@@ -15,9 +15,16 @@
  *
  * **Sem canhão de spam.** O link só sai para endereço cadastrado, até
  * `LINKS_POR_HORA` vezes por endereço, e o pedido conta no limite por IP.
+ *
+ * **De quem são os certificados.** O e-mail CONFIRMADO é de um participante
+ * só (`uq_email_confirmado`), e é dele que o link lista. Sem confirmação, o
+ * mesmo e-mail pode estar em mais de um cadastro (a duplicata ainda não
+ * mesclada, ou duas pessoas que deram o mesmo endereço): com um cadastro só,
+ * lista os dele; com mais de um, não lista nenhum — a caixa de e-mail não diz
+ * qual das pessoas a abriu — e a página orienta a procurar a CSSO.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { and, asc, count, eq, gt, lt } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, lt } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   acesso_participante as tabela,
@@ -48,15 +55,29 @@ function _hash(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
-/** Os certificados em vigor de quem tem este e-mail (em qualquer participante). */
-async function _certificados(tx: Executor, email_normalizado: string): Promise<CertificadoRegistro[]> {
+/**
+ * Os cadastros a que o e-mail leva: o do e-mail confirmado (há no máximo um)
+ * ou, sem confirmação, todos os que o têm — `ambiguo` quando são mais de um.
+ */
+async function _donos(tx: Executor, email_normalizado: string): Promise<{ participante_ids: number[]; ambiguo: boolean }> {
   const linhas = await tx
-    .selectDistinct({ c: tabela_certificado })
+    .select({ participante_id: tabela_email.participante_id, confirmado_em: tabela_email.confirmado_em })
+    .from(tabela_email)
+    .where(eq(tabela_email.email_normalizado, email_normalizado));
+  const confirmado = linhas.find((l) => l.confirmado_em !== null);
+  if (confirmado) return { participante_ids: [confirmado.participante_id], ambiguo: false };
+  const ids = [...new Set(linhas.map((l) => l.participante_id))];
+  return { participante_ids: ids, ambiguo: ids.length > 1 };
+}
+
+/** Os certificados em vigor destes participantes, na ordem do número. */
+async function _certificados_de(tx: Executor, participante_ids: number[]): Promise<CertificadoRegistro[]> {
+  if (!participante_ids.length) return [];
+  return tx
+    .select()
     .from(tabela_certificado)
-    .innerJoin(tabela_email, eq(tabela_email.participante_id, tabela_certificado.participante_id))
-    .where(and(eq(tabela_email.email_normalizado, email_normalizado), eq(tabela_certificado.situacao, "EMITIDO")))
+    .where(and(inArray(tabela_certificado.participante_id, participante_ids), eq(tabela_certificado.situacao, "EMITIDO")))
     .orderBy(asc(tabela_certificado.ano), asc(tabela_certificado.numero));
-  return linhas.map((l) => l.c);
 }
 
 /**
@@ -77,7 +98,10 @@ export async function pedir_link(
     .from(tabela)
     .where(and(eq(tabela.email_normalizado, normalizado), gt(tabela.criado_em, new Date(agora.getTime() - 3_600_000))));
   if (Number(recentes?.n ?? 0) >= LINKS_POR_HORA) return;
-  const certificados = await _certificados(tx, normalizado);
+  const donos = await _donos(tx, normalizado);
+  // no e-mail de mais de um cadastro o link também sai — é ele que diz à
+  // pessoa como seguir —, mas só se algum desses cadastros tem certificado
+  const certificados = await _certificados_de(tx, donos.participante_ids);
   if (!certificados.length) return;
   // o endereço como está no cadastro (a caixa que recebe é a mesma)
   const [cadastrado] = await tx
@@ -99,7 +123,10 @@ export async function pedir_link(
       `Use o link abaixo até ${datas_br.numerica(datas_br.hoje(expira_em))}, às ` +
       `${expira_em.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}:\n\n` +
       `${link}\n\n` +
-      `Há ${certificados.length} certificado(s). Se não foi você, ignore esta mensagem: sem o link, ninguém os vê.\n\n` +
+      (donos.ambiguo
+        ? "Este e-mail está no cadastro de mais de uma pessoa; o link explica como seguir. "
+        : `Há ${certificados.length} certificado(s). `) +
+      "Se não foi você, ignore esta mensagem: sem o link, ninguém os vê.\n\n" +
       "Coordenação de Saúde e Segurança Ocupacional (CSSO) — UFVJM\n" +
       "Mensagem enviada pelo Sistema CSSO.\n",
   });
@@ -117,17 +144,43 @@ export interface ItemDoTitular {
   so_word: boolean;
 }
 
+export interface LinkAberto {
+  email_normalizado: string;
+  /** os do titular; vazio quando o e-mail é ambíguo */
+  certificados: CertificadoRegistro[];
+  /** o e-mail, sem confirmação, está em mais de um cadastro */
+  ambiguo: boolean;
+  /** o nome que está no papel (o do certificado mais recente) */
+  titular: string;
+  expira_em: Date;
+}
+
 /** O que o link abre, ou `null` para token desconhecido ou vencido. */
-export async function abrir(
-  tx: Executor,
-  token: string,
-  agora: Date = new Date(),
-): Promise<{ email_normalizado: string; certificados: CertificadoRegistro[] } | null> {
+export async function abrir(tx: Executor, token: string, agora: Date = new Date()): Promise<LinkAberto | null> {
   if (!token || token.length > 64) return null;
   const [linha] = await tx.select().from(tabela).where(eq(tabela.token_hash, _hash(token)));
   if (!linha || linha.expira_em <= agora) return null;
   if (linha.usado_em === null) await tx.update(tabela).set({ usado_em: agora_utc() }).where(eq(tabela.id, linha.id));
-  return { email_normalizado: linha.email_normalizado, certificados: await _certificados(tx, linha.email_normalizado) };
+  const donos = await _donos(tx, linha.email_normalizado);
+  const certificados = donos.ambiguo ? [] : await _certificados_de(tx, donos.participante_ids);
+  const ultimo = certificados[certificados.length - 1];
+  return {
+    email_normalizado: linha.email_normalizado,
+    certificados,
+    ambiguo: donos.ambiguo,
+    titular: ultimo ? String((ultimo.contexto_congelado as Record<string, unknown>)?.participante_nome ?? "") : "",
+    expira_em: linha.expira_em,
+  };
+}
+
+/** "1 h 47 min", "12 min", "menos de 1 min" — o que falta para o link vencer. */
+export function tempo_restante(expira_em: Date, agora: Date = new Date()): string {
+  const minutos = Math.floor((expira_em.getTime() - agora.getTime()) / 60_000);
+  if (minutos < 1) return "menos de 1 min";
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  if (!horas) return `${resto} min`;
+  return resto ? `${horas} h ${resto} min` : `${horas} h`;
 }
 
 export function itens(certificados: CertificadoRegistro[]): ItemDoTitular[] {

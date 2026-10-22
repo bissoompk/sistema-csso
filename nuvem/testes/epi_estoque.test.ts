@@ -89,7 +89,7 @@ function _lote(c: Cliente, cenario: Cenario, troca: Record<string, string> = {})
     quantidade_empenhada: "12",
     valor_unitario: "12,50",
     fornecedor_nome: "Distribuidora de EPI Ltda",
-    fornecedor_cnpj: "12345678000199",
+    fornecedor_cnpj: "12345678000195",
     fornecedor_contato: "vendas@distribuidora.com.br",
     lote: "L-2026-08",
     numero_ca: "41234",
@@ -169,7 +169,7 @@ describe("a entrada do lote", () => {
     expect(entrada.empenho).toBe("2026NE000123");
     expect(entrada.nota_fiscal).toBe("4471");
     expect(entrada.fornecedor_nome).toBe("Distribuidora de EPI Ltda");
-    expect(entrada.fornecedor_cnpj).toBe("12345678000199");
+    expect(entrada.fornecedor_cnpj).toBe("12345678000195");
     expect(entrada.fornecedor_contato).toBe("vendas@distribuidora.com.br");
     expect(entrada.quantidade_empenhada).toBe(12);
     expect(entrada.quantidade_recebida).toBe(10);
@@ -779,9 +779,9 @@ describe("o CNPJ do fornecedor", () => {
   it("entra pontuado e é gravado só em dígito", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "almoxarife_sesmt");
-    expect((await _lote(cliente, cenario, { fornecedor_cnpj: "12.345.678/0001-90" })).status).toBe(303);
+    expect((await _lote(cliente, cenario, { fornecedor_cnpj: "12.345.678/0001-95" })).status).toBe(303);
     const entradas = await _entradas();
-    expect(entradas[entradas.length - 1]!.fornecedor_cnpj).toBe("12345678000190");
+    expect(entradas[entradas.length - 1]!.fornecedor_cnpj).toBe("12345678000195");
   });
 
   it("com contagem errada é recusado por escrito, e nada grava", async () => {
@@ -789,7 +789,7 @@ describe("o CNPJ do fornecedor", () => {
     await entrar(cliente, "almoxarife_sesmt");
     const r = await _lote(cliente, cenario, { fornecedor_cnpj: "12345678901" });
     expect(r.status).toBe(200);
-    expect(r.text).toContain("11 dígito(s)");
+    expect(r.text).toContain("11 caractere(s)");
     expect(r.text).toContain("o CNPJ tem 14");
     expect(r.text).toContain("12345678901");
     expect(r.text).toContain('name="empenho"');
@@ -803,12 +803,13 @@ describe("o CNPJ do fornecedor", () => {
     const i = corpo.indexOf('id="fornecedor_cnpj"');
     const campo = corpo.slice(i, i + 300);
     expect(campo).not.toContain("maxlength");
-    expect(campo).toContain('inputmode="numeric"');
-    expect(campo).toContain("12.345.678/0001-90");
+    // sem teclado numérico: o CNPJ alfanumérico tem letras
+    expect(campo).not.toContain('inputmode="numeric"');
+    expect(campo).toContain("12.345.678/0001-95");
   });
 
   it("o filtro `cnpj` pontua na saída", () => {
-    expect(epi_estoque.formatar_cnpj("12345678000190")).toBe("12.345.678/0001-90");
+    expect(epi_estoque.formatar_cnpj("12345678000195")).toBe("12.345.678/0001-95");
     expect(epi_estoque.formatar_cnpj("123")).toBe("123");
     expect(epi_estoque.formatar_cnpj(null)).toBe("");
   });

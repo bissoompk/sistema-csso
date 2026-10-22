@@ -95,6 +95,19 @@ function _int_ou_nulo(bruto: string): number | null {
 function _texto(valor: string | null | undefined): string | null {
   return (valor ?? "").trim() || null;
 }
+/**
+ * Os obrigatórios depois do `trim`: `exigidos` só confere que o campo veio, e
+ * "   " passava (D69 — o campus vazio que aparecia em todo select). Devolve a
+ * recusa para a tela, ou `null`.
+ */
+function _em_branco(campos: Record<string, string>): string | null {
+  const faltando = Object.entries(campos)
+    .filter(([, valor]) => !valor.trim())
+    .map(([rotulo]) => rotulo);
+  if (!faltando.length) return null;
+  const lista = faltando.length === 1 ? faltando[0]! : `${faltando.slice(0, -1).join(", ")} e ${faltando.at(-1)}`;
+  return `Preencha ${lista}: ${faltando.length === 1 ? "o campo não pode ficar" : "os campos não podem ficar"} em branco.`;
+}
 function _data_iso(bruto: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(bruto)) throw new ErroHttp(422, `Data inválida: ${bruto}`);
   return bruto;
@@ -340,32 +353,32 @@ rotas.post("/catalogos/campi", async (c) => {
   exigidos(f, "sigla", "nome", "cidade");
   const tx = c.get("tx");
   const sigla = f.texto("sigla").trim().toUpperCase();
+  const nome = f.texto("nome").trim();
+  const cidade = f.texto("cidade").trim();
+  const vazio = _em_branco({ sigla, nome, cidade });
+  if (vazio) return _erro(c, "/catalogos/campi", vazio);
   const uf = f.texto("uf", "MG").trim().toUpperCase().slice(0, 2);
   const avancado = f.texto("avancado") === "1";
   const [existente] = await tx.select().from(campus).where(eq(campus.sigla, sigla));
-  let mensagem: string;
   if (existente) {
-    // sigla já cadastrada atualiza em vez de duplicar (como no Python, sem trilha)
-    await tx
-      .update(campus)
-      .set({ nome: f.texto("nome").trim(), cidade: f.texto("cidade").trim(), uf, avancado })
-      .where(eq(campus.id, existente.id));
-    mensagem = `Campus ${sigla} atualizado.`;
-  } else {
-    const [novo] = await tx
-      .insert(campus)
-      .values({ sigla, nome: f.texto("nome").trim(), cidade: f.texto("cidade").trim(), uf: uf || "MG", avancado })
-      .returning();
-    await auditoria.registrar(tx, {
-      entidade: "campus",
-      entidade_id: novo!.id,
-      tipo_evento: "CAMPUS_CRIADO",
-      descricao: `${sigla} · ${novo!.nome} · ${novo!.cidade}`,
-      usuario,
-    });
-    mensagem = `Campus ${sigla} cadastrado.`;
+    // D67: a sigla repetida atualizava o campus existente em silêncio e sem
+    // trilha ("como no Python") — quem cadastrava "DIA" sem perceber reescrevia
+    // o Campus JK. Agora recusa e aponta a edição, que passa por
+    // `salvar_com_diff` e deixa o diff na trilha.
+    return _erro(c, "/catalogos/campi", `Já existe campus com a sigla ${sigla} (${existente.nome}) — edite-o na lista.`);
   }
-  return _volta(c, "/catalogos/campi", mensagem);
+  const [novo] = await tx
+    .insert(campus)
+    .values({ sigla, nome, cidade, uf: uf || "MG", avancado })
+    .returning();
+  await auditoria.registrar(tx, {
+    entidade: "campus",
+    entidade_id: novo!.id,
+    tipo_evento: "CAMPUS_CRIADO",
+    descricao: `${sigla} · ${novo!.nome} · ${novo!.cidade}`,
+    usuario,
+  });
+  return _volta(c, "/catalogos/campi", `Campus ${sigla} cadastrado.`);
 });
 
 /** A caixa do nome oficial é preservada byte a byte: é ela que sai no UORG do parecer. */
@@ -650,11 +663,17 @@ function _campos_setor(f: Formulario) {
 
 // ---------------------------------------------------------------------
 // Edições em linha (sempre com diff campo a campo na auditoria)
+//
+// A permissão vem na PRIMEIRA linha de cada rota, antes do formulário e de
+// qualquer consulta (D77): quem não gere catálogo recebe 403, e não o 422
+// "campo obrigatório ausente" que ensinava o formato da rota. `salvar_com_diff`
+// continua exigindo de novo — a segunda camada não sai.
 // ---------------------------------------------------------------------
 const GERENCIAR = "catalogo.gerenciar";
 
 rotas.post("/catalogos/autoridades-destinatarias/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome", "cargo", "tratamento", "vigencia_inicio");
   return salvar_com_diff(
@@ -675,6 +694,7 @@ rotas.post("/catalogos/autoridades-destinatarias/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/setores-emissores/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "sigla_composta", "nome_extenso", "vigencia_inicio");
   const id = Number(c.req.param("id"));
@@ -700,8 +720,11 @@ rotas.post("/catalogos/setores-emissores/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/campi/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome", "cidade");
+  const vazio = _em_branco({ nome: f.texto("nome"), cidade: f.texto("cidade") });
+  if (vazio) return _erro(c, "/catalogos/campi", vazio);
   return salvar_com_diff(
     c,
     usuario,
@@ -719,6 +742,7 @@ rotas.post("/catalogos/campi/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/unidades-uorg/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome_oficial", "nome_extenso", "tipo", "campus_id");
   const id = Number(c.req.param("id"));
@@ -752,6 +776,7 @@ rotas.post("/catalogos/unidades-uorg/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/postos-trabalho/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome", "unidade_uorg_id");
   const id = Number(c.req.param("id"));
@@ -783,6 +808,7 @@ rotas.post("/catalogos/postos-trabalho/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/tipos-risco/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome");
   return salvar_com_diff(
@@ -797,6 +823,7 @@ rotas.post("/catalogos/tipos-risco/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/fundamentacoes-legais/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "norma", "texto");
   return salvar_com_diff(
@@ -819,6 +846,7 @@ rotas.post("/catalogos/fundamentacoes-legais/:id{[0-9]+}", async (c) => {
 /** Só o rótulo. O VALOR é a lei (Lei 8.270/91, art. 12). */
 rotas.post("/catalogos/percentuais/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "rotulo");
   return salvar_com_diff(
@@ -833,6 +861,7 @@ rotas.post("/catalogos/percentuais/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/agentes-nocivos/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "descricao", "tipo_risco_id");
   return salvar_com_diff(
@@ -853,6 +882,7 @@ rotas.post("/catalogos/agentes-nocivos/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/portarias/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "texto_original", "data_publicacao", "numero");
   const quando = _data_iso(f.texto("data_publicacao"));
@@ -873,6 +903,7 @@ rotas.post("/catalogos/portarias/:id{[0-9]+}", async (c) => {
 
 rotas.post("/catalogos/checklists-modelo/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome", "itens");
   return salvar_com_diff(

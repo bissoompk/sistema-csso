@@ -55,13 +55,16 @@
    razão"): dizer *o que* falta poder fazer é o que separa um aviso de um
    bloqueio mudo.
 
-   O nome da permissão sai TAMBÉM em texto para leitor de tela, e não só no
+   A permissão sai pelo texto de tela de /perfis (`texto_permissao`), e não
+   pelo código interno: "epi.catalogo" não diz nada a quem lê. Sai TAMBÉM em
+   texto para leitor de tela, e não só no
    `title`: `title` não é anunciado de forma confiável e nunca aparece em toque —
    quem abre a tela num tablet via a pílula cinza e não tinha como saber o que
    pedir a quem administra. É o mesmo par de `ponto_estado` logo acima. #}
 {% macro pilula_somente_leitura(permissao, verbo='editar') %}
-<span class="pilula" title="{{ verbo }} exige a permissão {{ permissao }}"
-      >somente leitura<span class="oculto"> — {{ verbo }} exige a permissão {{ permissao }}</span></span>
+{%- set falta = 'Para ' ~ verbo ~ ' aqui é preciso a permissão “' ~ texto_permissao(permissao) ~ '”' %}
+<span class="pilula" title="{{ falta }}"
+      >somente leitura<span class="oculto"> — {{ falta }}</span></span>
 {%- endmacro %}
 
 {# RN-21 em aviso: a caixa que deixa gravar um termo de saúde necessário

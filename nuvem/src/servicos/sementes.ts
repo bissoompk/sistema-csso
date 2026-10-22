@@ -46,7 +46,9 @@ import {
   MAPA_SUGERIDO,
   MODELO_PADRAO_ARQUIVO,
   MODELO_PADRAO_NOME,
+  MODELO_PADRAO_V1,
   OBRIGATORIOS,
+  marcadores_do_arquivo,
   sha256_do_modelo,
 } from "./certificado.js";
 
@@ -632,28 +634,31 @@ export async function semear_epi(tx: Executor): Promise<void> {
 }
 
 /**
- * Um modelo de certificado sobre `certificado_padrao_v1.docx` com os 23
- * marcadores já mapeados (`MAPA_SUGERIDO`). A semente e o povoamento de teste
- * passam por aqui.
+ * Um modelo de certificado sobre o .docx padrão (`MODELO_PADRAO_ARQUIVO`, hoje
+ * o v2) com os marcadores dele já mapeados (`MAPA_SUGERIDO`, só os que o
+ * arquivo tem). A semente e o povoamento de teste passam por aqui.
  */
 export async function criar_modelo_padrao(
   tx: Executor,
-  d: { nome?: string; treinamento_id?: number | null; criado_por?: number | null } = {},
+  d: { nome?: string; treinamento_id?: number | null; criado_por?: number | null; arquivo?: string } = {},
 ) {
+  const arquivo = d.arquivo ?? MODELO_PADRAO_ARQUIVO;
   const [modelo] = await tx
     .insert(certificado_modelo)
     .values({
       treinamento_id: d.treinamento_id ?? null,
       nome: d.nome ?? MODELO_PADRAO_NOME,
-      arquivo: MODELO_PADRAO_ARQUIVO,
-      arquivo_sha256: sha256_do_modelo(MODELO_PADRAO_ARQUIVO),
+      arquivo,
+      arquivo_sha256: sha256_do_modelo(arquivo),
       versao: 1,
       vigente: true,
       criado_por: d.criado_por ?? null,
     })
     .returning();
+  const do_arquivo = marcadores_do_arquivo(arquivo);
   let ordem = 1;
   for (const [marcador, campo] of Object.entries(MAPA_SUGERIDO)) {
+    if (do_arquivo && !do_arquivo.has(marcador)) continue;
     await tx.insert(certificado_modelo_tag).values({
       modelo_id: modelo!.id,
       marcador,
@@ -666,9 +671,75 @@ export async function criar_modelo_padrao(
 }
 
 /**
+ * NUVEM: o "Padrão da casa" sobre o v1 (`curso norma`, `promovido por
+ * promotora`, `válido até vencimento`) ganha a versão seguinte sobre o v2, que
+ * escreve as frases inteiras, e passa a ser a superada. A v1 fica: é dela que
+ * a segunda via dos certificados emitidos com ela reimprime (RN-15). O mapa
+ * vai junto (o que o setor ajustou nos marcadores que continuam); os três
+ * marcadores novos entram com o `MAPA_SUGERIDO`. Roda uma vez: depois disso a
+ * v1 não é mais vigente. Treinamento que aponta para a v1 não é repontado
+ * aqui — a emissão avisa a versão superada e o catálogo troca.
+ */
+async function promover_padrao_v2(tx: Executor): Promise<void> {
+  const antigos = await tx
+    .select()
+    .from(certificado_modelo)
+    .where(
+      and(
+        isNull(certificado_modelo.treinamento_id),
+        eq(certificado_modelo.nome, MODELO_PADRAO_NOME),
+        eq(certificado_modelo.arquivo, MODELO_PADRAO_V1),
+        eq(certificado_modelo.vigente, true),
+        isNull(certificado_modelo.arquivo_enviado),
+      ),
+    );
+  const do_v2 = marcadores_do_arquivo(MODELO_PADRAO_ARQUIVO);
+  if (!antigos.length || !do_v2) return;
+  for (const antigo of antigos) {
+    const irmas = await tx
+      .select()
+      .from(certificado_modelo)
+      .where(and(isNull(certificado_modelo.treinamento_id), eq(certificado_modelo.nome, antigo.nome)));
+    await tx.update(certificado_modelo).set({ vigente: false }).where(eq(certificado_modelo.id, antigo.id));
+    const [novo] = await tx
+      .insert(certificado_modelo)
+      .values({
+        treinamento_id: null,
+        nome: antigo.nome,
+        arquivo: MODELO_PADRAO_ARQUIVO,
+        arquivo_sha256: sha256_do_modelo(MODELO_PADRAO_ARQUIVO),
+        orientacao: antigo.orientacao,
+        observacao: antigo.observacao,
+        versao: Math.max(...irmas.map((m) => m.versao)) + 1,
+        vigente: true,
+        criado_por: null,
+      })
+      .returning();
+    const tags = await tx.select().from(certificado_modelo_tag).where(eq(certificado_modelo_tag.modelo_id, antigo.id));
+    const por_marcador = new Map(tags.map((t) => [t.marcador, t]));
+    let ordem = 1;
+    for (const [marcador, campo] of Object.entries(MAPA_SUGERIDO)) {
+      if (!do_v2.has(marcador)) continue;
+      const velha = por_marcador.get(marcador);
+      await tx.insert(certificado_modelo_tag).values({
+        modelo_id: novo!.id,
+        marcador,
+        campo: velha ? velha.campo : campo,
+        ordem: ordem++,
+        obrigatorio: velha ? velha.obrigatorio : OBRIGATORIOS.includes(marcador),
+        tipo: velha ? velha.tipo : "SISTEMA",
+        texto_fixo: velha ? velha.texto_fixo : null,
+        rotulo: velha ? velha.rotulo : null,
+      });
+    }
+  }
+}
+
+/**
  * NUVEM: o modelo genérico "Padrão da casa", para a primeira emissão não
  * depender de montar dicionário à mão. Só nasce quando não há NENHUM genérico
- * (vigente ou não): o que o setor cadastrou ou aposentou não é recriado.
+ * (vigente ou não): o que o setor cadastrou ou aposentou não é recriado. Nasce
+ * como a história dele: a v1 (sobre o .docx v1) e, vigente, a v2.
  */
 export async function semear_modelo_certificado(tx: Executor): Promise<void> {
   const [ja] = await tx
@@ -676,7 +747,8 @@ export async function semear_modelo_certificado(tx: Executor): Promise<void> {
     .from(certificado_modelo)
     .where(isNull(certificado_modelo.treinamento_id))
     .limit(1);
-  if (!ja) await criar_modelo_padrao(tx);
+  if (!ja) await criar_modelo_padrao(tx, { arquivo: MODELO_PADRAO_V1 });
+  await promover_padrao_v2(tx);
 }
 
 /** Tudo, na ordem do Python. Quem chama dá o COMMIT (ver o cabeçalho). */

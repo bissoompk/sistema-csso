@@ -6,9 +6,9 @@ import { Hono } from "hono";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { desfazer } from "../nucleo/contexto.js";
-import { ErroHttp, PermissaoNegada } from "../nucleo/erros.js";
+import { ErroHttp, PermissaoNegada, RegraViolada } from "../nucleo/erros.js";
 import { formulario, usuarioCom, usuarioLogado, type Formulario } from "../dependencias.js";
-import { pagina, redirecionar } from "../web.js";
+import { fragmento, pagina, redirecionar } from "../web.js";
 import { dicionario } from "../dicionario.js";
 import {
   anexo as tabela_anexo,
@@ -22,11 +22,20 @@ import {
   servidor as tabela_servidor,
   tipo_processo,
   unidade_uorg,
-  usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import { agora_utc } from "../db/esquema/base.js";
 import { ChecklistModelo } from "../dominio/dominios.js";
-import { INCISOS_ART11, ROTULO_ESTADO_TELA, TransicaoInvalida, destinos_do_processo } from "../dominio/estados.js";
+import {
+  CADEIA_ADICIONAL,
+  INCISOS_ART11,
+  ROTULO_ESTADO_TELA,
+  TransicaoInvalida,
+  destinos_do_processo,
+  passos_diretos,
+  pode_transitar,
+  rotulo_tela_do_ascii,
+} from "../dominio/estados.js";
+import { ROTULO_CATEGORIA_ANEXO_TELA } from "../dominio/processo.js";
 import * as repo from "../repositorios/processos.js";
 import * as anexo_acesso from "../servicos/anexo_acesso.js";
 import * as servico_anexos from "../servicos/anexos.js";
@@ -35,6 +44,8 @@ import * as datas_br from "../servicos/datas_br.js";
 import * as servico_nup from "../servicos/nup.js";
 import * as pendencias from "../servicos/pendencias.js";
 import * as sei from "../servicos/sei.js";
+import * as servico_servidores from "../servicos/servidores.js";
+import { ESCOPO_PROPRIO } from "../servicos/rbac.js";
 import * as textos from "../servicos/textos.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import {
@@ -44,9 +55,11 @@ import {
   ProcessoRecusado,
   aplicar_checklist_modelo,
   criar as criar_processo,
+  estados_sem_documento_de,
   fluxo_curto_de,
   mover,
   requisitos_de_saida,
+  responsaveis_possiveis,
   resumir,
   resumir_varios,
   sla_vigente,
@@ -113,6 +126,11 @@ function exigidos(f: Formulario, ...nomes: string[]): void {
   if (faltando.length) throw new ErroHttp(422, `Campo obrigatório ausente: ${faltando.join(", ")}`);
 }
 
+/** Quem tem alguma ação de lote — a coluna de caixas e o formulário só saem para ele. */
+function _pode_lote(usuario: UsuarioAtual): boolean {
+  return usuario.pode("processo.status") || usuario.pode("processo.atribuir") || usuario.pode("processo.editar");
+}
+
 rotas.get("/processos", async (c) => {
   const usuario = await usuarioCom(c, "processo.ver");
   const tx = c.get("tx");
@@ -137,9 +155,13 @@ rotas.get("/processos", async (c) => {
     }
     grupos = Object.keys(g).length ? dicionario(g) : null;
   }
+  // Quem só alcança o PRÓPRIO processo (servidor) não tem fila, SLA nem
+  // campus a recortar: as visões de trabalho do setor não dizem nada a ele.
+  const so_o_proprio = usuario.escopo === ESCOPO_PROPRIO;
   return pagina(c, "paginas/processos.html", usuario, {
     resumos,
     grupos,
+    pode_lote: _pode_lote(usuario),
     chaves_agrupamento: dicionario(CHAVES_AGRUPAMENTO),
     total,
     filtro,
@@ -147,18 +169,28 @@ rotas.get("/processos", async (c) => {
     estados_lote: _codigos_por_rotulo(),
     tipos: await tx.select().from(tipo_processo).orderBy(asc(tipo_processo.nome)),
     unidades: await repo.unidades_com_processo(tx, usuario),
-    responsaveis: await tx.select().from(tabela_usuario).orderBy(asc(tabela_usuario.nome)),
+    responsaveis: so_o_proprio ? [] : await responsaveis_possiveis(tx),
     estados: _codigos_por_rotulo(),
-    visoes: VISOES_SALVAS,
+    visoes: so_o_proprio ? [] : VISOES_SALVAS,
     incisos: dicionario(INCISOS_ART11),
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
   });
 });
 
+// A permissão de cada ação do lote, conferida UMA vez, antes do primeiro
+// processo: sem ela a recusa é do pedido, e não "N não passaram" um a um.
+const PERMISSAO_DA_ACAO_DE_LOTE: Readonly<Record<string, { permissao: string; verbo: string }>> = {
+  estado: { permissao: "processo.status", verbo: "mover processos de estado" },
+  responsavel: { permissao: "processo.atribuir", verbo: "atribuir responsável" },
+  prazo: { permissao: "processo.editar", verbo: "definir prazo" },
+};
+
 /** Ação em lote que não mente: relata um a um o que passou e o que não. */
 rotas.post("/processos/lote", async (c) => {
   const usuario = await usuarioLogado(c);
+  // a permissão antes do formulário: sem ação de lote nenhuma, nem se lê
+  if (!_pode_lote(usuario)) usuario.exigir("processo.status");
   const tx = c.get("tx");
   const f = await formulario(c);
   const ids = f
@@ -168,6 +200,48 @@ rotas.post("/processos/lote", async (c) => {
   const acao = f.texto("acao");
   const feitos: string[] = [];
   const recusados: string[] = [];
+  const voltar = (mensagem: string | null, erro: string | null) => {
+    let destino = "/processos?" + f.texto("voltar_para");
+    const parametros = Object.entries({ mensagem, erro })
+      .filter(([, v]) => v)
+      .map(([k, v]) => `${k}=${encodeURIComponent(v!)}`)
+      .join("&");
+    if (parametros) destino += (destino.endsWith("?") ? "" : "&") + parametros;
+    return redirecionar(c, destino);
+  };
+
+  // O que vale para o lote inteiro é conferido uma vez, antes do primeiro
+  // processo: um prazo que não é data, ou um responsável que não pode ser
+  // responsável, não é recusa "de um processo" — é do pedido.
+  let prazo: string | null = null;
+  let responsavel_id: number | null = null;
+  const exige = PERMISSAO_DA_ACAO_DE_LOTE[acao];
+  if (exige && !usuario.pode(exige.permissao)) {
+    return voltar(null, `Você não tem permissão para ${exige.verbo}: nenhum processo foi alterado.`);
+  }
+  if (acao === "prazo") {
+    try {
+      // prazo é data futura de propósito: só tem de ser uma data que existe
+      prazo = datas_br.ler_data_formulario(f.texto("prazo"), "Prazo");
+    } catch (erro) {
+      if (!(erro instanceof RegraViolada)) throw erro;
+      return voltar(null, erro.message);
+    }
+  } else if (acao === "responsavel") {
+    const escolhido = f.texto("responsavel_id").trim();
+    if (escolhido) {
+      const id = digitos(escolhido);
+      const possiveis = await responsaveis_possiveis(tx);
+      if (id === null || !possiveis.some((r) => r.id === id)) {
+        return voltar(
+          null,
+          "Responsável inválido: escolha uma conta ativa que trabalhe processos (com permissão de editar ou mover).",
+        );
+      }
+      responsavel_id = id;
+    }
+  }
+  if (!ids.length) return voltar(null, "Nenhum processo selecionado: marque ao menos um na lista.");
 
   for (const processo_id of ids) {
     const processo = await repo.por_id(tx, usuario, processo_id);
@@ -182,11 +256,7 @@ rotas.post("/processos/lote", async (c) => {
           inciso_art11: f.opcional("inciso_art11"),
         });
       } else if (acao === "responsavel") {
-        usuario.exigir("processo.atribuir");
-        await tx
-          .update(tabela_processo)
-          .set({ responsavel_id: digitos(f.texto("responsavel_id")) })
-          .where(eq(tabela_processo.id, processo.id));
+        await tx.update(tabela_processo).set({ responsavel_id }).where(eq(tabela_processo.id, processo.id));
         await auditoria.registrar(tx, {
           entidade: "processo",
           entidade_id: processo.id,
@@ -196,9 +266,6 @@ rotas.post("/processos/lote", async (c) => {
           usuario,
         });
       } else if (acao === "prazo") {
-        usuario.exigir("processo.editar");
-        const prazo = f.opcional("prazo");
-        if (prazo !== null && !/^\d{4}-\d{2}-\d{2}$/.test(prazo)) throw new ErroHttp(422, "Prazo inválido.");
         await tx.update(tabela_processo).set({ prazo }).where(eq(tabela_processo.id, processo.id));
       } else {
         recusados.push(`${processo.nup}: ação desconhecida`);
@@ -215,13 +282,7 @@ rotas.post("/processos/lote", async (c) => {
 
   const mensagem = feitos.length ? `${feitos.length} processo(s) atualizado(s).` : null;
   const erro = recusados.length ? `${recusados.length} não passaram — ` + recusados.slice(0, 5).join(" · ") : null;
-  let destino = "/processos?" + f.texto("voltar_para");
-  const parametros = Object.entries({ mensagem, erro })
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${k}=${encodeURIComponent(v!)}`)
-    .join("&");
-  if (parametros) destino += (destino.endsWith("?") ? "" : "&") + parametros;
-  return redirecionar(c, destino);
+  return voltar(mensagem, erro);
 });
 
 // ---------------------------------------------------------------------
@@ -238,18 +299,64 @@ async function _tela_novo(
   erro: string | null = null,
   digitado: Record<string, unknown> = {},
   aviso_saude = false,
+  // o campo de onde a recusa veio: a tela escreve a frase ao lado dele
+  campo_do_erro: string | null = null,
 ) {
   const tx = c.get("tx");
+  const tipos = await tx.select().from(tipo_processo).orderBy(asc(tipo_processo.nome));
+  // O tipo que a tela abre escolhido é o adicional ocupacional — o caso de uso
+  // do módulo. Antes vinha "Acidente em Serviço", só por ser o primeiro em
+  // ordem alfabética, e quem não reparava autuava o adicional na máquina curta.
+  const padrao = tipos.find((t) => t.codigo === TIPO_PADRAO_NOVO);
+  const d: Record<string, unknown> = { tipo_processo_id: padrao?.id ?? null, ...digitado };
   return pagina(c, "paginas/processo_novo.html", usuario, {
     erro,
+    campo_do_erro,
+    hoje_iso: datas_br.hoje(),
     // RN-21 em aviso: a tela oferece "confirmo que a menção é necessária"
     aviso_saude,
-    digitado: dicionario(digitado),
-    tipos: await tx.select().from(tipo_processo).orderBy(asc(tipo_processo.nome)),
-    servidores: await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)),
+    digitado: dicionario(d),
+    tipos,
+    ..._contexto_servidores(usuario, await servico_servidores.buscar(tx, "", usuario), "", d.servidor_id),
     unidades: await tx.select().from(unidade_uorg).orderBy(asc(unidade_uorg.nome_extenso)),
   });
 }
+
+export const TIPO_PADRAO_NOVO = "ADICIONAL_OCUPACIONAL";
+
+/** O que `partes/processo_servidores.html` lê — a página e a rota da busca. */
+function _contexto_servidores(
+  usuario: UsuarioAtual,
+  servidores: { id: number }[],
+  q: string,
+  escolhido: unknown,
+): Record<string, unknown> {
+  // a busca que achou UMA pessoa já a deixa escolhida: é quase sempre o SIAPE
+  // digitado inteiro, e escolher de novo na lista de um item é clique à toa
+  const unico = q && servidores.length === 1 ? servidores[0]!.id : null;
+  return {
+    servidores,
+    q_servidor: q,
+    servidor_escolhido: escolhido || unico,
+    // RN-19: quem não lê nome procura pelo SIAPE, e a dica diz isso
+    busca_so_siape: !usuario.ve_dado_nominal,
+  };
+}
+
+/**
+ * Fragmento HTMX: a busca de servidor do processo novo. A regra é a de
+ * `/servidores` (`servidores.buscar`): o SIAPE acha para todo mundo; o nome, só
+ * para quem já podia ler aquele nome — e a opção sai com o código opaco para
+ * quem não pode (RN-19).
+ */
+rotas.get("/processos/novo/servidores", async (c) => {
+  const usuario = await usuarioCom(c, "processo.criar");
+  const q = (c.req.query("q") ?? "").trim();
+  return fragmento(c, "partes/processo_servidores.html", {
+    usuario,
+    ..._contexto_servidores(usuario, await servico_servidores.buscar(c.get("tx"), q, usuario), q, c.req.query("servidor_id")),
+  });
+});
 
 rotas.get("/processos/novo", async (c) => {
   const usuario = await usuarioCom(c, "processo.criar");
@@ -262,7 +369,6 @@ rotas.post("/processos/novo", async (c) => {
   const f = await formulario(c);
   exigidos(f, "nup", "tipo_processo_id");
   const tipo_processo_id = f.inteiro("tipo_processo_id");
-  if (tipo_processo_id === null) throw new ErroHttp(422, "tipo_processo_id inválido");
   const nup = f.texto("nup");
   const servidor_id = f.texto("servidor_id");
   const unidade_uorg_id = f.texto("unidade_uorg_id");
@@ -282,24 +388,66 @@ rotas.post("/processos/novo", async (c) => {
   // do formato em diante vale o NUP normalizado (a regra mora em `servico.criar`)
   const resultado = servico_nup.validar(nup);
   if (resultado.formato_ok) digitado.nup = resultado.valor;
+  // Os campos de escolha voltam à tela com a recusa, e não como 422 cru nem
+  // 500: um id de servidor que não é número (ou não existe), um tipo que sumiu.
+  const recusar = (mensagem: string, campo: string) => _tela_novo(c, usuario, mensagem, digitado, false, campo);
+  const tipo_existe =
+    tipo_processo_id !== null &&
+    (await tx.select({ id: tipo_processo.id }).from(tipo_processo).where(eq(tipo_processo.id, tipo_processo_id))).length > 0;
+  if (!tipo_existe) return recusar("Tipo de processo inválido: escolha um da lista.", "tipo");
+  const servidor = await _id_existente(tx, servidor_id, "servidor");
+  if (servidor === undefined) {
+    return recusar("Servidor inválido: busque pelo nome ou SIAPE e escolha um da lista.", "servidor");
+  }
+  const unidade = await _id_existente(tx, unidade_uorg_id, "unidade");
+  if (unidade === undefined) return recusar("Unidade inválida: escolha uma da lista.", "unidade");
+  let autuacao: string | null;
+  try {
+    // a autuação é fato ocorrido: data real, e nunca depois de hoje
+    autuacao = datas_br.ler_data_formulario(data_autuacao, "Data de autuação");
+    if (autuacao !== null) datas_br.exigir_ate_hoje(autuacao, "Data de autuação");
+  } catch (erro) {
+    if (!(erro instanceof RegraViolada)) throw erro;
+    return recusar(erro.message, "data_autuacao");
+  }
   let processo: Processo;
   try {
     processo = await criar_processo(tx, usuario, {
       nup,
-      tipo_processo_id,
-      servidor_id: servidor_id ? Number(servidor_id) : null,
-      unidade_uorg_id: unidade_uorg_id ? Number(unidade_uorg_id) : null,
-      data_autuacao: data_autuacao || null,
+      tipo_processo_id: tipo_processo_id!,
+      servidor_id: servidor,
+      unidade_uorg_id: unidade,
+      data_autuacao: autuacao,
       observacoes,
       dispensar_dv: dispensar_dv === "1",
       confirmo_mencao_saude: f.texto("confirmo_mencao_saude") === "1",
     });
   } catch (erro) {
     if (!(erro instanceof ProcessoRecusado || erro instanceof textos.TextoProibido)) throw erro;
-    return _tela_novo(c, usuario, erro.message, digitado, erro instanceof textos.MencaoDeSaude);
+    const campo = erro instanceof textos.TextoProibido ? "observacoes" : erro.campo ?? "nup";
+    return _tela_novo(c, usuario, erro.message, digitado, erro instanceof textos.MencaoDeSaude, campo);
   }
   return redirecionar(c, `/processos/${processo.id}`);
 });
+
+/**
+ * O id escolhido num `<select>`: `null` quando vazio, `undefined` quando não é
+ * número ou não existe — e aí a tela recusa com a frase, em vez de o banco
+ * recusar com 500.
+ */
+async function _id_existente(
+  tx: Ctx["var"]["tx"],
+  bruto: string,
+  qual: "servidor" | "unidade",
+): Promise<number | null | undefined> {
+  const texto = bruto.trim();
+  if (!texto) return null;
+  if (!/^\d+$/.test(texto)) return undefined;
+  const id = Number(texto);
+  const tabela = qual === "servidor" ? tabela_servidor : unidade_uorg;
+  const [linha] = await tx.select({ id: tabela.id }).from(tabela).where(eq(tabela.id, id));
+  return linha ? id : undefined;
+}
 
 // ---------------------------------------------------------------------
 // Ficha
@@ -308,6 +456,17 @@ interface OpcoesFicha {
   aba?: string;
   mensagem?: string | null;
   erro?: string | null;
+  /**
+   * A recusa do "Mover de estado": sai UMA vez, dentro da camada reaberta com
+   * o que foi escolhido e digitado — e não na faixa do topo também.
+   */
+  erro_mover?: string | null;
+  mover_digitado?: Record<string, string>;
+  /** a recusa do link do SEI, também dentro da própria camada */
+  erro_sei?: string | null;
+  sei_digitado?: string;
+  /** o anexo idêntico que voltou em OUTRA categoria: a tela oferece reclassificar */
+  reclassificar?: { anexo_id: number; de: string; para: string; nome: string } | null;
   /** o comentário que a RN-21 recusou, de volta para dentro do campo */
   comentario_digitado?: string;
   /** a recusa foi termo de saúde (aviso): a camada oferece a confirmação */
@@ -363,32 +522,59 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
       .where(and(eq(pendencia.processo_id, processo.id), eq(pendencia.concluida, false)))
       .orderBy(asc(pendencia.id)),
     fluxo_curto_de(tx, processo),
-    resumir(tx, processo),
+    resumir(tx, processo, null, { com_destinos: false }),
     servico_anexos.listar(tx, "processo", processo.id),
     requisitos_de_saida(tx, processo, ""),
   ]);
+  // os pareceres já vieram na leitura acima: o que falta sai deles, sem consulta
+  const sem_documento = estados_sem_documento_de(
+    pareceres.map((p) => p.situacao),
+    curto,
+  );
   const modelos = modelos_crus.map((m) => ({ ...m, lista_de_itens: ChecklistModelo.lista_de_itens(m) }));
   const pendencias_do_processo = pendentes.map((p) => ({
     ...p,
     atrasada: (quando?: string) => pendencias.atrasada(p, quando ?? hoje),
   }));
 
-  // só o que a máquina do TIPO admite, saltos inclusive, na ordem do fluxo
-  const saidas = destinos_do_processo(processo.estado_tecnico, curto);
+  // Só o que a máquina do TIPO admite, na ordem do fluxo, em duas partes: o
+  // PRÓXIMO PASSO (as saídas diretas, com o seguinte da cadeia primeiro) e o
+  // salto de vários estados, que a tela guarda recolhido e cobra confirmação.
+  // Os estados do parecer cujo documento não existe ficam de fora dos dois — só
+  // o próprio parecer leva o processo até eles.
+  const origem = processo.estado_tecnico;
+  const diretos = passos_diretos(origem, curto, sem_documento);
+  const seguinte = CADEIA_ADICIONAL[CADEIA_ADICIONAL.indexOf(origem) + 1];
+  const proximos = curto || !seguinte || !diretos.includes(seguinte) ? diretos : [seguinte, ...diretos.filter((d) => d !== seguinte)];
+  const saltos = destinos_do_processo(origem, curto, sem_documento).filter((d) => !diretos.includes(d));
+  // O texto da trilha de estado é gravado em ASCII e com "->" (é digerido pela
+  // cadeia de hash): a tela acentua na exibição, sem tocar no gravado.
+  const eventos_tela = eventos.map((ev) => ({
+    ...ev,
+    descricao_tela: ev.tipo_evento === auditoria.ESTADO_ALTERADO ? rotulo_tela_do_ascii(ev.descricao) : ev.descricao,
+  }));
   return pagina(c, "paginas/processo_ficha.html", usuario, {
     processo,
     resumo,
     aba: o.aba ?? c.req.query("aba") ?? "dados",
     pareceres,
-    eventos,
+    eventos: eventos_tela,
     checklists,
     modelos_checklist: modelos,
     pendencias_do_processo,
     anexos,
     categorias: servico_anexos.CATEGORIAS_PROCESSO,
-    destinos: saidas,
+    rotulos_categoria: dicionario(ROTULO_CATEGORIA_ANEXO_TELA),
+    proximos,
+    saltos,
+    sem_documento: [...sem_documento],
     incisos: dicionario(INCISOS_ART11),
     faltas_saida,
+    erro_mover: o.erro_mover ?? null,
+    mover_digitado: dicionario(o.mover_digitado ?? {}),
+    erro_sei: o.erro_sei ?? null,
+    sei_digitado: o.sei_digitado ?? null,
+    reclassificar: o.reclassificar ?? null,
     passos_sei: sei.PASSOS_INCLUSAO,
     mensagem: o.mensagem !== undefined ? o.mensagem : (c.req.query("mensagem") ?? null),
     erro: o.erro !== undefined ? o.erro : (c.req.query("erro") ?? null),
@@ -402,30 +588,62 @@ rotas.get("/processos/:processo_id{[0-9]+}", async (c) => {
   return _ficha(c, usuario, _id(c));
 });
 
+// A confirmação do salto: avançar vários estados de uma vez grava um passo por
+// estado pulado, cada um em nome de quem moveu — e quem confirma é a pessoa,
+// não o `<details>` aberto.
+export const CONFIRMACAO_SALTO = "Para avançar vários passos de uma vez, marque “Confirmo pular etapas”.";
+
+const _ABAS = new Set(["dados", "parecer", "anexos", "checklist", "historico"]);
+
 rotas.post("/processos/:processo_id{[0-9]+}/estado", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "processo.status");
   const tx = c.get("tx");
   const processo_id = _id(c);
   const f = await formulario(c);
-  exigidos(f, "destino");
-  const destino = f.texto("destino");
+  // "Avançar vários passos" manda o destino num campo próprio; escolhido, ele
+  // vale no lugar do "Próximo passo".
+  const salto = f.texto("destino_salto").trim();
+  const destino = salto || f.texto("destino").trim();
+  const aba = _ABAS.has(f.texto("aba")) ? f.texto("aba") : "dados";
+  const digitado = {
+    destino: f.texto("destino"),
+    destino_salto: salto,
+    comentario: f.texto("comentario"),
+    inciso_art11: f.texto("inciso_art11"),
+    confirmo_salto: f.texto("confirmo_salto"),
+  };
   const processo = await repo.por_id(tx, usuario, processo_id);
   if (processo === null) return redirecionar(c, "/processos");
+  const recusar = (motivo: string) =>
+    _ficha(c, usuario, processo_id, { aba: "dados", erro_mover: motivo, mover_digitado: digitado });
+  if (!destino) return recusar("Escolha para onde o processo vai.");
   try {
     if (destino === "__voltar__") await voltar_do_sobrestamento(tx, processo, usuario);
     else {
+      const curto = await fluxo_curto_de(tx, processo);
+      if (!pode_transitar(processo.estado_tecnico, destino, curto) && digitado.confirmo_salto !== "1") {
+        return recusar(CONFIRMACAO_SALTO);
+      }
       await mover(tx, processo, destino, usuario, {
         comentario: f.opcional("comentario"),
-        inciso_art11: f.opcional("inciso_art11"),
+        // o inciso só vale para o indeferimento; nos outros destinos é ignorado
+        inciso_art11: destino === "INDEFERIDO_TECNICAMENTE" ? f.opcional("inciso_art11") : null,
       });
     }
-    return redirecionar(c, `/processos/${processo_id}?aba=historico`);
   } catch (erro) {
     if (!(erro instanceof TransicaoInvalida || erro instanceof RequisitoDeSaidaNaoAtendido)) throw erro;
     const motivos = erro instanceof RequisitoDeSaidaNaoAtendido ? erro.motivos : [erro.message];
-    return _ficha(c, usuario, processo_id, { erro: motivos.join(" · ") });
+    return recusar(motivos.join(" · "));
   }
+  const rotulo = ROTULO_ESTADO_TELA[processo.estado_tecnico] ?? processo.estado_tecnico;
+  const mensagem = `Processo movido para “${rotulo}”.`;
+  return redirecionar(c, `/processos/${processo_id}?aba=${aba}&mensagem=${encodeURIComponent(mensagem)}`);
 });
+
+// O link permanente do SEI é o que vira o botão "Abrir no SEI ↗" da ficha: só
+// endereço do SEI da casa entra, e não qualquer texto. `https://sei.` cobre o
+// SEI da UFVJM e o de outro órgão que tramite o processo.
+export const PREFIXO_LINK_SEI = "https://sei.";
 
 rotas.post("/processos/:processo_id{[0-9]+}/sei", async (c) => {
   const usuario = await usuarioCom(c, "processo.editar");
@@ -433,9 +651,20 @@ rotas.post("/processos/:processo_id{[0-9]+}/sei", async (c) => {
   const processo_id = _id(c);
   const f = await formulario(c);
   const processo = await repo.por_id(tx, usuario, processo_id);
-  if (processo !== null) {
-    const antes = processo.url_permanente;
-    const depois = f.texto("url_permanente") || null;
+  if (processo === null) return redirecionar(c, "/processos");
+  const digitado = f.texto("url_permanente").trim();
+  if (digitado && !(digitado.toLowerCase().startsWith(PREFIXO_LINK_SEI) && URL.canParse(digitado))) {
+    return _ficha(c, usuario, processo_id, {
+      aba: "dados",
+      erro_sei:
+        `Link do SEI inválido: ele começa com ${PREFIXO_LINK_SEI} — copie o “link para acesso direto” ` +
+        "do processo, lá no SEI.",
+      sei_digitado: digitado,
+    });
+  }
+  const antes = processo.url_permanente;
+  const depois = digitado || null;
+  if (antes !== depois) {
     await tx.update(tabela_processo).set({ url_permanente: depois }).where(eq(tabela_processo.id, processo.id));
     await auditoria.registrar_diferencas(tx, {
       entidade: "processo",
@@ -446,7 +675,8 @@ rotas.post("/processos/:processo_id{[0-9]+}/sei", async (c) => {
       processo_id: processo.id,
     });
   }
-  return redirecionar(c, `/processos/${processo_id}`);
+  const mensagem = depois ? "Link do SEI salvo." : "Link do SEI removido.";
+  return redirecionar(c, `/processos/${processo_id}?aba=dados&mensagem=${encodeURIComponent(mensagem)}`);
 });
 
 rotas.post("/processos/:processo_id{[0-9]+}/anexos", async (c) => {
@@ -458,6 +688,7 @@ rotas.post("/processos/:processo_id{[0-9]+}/anexos", async (c) => {
   if (!(arquivo instanceof File)) throw new ErroHttp(422, "Campo obrigatório ausente: arquivo");
   const processo = await repo.por_id(tx, usuario, processo_id);
   if (processo === null) return redirecionar(c, "/processos");
+  const categoria = f.texto("categoria", "OUTRO") || "OUTRO";
   let resultado: servico_anexos.ResultadoAnexo;
   try {
     resultado = await servico_anexos.guardar(tx, {
@@ -466,7 +697,7 @@ rotas.post("/processos/:processo_id{[0-9]+}/anexos", async (c) => {
       nome_original: arquivo.name || "arquivo",
       conteudo: new Uint8Array(await arquivo.arrayBuffer()),
       mime_type: arquivo.type || "application/octet-stream",
-      categoria: f.texto("categoria", "OUTRO") || "OUTRO",
+      categoria,
       usuario,
       processo_id: processo.id,
       numero_documento_sei: f.opcional("numero_documento_sei"),
@@ -479,11 +710,57 @@ rotas.post("/processos/:processo_id{[0-9]+}/anexos", async (c) => {
     return _ficha(c, usuario, processo_id, { aba: "anexos", erro: erro.message });
   }
   let mensagem: string;
-  if (resultado.duplicado) mensagem = "Arquivo idêntico já anexado neste processo — ignorado.";
+  let reclassificar: OpcoesFicha["reclassificar"] = null;
+  if (resultado.duplicado && resultado.anexo.categoria !== categoria && resultado.anexo.ativo) {
+    // O mesmo arquivo, mandado de novo com OUTRA categoria, quase sempre é a
+    // correção de uma escolha errada no primeiro envio: a tela oferece trocar
+    // a categoria (com registro na trilha), em vez de só dizer "ignorado".
+    const rotulo = (cat: string) => ROTULO_CATEGORIA_ANEXO_TELA[cat] ?? cat;
+    mensagem =
+      `Este arquivo já está anexado como “${rotulo(resultado.anexo.categoria)}” — nada foi duplicado. ` +
+      `Se a categoria certa é “${rotulo(categoria)}”, reclassifique abaixo.`;
+    reclassificar = {
+      anexo_id: resultado.anexo.id,
+      de: resultado.anexo.categoria,
+      para: categoria,
+      nome: resultado.anexo.nome_original,
+    };
+  } else if (resultado.duplicado) mensagem = "Arquivo idêntico já anexado neste processo — ignorado.";
   else if (resultado.tambem_em > 1) {
     mensagem = `Anexado. Este mesmo arquivo também está em ${resultado.tambem_em} processos.`;
   } else mensagem = "Anexo enviado.";
-  return _ficha(c, usuario, processo_id, { aba: "anexos", mensagem });
+  return _ficha(c, usuario, processo_id, { aba: "anexos", mensagem, reclassificar });
+});
+
+/** Troca a categoria de um anexo do processo — a saída do reenvio idêntico. */
+rotas.post("/processos/:processo_id{[0-9]+}/anexos/:anexo_id{[0-9]+}/categoria", async (c) => {
+  const usuario = await usuarioCom(c, "anexo.enviar");
+  const tx = c.get("tx");
+  const processo_id = _id(c);
+  const anexo_id = _id(c, "anexo_id");
+  const f = await formulario(c);
+  const processo = await repo.por_id(tx, usuario, processo_id);
+  if (processo === null) return redirecionar(c, "/processos");
+  const [anexo] = await tx
+    .select()
+    .from(tabela_anexo)
+    .where(
+      and(
+        eq(tabela_anexo.id, anexo_id),
+        eq(tabela_anexo.entidade, "processo"),
+        eq(tabela_anexo.entidade_id, processo.id),
+        eq(tabela_anexo.ativo, true),
+      ),
+    );
+  if (!anexo) return _ficha(c, usuario, processo_id, { aba: "anexos", erro: "Anexo não encontrado neste processo." });
+  try {
+    await servico_anexos.reclassificar(tx, anexo, f.texto("categoria"), usuario, processo.id);
+  } catch (erro) {
+    if (!(erro instanceof RegraViolada)) throw erro;
+    return _ficha(c, usuario, processo_id, { aba: "anexos", erro: erro.message });
+  }
+  const rotulo = ROTULO_CATEGORIA_ANEXO_TELA[anexo.categoria] ?? anexo.categoria;
+  return _ficha(c, usuario, processo_id, { aba: "anexos", mensagem: `Anexo reclassificado como “${rotulo}”.` });
 });
 
 /** O `filename=` do `FileResponse` do Starlette (com `filename*` para acento). */

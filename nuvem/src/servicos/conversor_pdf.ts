@@ -64,8 +64,16 @@ export async function converter_docx(bytes: Uint8Array): Promise<Uint8Array> {
  * que foi gerado); servem o texto do certificado e o arquivo do modelo — se
  * um dos dois muda, o PDF guardado não vale mais.
  */
-export function chave_do_pdf(certificado_id: number, hash_conteudo: string, modelo_sha256: string): string {
-  const resumo = createHash("sha256").update(`${hash_conteudo}\u0000${modelo_sha256}`).digest("hex").slice(0, 32);
+export function chave_do_pdf(
+  certificado_id: number,
+  hash_conteudo: string,
+  modelo_sha256: string,
+  // a tarja do anulado: o PDF guardado quando o certificado valia não serve
+  // depois de anulado (e vice-versa)
+  tarja = "",
+): string {
+  const semente = `${hash_conteudo}\u0000${modelo_sha256}` + (tarja ? `\u0000${tarja}` : "");
+  const resumo = createHash("sha256").update(semente).digest("hex").slice(0, 32);
   return `certificados-pdf/${certificado_id}-${resumo}.pdf`;
 }
 

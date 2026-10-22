@@ -16,8 +16,18 @@
  *
  * Fonte: Helvetica padrão do PDF (WinAnsi). Cobre o português; caractere fora
  * dela sai como "?" em vez de derrubar a geração.
+ *
+ * Redação (`contexto.redacao`): o congelado de antes (1) sai com o texto do
+ * v1, como saiu na emissão; o da emissão nova (2) sai com as frases inteiras
+ * do `certificado_padrao_v2.docx` — norma sem repetir quando o nome já a traz
+ * e "Validade: indeterminada" no treinamento que não vence.
+ *
+ * Certificado ANULADO sai com a tarja (`Tarja`): faixa no topo e marca d'água
+ * "ANULADO" na diagonal. É aplicada na SAÍDA — o congelado e o hash ficam como
+ * na emissão; quem pede o papel anulado (para juntar ao processo) o recebe,
+ * mas ele não passa por válido.
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { matriz_qr } from "./qr.js";
 import { obterArmazenamento } from "./armazenamento.js";
 import * as anexos from "./anexos.js";
@@ -32,6 +42,10 @@ const MARGEM = 56.7;
 const COR_TEXTO = rgb(0.1, 0.1, 0.12);
 const COR_SUAVE = rgb(0.38, 0.38, 0.42);
 const COR_TITULO = rgb(0.05, 0.27, 0.45);
+const COR_ANULADO = rgb(0.72, 0.09, 0.09);
+
+/** A frase da tarja do anulado: "ANULADO em 21/10/2026 — substituído por 14/2026". */
+export type Tarja = string | null;
 
 // =====================================================================
 // QR
@@ -122,6 +136,17 @@ function quebrar(trechos: Trecho[], fontes: Fontes, tamanho: number, largura: nu
   return linhas;
 }
 
+/** Os trechos vizinhos de mesma fonte, numa string só. */
+function juntar(linha: Trecho[]): Trecho[] {
+  const saida: Trecho[] = [];
+  for (const t of linha) {
+    const ultimo = saida[saida.length - 1];
+    if (ultimo && Boolean(ultimo.negrito) === Boolean(t.negrito)) ultimo.texto += t.texto;
+    else saida.push({ texto: t.texto, negrito: t.negrito });
+  }
+  return saida;
+}
+
 function largura_da_linha(linha: Trecho[], fontes: Fontes, tamanho: number): number {
   return linha.reduce((s, t) => s + fontes.fonte(t).widthOfTextAtSize(t.texto, tamanho), 0);
 }
@@ -138,7 +163,9 @@ function paragrafo(
   let y = o.y;
   for (const linha of quebrar(trechos, fontes, o.tamanho, o.largura)) {
     let x = centro - largura_da_linha(linha, fontes, o.tamanho) / 2;
-    for (const t of linha) {
+    // uma chamada por trecho de mesma fonte, com os espaços dentro: palavra a
+    // palavra, quem copia o texto do PDF recebia "Trabalho— CREA" sem o espaço
+    for (const t of juntar(linha)) {
       const fonte = fontes.fonte(t);
       pagina.drawText(t.texto, { x, y, size: o.tamanho, font: fonte, color: o.cor ?? COR_TEXTO });
       x += fonte.widthOfTextAtSize(t.texto, o.tamanho);
@@ -154,7 +181,7 @@ function campo(contexto: ContextoCertificado, codigo: string): string {
   return typeof valor === "string" ? valor.trim() : "";
 }
 
-/** O parágrafo de certificação, com o texto do `certificado_padrao_v1.docx`. */
+/** O parágrafo de certificação, com o texto do `certificado_padrao_v1.docx` (ou do v2). */
 function trechos_de_certificacao(contexto: ContextoCertificado): Trecho[] {
   const v = (codigo: string) => campo(contexto, codigo);
   const t: Trecho[] = [{ texto: "Certificamos que " }, { texto: v("participante_nome"), negrito: true }];
@@ -163,8 +190,13 @@ function trechos_de_certificacao(contexto: ContextoCertificado): Trecho[] {
   // CPF: só existe no congelado quando o modelo do treinamento o pede (norma
   // que o exige, como a do brigadista do CBMMG) — ver `cpf_certificado.ts`
   if (v("participante_cpf")) t.push({ texto: `, CPF ${v("participante_cpf")}` });
-  t.push({ texto: ", concluiu o treinamento " }, { texto: v("treinamento_nome"), negrito: true });
-  if (v("treinamento_norma")) t.push({ texto: ` ${v("treinamento_norma")}` });
+  if (contexto.redacao >= 2) {
+    // v2: a norma só quando o nome ainda não a traz
+    t.push({ texto: ", concluiu o treinamento " }, { texto: v("treinamento_nome_e_norma"), negrito: true });
+  } else {
+    t.push({ texto: ", concluiu o treinamento " }, { texto: v("treinamento_nome"), negrito: true });
+    if (v("treinamento_norma")) t.push({ texto: ` ${v("treinamento_norma")}` });
+  }
   t.push({ texto: `, com carga horária de ${v("treinamento_carga_horaria")}` });
   if (v("turma_periodo_extenso")) t.push({ texto: `, realizado ${v("turma_periodo_extenso")}` });
   if (v("turma_local")) t.push({ texto: ` em ${v("turma_local")}` });
@@ -189,7 +221,45 @@ async function _rubrica(documento: PDFDocument, sha256: string | null | undefine
 // =====================================================================
 // Páginas
 // =====================================================================
-async function desenhar_certificado(documento: PDFDocument, fontes: Fontes, contexto: ContextoCertificado): Promise<void> {
+/** A tarja do anulado: a faixa no topo e a marca d'água na diagonal. */
+function desenhar_tarja(pagina: PDFPage, fontes: Fontes, tarja: string): void {
+  const texto = fontes.limpo("ANULADO");
+  const tamanho = 120;
+  const largura = fontes.negrito.widthOfTextAtSize(texto, tamanho);
+  // inclinada pela diagonal da página, centrada
+  const angulo = Math.atan2(ALTURA, LARGURA);
+  const cx = LARGURA / 2 - (Math.cos(angulo) * largura) / 2 + (Math.sin(angulo) * tamanho * 0.35);
+  const cy = ALTURA / 2 - (Math.sin(angulo) * largura) / 2 - (Math.cos(angulo) * tamanho * 0.35);
+  pagina.drawText(texto, {
+    x: cx,
+    y: cy,
+    size: tamanho,
+    font: fontes.negrito,
+    color: COR_ANULADO,
+    opacity: 0.16,
+    rotate: degrees((angulo * 180) / Math.PI),
+  });
+  const faixa = fontes.limpo(tarja);
+  let corpo = 11;
+  while (corpo > 7 && fontes.negrito.widthOfTextAtSize(faixa, corpo) > LARGURA - 2 * MARGEM) corpo -= 0.5;
+  const altura_faixa = corpo + 10;
+  const y = ALTURA - MARGEM / 2 - altura_faixa;
+  pagina.drawRectangle({ x: MARGEM / 2, y, width: LARGURA - MARGEM, height: altura_faixa, color: COR_ANULADO });
+  pagina.drawText(faixa, {
+    x: LARGURA / 2 - fontes.negrito.widthOfTextAtSize(faixa, corpo) / 2,
+    y: y + 6,
+    size: corpo,
+    font: fontes.negrito,
+    color: rgb(1, 1, 1),
+  });
+}
+
+async function desenhar_certificado(
+  documento: PDFDocument,
+  fontes: Fontes,
+  contexto: ContextoCertificado,
+  tarja: Tarja = null,
+): Promise<void> {
   const v = (codigo: string) => campo(contexto, codigo);
   const pagina = documento.addPage([LARGURA, ALTURA]);
   const util = LARGURA - 2 * MARGEM;
@@ -257,8 +327,10 @@ async function desenhar_certificado(documento: PDFDocument, fontes: Fontes, cont
   const base = MARGEM / 2 + 10;
   if (contexto.url_validacao) desenhar_qr(pagina, contexto.url_validacao, MARGEM, base, lado_qr);
   const x_texto = MARGEM + lado_qr + 10;
+  const validade =
+    contexto.redacao >= 2 ? v("certificado_frase_validade") : `válido até ${v("certificado_data_vencimento")}`;
   const rodape = [
-    `Certificado nº ${v("certificado_rotulo")} · válido até ${v("certificado_data_vencimento")}`,
+    `Certificado nº ${v("certificado_rotulo")} · ${validade}`,
     `Confira a autenticidade em ${v("certificado_url_validacao")}`,
     `Chave de validação: ${v("certificado_chave")}`,
   ];
@@ -302,11 +374,17 @@ async function desenhar_certificado(documento: PDFDocument, fontes: Fontes, cont
       font: fontes.normal,
       color: COR_SUAVE,
     });
+    if (tarja) desenhar_tarja(verso, fontes, tarja);
   }
+  // por cima de tudo, para não ficar escondida atrás do texto
+  if (tarja) desenhar_tarja(pagina, fontes, tarja);
 }
 
-/** Um ou vários certificados num só PDF (o lote da turma sai num arquivo). */
-export async function gerar_pdf(contextos: ContextoCertificado[]): Promise<Uint8Array> {
+/**
+ * Um ou vários certificados num só PDF (o lote da turma sai num arquivo).
+ * `tarjas[i]` é a frase do anulado para `contextos[i]` (`null`: em vigor).
+ */
+export async function gerar_pdf(contextos: ContextoCertificado[], tarjas: Tarja[] = []): Promise<Uint8Array> {
   const documento = await PDFDocument.create();
   documento.setTitle(contextos.length === 1 ? `Certificado ${contextos[0]!.rotulo}` : "Certificados");
   documento.setCreator("Sistema CSSO");
@@ -315,6 +393,6 @@ export async function gerar_pdf(contextos: ContextoCertificado[]): Promise<Uint8
     await documento.embedFont(StandardFonts.Helvetica),
     await documento.embedFont(StandardFonts.HelveticaBold),
   );
-  for (const contexto of contextos) await desenhar_certificado(documento, fontes, contexto);
+  for (const [i, contexto] of contextos.entries()) await desenhar_certificado(documento, fontes, contexto, tarjas[i] ?? null);
   return documento.save();
 }

@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import PizZip from "pizzip";
 import type { Banco } from "../src/db/cliente.js";
 import * as e from "../src/db/esquema/index.js";
@@ -422,7 +422,7 @@ describe("envio pela tela", () => {
     const [v2] = await db
       .select()
       .from(e.certificado_modelo)
-      .where(eq(e.certificado_modelo.versao, 2));
+      .where(and(eq(e.certificado_modelo.versao, 2), eq(e.certificado_modelo.nome, "Brigadista")));
     expect(v2!.arquivo).toBe("brigadista_v2.docx");
     const tags = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, v2!.id));
     expect(tags.map((t) => t.marcador).sort()).toEqual(["cidade", "nome_completo_do_participante"]);

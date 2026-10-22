@@ -98,6 +98,38 @@
     <span class="marca-texto"><strong>CSSO</strong><span>Sisa · UFVJM</span></span>
   </a>
 
+  {# O MENU NO CELULAR. Abaixo de 900px a lateral vira faixa no topo, e com os
+     módulos, as telas do módulo e a base empilhados ela ocupava a primeira tela
+     inteira (600 a 720px medidos a 390px): a servidora rolava uma tela antes de
+     ver a própria ficha. Agora, ali, a faixa é só a marca e este botão, e o resto
+     da lateral aparece quando ele abre.
+
+     É um <details> sem conteúdo, e não um <details> em volta da lateral, de
+     propósito: conteúdo de <details> fechado não é desenhado, e na mesa a
+     lateral tem de estar sempre aberta. A folha só consegue "abrir à força" um
+     <details> fechado pelo `::details-content`, que o Chromium dos testes de
+     tela ainda não tem. Como irmão, ele é só o interruptor: a folha esconde os
+     irmãos de baixo enquanto ele está fechado (`:has`), e na mesa ele nem
+     aparece. Sem JavaScript, como o seletor de módulo era; e o leitor de tela
+     ouve "Menu, recolhido/expandido", que é o que o <summary> anuncia. Navegador
+     sem `:has` fica com a lateral aberta, que é como ela era. #}
+  <details class="menu-celular">
+    <summary>{{ ico('list') }}<span>Menu</span></summary>
+  </details>
+
+  {% if meu_espaco and meu_espaco|length %}
+  {# Quem só tem o próprio (o servidor comum) não recebe a lateral da equipe —
+     ver `modulos.MEU_ESPACO`. Um bloco só, com o que é dele. #}
+  <nav class="menu menu-meu" aria-label="Meu espaço">
+    <span class="rotulo-secao">Meu espaço</span>
+    {% for item in meu_espaco %}
+    <a href="{{ item.caminho }}" title="{{ item.descricao }}"
+       class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
+       {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %}>{{ ico(icone_de(item.rotulo) or icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
+    {% endfor %}
+  </nav>
+  {% else %}
+
   {# Continua sendo <details>/<summary>: abre sem JavaScript. O desenho mostra um
      botão com "▾" — quem imita o botão é o CSS, o mecanismo é o do HTML. #}
   {# O rótulo do seletor: dentro do módulo ele afirma onde a pessoa está; fora
@@ -141,6 +173,7 @@
     {% endfor %}
   </nav>
   {% endif %}
+  {% endif %}
 
   {# Rodapé institucional no fim da lateral: é identidade do sistema, não da
      tela. Numa faixa embaixo da área útil ele cairia abaixo da dobra em toda
@@ -178,7 +211,13 @@
        que o `na_base` já evita para as telas da base. #}
     {% set na_base = item_ativo and item_ativo in itens_base %}
     <nav class="trilha" aria-label="Trilha de navegação">
+      {# No "Meu espaço" não há módulo nem base para nomear: a raiz é o próprio
+         espaço, e leva ao começo dele. #}
+      {% if meu_espaco and meu_espaco|length and not trilha_raiz %}
+      <a href="/inicio">Meu espaço</a>
+      {% else %}
       <a href="/modulos">{{ trilha_raiz or ('Base compartilhada' if na_base else (modulo_ativo.nome if no_modulo else 'Módulos')) }}</a>
+      {% endif %}
       {% if item_ativo %}<a href="{{ item_ativo.caminho }}">{{ item_ativo.rotulo }}</a>{% endif %}
       {% block trilha %}{% endblock %}
     </nav>
@@ -193,9 +232,12 @@
     {% endif %}
 
     <div class="acoes-cabecalho">
-      {# As ações da tela ficam à esquerda do bloco global para que busca, sino e
-         usuário não mudem de lugar de uma tela para a outra. #}
-      {% block acoes_cabecalho %}{% endblock %}
+      {# As ações da tela (o bloco `acoes_cabecalho`) moravam aqui, à esquerda da
+         busca. Saíram para a faixa `.acoes-pagina`, logo abaixo: com dois botões
+         ("Lista de presença", "Fechar inscrições") a linha de 62px não cabia em
+         1366px, e quem caía para a segunda linha era o fim da trilha e o nome do
+         usuário — o cabecalho ia a 81px só nas telas que tinham ações. Aqui fica
+         só o que é igual em toda tela: busca, sino e usuário. #}
       {# A caixa despejava em `/processos` e só sabia achar processo: quem
          procurava uma pessoa sem processo recebia lista vazia e concluía que ela
          não estava cadastrada, e quem não tem `processo.ver` não tinha caixa
@@ -221,10 +263,12 @@
       </form>
       {% endif %}
       {% if sino_visivel %}
-      {# O sino é um link para /pendencias: quem não pode abrir a tela não ganha
-         o link, e a contagem fica vermelha quando há atrasada. #}
-      <a class="sino {{ 'sino-atrasado' if sino_atrasadas }}" href="/pendencias"
-         title="{{ sino_abertas }} pendência(s) aberta(s){% if sino_atrasadas %}, {{ sino_atrasadas }} atrasada(s){% endif %}">
+      {# O sino é um link para as pendências DA PESSOA (`?minhas=1`): quem não
+         pode abrir a tela não ganha o link, e a contagem fica vermelha quando há
+         atrasada. A contagem é a que o gancho `sino` devolve — e ele conta as
+         que são suas, que é o que o número promete ao lado do seu nome. #}
+      <a class="sino {{ 'sino-atrasado' if sino_atrasadas }}" href="/pendencias?minhas=1"
+         title="{{ sino_abertas }} pendência(s) aberta(s) sob sua responsabilidade{% if sino_atrasadas %}, {{ sino_atrasadas }} atrasada(s){% endif %}">
         {# Era o emoji `🔔`, e emoji não é ícone de interface: no Windows ele
            desenha em cores por uma fonte própria, ignora o `font-size: 15px` e
            a `--tinta-fraca` que `.sino` pede, muda de desenho entre Chrome e
@@ -246,7 +290,7 @@
           <path d="M3.9 6.6a4.1 4.1 0 0 1 8.2 0c0 2.6.6 3.7 1.2 4.4H2.7c.6-.7 1.2-1.8 1.2-4.4Z"/>
           <path d="M6.4 13.1a1.7 1.7 0 0 0 3.2 0"/>
         </svg>
-        <span class="oculto">Pendências</span>
+        <span class="oculto">Minhas pendências</span>
         {%- if sino_abertas %}<span class="contador">{{ sino_abertas }}</span>{% endif %}
       </a>
       {% endif %}
@@ -264,11 +308,16 @@
            mora em todo lugar, e a permissão é a mesma que a rota exige.
 
            A tupla é a de `rotas/configuracao.PERMISSOES_CONFIG`, e a igualdade é
-           o invariante: `backup.executar` entrou porque o `admin_ti`, que é o
-           único perfil que a tem, não tem `processo.ver` — quem faz backup não
-           alcançava a tela do backup. Divergir aqui volta a oferecer porta
-           trancada, ou a esconder porta aberta. #}
-        {% if usuario.pode('processo.ver') or usuario.pode('backup.executar') %}
+           o invariante (`testes/correcoes_visual.test.ts` a cobra perfil a
+           perfil): `backup.executar` entrou porque o `admin_ti`, que é o único
+           perfil que a tem, não tem `processo.ver` — quem faz backup não
+           alcançava a tela do backup. E `processo.ver` saiu: é a leitura que o
+           servidor comum e o auditor também têm, e a engrenagem os levava ao SLA
+           e ao setor que assina, que não são deles. Quem ajusta o sistema é
+           quem instrui processo (`processo.editar`), quem cuida dos catálogos
+           (`catalogo.gerenciar`) ou quem opera a máquina. Divergir aqui volta a
+           oferecer porta trancada, ou a esconder porta aberta. #}
+        {% if usuario.pode('processo.editar') or usuario.pode('catalogo.gerenciar') or usuario.pode('backup.executar') %}
         {# Era o dingbat `⚙`. Ele não existe na Public Sans, então caía num
            fallback do sistema e saía com peso e tamanho diferentes do vizinho
            "sair", que está a 4px de distância. Mesmo argumento do sino, e o
@@ -316,6 +365,16 @@
      conteúdo, sem a lateral. O `id` e o `tabindex` são o destino do salto lá em
      cima; a ordem dos atributos não muda nada para o navegador e muda tudo para
      essa varredura. #}
+  {# A FAIXA DAS AÇÕES DA TELA. O bloco continua se chamando `acoes_cabecalho`
+     para nenhuma página precisar mudar; o que mudou é onde ele é desenhado. Fica
+     colada ao conteúdo, alinhada à direita (o "no alto, à direita" que o atalho
+     `n` promete), e some quando a página não declara ação nenhuma — a folha a
+     esconde por `:not(:has(*))`, porque o bloco vazio ainda deixa espaço em
+     branco e `:empty` não o ignora. Só existe com casca: nas telas sem lateral
+     não há ação de página. #}
+  {% if com_casca %}
+  <div class="acoes-pagina">{% block acoes_cabecalho %}{% endblock %}</div>
+  {% endif %}
   <main class="conteudo {% block classe_conteudo %}{% endblock %}" id="conteudo" tabindex="-1">
     {% if mensagem %}<div class="aviso aviso-ok">{{ mensagem }}</div>{% endif %}
     {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
@@ -406,7 +465,29 @@ document.addEventListener('keydown', function (e) {
 // próxima tela nasce sem `Esc` e ninguém percebe até alguém tentar.
 // ---------------------------------------------------------------------
 (function () {
-  var quemAbriu = null;
+  // Quem abriu cada popup aberto, na ordem em que abriram. É pilha, e não uma
+  // variável só, porque há camada sobre camada: a confirmação de "Inativar"
+  // abre por cima da gaveta "Gerir" de /usuarios, e fechar a de cima devolve o
+  // foco ao botão DENTRO da de baixo, que continua aberta.
+  var pilha = [];
+
+  function tirarDaPilha(dialogo) {
+    for (var i = pilha.length - 1; i >= 0; i--) {
+      if (pilha[i].dialogo === dialogo) return pilha.splice(i, 1)[0].gatilho;
+    }
+    return null;
+  }
+
+  // O de cima: o último aberto que ainda está aberto. Sem registro na pilha (o
+  // `[open]` escrito pelo servidor antes de qualquer script), o último do
+  // documento — a camada que abre por cima é a que vem depois no HTML.
+  function popupDeCima() {
+    for (var i = pilha.length - 1; i >= 0; i--) {
+      if (pilha[i].dialogo.open && document.contains(pilha[i].dialogo)) return pilha[i].dialogo;
+    }
+    var abertos = document.querySelectorAll('dialog.popup[open]');
+    return abertos.length ? abertos[abertos.length - 1] : null;
+  }
 
   // O botão que abre um dado diálogo — é para ele que o foco volta quando o
   // popup fecha. Sem isto o foco reaparece no começo do documento e quem navega
@@ -444,8 +525,7 @@ document.addEventListener('keydown', function (e) {
   function fechar(dialogo) {
     if (!dialogo || !dialogo.open) return false;
     dialogo.close();
-    var gatilho = quemAbriu;
-    quemAbriu = null;
+    var gatilho = tirarDaPilha(dialogo);
     // `document.contains`: o gatilho pode ter saído do documento entre abrir e
     // fechar (é um bloco que o HTMX troca em quatro telas), e focar elemento
     // solto não move o foco de lugar nenhum — deixá-lo onde está é honesto.
@@ -455,7 +535,8 @@ document.addEventListener('keydown', function (e) {
 
   function abrir(dialogo, gatilho) {
     if (!dialogo || typeof dialogo.showModal !== 'function') return false;
-    quemAbriu = gatilho || gatilhoDe(dialogo);
+    tirarDaPilha(dialogo);
+    pilha.push({ dialogo: dialogo, gatilho: gatilho || gatilhoDe(dialogo) });
     // `[open]` sem `showModal()` é diálogo NÃO modal: aparece, mas sem camada de
     // topo e sem foco preso. Fechar e reabrir é o que promove o que o servidor
     // escreveu — e é por isso que a rota não precisa saber se há JavaScript.
@@ -505,10 +586,12 @@ document.addEventListener('keydown', function (e) {
 
   // O `Esc` fecha sem passar por clique nenhum, e é o gesto de quem está no
   // teclado — justamente quem mais perde com o foco largado. Fechando nós
-  // mesmos, o foco volta pelo mesmo caminho do "×"; o fechamento nativo que
-  // viria depois encontra o diálogo já fechado e não faz mais nada.
+  // mesmos, o foco volta pelo mesmo caminho do "×". Fecha o de CIMA: com a
+  // confirmação aberta sobre a gaveta, fechar o primeiro do documento levava a
+  // gaveta de trás e deixava a confirmação na tela. E cancela o gesto nativo,
+  // que viria depois e fecharia a camada que passou a ser a de cima.
   document.addEventListener('keydown', function (evt) {
-    if (evt.key === 'Escape') fechar(document.querySelector('dialog.popup[open]'));
+    if (evt.key === 'Escape' && fechar(popupDeCima())) evt.preventDefault();
   });
 
   // A GRAVAÇÃO RECUSADA, e só ela. A rota devolveu a tela com o popup `[open]`,

@@ -345,7 +345,10 @@ describe("rotas de /adicionais", () => {
     const [maximo] = await amb.db.select().from(e.percentual_aplicavel).where(eq(e.percentual_aplicavel.grau, "MAXIMO"));
     r = await cliente.post(`/adicionais/${v!.id}/alterar`, { percentual_id: maximo!.id, motivo: "nova medição" }, { seguir: false });
     expect(r.location).toContain("mensagem=");
+    // sem a confirmação escrita não cessa
     r = await cliente.post(`/adicionais/${v!.id}/cessar`, { data_fim: "2025-12-31" }, { seguir: false });
+    expect(decodeURIComponent(r.location!.replaceAll("+", " "))).toContain("Confirmo a cessação deste adicional.");
+    r = await cliente.post(`/adicionais/${v!.id}/cessar`, { data_fim: "2025-12-31", ciente: "1" }, { seguir: false });
     expect(r.location).toContain("mensagem=");
     const [fim] = await amb.db.select().from(e.adicional_vigencia);
     expect(fim!.estado).toBe("CESSADO");

@@ -99,12 +99,17 @@ describe("o que cada tela mostra", () => {
     [`/laudos/${ids.laudo_id}`, ["26255-000.125/2019", "1/2025"]],
     ["/adicionais", ["proposto", "Marco Antônio"]],
     ["/pendencias", ["Incluir o parecer 1/2025 no SEI"]],
-    ["/relatorios", ["Lacunas de numeração", "Biológico"]],
+    // os cartões contam o exercício escolhido, e o parecer do cenário é de 2025
+    ["/relatorios?exercicio=2025", ["Lacunas de numeração", "Biológico"]],
   ] as const)("%s", async (caminho, esperados) => {
     const cliente = await entrar(novoCliente(), "coordenador_csso");
     const r = await cliente.get(caminho, { cabecalhos: { accept: "text/html" } });
     expect(r.status).toBe(200);
-    for (const e of esperados) expect(r.text, e).toContain(e);
+    // o cartão do quadro marca com `<wbr>` (entre as duas `.parte`) onde o NUP
+    // pode quebrar: o número continua inteiro na tela, só não é mais uma cadeia
+    // contínua no HTML
+    const texto = r.text.replace(/<\/?span( class="parte")?>|<wbr>/g, "");
+    for (const e of esperados) expect(texto, e).toContain(e);
   });
 });
 

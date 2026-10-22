@@ -298,7 +298,11 @@ describe("modelo e dicionário de tags", () => {
     expect(resposta.status).toBe(303);
     const antiga = await _modelo(modelo_id);
     expect(antiga.vigente).toBe(false);
-    const [nova_linha] = await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.versao, 2));
+    // (a semente também tem a v2 dela: o "Padrão da casa")
+    const [nova_linha] = await db
+      .select()
+      .from(e.certificado_modelo)
+      .where(and(eq(e.certificado_modelo.versao, 2), eq(e.certificado_modelo.nome, antiga.nome)));
     const nova = await _modelo(nova_linha!.id);
     expect(CertificadoModelo.mapa_de_tags(nova)).toEqual({ curso: "treinamento_nome" });
     expect(nova.id).not.toBe(antiga.id);
@@ -365,7 +369,8 @@ describe("modelo e dicionário de tags", () => {
     });
     expect(recusa.text.toLowerCase()).toContain("já existe");
     const nomes = (await db.select().from(e.certificado_modelo)).map((m) => m.nome).sort();
-    expect(nomes).toEqual(["Alfa", "Beta", "Padrão da casa"]);
+    // o "Padrão da casa" da semente são duas linhas: a v1 superada e a v2
+    expect(nomes).toEqual(["Alfa", "Beta", "Padrão da casa", "Padrão da casa"]);
   });
 
   it("editar modelo também exige .docx", async () => {

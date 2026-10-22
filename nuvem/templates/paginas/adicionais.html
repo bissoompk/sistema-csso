@@ -7,11 +7,16 @@
 
   <div class="cabecalho-pagina">
     <div class="titulo">
-      <h1>Adicionais concedidos</h1>
+      <h1>{{ 'Seu adicional ocupacional' if vista_do_titular else 'Adicionais concedidos' }}</h1>
+      {% if vista_do_titular %}
+      <p class="sub">O adicional registrado em seu nome, com a portaria e o laudo que o
+        sustentam.</p>
+      {% else %}
       <p class="sub">Quantos adicionais estão vigentes hoje e com base em qual laudo.
         {%- if recorte.total > recorte.por_pagina %}
         {{ vigencias|length }} de {{ recorte.total }} nesta seleção — esta é uma
         página.{% endif %}</p>
+      {% endif %}
       {# Norma: lê-se uma vez e depois se sabe. O que muda decisão nesta tela é a
          lista de lacunas da RN-09, logo abaixo, que continua em faixa vermelha. #}
       {% call ui.info('acumulo-e-opcao', 'a proibição de acúmulo e a opção do servidor') %}
@@ -28,6 +33,47 @@
     </div>
   </div>
 
+  {% if vista_do_titular %}
+  {# O titular lê uma frase, e não uma tabela: "Você recebe … desde …". Sem filtro
+     de estado nem coluna de ações — a tela é a consulta do art. 18, II da LGPD, e
+     não a gestão do setor. O histórico (suspenso, cessado) continua aparecendo,
+     um cartão por registro, do mais antigo ao mais novo. #}
+  {% if vigencias %}
+  <div class="grade-resumo">
+    {% for v in vigencias %}
+    {% set tipo = v.tipo_adicional.nome if v.tipo_adicional else 'Adicional' %}
+    {% set perc = v.percentual.rotulo if v.percentual else '' %}
+    <div class="cartao-resumo{{ ' atencao' if v.estado in ['SUSPENSO','EM_REAVALIACAO'] }}">
+      <span class="rotulo">{{ ui.ROTULO_DIREITO[v.estado] or v.estado }}</span>
+      <span class="valor">{{ tipo }}{% if perc %} · {{ perc }}{% endif %}</span>
+      <span class="detalhe">
+        {%- if v.estado in ['VIGENTE','ALTERADO'] and v.data_inicio -%}
+        Você recebe {{ tipo }}{% if perc %}, {{ perc|lower }},{% endif %} desde {{ v.data_inicio|data }}.
+        {%- elif v.estado == 'PROPOSTO' -%}
+        Proposto a partir do parecer; passa a valer com a portaria de concessão.
+        {%- elif v.estado == 'CESSADO' -%}
+        Recebeu{% if v.data_inicio %} de {{ v.data_inicio|data }}{% endif %}{% if v.data_fim %} até {{ v.data_fim|data }}{% endif %}.
+        {%- elif v.estado == 'SUSPENSO' -%}
+        Suspenso{% if v.base_legal_suspensao %} ({{ v.base_legal_suspensao }}){% endif %}.
+        {%- else -%}
+        Em reavaliação pela CSSO: o adicional continua registrado até a decisão.
+        {%- endif %}
+        {% if v.portaria_concessao %} Portaria {{ v.portaria_concessao }}.{% endif %}
+        {% if v.parecer and v.parecer.laudo %} Laudo <span class="mono">{{ v.parecer.laudo.numero_siape }}</span>.{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Nenhum adicional registrado em seu nome</strong>
+      <span>Quando a CSSO propuser ou conceder um adicional a partir de um parecer, ele
+        aparece aqui com a portaria e o laudo.</span>
+    </div>
+  </div>
+  {% endif %}
+  {% else %}
   {# A máquina do direito desenhada como ela é: PROPOSTO entra, VIGENTE é o
      meio, e dela saem os quatro fins. Cada ficha é um filtro que a URL sabe
      reproduzir — continua sendo GET, sem JavaScript. #}
@@ -60,11 +106,16 @@
   {% endif %}
 
   <div class="tabela-cartao lista">
-  <table>
+  {# `empilhavel`: no celular cada adicional vira um cartão, com o rótulo da
+     coluna em cima de cada valor (`data-coluna`) e as ações embaixo. #}
+  <table class="empilhavel">
     <thead>
       <tr>
-        <th scope="col">Servidor</th><th scope="col">Estado</th><th scope="col">Tipo</th><th scope="col">%</th><th scope="col">Laudo</th>
-        <th scope="col">Portaria de concessão</th><th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Ações</th>
+        {# Sete colunas, e não nove: tipo e percentual são uma leitura só
+           ("Insalubridade · Médio (10%)"), e início e fim são a vigência. Com nove
+           a coluna de ações saía cortada em 1366px. #}
+        <th scope="col">Servidor</th><th scope="col">Estado</th><th scope="col">Adicional</th><th scope="col">Laudo</th>
+        <th scope="col">Portaria de concessão</th><th scope="col">Vigência</th><th scope="col">Ações</th>
       </tr>
     </thead>
     {% for v in vigencias %}
@@ -75,23 +126,23 @@
           <a href="/servidores/{{ v.servidor_id }}">{{ quem.nome }}</a>
         {% else %}<span class="mono discreto">{{ quem.nome }}</span>{% endif %}
       </td>
-      <td>{{ ui.pilula_direito(v.estado) }}</td>
-      <td>{{ v.tipo_adicional.nome if v.tipo_adicional }}</td>
-      <td class="mono">{{ v.percentual.rotulo if v.percentual }}</td>
-      <td>
+      <td data-coluna="Estado">{{ ui.pilula_direito(v.estado) }}</td>
+      <td data-coluna="Adicional">{{ v.tipo_adicional.nome if v.tipo_adicional }}
+        {% if v.percentual %}<span class="mono discreto quebra">{{ v.percentual.rotulo }}</span>{% endif %}</td>
+      <td data-coluna="Laudo">
         {% if v.parecer and v.parecer.laudo %}
         {% if usuario.pode('laudo.ver') %}<a class="mono" href="/laudos/{{ v.parecer.laudo_id }}">{{ v.parecer.laudo.numero_siape }}</a>{% else %}<span class="mono">{{ v.parecer.laudo.numero_siape }}</span>{% endif %}
         {% else %}<span class="discreto">—</span>{% endif %}
       </td>
-      <td><span class="recorte" title="{{ v.portaria_concessao or '' }}">
+      <td data-coluna="Portaria de concessão"><span class="recorte" title="{{ v.portaria_concessao or '' }}">
           {{- v.portaria_concessao or 'aguarda portaria' -}}</span></td>
-      <td class="mono">{{ v.data_inicio|data or '—' }}</td>
-      <td>
-        <span class="mono">{{ v.data_fim|data or '—' }}</span>
+      <td data-coluna="Vigência">
+        <span class="mono">{{ v.data_inicio|data or '—' }}</span>
+        {% if v.data_fim %}<span class="mono quebra">até {{ v.data_fim|data }}</span>{% endif %}
         {% if v.base_legal_suspensao %}
         <span class="discreto quebra">{{ v.base_legal_suspensao }}</span>{% endif %}
       </td>
-      <td>
+      <td class="acao-linha">
         {% if usuario.pode('parecer.emitir') %}
         {# Um controle por linha, e não três: com quatro ações abertas lado a
            lado a coluna ficava mais alta que a linha inteira. Era
@@ -137,17 +188,24 @@
                        placeholder="Lei 8.112/90, art. 69, p.ú."></div>
               <div class="acoes"><button type="submit" class="secundario compacto">Suspender</button></div>
             </form>
+            {# Só os percentuais do MESMO adicional, e sem o atual: trocar de
+               adicional é cessar e propor (RN-09), e o serviço recusa o resto. #}
+            {% set outros = [] %}
+            {% for p in percentuais %}{% if p.tipo_adicional_id == v.tipo_adicional_id and p.id != v.percentual_id %}{% set _ = outros.push(p) %}{% endif %}{% endfor %}
+            {% if outros %}
             <form method="post" action="/adicionais/{{ v.id }}/alterar">
               <h3>Alterar percentual</h3>
+              <p class="discreto">Percentual atual: <strong>{{ v.percentual.rotulo if v.percentual else '—' }}</strong>.</p>
               <div class="campo"><label for="perc-{{ v.id }}">Novo percentual</label>
                 <select id="perc-{{ v.id }}" name="percentual_id">
-                  {% for p in percentuais %}
-                  <option value="{{ p.id }}">{{ p.tipo_adicional.codigo }} · {{ p.rotulo }}</option>{% endfor %}
+                  {% for p in outros %}
+                  <option value="{{ p.id }}">{{ p.rotulo }}</option>{% endfor %}
                 </select></div>
               <div class="campo"><label for="alt-motivo-{{ v.id }}">Motivo</label>
                 <input id="alt-motivo-{{ v.id }}" name="motivo" required></div>
               <div class="acoes"><button type="submit" class="secundario compacto">Alterar</button></div>
             </form>
+            {% endif %}
             {% elif v.estado in ['SUSPENSO','EM_REAVALIACAO','ALTERADO'] %}
             <form method="post" action="/adicionais/{{ v.id }}/retomar">
               <h3>Retomar</h3>
@@ -159,6 +217,13 @@
             {% if v.estado != 'CESSADO' %}
             <form method="post" action="/adicionais/{{ v.id }}/cessar">
               <h3>Cessar</h3>
+              {# A consequência fica escrita aqui, antes do botão vermelho, e a
+                 caixa obrigatória é a confirmação: cessar encerra o pagamento e
+                 não tem volta — um adicional novo exige parecer novo. #}
+              <div class="aviso aviso-erro">
+                <p>O adicional deixa de ser devido a partir da data de término. Cessado
+                  não se retoma: voltar a receber exige parecer novo.</p>
+              </div>
               <div class="campo"><label for="fim-{{ v.id }}">Data de término</label>
                 <input id="fim-{{ v.id }}" name="data_fim" type="date" required></div>
               <div class="campo"><label for="cessar-motivo-{{ v.id }}">Motivo</label>
@@ -166,6 +231,9 @@
                   {% for codigo, rotulo in motivos.items() %}
                   <option value="{{ codigo }}">{{ rotulo }}</option>{% endfor %}
                 </select></div>
+              <div class="campo">
+                <label class="discreto"><input type="checkbox" name="ciente" value="1" required>
+                  Confirmo a cessação deste adicional.</label></div>
               <div class="acoes"><button type="submit" class="perigo compacto">Cessar</button></div>
             </form>
             {% endif %}
@@ -174,7 +242,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="9" class="nada">Nenhum adicional registrado.</td></tr>
+    <tr><td colspan="7" class="nada">Nenhum adicional registrado.</td></tr>
     {% endfor %}
   </table>
   </div>
@@ -206,6 +274,7 @@
       {% endfor %}
     </div>
   </section>
+  {% endif %}
   {% endif %}
 
 </div>

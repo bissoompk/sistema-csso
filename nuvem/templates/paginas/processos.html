@@ -9,22 +9,34 @@
 {% if usuario.pode('processo.criar') %}<a class="botao" href="/processos/novo">Novo processo</a>{% endif %}
 {% endblock %}
 
+{# AS COLUNAS, MEDIDAS A 1366px. Eram oito, e a tabela estourava a largura:
+   o nome do servidor e o da unidade empurravam o prazo para fora. Agora são
+   sete — "Dias" e "Responsável" dividem a célula (os dois respondem "quem está
+   com isto, e há quanto tempo"), e nome, unidade e responsável saem em
+   `.recorte`, com o texto inteiro no `title`.
+
+   A coluna de caixas só existe para quem tem alguma ação de lote
+   (`pode_lote`): para o servidor eram caixas que não serviam para nada. #}
 {% macro linha(r) %}
 <tr>
-  <td><input type="checkbox" name="processo_id" value="{{ r.processo.id }}" class="marcar"
+  {% if pode_lote %}
+  <td><input type="checkbox" name="processo_id" value="{{ r.processo.id }}" class="marcar" data-grupo="processos"
              aria-label="Selecionar o processo {{ r.processo.nup }}"></td>
+  {% endif %}
   <td><a class="mono" href="/processos/{{ r.processo.id }}">{{ r.processo.nup }}</a></td>
   {% set quem = identificar(r.processo) %}
-  <td class="nome">
+  <td class="nome" data-coluna="Servidor">
     {% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
-    {% else %}{{ quem.nome }}{% endif %}
+    {% else %}<span class="recorte" title="{{ quem.nome }}">{{ quem.nome }}</span>{% endif %}
   </td>
-  <td><span class="recorte" title="{{ r.processo.unidade.nome_extenso if r.processo.unidade else '' }}">
+  <td data-coluna="Unidade"><span class="recorte" title="{{ r.processo.unidade.nome_extenso if r.processo.unidade else '' }}">
       {{- r.processo.unidade.nome_extenso if r.processo.unidade else '—' -}}</span></td>
-  <td>{{ ui.pilula_estado(r.processo.estado_tecnico) }}</td>
-  <td>{{ ui.selo_dias(r) }}</td>
-  <td>{{ r.processo.responsavel.nome if r.processo.responsavel else '—' }}</td>
-  <td class="mono">{{ r.processo.prazo|data or '—' }}</td>
+  <td data-coluna="Estado">{{ ui.pilula_estado(r.processo.estado_tecnico) }}</td>
+  <td data-coluna="Dias · responsável">{{ ui.selo_dias(r) }}
+    {%- if r.processo.responsavel %}
+    <span class="recorte discreto" title="Responsável: {{ r.processo.responsavel.nome }}">{{ r.processo.responsavel.nome }}</span>
+    {%- endif %}</td>
+  <td class="mono" data-coluna="Prazo">{{ r.processo.prazo|data or '—' }}</td>
 </tr>
 {% endmacro %}
 
@@ -37,10 +49,12 @@
 {% macro cabecalho_tabela(com_marcar_todos) %}
 <thead>
   <tr>
-    <th scope="col">{% if com_marcar_todos %}<input type="checkbox" id="marcar-todos" title="marcar todos"
+    {% if pode_lote %}
+    <th scope="col">{% if com_marcar_todos %}<input type="checkbox" id="marcar-todos" data-marca-grupo="processos" title="marcar todos"
           aria-label="Marcar todos os processos da página">{% endif %}</th>
+    {% endif %}
     <th scope="col">NUP</th><th scope="col">Servidor</th><th scope="col">Unidade</th><th scope="col">Estado</th>
-    <th scope="col">Dias</th><th scope="col">Responsável</th><th scope="col">Prazo</th>
+    <th scope="col">Dias · responsável</th><th scope="col">Prazo</th>
   </tr>
 </thead>
 {% endmacro %}
@@ -67,6 +81,10 @@
   {# Visões salvas: cada uma é um filtro que a URL sabe reproduzir. A que está
      em uso fica sólida — é o único jeito de saber, olhando, que a lista abaixo
      não é a lista inteira. #}
+  {# Para quem só vê o próprio processo (servidor) a rota não manda visão
+     nenhuma: "Precisam de você hoje", "Sem percentual", "Campus avançados" são
+     recortes do trabalho do setor. #}
+  {% if visoes|length %}
   <div class="fileira">
     <span class="rotulo-grupo">Visões</span>
     {% for nome, qs in visoes %}
@@ -75,6 +93,7 @@
     {% endfor %}
     <a class="ficha-filtro limpar" href="/processos">Limpar</a>
   </div>
+  {% endif %}
 
   {# ===============================================================
      O CARTÃO DE FILTROS FECHADO — o que ele custava, e o que o fecha
@@ -131,8 +150,8 @@
       <span class="pilula info">{{ aplicados|length }} aplicado(s)</span>
       <span class="resumo">{{ aplicados|join(' · ') }}</span>
       {% else %}
-      <span class="resumo">seis controles — estado, tipo, unidade, responsável,
-        agrupamento e busca</span>
+      <span class="resumo">{{ 'seis' if responsaveis|length else 'cinco' }} controles — estado, tipo, unidade,
+        {{ 'responsável, ' if responsaveis|length }}agrupamento e busca</span>
       {% endif %}
     </summary>
   <form method="get" action="/processos">
@@ -141,7 +160,7 @@
          renderizado e o navegador não o foca — o atributo viraria promessa que
          não se cumpre. Quem entra aqui pelo teclado entra pelo `Ctrl+K`, que o
          rótulo anuncia e que `base.html` faz abrir a gaveta antes de focar. #}
-      <div><label for="busca-processos">Buscar (servidor, NUP, laudo) <span class="discreto">Ctrl+K</span></label>
+      <div><label for="busca-processos">Buscar (servidor, SIAPE, NUP, laudo) <span class="discreto">Ctrl+K</span></label>
         <input type="search" name="q" id="busca-processos" value="{{ filtro.q or '' }}"></div>
       <div><label for="f-estado">Estado técnico</label>
         <select id="f-estado" name="estado"><option value="">Todos</option>
@@ -162,11 +181,13 @@
           {% for u in unidades %}
           <option value="{{ u.id }}" {% if filtro.unidade_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}</option>
           {% endfor %}</select></div>
+      {% if responsaveis|length %}
       <div><label for="f-responsavel">Responsável</label>
         <select id="f-responsavel" name="responsavel_id"><option value="">Todos</option>
           {% for u in responsaveis %}
           <option value="{{ u.id }}" {% if filtro.responsavel_id == u.id %}selected{% endif %}>{{ u.nome }}</option>
           {% endfor %}</select></div>
+      {% endif %}
       <div><label for="f-agrupar">Agrupar por</label>
         <select id="f-agrupar" name="agrupar"><option value="">(sem agrupamento)</option>
           {% for chave, rotulo in chaves_agrupamento.items() %}
@@ -180,22 +201,26 @@
   </form>
   </details>
 
+  {% if pode_lote %}
   <form method="post" action="/processos/lote" id="form-lote">
     <input type="hidden" name="voltar_para" value="{{ filtro.como_query_string() }}">
+  {% endif %}
 
     <div class="tabela-cartao lista">
     {% if grupos %}
       {% for rotulo, itens in grupos.items() %}
       <details open class="grupo">
         <summary>{{ rotulo }} <span class="contador">{{ itens|length }}</span></summary>
-        <table>
+        <table class="empilhavel">
           {{ cabecalho_tabela(false) }}
           {% for r in itens %}{{ linha(r) }}{% endfor %}
         </table>
       </details>
       {% endfor %}
     {% else %}
-      <table>
+      {# `empilhavel`: no celular cada processo vira um cartão, com o NUP de
+         título e o rótulo da coluna sobre cada valor (`data-coluna`) #}
+      <table class="empilhavel">
         {{ cabecalho_tabela(true) }}
         {% for r in resumos %}{{ linha(r) }}{% else %}
         {# `.vazio` e não `.nada`: acima desta linha há oito visões salvas e seis
@@ -206,30 +231,31 @@
         {% if filtro.q %}
         {{ ui.vazio_de_lista(
              'Nenhum processo casa com “' ~ filtro.q ~ '”.',
-             'A busca olha NUP, observações, link do SEI e número de laudo — e o
+             'A busca olha NUP, SIAPE, observações, link do SEI e número de laudo — e o
               nome do servidor só de quem você pode identificar (RN-19). Nome de
-              quem está suprimido não acha por aqui.', 8) }}
+              quem está suprimido não acha por aqui; o SIAPE acha sempre.', 6 + (1 if pode_lote else 0)) }}
         {% else %}
         {{ ui.vazio_de_lista(
              'Nenhum processo neste filtro.',
              'Os filtros do cartão acima e a visão escolhida valem os dois ao mesmo
-              tempo. “Limpar”, na fileira das visões, devolve a lista inteira.', 8) }}
+              tempo. “Limpar” devolve a lista inteira.', 6 + (1 if pode_lote else 0)) }}
         {% endif %}
         {% endfor %}
       </table>
     {% endif %}
     </div>
 
-    {% if resumos and (usuario.pode('processo.status') or usuario.pode('processo.editar')) %}
-    {# A classe `flutuante` NÃO vem escrita aqui: quem a põe é o script, no
+    {% if resumos and pode_lote %}
+    {# A classe `flutuante` NÃO vem escrita aqui: quem a põe é o csso.js
+       (`data-barra-lote`, seção 9), no
        carregamento. Escrevê-la no template esconderia a barra de quem não tem
        JavaScript — e sem script ninguém a traria de volta, porque é o contador
        de seleção que a mostra. Sem script a tela fica exatamente como estava:
        o cartão no fim da lista, alcançável rolando. #}
-    <section class="cartao acoes-lote" id="acoes-lote">
+    <section class="cartao acoes-lote" id="acoes-lote" data-barra-lote="processos">
       <div class="titulo-cartao">
         <h2>Ações em lote</h2>
-        <span id="contador-selecao" class="contador">0 selecionados</span>
+        <span id="contador-selecao" class="contador" data-conta-grupo="processos">0 selecionados</span>
       </div>
       <div class="linha-campos">
         <div><label for="lote-acao">Ação</label>
@@ -261,7 +287,9 @@
       </div>
     </section>
     {% endif %}
+  {% if pode_lote %}
   </form>
+  {% endif %}
 
   {# `como_query_string()` já sai SEM `pagina=` — o dicionário dela não tem essa
      chave, e quem a acrescentava era o `troca` da chamada antiga. É exatamente a
@@ -271,26 +299,4 @@
 
 </div>
 
-<script nonce="{{ nonce() }}">
-(function () {
-  const contador = document.getElementById('contador-selecao');
-  const lote = document.getElementById('acoes-lote');
-  // A barra só passa a se esconder quando há script para trazê-la de volta.
-  // Esta linha é o contrato inteiro do `.flutuante` da folha.
-  if (lote) lote.classList.add('flutuante');
-  function atualizar() {
-    if (!contador) return;
-    const n = document.querySelectorAll('.marcar:checked').length;
-    contador.textContent = n + (n === 1 ? ' selecionado' : ' selecionados');
-    if (lote) lote.classList.toggle('tem-selecao', n > 0);
-  }
-  document.addEventListener('change', function (e) {
-    if (e.target.id === 'marcar-todos') {
-      document.querySelectorAll('.marcar').forEach(c => { c.checked = e.target.checked; });
-    }
-    if (e.target.classList.contains('marcar') || e.target.id === 'marcar-todos') atualizar();
-  });
-  atualizar();
-})();
-</script>
 {% endblock %}

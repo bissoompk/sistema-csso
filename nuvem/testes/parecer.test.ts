@@ -260,6 +260,10 @@ describe("emissão ponta a ponta", () => {
 
   it("CA-10 espelho: a técnica move o kanban", () =>
     comCenario(async (tx, a, c) => {
+      // “Pronto para assinatura” afirma um parecer emitido (servicos/processo.ts):
+      // marca o do cenário como emitido sem passar pela emissão, que já
+      // avançaria o processo sozinha e esconderia o movimento da técnica.
+      await tx.update(e.parecer_tecnico).set({ situacao: "EMITIDO" }).where(eq(e.parecer_tecnico.id, c.parecer_id));
       const [processo] = await tx.select().from(e.processo).where(eq(e.processo.id, c.processo_id));
       await mover(tx, processo!, "PARECER_PRONTO_P_ASSINATURA", a.TECNICA);
       expect(processo!.estado_tecnico).toBe("PARECER_PRONTO_P_ASSINATURA");

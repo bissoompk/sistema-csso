@@ -444,7 +444,8 @@ describe("prazo e sino", () => {
 
   it("a demanda atrasada aparece no sino e leva até ela", async () => {
     await entrar(cliente, "coordenador_csso");
-    const id = _id_da_criada(await _registrar({ prazo: somar_dias(HOJE, -3) }));
+    // chegou há dez dias e o prazo venceu há três: o prazo não vem antes da chegada
+    const id = _id_da_criada(await _registrar({ data_chegada: somar_dias(HOJE, -10), prazo: somar_dias(HOJE, -3) }));
     expect(DemandaDominio.atrasada((await _gravada(id))!, HOJE)).toBe(true);
 
     const lista = await cliente.get("/demandas");
@@ -609,7 +610,13 @@ describe("aviso a quem demandou", () => {
   async function demanda_de(sv: number): Promise<number> {
     await entrar(cliente, "coordenador_csso");
     return _id_da_criada(
-      await _registrar({ assunto: "Ruído na sala de máquinas", solicitante_nome: "pedido no balcão", solicitante_servidor_id: String(sv) }),
+      await _registrar({
+        assunto: "Ruído na sala de máquinas",
+        solicitante_nome: "pedido no balcão",
+        solicitante_servidor_id: String(sv),
+        // chegou há vinte dias: o encaminhamento de há uma semana cabe entre a chegada e hoje
+        data_chegada: somar_dias(HOJE, -20),
+      }),
     );
   }
 
@@ -656,8 +663,10 @@ describe("aviso a quem demandou", () => {
   it("ENCAMINHADA diz para onde foi; VIROU_PROCESSO diz o NUP", async () => {
     const sv = await solicitante_com_conta();
     const a = await demanda_de(sv);
-    await encerrar(a, { desfecho: "ENCAMINHADA", setor: "SIASS", data_desfecho: "2026-10-15" });
-    expect((await _pendencia(`demanda:desfecho:${a}`))!.descricao).toContain("encaminhada a SIASS em 15/10/2026");
+    const ha_uma_semana = somar_dias(HOJE, -7);
+    await encerrar(a, { desfecho: "ENCAMINHADA", setor: "SIASS", data_desfecho: ha_uma_semana });
+    const [aa, mm, dd] = ha_uma_semana.split("-");
+    expect((await _pendencia(`demanda:desfecho:${a}`))!.descricao).toContain(`encaminhada a SIASS em ${dd}/${mm}/${aa}`);
 
     const nup = await _processo_no_sistema();
     const b = await demanda_de(sv);

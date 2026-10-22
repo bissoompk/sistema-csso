@@ -130,15 +130,15 @@
   <div class="linha-campos">
     <div class="campo codigo {{ 'com-erro' if recusado }}">
       <label for="numero_siape">Nº SIAPE</label>
-      {# O número é o único campo que esta rota valida, então é nele que o foco
-         cai na reabertura — e só na reabertura. #}
+      {# O número é o campo que mais se recusa (formato, repetido), então é
+         nele que o foco cai na reabertura — e só na reabertura. #}
       <input id="numero_siape" name="numero_siape" required
              value="{{ d.get('numero_siape') or '' }}"{{ ' autofocus' if recusado }}
              placeholder="26255-000.125/2019" aria-describedby="dica-numero">
       <span class="dica" id="dica-numero">Formato 26255-000.125/2019 — o ano do fim do número
         é o ano do laudo.</span></div>
     <div class="campo"><label for="data_emissao">Data de emissão</label>
-      <input id="data_emissao" name="data_emissao" type="date"
+      <input id="data_emissao" name="data_emissao" type="date" max="{{ hoje }}"
              value="{{ d.get('data_emissao') or '' }}"></div>
   </div>
   <div class="linha-campos">
@@ -148,8 +148,10 @@
     <div class="campo"><label for="unidade_uorg_id">Unidade</label>
       <select id="unidade_uorg_id" name="unidade_uorg_id" required>
         {% for u in unidades %}<option value="{{ u.id }}"{{ ui.sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}</select></div>
+    {# Obrigatório, e só quem tem habilitação vigente hoje: é o subscritor que dá
+       ao laudo a validade técnica (IN 15/2022, art. 10, §2º, I). #}
     <div class="campo"><label for="subscritor_id">Subscritor habilitado</label>
-      <select id="subscritor_id" name="subscritor_id"><option value="">—</option>
+      <select id="subscritor_id" name="subscritor_id" required><option value="">— escolha —</option>
         {% for sb in subscritores %}<option value="{{ sb.id }}"{{ ui.sel(d.get('subscritor_id'), sb.id) }}>{{ sb.nome }}</option>{% endfor %}</select></div>
   </div>
   <div class="campo">

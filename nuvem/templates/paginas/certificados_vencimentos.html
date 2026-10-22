@@ -27,17 +27,13 @@
           ligar se avisa por aqui.</p>
       {% endcall %}
     </div>
-    {% if pode_automatico %}
-    <form method="post" action="/certificados/vencimentos/automatico">
-      <input type="hidden" name="ligado" value="{{ 'nao' if automatico else 'sim' }}">
-      <button type="submit" class="secundario">
-        {{- 'Desligar o aviso automático por e-mail' if automatico else 'Ligar o aviso automático por e-mail' -}}
-      </button>
-      <span class="quebra discreto">Aviso automático: {{ 'ligado' if automatico else 'desligado' }}</span>
-    </form>
-    {% elif automatico %}
-    <p class="discreto">Aviso automático por e-mail: ligado.</p>
-    {% endif %}
+    {# Ligar o envio automático é ato raro e de impacto (e-mail para todo mundo
+       que entrar na janela): mora na configuração recolhida, no fim da tela, e
+       não ao lado do título disputando com a lista. Aqui, só o estado. #}
+    <div class="ao-lado">
+      <span class="pilula {{ 'ok' if automatico else 'sem-ponto' }}"
+            title="aviso de reciclagem por e-mail, pela varredura da madrugada">aviso automático {{ 'ligado' if automatico else 'desligado' }}</span>
+    </div>
   </div>
 
   <div class="fileira">
@@ -138,6 +134,25 @@
       {%- if not email_configurado() %} <strong>O envio ainda não está configurado:</strong>
       os avisos ficam na fila e saem quando for ligado.{% endif %}</p>
   </div>
+  {% endif %}
+
+  {% if pode_automatico %}
+  <details class="recolhido" id="configuracao">
+    <summary>Configuração: aviso automático por e-mail
+      <span class="nota">{{ 'ligado' if automatico else 'desligado' }}</span></summary>
+    <form method="post" action="/certificados/vencimentos/automatico">
+      <div class="campo">
+        <label><input type="checkbox" role="switch" name="ligado" value="sim"
+               {{ 'checked' if automatico }} aria-describedby="dica-automatico">
+          Avisar sozinho quem entra na janela de reciclagem</label>
+        <span class="dica" id="dica-automatico">Ligado, a varredura da madrugada manda
+          <strong>um</strong> e-mail a cada participante no dia em que o certificado dele
+          entra na janela de {{ dias_aviso }} dias. Quem já estava na janela antes de ligar
+          não recebe: avise pela lista acima. Ligar e desligar fica registrado na trilha.</span>
+      </div>
+      <div class="acoes"><button type="submit" class="secundario">Salvar</button></div>
+    </form>
+  </details>
   {% endif %}
 
 </div>
