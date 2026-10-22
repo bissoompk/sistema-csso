@@ -42,6 +42,10 @@ import {
 
 export const MODELO_V1 = "modelo_parecer_v1.docx";
 export const MODELO_V2 = "modelo_parecer_v2.docx";
+// v3: o v2 com a marca da Sisa no cabeçalho, ao lado do brasão e da UFVJM. É
+// o modelo do parecer novo; o v1 e o v2 continuam para reimprimir o que foi
+// emitido com eles (o modelo é congelado no parecer — RN-15)
+export const MODELO_V3 = "modelo_parecer_v3.docx";
 
 export const CHAVES_RICHTEXT = [
   "posto_trabalho",

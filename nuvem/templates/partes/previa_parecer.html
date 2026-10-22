@@ -16,13 +16,21 @@
    decide SE mostra; o que mostra continua vindo do congelado. #}
 {% set servidor_do_parecer = identificar(parecer) %}
 <div class="previa">
-  <div class="cabecalho">
-    <strong>MINISTÉRIO DA EDUCAÇÃO</strong>
-    <span>Universidade Federal dos Vales do Jequitinhonha e Mucuri</span><br>
-    <span>Pró-Reitoria de Gestão de Pessoas</span><br>
-    <span>{{ c.nome_extenso_emissor }}</span><br>
-    <span>{{ c.endereco_emissor }}</span><br>
-    <span>{{ c.telefone_emissor }}</span>
+  {# A marca da Sisa só existe no cabeçalho do v3: o parecer emitido no v1 ou
+     no v2 é reimpresso no modelo congelado, sem ela, e a prévia não pode
+     prometer um papel diferente do que sai no .docx. #}
+  {% set marca_sisa = parecer.modelo_arquivo == 'modelo_parecer_v3.docx' %}
+  <div class="cabecalho{% if marca_sisa %} com-marca{% endif %}">
+    <div>
+      <strong>MINISTÉRIO DA EDUCAÇÃO</strong>
+      <span>Universidade Federal dos Vales do Jequitinhonha e Mucuri</span><br>
+      <span>Pró-Reitoria de Gestão de Pessoas</span><br>
+      <span>{{ c.nome_extenso_emissor }}</span><br>
+      <span>{{ c.endereco_emissor }}</span><br>
+      <span>{{ c.telefone_emissor }}</span>
+    </div>
+    {% if marca_sisa %}<img class="marca-sisa" src="/estaticos/img/logo-sisa.png" width="600" height="230"
+      alt="Sisa — Superintendência Integrada de Saúde · UFVJM">{% endif %}
   </div>
 
   <p class="mono discreto">LT Nº {{ c.numero_parecer }}/{{ c.ano }} &nbsp;&nbsp;&nbsp; IN 15/2022</p>

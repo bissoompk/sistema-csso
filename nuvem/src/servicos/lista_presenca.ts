@@ -23,7 +23,10 @@ import type { UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
 import { inscricoes_da_turma, type TurmaCarregada } from "./turma.js";
 
-export const MODELO = "lista_presenca_v1.docx";
+// v2: o v1 com a marca da Sisa no cabeçalho do Word, que repete em toda folha.
+// A folha não congela nada (ver acima): não há lista antiga a reimprimir no
+// v1. Ele continua em `app/templates/` porque é o do sistema da rede
+export const MODELO = "lista_presenca_v2.docx";
 export const SUBPASTA = "listas_presenca";
 export const LISTA_GERADA = "LISTA_PRESENCA_GERADA";
 export const TIPO_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

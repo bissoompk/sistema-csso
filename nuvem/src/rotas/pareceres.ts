@@ -167,7 +167,8 @@ rotas.post("/processos/:processo_id{[0-9]+}/parecer", async (c) => {
     servidor_id: processo.servidor_id,
     unidade_uorg_id: processo.unidade_uorg_id,
     criado_por: usuario.id,
-    modelo_arquivo: documento.MODELO_V1,
+    // o rascunho nasce no modelo atual; emitido, o modelo fica congelado nele
+    modelo_arquivo: documento.MODELO_V3,
   };
   // a lotação vigente já diz unidade, UORG e postos: o rascunho nasce preenchido
   const lotacao = processo.servidor_id ? await servico_servidores.lotacao_vigente(tx, processo.servidor_id) : null;
@@ -428,7 +429,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
   // Unidade e UORG são campos distintos no documento; UORG em branco = usar a Unidade
   p.unidade_uorg_id = _int_ou_none(dados.get("unidade_uorg_id"));
   p.uorg_id = _int_ou_none(dados.get("uorg_id"));
-  p.modelo_arquivo = get("modelo_arquivo") || documento.MODELO_V1;
+  p.modelo_arquivo = get("modelo_arquivo") || documento.MODELO_V3;
   const horas = get("horas_semanais_fonte");
   if (horas && !Number.isFinite(Number(horas))) throw new ErroHttp(422, "horas_semanais_fonte inválido");
   p.horas_semanais_fonte = horas ? String(Number(horas)) : null;
