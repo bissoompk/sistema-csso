@@ -8,6 +8,16 @@
   {# O tema do IntegraSST por cima da folha de base: cores, cantos, sombras,
      fonte e ícones. Separado para que a troca de aparência seja um arquivo. #}
   <link rel="stylesheet" href="/estaticos/css/tema.css">
+  {# O símbolo da Sisa (as quatro pessoas em roda) é o ícone da aba, do atalho
+     no celular e do manifesto. PNG recortado do original, com o branco feito
+     transparente; o `favicon.ico` da raiz atende quem pede o caminho fixo. A cor
+     da barra do navegador no celular é o azul-marinho da lateral. Antes do
+     bloco `cabeca` de propósito: a primeira `theme-color` é a que vale. #}
+  <link rel="icon" type="image/png" sizes="32x32" href="/estaticos/img/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/estaticos/img/favicon-16.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="/estaticos/img/favicon-48.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/estaticos/img/apple-touch-icon.png">
+  <meta name="theme-color" content="#0a2a5c">
   {# O HTMX injeta, ao carregar, um `<style>` com as regras do
      `.htmx-indicator` — e a CSP declara `style-src-elem 'self'`, então esse
      elemento é recusado e vira uma violação no console de TODA tela. Medido
@@ -89,12 +99,11 @@
      que é o painel de Processos SEI e exige `processo.ver`: para o almoxarife
      ela era um 403 em TODA tela. `/inicio` não é tela, é despachante — leva
      cada um à primeira tela que abre para ele. #}
-  {# A marca do sistema: símbolo geométrico + logotipo. O símbolo é SVG embutido
-     (um caminho, `currentColor`, sem arquivo externo) e o argumento do desenho
-     está em `csso.css`, na seção "a marca do sistema". Aqui basta o que a
-     marcação decide: `aria-hidden` no símbolo porque quem nomeia o link é o
-     texto ao lado — um `<title>` no SVG faria o leitor de tela anunciar a marca
-     duas vezes.
+  {# A marca do sistema: o símbolo da Sisa + o logotipo "CSSO / Sisa · UFVJM".
+     O símbolo é um PNG pequeno (80px, para 34px em tela 2x) sobre uma chapa
+     branca (`tema.css`): ele tem partes em azul-marinho, que sumiriam na
+     lateral do mesmo tom. `alt=""` e `aria-hidden` porque quem nomeia o link é
+     o texto ao lado — o leitor de tela anunciaria a marca duas vezes.
 
      ESPAÇO RESERVADO AO BRASÃO OFICIAL DA UFVJM. Ele entra AQUI, como primeiro
      filho de `.marca`, à esquerda e separado por um fio — instituição primeiro,
@@ -105,7 +114,7 @@
      SISTEMA e não da universidade.
      <img class="marca-brasao" src="/estaticos/img/brasao-ufvjm.svg" alt="" aria-hidden="true"> #}
   <a class="marca" href="/inicio">
-    <span class="marca-sigla" aria-hidden="true">{% include 'partes/marca.svg' %}</span>
+    <span class="marca-sigla" aria-hidden="true"><img src="/estaticos/img/marca-sisa.png" width="80" height="80" alt=""></span>
     <span class="marca-texto"><strong>CSSO</strong><span>Sisa · UFVJM</span></span>
   </a>
 
@@ -203,7 +212,7 @@
    encolhida: aqui não há para onde navegar, e um menu ofereceria saída de uma
    tela que existe justamente para ser atravessada. #}
 <header class="cabecalho-marca">
-  <span class="marca-sigla" aria-hidden="true">{% include 'partes/marca.svg' %}</span>
+  <span class="marca-sigla" aria-hidden="true"><img src="/estaticos/img/marca-sisa.png" width="80" height="80" alt=""></span>
   <span class="nome">CSSO · Sisa/UFVJM</span>
   {% if usuario %}<form class="form-sair" method="post" action="/sair"><button type="submit" class="sair">sair</button></form>{% endif %}
 </header>

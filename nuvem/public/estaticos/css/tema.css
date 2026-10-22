@@ -1,15 +1,24 @@
 /* =====================================================================
-   TEMA — a aparência do IntegraSST sobre a folha de base
+   TEMA — a identidade da Sisa sobre a folha de base
    =====================================================================
    `csso.css` continua sendo a estrutura (grade, lateral, popup, tabela,
-   foco). Este arquivo só troca a pele: a fonte Inter, o verde-azulado
-   do IntegraSST, cantos arredondados, sombra macia, ícones no menu,
-   títulos de página coloridos e pílulas de estado em cor viva.
+   foco). Este arquivo só troca a pele: a fonte Inter, as cores do símbolo
+   da Sisa, cantos arredondados, sombra macia, ícones no menu, títulos de
+   página coloridos e pílulas de estado em cor viva.
 
-   O verde do IntegraSST (#0d9488) dá 3,7:1 com branco, abaixo dos 4,5:1
-   que texto pequeno pede. Ele fica para o que é desenho (ícone, borda,
-   barra de progresso); texto e fundo de botão usam o tom de baixo
-   (#0f766e, 5,5:1), que no olho é a mesma cor.
+   AS CORES SAEM DO SÍMBOLO (as quatro pessoas em roda, `marca-sisa.png`),
+   medidas no PNG original: azul-marinho #00316b, azul #0058a3, ciano
+   #219bbd, verde-claro #88bd27 e verde-escuro #367323. Cada uma ganhou um
+   papel pelo contraste que dá, e não pelo gosto:
+   - azul #0058a3 é o ACENTO (link, h1, botão, item ativo, foco): 7,2:1 com
+     branco — passa nos 4,5:1 de texto pequeno nos dois sentidos;
+   - ciano #1a96c0 é DESENHO (ícone, borda, realce): 3,4:1 com branco, abaixo
+     de 4,5 — nunca texto pequeno;
+   - verde-escuro #2f6b17 é o "ok" e o texto verde (6,5:1); o verde-claro
+     #8dc63f (2,0:1) só preenche;
+   - a lateral é o azul-marinho, um pouco mais fundo (#0a2a5c), e o item
+     ativo leva o azul com um fio ciano à esquerda — o azul sozinho contra o
+     marinho dá 1,95:1, e a forma do "você está aqui" precisa do fio.
    ===================================================================== */
 
 @font-face {
@@ -50,25 +59,32 @@
   --borda-hover: #5b6b82;
   --ponto: #94a3b8;
 
-  --acento: #0f766e;
-  --acento-forte: #115e59;
-  --acento-claro: #ccfbf1;
-  --acento-vivo: #0d9488;
-  --acento-suave: #f0fdfa;
+  /* as cinco cores do símbolo, para desenho; texto usa os tokens abaixo */
+  --sisa-marinho: #00316b;
+  --sisa-azul: #0058a3;
+  --sisa-ciano: #1a96c0;
+  --sisa-verde: #3a7a1c;
+  --sisa-verde-claro: #8dc63f;
 
-  --lateral: #1e293b;
-  --lateral-texto: #cbd5e1;
-  --lateral-texto-fraco: #94a3b8;
-  --lateral-acento: #5eead4;
-  --lateral-linha: #334155;
-  --lateral-realce: #334155;
+  --acento: #0058a3;        /* 7,18:1 no cartão, 6,55 no papel, 6,53 no suave */
+  --acento-forte: #004a8a;  /* hover do botão primário — 8,95:1 com branco */
+  --acento-claro: #d9e9f7;
+  --acento-vivo: #1a96c0;   /* ciano: desenho, 3,40:1 — não é texto */
+  --acento-suave: #eef5fb;
 
-  --ok: #047857;
-  --ok-fundo: #d1fae5;
-  --ok-borda: #6ee7b7;
-  --info-fundo: #e0f2fe;
-  --info-borda: #7dd3fc;
-  --info: #0369a1;
+  --lateral: #0a2a5c;              /* 14,0:1 com branco */
+  --lateral-texto: #c8d4e6;        /* 9,35:1 na lateral */
+  --lateral-texto-fraco: #9fb2cf;  /* 6,50:1 */
+  --lateral-acento: #8fd3ec;       /* 8,47:1 — "CSSO", foco na lateral */
+  --lateral-linha: #1f4373;
+  --lateral-realce: #163f78;       /* módulo aberto — branco nele dá 10,4:1 */
+
+  --ok: #2f6b17;                   /* 6,49 no cartão, 5,65 no ok-fundo */
+  --ok-fundo: #e8f3dc;
+  --ok-borda: #a6cf74;
+  --info-fundo: #e1f1f9;
+  --info-borda: #8ccbe6;
+  --info: #08669a;                 /* 6,22 no cartão, 5,37 no info-fundo */
   --alerta: #b45309;
   --alerta-texto: #92400e;
   --alerta-texto-longo: #78350f;
@@ -94,7 +110,7 @@
   --sombra-alta: 0 24px 48px -12px rgba(15, 23, 42, .28);
 
   --largura-lateral: 264px;
-  --anel-foco: 4px solid rgba(13, 148, 136, .18);
+  --anel-foco: 4px solid rgba(0, 88, 163, .18);
 }
 
 body {
@@ -116,7 +132,22 @@ body {
   font-size: 11px; font-weight: 700; letter-spacing: .08em;
   color: var(--lateral-texto-fraco);
 }
-.marca-texto strong { font-weight: 800; color: var(--lateral-acento); letter-spacing: -.01em; }
+.marca-texto strong { font-weight: 800; color: #fff; letter-spacing: -.01em; }
+
+/* O símbolo da Sisa numa chapa branca: o azul-marinho da pessoa da esquerda
+   some sobre a lateral do mesmo tom (1,3:1), e a chapa é o fundo para o qual
+   o desenho foi feito. Vale na lateral e no cabeçalho das telas sem casca. */
+.marca-sigla {
+  padding: 3px; background: #fff; border-radius: 9px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+}
+.marca-sigla img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.cabecalho-marca .marca-sigla { padding: 2px; border-radius: 7px; }
+/* a faixa das quatro cores do símbolo sob o cabeçalho das telas sem casca */
+.cabecalho-marca {
+  border-bottom: 3px solid var(--sisa-ciano);
+  border-image: linear-gradient(90deg, var(--sisa-marinho), var(--sisa-azul) 30%, var(--sisa-ciano) 55%, var(--sisa-verde-claro) 80%, var(--sisa-verde)) 1;
+}
 
 .modulos-lateral > a.modulo {
   display: flex; align-items: center; gap: 11px;
@@ -142,7 +173,7 @@ body {
 .lateral .menu a:hover { background: rgba(255, 255, 255, .06); }
 .lateral .menu a.ativo, .lateral .menu a[aria-current="page"] {
   background: var(--acento); color: #fff; font-weight: 600;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, .12);
+  box-shadow: inset 3px 0 0 var(--lateral-acento), 0 4px 6px rgba(0, 0, 0, .14);
 }
 .lateral .menu a.ativo .ico, .lateral .menu a[aria-current="page"] .ico { opacity: 1; }
 .lateral .menu-base a { padding: 8px 12px; font-size: 13px; }
@@ -172,7 +203,7 @@ h2 { font-weight: 700; }
 
 /* ---------- botões ---------- */
 .botao, button { border-radius: var(--raio); padding: 10px 18px; transition: background .15s ease, transform .15s ease, box-shadow .15s ease; }
-.botao:hover, button:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(13, 148, 136, .20); }
+.botao:hover, button:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0, 88, 163, .22); }
 .botao.secundario:hover, button.secundario:hover,
 .botao.perigo-discreto:hover, button.perigo-discreto:hover { box-shadow: none; }
 .botao.redondo, button.redondo { border-radius: 999px; }
@@ -210,11 +241,11 @@ tr:hover td { background: var(--acento-suave); }
 .vazio { border-color: var(--divisor); background: #fcfdfe; }
 .popup-caixa { border: 0; border-radius: 16px; overflow: hidden; }
 .popup-topo {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  background: linear-gradient(135deg, var(--lateral) 0%, var(--sisa-azul) 100%);
   color: #fff; border-bottom: 0;
 }
 .popup-topo h2 { color: #fff; }
-.popup-topo .nota { color: #cbd5e1; }
+.popup-topo .nota { color: #d5e2f2; } /* 5,4:1 no azul, o pior ponto do degradê */
 .popup-fechar { color: #fff; }
 
 /* =====================================================================
@@ -244,10 +275,10 @@ tr:hover td { background: var(--acento-suave); }
 }
 .passo-hub h2 { margin: 4px 0 6px; font-size: 15px; font-weight: 800; color: var(--cor); }
 .passo-hub p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--tinta-fraca); }
-.passo-hub.p1 { --cor: #0f172a; }
+.passo-hub.p1 { --cor: var(--lateral); }
 .passo-hub.p2 { --cor: #a16207; border-color: #fcd34d; }
-.passo-hub.p3 { --cor: #1d4ed8; border-color: #93c5fd; }
-.passo-hub.p4 { --cor: var(--acento); border-color: #5eead4; }
+.passo-hub.p3 { --cor: var(--acento); border-color: #9cc3e6; }
+.passo-hub.p4 { --cor: var(--ok); border-color: var(--ok-borda); }
 
 .secao-hub {
   display: flex; align-items: center; gap: 8px;
@@ -282,14 +313,15 @@ tr:hover td { background: var(--acento-suave); }
 .acao-hub .contagem.ok { background: var(--ok-fundo); color: var(--ok); }
 .acao-hub.roxo { --cor: #8b5cf6; }
 .acao-hub.amarelo { --cor: #eab308; }
-.acao-hub.escuro { --cor: #0f172a; }
-.acao-hub.teal { --cor: #14b8a6; }
-.acao-hub.verde { --cor: #10b981; }
+.acao-hub.escuro { --cor: var(--lateral); }
+/* `.teal` é o nome que os templates usam; a cor agora é o ciano da Sisa */
+.acao-hub.teal { --cor: var(--sisa-ciano); }
+.acao-hub.verde { --cor: #6fae2a; }
 .acao-hub.vermelho { --cor: #ef4444; --fundo: #fef2f2; }
 .acao-hub.vermelho > strong { color: var(--erro); }
 .acao-hub.laranja { --cor: #f97316; --fundo: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); }
 .acao-hub.laranja > strong { color: #c2410c; }
-.acao-hub.azul { --cor: #3b82f6; }
+.acao-hub.azul { --cor: var(--sisa-azul); }
 
 .kpis-hub {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;
@@ -329,7 +361,7 @@ tr:hover td { background: var(--acento-suave); }
 .escolha-cartao > span > strong { font-size: 14px; color: var(--tinta); }
 .escolha-cartao > span > small { font-size: 12.5px; line-height: 1.4; color: var(--tinta-fraca); }
 .escolha-cartao:hover > span { border-color: var(--acento-vivo); background: var(--acento-suave); }
-.escolha-cartao > input:checked + span { border-color: var(--acento); background: var(--acento-suave); box-shadow: 0 0 0 3px rgba(13, 148, 136, .15); }
+.escolha-cartao > input:checked + span { border-color: var(--acento); background: var(--acento-suave); box-shadow: 0 0 0 3px rgba(0, 88, 163, .15); }
 .escolha-cartao > input:focus-visible + span { outline: 2px solid var(--acento); outline-offset: 2px; }
 
 .qr-cartao { text-align: center; }
