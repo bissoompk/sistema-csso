@@ -117,13 +117,13 @@
         <td data-coluna="Campus · unidade"><span class="recorte" title="{{ r.unidade.nome_extenso if r.unidade else '' }}">
             {%- if r.unidade %}{{ r.unidade.campus.sigla }} · {{ r.unidade.nome_extenso }}
             {%- else %}—{% endif -%}</span></td>
-        <td data-coluna="Itens" class="mono">{{ r.itens|length }}
+        <td data-coluna="Itens" class="mono curta">{{ r.itens|length }}
           {% set entregues = r.itens|selectattr('estado', 'equalto', 'ENTREGUE')|list|length %}
           {% if entregues %}<span class="quebra discreto">{{ entregues }} entregue(s)</span>{% endif %}</td>
-        <td data-coluna="Estado">{{ ui.pilula_requisicao(r.estado, rotulos) }}</td>
+        <td data-coluna="Estado" class="curta">{{ ui.pilula_requisicao(r.estado, rotulos) }}</td>
         {# dias no estado calculado agora, nunca gravado: dias parados é estado,
            e estado gravado é estado que envelhece em silêncio #}
-        <td data-coluna="Parado há" class="mono">{{ dias.get(r.id, 0) }}d</td>
+        <td data-coluna="Parado há" class="mono curta">{{ dias.get(r.id, 0) }}d</td>
         <td class="acao-linha"><a class="botao secundario compacto" href="/epis/requisicoes/{{ r.id }}">Abrir</a></td>
       </tr>
       {% else %}

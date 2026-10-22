@@ -99,7 +99,7 @@
           <span class="discreto">sem perfil vigente</span>
           {% endfor %}
         </td>
-        <td data-coluna="Situação">
+        <td class="curta" data-coluna="Situação">
           {# NÃO é `pilula_sim_nao`, e a exceção está escrita no macro: conta
              inativa é bloqueio — alguém tenta entrar e não consegue —, e não a
              escolha de inventário que o "inativo" dos catálogos registra. Por
@@ -111,7 +111,7 @@
              gravado até o próximo login certo, e a etiqueta virava eterna. #}
           {% if bloqueio_ate[u.id] %}<span class="pilula erro">bloqueado até {{ bloqueio_ate[u.id] }}</span>{% endif %}
         </td>
-        <td data-coluna="Último acesso" class="discreto"><span class="mono">{{ u.ultimo_login_em|momento or 'nunca' }}</span></td>
+        <td data-coluna="Último acesso" class="discreto curta"><span class="mono">{{ u.ultimo_login_em|momento or 'nunca' }}</span></td>
         {% if pode_gerir %}
         <td class="acao-linha">
           {# Um controle por linha, como em /adicionais: os dois botões soltos não
@@ -357,6 +357,7 @@
                      value="{{ d['nome'] if desta else u.nome }}"></div>
             <div class="campo{{ ' com-erro' if desta }}"><label for="ed-conta-{{ u.id }}-login">Login</label>
               <input id="ed-conta-{{ u.id }}-login" name="login" required
+                     autocapitalize="none" autocorrect="off" spellcheck="false"
                      value="{{ d['login'] if desta else u.login }}"{{ ' autofocus' if desta }}></div>
             <div class="campo{{ ' com-erro' if desta }}"><label for="ed-conta-{{ u.id }}-email">E-mail</label>
               <input id="ed-conta-{{ u.id }}-email" name="email" type="email" required
@@ -418,10 +419,10 @@
         <td class="mono" data-coluna="SIAPE">{{ h.siape or '—' }}</td>
         <td data-coluna="Habilitação">{{ HABILITACOES[h.habilitacao] or h.habilitacao }}</td>
         <td data-coluna="Título">{{ h.titulo_assinatura }}</td>
-        <td class="mono" data-coluna="Vigência">{{ h.vigencia_inicio|data }} —
+        <td class="mono curta" data-coluna="Vigência">{{ h.vigencia_inicio|data }} —
           {{ h.vigencia_fim|data or 'sem termo' }}
           {%- if h.vigencia_fim and h.vigencia_fim < hoje %} <span class="pilula">encerrada</span>{% endif %}</td>
-        <td data-coluna="Externo">{% if h.externo %}<span class="pilula alerta"
+        <td class="curta" data-coluna="Externo">{% if h.externo %}<span class="pilula alerta"
                 title="{{ h.justificativa_art10_par5 or 'sem justificativa registrada' }}">art. 10, §5º</span>
             {% else %}<span class="discreto">não</span>{% endif %}</td>
         {# Sem conta ligada, o profissional não emite nem assina parecer pelo sistema. #}
@@ -480,6 +481,7 @@
   <div class="campo {{ 'com-erro' if forma == 'conta' }}">
     <label for="conta-login">Login</label>
     <input id="conta-login" name="login" required value="{{ d['login'] or '' }}"
+           autocapitalize="none" autocorrect="off" spellcheck="false"
            {{- ' autofocus' if forma == 'conta' }}></div>
   <div class="campo {{ 'com-erro' if forma == 'conta' }}">
     <label for="conta-email">E-mail</label>

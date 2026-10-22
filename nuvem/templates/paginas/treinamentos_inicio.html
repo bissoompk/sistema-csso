@@ -38,16 +38,16 @@
   <h2 class="secao-hub">{{ ui.icone('calendar-event') }} Próximas turmas</h2>
   {% if r.proximas|length %}
   <div class="tabela-cartao">
-    <table>
+    <table class="empilhavel">
       <thead><tr><th>Turma</th><th>Treinamento</th><th>Período</th><th>Local</th><th>Situação</th></tr></thead>
       <tbody>
       {% for t in r.proximas %}
       <tr>
         <td><a class="mono" href="/turmas/{{ t.id }}">{{ t.codigo }}</a></td>
-        <td>{{ t.treinamento }}</td>
-        <td class="mono">{{ t.data_inicio|data }}{% if t.data_fim != t.data_inicio %} a {{ t.data_fim|data }}{% endif %}</td>
-        <td>{{ t.local or '—' }}</td>
-        <td>{{ ui.pilula_turma(t.situacao) }}</td>
+        <td data-coluna="Treinamento">{{ t.treinamento }}</td>
+        <td class="mono curta" data-coluna="Período">{{ t.data_inicio|data }}{% if t.data_fim != t.data_inicio %} a {{ t.data_fim|data }}{% endif %}</td>
+        <td class="curta" data-coluna="Local">{{ t.local or '—' }}</td>
+        <td data-coluna="Situação">{{ ui.pilula_turma(t.situacao) }}</td>
       </tr>
       {% endfor %}
       </tbody>

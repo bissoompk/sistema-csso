@@ -13,7 +13,7 @@
 <form method="post" action="/treinamentos/participantes/mesclar" class="cartao liso">
   <input type="hidden" name="volta" value="{{ volta }}">
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr><th scope="col">Manter</th><th scope="col">Juntar</th><th scope="col">Participante</th>
           <th scope="col">Identificador</th><th scope="col">Vínculo</th><th scope="col">E-mail</th>
@@ -22,17 +22,17 @@
     {% for f in fichas %}
     {% set d = difere[f.id] or {} %}
     <tr>
-      <td><input type="radio" name="mantido_id" value="{{ f.id }}" aria-label="Manter {{ f.identificador }}"
-                 {% if f.id == sugerido %}checked{% endif %} required></td>
-      <td><input type="checkbox" name="absorvido_id" value="{{ f.id }}" aria-label="Juntar {{ f.identificador }}"
-                 {% if f.id != sugerido and alvo == 'grupo' %}checked{% endif %}></td>
+      <td class="acao-linha curta" data-coluna="Manter"><label class="alvo-marca"><input type="radio" name="mantido_id" value="{{ f.id }}" aria-label="Manter {{ f.identificador }}"
+                 {% if f.id == sugerido %}checked{% endif %} required></label></td>
+      <td class="acao-linha curta" data-coluna="Juntar"><label class="alvo-marca"><input type="checkbox" name="absorvido_id" value="{{ f.id }}" aria-label="Juntar {{ f.identificador }}"
+                 {% if f.id != sugerido and alvo == 'grupo' %}checked{% endif %}></label></td>
       <td class="nome">{{ valor(f.nome, d.nome) }}
         {% if f.organizacao %}<span class="quebra discreto">{{ valor(f.organizacao, d.organizacao) }}</span>{% endif %}</td>
-      <td class="mono">{{ f.identificador }}{% if f.siape %}<span class="quebra discreto">SIAPE {{ f.siape }}</span>{% endif %}</td>
-      <td>{{ valor(rotulo_vinculo[f.vinculo] or f.vinculo, d.vinculo) }}</td>
-      <td>{{ valor(f.emails|join(', ') or '—', d.emails) }}</td>
-      <td class="mono">{{ f.inscricoes }}</td>
-      <td class="mono">{{ f.certificados }}</td>
+      <td class="mono curta" data-coluna="Identificador">{{ f.identificador }}{% if f.siape %}<span class="quebra discreto">SIAPE {{ f.siape }}</span>{% endif %}</td>
+      <td class="curta" data-coluna="Vínculo">{{ valor(rotulo_vinculo[f.vinculo] or f.vinculo, d.vinculo) }}</td>
+      <td data-coluna="E-mail">{{ valor(f.emails|join(', ') or '—', d.emails) }}</td>
+      <td class="mono curta" data-coluna="Inscrições">{{ f.inscricoes }}</td>
+      <td class="mono curta" data-coluna="Certificados">{{ f.certificados }}</td>
     </tr>
     {% endfor %}
   </table>

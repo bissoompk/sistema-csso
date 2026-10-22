@@ -32,8 +32,13 @@ import { pagina } from "../web.js";
 
 export const rotas = new Hono<Ambiente>();
 
-export const POR_PAGINA = 100;
-export const ACESSOS_POR_PAGINA = 50;
+/* Páginas menores desde o fechamento do celular (22/10/2026): com 100 eventos
+   e 50 acessos, /auditoria passava de 45 mil px no telefone, onde cada linha
+   vira um cartão. O tamanho é o MESMO em qualquer tela (não depende do
+   user-agent): a paginação da mesa continua a mesma, só com metade por página.
+   Ver DESVIOS.md, "Celular lotes A–F". */
+export const POR_PAGINA = 50;
+export const ACESSOS_POR_PAGINA = 25;
 
 /**
  * Os eventos de CONTA, SENHA, BACKUP e EXPORTAÇÃO, cuja descrição o perfil que

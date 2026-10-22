@@ -60,7 +60,11 @@
      e a que está em uso fica sólida — é o único jeito de saber, olhando, que a
      lista abaixo não é a lista inteira. O filtro por treinamento continua num
      <form> GET, que é o que funciona sem JavaScript. #}
+  {# No celular as fichas rolam de lado numa faixa só (`fileira rola`, P18), e
+     o filtro por treinamento e setor desce para a linha de baixo. Na mesa a
+     fileira de dentro é invisível: mesma `gap`, tudo na mesma linha. #}
   <div class="fileira">
+    <div class="fileira rola">
     <span class="rotulo-grupo">Situação</span>
     <a class="ficha-filtro {{ 'ativa' if not filtro_situacao }}"
        href="/turmas{{ '?treinamento_id=' ~ filtro_treinamento if filtro_treinamento }}">Todas</a>
@@ -68,6 +72,7 @@
     <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
        href="/turmas?situacao={{ codigo }}{{ treino_atual }}">{{ (ui.ROTULO_TURMA_TELA[codigo] or rotulo) }}</a>
     {% endfor %}
+    </div>
     <form method="get" action="/turmas" class="filtro-inline">
       {% if filtro_situacao %}
       <input type="hidden" name="situacao" value="{{ filtro_situacao }}">{% endif %}
@@ -119,15 +124,15 @@
         {%- if turma.instrutores|length %} · {{ ui.icone('pen') }} {{ turma.instrutores[0].instrutor.nome_exibicao }}
           {%- if turma.instrutores|length > 1 %} e mais {{ turma.instrutores|length - 1 }}{% endif %}{% endif %}
         {%- if turma.unidade_promotora %} · {{ ui.icone('building') }} {{ turma.unidade_promotora.sigla or turma.unidade_promotora.nome_extenso }}{% endif %}</span></td>
-      <td class="mono" data-coluna="Período">{{ turma.data_inicio|data }}
+      <td class="mono curta" data-coluna="Período">{{ turma.data_inicio|data }}
         {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</td>
-      <td data-coluna="Local"><span class="recorte" title="{{ turma.local or '' }}">
+      <td class="curta" data-coluna="Local"><span class="recorte" title="{{ turma.local or '' }}">
           {{- turma.local or '—' -}}</span>
         {%- if turma.campus %}<span class="quebra discreto">{{ turma.campus.sigla }}</span>{% endif %}</td>
       {# "18 de 20" diz mais que "18": a vaga livre é a decisão de quem lê. #}
-      <td data-coluna="Inscritos"><span class="selo">{{ (inscritos[turma.id] or 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% endif %}</span>
+      <td class="curta" data-coluna="Inscritos"><span class="selo">{{ (inscritos[turma.id] or 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% endif %}</span>
         {%- if pedidos[turma.id] and icone_inscricoes %}<span class="quebra"><a class="pilula alerta" href="{{ '/turmas/pedidos' if pode_inscrever else '/turmas/' ~ turma.id ~ '?aba=inscricoes' }}">{{ pedidos[turma.id] }} a conferir</a></span>{% endif %}</td>
-      <td data-coluna="Situação">{{ ui.pilula_turma(turma.situacao) }}
+      <td class="curta" data-coluna="Situação">{{ ui.pilula_turma(turma.situacao) }}
         {%- if link_no_ar[turma.id] %}<span class="quebra discreto">{{ ui.icone('link-45deg') }} link no ar até {{ turma.inscricao_aberta_ate|data }}</span>
         {%- elif prazo_vencido %}<span class="quebra discreto">prazo de inscrição acabou em {{ turma.inscricao_aberta_ate|data }}</span>{% endif %}</td>
       {% if icone_inscricoes or icone_presenca or icone_emissao %}
@@ -224,6 +229,7 @@
              value="{{ d['data_fim'] or '' }}"></div>
     <div class="campo"><label for="nova-carga">Carga horária da turma</label>
       <input id="nova-carga" name="carga_horaria_horas" placeholder="usa a do catálogo"
+             inputmode="decimal" autocomplete="off"
              value="{{ d['carga_horaria_horas'] or '' }}"
              aria-describedby="dica-carga">
       <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
@@ -251,15 +257,17 @@
   <div class="linha-campos">
     <div class="campo"><label for="nova-vagas">Vagas</label>
       <input id="nova-vagas" name="vagas" placeholder="sem limite"
+             inputmode="numeric" pattern="[0-9]*" autocomplete="off"
              value="{{ d['vagas'] or '' }}"></div>
     <div class="campo"><label for="nova-ate">Inscrições até</label>
       <input id="nova-ate" type="date" name="inscricao_aberta_ate"
              value="{{ d['inscricao_aberta_ate'] or '' }}"></div>
     <div class="campo"><label for="nova-nota">Nota mínima (0 a 10)</label>
       <input id="nova-nota" name="nota_minima_aprovacao" placeholder="sem prova"
+             inputmode="decimal" autocomplete="off"
              value="{{ d['nota_minima_aprovacao'] or '' }}"></div>
     <div class="campo"><label for="nova-freq">Frequência mínima (%)</label>
-      <input id="nova-freq" name="frequencia_minima_percentual"
+      <input id="nova-freq" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"
              value="{{ d['frequencia_minima_percentual'] or 75 }}"></div>
   </div>
   <div class="campo"><label for="nova-base">Data base do vencimento</label>

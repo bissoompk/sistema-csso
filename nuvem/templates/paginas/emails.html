@@ -47,32 +47,36 @@
     {% endfor %}
   </div>
 
+  {# No celular a linha vira cartão (`table.empilhavel`), com o assunto de
+     título; os botões da linha vão para a `acao-linha`, no pé do cartão. #}
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr><th scope="col">Pedido em</th><th scope="col">Para</th><th scope="col">Assunto</th>
           <th scope="col">Situação</th><th scope="col"></th></tr>
     </thead>
     {% for e in itens %}
     <tr>
-      <td class="mono">{{ e.criado_em|momento }}</td>
-      <td class="mono">{{ e.destinatario }}</td>
+      <td class="mono curta" data-coluna="Pedido em">{{ e.criado_em|momento }}</td>
+      <td class="mono" data-coluna="Para">{{ e.destinatario }}</td>
       <td>{{ e.assunto }}
         {% if e.certificado_id %}<span class="quebra"><a class="discreto" href="/certificados/{{ e.certificado_id }}">ver o certificado</a></span>{% endif %}</td>
-      <td><span class="pilula {{ 'ok' if e.situacao == 'ENVIADO' else ('erro' if e.situacao == 'FALHOU' else 'sem-ponto') }}">
+      <td data-coluna="Situação"><span class="pilula {{ 'ok' if e.situacao == 'ENVIADO' else ('erro' if e.situacao == 'FALHOU' else 'sem-ponto') }}">
           {{ rotulos[e.situacao]|lower }}</span>
         {% if e.enviado_em %}<span class="quebra discreto">{{ e.enviado_em|momento }}</span>{% endif %}
         {% if e.ultimo_erro and e.situacao != 'ENVIADO' %}
         <span class="quebra discreto">{{ e.tentativas }} tentativa(s): {{ e.ultimo_erro }}</span>{% endif %}</td>
-      <td>
-        {% if e.situacao == 'FALHOU' %}
+      {#- sem botão, a célula sai vazia de verdade (sem nem espaço), para o
+          `td:empty` do cartão a esconder em vez de mostrar um pé sem nada -#}
+      <td class="acao-linha">
+        {%- if e.situacao == 'FALHOU' %}
         <form method="post" action="/certificados/emails/{{ e.id }}/tentar" class="em-linha">
           <button type="submit" class="secundario compacto">Tentar de novo</button></form>
-        {% endif %}
-        {% if e.situacao in ['PENDENTE', 'FALHOU'] %}
+        {%- endif %}
+        {%- if e.situacao in ['PENDENTE', 'FALHOU'] %}
         <form method="post" action="/certificados/emails/{{ e.id }}/cancelar" class="em-linha">
           <button type="submit" class="perigo-discreto compacto">Cancelar</button></form>
-        {% endif %}
+        {%- endif -%}
       </td>
     </tr>
     {% else %}

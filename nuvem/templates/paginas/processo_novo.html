@@ -62,7 +62,7 @@
       {# `data-nup`: a MESMA conta do DV (`servicos/nup.py`) roda a cada tecla e
          escreve o aviso ao lado — sem bloquear o envio. Ver `csso.js`, bloco 3. #}
       <input id="nup" name="nup" value="{{ d.get('nup') or '' }}" required autofocus
-             data-nup inputmode="numeric" placeholder="23086.000000/0000-00"
+             data-nup inputmode="numeric" autocomplete="off" placeholder="23086.000000/0000-00"
              aria-describedby="{{ 'erro-nup' if erro_nup else 'dica-nup' }}">
       {% if erro_nup %}
       <span class="erro-campo" id="erro-nup">

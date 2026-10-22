@@ -2,7 +2,7 @@
 {% import "partes/macros.html" as ui with context %}
 {% block titulo %}{{ processo.nup }} · SISA{% endblock %}
 {# o NUP em mono: número que se confere dígito a dígito nunca sai em texto corrido #}
-{% block trilha %}<span class="atual mono" aria-current="page">{{ processo.nup }}</span>{% endblock %}
+{% block trilha %}<span class="atual mono" aria-current="page" title="{{ processo.nup }}">{{ processo.nup }}</span>{% endblock %}
 
 {% block acoes_cabecalho %}
 {# só http(s) vira link: o campo é digitado, e `javascript:` num href é script #}
@@ -481,7 +481,13 @@
                           nota='o SHA-256 é calculado no envio e a duplicata é reaproveitada') %}
   <div class="linha-campos">
     <div class="campo"><label for="anexo-arquivo">Arquivo</label>
-      <input id="anexo-arquivo" type="file" name="arquivo" required></div>
+      {# `accept` é dica para o seletor do celular (que passa a oferecer câmera e
+         arquivos), não trava: a rota não recusa tipo. A lista é a de
+         `TIPOS_SERVIDOS` (`servicos/anexos.ts`), o que volta legível a quem
+         baixa. Sem `capture`, que no celular pularia direto para a câmera e
+         esconderia o PDF já salvo. #}
+      <input id="anexo-arquivo" type="file" name="arquivo" required
+             accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv,.zip"></div>
     <div class="campo"><label for="anexo-categoria">Categoria</label>
       <select id="anexo-categoria" name="categoria">{% for c in categorias %}<option value="{{ c }}">{{ rotulos_categoria.get(c, c) }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="anexo-sei">Nº do documento SEI</label>

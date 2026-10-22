@@ -78,31 +78,38 @@
   <form method="post" action="/certificados/fila/email" id="f-email"></form>
   {% endif %}
 
+  {# No celular a linha vira cartão (`table.empilhavel`), com o participante de
+     título. A caixinha de marcar mora na célula do participante, no mesmo
+     `label.marca-linha` do nome: o toque no nome marca a linha, e o leitor de
+     tela lê quem se marca. #}
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr>
-        {% if selecionavel or enviavel %}<th scope="col"><span class="oculto">Selecionar</span></th>{% endif %}
         <th scope="col">Participante</th><th scope="col">Turma</th><th scope="col">Terminou em</th>
         <th scope="col">{{ 'Certificado' if filtro_etapa == 'EMITIDO' else 'Situação' }}</th>
       </tr>
     </thead>
     {% for x in itens %}
     <tr>
-      {% if selecionavel %}
-      <td><input form="f-emitir" type="checkbox" name="inscricao_id" value="{{ x.inscricao_id }}" checked
-                 aria-label="Emitir o certificado de {{ x.participante_nome }}"></td>
-      {% elif enviavel %}
-      <td><input form="f-email" type="checkbox" name="certificado_id" value="{{ x.certificado_id }}"
+      <td class="nome">
+        {%- if selecionavel %}<label class="marca-linha"><input class="marcar" form="f-emitir" type="checkbox"
+               name="inscricao_id" value="{{ x.inscricao_id }}" checked
+               aria-label="Emitir o certificado de {{ x.participante_nome }}">
+          <span>{{ x.participante_nome }}
+            <span class="quebra discreto mono">{{ x.siape or x.participante_identificador }}</span></span></label>
+        {%- elif enviavel %}<label class="marca-linha"><input class="marcar" form="f-email" type="checkbox"
+               name="certificado_id" value="{{ x.certificado_id }}"
                  {{ '' if envios[x.certificado_id] in ['ENVIADO', 'PENDENTE'] else 'checked' }}
-                 aria-label="Enviar por e-mail o certificado de {{ x.participante_nome }}"></td>
-      {% endif %}
-      <td class="nome">{{ x.participante_nome }}
-        <span class="quebra discreto mono">{{ x.siape or x.participante_identificador }}</span></td>
-      <td><a class="mono" href="/turmas/{{ x.turma_id }}?aba=emissao">{{ x.turma_codigo }}</a>
+               aria-label="Enviar por e-mail o certificado de {{ x.participante_nome }}">
+          <span>{{ x.participante_nome }}
+            <span class="quebra discreto mono">{{ x.siape or x.participante_identificador }}</span></span></label>
+        {%- else %}{{ x.participante_nome }}
+        <span class="quebra discreto mono">{{ x.siape or x.participante_identificador }}</span>{% endif %}</td>
+      <td data-coluna="Turma"><a class="mono" href="/turmas/{{ x.turma_id }}?aba=emissao">{{ x.turma_codigo }}</a>
         <span class="quebra discreto">{{ x.treinamento_nome }}</span></td>
-      <td class="mono">{{ x.turma_fim|data }}</td>
-      <td>
+      <td class="mono curta" data-coluna="Terminou em">{{ x.turma_fim|data }}</td>
+      <td class="curta" data-coluna="{{ 'Certificado' if filtro_etapa == 'EMITIDO' else 'Situação' }}">
         {%- if x.etapa == 'EMITIDO' %}<a class="mono" href="/certificados/{{ x.certificado_id }}">{{ x.certificado_rotulo }}</a>
           {% if envios[x.certificado_id] %}<span class="quebra"><span class="pilula {{ 'ok' if envios[x.certificado_id] == 'ENVIADO' else ('erro' if envios[x.certificado_id] == 'FALHOU' else 'sem-ponto') }}">
             e-mail: {{ rotulo_envio[envios[x.certificado_id]]|lower }}</span></span>{% endif %}
@@ -118,7 +125,7 @@
     {{ ui.vazio_de_lista(
          'Ninguém nesta etapa.',
          'A etapa, o treinamento e a busca valem ao mesmo tempo. As outras etapas, na
-          fileira acima, mostram quantos há em cada uma.', 5) }}
+          fileira acima, mostram quantos há em cada uma.', 4) }}
     {% endfor %}
   </table>
   </div>

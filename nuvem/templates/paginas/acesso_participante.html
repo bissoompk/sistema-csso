@@ -91,7 +91,8 @@
   <form method="post" action="{{ caminho }}">
     <div class="campo"><label for="acesso-email">Seu e-mail</label>
       <input id="acesso-email" name="email" type="email" value="{{ digitado }}" required
-             maxlength="160" autocomplete="email" aria-describedby="dica-acesso">
+             maxlength="160" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+             aria-describedby="dica-acesso">
       <span class="dica" id="dica-acesso">O mesmo que você informou na inscrição. Vamos
         enviar para ele um link que lista e baixa os seus certificados.</span></div>
     <div class="acoes"><button type="submit" class="largo">Receber o link</button></div>

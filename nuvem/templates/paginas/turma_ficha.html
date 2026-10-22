@@ -297,7 +297,7 @@
         <span class="contador">{{ turma.instrutores|length }}</span>
       </div>
       {% if turma.instrutores %}
-      <table>
+      <table class="empilhavel">
         <thead>
           <tr><th scope="col">Nome</th><th scope="col">Título</th><th scope="col">Certificado</th>
               {% if editavel %}<th scope="col"></th>{% endif %}</tr>
@@ -305,11 +305,11 @@
         {% for vinculo in turma.instrutores %}
         <tr>
           <td class="nome">{{ vinculo.instrutor.nome_exibicao }}</td>
-          <td>{{ vinculo.instrutor.titulo or '—' }}</td>
-          <td>{% if vinculo.assina_certificado %}<span class="pilula ok">assina</span>
+          <td class="curta" data-coluna="Título">{{ vinculo.instrutor.titulo or '—' }}</td>
+          <td class="curta" data-coluna="Certificado">{% if vinculo.assina_certificado %}<span class="pilula ok">assina</span>
               {% else %}<span class="pilula sem-ponto">não assina</span>{% endif %}</td>
           {% if editavel %}
-          <td>
+          <td class="acao-linha">
             <form method="post" action="/turmas/{{ turma.id }}/instrutores">
               <input type="hidden" name="assinatura_instrutor_id"
                      value="{{ vinculo.assinatura_instrutor_id }}">
@@ -417,7 +417,7 @@
   </div>
   {% endif %}
   {% if inscricoes %}
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr><th scope="col">Participante</th><th scope="col">Identificador</th>
           <th scope="col">Vínculo</th><th scope="col">E-mail</th>
@@ -437,21 +437,21 @@
         <span class="quebra discreto mono"
               title="lido do cadastro de servidor">SIAPE {{ i.participante.servidor.siape }}</span>
         {% endif %}</td>
-      <td class="mono">
+      <td class="mono curta" data-coluna="Identificador">
         {{- i.participante.identificador_publico if nominal else '—' -}}</td>
-      <td>{{ (rotulo_vinculo[i.participante.vinculo] or i.participante.vinculo) }}</td>
-      <td><span class="recorte"
+      <td class="curta" data-coluna="Vínculo">{{ (rotulo_vinculo[i.participante.vinculo] or i.participante.vinculo) }}</td>
+      <td data-coluna="E-mail"><span class="recorte"
                 title="{{ (i.participante.email_exibicao or '') if nominal else '' }}">
           {{- (i.participante.email_exibicao or '—') if nominal else '—' -}}</span></td>
-      <td>{{ ui.pilula_inscricao(i.situacao) }}
+      <td class="curta" data-coluna="Situação">{{ ui.pilula_inscricao(i.situacao) }}
         {% if i.motivo_cancelamento %}
         <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}
         {% if i.situacao == 'AGUARDANDO_EMAIL' and i.observacao %}
         <span class="quebra discreto">{{ i.observacao }}</span>{% endif %}</td>
-      <td class="discreto">{{ 'link público' if i.origem == 'PUBLICA' else i.origem|lower }}</td>
+      <td class="discreto curta" data-coluna="Origem">{{ 'link público' if i.origem == 'PUBLICA' else i.origem|lower }}</td>
       {% if pode_inscrever %}
-      <td>
-        {% if i.situacao in ['INSCRITA', 'CONFIRMADA', 'AGUARDANDO_EMAIL'] %}
+      <td class="acao-linha">
+        {%- if i.situacao in ['INSCRITA', 'CONFIRMADA', 'AGUARDANDO_EMAIL'] %}
         {# A gaveta que virou camada: os dois formulários da linha moravam numa
            célula de ~190px, e o campo de motivo do cancelamento saía com 140px de
            largura para uma frase. Ver `popup_gaveta` em `partes/macros.html` — a
@@ -494,11 +494,11 @@
               {{ 'Recusar' if i.situacao == 'AGUARDANDO_EMAIL' else 'Cancelar inscrição' }}</button></div>
           </form>
         {% endcall %}
-        {% endif %}
-        {# Corrigir o cadastro do externo: nome, vínculo, organização. O de
+        {% endif -%}
+        {#- Corrigir o cadastro do externo: nome, vínculo, organização. O de
            servidor mora no cadastro de servidores. Só para quem lê o nome —
-           a camada mostra o nome atual para ser corrigido. #}
-        {% if i.situacao != 'CANCELADA' and i.participante.servidor_id is none and nominal %}
+           a camada mostra o nome atual para ser corrigido. -#}
+        {%- if i.situacao != 'CANCELADA' and i.participante.servidor_id is none and nominal %}
         {% call ui.popup_gaveta('corrigir-participante-' ~ i.id, 'corrigir',
                                 'Corrigir dados · ' ~ i.participante.nome_exibicao,
                                 nota=i.participante.identificador_publico) %}
@@ -520,10 +520,10 @@
             <div class="acoes"><button type="submit" class="secundario compacto">Gravar a correção</button></div>
           </form>
         {% endcall %}
-        {% endif %}
-        {# CPF só para o certificado que a norma exige (brigadista, CBMMG; ver
-           `cpf_certificado.ts`). A tela recebe só a máscara sem dígito. #}
-        {% if i.situacao != 'CANCELADA' %}
+        {% endif -%}
+        {#- CPF só para o certificado que a norma exige (brigadista, CBMMG; ver
+           `cpf_certificado.ts`). A tela recebe só a máscara sem dígito. -#}
+        {%- if i.situacao != 'CANCELADA' %}
         {% call ui.popup_gaveta('cpf-inscricao-' ~ i.id, ('CPF ✓' if i.participante.tem_cpf else 'CPF'),
                                 'CPF para o certificado · ' ~ (i.participante.nome_exibicao
                                                                if nominal else quem.nome),
@@ -541,7 +541,7 @@
             <div class="acoes"><button type="submit" class="secundario compacto">Gravar</button></div>
           </form>
         {% endcall %}
-        {% endif %}
+        {% endif -%}
       </td>
       {% endif %}
     </tr>
@@ -603,7 +603,7 @@
 
     {% if busca %}
     <h3>Já participaram de alguma turma</h3>
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Nome</th><th scope="col">Identificador</th>
             <th scope="col">Vínculo</th><th scope="col"></th></tr>
@@ -615,9 +615,9 @@
         <td class="nome">
           {%- if nominal %}{{ p.nome_exibicao }}
           {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
-        <td class="mono">{{ p.identificador_publico if nominal else '—' }}</td>
-        <td>{{ (rotulo_vinculo[p.vinculo] or p.vinculo) }}</td>
-        <td>
+        <td class="mono curta" data-coluna="Identificador">{{ p.identificador_publico if nominal else '—' }}</td>
+        <td class="curta" data-coluna="Vínculo">{{ (rotulo_vinculo[p.vinculo] or p.vinculo) }}</td>
+        <td class="acao-linha">
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
             <input type="hidden" name="participante_id" value="{{ p.id }}">
             <input type="hidden" name="busca" value="{{ busca }}">
@@ -646,7 +646,7 @@
     </table>
 
     <h3>Servidores da UFVJM ainda sem turma</h3>
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Nome</th><th scope="col">SIAPE</th>
             <th scope="col">Unidade</th><th scope="col"></th></tr>
@@ -662,9 +662,9 @@
         <td class="nome">
           {%- if quem.nominal %}{{ quem.nome }}
           {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
-        <td class="mono">{{ quem.siape or '—' }}</td>
-        <td>{{ sv.unidade.sigla if sv.unidade else '—' }}</td>
-        <td>
+        <td class="mono curta" data-coluna="SIAPE">{{ quem.siape or '—' }}</td>
+        <td class="curta" data-coluna="Unidade">{{ sv.unidade.sigla if sv.unidade else '—' }}</td>
+        <td class="acao-linha">
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
             <input type="hidden" name="servidor_id" value="{{ sv.id }}">
             <input type="hidden" name="busca" value="{{ busca }}">
@@ -789,7 +789,7 @@
      cada linha, e um "Salvar folha" no pé. O cabeçalho de cada dia marca a
      coluna inteira (`data-marca-grupo`, csso.js) — a folha do dia em papel. #}
   {% if pode_lancar %}<form method="post" action="/turmas/{{ turma.id }}/presencas/folha" id="f-folha">{% endif %}
-  <table>
+  <table class="coluna-fixa">
     {# O `<thead>` vem antes dos vários `<tbody>` — é HTML válido e é a ordem que
        o navegador exige. Aqui ele rende duas vezes mais que na tabela comum: com
        uma coluna por dia de aula, é o `scope="col"` que faz o leitor de tela
@@ -1105,7 +1105,7 @@
         identificação.</p>
     {% endcall %}
   </div>
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr>
         <th scope="col">Participante</th><th scope="col">Resultado</th>
@@ -1125,8 +1125,8 @@
         {%- if nominal %}{{ inscricao.participante.nome_exibicao }}
         <span class="quebra discreto mono">{{ inscricao.participante.identificador_publico }}</span>
         {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
-      <td>{{ ui.pilula_inscricao(inscricao.situacao) }}</td>
-      <td>
+      <td class="curta" data-coluna="Resultado">{{ ui.pilula_inscricao(inscricao.situacao) }}</td>
+      <td data-coluna="Certificado">
         {% if emitido %}
         <a class="mono" href="/certificados/{{ emitido.id }}">{{ emitido.rotulo }}</a>
         {% if emitido.so_word and not pdf_fiel() %}<a class="discreto" href="/certificados/{{ emitido.id }}/documento">Word</a>
@@ -1138,7 +1138,7 @@
         {% endif %}
         {% else %}<span class="discreto">—</span>{% endif %}
       </td>
-      <td>
+      <td data-coluna="O que falta">
         {# O QUE FALTA é texto livre, e `emissao_certificado.validar` escreve o
            NOME dentro da frase — "Fulano está inscrita e não tem resultado de
            aprovação". É a terceira porta da RN-19, a mesma da trilha e da
@@ -1163,13 +1163,13 @@
         {% endif %}
       </td>
       {% if pode_emitir %}
-      <td>
-        {% if not emitido and apto and not apto.bloqueios %}
+      <td class="acao-linha">
+        {%- if not emitido and apto and not apto.bloqueios %}
         <form method="post" action="/turmas/{{ turma.id }}/certificados">
           <input type="hidden" name="inscricao_id" value="{{ inscricao.id }}">
           <button type="submit" class="secundario marcador">emitir</button>
         </form>
-        {% endif %}
+        {% endif -%}
       </td>
       {% endif %}
     </tr>
@@ -1236,7 +1236,7 @@
     <div class="campo"><label for="r-data_fim">Término</label>
       <input id="r-data_fim" type="date" name="data_fim" value="{{ turma.data_fim }}" required></div>
     <div class="campo"><label for="r-carga">Carga horária da turma</label>
-      <input id="r-carga" name="carga_horaria_horas"
+      <input id="r-carga" name="carga_horaria_horas" inputmode="decimal" autocomplete="off"
              value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
              placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
              aria-describedby="r-dica-carga">
@@ -1284,7 +1284,7 @@
       <input id="data_fim" type="date" name="data_fim"
              value="{{ turma.data_fim }}" required></div>
     <div class="campo"><label for="carga">Carga horária da turma</label>
-      <input id="carga" name="carga_horaria_horas"
+      <input id="carga" name="carga_horaria_horas" inputmode="decimal" autocomplete="off"
              value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
              placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
              aria-describedby="dica-carga">
@@ -1310,20 +1310,20 @@
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="vagas">Vagas</label>
-      <input id="vagas" name="vagas"
+      <input id="vagas" name="vagas" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
              value="{{ turma.vagas if turma.vagas is not none else '' }}"
              placeholder="sem limite"></div>
     <div class="campo"><label for="inscricao_aberta_ate">Inscrições até</label>
       <input id="inscricao_aberta_ate" type="date" name="inscricao_aberta_ate"
              value="{{ turma.inscricao_aberta_ate if turma.inscricao_aberta_ate else '' }}"></div>
     <div class="campo"><label for="nota_minima_aprovacao">Nota mínima (0 a 10)</label>
-      <input id="nota_minima_aprovacao" name="nota_minima_aprovacao"
+      <input id="nota_minima_aprovacao" name="nota_minima_aprovacao" inputmode="decimal" autocomplete="off"
              value="{{ turma.nota_minima_aprovacao if turma.nota_minima_aprovacao is not none else '' }}"
              placeholder="sem prova"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="frequencia_minima_percentual">Frequência mínima (%)</label>
-      <input id="frequencia_minima_percentual" name="frequencia_minima_percentual"
+      <input id="frequencia_minima_percentual" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"
              value="{{ turma.frequencia_minima_percentual }}" required></div>
     <div class="campo"><label for="data_base_vencimento">Data base do vencimento</label>
       <input id="data_base_vencimento" type="date" name="data_base_vencimento"
@@ -1494,7 +1494,7 @@
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="ext-email">E-mail</label>
-      <input id="ext-email" name="email" value="{{ ed.email or '' }}"></div>
+      <input id="ext-email" name="email" type="email" autocomplete="email" value="{{ ed.email or '' }}"></div>
     <div class="campo"><label for="ext-matricula">Matrícula ou nº do contrato</label>
       <input id="ext-matricula" name="matricula_externa" aria-describedby="dica-matricula"
              value="{{ ed.matricula_externa or '' }}">

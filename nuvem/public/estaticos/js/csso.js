@@ -1094,6 +1094,20 @@
     var mestres = document.querySelectorAll('input[type="checkbox"][data-marca-grupo]');
     for (var m = 0; m < mestres.length; m++) sincronizarMestre(mestres[m]);
     atualizarBarrasDeLote();
+    aplicarCorTipo(document);
+  }
+  // A cor do tipo de processo no cartao do kanban vem em `data-cor-tipo` (sem
+  // `style=` no HTML, pela CSP). A folha ja traduz as cores semeadas; aqui
+  // entra so o hexadecimal valido que ela nao conheca. O CSSOM nao e estilo
+  // inline para a CSP.
+  function aplicarCorTipo(raiz) {
+    var cartoes = (raiz || document).querySelectorAll('[data-cor-tipo]');
+    for (var i = 0; i < cartoes.length; i++) {
+      var cor = cartoes[i].getAttribute('data-cor-tipo');
+      if (/^#[0-9a-f]{6}$/i.test(cor) && !getComputedStyle(cartoes[i]).getPropertyValue('--cor-tipo').trim()) {
+        cartoes[i].style.setProperty('--cor-tipo', cor);
+      }
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arrancar);
   else arrancar();

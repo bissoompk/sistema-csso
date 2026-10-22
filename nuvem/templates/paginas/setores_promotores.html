@@ -40,7 +40,8 @@
   {% endif %}
 
   <div class="tabela-cartao lista">
-  <table>
+  {# `empilhavel`: no celular cada setor vira um cartão, com o nome de título. #}
+  <table class="empilhavel">
     <thead>
       <tr><th scope="col">Setor</th><th scope="col">Sigla</th><th scope="col">Campus</th>
           <th scope="col">Turmas</th>{% if gerencia %}<th scope="col"></th>{% endif %}</tr>
@@ -48,11 +49,11 @@
     {% for u in promotores %}
     <tr>
       <td class="nome">{{ u.nome_extenso }}</td>
-      <td>{{ u.sigla or '—' }}</td>
-      <td>{{ u.campus.sigla if u.campus else '—' }}</td>
-      <td>{{ u.turmas }}</td>
+      <td class="curta" data-coluna="Sigla">{{ u.sigla or '—' }}</td>
+      <td class="curta" data-coluna="Campus">{{ u.campus.sigla if u.campus else '—' }}</td>
+      <td class="curta" data-coluna="Turmas">{{ u.turmas }}</td>
       {% if gerencia %}
-      <td><form method="post" action="/treinamentos/setores-promotores/{{ u.id }}/retirar">
+      <td class="acao-linha"><form method="post" action="/treinamentos/setores-promotores/{{ u.id }}/retirar">
           <button type="submit" class="secundario marcador"
                   aria-label="Retirar {{ u.nome_extenso }} da lista de setores promotores">retirar da lista</button>
         </form></td>

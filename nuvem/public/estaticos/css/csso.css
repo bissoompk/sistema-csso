@@ -2320,6 +2320,18 @@ a.kpi:hover {
   display: flex; flex-direction: column; gap: 7px;
 }
 .cartao-kanban:hover { border-color: var(--borda-hover); box-shadow: var(--sombra-hover); }
+/* A cor do tipo chega como `data-cor-tipo` (o template nao escreve `style=`,
+   que a CSP nao admite). Estas sao as cores dos tipos semeados
+   (`sementes.ts`); um hexadecimal fora da lista o `csso.js` aplica. */
+.cartao-kanban[data-cor-tipo="#f2d600" i] { --cor-tipo: #F2D600; }
+.cartao-kanban[data-cor-tipo="#0079bf" i] { --cor-tipo: #0079BF; }
+.cartao-kanban[data-cor-tipo="#eb5a46" i] { --cor-tipo: #EB5A46; }
+.cartao-kanban[data-cor-tipo="#61bd4f" i] { --cor-tipo: #61BD4F; }
+.cartao-kanban[data-cor-tipo="#c377e0" i] { --cor-tipo: #C377E0; }
+.cartao-kanban[data-cor-tipo="#ff9f1a" i] { --cor-tipo: #FF9F1A; }
+.cartao-kanban[data-cor-tipo="#00c2e0" i] { --cor-tipo: #00C2E0; }
+.cartao-kanban[data-cor-tipo="#51e898" i] { --cor-tipo: #51E898; }
+.cartao-kanban[data-cor-tipo="#b3bac5" i] { --cor-tipo: #B3BAC5; }
 .cartao-kanban .topo { display: flex; align-items: center; gap: 7px; }
 /* O NUP e a peca larga do cartao; ele encolhe primeiro, e o `title` guarda o
    numero inteiro. */
@@ -3220,7 +3232,7 @@ details.ajuste-horas input { margin-top: 4px; }
 
    TRES REGRAS DO BLOCO, e quem mexer aqui precisa manter as tres:
    1. A MESA NAO MUDA. Toda regra daqui esta dentro de uma faixa de largura
-      (900/600px), de `(pointer: coarse)` ou de `(hover: hover)`. As unicas que
+      (900/600/480px), de `(pointer: coarse)` ou de `(hover: hover)`. As unicas que
       nao estao sao as classes-contrato do topo, que nenhuma tela usava antes
       deste bloco e que na mesa so desfazem o desenho padrao do elemento.
    2. SEM `!important`. Onde a regra antiga vence por especificidade, o seletor
@@ -3231,7 +3243,8 @@ details.ajuste-horas input { margin-top: 4px; }
 
    As classes-contrato que as telas aplicam (os lotes A-F do plano) sao:
    `td.curta`, `table.coluna-fixa`, `.fileira.rola`, `label.marca-linha`,
-   `.pilula.perm-pilula`, `details.cartao.perfil` e `.so-celular`. */
+   `.pilula.perm-pilula`, `details.cartao.perfil`, `.so-celular` e (no
+   fechamento) `label.alvo-marca`. */
 
 /* ---------- classes-contrato: o desenho neutro, em qualquer largura ----------
    `.so-celular` (P14): some na mesa; a faixa de 900px o devolve, so na tela.
@@ -3247,6 +3260,10 @@ label.marca-linha {
   font: inherit; color: inherit; cursor: pointer;
 }
 label.marca-linha > input[type=checkbox] { flex: none; margin: 0; }
+/* `label.alvo-marca`: so a area de toque em volta da caixa/radio sem texto
+   (o nome vem do `aria-label` do campo). Na mesa e neutro: sem ele o `label`
+   viraria bloco com 4px de margem e mudaria a altura da linha. */
+label.alvo-marca { display: inline; margin: 0; font: inherit; color: inherit; }
 details.cartao.perfil > summary {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
   list-style: none; cursor: pointer;
@@ -3473,7 +3490,9 @@ details.cartao.perfil[open] > summary::after { content: "▴"; }
   /* P11. Uma coluna do kanban por gesto: 86% da tela, a ponta da proxima
      aparecendo (e o que diz que ha mais), e o deslize para na coluna. A coluna
      vazia deixa de ocupar 300px. */
-  .quadro { grid-template-columns: repeat(5, 86%); gap: 10px; }
+  /* Em `vw`, e nao em %: o quadro mora dentro do recuo da area, e 86% dele
+     davam 78% da TELA. `- 4px` e a folga da borda do cartao de coluna. */
+  .quadro { grid-template-columns: repeat(5, calc(86vw - 4px)); gap: 10px; }
   .rolagem-quadro { scroll-snap-type: x mandatory; }
   .coluna { scroll-snap-align: start; min-height: 0; }
 
@@ -3511,6 +3530,62 @@ details.cartao.perfil[open] > summary::after { content: "▴"; }
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px;
   }
   table.empilhavel.empilhavel > tbody > tr > td:not(.curta) { grid-column: 1 / -1; }
+}
+
+/* ---------- fechamento dos lotes A-F (22/10/2026) ----------
+   Acertos que os lotes de tela deixaram para a folha. Mesmas tres regras do
+   bloco do celular: so dentro de faixa de largura, sem `!important`, antes do
+   `@media print`. */
+@media screen and (max-width: 600px) {
+  /* O numero no cartao empilhado: alinhado a direita ele ficava longe do
+     proprio rotulo, que esta a esquerda em cima dele. */
+  table.empilhavel.empilhavel > tbody > tr > td.numerico { text-align: left; }
+  /* O recorte de 26ch e para a coluna estreita da mesa. No cartao a celula tem
+     a largura inteira, e a unidade (/laudos) e o titulo sao o que se le. */
+  table.empilhavel.empilhavel > tbody > tr > td .recorte {
+    max-width: none; overflow: visible; text-overflow: clip; white-space: normal;
+  }
+  /* A caixa de marcar e o botao de radio na celula de acao (/treinamentos/
+     participantes): 22px de desenho, e o rotulo em volta e o alvo de 44px. */
+  table.empilhavel.empilhavel td.acao-linha > label.alvo-marca {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 44px; min-height: 44px; margin: 0; padding: 0; cursor: pointer;
+  }
+  table.empilhavel.empilhavel td.acao-linha > label.alvo-marca > input:is([type=radio], [type=checkbox]),
+  table.empilhavel.empilhavel td.acao-linha > input:is([type=radio], [type=checkbox]) {
+    width: 22px; height: 22px; margin: 0;
+  }
+  /* O botao que abre a gaveta (inscricoes da turma) divide a linha com o
+     vizinho quando cabe, e quebra quando nao cabe. */
+  table.empilhavel.empilhavel td.acao-linha > a.botao.abre-gaveta {
+    flex: 1 1 140px; width: auto;
+  }
+  /* A celula de acao que abre o cartao nao leva o divisor de "acoes embaixo":
+     em cima, ele era uma linha solta no topo do cartao. */
+  table.empilhavel.empilhavel > tbody > tr > td.acao-linha:first-child,
+  table.empilhavel.empilhavel > tbody > tr > td.acao-linha.curta:first-child + td.acao-linha.curta {
+    margin-top: 0; padding-top: 0; border-top: 0;
+  }
+}
+/* P10, o resto: o texto de apoio de 13px (a nota do cabecalho do cartao, a
+   segunda linha discreta da celula, o codigo em `.mono`, o rotulo do campo, o
+   botao secundario) sobe para 14px no telefone. A medicao do fechamento achou
+   84% das ocorrencias abaixo de 14px em 13px, espalhadas por essas classes.
+   O `:is()` tem a especificidade do argumento mais forte (0,2,0): as regras
+   que encolhem de proposito e sao mais especificas (o NUP do kanban, o selo, o
+   rotulo em versalete) continuam valendo. */
+@media screen and (max-width: 600px) {
+  :is(.discreto, .quebra, .nota, .mono, .vazio > span, .resumo, .quando,
+      .volta-origem, .alternador > *, .botao.secundario, button.secundario,
+      .campo label, .passo, p.identificacao, .a-direita, .recorte, .avatar) {
+    font-size: 14px;
+  }
+}
+@media screen and (max-width: 480px) {
+  /* A tela publica e a pagina de erro a 360px: 18 e 30px de recuo deixavam
+     menos de 300px para o formulario e para o texto. */
+  .tela-auxiliar .cartao { padding: 20px 12px; }
+  .cartao-erro { padding: 22px 14px; }
 }
 
 /* ---------- so no papel ----------
