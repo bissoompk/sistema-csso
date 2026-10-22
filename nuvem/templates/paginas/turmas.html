@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Turmas · CSSO{% endblock %}
+{% block titulo %}Turmas · SISA{% endblock %}
 
 {# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
    em `partes/macros.html`. #}
@@ -49,6 +49,8 @@
       {% endcall %}
     </div>
   </div>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   {% if primeiros_passos %}
   {{ ui.primeiros_passos('Primeiros passos: do curso ao certificado', primeiros_passos) }}
@@ -241,7 +243,7 @@
     <div class="campo"><label for="nova-unidade">Unidade promotora</label>
       <select id="nova-unidade" name="unidade_promotora_id" aria-describedby="dica-nova-unidade"><option value="">—</option>
         {% for u in unidades %}
-        <option value="{{ u.id }}"{{ ui.sel(d['unidade_promotora_id'], u.id) }}>{{ u.nome_extenso }}</option>
+        <option value="{{ u.id }}"{{ ui.sel(d['unidade_promotora_id'] or setor_padrao, u.id) }}>{{ u.nome_extenso }}</option>
         {% endfor %}
       </select>
       <span class="dica" id="dica-nova-unidade">{{ dica_setor_promotor }}</span></div>

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{# Liberação de módulo por módulo (22/10/2026): para cada perfil de equipe, o
+   nível de cada módulo — sem acesso, consulta ou operação. "Padrão" é o que o
+   perfil sempre teve (as permissões semeadas), e é o que vale enquanto ninguém
+   escolhe outra coisa: por isso a implantação não mudou o acesso de ninguém.
+
+   O mapa nível → permissões mora num lugar só (`servicos/niveis_modulo.ts`) e
+   é escrito aqui embaixo, para quem decide saber o que cada nível abre.
+
+   Base compartilhada, como /perfis: perfil não pertence a módulo nenhum. #}
+{% set trilha_raiz = 'Base compartilhada' %}
+{% block titulo %}Acesso por módulo · SISA{% endblock %}
+{% block trilha %}<a href="/perfis">Matriz de perfis</a><span class="atual" aria-current="page">Acesso por módulo</span>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Acesso por módulo</h1>
+      <p class="sub">O nível de cada módulo em cada perfil. A exceção de uma pessoa
+        (dar ou retirar) fica em <a href="/usuarios">Usuários</a>, no “Gerir” da conta.</p>
+    </div>
+  </div>
+
+  {% if not atual %}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Nenhum perfil de equipe ativo</strong>
+      <span>Só os perfis de equipe (escopo de unidade ou total) se ajustam por módulo.</span>
+    </div>
+  </div>
+  {% else %}
+
+  {# Um perfil por vez: com os nove de uma vez a tela virava uma lista de 36
+     linhas de botões iguais. Cada aba é uma página (funciona sem script). #}
+  <nav class="abas" aria-label="Perfis">
+    {%- for p in perfis %}
+    <a href="/perfis/niveis?perfil={{ p.codigo }}" class="{{ 'ativa' if p.codigo == atual.codigo }}"
+       {% if p.codigo == atual.codigo %}aria-current="page"{% endif %}>{{ p.nome }}</a>
+    {%- endfor %}
+  </nav>
+
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>{{ atual.nome }}</h2>
+      <span class="mono discreto">{{ atual.codigo }}</span>
+    </div>
+    {% if pode_ajustar and atual.e_meu %}
+    <div class="aviso aviso-alerta" role="status">Você tem este perfil: aqui você só
+      pode <strong>baixar</strong> o nível. Subir elevaria o seu próprio acesso e é ato
+      de outra pessoa que administra acesso.</div>
+    {% endif %}
+
+    <form method="post" action="/perfis/{{ atual.id }}/niveis">
+      <div class="tabela-cartao lista sem-altura">
+        <table class="empilhavel tabela-niveis">
+          <thead>
+            <tr><th scope="col">Módulo</th><th scope="col">Nível</th><th scope="col">Vale hoje</th></tr>
+          </thead>
+          {% for l in atual.linhas %}
+          {% set nome_campo = 'nivel_' ~ l.modulo.codigo %}
+          {% set escolhido = l.nivel or 'PADRAO' %}
+          <tr>
+            <td class="nome">{{ l.modulo.nome }}</td>
+            <td data-coluna="Nível">
+              {% if pode_ajustar %}
+              <fieldset class="nivel-escolha">
+                <legend class="oculto">Nível de {{ l.modulo.nome }} no perfil {{ atual.nome }}</legend>
+                <label><input type="radio" name="{{ nome_campo }}" value="PADRAO"{{ ' checked' if escolhido == 'PADRAO' }}>
+                  <span>Padrão <small>({{ rotulo_nivel[l.padrao]|lower }})</small></span></label>
+                <label><input type="radio" name="{{ nome_campo }}" value="SEM_ACESSO"{{ ' checked' if escolhido == 'SEM_ACESSO' }}>
+                  <span>Sem acesso</span></label>
+                <label><input type="radio" name="{{ nome_campo }}" value="CONSULTA"{{ ' checked' if escolhido == 'CONSULTA' }}>
+                  <span>Consulta</span></label>
+                <label><input type="radio" name="{{ nome_campo }}" value="OPERACAO"{{ ' checked' if escolhido == 'OPERACAO' }}>
+                  <span>Operação</span></label>
+              </fieldset>
+              {% else %}
+              {{ rotulo_nivel[l.nivel] if l.nivel else 'Padrão (' ~ (rotulo_nivel[l.padrao]|lower) ~ ')' }}
+              {% endif %}
+            </td>
+            <td data-coluna="Vale hoje">
+              {% set cor = 'ok' if l.efetivo == 'OPERACAO' else ('info' if l.efetivo == 'CONSULTA' else ('alerta' if l.efetivo == 'PARCIAL' else 'sem-ponto')) %}
+              <span class="pilula {{ cor }}">{{ rotulo_nivel[l.efetivo] }}</span>
+              {% if l.permissoes|length %}
+              <span class="discreto lista-permissoes">{% for p in l.permissoes %}{{ textos_permissao[p] or p }}{{ '; ' if not loop.last }}{% endfor %}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% if pode_ajustar %}
+      <div class="acoes"><button type="submit">Gravar níveis de {{ atual.nome }}</button></div>
+      {% endif %}
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="cartao liso">
+    <h2>O que cada nível abre</h2>
+    <p class="discreto">“Consulta” é a leitura do módulo; “Operação” é a leitura e a
+      escrita. O escopo (campus, equipe ou só o próprio) continua sendo o do perfil.</p>
+    <div class="tabela-cartao lista sem-altura">
+      <table class="empilhavel">
+        <thead><tr><th scope="col">Módulo</th><th scope="col">Consulta</th><th scope="col">Operação acrescenta</th></tr></thead>
+        {% for m in modulos_nivelados %}
+        <tr>
+          <td class="nome">{{ m.nome }}</td>
+          <td data-coluna="Consulta">{% for p in m.consulta %}<span class="mono discreto">{{ p }}</span>{{ ', ' if not loop.last }}{% endfor %}</td>
+          <td data-coluna="Operação acrescenta">{% for p in m.escrita %}<span class="mono discreto">{{ p }}</span>{{ ', ' if not loop.last }}{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    <h3>Sempre do perfil, nunca do módulo</h3>
+    <p class="discreto">Assinatura, habilitação profissional, administração de acesso,
+      dado nominal e as transversais seguem o cargo, e por isso não mudam aqui:</p>
+    <ul class="discreto">
+      {% for codigo, motivo in so_do_perfil %}<li><span class="mono">{{ codigo }}</span> — {{ motivo }}</li>{% endfor %}
+    </ul>
+    {% if fora|length %}
+    <p class="discreto">Não se ajustam por módulo (o alcance deles é o do titular ou só
+      contagem): {% for p in fora %}{{ p.nome }}{{ ', ' if not loop.last }}{% endfor %}.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

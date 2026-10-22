@@ -361,7 +361,7 @@ describe("D52/M56: acesso pelo link do e-mail", () => {
     return linha!.corpo!.match(/\/certificados\/acesso\/([A-Za-z0-9_-]{20,})/)![1]!;
   }
 
-  it("e-mail sem confirmação em dois cadastros: não lista nenhum e manda procurar a CSSO", async () => {
+  it("e-mail sem confirmação em dois cadastros: não lista nenhum e manda procurar a equipe responsável", async () => {
     const h = await _dois_com_o_mesmo_email(false);
     const token = await _token();
     const aberto = (await acesso.abrir(db, token))!;
@@ -406,7 +406,7 @@ describe("D57: convite do acesso por e-mail só com o envio ligado", () => {
     const publico = novoCliente();
     const sem = (await publico.get("/validar")).text;
     expect(sem).not.toContain('href="/certificados/acesso"');
-    expect(sem).toContain("Peça à CSSO");
+    expect(sem).toContain("Peça ao setor que promoveu o treinamento.");
     const vencido = (await publico.get(`${acesso.CAMINHO}/token-que-nao-existe-123456`)).text;
     expect(vencido).not.toContain("Pedir um link novo");
     _ligar_email();
@@ -505,7 +505,7 @@ describe("M31: os cartões do início", () => {
     const coordenador = await usuarioAtual(db, "coordenador_csso");
     const do_coordenador = hub.cartoes(coordenador, await hub.resumo(db, coordenador, "2026-10-21"));
     expect(do_coordenador.map((c) => c.titulo)).toContain("Instrutores");
-    expect(do_coordenador.find((c) => c.titulo === "Certificados")!.descricao).toContain("corrigir e anular");
+    expect(do_coordenador.find((c) => c.titulo === "Emitidos")!.descricao).toContain("corrigir e anular");
 
     await entrar(cliente, "secretaria_csso");
     const tela = (await cliente.get("/treinamentos")).text;

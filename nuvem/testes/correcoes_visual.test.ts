@@ -49,7 +49,8 @@ describe("o item Pendências do menu (M83)", () => {
   });
 
   it("quem só tem demanda.ver vê o item, como a rota deixa", () => {
-    const so_demanda = new UsuarioAtual({ id: 1, login: "x", nome: "x", permissoes: ["demanda.ver"], perfis: [] });
+    // por um perfil de equipe: o menu da equipe pede a permissão por perfil de equipe
+    const so_demanda = new UsuarioAtual({ id: 1, login: "x", nome: "x", permissoes: ["demanda.ver"], perfis: ["secretaria_csso"] });
     expect(modulos.base_de(so_demanda).map((i) => i.caminho)).toContain("/pendencias");
   });
 });
@@ -76,6 +77,8 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
       "/adicionais",
       "/processos",
       `/servidores/${servidor!.id}`,
+      // a Minha conta fecha o bloco (22/10/2026)
+      "/minha-conta",
     ]);
     // a engrenagem de /config não é dele
     expect(corpo).not.toContain('href="/config"');
@@ -108,7 +111,7 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
     const cliente = await entrar(novoCliente(), "servidor_consulta");
     const menu = lateral((await cliente.get("/")).text);
     expect(menu).toContain('aria-label="Meu espaço"');
-    expect(hrefs(menu).filter((h) => h !== "/inicio")).toEqual(["/"]);
+    expect(hrefs(menu).filter((h) => h !== "/inicio")).toEqual(["/", "/minha-conta"]);
   });
 
   it("a equipe continua com a lateral de sempre", async () => {
@@ -119,11 +122,15 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
     expect(menu).toContain('href="/kanban"');
   });
 
-  it("um perfil de equipe a mais devolve o menu da equipe", () => {
+  it("um perfil de equipe a mais devolve o menu da equipe, com o Meu espaço ao lado (D16)", () => {
     const misto = new UsuarioAtual({
       id: 9, login: "m", nome: "m", permissoes: ["processo.ver"], perfis: ["servidor_consulta", "secretaria_csso"], servidor_id: 1,
     });
-    expect(modulos.meu_espaco_de(misto)).toEqual([]);
+    expect(modulos.so_o_proprio(misto)).toBe(false);
+    expect(modulos.navegacao("/", misto).so_meu_espaco).toBe(false);
+    // o que a lateral da equipe já oferece (Painel, Processos, Adicionais) não
+    // se repete no bloco com nome de "meu": sobra o cadastro dele
+    expect(modulos.meu_espaco_de(misto).map((i) => i.caminho)).toEqual(["/servidores/1", "/minha-conta"]);
   });
 
   it("perfil sem escopo declarado não derruba a casca: o menu é o da equipe, e a rota nega", () => {

@@ -75,7 +75,7 @@
   --lateral: #0a2a5c;              /* 14,0:1 com branco */
   --lateral-texto: #c8d4e6;        /* 9,35:1 na lateral */
   --lateral-texto-fraco: #9fb2cf;  /* 6,50:1 */
-  --lateral-acento: #8fd3ec;       /* 8,47:1 — "CSSO", foco na lateral */
+  --lateral-acento: #8fd3ec;       /* 8,47:1 — "SISA", foco na lateral */
   --lateral-linha: #1f4373;
   --lateral-realce: #163f78;       /* módulo aberto — branco nele dá 10,4:1 */
 
@@ -162,6 +162,13 @@ body {
   margin: 4px 0 10px 6px; padding-left: 6px;
   border-left: 1px solid var(--lateral-linha);
 }
+/* O item aqui tem 12px de recuo, ícone de 16px e 11px de vão: o texto começa
+   em 39px, e o subtítulo do grupo acompanha. Na faixa do celular volta a
+   alinhar com a borda, como em `csso.css`. */
+.lateral .menu-modulo .rotulo-grupo { padding-left: 39px; }
+@media (max-width: 900px) {
+  .lateral .menu-modulo .rotulo-grupo { padding-left: 12px; }
+}
 
 .lateral .menu a {
   gap: 11px; padding: 9px 12px; border-radius: var(--raio-item);
@@ -198,25 +205,33 @@ h2 { font-weight: 700; }
 /* ---------- cartões ---------- */
 .cartao { border-color: var(--borda); box-shadow: var(--sombra); }
 .cartao.link { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
-.cartao.link:hover { transform: translateY(-3px); border-color: var(--acento-vivo); box-shadow: var(--sombra-hover); }
+/* O cartão que sobe e o botão que levanta só existem com mouse: no toque o
+   `:hover` fica preso depois do dedo sair, e o cartão tocado ficava levantado
+   (e o botão, deslocado 1px) até o próximo toque em outro lugar. Lá quem
+   responde ao toque é o `:active` do bloco CELULAR em `csso.css`. */
+@media (hover: hover) and (pointer: fine) {
+  .cartao.link:hover { transform: translateY(-3px); border-color: var(--acento-vivo); box-shadow: var(--sombra-hover); }
+}
 .cartao.destaque { border-left: 4px solid var(--acento-vivo); }
 
 /* ---------- botões ---------- */
 .botao, button { border-radius: var(--raio); padding: 10px 18px; transition: background .15s ease, transform .15s ease, box-shadow .15s ease; }
-.botao:hover, button:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0, 88, 163, .22); }
-.botao.secundario:hover, button.secundario:hover,
-.botao.perigo-discreto:hover, button.perigo-discreto:hover { box-shadow: none; }
+@media (hover: hover) and (pointer: fine) {
+  .botao:hover, button:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0, 88, 163, .22); }
+  .botao.secundario:hover, button.secundario:hover,
+  .botao.perigo-discreto:hover, button.perigo-discreto:hover { box-shadow: none; }
+  button.como-link:hover, button.sair:hover { transform: none; box-shadow: none; }
+}
 .botao.redondo, button.redondo { border-radius: 999px; }
-button.como-link:hover, button.sair:hover { transform: none; box-shadow: none; }
 .botao .ico, button .ico { font-size: 1.05em; }
 
 /* ---------- campos ---------- */
 input:not([type]), input[type=text], input[type=search], input[type=password],
-input[type=email], input[type=date], input[type=number], select, textarea {
+input[type=email], input[type=tel], input[type=date], input[type=number], select, textarea {
   border-radius: var(--raio); transition: border-color .15s ease, box-shadow .15s ease;
 }
 input:not([type]):focus, input[type=text]:focus, input[type=search]:focus,
-input[type=password]:focus, input[type=email]:focus, input[type=date]:focus,
+input[type=password]:focus, input[type=email]:focus, input[type=tel]:focus, input[type=date]:focus,
 input[type=number]:focus, select:focus, textarea:focus {
   border-color: var(--acento-vivo);
 }
@@ -228,7 +243,9 @@ th {
   font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
 }
 table.tabela-dados th { text-transform: none; letter-spacing: 0; font-weight: 500; }
-tr:hover td { background: var(--acento-suave); }
+@media (hover: hover) {
+  tr:hover td { background: var(--acento-suave); }
+}
 
 /* ---------- filtros e pílulas ---------- */
 .ficha-filtro { border-color: var(--divisor); font-weight: 600; transition: border-color .15s ease; }
@@ -295,7 +312,9 @@ tr:hover td { background: var(--acento-suave); }
   box-shadow: var(--sombra);
   transition: transform .2s ease, box-shadow .2s ease;
 }
-.acao-hub:hover { transform: translateY(-3px); box-shadow: var(--sombra-hover); text-decoration: none; }
+@media (hover: hover) and (pointer: fine) {
+  .acao-hub:hover { transform: translateY(-3px); box-shadow: var(--sombra-hover); text-decoration: none; }
+}
 .acao-hub > .ico { font-size: 38px; color: var(--cor); }
 .acao-hub > strong { font-size: 15px; font-weight: 700; }
 .acao-hub > span { font-size: 13px; color: var(--tinta-fraca); line-height: 1.4; }

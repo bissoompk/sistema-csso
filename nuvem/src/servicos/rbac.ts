@@ -5,7 +5,7 @@
  * escrita, e filtro de escopo no repositório. Negado por padrão. Nunca confie em
  * esconder botão.
  */
-import { eq, inArray, sql, getTableName, type SQL } from "drizzle-orm";
+import { eq, inArray, or, sql, getTableName, type SQL } from "drizzle-orm";
 import type { PgTable, PgColumn } from "drizzle-orm/pg-core";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -17,6 +17,13 @@ import {
 import { vigente_em } from "../dominio/organizacao.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { PermissaoNegada } from "../nucleo/erros.js";
+import {
+  MODULOS_NIVELADOS,
+  PERMISSOES_SO_DO_PERFIL,
+  niveis_de,
+  permissoes_com_niveis,
+  permissoes_do_modulo,
+} from "./niveis_modulo.js";
 
 // A mesma classe que `src/app.ts` trata no `onError`: uma só, reexportada daqui
 // para que `import { PermissaoNegada } from "servicos/rbac"` continue valendo
@@ -161,6 +168,12 @@ export const PERMISSOES: Record<string, string> = {
   // descobrir isso no meio do atendimento.
   "demanda.ver": "Ver as demandas do setor",
   "demanda.registrar": "Registrar demanda, encaminhamento e encerramento",
+  // --- Turmas por setor promotor (22/10/2026) ---
+  // A equipe de cada setor ve e gere so as turmas do proprio setor promotor
+  // (`equipe_setor_promotor`); quem tem esta ve todas — a coordenacao da Sisa
+  // e quem le o modulo inteiro por ofício (auditoria, PROGEP). Nao se libera
+  // por modulo (`niveis_modulo.PERMISSOES_SO_DO_PERFIL`).
+  "turma.todos_os_setores": "Ver e gerir as turmas de todos os setores promotores",
 };
 
 /**
@@ -214,6 +227,7 @@ export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<
       "certificado.anular": "Anular certificado emitido",
       "certificado.ver": "Ver certificado nominal e dados do participante",
       "participante.mesclar": "Juntar cadastros duplicados do mesmo participante",
+      "turma.todos_os_setores": "Ver e gerir as turmas de todos os setores promotores",
     },
   ],
   [
@@ -297,13 +311,15 @@ const PERMISSOES_COORDENADOR: string[] = [
   "epi.analisar",
   "demanda.ver",
   "demanda.registrar",
+  // a coordenacao ve as turmas de todos os setores promotores (22/10/2026)
+  "turma.todos_os_setores",
 ];
 
 /**
  * Ato tecnico da IN 15/2022, art. 10, §2º, I: so com perfil tecnico E
  * habilitacao vigente (`pode_subscrever`). Nao entra em perfil de gestao.
  */
-const SO_DO_TECNICO_HABILITADO: ReadonlySet<string> = new Set(["parecer.assinar", "laudo.criar"]);
+export const SO_DO_TECNICO_HABILITADO: ReadonlySet<string> = new Set(["parecer.assinar", "laudo.criar"]);
 
 export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   admin_ti: {
@@ -314,7 +330,11 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "usuario.resetar_senha",
       "auditoria.ver",
       "backup.executar",
-      "indicador.ver",
+      // `indicador.ver` saiu em 22/10/2026, por decisão do usuário: o número
+      // de turmas, entregas e recusas é conteúdo do trabalho do setor, e não
+      // da governança da conta. Como `semear_rbac` nunca tira permissão de
+      // perfil por omissão, a retirada do banco já gravado está declarada em
+      // `PERMISSOES_RETIRADAS`, logo abaixo.
     ],
   },
   superintendente: {
@@ -571,6 +591,8 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       // e a PROGEP que age sobre a lotacao de quem esta irregular
       "treinamento.ver",
       "certificado.ver",
+      // le o certificado de qualquer setor: e a PROGEP que age sobre a lotacao
+      "turma.todos_os_setores",
       // a ficha de EPI e um dos documentos que a PROGEP e a procuradoria
       // pedem primeiro (SS12.8 do desenho); ler a de outro fica em
       // `acesso_dado_sensivel`
@@ -624,6 +646,12 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     // nao por cautela — ela e a permissao de inscrever QUALQUER PESSOA e de
     // confirmar a inscricao dos outros. A tela de 403 mandava pedi-la, que e
     // o unico conselho que ninguem podia seguir.
+    //
+    // Desde 22/10/2026 (D16) estas mesmas permissoes vem tambem com o vinculo
+    // a servidor, em escopo proprio, para qualquer conta
+    // (`PERMISSOES_DO_TITULAR`): ninguem precisa mais somar este perfil a um
+    // de equipe para se inscrever ou pedir EPI. Ele continua existindo para a
+    // conta que so tem isso.
     permissoes: [
       "processo.ver",
       "parecer.ver",
@@ -646,6 +674,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "indicador.ver",
       "treinamento.ver",
       "certificado.ver",
+      "turma.todos_os_setores",
       "epi.ver",
       "epi.ficha",
       // leitura ampla, escrita nenhuma: e a fila que mostra o trabalho que
@@ -655,6 +684,47 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     ],
   },
 };
+
+/**
+ * A permissão que SAIU de um perfil e tem de sair também do banco já gravado.
+ *
+ * `semear_rbac` continua sem tirar nada por omissão: uma linha apagada da
+ * matriz por engano não pode encolher em silêncio o acesso de quem trabalha, e
+ * uma linha a mais no banco (posta à mão) não é dele desfazer. A retirada é
+ * uma decisão, e por isso é declarada aqui, com a data e o motivo, e cada uma
+ * vira um `PERMISSAO_RETIRADA_DO_PERFIL` na trilha. Fica na lista para sempre:
+ * o banco restaurado de um backup antigo volta a ter a permissão, e o próximo
+ * semeio a tira de novo. O perfil e a permissão retirada não podem estar na
+ * matriz ao mesmo tempo (`_conferir_retiradas`).
+ */
+export interface PermissaoRetirada {
+  perfil: string;
+  permissao: string;
+  desde: string;
+  motivo: string;
+}
+
+export const PERMISSOES_RETIRADAS: readonly PermissaoRetirada[] = [
+  {
+    perfil: "admin_ti",
+    permissao: "indicador.ver",
+    desde: "22/10/2026",
+    motivo:
+      "o administrador de TI governa a conta e não lê o trabalho do setor; os indicadores " +
+      "de processos, certificados e EPI deixam de ser dele",
+  },
+];
+
+export function _conferir_retiradas(): void {
+  const problemas = PERMISSOES_RETIRADAS.filter(
+    (r) => !MATRIZ_PERFIS[r.perfil] || MATRIZ_PERFIS[r.perfil]!.permissoes.includes(r.permissao) || !PERMISSOES[r.permissao],
+  ).map((r) => `${r.perfil}/${r.permissao}`);
+  if (problemas.length) {
+    throw new Error("RBAC mal declarado — retirada de perfil inexistente ou que a matriz ainda concede: " + problemas.join(", "));
+  }
+}
+
+_conferir_retiradas();
 
 // `permissao.modulo` existe desde o esquema inicial com default 'ADICIONAL', mas
 // ninguém a preenchia. NADA lê esta coluna hoje — /perfis renderiza a partir de
@@ -674,6 +744,7 @@ export const MODULO_POR_PERMISSAO: Record<string, string> = {
   "certificado.anular": "TREINAMENTOS",
   "participante.mesclar": "TREINAMENTOS",
   "certificado.ver": "TREINAMENTOS",
+  "turma.todos_os_setores": "TREINAMENTOS",
   "epi.ver": "EPI",
   "epi.catalogo": "EPI",
   "epi.entregar": "EPI",
@@ -749,6 +820,58 @@ export function _conferir_escopos(): void {
 
 _conferir_escopos();
 
+/**
+ * O mapa da liberação por módulo (`niveis_modulo.ts`) fecha com `PERMISSOES`:
+ * toda permissão está num módulo OU entre as só do perfil, nunca nos dois, e
+ * nenhuma está em dois módulos. Permissão nova sem decisão derruba a importação.
+ */
+export function _conferir_niveis(): void {
+  const vistas = new Map<string, string>();
+  const problemas: string[] = [];
+  for (const m of MODULOS_NIVELADOS) {
+    for (const p of permissoes_do_modulo(m)) {
+      if (vistas.has(p)) problemas.push(`${p} em ${vistas.get(p)} e em ${m.codigo}`);
+      vistas.set(p, m.codigo);
+      if (!PERMISSOES[p]) problemas.push(`${p} (módulo ${m.codigo}) não existe`);
+      if (Object.hasOwn(PERMISSOES_SO_DO_PERFIL, p)) problemas.push(`${p} está em ${m.codigo} e entre as só do perfil`);
+    }
+  }
+  for (const p of Object.keys(PERMISSOES_SO_DO_PERFIL)) if (!PERMISSOES[p]) problemas.push(`${p} (só do perfil) não existe`);
+  for (const p of Object.keys(PERMISSOES)) {
+    if (!vistas.has(p) && !Object.hasOwn(PERMISSOES_SO_DO_PERFIL, p)) problemas.push(`${p} sem módulo nem decisão`);
+  }
+  if (problemas.length) throw new Error("Liberação por módulo mal declarada — " + problemas.join("; "));
+}
+
+_conferir_niveis();
+
+/**
+ * O perfil recebe nível por módulo? Só os de equipe (escopo total ou de
+ * unidade). O de escopo próprio é o do titular — a operação de um módulo em
+ * escopo próprio daria, por exemplo, entregar EPI a si mesmo — e o agregado
+ * não lê linha nenhuma (o `admin_ti` governa a conta, não o trabalho do setor).
+ */
+export function aceita_nivel_modulo(perfil: string): boolean {
+  const nivel = Object.hasOwn(ESCOPO_POR_PERFIL, perfil) ? ESCOPO_POR_PERFIL[perfil] : undefined;
+  return nivel === ESCOPO_TOTAL || nivel === ESCOPO_UNIDADE;
+}
+
+/** A unidade CSSO, pelo nome oficial (a sigla se repete ao longo do tempo). */
+export const NOME_OFICIAL_CSSO = "COORDENADORIA DE SEGURANCA E SAUDE OCUPACIONAL";
+
+/**
+ * Os perfis da equipe da CSSO: a conta que tem um deles entrou no setor CSSO
+ * na migração 0014 (a mesma lista está lá, em SQL) e nas contas de teste.
+ */
+export const PERFIS_DA_EQUIPE_CSSO: readonly string[] = [
+  "coordenador_csso",
+  "engenheiro_seguranca",
+  "medico_trabalho",
+  "tecnico_seguranca",
+  "secretaria_csso",
+  "almoxarife_sesmt",
+];
+
 export const MENSAGEM_RN01 =
   "Bloqueado: a IN SGP/SEDGG/ME nº 15/2022, art. 10, §2º, I admite subscrição do " +
   "laudo apenas por servidor público federal, estadual, distrital ou municipal, ou " +
@@ -773,6 +896,165 @@ export class EscopoNaoDeclarado extends PermissaoNegada {
   }
 }
 
+// ---------------------------------------------------------------------
+// O alcance de cada permissão (D1/D9 da verificação de governança, 22/10/2026)
+// ---------------------------------------------------------------------
+/**
+ * Até onde UMA permissão chega, somadas as concessões que a trouxeram.
+ *
+ * Até 22/10/2026 o escopo e os campi eram da CONTA: o mais largo entre os
+ * perfis (S>E>A>P) e a soma dos campi de todas as atribuições. Somar um perfil
+ * alargava os outros. O `admin_ti` que ganhava `servidor_consulta` para se
+ * inscrever em turma virava escopo A — "sem filtro" — e lia processo e parecer
+ * de todos os campi; o almoxarife virava E com leitura nominal e lia parecer
+ * com nome, contra a base normativa do próprio perfil; o coordenador sem campus
+ * que recebia técnico no campus JK passava a ver só JK. Agora cada permissão
+ * carrega o escopo e o campus do(s) perfil(is) que a concederam, e só deles:
+ * dois perfis que dão a mesma permissão somam os alcances DAQUELA permissão.
+ *
+ * - `total` (S): a instituição inteira;
+ * - `unidade` (E sem campus na concessão): todos os campi daquele perfil;
+ * - `campi` (E com campus): só estes;
+ * - `proprio` (P): as linhas do servidor ligado à conta;
+ * - `agregado` (A): número agregado, NUNCA linha — `aplicar_escopo` o trata
+ *   como "nada", e não como "sem filtro".
+ */
+export interface Alcance {
+  readonly total: boolean;
+  readonly unidade: boolean;
+  readonly campi: readonly number[];
+  readonly proprio: boolean;
+  readonly agregado: boolean;
+}
+
+const SEM_ALCANCE: Alcance = Object.freeze({
+  total: false,
+  unidade: false,
+  campi: Object.freeze([]) as readonly number[],
+  proprio: false,
+  agregado: false,
+});
+
+/** Alcança alguma linha ou número? `false` = a permissão não foi concedida. */
+export function alcanca_algo(a: Alcance): boolean {
+  return a.total || a.unidade || a.campi.length > 0 || a.proprio || a.agregado;
+}
+
+/** Uma concessão vigente: o perfil, o campus dela (`null` = todos) e o que ela traz. */
+export interface Concessao {
+  readonly perfil: string;
+  readonly campus_id: number | null;
+  readonly permissoes: Iterable<string>;
+}
+
+/**
+ * As funções do titular (D16): o que toda conta ligada a um servidor
+ * (`usuario.servidor_id`) faz sobre SI MESMA, tenha o perfil que tiver —
+ * inscrever-se em turma e desistir, ver os próprios treinamentos e
+ * certificados, pedir e acompanhar o próprio EPI, ver o próprio adicional e os
+ * próprios processos e pareceres.
+ *
+ * Antes só o `servidor_consulta` as tinha, e o almoxarife ou o `admin_ti` que
+ * quisesse se inscrever num curso precisava somar aquele perfil — o que, com o
+ * escopo da conta, alargava tudo o mais (D1). Agora elas vêm com o vínculo,
+ * SEMPRE em escopo próprio, numa concessão à parte (`CONCESSAO_DO_TITULAR`):
+ * como o alcance é por permissão, a concessão do titular não alarga nada do
+ * perfil de equipe — e o perfil de equipe que já dá a mesma permissão continua
+ * dando o alcance dele.
+ *
+ * A lista é a do `servidor_consulta`, de propósito: é o mesmo titular do art.
+ * 18, II da LGPD, e as rotas dele já estão escritas para o escopo próprio.
+ */
+export const PERMISSOES_DO_TITULAR: ReadonlySet<string> = new Set([
+  "processo.ver",
+  "parecer.ver",
+  "treinamento.ver",
+  "turma.inscrever_se",
+  "epi.ver",
+  "epi.requisitar",
+]);
+
+/**
+ * O "perfil" da concessão do titular. Não é perfil do banco (não se concede
+ * nem se encerra: acompanha o vínculo com o servidor) e por isso não está em
+ * MATRIZ_PERFIS; o `@` garante que nenhum código de perfil gravado colide.
+ */
+export const CONCESSAO_DO_TITULAR = "@titular";
+
+/**
+ * A permissão que cada tabela lê por padrão, quando quem chama `aplicar_escopo`
+ * não diz qual. É a permissão que guarda a tela daquela tabela; chamador novo
+ * deve passar a permissão explicitamente.
+ */
+export const PERMISSAO_DE_LEITURA_POR_TABELA: Readonly<Record<string, readonly string[]>> = {
+  processo: ["processo.ver"],
+  adicional_vigencia: ["processo.ver"],
+  servidor: ["processo.ver"],
+  parecer_tecnico: ["parecer.ver"],
+  laudo_tecnico: ["laudo.ver"],
+  // o próprio pela `treinamento.ver`, o de outro pela `certificado.ver`
+  // (`emissao_certificado.exigir_leitura_do_certificado` decide o rigor)
+  certificado: ["certificado.ver", "treinamento.ver"],
+  turma: ["treinamento.ver"],
+  epi_requisicao: ["epi.ver"],
+  epi_ficha_registro: ["epi.ficha", "epi.ver"],
+};
+
+/** As permissões que mostram a pessoa pelo nome (RN-19), por família de tela. */
+function _permissoes_nominais(permissao_de_leitura: string): string[] {
+  // `epi.ficha` é nominal na própria definição, mas só nas telas de EPI: fora
+  // delas o almoxarife lia o nome de quem demanda adicional (D15)
+  return permissao_de_leitura.startsWith("epi.") ? ["exposicao.ver", "epi.ficha"] : ["exposicao.ver"];
+}
+
+/**
+ * O alcance que UMA concessão daria: o escopo do perfil e o campus escolhido.
+ * É o que se compara com o de quem concede (D2) ou redefine (D4).
+ */
+export function alcance_da_concessao(perfil: string, campus_id: number | null): Alcance {
+  const nivel = perfil === CONCESSAO_DO_TITULAR ? ESCOPO_PROPRIO : ESCOPO_POR_PERFIL[perfil];
+  if (nivel === undefined) throw new EscopoNaoDeclarado(perfil);
+  return Object.freeze({
+    total: nivel === ESCOPO_TOTAL,
+    unidade: nivel === ESCOPO_UNIDADE && campus_id === null,
+    campi: Object.freeze(nivel === ESCOPO_UNIDADE && campus_id !== null ? [campus_id] : []),
+    proprio: nivel === ESCOPO_PROPRIO,
+    agregado: nivel === ESCOPO_AGREGADO,
+  });
+}
+
+/**
+ * `a` alcança pelo menos o que `b` alcança — inclusive o agregado e o
+ * próprio? O total cobre tudo; a unidade sem campus cobre campus e agregado
+ * (as contagens da instituição); campus cobre só os mesmos campi; o agregado
+ * cobre só o agregado; o próprio é coberto por qualquer alcance (é o dado de
+ * uma pessoa, e quem lê alguma linha da permissão não ganha nada em lê-lo).
+ */
+export function cobre_inteiro(a: Alcance, b: Alcance): boolean {
+  if (!alcanca_algo(b)) return true;
+  if (a.total) return true;
+  if (b.total) return false;
+  if (b.unidade && !a.unidade) return false;
+  if (!b.campi.every((c) => a.unidade || a.campi.includes(c))) return false;
+  if (b.agregado && !(a.unidade || a.agregado)) return false;
+  if (b.proprio && !alcanca_algo(a)) return false;
+  return true;
+}
+
+/**
+ * `a` alcança tudo o que `b` alcança? O próprio do titular não pede nada a
+ * mais. O agregado de `b` é a contagem da instituição inteira: só o total ou a
+ * unidade sem campus o cobrem — senão o coordenador do campus A que também
+ * tinha o `indicador.ver` agregado lia sem supressão a conta de todos os campi.
+ */
+function _cobre(a: Alcance, b: Alcance): boolean {
+  if (a.total) return true;
+  if (b.total) return false;
+  if (a.unidade) return true;
+  if (b.unidade || b.agregado) return false;
+  return b.campi.every((c) => a.campi.includes(c));
+}
+
 export interface DadosUsuarioAtual {
   id: number;
   login: string;
@@ -783,6 +1065,21 @@ export interface DadosUsuarioAtual {
   servidor_id?: number | null;
   precisa_trocar_senha?: boolean;
   habilitacoes?: readonly number[];
+  /**
+   * As concessões vigentes, cada uma com o campus e as permissões dela. É o
+   * que `carregar_usuario_atual` passa, e com ela o alcance é calculado por
+   * permissão. Sem ela (o `UsuarioAtual` montado à mão nos testes), vale o
+   * modo de compatibilidade: todo perfil listado alcança toda permissão da
+   * conta, com os `campi` da conta.
+   */
+  concessoes?: readonly Concessao[];
+  /**
+   * Os setores promotores (`unidade_uorg.id`) a que a conta está vinculada
+   * (`equipe_setor_promotor`, 22/10/2026): as turmas que a equipe vê e gere.
+   */
+  setores_promotores?: readonly number[];
+  /** Vinculada à CSSO — a dona das turmas sem setor promotor (as de antes de 0011). */
+  setor_csso?: boolean;
 }
 
 /**
@@ -798,10 +1095,19 @@ export class UsuarioAtual {
   readonly nome: string;
   readonly permissoes: ReadonlySet<string>;
   readonly perfis: readonly string[];
+  /**
+   * A soma dos campi das concessões. Só para MOSTRAR: filtrar por ela é o
+   * defeito D9 (o campus de uma concessão restringia ou estendia todos os
+   * perfis da conta). Filtro é `alcance(permissao)` / `aplicar_escopo`.
+   */
   readonly campi: readonly number[];
   readonly servidor_id: number | null;
   readonly precisa_trocar_senha: boolean;
   readonly habilitacoes: readonly number[];
+  readonly concessoes: readonly Concessao[] | null;
+  readonly setores_promotores: readonly number[];
+  readonly setor_csso: boolean;
+  readonly #cache = new Map<string, Alcance>();
 
   constructor(d: DadosUsuarioAtual) {
     this.id = d.id;
@@ -813,6 +1119,15 @@ export class UsuarioAtual {
     this.servidor_id = d.servidor_id ?? null;
     this.precisa_trocar_senha = d.precisa_trocar_senha ?? false;
     this.habilitacoes = Object.freeze([...(d.habilitacoes ?? [])]);
+    this.concessoes = d.concessoes
+      ? Object.freeze(
+          d.concessoes.map((c) =>
+            Object.freeze({ perfil: c.perfil, campus_id: c.campus_id, permissoes: Object.freeze(new Set(c.permissoes)) }),
+          ),
+        )
+      : null;
+    this.setores_promotores = Object.freeze([...(d.setores_promotores ?? [])]);
+    this.setor_csso = d.setor_csso ?? false;
   }
 
   pode(codigo: string): boolean {
@@ -823,6 +1138,13 @@ export class UsuarioAtual {
     if (!this.pode(codigo)) throw new PermissaoNegada(codigo);
   }
 
+  /**
+   * O nível da CONTA: o mais largo entre os perfis (a concessão do titular não
+   * entra). Serve para o que é da conta e não de uma leitura — o menu ("Meu
+   * espaço" ou a lateral da equipe), a fila de pendências. Para filtrar ou
+   * decidir uma leitura use `escopo_de(permissao)` / `aplicar_escopo`: é aqui
+   * que somar perfis alargava tudo (D1).
+   */
   get escopo(): string {
     const niveis: string[] = [];
     for (const perfil of this.perfis) {
@@ -838,7 +1160,113 @@ export class UsuarioAtual {
   }
 
   /**
-   * RN-19: quem pode ler a pessoa pelo nome, e não pelo código opaco.
+   * Até onde a permissão (ou qualquer uma da lista) chega para esta conta.
+   * Sem a permissão, `SEM_ALCANCE`. Concessão de perfil sem escopo declarado
+   * nega com a tela que nomeia o perfil (`EscopoNaoDeclarado`).
+   */
+  alcance(permissao: string | readonly string[]): Alcance {
+    return this.#alcance(permissao, false);
+  }
+
+  /**
+   * O alcance que vem dos PERFIS da conta, sem a concessão do titular. É o que
+   * pergunta quem decide uma tela ou um ato DE EQUIPE: com as funções do
+   * titular (D16), toda conta ligada a servidor tem `processo.ver`,
+   * `treinamento.ver` e `epi.ver` em escopo próprio, e "tem a permissão" deixou
+   * de querer dizer "trabalha no módulo". A regra "ninguém concede mais do que
+   * tem" (D2) e a fila do setor perguntam por aqui.
+   */
+  alcance_da_equipe(permissao: string | readonly string[]): Alcance {
+    return this.#alcance(permissao, true);
+  }
+
+  /**
+   * Tem a permissão por um perfil de equipe — alcance além do próprio dado:
+   * total, unidade ou campus (o agregado conta, porque é de equipe também).
+   * O `servidor_consulta` e a concessão do titular não chegam aqui.
+   */
+  pode_na_equipe(codigo: string | readonly string[]): boolean {
+    const a = this.alcance_da_equipe(codigo);
+    return a.total || a.unidade || a.campi.length > 0 || a.agregado;
+  }
+
+  /**
+   * A porta das telas DE EQUIPE (o catálogo, o estoque, o kanban, a matriz de
+   * perfis): a permissão por um perfil de equipe, e não só pela concessão do
+   * titular ou pelo `servidor_consulta` (D16). Sem isto, toda conta ligada a
+   * servidor — o almoxarife, o `admin_ti` — abria as telas internas guardadas
+   * por `processo.ver`, `treinamento.ver` ou `epi.ver`.
+   */
+  exigir_na_equipe(codigo: string): void {
+    this.exigir(codigo);
+    if (!this.pode_na_equipe(codigo)) {
+      throw new PermissaoNegada(
+        codigo,
+        "Esta tela é do trabalho do setor. A sua conta tem esta permissão só sobre o que é seu " +
+          "(as funções do titular), e por isso as suas telas ficam em Meu espaço.",
+      );
+    }
+  }
+
+  #alcance(permissao: string | readonly string[], sem_titular: boolean): Alcance {
+    const lista = typeof permissao === "string" ? [permissao] : [...permissao];
+    const chave = `${sem_titular ? "equipe:" : ""}${lista.join("|")}`;
+    const guardado = this.#cache.get(chave);
+    if (guardado) return guardado;
+    const a = { total: false, unidade: false, campi: new Set<number>(), proprio: false, agregado: false };
+    const somar = (nivel: string, campus_id: number | null) => {
+      if (nivel === ESCOPO_TOTAL) a.total = true;
+      else if (nivel === ESCOPO_AGREGADO) a.agregado = true;
+      else if (nivel === ESCOPO_PROPRIO) a.proprio = true;
+      else if (campus_id === null) a.unidade = true;
+      else a.campi.add(campus_id);
+    };
+    if (this.concessoes === null) {
+      // compatibilidade (UsuarioAtual montado à mão): o alcance é o da conta,
+      // como era — com a diferença de que A deixou de ser "sem filtro"
+      if (!this.perfis.length) a.proprio = true;
+      for (const perfil of this.perfis) {
+        const nivel = ESCOPO_POR_PERFIL[perfil];
+        if (nivel === undefined) throw new EscopoNaoDeclarado(perfil);
+        if (nivel === ESCOPO_UNIDADE && this.campi.length) for (const c of this.campi) somar(nivel, c);
+        else somar(nivel, null);
+      }
+    } else {
+      for (const c of this.concessoes) {
+        if (sem_titular && c.perfil === CONCESSAO_DO_TITULAR) continue;
+        if (!lista.some((p) => (c.permissoes as ReadonlySet<string>).has(p))) continue;
+        const nivel = c.perfil === CONCESSAO_DO_TITULAR ? ESCOPO_PROPRIO : ESCOPO_POR_PERFIL[c.perfil];
+        if (nivel === undefined) throw new EscopoNaoDeclarado(c.perfil);
+        somar(nivel, c.campus_id);
+      }
+    }
+    const pronto: Alcance = alcanca_algo({ ...a, campi: [...a.campi] })
+      ? Object.freeze({ ...a, campi: Object.freeze([...a.campi].sort((x, y) => x - y)) })
+      : SEM_ALCANCE;
+    this.#cache.set(chave, pronto);
+    return pronto;
+  }
+
+  /**
+   * O nível de UMA permissão, o mais largo entre as concessões que a deram
+   * (S>E>A>P), ou `null` sem ela. É a pergunta "esta tela é a do titular?":
+   * `escopo_de("processo.ver") === ESCOPO_PROPRIO` quer dizer que a conta só
+   * alcança os PRÓPRIOS processos, ainda que tenha um perfil de equipe que
+   * não lê processo (o almoxarife, o `admin_ti`).
+   */
+  escopo_de(permissao: string | readonly string[]): string | null {
+    const a = this.alcance(permissao);
+    if (a.total) return ESCOPO_TOTAL;
+    if (a.unidade || a.campi.length) return ESCOPO_UNIDADE;
+    if (a.agregado) return ESCOPO_AGREGADO;
+    if (a.proprio) return ESCOPO_PROPRIO;
+    return null;
+  }
+
+  /**
+   * RN-19, forma antiga: há ALGUMA concessão nominal na conta. Não diz sobre
+   * qual leitura — prefira `ve_dado_nominal_em(permissao)` (a leitura) ou
+   * `ve_nome_na_linha(linha)` (a linha).
    *
    * `epi.ficha` entra na conta porque a permissão é, na própria definição,
    * "ver a ficha de EPI NOMINAL": mascarar o nome em seguida tornaria inútil a
@@ -846,6 +1274,57 @@ export class UsuarioAtual {
    */
   get ve_dado_nominal(): boolean {
     return this.pode("exposicao.ver") || this.pode("epi.ficha");
+  }
+
+  /**
+   * RN-19 por leitura: quem lê X pela `permissao_de_leitura` lê o NOME em
+   * todas as linhas que ela alcança? Só quando a permissão nominal da família
+   * (`exposicao.ver`; nas telas de EPI também `epi.ficha`) alcança pelo menos
+   * o mesmo que a leitura. A secretaria do campus A que é coordenadora no
+   * campus B lê parecer de A e de B, e o nome só nos de B: aqui sai `false`, e
+   * a linha a linha fica com `ve_nome_na_linha`.
+   */
+  ve_dado_nominal_em(permissao_de_leitura: string): boolean {
+    const nominais = _permissoes_nominais(permissao_de_leitura);
+    if (!nominais.some((p) => this.pode(p))) return false;
+    return _cobre(this.alcance(nominais), this.alcance(permissao_de_leitura));
+  }
+
+  /**
+   * RN-19 numa tela SEM recorte de linha (a contagem da instituição inteira,
+   * como /relatorios e /epis/relatorios): só quem lê o nome em todo campus —
+   * a permissão nominal total ou de unidade sem campus. Comparar com o alcance
+   * de `indicador.ver` (`ve_dado_nominal_em`) não basta quando a consulta não
+   * se recorta por ele: o coordenador com `exposicao.ver` e `indicador.ver` só
+   * no campus A saía "nominal" e lia sem supressão as contagens pequenas dos
+   * outros campi (D9/D15). `nominais` é a família da tela.
+   */
+  ve_dado_nominal_sem_recorte(nominais: readonly string[] = ["exposicao.ver"]): boolean {
+    if (!nominais.some((p) => this.pode(p))) return false;
+    const alcance = this.alcance(nominais);
+    return alcance.total || alcance.unidade;
+  }
+
+  /**
+   * RN-19 na linha: o nome desta linha aparece? O próprio titular sempre (art.
+   * 18, II da LGPD). Os outros, se a permissão nominal alcança a linha — pelo
+   * campus dela quando a linha o tem; sem campus conhecido, basta a permissão
+   * nominal (não há como recortar, como em `aplicar_escopo`). `nominais` é a
+   * família da tela; o padrão é a do `ve_dado_nominal`, para quem não sabe.
+   */
+  ve_nome_na_linha(
+    linha: { servidor_id?: number | null; campus_id?: number | null },
+    nominais: readonly string[] = ["exposicao.ver", "epi.ficha"],
+  ): boolean {
+    if (this.servidor_id !== null && linha.servidor_id === this.servidor_id) return true;
+    if (!nominais.some((p) => this.pode(p))) return false;
+    // montado à mão (testes): a permissão basta, como sempre bastou
+    if (this.concessoes === null) return true;
+    const alcance = this.alcance(nominais);
+    if (alcance.total || alcance.unidade) return true;
+    if (!alcance.campi.length) return false;
+    if (linha.campus_id === null || linha.campus_id === undefined) return true;
+    return alcance.campi.includes(linha.campus_id);
   }
 }
 
@@ -869,40 +1348,62 @@ export function eh_conta_de_governo(permissoes: Iterable<string>): boolean {
 }
 
 /**
- * Perfis vigentes da conta, suas permissões e os campi das atribuições —
- * sem olhar se a conta está ativa. Separado de `carregar_usuario_atual` para
- * quem precisa saber o que uma conta ALCANÇARIA (a redefinição de senha
- * compara privilégios inclusive de conta inativa, que pode ser reativada).
+ * Perfis vigentes da conta, suas permissões, os campi das atribuições e as
+ * concessões (perfil + campus + permissões de cada uma) — sem olhar se a conta
+ * está ativa. Separado de `carregar_usuario_atual` para quem precisa saber o
+ * que uma conta ALCANÇARIA (a redefinição de senha compara privilégios
+ * inclusive de conta inativa, que pode ser reativada).
+ *
+ * `incluir_futuras` (D18): conta também a concessão que ainda vai começar. É o
+ * que as travas de governo perguntam — a conta que recebe superintendente com
+ * início na semana que vem já é conta de administração hoje: quem redefinisse
+ * a senha dela hoje teria, no dia do início, uma conta com `perfil.conceder`.
  */
 export async function perfis_vigentes(
   tx: Executor,
   usuario_id: number | SQL,
   hoje: string | null = null,
-): Promise<{ permissoes: Set<string>; perfis: string[]; campi: Set<number> }> {
+  opcoes: { incluir_futuras?: boolean } = {},
+): Promise<{ permissoes: Set<string>; perfis: string[]; campi: Set<number>; concessoes: Concessao[] }> {
   const dia = hoje ?? hoje_iso();
+  // O nível por módulo do perfil e a exceção da pessoa vêm na MESMA consulta
+  // (liberação por módulo, 22/10/2026): esta leitura roda em todo pedido.
   const atribuicoes = (
     await tx.query.atribuicao.findMany({
       where: eq(atribuicao.usuario_id, usuario_id),
-      with: { perfil: { with: { perfil_permissoes: { with: { permissao: true } } } } },
+      with: {
+        perfil: { with: { perfil_permissoes: { with: { permissao: true } }, niveis_modulo: true } },
+        usuario: { columns: { id: true }, with: { niveis_modulo: true } },
+      },
     })
-  ).filter((a) => vigente_em(a, dia));
+  ).filter((a) => vigente_em(a, dia) || (opcoes.incluir_futuras === true && a.vigencia_inicio > dia));
 
   const permissoes = new Set<string>();
   const perfis: string[] = [];
   const campi = new Set<number>();
+  const concessoes: Concessao[] = [];
   for (const a of atribuicoes) {
     const perfil = a.perfil;
     if (!perfil || !perfil.ativo) continue;
-    perfis.push(perfil.codigo);
-    for (const pp of perfil.perfil_permissoes) permissoes.add(pp.permissao.codigo);
+    if (!perfis.includes(perfil.codigo)) perfis.push(perfil.codigo);
+    const cruas = perfil.perfil_permissoes.map((pp) => pp.permissao.codigo);
+    // perfil → nível do módulo → exceção da pessoa (`niveis_modulo.ts`); só
+    // nos perfis de equipe — o do titular e o agregado ficam como estão
+    const dela = aceita_nivel_modulo(perfil.codigo)
+      ? permissoes_com_niveis(cruas, niveis_de(perfil.niveis_modulo), niveis_de(a.usuario?.niveis_modulo ?? []))
+      : cruas;
+    for (const p of dela) permissoes.add(p);
     if (a.campus_id) campi.add(a.campus_id);
+    concessoes.push({ perfil: perfil.codigo, campus_id: a.campus_id ?? null, permissoes: dela });
   }
-  return { permissoes, perfis, campi };
+  return { permissoes, perfis, campi, concessoes };
 }
 
 /**
  * Carrega a identidade da conta: perfis VIGENTES hoje (e ativos), suas
- * permissões, campi das atribuições e habilitações técnicas vigentes.
+ * permissões com o alcance de cada uma (as concessões), campi das atribuições
+ * e habilitações técnicas vigentes. Conta ligada a servidor ganha também a
+ * concessão do titular (`PERMISSOES_DO_TITULAR`, sempre em escopo próprio).
  *
  * `hoje` é 'AAAA-MM-DD' — o dia de negócio em America/Sao_Paulo, e não o dia
  * UTC do processo da função (ver `dominio/datas.ts`).
@@ -917,8 +1418,12 @@ export async function carregar_usuario_atual(
   hoje: string | null = null,
 ): Promise<UsuarioAtual> {
   const dia = hoje ?? hoje_iso();
-  const [usuario, { permissoes, perfis, campi }, vinculos] = await Promise.all([
-    tx.query.usuario.findFirst({ where: eq(tabela_usuario.id, usuario_id) }),
+  const [usuario, { permissoes, perfis, campi, concessoes }, vinculos] = await Promise.all([
+    tx.query.usuario.findFirst({
+      where: eq(tabela_usuario.id, usuario_id),
+      // os setores promotores vêm junto com a conta: nenhuma ida a mais
+      with: { setores_promotores: { with: { unidade: { columns: { id: true, nome_oficial: true } } } } },
+    }),
     perfis_vigentes(tx, usuario_id, dia),
     tx.query.profissional_habilitado.findMany({ where: eq(profissional_habilitado.usuario_id, usuario_id) }),
   ]);
@@ -926,6 +1431,10 @@ export async function carregar_usuario_atual(
     throw new PermissaoNegada("sessao", "usuario inativo ou inexistente");
   }
   const habilitacoes = vinculos.filter((h) => vigente_em(h, dia)).map((h) => h.id);
+  if (usuario.servidor_id !== null) {
+    concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: PERMISSOES_DO_TITULAR });
+    for (const p of PERMISSOES_DO_TITULAR) permissoes.add(p);
+  }
 
   return new UsuarioAtual({
     id: usuario.id,
@@ -937,6 +1446,9 @@ export async function carregar_usuario_atual(
     servidor_id: usuario.servidor_id,
     precisa_trocar_senha: usuario.precisa_trocar_senha,
     habilitacoes,
+    concessoes,
+    setores_promotores: usuario.setores_promotores.map((s) => s.unidade_uorg_id).sort((x, y) => x - y),
+    setor_csso: usuario.setores_promotores.some((s) => s.unidade?.nome_oficial === NOME_OFICIAL_CSSO),
   });
 }
 
@@ -978,30 +1490,58 @@ export async function exigir_subscricao(
  * estenda assim depois de montada, então aqui ela devolve a CONDIÇÃO, e quem
  * consulta a combina com os próprios filtros:
  *
- *     const escopo = aplicar_escopo(usuario, processo);
+ *     const escopo = aplicar_escopo(usuario, processo, "processo.ver");
  *     await tx.select().from(processo).where(and(escopo, eq(processo.x, y)));
  *     // ou: tx.query.processo.findMany({ where: and(escopo, ...) })
  *
  * - `undefined` = sem restrição (o `and()` do Drizzle ignora `undefined`);
  * - `sql\`false\`` = nada (o `where(False)` do Python);
- * - senão, `coluna = servidor_id` (próprio) ou `campus_id IN (...)` (unidade).
+ * - senão, `coluna = servidor_id` (próprio), `campus_id IN (...)` (unidade com
+ *   campus), ou o `OR` dos dois quando a permissão veio de concessões dos dois.
+ *
+ * `permissao` é a permissão da leitura (ou da escrita) que a tela faz — o
+ * alcance é o DELA, e não o da conta (D1/D9). Lista = qualquer uma delas.
+ * Omitida, vale `PERMISSAO_DE_LEITURA_POR_TABELA`; tabela fora do mapa sem
+ * permissão nega. Agregado (A) nunca é linha: dá `false`.
  *
  * `tabela` é a tabela do Drizzle cujas colunas o filtro usa (padrão: `processo`,
  * como no Python).
  */
-export function aplicar_escopo(usuario: UsuarioAtual, tabela: PgTable = processo): SQL | undefined {
-  const escopo = usuario.escopo;
+export function aplicar_escopo(
+  usuario: UsuarioAtual,
+  tabela: PgTable = processo,
+  permissao?: string | readonly string[],
+): SQL | undefined {
   const colunas = tabela as unknown as Record<string, PgColumn | undefined>;
   const nome = getTableName(tabela);
-  if (escopo === ESCOPO_TOTAL || escopo === ESCOPO_AGREGADO) return undefined;
-  if (escopo === ESCOPO_PROPRIO) {
+  let lida = permissao;
+  if (lida === undefined) {
+    lida = PERMISSAO_DE_LEITURA_POR_TABELA[nome];
+    if (lida === undefined && usuario.concessoes !== null) {
+      console.warn(`aplicar_escopo sobre ${nome} sem permissao declarada: lista vazia para a conta ${usuario.id}`);
+      return sql`false`;
+    }
+  }
+  const alcance = usuario.alcance(lida ?? []);
+  if (alcance.total || alcance.unidade) return undefined;
+  const partes: SQL[] = [];
+  if (alcance.campi.length) {
+    const coluna_campus = colunas["campus_id"];
+    // sem a coluna não há como recortar por campus: a unidade vê a tabela
+    // inteira, como no Python (`processo` não tem `campus_id`)
+    if (!coluna_campus) return undefined;
+    partes.push(inArray(coluna_campus, [...alcance.campi]));
+  }
+  if (alcance.proprio) {
     let coluna = colunas["servidor_id"];
     if (!coluna && nome === "servidor") {
       // `servidor` é a única tabela em que "o servidor desta linha" não se
       // chama `servidor_id`: é a chave primária.
       coluna = colunas["id"];
     }
-    if (!coluna) {
+    if (coluna) {
+      partes.push(eq(coluna, usuario.servidor_id ?? -1));
+    } else if (!partes.length) {
       // negar é o certo, calar não: sem `servidor_id` não há como dizer o que
       // é "próprio". `usuario.id`, e não o login (nome de pessoa não entra em
       // log — ROPA §6).
@@ -1009,13 +1549,9 @@ export function aplicar_escopo(usuario: UsuarioAtual, tabela: PgTable = processo
         `escopo proprio sobre ${nome}, que nao tem servidor_id: lista vazia para a conta ${usuario.id} ` +
           `(perfis: ${usuario.perfis.join(", ") || "nenhum"})`,
       );
-      return sql`false`;
     }
-    return eq(coluna, usuario.servidor_id ?? -1);
   }
-  // ESCOPO_UNIDADE: sem campus atribuído = coordenadoria inteira
-  if (!usuario.campi.length) return undefined;
-  const coluna_campus = colunas["campus_id"];
-  if (coluna_campus) return inArray(coluna_campus, [...usuario.campi]);
-  return undefined;
+  // nada concedido, ou só o agregado: nenhuma linha
+  if (!partes.length) return sql`false`;
+  return partes.length === 1 ? partes[0] : or(...partes);
 }

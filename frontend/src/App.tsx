@@ -44,7 +44,7 @@ export function App() {
   return (
     <div className="app-celular app-compilado">
       <header className="cabecalho-marca">
-        <span className="nome">CSSO · app</span>
+        <span className="nome">SISA · app</span>
         {eu && <span className="discreto quem-esta">{eu.nome.split(' ')[0]}</span>}
         <a className="sair" href="/sair">
           sair

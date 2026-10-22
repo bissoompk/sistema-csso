@@ -90,8 +90,9 @@ function _texto_da_falha(falha: unknown): string | null {
 // =====================================================================
 rotas.get(ESTOQUE, async (c) => {
   const usuario = await usuarioLogado(c);
-  // abre em leitura para quem tem `epi.ver`; escrever pede `epi.estoque`
-  usuario.exigir("epi.ver");
+  // abre em leitura para quem tem `epi.ver` DE EQUIPE (o do titular, D16, não:
+  // a prateleira é do setor); escrever pede `epi.estoque`
+  usuario.exigir_na_equipe("epi.ver");
   const tx = c.get("tx");
   const q = c.req.query("q") ?? "";
   const hoje = datas_br.hoje();

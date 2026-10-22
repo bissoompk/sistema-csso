@@ -173,13 +173,21 @@ describe("a cópia da exportação completa (zip em claro) não fica no armazena
       const bytes = new Uint8Array([1, 2, 3]);
       await arm.gravar("exportacoes/csso-export-20260920-100000.zip", bytes);
       await arm.gravar("exportacoes/csso-export-20260924-230000.zip", bytes);
+      // O nome atual é `sisa-export-`; os `csso-export-` antigos também são apagados.
+      await arm.gravar("exportacoes/sisa-export-20260921-080000.zip", bytes);
+      await arm.gravar("exportacoes/sisa-export-20260925-090000.zip", bytes);
       await arm.gravar("exportacoes/outra-coisa.zip", bytes);
       const agora = new Date(Date.UTC(2026, 8, 25, 12, 0, 0));
       expect(momento_da_exportacao("csso-export-20260920-100000.zip")?.toISOString()).toBe("2026-09-20T10:00:00.000Z");
+      expect(momento_da_exportacao("sisa-export-20260921-080000.zip")?.toISOString()).toBe("2026-09-21T08:00:00.000Z");
+      expect(momento_da_exportacao("outro-export-20260921-080000.zip")).toBeNull();
       const apagadas = await expurgar_exportacoes(arm, agora);
-      expect(apagadas).toEqual(["exportacoes/csso-export-20260920-100000.zip"]);
-      const ficaram = (await arm.listar("exportacoes")).map((i) => i.nome);
-      expect(ficaram).toEqual(["csso-export-20260924-230000.zip", "outra-coisa.zip"]);
+      expect([...apagadas].sort()).toEqual([
+        "exportacoes/csso-export-20260920-100000.zip",
+        "exportacoes/sisa-export-20260921-080000.zip",
+      ]);
+      const ficaram = (await arm.listar("exportacoes")).map((i) => i.nome).sort();
+      expect(ficaram).toEqual(["csso-export-20260924-230000.zip", "outra-coisa.zip", "sisa-export-20260925-090000.zip"]);
     } finally {
       await rm(raiz, { recursive: true, force: true });
     }

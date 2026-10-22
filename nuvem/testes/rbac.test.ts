@@ -179,10 +179,14 @@ describe("escopo", () => {
     expect(q!.params).toEqual([5]);
   });
 
-  it("total e agregado não filtram; unidade sem campus é a coordenadoria inteira", () => {
+  it("total não filtra; unidade sem campus é a coordenadoria inteira", () => {
     expect(aplicar_escopo(usuario("auditor_interno"))).toBeUndefined();
-    expect(aplicar_escopo(usuario("admin_ti"))).toBeUndefined();
     expect(aplicar_escopo(usuario("coordenador_csso"))).toBeUndefined();
+  });
+
+  it("agregado nunca é linha: vira `false`, e não 'sem filtro' (D1)", () => {
+    // o `admin_ti` que somava `servidor_consulta` lia processo de todos os campi
+    expect(emSql(aplicar_escopo(usuario("admin_ti")))!.sql).toBe("false");
   });
 
   it("unidade com campus filtra por campus_id quando a tabela tem a coluna", () => {

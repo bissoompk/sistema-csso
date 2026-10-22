@@ -34,6 +34,8 @@ export type AcessoDadoSensivel = typeof acesso_dado_sensivel.$inferSelect;
 // Eventos com nome fixo — usados por relatórios e testes
 export const REUSO_DE_LAUDO = "REUSO_DE_LAUDO";
 export const ASSINATURA_NEGADA = "ASSINATURA_NEGADA";
+// D22: a marcação de "assinado" feita por quem não é o signatário, com o motivo
+export const ASSINATURA_REGISTRADA_POR_SUBSTITUTO = "ASSINATURA_REGISTRADA_POR_SUBSTITUTO";
 export const EXCECAO_ART9_APLICADA = "EXCECAO_ART9_APLICADA";
 export const HABILITACAO_EXTERNA_ATESTADA = "HABILITACAO_EXTERNA_ATESTADA";
 export const ANO_INFERIDO = "ANO_INFERIDO";
@@ -45,6 +47,29 @@ export const NUP_DV_DISPENSADO = "NUP_DV_DISPENSADO";
 export const PRESCRICAO_QUINQUENAL_ALERTADA = "PRESCRICAO_QUINQUENAL_ALERTADA";
 export const ANEXO_DUPLICADO = "ANEXO_DUPLICADO";
 export const BOOTSTRAP_SUPERINTENDENTE = "BOOTSTRAP_SUPERINTENDENTE";
+// D21: a conta pelo lado de quem a usa — a troca de senha feita pelo próprio
+// dono, o bloqueio por tentativas, e a permissão que o semeio acrescenta a um
+// perfil já gravado (o alcance de quem tem o perfil muda sem ninguém conceder).
+export const SENHA_TROCADA = "SENHA_TROCADA";
+export const CONTA_BLOQUEADA = "CONTA_BLOQUEADA";
+export const PERMISSAO_ACRESCENTADA_AO_PERFIL = "PERMISSAO_ACRESCENTADA_AO_PERFIL";
+// A outra metade: a retirada declarada em `rbac.PERMISSOES_RETIRADAS` (o
+// `indicador.ver` do admin_ti, 22/10/2026). O alcance encolhe sem ninguém
+// encerrar concessão, e quem audita acesso precisa ler isso na trilha.
+export const PERMISSAO_RETIRADA_DO_PERFIL = "PERMISSAO_RETIRADA_DO_PERFIL";
+// Minha conta (22/10/2026): o que a própria conta muda em si mesma. Tipos
+// próprios, e não USUARIO_ALTERADO: aquele é o ato de quem administra contas,
+// e "quem mudou o meu e-mail?" tem resposta diferente quando foi o titular.
+// Telefone e ramal entram só como NOME de campo — o número nunca vai à trilha.
+export const CONTA_DADOS_ALTERADOS_PELO_TITULAR = "CONTA_DADOS_ALTERADOS_PELO_TITULAR";
+export const EMAIL_ALTERADO_PELO_TITULAR = "EMAIL_ALTERADO_PELO_TITULAR";
+// Liberação por módulo e turmas por setor (22/10/2026). Tipos novos: os textos
+// já gravados na trilha não mudam (a cadeia é por hash). O nível guarda o
+// anterior e o novo em `valor_anterior`/`valor_novo`, e o módulo em `campo`.
+export const NIVEL_MODULO_PERFIL_ALTERADO = "NIVEL_MODULO_PERFIL_ALTERADO";
+export const NIVEL_MODULO_PESSOA_ALTERADO = "NIVEL_MODULO_PESSOA_ALTERADO";
+export const SETOR_PROMOTOR_VINCULADO = "SETOR_PROMOTOR_VINCULADO";
+export const SETOR_PROMOTOR_DESVINCULADO = "SETOR_PROMOTOR_DESVINCULADO";
 // O documento saiu, o PDF não. Na nuvem não há LibreOffice (`pdf.disponivel()`
 // é falso) e a falha "indisponível" não suja a trilha; o evento continua
 // declarado porque é chave de banco e os eventos importados o trazem.
@@ -69,8 +94,25 @@ export const ROTULO_EVENTO: Record<string, string> = {
   USUARIO_INATIVADO: "Conta inativada",
   SENHA_RESETADA: "Senha redefinida",
   SENHA_RESET_RECUSADO: "Redefinição de senha recusada",
+  SENHA_TROCADA: "Senha trocada pelo próprio dono",
+  CONTA_DADOS_ALTERADOS_PELO_TITULAR: "Dados da conta alterados pelo próprio titular",
+  EMAIL_ALTERADO_PELO_TITULAR: "E-mail da conta alterado pelo próprio titular",
+  CONTA_BLOQUEADA: "Conta bloqueada por tentativas",
+  PERMISSAO_ACRESCENTADA_AO_PERFIL: "Permissão acrescentada ao perfil",
+  PERMISSAO_RETIRADA_DO_PERFIL: "Permissão retirada do perfil",
+  NIVEL_MODULO_PERFIL_ALTERADO: "Nível de acesso a módulo alterado no perfil",
+  NIVEL_MODULO_PESSOA_ALTERADO: "Nível de acesso a módulo alterado para a pessoa",
+  SETOR_PROMOTOR_VINCULADO: "Conta vinculada a setor promotor",
+  SETOR_PROMOTOR_DESVINCULADO: "Conta desvinculada de setor promotor",
   PERFIL_CONCEDIDO: "Perfil concedido",
   PERFIL_ENCERRADO: "Perfil encerrado",
+  PERFIL_CANCELADO: "Concessão futura cancelada",
+  PERFIL_CONCESSAO_RECUSADA: "Concessão de perfil recusada",
+  USUARIO_ALTERADO: "Dados da conta alterados",
+  CONTA_DESBLOQUEADA: "Conta desbloqueada",
+  HABILITACAO_ENCERRADA: "Habilitação encerrada",
+  HABILITACAO_CORRIGIDA: "Habilitação corrigida",
+  HABILITACAO_RECUSADA: "Atestação ou vínculo de habilitação recusado",
   ATO_NORMATIVO_ALTERADO: "Ato normativo da concessão alterado",
   SERVIDOR_VINCULADO: "Conta vinculada a servidor",
   SERVIDOR_DESVINCULADO: "Conta desvinculada de servidor",
@@ -110,6 +152,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   PARECER_ASSINADO: "Parecer assinado",
   PARECER_ANULADO: "Parecer anulado",
   ASSINATURA_NEGADA: "Assinatura negada",
+  ASSINATURA_REGISTRADA_POR_SUBSTITUTO: "Assinatura registrada por substituto",
   PRESCRICAO_QUINQUENAL_ALERTADA: "Prescrição quinquenal alertada",
   REUSO_DE_LAUDO: "Reuso de laudo",
   LAUDO_SUPERADO: "Laudo superado",
@@ -159,11 +202,11 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // desistiu dela?" são fatos diferentes de "a secretaria inscreveu".
   INSCRICAO_PEDIDA_PELO_TITULAR: "Inscrição pedida pelo próprio servidor",
   INSCRICAO_DESISTIDA: "Desistência do próprio inscrito",
-  // NUVEM: a inscrição pública por link (sem e-mail; a CSSO confere o pedido)
+  // NUVEM: a inscrição pública por link (sem e-mail; a equipe confere o pedido)
   INSCRICAO_LINK_GERADO: "Link público de inscrição gerado",
   INSCRICAO_LINK_DESLIGADO: "Link público de inscrição desligado",
   INSCRICAO_PEDIDA_PELO_LINK: "Inscrição pedida pelo link público",
-  INSCRICAO_PEDIDO_CONFERIDO: "Pedido do link público aceito pela CSSO",
+  INSCRICAO_PEDIDO_CONFERIDO: "Pedido do link público aceito pela equipe",
   PARTICIPANTE_CRIADO: "Participante externo cadastrado",
   PARTICIPANTE_CORRIGIDO: "Dados do participante corrigidos",
   PARTICIPANTE_MESCLADO: "Cadastros do participante juntados",

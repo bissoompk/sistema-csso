@@ -40,7 +40,8 @@ import * as identificacao from "./identificacao.js";
 import * as servico_nup from "./nup.js";
 import * as textos from "./textos.js";
 import { normalizar_chave } from "./certificado.js";
-import { aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
+import * as setor_equipe from "./setor_equipe.js";
 import { ganchos } from "../web.js";
 
 // Oito linhas por bloco. A busca global é um índice, não uma lista: quem precisa
@@ -110,7 +111,10 @@ function quote(q: string): string {
 async function _bloco_servidor(tx: Executor, usuario: UsuarioAtual, q: string, limite: number): Promise<Bloco> {
   const alvo = textos.chave_busca(q);
   const achados: (typeof tabela_servidor.$inferSelect)[] = [];
-  for (const servidor of await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome))) {
+  // no alcance das telas de destino (D1/D9): o titular acha o próprio
+  // cadastro, e não o SIAPE de todo mundo
+  const no_alcance = aplicar_escopo(usuario, tabela_servidor, PERMISSOES_POR_BLOCO["servidor"]!);
+  for (const servidor of await tx.select().from(tabela_servidor).where(no_alcance).orderBy(asc(tabela_servidor.nome))) {
     if (identificacao.casa_a_busca(alvo, servidor, usuario)) {
       achados.push(servidor);
       if (achados.length > limite) break;
@@ -216,7 +220,12 @@ async function _bloco_requisicao(tx: Executor, usuario: UsuarioAtual, q: string,
 async function _bloco_turma(tx: Executor, usuario: UsuarioAtual, q: string, limite: number): Promise<Bloco> {
   const alvo = `%${q.trim()}%`;
   const linhas = await tx.query.turma.findMany({
-    where: and(aplicar_escopo(usuario, tabela_turma), ilike(tabela_turma.codigo, alvo)),
+    where: and(
+      aplicar_escopo(usuario, tabela_turma, "treinamento.ver"),
+      // turmas por setor promotor (22/10/2026): a equipe acha só as do setor dela
+      usuario.escopo_de("treinamento.ver") === ESCOPO_PROPRIO ? undefined : setor_equipe.condicao_setor_turma(usuario),
+      ilike(tabela_turma.codigo, alvo),
+    ),
     with: { treinamento: true },
     orderBy: [desc(tabela_turma.ano), desc(tabela_turma.numero)],
     limit: limite + 1,
@@ -241,7 +250,12 @@ async function _bloco_certificado(tx: Executor, usuario: UsuarioAtual, q: string
     condicoes.push(casa[2] ? and(numero, eq(tabela_certificado.ano, Number(casa[2])))! : numero);
   }
   const linhas = await tx.query.certificado.findMany({
-    where: and(aplicar_escopo(usuario, tabela_certificado), or(...condicoes)),
+    where: and(
+      aplicar_escopo(usuario, tabela_certificado, "certificado.ver"),
+      // o do setor da conta, e o próprio de qualquer setor (22/10/2026)
+      setor_equipe.condicao_setor_certificado(usuario, true),
+      or(...condicoes),
+    ),
     with: { treinamento: true },
     orderBy: [desc(tabela_certificado.ano), desc(tabela_certificado.numero)],
     limit: limite + 1,

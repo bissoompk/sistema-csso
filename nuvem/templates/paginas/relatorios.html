@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Relatórios · CSSO{% endblock %}
+{% block titulo %}Relatórios · SISA{% endblock %}
 
 {% block acoes_cabecalho %}
 {# A extração de processos é rota que já existe (`/relatorios/exportar-processos`)
@@ -46,7 +46,7 @@
   {# O aviso explica a consequência, e não só o fato: sem a segunda frase, quem
      lê acha que só as células pequenas somem e estranha ver "—" numa unidade
      que sabe ter oito processos. #}
-  {% if not usuario.ve_dado_nominal %}
+  {% if not nominal %}
   <div class="aviso aviso-alerta">
     Célula com menos de {{ limiar }} servidores aparece como <span class="mono">—</span>
     para quem não tem <code>exposicao.ver</code> (RN-19). Quando só uma célula

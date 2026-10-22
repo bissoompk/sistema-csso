@@ -24,5 +24,5 @@ raiz.use("/estaticos/*", serveStatic({ root: "./public" }));
 const app = obterApp();
 raiz.all("*", (c) => app.fetch(c.req.raw, c.env));
 serve({ fetch: raiz.fetch, port: porta }, () => {
-  console.log(`CSSO (nuvem) em http://localhost:${porta}`);
+  console.log(`Sistema SISA (nuvem) em http://localhost:${porta}`);
 });

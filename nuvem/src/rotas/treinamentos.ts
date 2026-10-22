@@ -48,6 +48,7 @@ import * as textos from "../servicos/textos.js";
 import * as indicadores from "../servicos/treinamento_indicadores.js";
 import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as hub from "../servicos/hub_treinamentos.js";
+import * as setor_equipe from "../servicos/setor_equipe.js";
 import { LIMIAR_SUPRESSAO, MARCA_SUPRIMIDO, suprimir } from "./relatorios.js";
 import { dicionario } from "../dicionario.js";
 import { normalizar_decimal } from "../servicos/presenca.js";
@@ -210,12 +211,14 @@ rotas.get(INICIO, async (c) => {
     r,
     cartoes: hub.cartoes(usuario, r),
     hoje,
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
   });
 });
 
 rotas.get(CATALOGO, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("treinamento.ver");
+  // o cadastro dos cursos é da equipe; o titular (D16) escolhe turma em Meus treinamentos
+  usuario.exigir_na_equipe("treinamento.ver");
   return _tela_catalogo(c, usuario, recados(c));
 });
 
@@ -1402,6 +1405,9 @@ export function periodo_de(codigo: string, de: string, ate: string, hoje: string
 rotas.get(INDICADORES, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("indicador.ver");
+  // NUVEM: os indicadores de treinamento são do trabalho do setor — contam as
+  // turmas do setor promotor da conta (`setor_equipe.ts`)
+  usuario.exigir_na_equipe("treinamento.ver");
   const tx = c.get("tx");
   const [de, ate, periodo] = periodo_de(
     c.req.query("periodo") ?? "",
@@ -1413,7 +1419,9 @@ rotas.get(INDICADORES, async (c) => {
   // intervalo de trás para a frente não se conserta em silêncio: a tela diz
   const invertido = periodo === "intervalo" && de !== null && ate !== null && de > ate;
   const r = await indicadores.calcular(tx, usuario, { de, ate, unidade_promotora_id: setor });
-  const nominal = usuario.ve_dado_nominal;
+  // `exposicao.ver` cobrindo o alcance de `indicador.ver`: `ve_dado_nominal`
+  // somava `epi.ficha`, que só é nominal nas telas de EPI (D15)
+  const nominal = usuario.ve_dado_nominal_em("indicador.ver");
   // RN-19: contagem de PESSOAS abaixo do limiar vira "—" para quem não vê
   // nome; turma é evento, não pessoa, e sai sempre
   const suprime = (n: number) => !nominal && n !== 0 && n < LIMIAR_SUPRESSAO;
@@ -1425,6 +1433,7 @@ rotas.get(INDICADORES, async (c) => {
   );
   return pagina(c, "paginas/treinamentos_indicadores.html", usuario, {
     r,
+    nominal,
     cartoes_pessoas,
     // o destaque do cartão sai do valor EXIBIDO: "—" amarelo diria que não é zero
     pendentes_em_alerta: cartoes_pessoas.pendentes !== "0" && cartoes_pessoas.pendentes !== MARCA_SUPRIMIDO,
@@ -1440,7 +1449,8 @@ rotas.get(INDICADORES, async (c) => {
     invertido,
     turmas_por_setor: dicionario(Object.fromEntries(Object.entries(r.turmas_por_setor).map(([k, v]) => [k, String(v)]))),
     participantes_por_treinamento: dicionario(suprimir(r.participantes_por_treinamento, nominal)),
-    setores: await indicadores.setores_promotores(tx),
+    setores: await indicadores.setores_promotores(tx, usuario),
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
     periodos: PERIODOS,
     periodo,
     de: de ?? "",

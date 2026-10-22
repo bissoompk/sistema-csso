@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Fila de emissão · CSSO{% endblock %}
+{% block titulo %}Fila de emissão · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
@@ -27,6 +27,8 @@
       {% endcall %}
     </div>
   </div>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   <div class="fileira">
     <span class="rotulo-grupo">Etapa</span>

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}E-mails enviados · CSSO{% endblock %}
+{% block titulo %}Envios por e-mail · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
     <div class="titulo">
-      <h1>E-mails</h1>
+      <h1>Envios por e-mail</h1>
       <p class="sub">{{ contagem.PENDENTE }} na fila · {{ contagem.ENVIADO }} enviado(s) ·
         {{ contagem.FALHOU }} com falha.</p>
       {% call ui.info('como-sai-o-email', 'como o e-mail sai') %}
@@ -27,6 +27,8 @@
       <button type="submit" class="secundario">Enviar a fila agora</button></form>
     {% endif %}
   </div>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   {% if not email_configurado() %}
   <div class="aviso aviso-alerta">

@@ -333,12 +333,12 @@ describe("meus treinamentos", () => {
     await c.post(`/turmas/${id}/inscrever-me`, {}, { seguir: false });
     await c.post(`/turmas/${id}/desistir`, { motivo: "férias" }, { seguir: false });
     const tela = texto((await c.get("/turmas/minhas")).text);
-    expect(tela).toContain("Você desistiu — fale com a CSSO");
+    expect(tela).toContain("Você desistiu — fale com a equipe responsável");
     expect(tela).not.toContain("já inscrito");
     const de_novo = await c.post(`/turmas/${id}/inscrever-me`, {}, { seguir: false });
     const t = await msg(c, de_novo);
     expect(t).toContain("Você desistiu de");
-    expect(t).toContain("fale com a CSSO");
+    expect(t).toContain("fale com a equipe responsável");
     expect(t).not.toContain("como cancelada");
   });
 

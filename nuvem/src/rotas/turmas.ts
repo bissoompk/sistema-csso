@@ -56,6 +56,7 @@ import * as pedidos_link from "../servicos/pedidos_link.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as servico_presenca from "../servicos/presenca.js";
 import * as setor_promotor from "../servicos/setor_promotor.js";
+import * as setor_equipe from "../servicos/setor_equipe.js";
 import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
 import * as datas_br from "../servicos/datas_br.js";
@@ -152,9 +153,18 @@ function _inteiro(valor: string, rotulo: string): number | null {
   return Number(bruto);
 }
 
-/** Uma leitura só, pela porta do serviço (`turma.no_escopo`). */
-function _turma_no_escopo(tx: Executor, usuario: UsuarioAtual, turma_id: number) {
-  return servico_turma.no_escopo(tx, usuario, turma_id);
+/**
+ * Uma leitura só, pela porta do serviço (`turma.no_escopo`). `permissao` é a
+ * do ato da rota: o alcance é o dela, e não o da conta (D9) — quem lê turmas
+ * de dois campi e inscreve só num, inscreve só naquele.
+ */
+function _turma_no_escopo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma_id: number,
+  permissao: string | readonly string[] = "treinamento.ver",
+) {
+  return servico_turma.no_escopo(tx, usuario, turma_id, permissao);
 }
 
 /** A ação que pode ser recusada, num savepoint (o `s.rollback()` do Python). */
@@ -206,7 +216,9 @@ async function _tela_lista(
   ).map(vista_turma);
   // Instalação sem turma nenhuma: a tela diz por onde começar, em vez de só
   // oferecer "Abrir turma" sem treinamento para escolher.
-  const comecando = !itens.length && !situacao && alvo === null && usuario.pode("turma.criar");
+  // A conta sem setor promotor não está "começando": o aviso dela é outro.
+  const comecando =
+    !itens.length && !situacao && alvo === null && usuario.pode("turma.criar") && !setor_equipe.sem_setor(usuario);
   // tudo junto: uma ida ao banco, e não uma por turma (ver `db/cliente.ts`)
   const [ocupadas, treinamentos, campi, unidades, [instrutor], setores_usados] = await Promise.all([
     Promise.all(itens.map((turma) => servico_turma.inscricoes_que_ocupam_vaga(tx, turma))),
@@ -222,6 +234,7 @@ async function _tela_lista(
       .where(and(servico_turma.consulta_no_escopo(usuario), isNotNull(tabela_turma.unidade_promotora_id))),
   ]);
   const usados_como_setor = new Set(setores_usados.map((s) => s.id));
+  const meus = setor_equipe.ve_todos(usuario) ? null : new Set(usuario.setores_promotores);
   const inscritos: Record<number, number> = {};
   itens.forEach((turma, i) => (inscritos[turma.id] = ocupadas[i]!));
   // os pedidos do link a conferir, por turma: o que pede ação na linha
@@ -277,16 +290,22 @@ async function _tela_lista(
     pode_inscrever: usuario.pode("turma.inscrever"),
     filtro_setor: setor ? String(setor) : "",
     // NUVEM: os setores promotores de hoje e qualquer unidade que já promoveu
-    // turma — a turma antiga, de unidade fora da lista, continua encontrável
-    setores_do_filtro: unidades.filter((u) => u.promove_treinamento || usados_como_setor.has(u.id)),
+    // turma — a turma antiga, de unidade fora da lista, continua encontrável.
+    // Quem não vê todos os setores filtra entre os seus (`setor_equipe.ts`)
+    setores_do_filtro: unidades.filter(
+      (u) => (u.promove_treinamento || usados_como_setor.has(u.id)) && (meus === null || meus.has(u.id)),
+    ),
     // só treinamento ativo entra no seletor de nova turma
     treinamentos: treinamentos.filter((t) => t.ativo),
     // o filtro lista todos: turma antiga de curso desativado continua encontrável
     treinamentos_do_filtro: treinamentos,
     campi,
-    // NUVEM: na turma nova, só os setores promotores (`setor_promotor.ts`)
-    unidades: unidades.filter((u) => u.promove_treinamento),
-    dica_setor_promotor: setor_promotor.DICA,
+    // NUVEM: na turma nova, só os setores promotores (`setor_promotor.ts`) —
+    // e, para quem não vê todos, só os seus; com um só, ele já vem escolhido
+    unidades: unidades.filter((u) => u.promove_treinamento && (meus === null || meus.has(u.id))),
+    setor_padrao: meus !== null && meus.size === 1 ? String([...meus][0]) : "",
+    dica_setor_promotor: meus === null ? setor_promotor.DICA : setor_promotor.DICA_DOS_MEUS,
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
     descricoes: await _ultimas_descricoes(tx),
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     filtro_situacao: situacao,
@@ -338,6 +357,7 @@ export const PEDIDOS = `${TURMAS}/pedidos`;
 async function _tela_pedidos(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string | null; erro?: string | null; travados?: pedidos_link.ResultadoLote["travados"] } = {}) {
   return pagina(c, "paginas/turmas_pedidos.html", usuario, {
     turmas: await pedidos_link.a_conferir(c.get("tx"), usuario),
+    sem_setor_promotor: setor_equipe.sem_setor(usuario),
     rotulo_vinculo: ROTULO_VINCULO,
     travados: d.travados ?? [],
     ...recados(c),
@@ -444,7 +464,7 @@ rotas.get(MINHAS, async (c) => {
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscrever-me`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.inscrever_se");
-  const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")), "turma.inscrever_se");
   if (!turma) return redirecionar(c, MINHAS);
   try {
     await _no_savepoint(c, (sp) => servico_turma.inscrever_se(sp, usuario, turma));
@@ -456,7 +476,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscrever-me`, async (c) => {
     c,
     MINHAS,
     `Inscrição pedida em ${turma.codigo}. A vaga já está reservada para você ` +
-      "e a CSSO confirma — enquanto isso a inscrição fica como “inscrita”.",
+      "e a equipe responsável confirma — enquanto isso a inscrição fica como “inscrita”.",
   );
 });
 
@@ -466,7 +486,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/desistir`, async (c) => {
   usuario.exigir("turma.inscrever_se");
   const tx = c.get("tx");
   const f = await formulario(c);
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.inscrever_se");
   if (!turma) return redirecionar(c, MINHAS);
   const minha = (await servico_turma.inscricoes_do_titular(tx, usuario)).find((i) => i.turma_id === turma.id);
   if (!minha) return _erro(c, MINHAS, `Você não tem inscrição em ${turma.codigo}.`);
@@ -531,7 +551,7 @@ rotas.post(TURMAS, async (c) => {
       // o link fecha quando a turma começa (`aberta_a_pedido_proprio`): recusado
       // aqui, antes de a turma existir, a frase não cita um código que não vai ficar
       if (com_link && inicio <= datas_br.hoje()) {
-        throw new CampoInvalido("Turma com link público precisa começar depois de hoje: a partir do início, quem inscreve é a CSSO.");
+        throw new CampoInvalido("Turma com link público precisa começar depois de hoje: a partir do início, quem inscreve é a equipe responsável.");
       }
       let criada = await servico_turma.criar_turma(sp, usuario, {
         treinamento,
@@ -635,8 +655,13 @@ async function _tela_ficha(
       servico_turma.vagas_restantes(tx, turma),
       _instrutores_livres(tx, turma),
       tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
-      // NUVEM: os setores promotores e, se a turma já aponta para outra, ela
-      setor_promotor.opcoes(tx, turma.unidade_promotora_id),
+      // NUVEM: os setores promotores e, se a turma já aponta para outra, ela;
+      // quem não vê todos os setores só move a turma entre os seus
+      setor_promotor.opcoes(
+        tx,
+        turma.unidade_promotora_id,
+        setor_equipe.ve_todos(usuario) ? null : usuario.setores_promotores,
+      ),
       // NUVEM: campos de turma/participante do modelo (aba Emissão)
       na_emissao ? servico_emissao.modelo_da_turma(tx, turma) : Promise.resolve([null, ""] as const),
       na_emissao ? campos_certificado.valores_da_turma(tx, turma.id) : Promise.resolve({}),
@@ -722,13 +747,15 @@ async function _tela_ficha(
   const link_impedimento =
     turma.inscricao_aberta_ate === null
       ? "Defina antes até quando a turma recebe inscrição (“inscrições até”, em Editar dados da turma)."
-      : servico_turma.aberta_a_pedido_proprio(turma, hoje).replace(" Fale com a CSSO.", "");
+      : servico_turma.aberta_a_pedido_proprio(turma, hoje).replace(servico_turma.FALE_COM_A_EQUIPE, "");
   const destinos_possiveis = destinos_de_turma(turma.situacao);
 
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
     hoje,
     gerencia,
+    // turma não é tela de EPI: `epi.ficha` não mostra nome aqui (D15)
+    nominais_rn19: identificacao.NOMINAIS_FORA_DO_EPI,
     minha_inscricao: minha_inscricao ? vista_inscricao(minha_inscricao) : null,
     minha_situacao: minha_inscricao ? servico_turma.situacao_para_o_titular(minha_inscricao.situacao) : "",
     // o servidor que abre a ficha de uma turma com inscrições abertas pede dali mesmo
@@ -776,7 +803,7 @@ async function _tela_ficha(
     busca,
     campi,
     unidades,
-    dica_setor_promotor: setor_promotor.DICA,
+    dica_setor_promotor: setor_equipe.ve_todos(usuario) ? setor_promotor.DICA : setor_promotor.DICA_DOS_MEUS,
     // --- aba 3 ---
     dias: servico_presenca.dias_da_turma(turma),
     // a caixa marcada vale a carga do dia; quem chegou atrasado se ajusta à parte
@@ -816,7 +843,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.criar");
   if (!turma) return redirecionar(c, TURMAS);
   const destino = `${TURMAS}/${turma_id}`;
   try {
@@ -861,7 +888,16 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
     usuario.exigir(servico_turma.PERMISSAO_POR_SITUACAO_TURMA[pedido]!);
   }
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(
+    tx,
+    usuario,
+    turma_id,
+    // o alcance é o da permissão do destino (D9); `Object.hasOwn` pela mesma
+    // razão de acima — "constructor" devolveria a função do protótipo
+    Object.hasOwn(servico_turma.PERMISSAO_POR_SITUACAO_TURMA, pedido)
+      ? servico_turma.PERMISSAO_POR_SITUACAO_TURMA[pedido]!
+      : de_destino,
+  );
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}`;
   try {
@@ -887,7 +923,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/retificar`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.concluir");
   if (!turma) return redirecionar(c, TURMAS);
   const destino = `${TURMAS}/${turma_id}`;
   let r: retificacao.ResultadoTurma;
@@ -941,7 +977,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados/retificar`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "certificado.anular");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
   let r: retificacao.ResultadoLote;
@@ -972,7 +1008,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/excluir`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.concluir");
   if (!turma) return redirecionar(c, TURMAS);
   const codigo = turma.codigo;
   try {
@@ -995,7 +1031,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/realizada`, async (c) => {
   usuario.exigir("turma.concluir");
   const tx = c.get("tx");
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}`;
   let feito: servico_presenca.TurmaRealizada;
@@ -1028,7 +1064,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.criar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}`;
   const alvo = id_opcional(f.texto("assinatura_instrutor_id"));
@@ -1106,7 +1142,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
   if (!turma) return redirecionar(c, TURMAS);
   // inscrito um da lista, a mesma busca volta aberta para o próximo
   const busca = f.texto("busca").trim();
@@ -1192,7 +1228,7 @@ async function _tela_lote(
     contagem,
     gravado: d.gravado ?? false,
     limite: inscricao_lote.LIMITE_LINHAS,
-    casa_nome: usuario.ve_dado_nominal,
+    casa_nome: inscricao_lote.casa_nome(usuario),
     erro: d.erro ?? null,
   });
 }
@@ -1200,7 +1236,7 @@ async function _tela_lote(
 rotas.get(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.inscrever");
-  const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")), "turma.inscrever");
   if (!turma) return redirecionar(c, TURMAS);
   return _tela_lote(c, usuario, turma);
 });
@@ -1209,7 +1245,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.inscrever");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.inscrever");
   if (!turma) return redirecionar(c, TURMAS);
   const f = await formulario(c);
   const d = { texto: f.texto("lista"), vinculo: f.texto("vinculo"), organizacao: f.texto("organizacao").trim() };
@@ -1238,7 +1274,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.criar");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.criar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
   let token: string;
@@ -1267,7 +1303,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/desligar`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.criar");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.criar");
   if (!turma) return redirecionar(c, TURMAS);
   await inscricao_publica.desligar_link(tx, usuario, turma);
   return _volta(c, `${TURMAS}/${turma.id}?aba=inscricoes`, "Link público desligado: o endereço deixou de funcionar.");
@@ -1280,7 +1316,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
   const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
@@ -1311,7 +1347,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/cpf`, a
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
   const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
@@ -1341,7 +1377,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/partici
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
   const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
@@ -1437,7 +1473,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   const inscricao = await _inscricao_da_turma(tx, turma, id_opcional(f.texto("inscricao_id")));
@@ -1482,7 +1518,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/todos`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   let alcancadas: InscricaoCarregada[];
@@ -1508,7 +1544,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
   usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
   const f = await formulario(c);
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.avaliar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma.id}${PRESENCAS}`;
   const horas = new Map<string, string>();
@@ -1557,7 +1593,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/dia`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   let dia = "";
@@ -1588,7 +1624,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/notas`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   const inscricao = await _inscricao_da_turma(tx, turma, id_opcional(f.texto("inscricao_id")));
@@ -1642,7 +1678,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados/email`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("certificado.emitir");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "certificado.emitir");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma.id}?aba=emissao`;
   const ids = Object.values(await servico_emissao.certificados_da_turma(tx, turma)).map((cert) => cert.id);
@@ -1658,7 +1694,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "certificado.emitir");
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
 
@@ -1699,7 +1735,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-certificado`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, campos_certificado.PERMISSOES_CAMPO_TURMA);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
   const [modelo] = await servico_emissao.modelo_da_turma(tx, turma);
@@ -1731,7 +1767,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-participante`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
   const [modelo] = await servico_emissao.modelo_da_turma(tx, turma);
@@ -1771,7 +1807,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}/certificados.zip`, async (c) => {
   usuario.exigir("certificado.ver");
   const tx = c.get("tx");
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "certificado.ver");
   if (!turma) return redirecionar(c, TURMAS);
   const resultado = await servico_emissao.word_da_turma(tx, usuario, turma);
   if (!resultado) return _erro(c, `${TURMAS}/${turma_id}?aba=emissao`, "Nenhum certificado emitido nesta turma.");
@@ -1784,7 +1820,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}/certificados.pdf`, async (c) => {
   usuario.exigir("certificado.ver");
   const tx = c.get("tx");
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id);
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, "certificado.ver");
   if (!turma) return redirecionar(c, TURMAS);
   const resultado = await servico_emissao.pdf_da_turma(tx, usuario, turma);
   if (!resultado) return _erro(c, `${TURMAS}/${turma_id}?aba=emissao`, "Nenhum certificado emitido nesta turma.");
@@ -1799,7 +1835,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}/lista-presenca`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.avaliar");
   if (!turma) return redirecionar(c, TURMAS);
   const resultado = await servico_lista.gerar(tx, usuario, turma);
   return baixar(c, resultado.bytes, resultado.arquivo!.split("/").pop()!, servico_lista.TIPO_DOCX);

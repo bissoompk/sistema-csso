@@ -17,6 +17,7 @@ import * as repo from "../repositorios/processos.js";
 import * as datas_br from "../servicos/datas_br.js";
 import { lacunas_de_numeracao } from "../servicos/numeracao.js";
 import { linha_csv } from "../servicos/csv.js";
+import { NOMINAIS_FORA_DO_EPI } from "../servicos/identificacao.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -134,6 +135,10 @@ function _ano_do_processo(p: { data_autuacao: string | null; criado_em: Date | s
 
 rotas.get("/relatorios", async (c) => {
   const usuario = await usuarioCom(c, "indicador.ver");
+  // Liberação por módulo (22/10/2026): `indicador.ver` é transversal e vem
+  // do perfil; o relatório é do módulo Processos SEI, e quem está "sem acesso"
+  // ao módulo não o abre (o item de menu declara as duas).
+  usuario.exigir_na_equipe("processo.ver");
   const tx = c.get("tx");
   const bruto = c.req.query("exercicio") ?? "";
   const ano_corrente = Number(datas_br.hoje().slice(0, 4));
@@ -204,17 +209,25 @@ rotas.get("/relatorios", async (c) => {
   // O total do cartão sai da contagem crua só para quem vê tudo; para os demais
   // ele sairia somando o que a supressão escondeu, então some junto.
   const vigentes_total = Object.values(vigencias_por_laudo).reduce((a, b) => a + b, 0);
+  // RN-19 da tela inteira: as contagens acima são da instituição inteira, sem
+  // recorte de linha, e por isso só quem lê o nome em TODO campus as vê sem
+  // supressão (`exposicao.ver` total ou de unidade sem campus). Era
+  // `ve_dado_nominal`, que soma `epi.ficha` (só nominal nas telas de EPI, D15),
+  // e depois `ve_dado_nominal_em("indicador.ver")`, que comparava com o alcance
+  // de uma permissão que a consulta não usa para recortar (D9).
+  const nominal = usuario.ve_dado_nominal_sem_recorte();
 
   return pagina(c, "paginas/relatorios.html", usuario, {
     exercicio: ano,
     exercicios: [...anos_vistos].sort((a, b) => b - a),
-    por_unidade: dicionario(suprimir(por_unidade, usuario.ve_dado_nominal)),
-    por_risco: dicionario(suprimir(por_risco, usuario.ve_dado_nominal)),
+    nominal,
+    por_unidade: dicionario(suprimir(por_unidade, nominal)),
+    por_risco: dicionario(suprimir(por_risco, nominal)),
     lacunas: dicionario(lacunas),
     laudos_fila,
-    vigencias_por_laudo: dicionario(suprimir(vigencias_por_laudo, usuario.ve_dado_nominal)),
+    vigencias_por_laudo: dicionario(suprimir(vigencias_por_laudo, nominal)),
     vigentes_total:
-      usuario.ve_dado_nominal || Object.values(vigencias_por_laudo).every((n) => n >= LIMIAR_SUPRESSAO)
+      nominal || Object.values(vigencias_por_laudo).every((n) => n >= LIMIAR_SUPRESSAO)
         ? vigentes_total
         : null,
     rodape_fila: RODAPE_FILA_LAUDOS,
@@ -237,8 +250,10 @@ rotas.get("/relatorios/exportar-processos", async (c) => {
   // leitura de banco de dados.
   const data = (v: string | null) => (v ? datas_br.numerica(v) : "");
   let texto = linha_csv(["NUP", "Estado", "Servidor", "SIAPE", "Unidade", "Responsável", "Autuação", "Prazo"]);
-  const nominal = usuario.ve_dado_nominal;
   for (const p of itens) {
+    // o nome por linha (D9/D15): o titular sempre; os outros, se `exposicao.ver`
+    // alcança a linha — `epi.ficha` não é nominal fora das telas de EPI
+    const nominal = usuario.ve_nome_na_linha({ servidor_id: p.servidor_id }, NOMINAIS_FORA_DO_EPI);
     texto += linha_csv([
       p.nup,
       ROTULO_ESTADO_TELA[p.estado_tecnico] ?? p.estado_tecnico,

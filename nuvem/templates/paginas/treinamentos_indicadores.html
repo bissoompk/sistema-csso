@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Indicadores de treinamento · CSSO{% endblock %}
+{% block titulo %}Indicadores de treinamento · SISA{% endblock %}
 
 {% block conteudo %}
 <div class="tela">
@@ -23,13 +23,15 @@
           cursos conta duas vezes. <strong>Pendentes</strong> são aprovados ainda sem
           certificado emitido. A <strong>taxa de aprovação</strong> é aprovados ÷ (aprovados
           + reprovados), entre quem já tem resultado.</p>
-        {% if not usuario.ve_dado_nominal %}
+        {% if not nominal %}
         <p>Contagem de pessoas abaixo de {{ limiar }} aparece como <span class="mono">—</span>
           para quem não tem <code>exposicao.ver</code> (RN-19); turmas aparecem sempre.</p>
         {% endif %}
       {% endcall %}
     </div>
   </div>
+
+  {% include "partes/aviso_sem_setor.html" %}
 
   {# Os filtros numa linha só (`.filtros .linha-campos`); De e Até só aparecem
      com “De… até…” (`data-mostra-quando`, csso.js) — sem JavaScript, à vista. #}

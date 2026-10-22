@@ -3,7 +3,7 @@
  * fora ("Recomendações que NÃO foram aplicadas", DESVIOS.md) e entraram na
  * passada de endurecimento para a internet aberta:
  *
- * - política de senha de 10 caracteres, e a senha antiga vira troca obrigatória;
+ * - política de senha (10 caracteres na época; 6 desde 22/10/2026), e a senha antiga vira troca obrigatória;
  * - conta de administração só tem a senha redefinida por quem concede perfil;
  * - sessão cai por inatividade;
  * - `/sair` e a criação de rascunho de parecer deixaram de ser GET;
@@ -46,10 +46,10 @@ describe("senha antiga, curta, vira troca obrigatória no login", () => {
     const conta = await contaDe("tecnico_seguranca");
     await db
       .update(e.usuario)
-      .set({ senha_hash: await autenticacao.gerar_hash("csso26"), precisa_trocar_senha: false })
+      .set({ senha_hash: await autenticacao.gerar_hash("cs26x"), precisa_trocar_senha: false })
       .where(eq(e.usuario.id, conta.id));
     const cliente = novoCliente();
-    const r = await cliente.post("/login", { login: "tecnico_seguranca", senha: "csso26" }, { seguir: false });
+    const r = await cliente.post("/login", { login: "tecnico_seguranca", senha: "cs26x" }, { seguir: false });
     expect(r.status).toBe(303);
     expect(r.location).toBe("/trocar-senha");
     // e não escapa digitando outro endereço
@@ -57,11 +57,11 @@ describe("senha antiga, curta, vira troca obrigatória no login", () => {
     expect((await contaDe("tecnico_seguranca")).precisa_trocar_senha).toBe(true);
 
     // a troca pede a política nova
-    const fraca = await cliente.post("/trocar-senha", { senha_atual: "csso26", nova: "outra1", confirmacao: "outra1" });
-    expect(fraca.text).toContain("mínimo de 10 caracteres");
+    const fraca = await cliente.post("/trocar-senha", { senha_atual: "cs26x", nova: "out1x", confirmacao: "out1x" });
+    expect(fraca.text).toContain("mínimo de 6 caracteres");
     const ok = await cliente.post(
       "/trocar-senha",
-      { senha_atual: "csso26", nova: SENHA_TESTE, confirmacao: SENHA_TESTE },
+      { senha_atual: "cs26x", nova: SENHA_TESTE, confirmacao: SENHA_TESTE },
       { seguir: false },
     );
     expect(ok.status).toBe(303);
@@ -78,11 +78,27 @@ describe("senha antiga, curta, vira troca obrigatória no login", () => {
 // =====================================================================
 describe("redefinir senha: conta de administração só por quem concede perfil", () => {
   it("admin_ti redefine a conta comum", async () => {
-    const alvo = await contaDe("secretaria_csso");
+    // a conta comum é a que só tem as permissões do titular (D4)
+    const alvo = await contaDe("servidor_consulta");
     const admin = await entrar(novoCliente(), "admin_ti");
     const r = await admin.post(`/usuarios/${alvo.id}/senha`);
-    expect(r.text).toMatch(/Nova senha provisória de secretaria_csso: [a-z]{4}-[a-z]{4}-\d{2}/);
+    expect(r.text).toMatch(/Nova senha provisória de servidor_consulta: [a-z]{4}-[a-z]{4}-\d{2}/);
     await db.update(e.usuario).set({ senha_hash: await autenticacao.gerar_hash(SENHA_TESTE), precisa_trocar_senha: false }).where(eq(e.usuario.id, alvo.id));
+  });
+
+  it("admin_ti não redefine conta técnica nem de equipe (D4), e a tela já diz", async () => {
+    const admin = await entrar(novoCliente(), "admin_ti");
+    for (const login of ["medico_trabalho", "engenheiro_seguranca", "coordenador_csso", "secretaria_csso", "almoxarife_sesmt"]) {
+      const alvo = await contaDe(login);
+      const r = await admin.post(`/usuarios/${alvo.id}/senha`);
+      expect(r.text, login).toContain("a conta tem permissões que você não tem");
+      expect(r.text, login).not.toContain("Nova senha provisória");
+      expect((await contaDe(login)).senha_hash, login).toBe(alvo.senha_hash);
+    }
+    const tela = (await admin.get("/usuarios")).text;
+    const medico = await contaDe("medico_trabalho");
+    expect(tela).not.toContain(`action="/usuarios/${medico.id}/senha"`);
+    expect(tela).toContain("Conta com permissões que você não tem.");
   });
 
   it("admin_ti não redefine o superintendente, e a recusa fica na trilha", async () => {
@@ -140,8 +156,8 @@ describe("sessão cai por inatividade", () => {
     const cliente = await entrar(novoCliente(), "coordenador_csso");
     const token = cliente.cookies.get(autenticacao.COOKIE_SESSAO)!;
     const hash = autenticacao._hash_token(token);
-    // usada há 90 minutos: dentro das 2 h
-    await db.update(e.sessao).set({ ultimo_uso_em: new Date(Date.now() - 90 * 60_000) }).where(eq(e.sessao.token_hash, hash));
+    // usada há 45 minutos: dentro da 1 h (o padrão era 2 h até 22/10/2026)
+    await db.update(e.sessao).set({ ultimo_uso_em: new Date(Date.now() - 45 * 60_000) }).where(eq(e.sessao.token_hash, hash));
     expect((await cliente.get("/processos", { seguir: false })).status).toBe(200);
     // e o uso renovou o relógio
     const [renovada] = await db.select().from(e.sessao).where(eq(e.sessao.token_hash, hash));

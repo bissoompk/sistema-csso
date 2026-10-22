@@ -81,3 +81,5 @@ building
 heart-pulse
 list
 person
+layout-sidebar-inset
+person-gear

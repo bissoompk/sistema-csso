@@ -109,7 +109,9 @@ export async function fila(
   usuario: UsuarioAtual,
   filtros: Filtros = {},
 ): Promise<{ itens: LinhaFila[]; contagem: Record<Etapa, number>; cortado: boolean }> {
-  const onde: (SQL | undefined)[] = [servico_turma.consulta_no_escopo(usuario)];
+  // o alcance de quem LÊ a fila (a tela é de `certificado.ver`), e não o de
+  // `treinamento.ver`, que o titular tem em escopo próprio (D9/D16)
+  const onde: (SQL | undefined)[] = [servico_turma.consulta_no_escopo(usuario, "certificado.ver")];
   if (filtros.treinamento_id) onde.push(eq(tabela_turma.treinamento_id, filtros.treinamento_id));
   const linhas = await tx
     .select({
@@ -219,8 +221,9 @@ export async function emitir_escolhidas(
   const por_turma = new Map<number, number[]>();
   for (const l of linhas) por_turma.set(l.turma_id, [...(por_turma.get(l.turma_id) ?? []), l.id]);
   for (const [turma_id, ids] of por_turma) {
-    // o escopo de quem emite: turma fora dele não é emitida (nem dita)
-    const turma = await servico_turma.no_escopo(tx, usuario, turma_id);
+    // o escopo de quem emite — o de `certificado.emitir`, e não o da leitura
+    // (D9): turma fora dele não é emitida (nem dita)
+    const turma = await servico_turma.no_escopo(tx, usuario, turma_id, "certificado.emitir");
     if (!turma) continue;
     const relatorio = await servico_emissao.emitir_lote(tx, usuario, turma, { inscricao_ids: ids });
     resultado.emitidos += relatorio.emitidos.length;

@@ -118,8 +118,8 @@ describe("casca", () => {
     const cliente = await entrar(novoCliente(), "coordenador_csso");
     for (const caminho of ["/", "/kanban", "/processos", "/laudos", "/adicionais", "/relatorios"]) {
       const r = await cliente.get(caminho);
-      expect(r.text, caminho).toContain("Sistema de apoio da CSSO");
+      expect(r.text, caminho).toContain("Sistema de apoio da SISA");
     }
-    expect((await cliente.get("/processos")).text).toContain("O processo oficial e o SEI.");
+    expect((await cliente.get("/processos")).text).not.toContain("O processo oficial e o SEI.");
   });
 });

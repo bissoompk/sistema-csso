@@ -23,25 +23,25 @@ await contas(db);
 // Política de senha
 // =====================================================================
 describe("política de senha", () => {
-  it("mínimo é dez, com cinco caracteres diferentes", () => {
-    expect(autenticacao.TAMANHO_MINIMO_SENHA).toBe(10);
+  it("mínimo é seis, com cinco caracteres diferentes", () => {
+    expect(autenticacao.TAMANHO_MINIMO_SENHA).toBe(6);
     expect(autenticacao.MINIMO_CARACTERES_DISTINTOS).toBe(5);
   });
 
   // sem regra de composição: frase só de letras passa (NIST SP 800-63B)
-  it.each(["csso-sisa-26", "Fabricio2026", "laboratorio quimico", "a1b2c3d4e5", "ação-segura"])("aceita %s", (senha) => {
+  it.each(["sisa26", "csso-sisa-26", "Fabricio2026", "laboratorio quimico", "a1b2c3d4e5", "ação-segura"])("aceita %s", (senha) => {
     expect(autenticacao.politica_de_senha(senha)).toEqual([]);
   });
 
   it.each([
-    ["a1b2", "mínimo de 10 caracteres"],
-    ["", "mínimo de 10 caracteres"],
-    ["csso26", "mínimo de 10 caracteres"],
+    ["a1b2", "mínimo de 6 caracteres"],
+    ["", "mínimo de 6 caracteres"],
+    ["cs26x", "mínimo de 6 caracteres"],
     ["aaaaaaaaaaaa", "use pelo menos 5 caracteres diferentes"],
     ["1212121212", "use pelo menos 5 caracteres diferentes"],
     ["1234567890", "senha trivial"],
-    ["UFVJM2026", "mínimo de 10 caracteres"],
     ["Diamantina", "senha trivial"],
+    ["UFVJM2026", "senha trivial"],
     ["Senha123456", "senha trivial"],
   ])("recusa %j (%s)", (senha, problema) => {
     expect(autenticacao.politica_de_senha(senha)).toContain(problema);
@@ -49,7 +49,7 @@ describe("política de senha", () => {
 
   it("conta por code point, não por unidade UTF-16", () => {
     // 5 emojis são 10 unidades UTF-16 e 5 caracteres
-    expect(autenticacao.politica_de_senha("😀😁😂🤣😃")).toContain("mínimo de 10 caracteres");
+    expect(autenticacao.politica_de_senha("😀😁😂🤣😃")).toContain("mínimo de 6 caracteres");
   });
 
   it("a lista de triviais está em minúsculas (a comparação é em minúsculas)", () => {
@@ -110,7 +110,7 @@ describe("política de senha", () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
     const troca = await cliente.get("/trocar-senha");
-    expect(troca.text).toContain('"minimo":10');
+    expect(troca.text).toContain('"minimo":6');
     expect(troca.text).toContain('"distintos":5');
     expect(troca.text).toContain('"senha123456"');
   });
@@ -293,7 +293,8 @@ describe("troca de senha e sessões", () => {
       { seguir: false },
     );
     expect(r.status).toBe(303);
-    expect(r.location).toBe("/inicio");
+    // D8: a volta da troca confirma e conta as sessões encerradas
+    expect(r.location).toBe("/trocar-senha?feita=0");
     await cliente.post("/sair", {});
     const velha = await cliente.post("/login", { login: "troca1", senha: SENHA_TESTE });
     expect(velha.text).toContain("inválidos");

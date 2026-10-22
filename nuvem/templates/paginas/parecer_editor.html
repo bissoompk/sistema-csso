@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Parecer {{ parecer.numero }}/{{ parecer.ano }} · CSSO{% endblock %}
+{% block titulo %}Parecer {{ parecer.numero }}/{{ parecer.ano }} · SISA{% endblock %}
 
 {# Terceiro nível da trilha: o processo (pelo NUP, em mono) e depois o parecer.
    `/pareceres/{id}` não é item de menu, então o segundo nível vem daqui. #}
@@ -638,9 +638,15 @@
           {% endif %}
           {% endif %}
           {% if parecer.situacao == 'EMITIDO' %}
-            {% if usuario.pode('parecer.assinar') and pode_assinar %}
+            {% if usuario.pode('parecer.assinar') and pode_assinar and e_o_signatario %}
             <form method="post" action="/pareceres/{{ parecer.id }}/assinar">
               <button type="submit">Marcar como assinado</button></form>
+            {% elif usuario.pode('parecer.assinar') and pode_assinar %}
+            {# D22: o documento sai com o nome de outra pessoa. Marcar é declarar
+               que ELA assinou; quem a substitui diz por quê, no popup. #}
+            <span class="nota">Quem subscreve é
+              {{ parecer.signatario.nome if parecer.signatario else 'o signatário' }}.</span>
+            {{ ui.botao_cadastro('assinar-substituto', 'Marcar como assinado (substituição)…', 'secundario') }}
             {% else %}
             <span class="pilula alerta">Encaminhe para assinatura — você não subscreve laudo</span>
             {% endif %}
@@ -796,6 +802,27 @@
       bloqueio, e eles estão listados na Validação.</p>
     {% endif %}
   </div>
+{% endcall %}
+{% endif %}
+
+{% if parecer.situacao == 'EMITIDO' and usuario.pode('parecer.assinar') and pode_assinar
+      and not e_o_signatario %}
+{% call ui.popup_cadastro('assinar-substituto', 'Marcar como assinado por substituição',
+                          '/pareceres/' ~ parecer.id ~ '/assinar', 'Registrar a assinatura',
+                          aberto=substituicao is not none,
+                          erro=substituicao.erro if substituicao else '') %}
+  <input type="hidden" name="substituicao" value="1">
+  <div class="aviso aviso-alerta">
+    <p>O documento sai com o nome, o SIAPE e o título de
+      <strong>{{ parecer.signatario.nome if parecer.signatario else 'outro signatário' }}</strong>.
+      Marcar como assinado declara que essa pessoa assinou no SEI.</p>
+    <p>A marcação fica na trilha como <strong>substituição</strong>, com o seu nome e o
+      motivo. Se quem vai assinar é você, a saída é anular e emitir nova versão com
+      você como signatário.</p>
+  </div>
+  <div class="campo"><label for="motivo-substituicao">Motivo da substituição (obrigatório)</label>
+    <input id="motivo-substituicao" name="motivo_substituicao" required
+           value="{{ substituicao.motivo if substituicao else '' }}"></div>
 {% endcall %}
 {% endif %}
 

@@ -3,7 +3,7 @@
  * Porte de `app/rotas/auditoria.py`.
  */
 import { Hono } from "hono";
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { usuarioLogado } from "../dependencias.js";
 import type { Executor } from "../db/cliente.js";
@@ -11,11 +11,16 @@ import {
   acesso_dado_sensivel,
   atribuicao,
   historico_evento,
+  profissional_habilitado,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import {
   BOOTSTRAP_SUPERINTENDENTE,
+  CONTA_BLOQUEADA,
   ConferenciaEmCurso,
+  PERMISSAO_ACRESCENTADA_AO_PERFIL,
+  PERMISSAO_RETIRADA_DO_PERFIL,
+  SENHA_TROCADA,
   conferir_fora_da_transacao,
   janela_integra,
   ultima_conferencia,
@@ -50,10 +55,23 @@ export const EVENTOS_DE_CONTA_E_SISTEMA: ReadonlySet<string> = new Set([
   "USUARIO_INATIVADO",
   "SENHA_RESETADA",
   "SENHA_RESET_RECUSADO",
+  SENHA_TROCADA,
+  CONTA_BLOQUEADA,
+  PERMISSAO_ACRESCENTADA_AO_PERFIL,
+  PERMISSAO_RETIRADA_DO_PERFIL,
   "SERVIDOR_VINCULADO",
   "SERVIDOR_DESVINCULADO",
   "PERFIL_CONCEDIDO",
   "PERFIL_ENCERRADO",
+  // a governança da conta e da habilitação (D2, D3, D7, D10, D11, D23): são
+  // justamente os eventos que quem audita acesso precisa ler
+  "PERFIL_CANCELADO",
+  "PERFIL_CONCESSAO_RECUSADA",
+  "USUARIO_ALTERADO",
+  "CONTA_DESBLOQUEADA",
+  "HABILITACAO_ENCERRADA",
+  "HABILITACAO_CORRIGIDA",
+  "HABILITACAO_RECUSADA",
   "ATO_NORMATIVO_ALTERADO",
   BOOTSTRAP_SUPERINTENDENTE,
   "BACKUP_EXECUTADO",
@@ -79,10 +97,24 @@ async function _servidor_das_contas(tx: Executor, eventos: Evento[]) {
       dona.set(a.id, a.usuario_id);
     }
   }
+  // a habilitação fala da conta a que está ligada: o servidor dela é o envolvido
+  const ids_habilitacao = do_tipo.filter((e) => e.entidade === "profissional_habilitado").map((e) => e.entidade_id);
+  const conta_da_habilitacao = new Map<number, number | null>();
+  if (ids_habilitacao.length) {
+    for (const h of await tx
+      .select({ id: profissional_habilitado.id, usuario_id: profissional_habilitado.usuario_id })
+      .from(profissional_habilitado)
+      .where(inArray(profissional_habilitado.id, ids_habilitacao))) {
+      conta_da_habilitacao.set(h.id, h.usuario_id);
+    }
+  }
   const conta_do_evento = new Map<number, number | null>();
   for (const e of do_tipo) {
     if (e.entidade === "usuario") conta_do_evento.set(e.id, e.entidade_id);
     else if (e.entidade === "atribuicao") conta_do_evento.set(e.id, dona.get(e.entidade_id) ?? null);
+    else if (e.entidade === "profissional_habilitado") {
+      conta_do_evento.set(e.id, conta_da_habilitacao.get(e.entidade_id) ?? null);
+    }
   }
   const contas = [...new Set([...conta_do_evento.values()].filter((v): v is number => v !== null))];
   const servidor_da_conta = new Map<number, number | null>();
@@ -111,7 +143,8 @@ function descricao_na_tela(
 ): string {
   if (!e.descricao) return "—";
   if (!EVENTOS_DE_CONTA_E_SISTEMA.has(e.tipo_evento)) return identificacao.texto_livre(e.descricao, usuario, { vazio: "—" });
-  if (e.entidade === "sistema") return e.descricao;
+  // o perfil não é de ninguém: a frase diz o código do perfil e o da permissão
+  if (e.entidade === "sistema" || e.entidade === "perfil") return e.descricao;
   const conta = contas.conta_do_evento.get(e.id);
   if (conta === undefined || conta === null) return identificacao.texto_livre(e.descricao, usuario, { vazio: "—" });
   const envolvidos = [contas.servidor_da_conta.get(conta) ?? null];
@@ -120,6 +153,37 @@ function descricao_na_tela(
     .filter((id): id is number => id !== null)
     .every((id) => identificacao.pode_ver_nominal(usuario, id));
   return todos_visiveis ? e.descricao : identificacao.TEXTO_SUPRIMIDO;
+}
+
+/**
+ * Os eventos que FALAM de uma conta (D21), qualquer que seja quem agiu: os da
+ * própria conta (criação, senha, bloqueio, vínculo com servidor), os das
+ * concessões dela, e os das habilitações ligadas a ela hoje ou que um dia
+ * foram ligadas ou desligadas dela. O filtro "Usuário" responde "o que esta
+ * pessoa fez"; este responde "o que fizeram com esta conta" — a pergunta de
+ * quem revisa um acesso. É a URL do "Histórico desta conta".
+ */
+function _da_conta(conta_id: number): SQL {
+  const id_texto = String(conta_id);
+  const habilitacoes = sql`(select ${profissional_habilitado.id} from ${profissional_habilitado} where ${profissional_habilitado.usuario_id} = ${conta_id})`;
+  const atribuicoes = sql`(select ${atribuicao.id} from ${atribuicao} where ${atribuicao.usuario_id} = ${conta_id})`;
+  return or(
+    and(eq(historico_evento.entidade, "usuario"), eq(historico_evento.entidade_id, conta_id)),
+    and(eq(historico_evento.entidade, "atribuicao"), sql`${historico_evento.entidade_id} in ${atribuicoes}`),
+    and(
+      eq(historico_evento.entidade, "profissional_habilitado"),
+      or(
+        sql`${historico_evento.entidade_id} in ${habilitacoes}`,
+        and(
+          eq(historico_evento.campo, "usuario_id"),
+          or(
+            sql`(${historico_evento.valor_anterior} #>> '{}') = ${id_texto}`,
+            sql`(${historico_evento.valor_novo} #>> '{}') = ${id_texto}`,
+          ),
+        ),
+      ),
+    ),
+  )!;
 }
 
 function _inteiro(bruto: unknown): number | null {
@@ -133,6 +197,7 @@ async function _trilha(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: strin
   // num POST (conferir) os filtros não viajam: a tela volta à primeira página
   const get = c.req.method === "GET";
   const filtro_usuario = get ? _inteiro(c.req.query("usuario_id")) : null;
+  const filtro_conta = get ? _inteiro(c.req.query("conta_id")) : null;
   const filtro_entidade = (get && c.req.query("entidade")) || null;
   const filtro_tipo = (get && c.req.query("tipo_evento")) || null;
   const pagina_num = (get && _inteiro(c.req.query("pagina_num"))) || 1;
@@ -140,6 +205,7 @@ async function _trilha(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: strin
 
   const condicoes: (SQL | undefined)[] = [];
   if (filtro_usuario) condicoes.push(eq(historico_evento.usuario_id, filtro_usuario));
+  if (filtro_conta) condicoes.push(_da_conta(filtro_conta));
   if (filtro_entidade) condicoes.push(eq(historico_evento.entidade, filtro_entidade));
   if (filtro_tipo) condicoes.push(eq(historico_evento.tipo_evento, filtro_tipo));
   const eventos = await tx
@@ -185,6 +251,7 @@ async function _trilha(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: strin
   // trilha inteira a partir da página 2
   const eixos = new URLSearchParams();
   if (filtro_usuario) eixos.set("usuario_id", String(filtro_usuario));
+  if (filtro_conta) eixos.set("conta_id", String(filtro_conta));
   if (filtro_entidade) eixos.set("entidade", filtro_entidade);
   if (filtro_tipo) eixos.set("tipo_evento", filtro_tipo);
   return pagina(c, "paginas/auditoria.html", usuario, {
@@ -195,6 +262,7 @@ async function _trilha(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: strin
     tipos,
     entidades,
     filtro_usuario,
+    filtro_conta,
     filtro_entidade,
     filtro_tipo,
     pagina_num,

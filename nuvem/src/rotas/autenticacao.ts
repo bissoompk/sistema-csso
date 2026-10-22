@@ -54,9 +54,10 @@ function _local(c: Ctx): boolean {
 // que abre para ele.
 export const INICIO = "/inicio";
 
-// Os dois motivos que a tela de login sabe explicar (vêm de
-// `dependencias.destinoDeLogin`). Qualquer outro valor é ignorado — o parâmetro
-// chega pela URL, e URL é entrada.
+// Os motivos que a tela de login sabe explicar: os dois primeiros vêm de
+// `dependencias.destinoDeLogin`; `inatividade`, do aviso de inatividade do
+// navegador (csso.js, bloco 12). Qualquer outro valor é ignorado — o parâmetro
+// chega pela URL, e URL é entrada: o texto mostrado é sempre um destes.
 export const MOTIVOS: Record<string, string> = {
   sessao:
     "Sua sessão expirou. Entre de novo para continuar de onde estava — o " +
@@ -65,6 +66,7 @@ export const MOTIVOS: Record<string, string> = {
     "Sua sessão expirou antes de o envio ser gravado: o que você tinha " +
     "preenchido não foi salvo. Entre de novo e refaça — a tela de origem é " +
     "reaberta depois.",
+  inatividade: "Sua sessão foi encerrada por inatividade.",
 };
 
 /**
@@ -93,7 +95,8 @@ rotas.get("/login", async (c) => {
   if (!(await autenticacao.existe_algum_usuario(tx))) return redirecionar(c, "/primeiro-acesso");
   return pagina(c, "paginas/login.html", null, {
     proximo: destino_seguro(c.req.query("proximo") ?? INICIO),
-    aviso_sessao: MOTIVOS[c.req.query("motivo") ?? ""] ?? null,
+    // `hasOwn`: `?motivo=toString` acharia o método herdado do objeto
+    aviso_sessao: Object.hasOwn(MOTIVOS, c.req.query("motivo") ?? "") ? MOTIVOS[c.req.query("motivo")!] : null,
   });
 });
 
@@ -189,7 +192,10 @@ rotas.post("/primeiro-acesso", async (c) => {
   // continua existindo e obrigatória, então sai do próprio e-mail.
   const escolhido = login.trim() || autenticacao.usuario_a_partir_do_email(email);
   try {
-    await autenticacao.criar_primeiro_superintendente(tx, escolhido, nome.trim(), email.trim(), senha);
+    // a senha foi escolhida agora, nesta tela: não é provisória (D28)
+    await autenticacao.criar_primeiro_superintendente(tx, escolhido, nome.trim(), email.trim(), senha, {
+      precisa_trocar_senha: false,
+    });
   } catch (erro) {
     if (!(erro instanceof autenticacao.SenhaRecusada || erro instanceof autenticacao.PrimeiroAcessoRecusado)) {
       throw erro;
@@ -201,12 +207,27 @@ rotas.post("/primeiro-acesso", async (c) => {
 });
 
 /** A tela da troca, com o teto de tentativas que ela anuncia (o mesmo do login). */
-function _tela_troca(c: Ctx, usuario: Awaited<ReturnType<typeof usuarioLogado>>, extra: { erro?: string } = {}) {
+function _tela_troca(
+  c: Ctx,
+  usuario: Awaited<ReturnType<typeof usuarioLogado>>,
+  extra: { erro?: string; encerradas?: number } = {},
+) {
   return pagina(c, "paginas/trocar_senha.html", usuario, { max_tentativas: obterConfig().maxTentativas, ...extra });
 }
 
+/**
+ * `?feita=N` é a volta da troca (PRG): a tela confirma e diz quantas outras
+ * sessões caíram (D8). Antes a troca ia direto para /inicio, sem aviso, e a
+ * pessoa que trocou por desconfiança não sabia se a outra máquina tinha saído.
+ * O número vem da URL e só vira texto; quem ainda precisa trocar vê o
+ * formulário, digam o que disserem os parâmetros.
+ */
 rotas.get("/trocar-senha", async (c) => {
   const usuario = await usuarioLogado(c);
+  const feita = c.req.query("feita");
+  if (feita !== undefined && /^\d{1,4}$/.test(feita) && !usuario.precisa_trocar_senha) {
+    return _tela_troca(c, usuario, { encerradas: Number(feita) });
+  }
   return _tela_troca(c, usuario);
 });
 
@@ -219,7 +240,8 @@ rotas.post("/trocar-senha", async (c) => {
   const nova = f.texto("nova");
   const confirmacao = f.texto("confirmacao");
 
-  const recusa = await autenticacao.conferir_senha_atual(tx, usuario.id, senha_atual);
+  const contexto = { usuario, ip: ipDoCliente(c), user_agent: c.req.header("user-agent") ?? null };
+  const recusa = await autenticacao.conferir_senha_atual(tx, usuario.id, senha_atual, contexto);
   if (recusa?.bloqueada) {
     // as sessões caíram (a desta também): a próxima tela é o login, com o porquê
     deleteCookie(c, autenticacao.COOKIE_SESSAO, { path: "/" });
@@ -231,15 +253,22 @@ rotas.post("/trocar-senha", async (c) => {
   if (nova !== confirmacao) {
     return _tela_troca(c, usuario, { erro: "A confirmação não confere." });
   }
+  let encerradas: number;
   try {
     // O cookie da requisição diz "esta sessão é a de quem está trocando": ela
     // sobrevive, todas as outras caem. Sem ele a troca expulsaria a pessoa.
-    await autenticacao.trocar_senha(tx, registro, nova, getCookie(c, autenticacao.COOKIE_SESSAO) ?? null);
+    encerradas = await autenticacao.trocar_senha(
+      tx,
+      registro,
+      nova,
+      getCookie(c, autenticacao.COOKIE_SESSAO) ?? null,
+      contexto,
+    );
   } catch (erro) {
     if (!(erro instanceof autenticacao.SenhaRecusada)) throw erro;
     return _tela_troca(c, usuario, { erro: erro.message });
   }
-  return redirecionar(c, INICIO);
+  return redirecionar(c, `/trocar-senha?feita=${encerradas}`);
 });
 
 rotas.get("/quem-sou-eu", async (c) => {

@@ -7,7 +7,7 @@
  * alguém no endereço alheio. Aqui a trava não é o e-mail (o endereço digitado
  * nem precisa existir, e mandar e-mail a endereço digitado por anônimo faria do
  * link um canhão de spam). A trava passa a
- * ser a CSSO: todo pedido nasce em `AGUARDANDO_EMAIL` ("pedido pelo link, a
+ * ser a equipe: todo pedido nasce em `AGUARDANDO_EMAIL` ("pedido pelo link, a
  * conferir"), NÃO ocupa vaga, abre a pendência do setor e só vira inscrição
  * quando alguém com `turma.inscrever` o aceita (`conferida_por`, ver a CHECK
  * `ck_inscricao_email_confirmado`). Recusar é cancelar, com motivo.
@@ -18,7 +18,7 @@
  *
  * **Sem oráculo.** A resposta ao público é sempre a mesma frase: quem já
  * estava inscrito, o SIAPE de outra pessoa e o pedido novo são indistinguíveis
- * de fora. Quem confere é a CSSO, olhando a aba Inscrições.
+ * de fora. Quem confere é a equipe, olhando a aba Inscrições.
  *
  * **Sem CPF.** O formulário não tem o campo, e recusa o número digitado em
  * qualquer outro (o CPF só entra pela tela interna, e só para o certificado).
@@ -51,7 +51,7 @@ const RE_SIAPE = /^\d{6,7}$/;
 const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const RESPOSTA_PADRAO =
-  "Pedido recebido. A CSSO confere cada pedido antes de confirmar a vaga; " +
+  "Pedido recebido. A equipe responsável pela turma confere cada pedido antes de confirmar a vaga; " +
   "se precisar de algo, ela procura você pelos dados informados.";
 
 function _hash(token: string): string {
@@ -64,7 +64,7 @@ function _expira_em(ate: string): Date {
 }
 
 // ---------------------------------------------------------------------
-// O lado da CSSO: ligar, trocar e desligar o link
+// O lado da equipe: ligar, trocar e desligar o link
 // ---------------------------------------------------------------------
 /**
  * Sorteia o link da turma e devolve o TOKEN (a única vez em que ele existe
@@ -85,7 +85,7 @@ export async function gerar_link(
     );
   }
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
-  if (impedimento) throw new RegraDaTurma(impedimento.replace(" Fale com a CSSO.", ""));
+  if (impedimento) throw new RegraDaTurma(impedimento.replace(servico_turma.FALE_COM_A_EQUIPE, ""));
   const token = randomBytes(24).toString("base64url");
   const ja_havia = turma.inscricao_publica;
   const campos = {
@@ -156,13 +156,13 @@ export async function turma_do_token(
   if (!linha) return null;
   const turma = await servico_turma.carregar_turma(tx, linha.id);
   if (!turma) return null;
-  let fechada = servico_turma.aberta_a_pedido_proprio(turma, hoje).replace(" Fale com a CSSO.", "");
+  let fechada = servico_turma.aberta_a_pedido_proprio(turma, hoje).replace(servico_turma.FALE_COM_A_EQUIPE, "");
   if (!fechada && turma.inscricao_token_expira_em !== null && turma.inscricao_token_expira_em <= agora) {
     fechada = `As inscrições de ${turma.codigo} pelo link encerraram.`;
   }
   // turma lotada não recebe pedido: no IntegraSST a lotação fechava a
   // inscrição; aqui a pessoa recebia "pedido recebido" e a recusa só aparecia
-  // quando a CSSO tentava aceitar. O pedido em espera não ocupa vaga, então
+  // quando a equipe tentava aceitar. O pedido em espera não ocupa vaga, então
   // conta só quem já foi aceito.
   if (!fechada && (await servico_turma.vagas_restantes(tx, turma)) === 0) {
     fechada = `As vagas de ${turma.codigo} se esgotaram.`;
@@ -220,11 +220,11 @@ function _ler(d: Pedido): Pedido {
 export { mesmo_nome };
 
 /**
- * O pedido que esta mesma pessoa já deixou na turma e a CSSO ainda não
+ * O pedido que esta mesma pessoa já deixou na turma e a equipe ainda não
  * conferiu: mesmo nome inteiro (sem acento, sem caixa, sem espaço sobrando),
  * externo, vindo do link. É o que segura o duplo clique, o "reenviar" do
  * celular e o pedido repetido de quem não deixou e-mail — cada um nascia como
- * participante novo, e a CSSO recebia três "a conferir" da mesma pessoa.
+ * participante novo, e a equipe recebia três "a conferir" da mesma pessoa.
  */
 async function _pedido_em_espera(tx: Executor, turma: TurmaCarregada, p: Pedido): Promise<ParticipanteCarregado | null> {
   const alvo = textos.chave_busca(p.nome);
@@ -257,7 +257,7 @@ async function _pedido_em_espera(tx: Executor, turma: TurmaCarregada, p: Pedido)
  * TODOS os participantes que o usam (dois podem dividir o endereço, e o
  * primeiro nem sempre é o do nome digitado). Sem casamento, o pedido em espera
  * da mesma pessoa na turma é reaproveitado; só então nasce um participante
- * externo — a duplicata, se for, aparece para a CSSO mesclar.
+ * externo — a duplicata, se for, aparece para a equipe mesclar.
  */
 async function _participante(tx: Executor, turma: TurmaCarregada, p: Pedido): Promise<[ParticipanteCarregado, string]> {
   if (p.siape) {
@@ -299,7 +299,7 @@ export async function pedir(
 ): Promise<void> {
   const p = _ler(dados);
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
-  if (impedimento) throw new RegraDaTurma(impedimento.replace(" Fale com a CSSO.", ""));
+  if (impedimento) throw new RegraDaTurma(impedimento.replace(servico_turma.FALE_COM_A_EQUIPE, ""));
   if ((await servico_turma.vagas_restantes(tx, turma)) === 0) {
     throw new RegraDaTurma(`As vagas de ${turma.codigo} se esgotaram.`);
   }
@@ -314,7 +314,7 @@ export async function pedir(
       ),
     );
   if (Number(em_espera?.n ?? 0) >= LIMITE_PEDIDOS_EM_ESPERA) {
-    throw new RegraDaTurma("Esta turma já recebeu pedidos demais pelo link. Fale com a CSSO.");
+    throw new RegraDaTurma("Esta turma já recebeu pedidos demais pelo link." + servico_turma.FALE_COM_A_EQUIPE);
   }
   let pessoa: ParticipanteCarregado;
   let nota: string;

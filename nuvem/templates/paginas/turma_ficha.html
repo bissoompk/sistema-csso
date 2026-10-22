@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}{{ turma.codigo }} · CSSO{% endblock %}
+{% block titulo %}{{ turma.codigo }} · SISA{% endblock %}
 {# o código da turma em mono: número que se confere dígito a dígito nunca sai em
    texto corrido — nem no h1, nem na trilha #}
 {% block trilha %}
@@ -84,8 +84,13 @@
    ao lado do nome na folha de presença (`lista_presenca.py:80`), que passa de
    mão em mão na sala. Publicá-lo a quem não pode ver o nome entrega um
    apelido permanente que uma única folha assinada resolve — e resolve em toda
-   tela do sistema, para sempre. Opaco na construção não é opaco no efeito. #}
-{% set pode_nominal = usuario.pode('certificado.ver') or usuario.ve_dado_nominal %}
+   tela do sistema, para sempre. Opaco na construção não é opaco no efeito.
+
+   `exposicao.ver`, e não `ve_dado_nominal` (D15): este último soma `epi.ficha`,
+   que só é nominal nas telas de EPI. Desde que toda conta ligada a servidor
+   abre a turma como cartaz (D16), o almoxarife chegava aqui e lia o nome de
+   todos os inscritos. #}
+{% set pode_nominal = usuario.pode('certificado.ver') or usuario.pode('exposicao.ver') %}
 {% set SUPRIMIDO = 'identificação suprimida (RN-19)' %}
 
 <div class="tela">
@@ -206,7 +211,7 @@
       {% elif pode_pedir_aqui %}
       <form method="post" action="/turmas/{{ turma.id }}/inscrever-me" class="acoes">
         <button type="submit">Quero me inscrever</button>
-        <span class="dica">A vaga fica reservada; a CSSO confirma depois.</span>
+        <span class="dica">A vaga fica reservada; a equipe confirma depois.</span>
       </form>
       {% endif %}
 
@@ -421,7 +426,7 @@
     </thead>
     {% for i in inscricoes %}
     {# Uma linha, uma decisão, e ela é do helper: `quem.nominal` já contém o
-       titular e quem tem `exposicao.ver`; `pode_nominal` acrescenta a CSSO. #}
+       titular e quem tem `exposicao.ver`; `pode_nominal` acrescenta a equipe. #}
     {% set quem = identificar(i.participante.servidor, vazio=SUPRIMIDO) %}
     {% set nominal = pode_nominal or quem.nominal %}
     <tr>
@@ -460,7 +465,7 @@
                                               if nominal else quem.nome),
                                 nota=(ui.ROTULO_INSCRICAO_TELA[i.situacao] or i.situacao)|lower) %}
           {% if i.situacao == 'AGUARDANDO_EMAIL' %}
-          {# o pedido do link: a conferência da CSSO é a trava que o e-mail seria #}
+          {# o pedido do link: a conferência da equipe é a trava que o e-mail seria #}
           <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
             <h3>Aceitar o pedido</h3>
             <p class="discreto">Confira se a pessoa é quem diz ser (nome, SIAPE, vínculo).
@@ -678,7 +683,7 @@
            ('Esta lista mostra só quem nunca participou de nenhuma turma, por nome
              ou SIAPE. Quem já participou está na tabela acima — e não estando em
              nenhuma das duas, o cadastro do servidor é que falta, em /servidores.'
-            if usuario.ve_dado_nominal else
+            if usuario.pode('exposicao.ver') else
             'Esta lista é o cadastro de servidor, e aqui vale a mesma regra de
              /servidores: sem `exposicao.ver` ela casa só pelo SIAPE, que vem no
              processo do SEI. Quem já participou de alguma turma está na tabela
@@ -1371,7 +1376,7 @@
   </div>
   {% else %}
   <div class="aviso aviso-erro">
-    <p><strong>Excluir apaga a turma de vez</strong>, com as inscrições lançadas pela CSSO,
+    <p><strong>Excluir apaga a turma de vez</strong>, com as inscrições lançadas pela equipe,
       os instrutores vinculados e os campos do certificado. Não há como desfazer.</p>
     <p>O código <span class="mono">{{ turma.codigo }}</span> não volta para a sequência: a
       trilha guarda o retrato da turma e o motivo, que é o que explica o número que falta.</p>

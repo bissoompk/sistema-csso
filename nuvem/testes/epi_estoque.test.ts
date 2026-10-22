@@ -721,7 +721,9 @@ describe("permissões", () => {
     ["secretaria_csso", 200, 403],
     ["consulta_progep", 200, 403],
     ["auditor_interno", 200, 403],
-    ["servidor_consulta", 200, 403],
+    // a prateleira é do setor: o `epi.ver` do titular (escopo próprio) não a
+    // abre desde a correção do D16 (22/10/2026)
+    ["servidor_consulta", 403, 403],
     ["admin_ti", 403, 403],
   ] as const)("estoque: %s vê %i e escreve %i", async (perfil, ver, escrever) => {
     const cenario = await _cenario();

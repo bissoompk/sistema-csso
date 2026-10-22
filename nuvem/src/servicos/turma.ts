@@ -54,6 +54,7 @@ import * as numeracao from "./numeracao.js";
 import * as pendencias from "./pendencias.js";
 import * as servico_participante from "./participante.js";
 import * as setor_promotor from "./setor_promotor.js";
+import * as setor_equipe from "./setor_equipe.js";
 import { COM_PARTICIPANTE, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import { comparar } from "./presenca.js";
@@ -192,19 +193,34 @@ export function codigo_de(numero: number, ano: number): string {
  * escopo próprio NÃO filtra; `ESCOPO_UNIDADE` continua passando por
  * `aplicar_escopo`, e é para ele que `turma.campus_id` existe.
  *
+ * O escopo é o da PERMISSÃO (D1/D9), e não o da conta: o titular que pede a
+ * própria vaga (`turma.inscrever_se`, sempre próprio) alcança o cartaz
+ * inteiro, ainda que tenha um perfil de equipe recortado por campus; quem
+ * inscreve os outros (`turma.inscrever`) alcança só o campus daquela
+ * concessão.
+ *
+ * NUVEM: o alcance de EQUIPE se recorta também pelo setor promotor da turma
+ * (`setor_equipe.ts`): cada setor vê as turmas que promove. O cartaz do
+ * titular (o ramo de escopo próprio) continua inteiro.
+ *
  * Devolve a CONDIÇÃO (ver o desvio de `aplicar_escopo` em DESVIOS.md).
  */
-export function consulta_no_escopo(usuario: UsuarioAtual) {
-  if (usuario.escopo === ESCOPO_PROPRIO) return undefined;
-  return aplicar_escopo(usuario, tabela_turma);
+export function consulta_no_escopo(usuario: UsuarioAtual, permissao: string | readonly string[] = "treinamento.ver") {
+  if (usuario.escopo_de(permissao) === ESCOPO_PROPRIO) return undefined;
+  return and(aplicar_escopo(usuario, tabela_turma, permissao), setor_equipe.condicao_setor_turma(usuario));
 }
 
 /** Uma leitura só, já recortada — a porta única das rotas de turma. */
-export async function no_escopo(tx: Executor, usuario: UsuarioAtual, turma_id: number): Promise<TurmaCarregada | null> {
+export async function no_escopo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma_id: number,
+  permissao: string | readonly string[] = "treinamento.ver",
+): Promise<TurmaCarregada | null> {
   const [achada] = await tx
     .select({ id: tabela_turma.id })
     .from(tabela_turma)
-    .where(and(consulta_no_escopo(usuario), eq(tabela_turma.id, turma_id)));
+    .where(and(consulta_no_escopo(usuario, permissao), eq(tabela_turma.id, turma_id)));
   return achada ? carregar_turma(tx, achada.id) : null;
 }
 
@@ -286,6 +302,35 @@ async function _conferir_unidade_promotora(tx: Executor, escolhida: number | nul
   if (recusa) throw new RegraDaTurma(recusa);
 }
 
+/**
+ * NUVEM: o setor promotor da turma nova, pelo setor de quem a abre
+ * (`setor_equipe.ts`). Quem vê todos os setores escolhe qualquer um (ou
+ * nenhum); os outros, só um dos seus — em branco, o único que têm.
+ */
+export function setor_da_turma_nova(usuario: UsuarioAtual, escolhida: number | null): number | null {
+  if (setor_equipe.ve_todos(usuario)) return escolhida;
+  const meus = usuario.setores_promotores;
+  if (escolhida !== null) {
+    if (!meus.includes(escolhida)) throw new RegraDaTurma(RECUSA_SETOR_ALHEIO);
+    return escolhida;
+  }
+  if (meus.length === 1) return meus[0]!;
+  if (!meus.length) throw new RegraDaTurma(setor_equipe.AVISO_SEM_SETOR);
+  throw new RegraDaTurma("Escolha o setor promotor da turma: a sua conta está vinculada a mais de um setor.");
+}
+
+export const RECUSA_SETOR_ALHEIO =
+  "Você só pode atribuir a turma a um dos setores promotores a que a sua conta está vinculada.";
+
+/** NUVEM: na edição, a turma não sai dos setores de quem edita. */
+function _conferir_setor_na_edicao(usuario: UsuarioAtual, nova: number | null, atual: number | null): void {
+  if (nova === atual || setor_equipe.ve_todos(usuario)) return;
+  if (nova === null) {
+    throw new RegraDaTurma("Escolha o setor promotor da turma: ele não pode ficar em branco.");
+  }
+  if (!usuario.setores_promotores.includes(nova)) throw new RegraDaTurma(RECUSA_SETOR_ALHEIO);
+}
+
 export interface DadosTurma {
   treinamento: TreinamentoRegistro;
   data_inicio: string;
@@ -325,7 +370,8 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
   if (d.data_base_vencimento && d.data_base_vencimento < d.data_inicio) {
     throw new RegraDaTurma("A data base do vencimento não pode ser anterior ao início da turma.");
   }
-  await _conferir_unidade_promotora(tx, d.unidade_promotora_id ?? null, null);
+  const unidade_promotora_id = setor_da_turma_nova(usuario, d.unidade_promotora_id ?? null);
+  await _conferir_unidade_promotora(tx, unidade_promotora_id, null);
 
   const ano = datas_br.partes(d.data_inicio)[0];
   const numero = await numeracao.proximo_numero_turma(tx, ano);
@@ -343,7 +389,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
       local: d.local ?? null,
       descricao: d.descricao ?? null,
       campus_id: d.campus_id ?? null,
-      unidade_promotora_id: d.unidade_promotora_id ?? null,
+      unidade_promotora_id,
       vagas: d.vagas ?? null,
       inscricao_aberta_ate: d.inscricao_aberta_ate ?? null,
       nota_minima_aprovacao: d.nota_minima_aprovacao ?? null,
@@ -418,6 +464,7 @@ export async function editar_turma(
         "que já foi divulgado. Cancele esta turma e abra outra.",
     );
   }
+  _conferir_setor_na_edicao(usuario, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   await _conferir_unidade_promotora(tx, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   const base = valor("data_base_vencimento");
   if (base !== null && base < novo_inicio) {
@@ -539,14 +586,14 @@ const SITUACOES_EXCLUIVEIS = ["PLANEJADA", "INSCRICOES_ABERTAS"];
 
 /**
  * O que impede apagar a turma — lista vazia é "pode". A turma que ainda não
- * aconteceu e que só a CSSO conhece (treinamento errado, data trocada, turma
+ * aconteceu e que só a equipe conhece (treinamento errado, data trocada, turma
  * duplicada) sai de vez; a que alguém de fora já viu se CANCELA, com motivo,
  * porque o cancelamento é o que essa pessoa vai ler.
  *
  * Trava: começou (presença ou nota lançada), tem certificado (mesmo anulado:
  * o número existiu), já saiu e-mail para algum inscrito, ou há pedido feito
  * pelo próprio participante (link público ou "inscrever-me"). A inscrição que
- * a própria CSSO lançou vai junto com a turma.
+ * a própria equipe lançou vai junto com a turma.
  */
 export async function impedimentos_da_exclusao(tx: Executor, turma: TurmaRegistro): Promise<string[]> {
   const motivos: string[] = [];
@@ -577,7 +624,7 @@ export async function impedimentos_da_exclusao(tx: Executor, turma: TurmaRegistr
       .where(and(inArray(tabela_email_saida.inscricao_id, ids), eq(tabela_email_saida.situacao, "ENVIADO")));
     if (Number(enviados?.n ?? 0) > 0) motivos.push("algum inscrito já recebeu e-mail sobre ela");
     // o pedido do próprio participante (link ou "inscrever-me") é o que abre a
-    // tarefa de confirmação; a inscrição lançada pela CSSO não abre
+    // tarefa de confirmação; a inscrição lançada pela equipe não abre
     const chaves = inscricoes.map(chave_da_pendencia_de_confirmacao);
     const pedidas = new Set(
       (await tx.select({ chave: tabela_pendencia.chave }).from(tabela_pendencia).where(inArray(tabela_pendencia.chave, chaves))).map(
@@ -595,7 +642,7 @@ export async function impedimentos_da_exclusao(tx: Executor, turma: TurmaRegistr
 }
 
 /**
- * Apaga a turma e o que só existia por ela: inscrições lançadas pela CSSO,
+ * Apaga a turma e o que só existia por ela: inscrições lançadas pela equipe,
  * vínculos de instrutor, campos do certificado (as FKs cascateiam). Fecha as
  * tarefas abertas sobre ela e cancela o e-mail que ainda estava na fila. O
  * código não volta para a sequência: `TUR-AAAA-NNNN` que sumiu fica explicado
@@ -647,7 +694,7 @@ export async function excluir_turma(
     tipo_evento: TURMA_EXCLUIDA,
     descricao:
       `${turma.codigo} · ${turma.treinamento.nome} · ${datas_br.numerica(turma.data_inicio)} excluída` +
-      (ids.length ? `, com ${ids.length} inscrição(ões) lançada(s) pela CSSO` : "") +
+      (ids.length ? `, com ${ids.length} inscrição(ões) lançada(s) pela equipe` : "") +
       ` — ${limpo}`,
     campo: "situacao",
     valor_anterior: {
@@ -772,20 +819,20 @@ async function _conferir_inscricao_unica(
 /**
  * Onde o titular está numa turma, dito a ele — a mesma frase na coluna de
  * "Meus treinamentos" e na recusa do "inscrever-me". A desistência é definitiva
- * nesta turma (`desistir`): voltar atrás é com a CSSO.
+ * nesta turma (`desistir`): voltar atrás é com a equipe responsável.
  */
 export function situacao_para_o_titular(situacao: string): string {
-  if (situacao === "CANCELADA") return "Você desistiu — fale com a CSSO";
+  if (situacao === "CANCELADA") return "Você desistiu — fale com a equipe responsável";
   if (situacao === "AGUARDANDO_EMAIL") return "Pedido em análise";
-  if (situacao === "INSCRITA") return "Inscrita, aguardando a CSSO";
+  if (situacao === "INSCRITA") return "Inscrita, aguardando confirmação";
   return ROTULO_INSCRICAO_TELA[situacao] ?? situacao;
 }
 
 function frase_da_minha_inscricao(situacao: string, codigo: string): string {
   if (situacao === "CANCELADA") {
-    return `Você desistiu de ${codigo}, e a desistência é definitiva nesta turma: para voltar, fale com a CSSO.`;
+    return `Você desistiu de ${codigo}, e a desistência é definitiva nesta turma: para voltar, fale com a equipe responsável.`;
   }
-  if (situacao === "AGUARDANDO_EMAIL") return `Seu pedido de vaga em ${codigo} já está em análise pela CSSO.`;
+  if (situacao === "AGUARDANDO_EMAIL") return `Seu pedido de vaga em ${codigo} já está em análise pela equipe responsável.`;
   return `Você já está inscrito(a) em ${codigo}.`;
 }
 
@@ -886,7 +933,7 @@ export async function mudar_situacao_inscricao(
     );
   }
 
-  // NUVEM: o pedido do link público sai da espera pela conferência da CSSO
+  // NUVEM: o pedido do link público sai da espera pela conferência da equipe
   // (não há e-mail a confirmar) — e só então passa a ocupar vaga
   const aceitando_pedido = origem === "AGUARDANDO_EMAIL" && destino === "INSCRITA";
   const recusando_pedido = origem === "AGUARDANDO_EMAIL" && destino === "CANCELADA";
@@ -926,7 +973,7 @@ export async function mudar_situacao_inscricao(
     comentario: limpo,
     usuario,
   });
-  // sair de INSCRITA é o que a CSSO tinha para fazer: confirmar (ou cancelar);
+  // sair de INSCRITA é o que a equipe tinha para fazer: confirmar (ou cancelar);
   // aceitar o pedido do link também — a conferência foi o ato que ela pedia
   if (aceitando_pedido) await fechar_pendencia_de_confirmacao(tx, inscricao, usuario, { mesmo_inscrita: true });
   else await fechar_pendencia_de_confirmacao(tx, inscricao, usuario);
@@ -971,7 +1018,7 @@ export function chave_da_pendencia_de_confirmacao(inscricao: { id: number }): st
 }
 
 /**
- * Abre a tarefa que diz à CSSO que há um pedido esperando confirmação.
+ * Abre a tarefa que diz à equipe que há um pedido esperando confirmação.
  *
  * Sem responsável, de propósito: tarefa sem dono é do SETOR. A descrição não
  * nomeia ninguém (`identificador_publico`). O prazo é o da turma.
@@ -1030,11 +1077,18 @@ async function _titular_da_conta(tx: Executor, usuario: UsuarioAtual) {
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id));
   if (!servidor) {
     throw new RegraDaTurma(
-      "O cadastro de servidor ligado a esta conta não existe mais. Avise a CSSO antes de tentar de novo.",
+      "O cadastro de servidor ligado a esta conta não existe mais. Avise a equipe responsável antes de tentar de novo.",
     );
   }
   return servidor;
 }
+
+/**
+ * Fecho das recusas do pedido próprio ("inscrever-me"). A inscrição pública e
+ * a tela do link tiram este trecho das mesmas frases (`.replace`), então o
+ * texto mora aqui, num lugar só.
+ */
+export const FALE_COM_A_EQUIPE = " Fale com a equipe responsável.";
 
 /**
  * `""` quando a turma recebe pedido do próprio; o motivo, quando não recebe.
@@ -1045,7 +1099,8 @@ export function aberta_a_pedido_proprio(turma: TurmaRegistro, hoje: string | nul
   if (turma.situacao !== "INSCRICOES_ABERTAS") {
     return (
       `${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()}: só se ` +
-      "pede vaga em turma com inscrições abertas. Fale com a CSSO."
+      "pede vaga em turma com inscrições abertas." +
+      FALE_COM_A_EQUIPE
     );
   }
   if (turma.inscricao_aberta_ate !== null && turma.inscricao_aberta_ate < dia) {
@@ -1053,7 +1108,7 @@ export function aberta_a_pedido_proprio(turma: TurmaRegistro, hoje: string | nul
   }
   // a turma que já começou não recebe pedido de fora, qualquer que seja o prazo
   // gravado (a turma antiga com "inscrições até" depois do início, por exemplo):
-  // o retardatário do primeiro dia é inscrito pela CSSO, que está na sala. O
+  // o retardatário do primeiro dia é inscrito pela equipe, que está na sala. O
   // dia do início já conta como começada: desistir também vale só até a véspera
   if (turma.data_inicio <= dia) {
     const quando = turma.data_inicio === dia ? "começa hoje" : `começou em ${datas_br.numerica(turma.data_inicio)}`;
@@ -1096,7 +1151,7 @@ export async function inscricoes_do_titular(tx: Executor, usuario: UsuarioAtual)
 }
 
 /**
- * O servidor pede a própria vaga. Nasce INSCRITA; a CSSO confirma. A vaga é
+ * O servidor pede a própria vaga. Nasce INSCRITA; a equipe confirma. A vaga é
  * ocupada desde já (`INSCRITA` está em `INSCRICAO_OCUPA_VAGA`).
  */
 export async function inscrever_se(
@@ -1141,8 +1196,8 @@ export async function inscrever_se(
 
 /**
  * O que o titular pode retirar: a inscrição viva e, desde 21/10/2026, o pedido
- * feito pelo link que a CSSO ainda não conferiu (`AGUARDANDO_EMAIL`) — é o
- * mesmo arrependimento, e sem esta porta ele só saía pedindo à CSSO.
+ * feito pelo link que a equipe ainda não conferiu (`AGUARDANDO_EMAIL`) — é o
+ * mesmo arrependimento, e sem esta porta ele só saía pedindo à equipe.
  */
 const DESISTIVEIS: ReadonlySet<string> = new Set(["INSCRITA", "CONFIRMADA", "AGUARDANDO_EMAIL"]);
 
@@ -1180,7 +1235,8 @@ export async function desistir(
     throw new RegraDaTurma(
       `${inscricao.turma.codigo} começou em ${datas_br.numerica(inscricao.turma.data_inicio)}: a partir do ` +
         "início a falta é registrada como ausência, não desfeita como " +
-        "desistência. Fale com a CSSO.",
+        "desistência." +
+        FALE_COM_A_EQUIPE,
     );
   }
 

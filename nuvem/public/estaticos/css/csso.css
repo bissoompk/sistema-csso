@@ -1,4 +1,4 @@
-/* Sistema CSSO - folha unica, sem CDN, sem build. */
+/* Sistema SISA - folha unica, sem CDN, sem build. */
 
 /* ================= fontes =================
    Servidas do proprio sistema (app/estaticos/fontes, 42 KB), nunca do Google.
@@ -345,7 +345,7 @@ a:hover { text-decoration: underline; }
 
    O QUE ELA NÃO É: brasão, logotipo ou identidade oficial da UFVJM. Marca de
    universidade federal é ato de quem tem competência para isso, e inventar uma
-   seria falsificação institucional. Esta é a marca DO SISTEMA (CSSO/Sisa) e foi
+   seria falsificação institucional. Esta é a marca DO SISTEMA (Sistema SISA) e foi
    desenhada para conviver com o brasão oficial, não para substituí-lo — o lugar
    dele está reservado em `.marca-brasao`, logo abaixo. */
 .marca { display: flex; align-items: center; gap: 10px; padding: 0 4px; color: #fff; }
@@ -448,6 +448,17 @@ a:hover { text-decoration: underline; }
 .modulos-lateral > a.modulo.atual { background: var(--lateral-realce); color: #fff; border-color: var(--lateral-linha); }
 .modulos-lateral > a.modulo.lembrado { background: transparent; }
 .modulos-lateral .menu-modulo { margin: 2px 0 8px 10px; padding-left: 4px; border-left: 1px solid var(--lateral-linha); }
+/* Os grupos do menu do modulo ("Turmas e inscricoes", "Cadastros"...). O
+   subtitulo e mais leve que o .rotulo-secao de proposito: "MODULOS" e "BASE
+   COMPARTILHADA" separam blocos da lateral, este so da contexto aos rotulos
+   de dentro do modulo, e nao pode pesar como eles. O recuo alinha o texto do
+   subtitulo ao do item, depois do icone. A cor e a do rotulo de secao: 6,52:1. */
+.lateral .menu-modulo .menu-grupo { display: flex; flex-direction: column; gap: 1px; margin-top: 10px; }
+.lateral .menu-modulo .rotulo-grupo {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--lateral-texto-fraco);
+  padding: 0 12px 3px 34px;
+}
 
 /* ---------- itens do modulo e base compartilhada ----------
    A base fica numa secao propria, separada de proposito: nao e deste modulo,
@@ -494,6 +505,14 @@ a:hover { text-decoration: underline; }
    cima e so vence por vir depois na folha, entao ele precisa dizer a mesma
    coisa que ela. */
 .lateral .menu-base a.ativo { color: var(--tinta); }
+/* O "Meu espaço" da conta de equipe ligada a servidor vem depois da base, com
+   o mesmo fio que separa a base dos módulos: é outro assunto (o que é da
+   pessoa, e não do setor). Para quem só tem o próprio ele é o menu inteiro e
+   não leva fio. */
+.lateral .menu-meu.ao-lado {
+  padding-top: 12px;
+  border-top: 1px solid var(--lateral-linha);
+}
 
 /* O rodape institucional mora no fim da lateral: e informacao de identidade do
    sistema, nao da tela, e ali ele acompanha a marca em vez de empurrar o
@@ -530,8 +549,17 @@ a:hover { text-decoration: underline; }
   min-width: 0; font-size: 13px;
 }
 /* O ultimo nivel (o NUP, o codigo da turma) nao se parte no meio: ele e lido e
-   conferido inteiro, e partido no hifen parece dois codigos. */
-.trilha > :last-child { white-space: nowrap; }
+   conferido inteiro, e partido no hifen parece dois codigos.
+   MAS NAO PODE PASSAR DA LARGURA. O `nowrap` pegava tambem o titulo livre (o
+   assunto da demanda, o titulo do parecer), e um assunto de 60 letras alargava
+   /demandas/:id para 434px numa tela de 390 - e com a pagina iam junto os
+   quatro popups dela. Agora o que nao cabe termina em reticencias; o h1 logo
+   abaixo repete o titulo inteiro, e a ficha poe o texto no `title`. Codigo
+   curto (NUP, turma) continua cabendo inteiro, como antes. */
+.trilha > :last-child {
+  min-width: 0; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .trilha a { color: var(--tinta-fraca); }
 .trilha a:hover { color: var(--acento); text-decoration: none; }
 .trilha > * + *::before {
@@ -627,6 +655,15 @@ a:hover { text-decoration: underline; }
   font-size: 13px; font-weight: 600; max-width: 170px; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* O nome (e o avatar) levam a /minha-conta: a cor continua a do texto, e so o
+   nome sublinha no hover - o link e a pessoa, nao uma frase azul no cabecalho. */
+.usuario a.conta-propria {
+  display: flex; align-items: center; gap: 9px; min-width: 0;
+  color: inherit; border-radius: var(--raio);
+}
+.usuario a.conta-propria:hover { text-decoration: none; }
+.usuario a.conta-propria:hover .nome { text-decoration: underline; }
+.usuario a.conta-propria:hover .avatar { box-shadow: 0 0 0 2px var(--acento-claro); }
 .sair { font-size: 12px; color: var(--tinta-dica); }
 /* "sair" e "Novo parecer" são POST (CSRF por GET): botão vestido de link */
 .form-sair { display: inline; margin: 0; }
@@ -759,8 +796,11 @@ h3 { font-size: 15px; font-weight: 700; line-height: 1.4; margin: 16px 0 8px; }
 }
 
 .grade { display: grid; gap: 16px; }
-.grade-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-.grade-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+/* `min(Npx, 100%)`: na mesa e o mesmo N de sempre; numa tela mais estreita que
+   N (a `.grade-2` em 320px, com o recuo do conteudo) a coluna unica deixa de
+   pedir mais que a largura e de esticar a pagina. */
+.grade-3 { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+.grade-2 { grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
 .grade-kpi { grid-template-columns: repeat(auto-fit, minmax(186px, 1fr)); gap: 12px; }
 .lado-a-lado { display: grid; grid-template-columns: minmax(360px, 1fr) 1.2fr; gap: 18px; align-items: start; }
 /* Mesmo motivo do `.tela > *`: sem o piso em zero, uma tabela larga numa das
@@ -1031,9 +1071,15 @@ h3 { font-size: 15px; font-weight: 700; line-height: 1.4; margin: 16px 0 8px; }
    do desenho. Continua sendo <form> GET com botao: o `onchange` e conveniencia,
    e sem JavaScript o botao resolve. Encosta a direita porque a esquerda da
    fileira ja carrega o filtro principal. */
+/* `flex-wrap` e o teto de 100%: sem eles o seletor (280px) e a busca (260px)
+   ficavam lado a lado custasse o que custasse, e a 390px a pagina ia a 596-778px
+   de largura - em /turmas, /certificados*, /laudos. Na mesa a linha cabe e nada
+   quebra; o desenho de celular (largura inteira) esta no bloco CELULAR. */
 .fileira > form.filtro-inline {
   margin: 0 0 0 auto; display: flex; align-items: center; gap: 7px; min-width: 0;
+  flex-wrap: wrap; max-width: 100%;
 }
+.fileira > form.filtro-inline :is(select, input) { min-width: 0; }
 .fileira > form.filtro-inline select {
   width: auto; max-width: 280px; padding: 6px 11px; font-size: 13px; border-radius: 999px;
 }
@@ -1411,13 +1457,19 @@ table.tabela-dados th {
   font-size: 13px; font-weight: 400;
 }
 table.tabela-dados td { font-size: 14px; }
-table.tabela-dados tr:hover td { background: none; }
+/* O realce de linha so existe onde ha cursor: no toque o `:hover` fica preso
+   na ultima linha tocada ate o proximo toque, e parece selecao. */
+@media (hover: hover) {
+  table.tabela-dados tr:hover td { background: none; }
+}
 
 /* ---------- tabelas ---------- */
 table { width: 100%; border-collapse: collapse; background: var(--cartao); }
 th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--divisor); font-size: 14px; vertical-align: top; }
 th { background: var(--divisor); font-weight: 600; font-size: 13px; color: var(--tinta-media); }
-tr:hover td { background: var(--linha-hover); }
+@media (hover: hover) {
+  tr:hover td { background: var(--linha-hover); }
+}
 .tabela-cartao { border: 1px solid var(--borda); border-radius: var(--raio-cartao); overflow: auto; }
 
 /* ---------- a tabela que rola para o lado avisa que rola ----------
@@ -1491,7 +1543,9 @@ td.numerico { color: var(--tinta-media); }
   padding: 11px 14px; border-bottom: 1px solid var(--borda-fraca);
   font-size: 14px; vertical-align: middle;
 }
-.tabela-cartao.lista tr:hover td { background: var(--linha-hover); }
+@media (hover: hover) {
+  .tabela-cartao.lista tr:hover td { background: var(--linha-hover); }
+}
 .tabela-cartao.lista .nome { font-weight: 600; font-size: 14px; }
 .tabela-cartao.lista .recorte {
   display: block; max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1611,7 +1665,7 @@ label.discreto { font-weight: 400; }
    24px de altura, canto reto, sem anel de foco - ao lado dos campos com `type`,
    que ficam com o do sistema. */
 input:not([type]), input[type=text], input[type=search], input[type=password],
-input[type=email], input[type=date], input[type=number], select, textarea {
+input[type=email], input[type=tel], input[type=date], input[type=number], select, textarea {
   width: 100%; padding: 10px 12px; border: 1px solid var(--borda-campo);
   border-radius: var(--raio); font: inherit; font-size: 14px;
   background: var(--cartao); color: var(--tinta);
@@ -1624,7 +1678,7 @@ input[type=email], input[type=date], input[type=number], select, textarea {
 input.oculto, select.oculto, textarea.oculto { width: 1px; min-width: 0; padding: 0; border: 0; }
 input::placeholder, textarea::placeholder { color: var(--tinta-dica); }
 input:not([type]):focus, input[type=text]:focus, input[type=search]:focus,
-input[type=password]:focus, input[type=email]:focus, input[type=date]:focus,
+input[type=password]:focus, input[type=email]:focus, input[type=tel]:focus, input[type=date]:focus,
 input[type=number]:focus, select:focus, textarea:focus {
   border-color: var(--acento);
   outline: var(--anel-foco);
@@ -2079,6 +2133,32 @@ html:has(dialog.popup[open]), html:has(dialog.popup:target) { overflow: hidden; 
    a acao que grava. */
 .popup-info .popup-acoes { justify-content: flex-end; }
 
+/* O AVISO DE INATIVIDADE (csso.js, bloco 12). E o (i) com dois botoes e uma
+   contagem; o JavaScript o cria, porque sem JavaScript nao ha aviso a dar (a
+   sessao cai do mesmo jeito, no servidor). No celular ele NAO vira a tela
+   inteira como os outros popups (P5, mais abaixo): sao duas linhas de texto, e
+   uma camada do tamanho da tela para elas esconderia o que a pessoa estava
+   fazendo sem razao. Especificidade 0,4,1 contra os 0,3,1 de P5. Nada se mexe
+   aqui alem do numero, e com `prefers-reduced-motion` nem ele corre por segundo. */
+.popup-inatividade .contagem-inatividade { margin: 0; color: var(--tinta); }
+.popup-inatividade .contagem-inatividade strong {
+  font-size: 22px; font-variant-numeric: tabular-nums; margin-left: 4px;
+}
+.popup-inatividade .popup-acoes form { display: flex; margin: 0; }
+@media screen and (max-width: 600px) {
+  dialog.popup.popup-inatividade { padding: 16px; align-items: center; }
+  dialog.popup.popup-inatividade .popup-caixa.popup-caixa-info {
+    height: auto; max-height: 100%;
+    border: 1px solid var(--borda); border-radius: var(--raio-cartao);
+  }
+  dialog.popup.popup-inatividade .popup-topo { padding-top: 15px; }
+  dialog.popup.popup-inatividade .popup-acoes {
+    border-radius: 0 0 var(--raio-cartao) var(--raio-cartao); padding-bottom: 13px;
+  }
+  dialog.popup.popup-inatividade .popup-acoes > *,
+  dialog.popup.popup-inatividade .popup-acoes form > button { flex: 1 1 auto; min-height: 44px; }
+}
+
 /* A GAVETA. Ela ja e `.popup-caixa.larga` (1062px, a coluna de conteudo a 1366):
    os formularios que estavam espremidos em ~190px de celula sao os mesmos, e a
    largura e a razao de a gaveta ter virado camada. O corpo usa
@@ -2140,6 +2220,12 @@ a.kpi:hover {
 }
 .grade-telas .tela strong { color: var(--acento); font-size: 15px; }
 .grade-telas .tela .discreto { font-size: 13px; line-height: 1.35; }
+/* o subtitulo do grupo no mapa, o mesmo da lateral: o mapa e o menu falam
+   igual. Em tinta-fraca (9,20:1), e nao no cinza da lateral, que e escuro. */
+.rotulo-grupo-mapa {
+  margin: 14px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--tinta-fraca);
+}
 .lista-previstos { margin: 0; padding-left: 20px; color: var(--tinta-fraca); font-size: 14px; }
 .lista-previstos li { margin-bottom: 3px; }
 
@@ -2688,7 +2774,11 @@ details.menu-celular > summary:hover, details.menu-celular[open] > summary { bac
   .lateral > nav, .lateral > .rodape-lateral { flex: 1 1 100%; }
   .lateral .menu { flex-direction: row; flex-wrap: wrap; }
   .lateral .menu .rotulo-secao { width: 100%; padding-bottom: 2px; }
-  .lateral .menu-base { padding-top: 10px; }
+  /* sem isto cada grupo viraria um bloco so na faixa, e os itens dele nao
+     quebrariam linha junto com os dos outros */
+  .lateral .menu-modulo .menu-grupo { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; margin-top: 6px; }
+  .lateral .menu-modulo .rotulo-grupo { width: 100%; padding-left: 10px; }
+  .lateral .menu-base, .lateral .menu-meu.ao-lado { padding-top: 10px; }
   /* o alvo de toque do item, aberto o menu: 40px de altura, e nao os 32 da mesa */
   .lateral .menu a, .modulos-lateral > a.modulo { min-height: 40px; }
   .cabecalho { padding: 0 16px; flex-wrap: wrap; }
@@ -2969,6 +3059,460 @@ a.botao-icone.primario, button.botao-icone.primario {
   :focus-visible { outline-color: Highlight; }
 }
 
+/* ---------- primeiros passos (instalacao vazia) ---------- */
+.primeiros-passos { margin-bottom: 16px; }
+.primeiros-passos h2 { font-size: 16px; margin: 0 0 10px; }
+.primeiros-passos ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.primeiros-passos li { display: flex; align-items: flex-start; gap: 10px; }
+.primeiros-passos .marca-passo {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; border: 1px solid var(--borda); color: var(--tinta-fraca);
+}
+.primeiros-passos li.feito .marca-passo { background: var(--acento-claro); border-color: var(--acento-claro); color: var(--acento); }
+.primeiros-passos li.feito .texto-passo { color: var(--tinta-fraca); }
+.primeiros-passos li.proximo .marca-passo { background: var(--acento); border-color: var(--acento); color: #fff; }
+.primeiros-passos li.proximo a { font-weight: 600; }
+.primeiros-passos .texto-passo { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+
+/* o formulário de um botão só, ao lado de links no cabeçalho do cartão */
+form.em-linha { display: inline-flex; margin: 0; }
+
+/* ---------- acabamentos das telas de turma e de duplicados ---------- */
+/* O cabeçalho do grupo (uma turma por `<tbody>` em /turmas/pedidos) é título,
+   não rótulo de coluna: sem a caixa alta miúda dos `<th>` do cabeçalho. */
+.tabela-cartao.lista tr.grupo-da-tabela > th {
+  text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--tinta);
+}
+/* "ajustar horas" da folha de presença: discreto até ser pedido. */
+details.ajuste-horas > summary { font-size: 12px; cursor: pointer; }
+details.ajuste-horas input { margin-top: 4px; }
+@media (min-width: 900px) {
+  .tabela-cartao.lista td.nome { min-width: 26ch; }
+}
+/* A diferença entre cadastros duplicados (/participantes) e os trechos
+   marcados fora do mapa de tags: o mesmo realce suave, e não o amarelo forte
+   do navegador, que no tema escuro fica ilegível. `--alerta-fundo` já muda
+   com o tema. */
+.tabela-cartao mark, .cartao mark {
+  background: var(--alerta-fundo); color: var(--tinta); padding: 0 2px; border-radius: 3px;
+}
+
+/* ===== LATERAL RECOLHIDA (22/10/2026) =====
+   No computador a lateral pode encolher a uma faixa de icones: o botao do alto
+   dela ou o Ctrl+B (`csso.js`, bloco 11). Quem escreve a classe
+   `lateral-recolhida` no <html> e o servidor, lendo o cookie `csso_lateral`
+   (`base.html`), para a pagina ja nascer recolhida e nao piscar.
+
+   TRES REGRAS DO BLOCO:
+   1. SO NA MESA E SO NA TELA. Tudo esta em `screen and (min-width: 901px)`:
+      no celular a lateral e o "Menu" (bloco CELULAR) e a classe e ignorada; no
+      papel quem manda e o `@media print`, e a folha impressa nao muda. Fora da
+      faixa so existe o `display: none` do botao.
+   2. O NOME NAO SAI DA PAGINA. O <span> de cada item fica oculto como
+      `.oculto` (fora da tela, dentro da arvore de acessibilidade), e o leitor
+      de tela continua ouvindo "Turmas". Quem ve ganha a etiqueta ao passar o
+      mouse ou chegar pelo Tab: o `::after` com o `data-rotulo` do link. Ela e
+      `position: fixed` sem `top`, de proposito: a lateral rola
+      (`overflow-y: auto`) e cortaria uma etiqueta `absolute` que saisse dela;
+      fixa, ela escapa do corte, e sem `top` fica na posicao estatica — que,
+      num link `display: flex; align-items: center`, e a altura do proprio
+      item. O texto dela e `/ ""` para nao entrar duas vezes no nome do link.
+   3. Os seletores levam `html.lateral-recolhida`: `tema.css` vem depois desta
+      folha e empataria com `.lateral .menu a`. */
+.recolher-lateral { display: none; }
+@media screen and (min-width: 901px) {
+  :root { --largura-lateral-recolhida: 68px; }
+  .lateral {
+    transition: flex-basis .2s ease, width .2s ease, padding .2s ease;
+    overflow-x: hidden;
+  }
+  /* O botao: no canto de cima, na altura da marca, com a lateral aberta; na
+     faixa ele desce para baixo do simbolo e se centra. A <aside> e `sticky`,
+     e portanto e o bloco de referencia do `absolute`. */
+  .recolher-lateral {
+    display: inline-flex; align-items: center; justify-content: center;
+    position: absolute; top: 24px; right: 10px;
+    width: 32px; height: 32px; padding: 0;
+    border: 1px solid transparent; border-radius: var(--raio-item, 8px);
+    background: transparent; color: var(--lateral-texto); cursor: pointer;
+  }
+  .recolher-lateral .ico { font-size: 17px; }
+  .recolher-lateral:hover { background: var(--lateral-realce); color: #fff; }
+  .recolher-lateral[aria-expanded="false"] { position: static; align-self: center; }
+
+  html.lateral-recolhida aside.lateral {
+    flex-basis: var(--largura-lateral-recolhida);
+    width: var(--largura-lateral-recolhida);
+    padding-left: 12px; padding-right: 12px;
+  }
+  /* o que some na faixa: os subtitulos, o texto da marca e o rodape */
+  html.lateral-recolhida aside.lateral .rotulo-secao,
+  html.lateral-recolhida aside.lateral .rotulo-grupo,
+  html.lateral-recolhida aside.lateral > .rodape-lateral { display: none; }
+  html.lateral-recolhida aside.lateral .marca-texto,
+  html.lateral-recolhida aside.lateral a.modulo > span,
+  html.lateral-recolhida aside.lateral .menu a > span {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  /* a marca vira so o simbolo, centrado */
+  html.lateral-recolhida aside.lateral > .marca { justify-content: center; padding: 0; gap: 0; }
+  /* cada item vira um quadrado de icone, centrado na faixa */
+  html.lateral-recolhida aside.lateral a.modulo,
+  html.lateral-recolhida aside.lateral .menu a {
+    justify-content: center; gap: 0; padding: 10px 0;
+  }
+  html.lateral-recolhida aside.lateral .menu a .ico,
+  html.lateral-recolhida aside.lateral a.modulo .ico { font-size: 18px; }
+  /* as telas do modulo perdem o recuo; o fio da esquerda vira fio de cima,
+     que e o que ainda separa "o modulo" de "as telas dele" na faixa */
+  html.lateral-recolhida aside.lateral .menu-modulo {
+    margin: 4px 0 6px; padding: 4px 0 0; border-left: 0;
+    border-top: 1px solid var(--lateral-linha);
+  }
+  html.lateral-recolhida aside.lateral .menu-modulo .menu-grupo { margin-top: 4px; }
+  /* a etiqueta com o nome (regra 2 do bloco) */
+  html.lateral-recolhida aside.lateral [data-rotulo]:is(:hover, :focus-visible)::after {
+    content: attr(data-rotulo) / "";
+    position: fixed; left: calc(var(--largura-lateral-recolhida) + 6px); z-index: 70;
+    padding: 5px 10px; border-radius: 6px;
+    background: var(--lateral); color: #fff; border: 1px solid var(--lateral-linha);
+    font-size: 13px; font-weight: 600; line-height: 1.3; white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+    pointer-events: none;
+  }
+}
+@media screen and (min-width: 901px) and (prefers-reduced-motion: reduce) {
+  .lateral { transition: none; }
+}
+
+/* ---------- acesso por modulo (/perfis/niveis e "Gerir" da conta) ----------
+   A escolha do nivel de um modulo: quatro opcoes lado a lado, como pilulas, que
+   quebram linha no celular. O radio fica visivel (o foco e o marcado tambem se
+   leem sem cor); a pilula marcada ganha a borda e o fundo do acento. */
+.nivel-escolha { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.nivel-escolha label {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0;
+  padding: 6px 12px; border: 1px solid var(--borda-campo); border-radius: 999px;
+  background: var(--cartao); color: var(--tinta-media); font-weight: 400; font-size: 14px; cursor: pointer;
+}
+.nivel-escolha label:has(> input:checked) { border-color: var(--acento); background: var(--acento-suave); color: var(--tinta); font-weight: 600; }
+.nivel-escolha label small { font-weight: 400; color: var(--tinta-dica); }
+.nivel-escolha input { margin: 0; }
+.tabela-niveis .lista-permissoes { display: block; margin-top: 4px; font-size: 12px; }
+.nivel-escolha label { white-space: nowrap; }
+/* no computador as quatro opcoes vao em duas colunas (2 x 2): numa linha so
+   elas tomavam a largura da coluna "Vale hoje", que com a lateral aberta ficava
+   com uma palavra por linha e estourava o cartao */
+@media screen and (min-width: 601px) {
+  .tabela-niveis .nivel-escolha { display: grid; grid-template-columns: repeat(2, max-content); }
+  .tabela-niveis td:last-child { min-width: 16rem; }
+}
+.setores-escolha { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; border: 0; min-width: 0; }
+
+/* ===== CELULAR (lote 0) =====
+   O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
+   com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o
+   iPhone dar zoom ao focar, popup maior que a tela e o botao "Menu" sumindo ao
+   rolar. O plano e `celular/plano.md` (P1 a P20); este bloco e a parte dele que
+   e da folha, numerada pelo mesmo P#.
+
+   TRES REGRAS DO BLOCO, e quem mexer aqui precisa manter as tres:
+   1. A MESA NAO MUDA. Toda regra daqui esta dentro de uma faixa de largura
+      (900/600px), de `(pointer: coarse)` ou de `(hover: hover)`. As unicas que
+      nao estao sao as classes-contrato do topo, que nenhuma tela usava antes
+      deste bloco e que na mesa so desfazem o desenho padrao do elemento.
+   2. SEM `!important`. Onde a regra antiga vence por especificidade, o seletor
+      daqui e mais especifico (`aside.lateral`, `dialog.popup .popup-caixa`) - e
+      `tema.css` carrega DEPOIS desta folha, entao empate com ele perde.
+   3. Fica ANTES do `@media print`, que continua sendo o ultimo bloco da folha
+      (o porque esta no comentario dele).
+
+   As classes-contrato que as telas aplicam (os lotes A-F do plano) sao:
+   `td.curta`, `table.coluna-fixa`, `.fileira.rola`, `label.marca-linha`,
+   `.pilula.perm-pilula`, `details.cartao.perfil` e `.so-celular`. */
+
+/* ---------- classes-contrato: o desenho neutro, em qualquer largura ----------
+   `.so-celular` (P14): some na mesa; a faixa de 900px o devolve, so na tela.
+   `label.marca-linha` (P19): o checkbox e o identificador da linha num rotulo
+   so, para o toque acertar a linha e o leitor de tela ler o que se marca. Na
+   mesa ele nao pode parecer o rotulo de campo (bloco, 13px, peso 600), que e o
+   que `label` daria sem esta linha.
+   `details.cartao.perfil` (P12): o perfil de /perfis recolhido; o resumo e o
+   titulo do cartao, e a seta diz que abre. */
+.so-celular { display: none; }
+label.marca-linha {
+  display: inline-flex; align-items: center; gap: 8px; margin: 0;
+  font: inherit; color: inherit; cursor: pointer;
+}
+label.marca-linha > input[type=checkbox] { flex: none; margin: 0; }
+details.cartao.perfil > summary {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  list-style: none; cursor: pointer;
+}
+details.cartao.perfil > summary::-webkit-details-marker { display: none; }
+details.cartao.perfil > summary > * { margin: 0; }
+details.cartao.perfil > summary::after {
+  content: "▾"; margin-left: auto; color: var(--tinta-dica); font-size: 14px;
+}
+details.cartao.perfil[open] > summary { margin-bottom: 14px; }
+details.cartao.perfil[open] > summary::after { content: "▴"; }
+
+/* ---------- P3 e P4: campos e alvos de toque ----------
+   Na faixa do celular E em qualquer tela de toque (o tablet deitado passa de
+   900px e continua sendo dedo).
+
+   P3. 16px e o minimo que o Safari do iPhone nao amplia ao focar - e o zoom e
+   a pior coisa que acontece num formulario de celular: a pagina pula de lado e
+   o botao de enviar sai da tela. A saida NAO e `maximum-scale=1` no viewport,
+   que tira o zoom de quem precisa dele para ler. O `:is()` leva a
+   especificidade do argumento mais forte (dez pseudoclasses, 0,10,1): vence de
+   uma vez a busca do cabecalho, o filtro em linha, `.filtros`, `.painel-acoes`,
+   `.acoes-por-coluna` e o campo dentro de tabela, sem repetir cada um.
+   `screen` na faixa de largura pelo mesmo motivo da faixa de 900px abaixo: a
+   folha impressa tem menos de 900px e nao tem dedo. */
+@media screen and (max-width: 900px), (pointer: coarse) {
+  :is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]):not([type=range]):not([type=color]):not([type=image]), select, textarea) {
+    font-size: 16px;
+  }
+  /* a unica excecao e para MAIS: o codigo em destaque (a chave do certificado) */
+  .campo.codigo.destaque :is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]):not([type=range]):not([type=color]):not([type=image]), select, textarea) {
+    font-size: 18px;
+  }
+
+  /* P4. 44x44 e o alvo da WCAG 2.5.5 e das diretrizes de iOS/Android. Na mesa
+     os botoes tem 34-39px porque o cursor acerta 1px; o dedo, nao. */
+  .botao, button:not(.como-link), .ficha-filtro,
+  details.menu-celular > summary, details.filtros > summary, details.recolhido > summary,
+  .lateral .menu a, .lateral .modulos-lateral > a.modulo, .alternador > * {
+    min-height: 44px;
+  }
+  .ficha-filtro, .alternador > * { display: inline-flex; align-items: center; }
+  .abas a { display: inline-flex; align-items: center; min-height: 44px; }
+  a.botao-icone, button.botao-icone { width: 44px; height: 44px; }
+  /* sino, engrenagem e sair: 32, 15x17 e 22x16 medidos - tres alvos colados que
+     a ponta do dedo cobre de uma vez */
+  .acoes-cabecalho .sino, .acoes-cabecalho .engrenagem, .acoes-cabecalho button.sair {
+    display: inline-grid; place-items: center; min-width: 44px; min-height: 44px;
+  }
+  .acoes-cabecalho .sino { width: 44px; height: 44px; }
+  .acoes-cabecalho button.sair { padding: 0 8px; font-size: 14px; }
+  .usuario { gap: 8px; }
+  /* o avatar de 32px e o que sobra do link de /minha-conta no celular */
+  .usuario a.conta-propria { min-height: 44px; min-width: 44px; justify-content: center; }
+  .busca input[type=search] { min-height: 44px; }
+  .cabecalho .volta-origem { display: inline-flex; align-items: center; min-height: 44px; }
+  /* o X do popup: 30px na mesa; a margem negativa devolve o que ele cresceu,
+     e a faixa do titulo fica da mesma altura */
+  dialog.popup .popup-fechar { width: 44px; height: 44px; margin: -7px -7px -7px auto; }
+  /* a trilha cresce o alvo para cima e para baixo sem crescer a linha */
+  .trilha a { padding: 12px 0; margin: -12px 0; }
+  /* O (i) continua desenhado com 24px (o argumento esta na secao dele); o que
+     cresce e a area que recebe o toque, 44x44, invisivel em volta do circulo. */
+  .info-abre { position: relative; }
+  .info-abre::after { content: ""; position: absolute; inset: -10px; }
+  .zona-arquivo input[type=file] { min-height: 44px; }
+  input[type=checkbox].marcar, input[type=checkbox]#marcar-todos,
+  label.marca-linha > input[type=checkbox] { width: 22px; height: 22px; }
+  label.marca-linha { min-height: 44px; gap: 10px; }
+  /* O campo de uma linha so tambem e alvo: o seletor do filtro em linha tinha
+     36px. O `textarea` fica de fora, que ja tem 90px de piso. */
+  :is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]):not([type=range]):not([type=color]):not([type=image]), select) {
+    min-height: 44px;
+  }
+  /* O rotulo que envolve a caixa de marcar e o alvo dela (o toque no texto
+     marca a caixa): 20px de linha viram 44 de area, sem mudar o fluxo do texto.
+     O cartao de escolha e a `marca-linha` ja tem a medida propria. */
+  label:has(> input:is([type=checkbox], [type=radio])):not(.escolha-cartao):not(.marca-linha) {
+    padding-block: 12px;
+  }
+  .acao-rotulada { min-height: 44px; }
+  /* links curtos que moram num cabecalho de cartao ("ver todas") e o titulo do
+     cartao do kanban: a area cresce para cima e para baixo, a linha nao */
+  a.a-direita, .cartao-kanban .titulo a { display: block; padding-block: 14px; margin-block: -14px; }
+}
+
+/* ---------- P16: o toque responde no toque ----------
+   O deslocamento do `:hover` foi para `(hover: hover) and (pointer: fine)`
+   (em `tema.css`); no dedo quem diz "pegou" e o aperto curto do `:active`. */
+@media (pointer: coarse) {
+  .botao:active, button:not(.como-link):not(.sair):active,
+  .cartao.link:active, .acao-hub:active { transform: scale(.98); }
+}
+
+/* ---------- a faixa de 900px: casca, menu e tabelas largas ----------
+   `screen`: uma A4 tem ~688px e cairia nesta faixa, e o bloco de impressao
+   desmonta a lateral com `.lateral` (0,1,0) - o `aside.lateral` daqui o
+   venceria e a folha sairia com a faixa grudada e recuada. */
+@media screen and (max-width: 900px) {
+  /* P6. QUEM GRUDA NO TOPO E A FAIXA DA MARCA E DO "MENU", e o cabecalho deixa
+     de grudar. Grudado, o cabecalho (trilha + busca + sino + usuario) tinha de
+     73 a 100px, e o "Menu" ia embora com a primeira rolagem: para trocar de
+     tela era preciso voltar ao topo. A faixa tem 60px.
+     `aside.lateral` porque o `.lateral` de `tema.css` vem depois e empataria.
+     A area segura do iPhone (`viewport-fit=cover`, em `base.html`) entra no
+     recuo: sem ela a marca ficaria embaixo do entalhe. */
+  aside.lateral {
+    position: sticky; top: 0; z-index: 30;
+    gap: 8px 12px;
+    padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+             8px max(16px, env(safe-area-inset-left));
+  }
+  aside.lateral > .marca { min-height: 44px; }
+  header.cabecalho { position: static; }
+  /* P9. Aberto, o menu chegava a 898px numa tela de 844 e empurrava a pagina.
+     Agora ele e uma camada do tamanho da tela, com rolagem propria, e o gesto
+     que passa do fim nao rola a pagina de tras. */
+  aside.lateral:has(> details.menu-celular[open]) {
+    max-height: 100vh; max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain;
+  }
+  /* Com o menu do tamanho da tela nao ha "fora" para tocar: o botao que o
+     fecha acompanha a rolagem da camada, e nao some no alto dela. */
+  aside.lateral > details.menu-celular[open] { position: sticky; top: 0; z-index: 1; }
+  aside.lateral > details.menu-celular[open] > summary { background: var(--lateral-realce); }
+  /* Em duas colunas, e nao em linhas que quebram onde der: as linhas
+     irregulares liam-se como uma nuvem de etiquetas. O rotulo da secao e o
+     subtitulo do grupo atravessam a grade. */
+  .lateral .menu, .lateral .menu-modulo .menu-grupo, .lateral .modulos-lateral {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px;
+  }
+  .lateral .menu .rotulo-secao, .lateral .menu-modulo .rotulo-grupo,
+  .lateral .menu-modulo .menu-grupo, .lateral .modulos-lateral > .rotulo-secao,
+  .lateral .modulos-lateral > .menu-modulo { grid-column: 1 / -1; }
+  .lateral .modulos-lateral > .menu-modulo { margin: 2px 0 6px; padding-left: 0; border-left: 0; }
+  .lateral .menu-modulo .menu-grupo { margin-top: 4px; }
+  .lateral .menu a, .lateral .modulos-lateral > a.modulo { min-width: 0; }
+  .lateral .menu a > span, .lateral .modulos-lateral > a.modulo > span {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* P2. A trilha fica numa linha so: os niveis de cima encolhem pouco, o ultimo
+     (o titulo livre) e quem cede, em reticencias. */
+  .cabecalho .trilha { flex: 1 1 100%; flex-wrap: nowrap; }
+  .cabecalho .trilha > * {
+    flex: none; min-width: 0; max-width: 40%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cabecalho .trilha > :last-child { flex: 0 1 auto; max-width: none; }
+  /* A busca, o sino e o bloco do usuario numa linha so. Com os alvos de 44px
+     a base de 160px da busca empurrava o usuario para uma terceira linha do
+     cabecalho; ela continua crescendo para ocupar a sobra. */
+  .busca { flex-basis: 96px; }
+
+  /* P8. A matriz larga (relatorios, movimentos de estoque, config) continua
+     rolando dentro do cartao, mas a primeira coluna - o nome da linha - fica
+     parada: sem ela, rolada a tabela, os numeros perdem a quem pertencem. */
+  table.coluna-fixa > :is(thead, tbody, tfoot) > tr > :first-child {
+    position: sticky; left: 0; z-index: 1;
+    box-shadow: inset -1px 0 0 var(--borda);
+  }
+  table.coluna-fixa > :is(tbody, tfoot) > tr > td:first-child { background: var(--cartao); }
+
+  /* P1, o resto dele: o texto so para leitor de tela (`.oculto`) e absoluto, e
+     sem ancestral posicionado ele escapa da rolagem do cartao de tabela e
+     alarga a PAGINA - o rotulo oculto da coluna de acoes de /turmas, na
+     posicao em que estaria na tabela rolada, dava 778px numa tela de 768.
+     Encostado a esquerda ele continua invisivel e para de medir largura. */
+  .oculto { left: 0; }
+
+  /* P14. O caminho para a tela de bolso, de qualquer tela, no pe da pagina
+     (`base.html`). So aparece nesta faixa: `.so-celular` continua escondido na
+     mesa e no papel. */
+  .area > a.so-celular.modo-celular {
+    align-items: center; align-self: center; gap: 8px;
+    min-height: 44px; padding: 0 18px; margin: 0 16px 28px;
+    border: 1px solid var(--borda-campo); border-radius: 999px; background: var(--cartao);
+    font-size: 14px; font-weight: 600; color: var(--tinta-media);
+  }
+}
+@media screen and (max-width: 900px) {
+  .so-celular { display: block; }
+  a.so-celular, span.so-celular { display: inline-flex; }
+}
+
+/* ---------- a faixa de 600px: o telefone em pe ---------- */
+@media screen and (max-width: 600px) {
+  /* P1. O filtro em linha ocupa a linha inteira, e o seletor e a busca tambem. */
+  .fileira > form.filtro-inline { flex: 1 1 100%; margin-left: 0; }
+  .fileira > form.filtro-inline :is(select, input[type=search], input[type=text]) {
+    flex: 1 1 100%; width: 100%; max-width: none;
+  }
+  .fileira > form.filtro-inline button { min-height: 44px; }
+
+  /* P5. O POPUP E A TELA INTEIRA. Com 10px de margem e cantos ele era uma
+     caixa de 370px que nao cabia o proprio formulario, e o "Gravar" de 39px
+     ficava fora de alcance em 14 deles. Agora: titulo em cima, corpo rolando,
+     acoes paradas embaixo (acima da barra do iPhone), e o X com 44px. Com
+     `interactive-widget=resizes-content` o teclado encolhe a camada, e as acoes
+     sobem junto com ele. */
+  dialog.popup { padding: 0; align-items: stretch; }
+  dialog.popup .popup-caixa, dialog.popup .popup-caixa.larga, dialog.popup .popup-caixa.popup-caixa-info {
+    max-width: none; height: 100%; max-height: none; border: 0; border-radius: 0;
+  }
+  dialog.popup .popup-topo { padding-top: max(15px, env(safe-area-inset-top)); }
+  dialog.popup .popup-corpo { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; }
+  dialog.popup .popup-acoes {
+    border-radius: 0; padding-bottom: calc(13px + env(safe-area-inset-bottom));
+  }
+  dialog.popup .popup-acoes > :is(button, .botao) { flex: 1 1 auto; min-height: 44px; }
+  dialog.popup .popup-fechar { width: 44px; height: 44px; margin: -8px -10px -8px auto; }
+
+  /* P10. O texto de apoio de 11 a 13px sobe para 14 (12 nos rotulos de
+     secao). Os rotulos em versalete de 12px ficam: caixa alta espacada se le
+     nesse corpo. A troca geral por tokens fica fora: mexe em 117 regras. */
+  .trilha, .trilha .mono, dl.tabela-dados > dt, table.tabela-dados th, .aviso,
+  .campo .dica, .ficha-filtro, .cartao-resumo > .detalhe,
+  .acoes-pagina .botao, .acoes-pagina button, .cartao-kanban .nup { font-size: 14px; }
+  .passos-hub .passo-hub p, .acoes-hub .acao-hub > span, aside.lateral .menu-base a { font-size: 14px; }
+  aside.lateral .rotulo-secao, aside.lateral .menu-modulo .rotulo-grupo,
+  aside.lateral .marca-texto span { font-size: 12px; }
+  .previa { padding: 16px 14px; font-size: 14px; }
+  .previa :is(th, td) { font-size: 13px; }
+
+  /* P11. Uma coluna do kanban por gesto: 86% da tela, a ponta da proxima
+     aparecendo (e o que diz que ha mais), e o deslize para na coluna. A coluna
+     vazia deixa de ocupar 300px. */
+  .quadro { grid-template-columns: repeat(5, 86%); gap: 10px; }
+  .rolagem-quadro { scroll-snap-type: x mandatory; }
+  .coluna { scroll-snap-align: start; min-height: 0; }
+
+  /* P12. A pilula de permissao empilha o texto e o codigo, e quebra linha. */
+  .pilula.perm-pilula {
+    flex-direction: column; align-items: flex-start; gap: 0;
+    max-width: 100%; white-space: normal; text-align: left; border-radius: 10px;
+  }
+
+  /* P14. O cartao da tela publica (login, primeiro acesso, validacao). */
+  .tela-auxiliar .cartao { padding: 22px 18px; }
+
+  /* P17. Os indicadores em duas colunas: em uma, eram ~500px antes da lista. */
+  .grade-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* P18. As fichas de filtro numa faixa que rola de lado, e nao em seis linhas
+     empurrando a lista para baixo. A mascara apaga a ponta direita: e o sinal
+     de que a faixa continua. */
+  .fileira.rola {
+    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: none; padding: 2px 2px 4px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .fileira.rola::-webkit-scrollbar { display: none; }
+  .fileira.rola > * { flex: none; }
+}
+
+/* P15. O cartao empilhado em duas colunas onde cabe: a celula `curta` (data,
+   situacao, contagem) divide a linha com a vizinha curta, e o resto vai de
+   ponta a ponta. Eram ~370px por item em /processos e /turmas. Mesmo
+   `screen` e mesma classe dobrada do contrato `table.empilhavel`. */
+@media screen and (max-width: 600px) {
+  table.empilhavel.empilhavel > tbody > tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px;
+  }
+  table.empilhavel.empilhavel > tbody > tr > td:not(.curta) { grid-column: 1 / -1; }
+}
+
 /* ---------- so no papel ----------
    O que existe para ser assinado a caneta e nao tem o que fazer na tela: as
    linhas de "separou / conferiu / data" da guia de entrega. `display: none`
@@ -3143,43 +3687,4 @@ a.botao-icone.primario, button.botao-icone.primario {
     font-size: 11px; color: var(--tinta-fraca);
   }
   .rodape-lateral .versao { color: var(--tinta-fraca); }
-}
-
-/* ---------- primeiros passos (instalacao vazia) ---------- */
-.primeiros-passos { margin-bottom: 16px; }
-.primeiros-passos h2 { font-size: 16px; margin: 0 0 10px; }
-.primeiros-passos ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.primeiros-passos li { display: flex; align-items: flex-start; gap: 10px; }
-.primeiros-passos .marca-passo {
-  flex: none; width: 24px; height: 24px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 700; border: 1px solid var(--borda); color: var(--tinta-fraca);
-}
-.primeiros-passos li.feito .marca-passo { background: var(--acento-claro); border-color: var(--acento-claro); color: var(--acento); }
-.primeiros-passos li.feito .texto-passo { color: var(--tinta-fraca); }
-.primeiros-passos li.proximo .marca-passo { background: var(--acento); border-color: var(--acento); color: #fff; }
-.primeiros-passos li.proximo a { font-weight: 600; }
-.primeiros-passos .texto-passo { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
-
-/* o formulário de um botão só, ao lado de links no cabeçalho do cartão */
-form.em-linha { display: inline-flex; margin: 0; }
-
-/* ---------- acabamentos das telas de turma e de duplicados ---------- */
-/* O cabeçalho do grupo (uma turma por `<tbody>` em /turmas/pedidos) é título,
-   não rótulo de coluna: sem a caixa alta miúda dos `<th>` do cabeçalho. */
-.tabela-cartao.lista tr.grupo-da-tabela > th {
-  text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--tinta);
-}
-/* "ajustar horas" da folha de presença: discreto até ser pedido. */
-details.ajuste-horas > summary { font-size: 12px; cursor: pointer; }
-details.ajuste-horas input { margin-top: 4px; }
-@media (min-width: 900px) {
-  .tabela-cartao.lista td.nome { min-width: 26ch; }
-}
-/* A diferença entre cadastros duplicados (/participantes) e os trechos
-   marcados fora do mapa de tags: o mesmo realce suave, e não o amarelo forte
-   do navegador, que no tema escuro fica ilegível. `--alerta-fundo` já muda
-   com o tema. */
-.tabela-cartao mark, .cartao mark {
-  background: var(--alerta-fundo); color: var(--tinta); padding: 0 2px; border-radius: 3px;
 }

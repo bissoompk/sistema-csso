@@ -42,6 +42,7 @@ import * as servico_anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as servico_nup from "../servicos/nup.js";
+import * as servico_parecer from "../servicos/parecer.js";
 import * as pendencias from "../servicos/pendencias.js";
 import * as sei from "../servicos/sei.js";
 import * as servico_servidores from "../servicos/servidores.js";
@@ -157,7 +158,9 @@ rotas.get("/processos", async (c) => {
   }
   // Quem só alcança o PRÓPRIO processo (servidor) não tem fila, SLA nem
   // campus a recortar: as visões de trabalho do setor não dizem nada a ele.
-  const so_o_proprio = usuario.escopo === ESCOPO_PROPRIO;
+  // Pela permissão da lista, e não pela conta: o almoxarife ligado a servidor
+  // lê só os próprios processos (concessão do titular), e a tela é a dele.
+  const so_o_proprio = usuario.escopo_de("processo.ver") === ESCOPO_PROPRIO;
   return pagina(c, "paginas/processos.html", usuario, {
     resumos,
     grupos,
@@ -526,6 +529,26 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
     servico_anexos.listar(tx, "processo", processo.id),
     requisitos_de_saida(tx, processo, ""),
   ]);
+  // D14: a lista e a trilha mostram só o parecer que a conta LÊ
+  // (`parecer.escopo_de_leitura`). A Consulta PROGEP lê o documento, e não o
+  // rascunho: aqui ela via o número, a situação e o signatário de cada
+  // rascunho, e na trilha os eventos da edição dele. A lista crua continua
+  // decidindo o que a máquina do processo admite (`sem_documento`), que é
+  // regra do processo e não leitura do parecer.
+  const legiveis = new Set(
+    pareceres.length
+      ? (
+          await tx
+            .select({ id: parecer_tecnico.id })
+            .from(parecer_tecnico)
+            .where(and(eq(parecer_tecnico.processo_id, processo.id), servico_parecer.escopo_de_leitura(usuario)))
+        ).map((l) => l.id)
+      : [],
+  );
+  const pareceres_tela = pareceres.filter((p) => legiveis.has(p.id));
+  const eventos_legiveis = eventos.filter(
+    (ev) => ev.entidade !== "parecer_tecnico" || legiveis.has(ev.entidade_id),
+  );
   // os pareceres já vieram na leitura acima: o que falta sai deles, sem consulta
   const sem_documento = estados_sem_documento_de(
     pareceres.map((p) => p.situacao),
@@ -549,7 +572,7 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
   const saltos = destinos_do_processo(origem, curto, sem_documento).filter((d) => !diretos.includes(d));
   // O texto da trilha de estado é gravado em ASCII e com "->" (é digerido pela
   // cadeia de hash): a tela acentua na exibição, sem tocar no gravado.
-  const eventos_tela = eventos.map((ev) => ({
+  const eventos_tela = eventos_legiveis.map((ev) => ({
     ...ev,
     descricao_tela: ev.tipo_evento === auditoria.ESTADO_ALTERADO ? rotulo_tela_do_ascii(ev.descricao) : ev.descricao,
   }));
@@ -557,7 +580,7 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
     processo,
     resumo,
     aba: o.aba ?? c.req.query("aba") ?? "dados",
-    pareceres,
+    pareceres: pareceres_tela,
     eventos: eventos_tela,
     checklists,
     modelos_checklist: modelos,

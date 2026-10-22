@@ -217,7 +217,13 @@ async function _desenhar_editor(
   c: Ctx,
   usuario: UsuarioAtual,
   parecer_id: number,
-  o: { mensagem?: string | null; erro?: string | null; nao_gravado?: [string, string][] } = {},
+  o: {
+    mensagem?: string | null;
+    erro?: string | null;
+    nao_gravado?: [string, string][];
+    /** a recusa da substituição (D22): reabre o popup com o motivo digitado */
+    substituicao?: { erro: string; motivo: string } | null;
+  } = {},
 ): Promise<Response> {
   usuario.exigir("parecer.ver");
   const tx = c.get("tx");
@@ -247,6 +253,9 @@ async function _desenhar_editor(
     validacao,
     numeros_usados: await servico.numeros_usados(tx, parecer),
     pode_assinar: await pode_subscrever(tx, usuario),
+    // D22: quem não é o signatário marca só declarando a substituição
+    e_o_signatario: servico.e_o_signatario(parecer, usuario),
+    substituicao: o.substituicao ?? null,
     epi: await _painel_de_epi(c, parecer),
     epi_valores: servico.EPI_NEUTRALIZA_VALORES,
     epi_alega: servico.EPI_ALEGA_NEUTRALIZACAO,
@@ -263,7 +272,7 @@ async function _desenhar_editor(
     laudo_sugerido_id: parecer.laudo_id === null && sugeridos.length === 1 ? sugeridos[0]!.id : null,
     // O titular (escopo próprio) lê o próprio parecer: prévia e documento, sem o
     // editor e sem o quadro "pronto para emitir", que é de quem emite.
-    vista_do_titular: usuario.escopo === ESCOPO_PROPRIO,
+    vista_do_titular: usuario.escopo_de("parecer.ver") === ESCOPO_PROPRIO,
   });
 }
 
@@ -358,7 +367,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
   const usuario = await usuarioCom(c, "parecer.editar");
   const tx = c.get("tx");
   const parecer_id = _id(c);
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id, "parecer.editar");
   if (parecer === null) return redirecionar(c, "/processos");
   if (parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
     return _desenhar_editor(c, usuario, parecer_id, {
@@ -545,7 +554,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/portaria", async (c) => {
     ]);
   }
   const texto_original = f.texto("texto_original");
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id, "parecer.editar");
   if (parecer === null) return redirecionar(c, "/processos");
   // RN-14: sem isto a portaria (e o marco inicial) de um parecer já emitido
   // ou assinado mudava depois de ele ir para o SEI.
@@ -612,7 +621,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes", async (c) => {
       ...(percentual_id === null ? ["percentual_id"] : []),
     ]);
   }
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id, "parecer.editar");
   if (parecer === null || parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
     return redirecionar(c, `/pareceres/${parecer_id}`);
   }
@@ -711,7 +720,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes/:exposicao_id{[0-9]+}/epi"
   const exposicao_id = _id(c, "exposicao_id");
   const f = await formulario(c);
   if (!f.tem("epi_neutraliza")) _incompleto(["epi_neutraliza"]);
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id, "parecer.editar");
   const exposicao = parecer?.exposicoes.find((e) => e.id === exposicao_id);
   if (!parecer || !exposicao) return redirecionar(c, `/pareceres/${parecer_id}`);
   try {
@@ -735,7 +744,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/exposicoes/:exposicao_id{[0-9]+}/excl
   const parecer_id = _id(c);
   // Escopo e RN-14, como no cadastro da exposição: excluir o agente de um
   // parecer emitido reescrevia o que já foi assinado e está no SEI.
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id, "parecer.editar");
   if (parecer === null || parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
     return redirecionar(c, `/pareceres/${parecer_id}`);
   }
@@ -751,7 +760,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/emitir", async (c) => {
   const usuario = await usuarioCom(c, "parecer.emitir");
   const tx = c.get("tx");
   const parecer_id = _id(c);
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id, "parecer.emitir");
   if (parecer === null) return redirecionar(c, "/processos");
   let resultado: servico.ResultadoEmissao;
   try {
@@ -777,12 +786,28 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/assinar", async (c) => {
   const usuario = await usuarioCom(c, "parecer.ver");
   const tx = c.get("tx");
   const parecer_id = _id(c);
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  // quem assina, assina no alcance de `parecer.assinar` (D9); quem não assina
+  // lê pelo de `parecer.ver`, e a recusa continua indo para a trilha
+  const parecer = await servico.no_escopo(
+    tx,
+    usuario,
+    parecer_id,
+    usuario.pode("parecer.assinar") ? "parecer.assinar" : "parecer.ver",
+  );
   if (parecer === null) return redirecionar(c, "/processos");
+  // D22: a substituição só existe declarada — o popup "como substituto" manda
+  // `substituicao=1` e o motivo; o botão do próprio signatário não manda nada
+  const f = await formulario(c);
+  const substituicao = f.texto("substituicao") === "1" ? { motivo: f.texto("motivo_substituicao") } : null;
   try {
-    await servico.assinar(tx, parecer, usuario);
+    await servico.assinar(tx, parecer, usuario, { substituicao });
   } catch (erro) {
     if (erro instanceof PermissaoNegada) return _negado(c, usuario, erro);
+    if (erro instanceof servico.AssinaturaDeOutroSignatario && substituicao) {
+      return _desenhar_editor(c, usuario, parecer_id, {
+        substituicao: { erro: erro.motivos.join(" · "), motivo: substituicao.motivo },
+      });
+    }
     if (erro instanceof servico.EmissaoBloqueada) {
       return _desenhar_editor(c, usuario, parecer_id, { erro: erro.motivos.join(" · ") });
     }
@@ -797,7 +822,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/anular", async (c) => {
   const parecer_id = _id(c);
   const f = await formulario(c);
   if (!f.tem("motivo")) _incompleto(["motivo"]);
-  const parecer = await servico.no_escopo(tx, usuario, parecer_id);
+  const parecer = await servico.no_escopo(tx, usuario, parecer_id, "parecer.anular");
   if (parecer === null) return redirecionar(c, "/processos");
   try {
     await servico.anular(tx, parecer, usuario, f.texto("motivo"));

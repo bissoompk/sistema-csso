@@ -346,7 +346,9 @@ describe("aviso de reciclagem por e-mail", () => {
     expect(aviso!.tipo).toBe("RECICLAGEM_AVISO");
     expect(aviso!.destinatario).toBe("marco@ufvjm.edu.br");
     expect(aviso!.corpo).toContain(`vence em ${datas_br.numerica(datas_br.somar_dias(HOJE, 10))}`);
-    expect(aviso!.corpo).toContain("procure a CSSO");
+    expect(aviso!.corpo).toContain("procure o setor que promoveu o treinamento");
+    expect(aviso!.corpo).toContain("Mensagem enviada pelo Sistema SISA.");
+    expect(aviso!.corpo).not.toContain("CSSO)");
     expect((await cliente.get("/certificados/vencimentos")).text).toContain(">avisado<");
     const de_novo = await cliente.post("/certificados/vencimentos/avisar", { certificado_id: String(h.do_marco.id) });
     expect(de_novo.text).toContain("1 já avisado(s) antes");

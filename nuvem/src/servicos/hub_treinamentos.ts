@@ -14,7 +14,7 @@ import {
   treinamento as tabela_treinamento,
   turma as tabela_turma,
 } from "../db/esquema/index.js";
-import * as email from "./email.js";
+import * as envio_certificado from "./envio_certificado.js";
 import * as fila_emissao from "./fila_emissao.js";
 import type { UsuarioAtual } from "./rbac.js";
 import * as reciclagem from "./reciclagem.js";
@@ -43,7 +43,13 @@ export interface ResumoHub {
 }
 
 export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string): Promise<ResumoHub> {
-  const escopo = servico_turma.consulta_no_escopo(usuario);
+  // Cada contagem com a permissão da tela para onde o cartão leva (D9): as
+  // turmas e as próximas com a de `/turmas` (`treinamento.ver`); os pedidos
+  // com a do ato de conferir (`turma.inscrever`), como `pedidos_link.a_conferir`.
+  // Com a leitura no lugar do ato, quem lê turmas em todo campus e confere
+  // pedidos só no seu via no cartão um número que a fila não mostra.
+  const escopo = servico_turma.consulta_no_escopo(usuario, "treinamento.ver");
+  const escopo_dos_pedidos = servico_turma.consulta_no_escopo(usuario, "turma.inscrever");
 
   const por_situacao = await tx
     .select({ situacao: tabela_turma.situacao, n: count() })
@@ -57,7 +63,7 @@ export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string):
     .select({ n: count() })
     .from(tabela_inscricao)
     .innerJoin(tabela_turma, eq(tabela_turma.id, tabela_inscricao.turma_id))
-    .where(and(escopo, eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL")));
+    .where(and(escopo_dos_pedidos, eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL")));
 
   const { contagem: fila } = await fila_emissao.fila(tx, usuario, {});
   const { contagem: recicl } = await reciclagem.monitor(tx, usuario, hoje, {});
@@ -83,7 +89,8 @@ export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string):
     pedidos_a_conferir: Number(pedidos?.n ?? 0),
     fila,
     reciclagem: recicl,
-    emails: usuario.pode("certificado.emitir") ? await email.contagem(tx) : null,
+    // NUVEM: a caixa do setor de quem lê, como a tela de envios
+    emails: usuario.pode("certificado.emitir") ? await envio_certificado.contagem_do_setor(tx, usuario) : null,
     proximas,
   };
 }
@@ -118,7 +125,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
     href: "/treinamentos/catalogo",
     icone: "journal-bookmark",
     cor: "roxo",
-    titulo: gerencia ? "Catálogo e modelos" : "Catálogo",
+    titulo: gerencia ? "Treinamentos e modelos" : "Treinamentos",
     descricao: gerencia
       ? "Treinamentos, validade da reciclagem e o modelo (.docx) do certificado."
       : "Treinamentos, carga horária e validade da reciclagem.",
@@ -182,7 +189,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
     href: "/certificados",
     icone: "file-earmark-check",
     cor: "azul",
-    titulo: "Certificados",
+    titulo: "Emitidos",
     descricao: anula ? "Busca, segunda via, corrigir e anular." : "Busca e segunda via dos emitidos.",
     contagem: { texto: `${r.fila.EMITIDO} emitido(s)`, classe: "" },
   });
@@ -191,7 +198,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
       href: "/certificados/emails",
       icone: "envelope-paper",
       cor: "azul",
-      titulo: "E-mails",
+      titulo: "Envios por e-mail",
       descricao: "O que foi enviado, o que está na fila e o que falhou.",
       contagem: {
         texto: `${r.emails.PENDENTE ?? 0} na fila` + (r.emails.FALHOU ? ` · ${r.emails.FALHOU} com falha` : ""),

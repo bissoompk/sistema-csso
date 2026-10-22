@@ -127,7 +127,7 @@ export async function por_email(tx: Executor, email: string): Promise<Participan
 /**
  * TODOS os participantes que já usaram o endereço, o confirmado primeiro.
  *
- * `por_email` devolve um só, e serve a quem confia no endereço (a CSSO, a
+ * `por_email` devolve um só, e serve a quem confia no endereço (a equipe, a
  * inscrição em lote). O pedido público não confia: o mesmo e-mail digitado por
  * duas pessoas (a mãe que inscreve o filho, o e-mail do setor) liga a ele dois
  * participantes, e quem procura "a mesma pessoa" precisa olhar todos eles.

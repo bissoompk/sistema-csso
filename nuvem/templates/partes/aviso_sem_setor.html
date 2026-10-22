@@ -1,0 +1,13 @@
+{# NUVEM: a conta de equipe sem setor promotor vinculado (`servicos/setor_equipe.ts`).
+   As telas da equipe de Certificados e Treinamentos mostram as turmas do setor
+   de quem está logado; sem setor nenhum, a lista vazia precisa dizer por quê.
+   A rota passa `sem_setor_promotor` (`setor_equipe.sem_setor`). #}
+{% if sem_setor_promotor %}
+<div class="aviso aviso-alerta" role="status">
+  <p><strong>Sua conta não está vinculada a nenhum setor promotor.</strong>
+    Cada setor vê só as turmas que promove — e, com elas, as inscrições, os pedidos
+    pelo link, os certificados e a reciclagem. Por isso nada aparece aqui.</p>
+  <p>Peça à coordenação para vincular você ao seu setor; o vínculo é feito em
+    <strong>Usuários</strong>, na ficha da sua conta.</p>
+</div>
+{% endif %}

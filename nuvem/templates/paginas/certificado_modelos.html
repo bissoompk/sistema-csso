@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Modelos de certificado · CSSO{% endblock %}
+{% block titulo %}Modelos de certificado · SISA{% endblock %}
 
 {# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
    em `partes/macros.html`. #}
@@ -78,7 +78,7 @@
      nova versão"), e é nele que o foco cai na reabertura. #}
   <div class="campo {{ 'com-erro' if recusado }}">
     <label for="modelo-nome">Nome do modelo</label>
-    <input id="modelo-nome" name="nome" required placeholder="Certificado padrão CSSO"
+    <input id="modelo-nome" name="nome" required placeholder="Certificado padrão"
            value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}></div>
   {# O arquivo enviado tem precedência; sem ele, vale um dos layouts que vêm com o sistema. #}
   <div class="campo"><label for="modelo-docx">Arquivo do Word (.docx)</label>

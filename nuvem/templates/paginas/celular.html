@@ -3,12 +3,13 @@
    num celular. A casca entrega no lugar o cabeçalho escuro com a marca e o
    "sair", que é tudo o que se precisa aqui. #}
 {% set sem_casca = true %}
-{% block titulo %}CSSO no celular{% endblock %}
+{% block titulo %}SISA no celular{% endblock %}
+{# O manifesto, a cor da barra e o `mobile-web-app-capable` vêm da casca
+   (`base.html`), em toda tela. Aqui havia uma segunda `theme-color` (que
+   perdia para a primeira) e o `apple-mobile-web-app-capable`, que o Safari
+   trocou pelo nome sem prefixo. #}
 {% block cabeca %}
 <link rel="stylesheet" href="/estaticos/css/celular.css">
-<link rel="manifest" href="/estaticos/manifest.webmanifest">
-<meta name="theme-color" content="#0f2a4a">
-<meta name="apple-mobile-web-app-capable" content="yes">
 {% endblock %}
 {% block classe_conteudo %}celular{% endblock %}
 {% block conteudo %}

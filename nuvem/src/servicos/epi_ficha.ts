@@ -44,7 +44,7 @@ import * as textos from "./textos.js";
 import { setor_emissor_vigente } from "./parecer.js";
 import { declarar_porta } from "./anexo_acesso.js";
 import type { UsuarioAtual } from "./rbac.js";
-import { RegraViolada } from "../nucleo/erros.js";
+import { PermissaoNegada, RegraViolada } from "../nucleo/erros.js";
 import { EpiItem as DominioItem } from "../dominio/epi.js";
 import type { epi_item, epi_motivo_recusa } from "../db/esquema/index.js";
 
@@ -100,22 +100,63 @@ export class Validacao {
  * Devolve `true` quando a leitura é da ficha de OUTRA pessoa.
  *
  * Ler a própria não exige `epi.ficha` (LGPD art. 18, II); ler a de outro exige
- * a permissão e entra em `acesso_dado_sensivel` (RN-23). Mora no serviço porque
- * o download do comprovante (`GET /anexos/{id}`) faz a mesma pergunta.
+ * a permissão — no campus de lotação do servidor — e entra em
+ * `acesso_dado_sensivel` (RN-23). Mora no serviço porque o download do
+ * comprovante (`GET /anexos/{id}`) faz a mesma pergunta.
  */
-export function exigir_leitura_da_ficha(usuario: UsuarioAtual, servidor_id: number | null | undefined): boolean {
+export async function exigir_leitura_da_ficha(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  servidor_id: number | null | undefined,
+): Promise<boolean> {
   const propria = usuario.servidor_id !== null && usuario.servidor_id === servidor_id;
   if (propria) {
     usuario.exigir("epi.ver");
     return false;
   }
   usuario.exigir("epi.ficha");
+  if (!(await ficha_no_alcance(tx, usuario, servidor_id ?? null))) {
+    throw new PermissaoNegada(
+      "epi.ficha",
+      "Este servidor está lotado em um campus fora do alcance da sua permissão de ler ficha de EPI.",
+    );
+  }
   return true;
 }
 
+/**
+ * O campus da concessão de `epi.ficha` cobre a ficha deste servidor? Era só
+ * "tem `epi.ficha`" (D9): o almoxarife ou o técnico com a permissão no campus
+ * A lia a ficha NOMINAL — e o comprovante — de quem é lotado no campus B. O
+ * campus é o da lotação de hoje (`unidade_uorg.campus_id`), a mesma régua de
+ * `epi_requisicao.exigir_requerente_permitido`; sem lotação conhecida não há
+ * como recortar, e a permissão basta (como em `ve_nome_na_linha`).
+ */
+export async function ficha_no_alcance(tx: Executor, usuario: UsuarioAtual, servidor_id: number | null): Promise<boolean> {
+  const alcance = usuario.alcance("epi.ficha");
+  if (alcance.total || alcance.unidade) return true;
+  if (!alcance.campi.length || servidor_id === null) return false;
+  const [linha] = await tx
+    .select({ campus_id: unidade_uorg.campus_id })
+    .from(tabela_servidor)
+    .leftJoin(unidade_uorg, eq(unidade_uorg.id, tabela_servidor.unidade_uorg_id))
+    .where(eq(tabela_servidor.id, servidor_id));
+  const campus = linha?.campus_id ?? null;
+  return campus === null || alcance.campi.includes(campus);
+}
+
+/**
+ * Os campi (de lotação) que a `epi.ficha` desta conta alcança, para recortar
+ * a LISTA de fichas — ou `null` quando ela alcança todos.
+ */
+export function campi_da_ficha(usuario: UsuarioAtual): readonly number[] | null {
+  const alcance = usuario.alcance("epi.ficha");
+  return alcance.total || alcance.unidade ? null : alcance.campi;
+}
+
 // a regra do dono do anexo `epi_ficha_registro` (ver `anexo_acesso.ts`)
-declarar_porta("exigir_leitura_da_ficha", (usuario, servidor_id) => {
-  exigir_leitura_da_ficha(usuario, servidor_id);
+declarar_porta("exigir_leitura_da_ficha", async (tx, usuario, servidor_id) => {
+  await exigir_leitura_da_ficha(tx, usuario, servidor_id);
 });
 
 /**

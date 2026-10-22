@@ -131,7 +131,7 @@ function contem(coluna: Parameters<typeof ilike>[0], alvo: string): SQL {
 }
 
 async function _condicoes(tx: Executor, filtro: Filtro, usuario: UsuarioAtual): Promise<SQL | undefined> {
-  const partes: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_processo)];
+  const partes: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_processo, "processo.ver")];
 
   if (filtro.q) {
     // o NUP colado sem pontuação casa com o gravado (`nup.termo_de_busca`)
@@ -307,7 +307,7 @@ export async function buscar(
 
 export async function por_id(tx: Executor, usuario: UsuarioAtual, processo_id: number): Promise<ProcessoCarregado | null> {
   const achado = await tx.query.processo.findFirst({
-    where: and(eq(tabela_processo.id, processo_id), aplicar_escopo(usuario, tabela_processo)),
+    where: and(eq(tabela_processo.id, processo_id), aplicar_escopo(usuario, tabela_processo, "processo.ver")),
     with: COM_PROCESSO,
   });
   return (achado as ProcessoCarregado | undefined) ?? null;
@@ -315,7 +315,7 @@ export async function por_id(tx: Executor, usuario: UsuarioAtual, processo_id: n
 
 export async function por_nup(tx: Executor, usuario: UsuarioAtual, nup: string): Promise<ProcessoCarregado | null> {
   const achado = await tx.query.processo.findFirst({
-    where: and(eq(tabela_processo.nup, nup), aplicar_escopo(usuario, tabela_processo)),
+    where: and(eq(tabela_processo.nup, nup), aplicar_escopo(usuario, tabela_processo, "processo.ver")),
     with: COM_PROCESSO,
   });
   return (achado as ProcessoCarregado | undefined) ?? null;
@@ -385,7 +385,7 @@ export async function indicadores(
   const processos = await tx
     .select()
     .from(tabela_processo)
-    .where(and(aplicar_escopo(usuario, tabela_processo), eq(tabela_processo.origem_repositorio, false)));
+    .where(and(aplicar_escopo(usuario, tabela_processo, "processo.ver"), eq(tabela_processo.origem_repositorio, false)));
   const ano = exercicio || Number(datas_br.hoje().slice(0, 4));
 
   const resumos = await resumir_varios(tx, processos);
@@ -406,7 +406,7 @@ export async function unidades_com_processo(tx: Executor, usuario: UsuarioAtual)
   const linhas = await tx
     .select({ unidade_uorg_id: tabela_processo.unidade_uorg_id })
     .from(tabela_processo)
-    .where(aplicar_escopo(usuario, tabela_processo));
+    .where(aplicar_escopo(usuario, tabela_processo, "processo.ver"));
   const ids = [...new Set(linhas.map((l) => l.unidade_uorg_id).filter((x): x is number => Boolean(x)))];
   if (!ids.length) return [];
   return tx.select().from(unidade_uorg).where(inArray(unidade_uorg.id, ids)).orderBy(asc(unidade_uorg.nome_extenso));

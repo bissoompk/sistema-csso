@@ -73,7 +73,10 @@ import {
 import {
   atribuicao,
   autoridade_destinataria,
+  equipe_setor_promotor,
   perfil,
+  perfil_nivel_modulo,
+  usuario_nivel_modulo,
   perfil_permissao,
   permissao,
   profissional_habilitado,
@@ -200,11 +203,40 @@ export const portaria_localizacao_relacoes = relations(portaria_localizacao, ({ 
 // ---------------------------------------------------------------------
 export const usuario_relacoes = relations(usuario, ({ many }) => ({
   atribuicoes: many(atribuicao, { relationName: 'usuario_atribuicoes' }),
+  // (so Drizzle) liberacao por modulo e setores promotores (22/10/2026)
+  niveis_modulo: many(usuario_nivel_modulo, { relationName: 'usuario_niveis_modulo' }),
+  setores_promotores: many(equipe_setor_promotor, { relationName: 'usuario_setores_promotores' }),
 }));
 
 export const perfil_relacoes = relations(perfil, ({ many }) => ({
   // era `permissoes` (secondary=perfil_permissao) — ver o cabecalho
   perfil_permissoes: many(perfil_permissao),
+  // (so Drizzle) o nivel de cada modulo escolhido na tela (22/10/2026)
+  niveis_modulo: many(perfil_nivel_modulo),
+}));
+
+export const perfil_nivel_modulo_relacoes = relations(perfil_nivel_modulo, ({ one }) => ({
+  perfil: one(perfil, { fields: [perfil_nivel_modulo.perfil_id], references: [perfil.id] }),
+}));
+
+export const usuario_nivel_modulo_relacoes = relations(usuario_nivel_modulo, ({ one }) => ({
+  usuario: one(usuario, {
+    fields: [usuario_nivel_modulo.usuario_id],
+    references: [usuario.id],
+    relationName: 'usuario_niveis_modulo',
+  }),
+}));
+
+export const equipe_setor_promotor_relacoes = relations(equipe_setor_promotor, ({ one }) => ({
+  usuario: one(usuario, {
+    fields: [equipe_setor_promotor.usuario_id],
+    references: [usuario.id],
+    relationName: 'usuario_setores_promotores',
+  }),
+  unidade: one(unidade_uorg, {
+    fields: [equipe_setor_promotor.unidade_uorg_id],
+    references: [unidade_uorg.id],
+  }),
 }));
 
 export const permissao_relacoes = relations(permissao, ({ many }) => ({

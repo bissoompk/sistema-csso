@@ -2,7 +2,7 @@
  * Os pedidos que chegaram pelo link público, de todas as turmas, para aceitar
  * ou recusar de uma vez.
  *
- * No IntegraSST o formulário público já inscrevia: a CSSO não fazia nada. Aqui
+ * No IntegraSST o formulário público já inscrevia: a equipe não fazia nada. Aqui
  * o pedido nasce `AGUARDANDO_EMAIL` e só vira inscrição quando alguém confere
  * (`inscricao_publica.ts`), o que numa turma de 30 pessoas eram 60 cliques, um
  * pedido por vez. A regra de cada aceite continua a de sempre
@@ -55,7 +55,8 @@ export async function a_conferir(tx: Executor, usuario: UsuarioAtual): Promise<T
     .select({ id: tabela_inscricao.id, turma_id: tabela_inscricao.turma_id })
     .from(tabela_inscricao)
     .innerJoin(tabela_turma, eq(tabela_turma.id, tabela_inscricao.turma_id))
-    .where(and(servico_turma.consulta_no_escopo(usuario), eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL")))
+    // o alcance de `turma.inscrever`, a permissão da tela e do ato (D9)
+    .where(and(servico_turma.consulta_no_escopo(usuario, "turma.inscrever"), eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL")))
     .orderBy(asc(tabela_turma.data_inicio), asc(tabela_inscricao.id))
     .limit(LIMITE_LOTE * 5);
   if (!linhas.length) return [];
@@ -132,7 +133,7 @@ export async function decidir(
   for (const id of [...new Set(ids)].slice(0, LIMITE_LOTE)) {
     const inscricao = await servico_turma.carregar_inscricao(tx, id);
     if (!inscricao || inscricao.situacao !== "AGUARDANDO_EMAIL") continue;
-    if (!(await servico_turma.no_escopo(tx, usuario, inscricao.turma_id))) continue;
+    if (!(await servico_turma.no_escopo(tx, usuario, inscricao.turma_id, "turma.inscrever"))) continue;
     validas.push(inscricao);
   }
   const barradas = new Set<number>();

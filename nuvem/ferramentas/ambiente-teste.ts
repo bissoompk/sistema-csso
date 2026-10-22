@@ -123,6 +123,16 @@ export async function povoar(tx: import("../src/db/cliente.js").Executor): Promi
       vigencia_inicio: "2020-01-01",
       ato_normativo: "Ato de teste — ambiente descartável",
     });
+    // Turmas por setor promotor (22/10/2026): a equipe da CSSO entra no setor
+    // CSSO, como a migração 0014 fez com as contas que já existiam.
+    if (rbac.PERFIS_DA_EQUIPE_CSSO.includes(codigo_perfil)) {
+      const [csso] = await tx
+        .select({ id: e.unidade_uorg.id })
+        .from(e.unidade_uorg)
+        .where(eq(e.unidade_uorg.nome_oficial, rbac.NOME_OFICIAL_CSSO))
+        .limit(1);
+      if (csso) await tx.insert(e.equipe_setor_promotor).values({ usuario_id: conta!.id, unidade_uorg_id: csso.id });
+    }
   }
 
   const atual = async (login: string) => {

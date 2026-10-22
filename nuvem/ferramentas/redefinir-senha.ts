@@ -3,13 +3,21 @@
  * superintendente esquece a dele e não sobra ninguém na tela que possa
  * redefinir (a própria senha não se redefine por /usuarios).
  *
- *     npm run redefinir-senha -- --login fabricio [--reativar]
+ *     npm run redefinir-senha -- --login fabricio [--reativar] [--conceder-superintendente [--manter-senha]]
  *
  * Gera uma senha provisória (`senha_provisoria()`), obriga a troca no próximo
  * login, desbloqueia a conta, derruba as sessões abertas e grava
  * `SENHA_RESETADA` na trilha com o ator "linha de comando". A senha aparece
  * UMA vez, no terminal, e não fica gravada em lugar nenhum. `--reativar`
  * também reativa a conta inativa (`USUARIO_ATIVADO`, mesmo ator).
+ *
+ * `--conceder-superintendente` (D17) é a outra porta que só a linha de comando
+ * abre: quando a última concessão de `perfil.conceder` venceu (ou foi
+ * encerrada à mão) e não sobra ninguém na tela que conceda perfil. Concede o
+ * perfil de superintendente à conta, sem termo e em todos os campi, com o ato
+ * "Linha de comando — recuperação de acesso" (corrija depois em Gerir) e
+ * `PERFIL_CONCEDIDO` na trilha com o mesmo ator. Com `--manter-senha` só
+ * concede, sem redefinir a senha (a pessoa sabe a dela; faltava o perfil).
  *
  * Quem roda isto tem o `DATABASE_URL` — já pode tudo no banco. A ferramenta
  * não abre porta nenhuma: só faz pelo caminho auditado o que um UPDATE à mão
@@ -71,6 +79,49 @@ export async function redefinir(
   return { senha, nome: alvo.nome, ativo: alvo.ativo || reativar };
 }
 
+/**
+ * Concede superintendente pela linha de comando. Devolve `"concedido"`, `"ja_tinha"`
+ * (já há concessão vigente sem termo nem fim próximo — nada muda) ou `null` se o
+ * login não existe. Toma a mesma trava de governança da tela.
+ */
+export async function conceder_superintendente(
+  tx: Executor,
+  login: string,
+): Promise<"concedido" | "ja_tinha" | null> {
+  const { usuario, perfil, atribuicao } = await import("../src/db/esquema/index.js");
+  const auditoria = await import("../src/servicos/auditoria.js");
+  const governanca = await import("../src/servicos/governanca.js");
+  const { hoje_iso } = await import("../src/dominio/datas.js");
+  const { vigente_em } = await import("../src/dominio/organizacao.js");
+  const datas_br = await import("../src/servicos/datas_br.js");
+  await governanca.travar(tx);
+  const [alvo] = await tx.select().from(usuario).where(eq(usuario.login, login));
+  if (!alvo) return null;
+  const [sup] = await tx.select().from(perfil).where(eq(perfil.codigo, "superintendente"));
+  if (!sup) throw new Error("o perfil superintendente não existe: rode a semente (ferramentas/semear.ts) antes.");
+  const hoje = hoje_iso();
+  const atuais = await tx.select().from(atribuicao).where(eq(atribuicao.usuario_id, alvo.id));
+  if (atuais.some((a) => a.perfil_id === sup.id && a.campus_id === null && a.vigencia_fim === null && vigente_em(a, hoje))) {
+    return "ja_tinha";
+  }
+  const ato = `Linha de comando — recuperação de acesso (ferramentas/redefinir-senha.ts) em ${datas_br.numerica(hoje)}`;
+  const [nova] = await tx
+    .insert(atribuicao)
+    .values({ usuario_id: alvo.id, perfil_id: sup.id, campus_id: null, vigencia_inicio: hoje, vigencia_fim: null, ato_normativo: ato })
+    .returning();
+  await auditoria.registrar(tx, {
+    entidade: "atribuicao",
+    entidade_id: nova!.id,
+    tipo_evento: "PERFIL_CONCEDIDO",
+    descricao:
+      `Perfil superintendente concedido a '${alvo.login}' (todos os campi; vigência ${datas_br.numerica(hoje)} ` +
+      `a sem termo) pela linha de comando — ato: ${ato}`,
+    usuario_nome: ATOR,
+  });
+  await governanca.sincronizar_aviso_de_cobertura(tx, hoje);
+  return "concedido";
+}
+
 function valor(argv: string[], nome: string): string | null {
   const i = argv.indexOf(nome);
   if (i >= 0) return argv[i + 1] ?? null;
@@ -87,17 +138,34 @@ export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Pr
   }
   const login = (valor(argv, "--login") ?? "").trim();
   if (!login) {
-    saida.erro("uso: npm run redefinir-senha -- --login <login> [--reativar]");
+    saida.erro(
+      "uso: npm run redefinir-senha -- --login <login> [--reativar] [--conceder-superintendente [--manter-senha]]",
+    );
     return 1;
   }
   const { abrirBancoAvulso } = await import("../src/db/cliente.js");
   const banco = abrirBancoAvulso(url);
+  const conceder = argv.includes("--conceder-superintendente");
+  const so_conceder = conceder && argv.includes("--manter-senha");
   let feito: Awaited<ReturnType<typeof redefinir>>;
+  let concessao: Awaited<ReturnType<typeof conceder_superintendente>>;
   try {
-    feito = await banco.db.transaction((tx) => redefinir(tx, login, argv.includes("--reativar")));
+    // tudo numa transação: login inexistente não deixa meia recuperação
+    [concessao, feito] = await banco.db.transaction(async (tx) => {
+      const c = conceder ? await conceder_superintendente(tx, login) : null;
+      const r = !so_conceder && (!conceder || c) ? await redefinir(tx, login, argv.includes("--reativar")) : null;
+      return [c, r] as const;
+    });
   } finally {
     await banco.fechar();
   }
+  if (conceder && concessao === null) {
+    saida.erro(`ERRO: não existe conta com o login '${login}'. Nada foi alterado.`);
+    return 2;
+  }
+  if (concessao === "concedido") saida.log(`Perfil superintendente concedido a ${login}, sem termo. Corrija o ato em Gerir.`);
+  if (concessao === "ja_tinha") saida.log(`${login} já tem superintendente vigente e sem termo: nada concedido.`);
+  if (so_conceder) return 0;
   if (!feito) {
     saida.erro(`ERRO: não existe conta com o login '${login}'. Nada foi alterado.`);
     return 2;

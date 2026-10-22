@@ -15,7 +15,7 @@
  * Carregá-lo liga os ganchos da casca em `web.ts` (`navegacao`, `cookieModulo`)
  * e registra o global `porta_de_entrada`.
  */
-import { ESCOPO_PROPRIO, EscopoNaoDeclarado, type UsuarioAtual } from "./servicos/rbac.js";
+import { EscopoNaoDeclarado, type UsuarioAtual } from "./servicos/rbac.js";
 import { PERMISSOES_VER as PERMISSOES_PENDENCIAS } from "./servicos/pendencias.js";
 import { ganchos, global } from "./web.js";
 
@@ -45,24 +45,76 @@ export class Item {
      * conta de quem só administra ficava com três portas para o nada.
      */
     readonly do_titular: boolean = false,
+    /**
+     * Permissões exigidas ALÉM de uma das de `permissao` (todas estas). É o
+     * relatório de um módulo: `indicador.ver` é transversal e vem do perfil,
+     * e o relatório só abre para quem também tem acesso ao módulo — "sem
+     * acesso" a Processos SEI fecha /relatorios (liberação por módulo,
+     * 22/10/2026). A rota exige as mesmas.
+     */
+    readonly tambem: readonly string[] = [],
   ) {
     Object.freeze(this);
   }
 
+  /**
+   * A tela da equipe só aparece para quem tem a permissão por um PERFIL de
+   * equipe (`pode_na_equipe`). Desde as funções do titular (D16), toda conta
+   * ligada a servidor tem `processo.ver`, `treinamento.ver` e `epi.ver` em
+   * escopo próprio, e "tem a permissão" deixou de querer dizer "trabalha no
+   * módulo": o almoxarife e o `admin_ti` ligados a servidor viam Kanban,
+   * Catálogos e Turmas, que abriam vazios ou davam 403 (`exigir_na_equipe`).
+   * A tela do titular continua pedindo só a permissão — é a dele.
+   */
   visivel_para(usuario: UsuarioAtual | null | undefined): boolean {
     if (!usuario) return false;
     if (this.do_titular && usuario.servidor_id === null) return false;
     if (this.permissao === null) return true;
-    const exigidas = typeof this.permissao === "string" ? [this.permissao] : this.permissao;
-    return exigidas.some((p) => usuario.pode(p));
+    const abre = (p: string) => usuario.pode(p) && (this.do_titular || _na_equipe(usuario, p));
+    return this.exigidas.some(abre) && this.tambem.every(abre);
   }
+
+  /** A lista de "qualquer uma destas", também quando a declaração é uma só. */
+  get exigidas(): readonly string[] {
+    if (this.permissao === null) return [];
+    return typeof this.permissao === "string" ? [this.permissao] : this.permissao;
+  }
+}
+
+/**
+ * `pode_na_equipe` sem derrubar a casca: perfil sem escopo declarado conta
+ * como equipe, porque o menu não é a barreira — cada rota confere a permissão,
+ * e a consulta no escopo nega com a tela que nomeia o perfil.
+ */
+function _na_equipe(usuario: UsuarioAtual, permissao: string): boolean {
+  try {
+    return usuario.pode_na_equipe(permissao);
+  } catch (erro) {
+    if (erro instanceof EscopoNaoDeclarado) return true;
+    throw erro;
+  }
+}
+
+/**
+ * Um bloco do menu do módulo, com o subtítulo que dá o contexto dos rótulos.
+ *
+ * O grupo é declarado no módulo, e não em cada item, para que `Item` continue
+ * com o construtor de sempre (BASE, MEU_ESPACO e o celular o usam). `titulo`
+ * `null` é o bloco sem subtítulo: o "Início" do topo, ou o módulo inteiro
+ * quando ele não se divide.
+ */
+export interface GrupoMenu {
+  readonly titulo: string | null;
+  readonly itens: readonly Item[];
 }
 
 export interface DadosModulo {
   codigo: string;
   nome: string;
   resumo: string;
+  /** ou `itens` (um bloco só, sem subtítulo) ou `grupos` — os dois juntos é erro */
   itens?: readonly Item[];
+  grupos?: readonly GrupoMenu[];
   /** telas do módulo que não viram item de menu (o editor do parecer) */
   prefixos_extras?: readonly string[];
   /** módulo previsto entra na lista desde já, marcado */
@@ -74,16 +126,30 @@ export class Modulo {
   readonly codigo: string;
   readonly nome: string;
   readonly resumo: string;
+  readonly grupos: readonly GrupoMenu[];
+  /**
+   * A lista plana, derivada dos grupos e na mesma ordem. Continua existindo
+   * porque é ela que decide a porta de entrada, o destaque e a trilha — o
+   * grupo é só desenho da lateral, não muda por onde se entra.
+   */
   readonly itens: readonly Item[];
   readonly prefixos_extras: readonly string[];
   readonly disponivel: boolean;
   readonly itens_previstos: readonly string[];
 
   constructor(d: DadosModulo) {
+    // Os dois juntos dariam duas fontes para a mesma lista, e uma delas seria
+    // ignorada em silêncio.
+    if (d.grupos && d.itens) throw new Error(`módulo ${d.codigo}: declare grupos ou itens, não os dois`);
     this.codigo = d.codigo;
     this.nome = d.nome;
     this.resumo = d.resumo;
-    this.itens = Object.freeze([...(d.itens ?? [])]);
+    this.grupos = Object.freeze(
+      (d.grupos ?? [{ titulo: null, itens: d.itens ?? [] }]).map((g) =>
+        Object.freeze({ titulo: g.titulo, itens: Object.freeze([...g.itens]) }),
+      ),
+    );
+    this.itens = Object.freeze(this.grupos.flatMap((g) => g.itens));
     this.prefixos_extras = Object.freeze([...(d.prefixos_extras ?? [])]);
     this.disponivel = d.disponivel ?? true;
     this.itens_previstos = Object.freeze([...(d.itens_previstos ?? [])]);
@@ -91,7 +157,30 @@ export class Modulo {
   }
 
   itens_de(usuario: UsuarioAtual | null | undefined): Item[] {
-    return this.itens.filter((item) => item.visivel_para(usuario));
+    const ao_lado = _meu_espaco_ao_lado(usuario);
+    return this.itens.filter((item) => item.visivel_para(usuario) && !(ao_lado && item.do_titular));
+  }
+
+  /**
+   * Os grupos com o que abre para esta pessoa. Grupo que fica vazio some — o
+   * subtítulo sem nada embaixo seria uma porta para o nada. Se sobra um grupo
+   * só, ele perde o subtítulo: para quem só tem `indicador.ver` (o admin de
+   * TI, até 22/10/2026), o "Acompanhamento" em cima de um item só não explica
+   * nada.
+   */
+  grupos_de(usuario: UsuarioAtual | null | undefined): GrupoMenu[] {
+    // A tela do titular sai daqui quando o bloco "Meu espaço" está ao lado da
+    // lateral: o mesmo "Meus treinamentos" em dois lugares, um deles só quando
+    // o módulo de certificados está aberto, não diz onde ele mora.
+    const ao_lado = _meu_espaco_ao_lado(usuario);
+    const grupos = this.grupos
+      .map((g) => ({
+        titulo: g.titulo,
+        itens: g.itens.filter((item) => item.visivel_para(usuario) && !(ao_lado && item.do_titular)),
+      }))
+      .filter((g) => g.itens.length > 0);
+    if (grupos.length === 1) grupos[0] = { titulo: null, itens: grupos[0]!.itens };
+    return grupos;
   }
 }
 
@@ -124,7 +213,7 @@ export const MODULOS: readonly Modulo[] = [
         "processo.ver",
         "O direito concedido: vigência, percentual e suspensão.",
       ),
-      new Item("Relatórios", "/relatorios", "indicador.ver", "Extrações e conferências."),
+      new Item("Relatórios", "/relatorios", "indicador.ver", "Extrações e conferências.", false, ["processo.ver"]),
       new Item(
         "Importar",
         "/importar",
@@ -236,6 +325,8 @@ export const MODULOS: readonly Modulo[] = [
         // pegou na 1.6.0: o almoxarife veria o link e levaria 403.
         "indicador.ver",
         "Entregue por categoria da NR-6, custo por empenho e recusas por motivo.",
+        false,
+        ["epi.ver"],
       ),
     ],
     // `itens_previstos` fica vazio com a fatia 7: as três telas que faltavam
@@ -252,110 +343,167 @@ export const MODULOS: readonly Modulo[] = [
       "Treinamento obrigatório de SST do modelo à segunda via: turma, " +
       "inscrição, presença e nota, emissão do certificado e o controle de " +
       "reciclagem — quem venceu, quem vence, quem nunca fez.",
-    itens: [
-      // A porta de entrada de quem opera o módulo, como o hub do IntegraSST:
-      // os passos do trabalho e o que está esperando em cada um. O servidor
-      // comum não tem `certificado.ver` e continua entrando por `/turmas`.
-      new Item("Início", "/treinamentos", "certificado.ver", "Os passos do trabalho e o que espera por você em cada um."),
-      new Item("Turmas", "/turmas", "treinamento.ver", "Da abertura das inscrições ao fecho da turma."),
-      new Item(
-        "Pedidos pelo link",
-        "/turmas/pedidos",
-        "turma.inscrever",
-        "Quem se inscreveu pelo link público e espera a conferência, de todas as turmas.",
-      ),
-      new Item(
-        // `treinamento.ver`, exatamente como a rota `/turmas/minhas`
-        // exige — e NÃO `turma.inscrever_se`: a tela responde "o que é
-        // meu" antes de responder "o que posso pedir", e quem não tem a
-        // permissão de pedir continua tendo o que ver nela. Declarar
-        // aqui a permissão do BOTÃO faria o menu esconder uma tela que
-        // abre, que é a mentira na outra direção.
+    // Quinze telas numa coluna só eram uma lista que se lia de cima a baixo
+    // procurando o rótulo. Em grupos, o subtítulo dá o contexto e o rótulo
+    // fica curto: a lateral tem 252px e acima de uns 19 caracteres ele quebra.
+    // O primeiro item visível de cada perfil é o mesmo da lista antiga
+    // (Início, Turmas ou Indicadores), então a porta de entrada não mudou.
+    grupos: [
+      {
+        titulo: null,
+        itens: [
+          // A porta de entrada de quem opera o módulo, como o hub do IntegraSST:
+          // os passos do trabalho e o que está esperando em cada um. O servidor
+          // comum não tem `certificado.ver` e continua entrando por `/turmas`.
+          new Item("Início", "/treinamentos", "certificado.ver", "Os passos do trabalho e o que espera por você em cada um."),
+        ],
+      },
+      {
+        titulo: "Turmas e inscrições",
+        itens: [
+          new Item("Turmas", "/turmas", "treinamento.ver", "Da abertura das inscrições ao fecho da turma."),
+          // "Pedidos pelo link" e não "Inscrições a conferir": é o termo do hub,
+          // da ficha da turma e do <h1>, e o subtítulo já diz que é inscrição.
+          new Item(
+            "Pedidos pelo link",
+            "/turmas/pedidos",
+            "turma.inscrever",
+            "Quem se inscreveu pelo link público e espera a conferência, de todas as turmas.",
+          ),
+        ],
+      },
+      {
+        titulo: "Certificados",
+        itens: [
+          // "Fila de emissão" e não "Emitir certificados": a PROGEP e o auditor
+          // veem a fila e não emitem, e o rótulo prometeria uma ação que não têm.
+          new Item(
+            "Fila de emissão",
+            "/certificados/fila",
+            "certificado.ver",
+            "Aprovados sem certificado e travados, de todas as turmas: emitir e enviar.",
+          ),
+          // Era "Certificados": repetia o nome do módulo e ficava ao lado de
+          // "Meus certificados". "Emitidos" faz par com a fila logo acima.
+          new Item(
+            "Emitidos",
+            "/certificados",
+            "certificado.ver",
+            "Certificados já emitidos: busca, segunda via, correção e anulação.",
+          ),
+          // Era "E-mails", que parecia caixa de entrada; a tela mostra o que saiu.
+          new Item(
+            "Envios por e-mail",
+            "/certificados/emails",
+            "certificado.emitir",
+            "O que saiu por e-mail: na fila, enviados e com falha.",
+          ),
+        ],
+      },
+      {
+        titulo: "Acompanhamento",
+        itens: [
+          new Item(
+            "Reciclagem",
+            "/certificados/vencimentos",
+            "certificado.ver",
+            "Quem tem certificado vencido ou a vencer em 30 dias.",
+          ),
+          new Item(
+            "Indicadores",
+            "/treinamentos/indicadores",
+            "indicador.ver",
+            "Turmas, participantes e emissão por período e setor promotor.",
+            false,
+            ["treinamento.ver"],
+          ),
+        ],
+      },
+      {
+        titulo: "Cadastros",
+        itens: [
+          // Era "Catálogo", a poucas linhas de "Catálogos" (da base) e do
+          // "Catálogo" da Gestão de EPI. Sob "Cadastros", "Treinamentos" diz
+          // o que se cadastra.
+          new Item(
+            "Treinamentos",
+            "/treinamentos/catalogo",
+            "treinamento.ver",
+            "Catálogo de treinamentos: carga horária e validade da reciclagem.",
+          ),
+          new Item(
+            "Modelos",
+            "/treinamentos/modelos",
+            "treinamento.gerenciar",
+            "Modelos de certificado: o .docx e o dicionário de tags.",
+          ),
+          new Item(
+            "Instrutores",
+            "/treinamentos/assinaturas",
+            "assinatura.gerenciar",
+            "Quem assina o certificado: nome, título e rubrica.",
+          ),
+          new Item(
+            "Setores promotores",
+            "/treinamentos/setores-promotores",
+            "treinamento.ver",
+            "Os setores que aparecem em “Unidade promotora” da turma.",
+          ),
+          // Era "Participantes", mas a tela só junta cadastros duplicados.
+          new Item(
+            "Juntar duplicados",
+            "/treinamentos/participantes",
+            "participante.mesclar",
+            "Cadastros que parecem a mesma pessoa, para juntar num só.",
+          ),
+        ],
+      },
+      {
+        // O mesmo nome do menu do servidor comum, para o sistema falar uma
+        // língua só. Fica no fim para não passar à frente de Turmas na porta
+        // de entrada de quem tem só `treinamento.ver` e vínculo.
         //
-        // A porta do servidor para o treinamento. `/turmas` é a lista do
-        // setor; até esta fatia ela abria 200 e vinha SEMPRE VAZIA para
-        // quem tem escopo próprio, afirmando "nenhuma turma aberta
-        // ainda" com uma turma de vinte vagas na frente — e o único item
-        // de treinamento que ele via era esse.
-        "Meus treinamentos",
-        "/turmas/minhas",
-        "treinamento.ver",
-        "As turmas com inscrição aberta, e as suas inscrições.",
-        true,
-      ),
-      new Item(
-        // `treinamento.ver`, como a rota `/certificados/meus` — e não
-        // `certificado.ver`, que é a permissão de ler o certificado DE
-        // OUTRO e que o servidor comum não tem por desenho. O item existe
-        // porque `Certificado.servidor_id` foi denormalizado exatamente
-        // para o escopo próprio e nunca teve porta: a fechadura estava
-        // instalada e a chave nunca foi entregue.
-        "Meus certificados",
-        "/certificados/meus",
-        "treinamento.ver",
-        "O que foi emitido em seu nome, com a segunda via do congelado.",
-        true,
-      ),
-      new Item(
-        "Certificados",
-        "/certificados",
-        "certificado.ver",
-        "Emitidos, com segunda via a partir do congelado.",
-      ),
-      new Item(
-        "Fila de emissão",
-        "/certificados/fila",
-        "certificado.ver",
-        "Aprovados sem certificado, travados e emitidos, de todas as turmas.",
-      ),
-      new Item(
-        "E-mails",
-        "/certificados/emails",
-        "certificado.emitir",
-        "Certificados e avisos enviados por e-mail: na fila, enviados e com falha.",
-      ),
-      new Item(
-        "Reciclagem",
-        "/certificados/vencimentos",
-        "certificado.ver",
-        "Quem tem certificado vencido ou a vencer em 30 dias.",
-      ),
-      new Item(
-        "Indicadores",
-        "/treinamentos/indicadores",
-        "indicador.ver",
-        "Turmas, participantes e emissão por período e setor promotor.",
-      ),
-      new Item(
-        "Catálogo",
-        "/treinamentos/catalogo",
-        "treinamento.ver",
-        "Treinamentos, carga horária e a validade da reciclagem.",
-      ),
-      new Item(
-        "Setores promotores",
-        "/treinamentos/setores-promotores",
-        "treinamento.ver",
-        "Os setores que aparecem em “Unidade promotora” da turma.",
-      ),
-      new Item(
-        "Modelos",
-        "/treinamentos/modelos",
-        "treinamento.gerenciar",
-        "O .docx do certificado e o dicionário de tags.",
-      ),
-      new Item(
-        "Instrutores",
-        "/treinamentos/assinaturas",
-        "assinatura.gerenciar",
-        "Quem assina o certificado: nome, título e rubrica.",
-      ),
-      new Item(
-        "Participantes",
-        "/treinamentos/participantes",
-        "participante.mesclar",
-        "Cadastros que parecem a mesma pessoa, para juntar.",
-      ),
+        // Desde 22/10/2026 a lateral não o mostra: toda conta ligada a
+        // servidor recebe o bloco "Meu espaço" (`meu_espaco_de`), que já tem
+        // os dois, e `grupos_de` os tira daqui. Continua declarado porque é o
+        // que diz que `/turmas/minhas` e `/certificados/meus` são deste módulo
+        // (o destaque, a trilha e o mapa de quem só tem o próprio).
+        titulo: "Meu espaço",
+        itens: [
+          new Item(
+            // `treinamento.ver`, exatamente como a rota `/turmas/minhas`
+            // exige — e NÃO `turma.inscrever_se`: a tela responde "o que é
+            // meu" antes de responder "o que posso pedir", e quem não tem a
+            // permissão de pedir continua tendo o que ver nela. Declarar
+            // aqui a permissão do BOTÃO faria o menu esconder uma tela que
+            // abre, que é a mentira na outra direção.
+            //
+            // A porta do servidor para o treinamento. `/turmas` é a lista do
+            // setor; até esta fatia ela abria 200 e vinha SEMPRE VAZIA para
+            // quem tem escopo próprio, afirmando "nenhuma turma aberta
+            // ainda" com uma turma de vinte vagas na frente — e o único item
+            // de treinamento que ele via era esse.
+            "Meus treinamentos",
+            "/turmas/minhas",
+            "treinamento.ver",
+            "As turmas com inscrição aberta, e as suas inscrições.",
+            true,
+          ),
+          new Item(
+            // `treinamento.ver`, como a rota `/certificados/meus` — e não
+            // `certificado.ver`, que é a permissão de ler o certificado DE
+            // OUTRO e que o servidor comum não tem por desenho. O item existe
+            // porque `Certificado.servidor_id` foi denormalizado exatamente
+            // para o escopo próprio e nunca teve porta: a fechadura estava
+            // instalada e a chave nunca foi entregue.
+            "Meus certificados",
+            "/certificados/meus",
+            "treinamento.ver",
+            "O que foi emitido em seu nome, com a segunda via do congelado.",
+            true,
+          ),
+        ],
+      },
     ],
     // o módulo já está em uso, mas entregue por fatias: o que falta continua
     // declarado, pelo mesmo motivo que módulo previsto aparece na lista —
@@ -366,7 +514,7 @@ export const MODULOS: readonly Modulo[] = [
     // metade é não continuar declarando o que já chegou — e esta linha, em
     // particular, era a mais cara de manter: o endereço já saía impresso em
     // todo certificado emitido, e a lista dizia que ele não existia.
-    // A inscrição pública por link saiu também (a CSSO confere cada pedido,
+    // A inscrição pública por link saiu também (a equipe confere cada pedido,
     // `servicos/inscricao_publica.ts`), o envio por e-mail (`servicos/email.ts`)
     // e o acesso do participante sem conta (`servicos/acesso_participante.ts`):
     // o módulo não tem mais fatia declarada por fazer.
@@ -504,15 +652,19 @@ export const MEU_ESPACO: readonly Item[] = [
 ];
 
 /**
- * Quem recebe o "Meu espaço" no lugar da lateral da equipe: quem só alcança o
- * que é seu — `escopo` próprio, que é o que sai quando TODOS os perfis da
- * conta são de escopo próprio (um perfil de equipe a mais e a conta volta ao
- * menu de sempre, porque passa a ver o do setor).
+ * Quem recebe o "Meu espaço" no lugar da lateral da equipe: quem não tem
+ * NENHUMA permissão por perfil de equipe (`pode_na_equipe`). Era "o `escopo`
+ * da conta é o próprio", o que dava no mesmo enquanto a permissão do titular
+ * só vinha do `servidor_consulta`; com a concessão do titular (D16), a conta
+ * de equipe ligada a servidor tem as duas coisas, e recebe as duas: a lateral
+ * da equipe e, ao lado dela, o "Meu espaço" (`meu_espaco_de`).
  */
 export function so_o_proprio(usuario: UsuarioAtual | null | undefined): boolean {
   if (!usuario) return false;
   try {
-    return usuario.escopo === ESCOPO_PROPRIO;
+    // o nível da conta primeiro: é ele que nomeia o perfil sem escopo
+    void usuario.escopo;
+    return ![...usuario.permissoes].some((p) => usuario.pode_na_equipe(p));
   } catch (erro) {
     // Perfil sem escopo declarado: o menu não é a barreira (cada rota confere a
     // permissão, e a consulta no escopo nega com a tela que nomeia o perfil).
@@ -526,21 +678,72 @@ export function so_o_proprio(usuario: UsuarioAtual | null | undefined): boolean 
  * Os itens do "Meu espaço" que abrem para esta pessoa, e o "Meus dados", que
  * não cabe na lista fixa porque o caminho é o do PRÓPRIO cadastro — a ficha
  * do servidor, que a rota de `/servidores/{id}` já recorta pelo escopo.
+ *
+ * Para quem só tem o próprio, é o menu inteiro. Para a conta de equipe ligada
+ * a servidor, é um bloco AO LADO da lateral, com o que é do titular: "Meus
+ * treinamentos", "Minha ficha de EPI", "Pedir EPI". Sai do bloco o item cujo
+ * caminho a lateral já oferece como tela da equipe — para o coordenador, `/`
+ * é o Painel e `/epis/requisicoes` é a fila do setor, e chamá-los de "Início"
+ * e "Meus pedidos de EPI" seria afirmar um recorte que a tela não faz.
  */
 export function meu_espaco_de(usuario: UsuarioAtual | null | undefined): Item[] {
-  if (!so_o_proprio(usuario)) return [];
-  const itens = MEU_ESPACO.filter((item) => item.visivel_para(usuario));
-  if (usuario!.servidor_id !== null) {
+  if (!usuario) return [];
+  const sozinho = so_o_proprio(usuario);
+  if (!sozinho && (usuario.servidor_id === null || !_escopo_declarado(usuario))) return [];
+  const da_equipe = sozinho
+    ? new Set<string>()
+    : new Set(
+        [...MODULOS.flatMap((m) => m.itens), ...BASE]
+          .filter((item) => !item.do_titular && item.visivel_para(usuario))
+          .map((item) => item.caminho),
+      );
+  // O "Início" não é tela do titular (abre também sem vínculo, e aí é a única
+  // coisa do menu): basta a permissão, de onde quer que ela venha.
+  const itens = MEU_ESPACO.filter(
+    (item) =>
+      (item.do_titular ? item.visivel_para(usuario) : item.exigidas.some((p) => usuario.pode(p))) &&
+      !da_equipe.has(item.caminho),
+  );
+  if (usuario.servidor_id !== null) {
     const meus_dados = new Item(
       "Meus dados",
-      `/servidores/${usuario!.servidor_id}`,
+      `/servidores/${usuario.servidor_id}`,
       "processo.ver",
       "Seu cadastro: lotação, cargo e posto.",
       true,
     );
     if (meus_dados.visivel_para(usuario)) itens.push(meus_dados);
   }
+  // "Minha conta" (22/10/2026) fecha o bloco de quem TEM o bloco: abre para
+  // toda conta logada, sem permissão nenhuma. Não cria o bloco sozinha — a
+  // equipe sem vínculo de servidor continuaria sem "Meu espaço" e passaria a
+  // ganhar a lateral de um item só; para ela a porta é o próprio nome, no
+  // cabeçalho, que é a porta de todo mundo.
+  if (itens.length) itens.push(MINHA_CONTA);
   return itens;
+}
+
+/** A tela da própria conta: dados de contato, e-mail, senha, sessões e perfis. */
+export const MINHA_CONTA = new Item(
+  "Minha conta",
+  "/minha-conta",
+  null,
+  "Seus dados de contato, e-mail, senha e as sessões abertas.",
+);
+
+function _escopo_declarado(usuario: UsuarioAtual): boolean {
+  try {
+    void usuario.escopo;
+    return true;
+  } catch (erro) {
+    if (erro instanceof EscopoNaoDeclarado) return false;
+    throw erro;
+  }
+}
+
+/** A conta de equipe que recebe o bloco "Meu espaço" além da lateral. */
+function _meu_espaco_ao_lado(usuario: UsuarioAtual | null | undefined): boolean {
+  return !!usuario && !so_o_proprio(usuario) && meu_espaco_de(usuario).length > 0;
 }
 
 /**
@@ -627,13 +830,19 @@ export function porta_de_entrada(modulo: Modulo, usuario: UsuarioAtual | null | 
  * que não exige permissão nenhuma.
  */
 export function primeira_tela(usuario: UsuarioAtual | null | undefined): string {
+  // Quem só tem o próprio entra pelo "Início" dele: os módulos não lhe
+  // oferecem tela da equipe, e a primeira do titular que sobrasse neles
+  // (a ficha de EPI) não é a porta da frente.
+  const meu = meu_espaco_de(usuario);
+  if (so_o_proprio(usuario) && meu.length) return meu[0]!.caminho;
   for (const modulo of MODULOS) {
     if (!modulo.disponivel) continue;
     const itens = modulo.itens_de(usuario);
     if (itens.length) return itens[0]!.caminho;
   }
   const base = base_de(usuario);
-  return base.length ? base[0]!.caminho : "/modulos";
+  if (base.length) return base[0]!.caminho;
+  return meu.length ? meu[0]!.caminho : "/modulos";
 }
 
 /** Fora dos módulos, qual menu a lateral mostra quando não há de onde vir. */
@@ -648,12 +857,19 @@ export interface Navegacao extends Record<string, unknown> {
   modulos: readonly Modulo[];
   modulo_ativo: Modulo | null;
   itens_modulo: Item[];
+  /** os mesmos `itens_modulo`, em blocos com subtítulo, para a lateral */
+  grupos_modulo: GrupoMenu[];
   itens_base: Item[];
   item_ativo: Item | null;
   no_modulo: boolean;
   modulo_a_lembrar: string | null;
-  /** vazio para a equipe; para quem só tem o próprio, o menu inteiro */
+  /**
+   * Para quem só tem o próprio, o menu inteiro; para a conta de equipe ligada
+   * a servidor, o bloco ao lado da lateral; vazio para a equipe sem vínculo.
+   */
   meu_espaco: Item[];
+  /** o "Meu espaço" é o menu inteiro: a lateral da equipe não aparece */
+  so_meu_espaco: boolean;
 }
 
 /**
@@ -681,19 +897,24 @@ export function navegacao(
   const meu_espaco = meu_espaco_de(usuario);
   // No "Meu espaço" a trilha e o destaque falam a língua do menu que a pessoa
   // vê ("Meus pedidos de EPI", e não "Requisições"); fora dele, o de sempre.
-  const item = (meu_espaco.length ? _item_do_meu_espaco(caminho, meu_espaco, usuario!) : null) ?? item_ativo(caminho);
+  const do_meu = meu_espaco.length ? _item_do_meu_espaco(caminho, meu_espaco, usuario!) : null;
+  const item = do_meu ?? item_ativo(caminho);
   const no_modulo = do_caminho !== null && do_caminho.disponivel;
   return {
     modulos: MODULOS,
     modulo_ativo: ativo,
     itens_modulo: ativo ? ativo.itens_de(usuario) : [],
+    grupos_modulo: ativo ? ativo.grupos_de(usuario) : [],
     itens_base: base_de(usuario),
-    // a trilha não pode oferecer porta trancada, pela mesma razão do menu
-    item_ativo: item !== null && item.visivel_para(usuario) ? item : null,
+    // a trilha não pode oferecer porta trancada, pela mesma razão do menu; o
+    // item do "Meu espaço" já passou pelo filtro dele (o "Início" do titular
+    // não é tela da equipe e não passaria pelo `visivel_para`)
+    item_ativo: do_meu ?? (item !== null && item.visivel_para(usuario) ? item : null),
     no_modulo,
     // só caminho de módulo lembra; a base não reescreve de onde a pessoa veio
     modulo_a_lembrar: no_modulo ? do_caminho!.codigo : null,
     meu_espaco,
+    so_meu_espaco: so_o_proprio(usuario) && meu_espaco.length > 0,
   };
 }
 
@@ -752,6 +973,7 @@ const ICONES: Readonly<Record<string, string>> = {
   "Meu adicional": "cash-coin",
   "Meus dados": "person",
   "Meus processos": "file-earmark-text",
+  "/minha-conta": "person-gear",
 };
 
 export function icone_de(chave: string): string | null {

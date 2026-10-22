@@ -88,7 +88,7 @@ export async function mesclar(
   if (repetidas.length) {
     throw new MesclagemRecusada(
       `Os dois estão inscritos em ${repetidas.join(", ")}: juntá-los deixaria a pessoa duas vezes na turma. ` +
-        "Esse caso pede a CSSO decidir qual inscrição vale, à mão.",
+        "Esse caso pede que a equipe decida qual inscrição vale, à mão.",
     );
   }
 

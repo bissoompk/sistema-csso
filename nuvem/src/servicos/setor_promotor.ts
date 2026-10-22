@@ -12,7 +12,7 @@
  * edição não obriga a trocar, e o seletor mostra o valor gravado como "fora da
  * lista atual" (a guarda está em `turma.criar_turma` e `turma.editar_turma`).
  */
-import { asc, eq, or } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import { unidade_uorg as tabela_unidade } from "../db/esquema/index.js";
 import * as auditoria from "./auditoria.js";
@@ -28,6 +28,14 @@ export const TELA = "/treinamentos/setores-promotores";
 export const DICA =
   "Só aparecem os setores cadastrados para promover treinamentos " +
   "(Treinamentos → Setores promotores).";
+
+/**
+ * NUVEM: a frase do seletor para quem não vê todos os setores
+ * (`setor_equipe.ts`): só aparecem os setores da própria conta.
+ */
+export const DICA_DOS_MEUS =
+  "Só aparecem os setores promotores a que a sua conta está vinculada. " +
+  "Para outro setor, peça à coordenação.";
 
 /** A unidade num seletor de turma: `fora_da_lista` é o valor antigo que fica. */
 export type Opcao = Unidade & { fora_da_lista: boolean };
@@ -46,11 +54,18 @@ export async function listar(tx: Executor): Promise<Unidade[]> {
  * aponta para outra unidade, essa também — marcada, para a edição não apagá-la
  * em silêncio. Uma consulta só.
  */
-export async function opcoes(tx: Executor, atual_id: number | null = null): Promise<Opcao[]> {
-  const onde =
-    atual_id === null
+export async function opcoes(
+  tx: Executor,
+  atual_id: number | null = null,
+  // NUVEM: os setores da conta, quando ela não vê todos (`setor_equipe.ts`);
+  // o valor gravado na turma fica, como fica o de fora da lista
+  so_estes: readonly number[] | null = null,
+): Promise<Opcao[]> {
+  const promotores =
+    so_estes === null
       ? eq(tabela_unidade.promove_treinamento, true)
-      : or(eq(tabela_unidade.promove_treinamento, true), eq(tabela_unidade.id, atual_id));
+      : and(eq(tabela_unidade.promove_treinamento, true), inArray(tabela_unidade.id, [...so_estes, -1]));
+  const onde = atual_id === null ? promotores : or(promotores, eq(tabela_unidade.id, atual_id));
   const linhas = await tx.select().from(tabela_unidade).where(onde).orderBy(asc(tabela_unidade.nome_extenso));
   return linhas.map((u) => ({ ...u, fora_da_lista: !u.promove_treinamento }));
 }

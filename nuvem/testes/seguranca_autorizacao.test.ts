@@ -102,13 +102,14 @@ describe("senha provisória", () => {
   });
 
   it("redefinir senha devolve a provisória no corpo, sem cache, e nunca na URL", async () => {
-    const [alvo] = await db.select().from(e.usuario).where(eq(e.usuario.login, "secretaria_csso"));
+    // a conta comum: a de equipe o admin_ti não redefine (D4)
+    const [alvo] = await db.select().from(e.usuario).where(eq(e.usuario.login, "servidor_consulta"));
     const cliente = await entrar(amb.novoCliente(), "admin_ti");
     const r = await cliente.post(`/usuarios/${alvo!.id}/senha`, {}, { seguir: false });
     expect(r.status).toBe(200);
     expect(r.location).toBeNull();
     expect(r.cabecalho("cache-control")).toBe("no-store");
-    expect(r.text).toContain("Nova senha provisória de secretaria_csso");
+    expect(r.text).toContain("Nova senha provisória de servidor_consulta");
   });
 
   it("criar conta idem", async () => {
@@ -173,7 +174,10 @@ describe("login: teto por endereço e bloqueio sem corrida", () => {
     const cliente = amb.novoCliente();
     await cliente.post("/login", { login: "ninguem", senha: "Errada123" }, { seguir: false });
     await entrar(cliente, "coordenador_csso");
-    expect(await db.select().from(e.limite_login_ip)).toHaveLength(0);
+    // as linhas `conta:` são o bloqueio encenado do login inexistente (D26),
+    // que divide a tabela e não depende de endereço
+    const por_endereco = (await db.select().from(e.limite_login_ip)).filter((l) => !l.ip.startsWith("conta:"));
+    expect(por_endereco).toHaveLength(0);
   });
 
   it("tentativas em paralelo não furam o bloqueio da conta", async () => {

@@ -8,7 +8,7 @@
    que fez a NR-35 não precisa dessa permissão para pegar o próprio papel — ele
    precisa de uma porta, e esta é a porta. #}
 
-{% block titulo %}Meus certificados · CSSO{% endblock %}
+{% block titulo %}Meus certificados · SISA{% endblock %}
 
 {# A linha de um certificado, nas duas seções. O anulado não tem os botões
    verdes do válido: só a cópia anulada (com a tarja), como ação secundária. #}
@@ -113,9 +113,9 @@
     {% else %}
     {{ ui.vazio_de_lista(
          'Você ainda não tem certificado emitido em seu nome.',
-         'O certificado é emitido pela CSSO depois que a turma termina, para quem foi
+         'O certificado é emitido pelo setor promotor depois que a turma termina, para quem foi
           aprovado — não é pedido nesta tela. Concluiu um treinamento e ele não aparece
-          aqui? Fale com a CSSO informando o código da turma.', 6) }}
+          aqui? Fale com o setor que promoveu o treinamento informando o código da turma.', 6) }}
     {% endif %}
     {% endfor %}
     </tbody>

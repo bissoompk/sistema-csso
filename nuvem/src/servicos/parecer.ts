@@ -9,7 +9,7 @@
  * inteira que as regras e o editor leem, `COM_PARECER`), e cada serviço que
  * escreve grava com UPDATE e atualiza o mesmo objeto em memória.
  */
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { type SQL, and, asc, eq, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   adicional_vigencia,
@@ -34,7 +34,7 @@ import * as pendencias from "./pendencias.js";
 import * as servico_processo from "./processo.js";
 import * as textos from "./textos.js";
 import { declarar_porta } from "./anexo_acesso.js";
-import { MENSAGEM_RN01, PermissaoNegada, aplicar_escopo, pode_subscrever, type UsuarioAtual } from "./rbac.js";
+import { MENSAGEM_RN01, PermissaoNegada, UsuarioAtual, aplicar_escopo, pode_subscrever } from "./rbac.js";
 
 export type SetorEmissor = typeof setor_emissor.$inferSelect;
 
@@ -172,10 +172,95 @@ export async function recarregar(tx: Executor, parecer: ParecerCompleto): Promis
  * Mora no serviço, e não na rota: o download do anexo do parecer faz a mesma
  * pergunta, e uma segunda resposta em outro arquivo é o que produz a
  * divergência em que a tela aperta e o arquivo continua frouxo.
+ *
+ * `permissao` é a do ato que a rota faz (`parecer.editar`, `parecer.emitir`,
+ * `parecer.anular`...): o alcance é o DELA (D9). A secretaria do campus A que
+ * é coordenadora no campus B lê o parecer de A, e anula só o de B.
  */
-export async function no_escopo(tx: Executor, usuario: UsuarioAtual, parecer_id: number): Promise<ParecerCompleto | null> {
-  const linha = await _consultar(tx, parecer_id, aplicar_escopo(usuario, parecer_tecnico));
+export async function no_escopo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  parecer_id: number,
+  permissao = "parecer.ver",
+): Promise<ParecerCompleto | null> {
+  const linha = await _consultar(tx, parecer_id, escopo_de_leitura(usuario, permissao));
   return linha ? completar(linha) : null;
+}
+
+/**
+ * Os perfis que leem o parecer como DOCUMENTO, e não como trabalho em curso
+ * (D14). A base normativa da Consulta PROGEP diz "lê apenas parecer
+ * assinado": ela age sobre a lotação a partir do que a CSSO concluiu, e o
+ * rascunho é a conclusão que ainda não houve — percentual e fundamentação que
+ * podem mudar até a emissão. Antes a regra estava escrita no perfil e em
+ * nenhum filtro.
+ *
+ * Por PERFIL, e não por "quem não tem `parecer.editar`": a secretaria não
+ * edita e lê o rascunho de propósito (o editor desligado, D4/M79), e o titular
+ * lê o próprio rascunho como prévia (art. 18, II). A regra é desta concessão,
+ * e só dela: a PROGEP que também é titular continua lendo o próprio rascunho
+ * pela concessão do titular.
+ */
+export const PERFIS_QUE_LEEM_SO_O_DOCUMENTO: ReadonlySet<string> = new Set(["consulta_progep"]);
+
+/**
+ * O parecer que já é documento: emitido, assinado, ou anulado depois de
+ * emitido. O anulado entra porque a PROGEP precisa saber que a conclusão em
+ * que se apoiou caiu; o rascunho anulado nunca foi conclusão de ninguém.
+ */
+function _ja_e_documento(): SQL {
+  return or(
+    inArray(parecer_tecnico.situacao, ["EMITIDO", "ASSINADO"]),
+    and(eq(parecer_tecnico.situacao, "ANULADO"), isNotNull(parecer_tecnico.emitido_em)),
+  )!;
+}
+
+/**
+ * A condição de leitura de parecer: o alcance da `permissao` (D9) e, na
+ * leitura (`parecer.ver`), o recorte do D14 — o rascunho só no alcance das
+ * concessões que não são de `PERFIS_QUE_LEEM_SO_O_DOCUMENTO`. Os atos
+ * (`parecer.editar`, `parecer.emitir`...) não passam pelo recorte: quem os tem
+ * trabalha no rascunho, e a PROGEP não tem nenhum deles.
+ *
+ * Exportada para que uma lista de pareceres faça a mesma pergunta que a
+ * ficha: duas respostas é a divergência do comentário acima. (A ficha do
+ * processo ainda lista os pareceres dele sem ela: lá a situação de cada um
+ * entra nas faltas de saída, e o recorte mudaria a conta.)
+ */
+export function escopo_de_leitura(usuario: UsuarioAtual, permissao = "parecer.ver"): SQL | undefined {
+  const escopo = aplicar_escopo(usuario, parecer_tecnico, permissao);
+  if (permissao !== "parecer.ver") return escopo;
+  const so_documento = usuario.perfis.some((p) => PERFIS_QUE_LEEM_SO_O_DOCUMENTO.has(p));
+  if (!so_documento) return escopo;
+  const rascunho = aplicar_escopo(_sem_os_que_leem_so_o_documento(usuario), parecer_tecnico, permissao);
+  // `undefined` é "sem filtro": as outras concessões já leem todo rascunho
+  if (rascunho === undefined) return escopo;
+  return and(escopo, or(rascunho, _ja_e_documento()));
+}
+
+/**
+ * A mesma conta sem as concessões de `PERFIS_QUE_LEEM_SO_O_DOCUMENTO`: é o
+ * alcance que lê rascunho. A do titular fica (ela não é de perfil nenhum).
+ */
+function _sem_os_que_leem_so_o_documento(usuario: UsuarioAtual): UsuarioAtual {
+  const perfis = usuario.perfis.filter((p) => !PERFIS_QUE_LEEM_SO_O_DOCUMENTO.has(p));
+  const concessoes = usuario.concessoes?.filter((c) => !PERFIS_QUE_LEEM_SO_O_DOCUMENTO.has(c.perfil));
+  const permissoes = concessoes
+    ? new Set(concessoes.flatMap((c) => [...c.permissoes]))
+    : // montado à mão (testes): sem concessões não há como separar
+      // permissões por perfil, e a conta continua com as dela
+      usuario.permissoes;
+  return new UsuarioAtual({
+    id: usuario.id,
+    login: usuario.login,
+    nome: usuario.nome,
+    permissoes,
+    perfis,
+    campi: usuario.campi,
+    servidor_id: usuario.servidor_id,
+    habilitacoes: usuario.habilitacoes,
+    ...(concessoes ? { concessoes } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -906,8 +991,44 @@ async function _pdf_depois_da_emissao(
   return [conversao.caminho, conversao.aviso];
 }
 
-/** RN-01: permissão E habilitação vigente. Sem os dois, 403 duro. */
-export async function assinar(tx: Executor, parecer: ParecerCompleto, usuario: UsuarioAtual): Promise<ParecerCompleto> {
+/**
+ * Quem marca não é o signatário, e não declarou a substituição (D22). Recusa
+ * de regra, e não de permissão: a pessoa pode assinar pareceres, só não ESTE
+ * sem dizer por quê.
+ */
+export class AssinaturaDeOutroSignatario extends EmissaoBloqueada {}
+
+/** O evento da marcação feita por quem não é o signatário (D22). Mora com os outros, em `auditoria`. */
+export const ASSINATURA_REGISTRADA_POR_SUBSTITUTO = auditoria.ASSINATURA_REGISTRADA_POR_SUBSTITUTO;
+
+/** O signatário do parecer é a conta que marca? Sem conta ligada à habilitação, ninguém é. */
+export function e_o_signatario(parecer: Pick<ParecerCompleto, "signatario">, usuario: UsuarioAtual): boolean {
+  return parecer.signatario?.usuario_id != null && parecer.signatario.usuario_id === usuario.id;
+}
+
+/**
+ * RN-01: permissão E habilitação vigente. Sem os dois, 403 duro.
+ *
+ * D22: e quem marca é o SIGNATÁRIO. O documento emitido leva o nome, o SIAPE e
+ * o título de quem o subscreve (`montar_contexto`), e "marcar como assinado" é
+ * a declaração de que aquela pessoa assinou no SEI. Bastava a permissão e uma
+ * habilitação qualquer da conta: o engenheiro marcava assinado o parecer que
+ * sai com o nome do médico, e a trilha dizia só "marcado como assinado".
+ *
+ * A substituição existe (férias, afastamento, a pessoa assinou e não opera o
+ * sistema), e por isso não é proibida: é DECLARADA. `substituicao.motivo`
+ * obrigatório, e a marcação grava, além do `PARECER_ASSINADO` de sempre, o
+ * evento próprio `ASSINATURA_REGISTRADA_POR_SUBSTITUTO`, com quem é o
+ * signatário e o motivo — a auditoria acha as substituições pelo tipo, sem ler
+ * frase. Quem substitui continua precisando de `parecer.assinar` e de
+ * habilitação vigente: substituto é profissional habilitado, não secretaria.
+ */
+export async function assinar(
+  tx: Executor,
+  parecer: ParecerCompleto,
+  usuario: UsuarioAtual,
+  opcoes: { substituicao?: { motivo: string } | null } = {},
+): Promise<ParecerCompleto> {
   if (!usuario.pode("parecer.assinar") || !(await pode_subscrever(tx, usuario, datas_br.hoje()))) {
     await auditoria.registrar(tx, {
       entidade: "parecer_tecnico",
@@ -924,9 +1045,41 @@ export async function assinar(tx: Executor, parecer: ParecerCompleto, usuario: U
     throw new EmissaoBloqueada(["só um parecer EMITIDO pode ser marcado como assinado"]);
   }
 
+  // a habilitação relida: a do objeto em memória pode ter sido carregada antes
+  // de a conta ser ligada a ela (`/habilitacoes/{id}/conta`)
+  const [signatario] =
+    parecer.signatario_id === null
+      ? []
+      : await tx.select().from(profissional_habilitado).where(eq(profissional_habilitado.id, parecer.signatario_id));
+  const substituto = !e_o_signatario({ signatario: signatario ?? null }, usuario);
+  const motivo = (opcoes.substituicao?.motivo ?? "").trim();
+  if (substituto && !opcoes.substituicao) {
+    const quem = signatario ? signatario.nome : "o signatário";
+    throw new AssinaturaDeOutroSignatario([
+      `o parecer sai assinado por ${quem}: só essa pessoa o marca como assinado, ` +
+        `ou quem a substitui declarando o motivo`,
+    ]);
+  }
+  if (substituto && !motivo) {
+    throw new AssinaturaDeOutroSignatario(["informe o motivo da substituição"]);
+  }
+
   const novos = { situacao: "ASSINADO", assinado_em: agora_utc() };
   await tx.update(parecer_tecnico).set(novos).where(eq(parecer_tecnico.id, parecer.id));
   Object.assign(parecer, novos);
+  if (substituto) {
+    await auditoria.registrar(tx, {
+      entidade: "parecer_tecnico",
+      entidade_id: parecer.id,
+      tipo_evento: ASSINATURA_REGISTRADA_POR_SUBSTITUTO,
+      descricao:
+        `Parecer ${parecer.rotulo} marcado como assinado por quem substitui o signatário ` +
+        `(${signatario ? signatario.nome : "sem signatário"}): ${motivo}`,
+      usuario,
+      processo_id: parecer.processo_id,
+      valor_novo: { signatario_id: parecer.signatario_id, motivo },
+    });
+  }
   await auditoria.registrar(tx, {
     entidade: "parecer_tecnico",
     entidade_id: parecer.id,
