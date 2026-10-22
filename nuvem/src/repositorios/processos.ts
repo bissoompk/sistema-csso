@@ -24,7 +24,8 @@ import {
 } from "../db/esquema/index.js";
 import { COLUNAS_KANBAN, ESTADO_PARA_COLUNA, coluna_de, fluxo_curto } from "../dominio/estados.js";
 import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
-import { pode_ver_nominal } from "../servicos/identificacao.js";
+import { casa_a_busca } from "../servicos/identificacao.js";
+import { termo_de_busca } from "../servicos/nup.js";
 import { chave_busca } from "../servicos/textos.js";
 import { declarar_porta } from "../servicos/anexo_acesso.js";
 import * as datas_br from "../servicos/datas_br.js";
@@ -133,13 +134,20 @@ async function _condicoes(tx: Executor, filtro: Filtro, usuario: UsuarioAtual): 
   const partes: (SQL | undefined)[] = [aplicar_escopo(usuario, tabela_processo)];
 
   if (filtro.q) {
-    const alvo = `%${filtro.q.trim()}%`;
+    // o NUP colado sem pontuação casa com o gravado (`nup.termo_de_busca`)
+    const alvo = `%${termo_de_busca(filtro.q).trim()}%`;
     // RN-19 no FILTRO, e não só na exibição: casar por nome para quem não pode
     // ver o nome amarraria o nome ao `SRV-xxxx` da sessão — a ligação exata que
     // a supressão existe para impedir.
+    //
+    // O SIAPE casa para todo mundo (`casa_a_busca`): quem o digita já o tem, e
+    // é como a secretaria procura o processo de alguém — a busca global já o
+    // aceitava, a lista não.
     const chave = chave_busca(filtro.q);
-    const ids_servidor = (await tx.select({ id: tabela_servidor.id, nome: tabela_servidor.nome }).from(tabela_servidor))
-      .filter((s) => chave_busca(s.nome).includes(chave) && pode_ver_nominal(usuario, s.id))
+    const ids_servidor = (
+      await tx.select({ id: tabela_servidor.id, nome: tabela_servidor.nome, siape: tabela_servidor.siape }).from(tabela_servidor)
+    )
+      .filter((s) => chave.length > 0 && casa_a_busca(chave, s, usuario))
       .map((s) => s.id);
     const condicoes: SQL[] = [
       contem(tabela_processo.nup, alvo),

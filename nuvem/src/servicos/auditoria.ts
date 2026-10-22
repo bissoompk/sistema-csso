@@ -113,6 +113,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   PRESCRICAO_QUINQUENAL_ALERTADA: "Prescrição quinquenal alertada",
   REUSO_DE_LAUDO: "Reuso de laudo",
   LAUDO_SUPERADO: "Laudo superado",
+  LAUDO_POSTO_VINCULADO: "Posto vinculado ao laudo",
+  LAUDO_POSTO_DESVINCULADO: "Posto desvinculado do laudo",
   MENCAO_SAUDE_CONFIRMADA: "Menção a saúde confirmada",
   // --- direito ao adicional ---
   DIREITO_PROPOSTO: "Adicional proposto",

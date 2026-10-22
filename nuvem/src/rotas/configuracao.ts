@@ -2,11 +2,17 @@
  * /config — parâmetros operacionais, backup e exportação.
  * Porte de `app/rotas/configuracao.py`.
  *
- * Quem abre `/config`, e por que são duas permissões e não uma: a tela guarda
- * **parâmetro do processo** (SLA, setor emissor, autoridade destinatária) e
- * **operação da máquina** (onde o dado mora, backup, exportação). A ROTA aceita
- * qualquer uma das duas; a TELA reparte — os cartões de processo pedem
- * `processo.ver`, os de máquina abrem para quem entrou.
+ * Quem abre `/config`: a página é uma só, em duas seções. **Configuração do
+ * setor** (SLA, setor emissor, autoridade destinatária, local de retirada de
+ * EPI) é de quem instrui processo ou gere catálogo (`processo.editar`,
+ * `catalogo.gerenciar`); **Sistema** (onde o dado mora, backup, exportação) é
+ * de quem opera a máquina (`backup.executar`) — e a exportação completa também
+ * de quem `pode_exportar_tudo`. A ROTA aceita qualquer uma das três; a TELA
+ * reparte, e o que a conta não pode ler nem vai ao contexto.
+ *
+ * Era `processo.ver` (D47): o servidor comum (`servidor_consulta`) tem essa
+ * permissão para acompanhar o PRÓPRIO processo, e entrava aqui lendo o host do
+ * banco e os caminhos de disco da instalação.
  */
 import { Hono } from "hono";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
@@ -19,6 +25,7 @@ import * as servico_backup from "../servicos/backup.js";
 import { RotinaFalhou, conferir_senha_do_backup } from "../servicos/rotinas.js";
 import * as sei from "../servicos/sei.js";
 import { SLA_PADRAO, gravar_sla, sla_vigente } from "../servicos/processo.js";
+import { COLUNAS_KANBAN } from "../dominio/estados.js";
 import { obterArmazenamento, pastaLocal } from "../servicos/armazenamento.js";
 import { dicionario } from "../dicionario.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
@@ -26,17 +33,26 @@ import { marcarDownload, pagina, redirecionar } from "../web.js";
 
 export const rotas = new Hono<Ambiente>();
 
-export const PERMISSOES_CONFIG: readonly string[] = ["processo.ver", "backup.executar"];
+/**
+ * A tupla que abre a página — e a mesma que guarda a engrenagem de `base.html`.
+ * `processo.ver` fica de fora de propósito: é a permissão do servidor comum.
+ */
+export const PERMISSOES_CONFIG: readonly string[] = ["processo.editar", "catalogo.gerenciar", "backup.executar"];
 
-/** Qualquer uma de `PERMISSOES_CONFIG` — nunca as duas. */
+/** Qualquer uma de `PERMISSOES_CONFIG` — não precisa das três. */
 function _exigir_config(usuario: UsuarioAtual): void {
   if (!PERMISSOES_CONFIG.some((codigo) => usuario.pode(codigo))) {
     throw new PermissaoNegada(
       PERMISSOES_CONFIG[0]!,
-      "A configuração do sistema abre para quem instrui processo " +
-        "(`processo.ver`) ou para quem opera a máquina (`backup.executar`).",
+      "A configuração abre para quem instrui processo ou gere os catálogos do setor, " +
+        "e para quem opera o backup do sistema.",
     );
   }
+}
+
+/** A seção "Configuração do setor": parâmetro do processo, não da máquina. */
+export function ve_config_do_setor(usuario: UsuarioAtual): boolean {
+  return usuario.pode("processo.editar") || usuario.pode("catalogo.gerenciar");
 }
 
 /**
@@ -69,14 +85,19 @@ async function _tela(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: string 
   _exigir_config(usuario);
   const tx = c.get("tx");
   const cfg = obterConfig();
-  // o que é do processo só é CONSULTADO por quem pode vê-lo
-  const do_processo = usuario.pode("processo.ver");
+  // o que é do setor só é CONSULTADO por quem pode lê-lo; o que é da máquina
+  // (host do banco, caminhos) nem vai ao contexto sem `backup.executar`
+  const do_processo = ve_config_do_setor(usuario);
+  const da_maquina = usuario.pode("backup.executar");
   return pagina(c, "paginas/config.html", usuario, {
-    cfg: { ambiente: cfg.ambiente, epi_local_retirada: cfg.epiLocalRetirada },
+    cfg: { ambiente: cfg.ambiente, epi_local_retirada: do_processo ? cfg.epiLocalRetirada : "" },
     pode_exportar_tudo: pode_exportar_tudo(usuario),
-    onde: _onde_mora(),
+    onde: da_maquina ? _onde_mora() : null,
+    da_maquina,
     versao: VERSAO,
     do_processo,
+    // o código da coluna é chave do parâmetro; a tela mostra o rótulo do quadro
+    rotulo_coluna: Object.fromEntries(COLUNAS_KANBAN),
     sla: dicionario(do_processo ? await sla_vigente(tx) : {}),
     sla_padrao: SLA_PADRAO,
     setores: do_processo ? await tx.select().from(setor_emissor) : [],
@@ -96,18 +117,14 @@ rotas.get("/config", async (c) => {
 /** RN-16 — o prazo de cada coluna é decisão do setor, não constante de código. */
 rotas.post("/config/sla", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("catalogo.gerenciar");
   const f = await formulario(c);
   const valores: Record<string, number> = {};
   for (const coluna of Object.keys(SLA_PADRAO)) {
     const bruto = f.texto(`sla_${coluna}`).trim();
     if (/^\d+$/.test(bruto)) valores[coluna] = Number(bruto);
   }
-  try {
-    await gravar_sla(c.get("tx"), valores, usuario);
-  } catch (falha) {
-    if (!(falha instanceof PermissaoNegada)) throw falha;
-    return _tela(c, usuario, { erro: falha.message });
-  }
+  await gravar_sla(c.get("tx"), valores, usuario);
   return _tela(c, usuario, { mensagem: "SLA atualizado." });
 });
 

@@ -50,7 +50,7 @@
     </div>
     <span class="traco"></span>
     <div class="medida">
-      <span class="rotulo">Físico (soma do razão)</span>
+      <span class="rotulo">Físico (soma dos movimentos)</span>
       <span class="valor">{{ fisico }}</span>
     </div>
     <span class="traco"></span>
@@ -122,8 +122,12 @@
            não diga melhor. Preço alto por informação nenhuma. #}
         <td class="discreto">{{ texto_livre(m.motivo) or '—' }}</td>
         <td class="discreto">
-          {%- if m.ficha_registro_id %}
+          {#- o link só para quem lê fichas de outras pessoas: para os outros
+              perfis com `epi.ver` (a secretaria) ele dava 403 — link que não
+              abre é armadilha. O número continua escrito. -#}
+          {%- if m.ficha_registro_id and usuario.pode('epi.ficha') %}
           <a href="/epis/fichas/registros/{{ m.ficha_registro_id }}">ficha nº {{ m.ficha_registro_id }}</a>
+          {%- elif m.ficha_registro_id %}ficha nº {{ m.ficha_registro_id }}
           {%- else %}—{% endif -%}
         </td>
         <td class="discreto">{{ nomes[m.registrado_por] or 'sistema' }}</td>
@@ -161,14 +165,14 @@
   <div class="aviso aviso-alerta">
     <strong>Lote inativado:</strong> {{ entrada.motivo_inativacao or 'sem motivo registrado' }}.
     Ele sai da lista de entrega e continua no estoque, porque o saldo continua
-    existindo (RN-31: lote não se exclui).
+    existindo — lote não se exclui.
   </div>
   {% endif %}
 
   <div class="aviso aviso-info">
-    <p><strong>Esta tabela é append-only.</strong> O banco recusa
-      <code>UPDATE</code> e <code>DELETE</code> nela, como na trilha de auditoria
-      e na ficha de EPI. Corrigir um erro de contagem é
+    <p><strong>Nenhuma linha deste extrato se altera ou se apaga.</strong> O
+      banco recusa, como na trilha de auditoria e na ficha de EPI. Corrigir um
+      erro de contagem é
       <strong>ajuste</strong>: linha nova, com a contagem física, o motivo e o
       nome de quem contou. A linha errada continua aqui — é o que permite
       reconstruir o saldo de qualquer dia do passado.</p>

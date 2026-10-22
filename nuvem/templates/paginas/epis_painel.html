@@ -19,15 +19,104 @@
 {% block titulo %}Gestão de EPI · CSSO{% endblock %}
 
 {% block acoes_cabecalho %}
+{% if pessoal %}
+{% if pode_pedir and tem_servidor %}<a class="botao" href="/epis/requisicoes/nova">Pedir EPI</a>{% endif %}
+{% else %}
 {% if pode_indicador %}
 <a class="botao secundario" href="/epis/relatorios">Relatórios</a>
 {% endif %}
 {% if usuario.pode('epi.entregar') %}
 <a class="botao" href="/epis/entregas/nova">Registrar entrega</a>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block conteudo %}
+{% if pessoal %}
+{# O PAINEL DE QUEM SÓ PEDE (escopo próprio) — os pedidos dele, o que falta ele
+   assinar e o que passou do prazo de troca. Os números do setor não são dele, e
+   os estados vazios deles traziam código de permissão. Cada cartão leva à tela
+   que resolve. #}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Meu EPI</h1>
+      <p class="sub">Seus pedidos, o que você recebeu e o que precisa de troca —
+        em {{ hoje|data }}.</p>
+    </div>
+  </div>
+
+  {% if not tem_servidor %}
+  <div class="aviso aviso-alerta">
+    <strong>Sua conta não está ligada a um cadastro de servidor.</strong> O EPI é
+    entregue ao servidor: peça a quem administra as contas que faça a ligação,
+    informando o seu SIAPE.
+  </div>
+  {% else %}
+  <div class="grade-resumo">
+    <div class="cartao-resumo">
+      <span class="rotulo">Meus pedidos</span>
+      <span class="valor">{{ abertos }} em andamento</span>
+      <span class="detalhe">{{ total_pedidos }} pedido(s) no total
+        {%- if rascunhos %} · {{ rascunhos }} rascunho(s) por enviar{% endif %}</span>
+      <a class="acao" href="/epis/requisicoes">Ver meus pedidos</a>
+    </div>
+    <div class="cartao-resumo {{ 'alerta' if trocas|length }}">
+      <span class="rotulo">Minhas trocas vencidas</span>
+      <span class="valor">{{ trocas|length }}</span>
+      <span class="detalhe">{{ 'equipamento(s) passou(aram) do prazo de troca: peça um novo' if trocas|length else 'nenhum equipamento vencido' }}</span>
+      <a class="acao" href="/epis/fichas/minha">Minha ficha de EPI</a>
+    </div>
+    <div class="cartao-resumo {{ 'atencao' if falta_assinar }}">
+      <span class="rotulo">Falta assinar</span>
+      <span class="valor">{{ falta_assinar }}</span>
+      <span class="detalhe">{{ 'procure o SESMT para assinar o comprovante' if falta_assinar else 'todos os comprovantes assinados' }}</span>
+    </div>
+  </div>
+
+  {% for l in trocas %}
+  <div class="aviso aviso-alerta">
+    <strong>{{ l.registro.nome_epi_snapshot }}</strong> passou do prazo de troca em
+    {{ l.registro.previsao_troca|data }}: peça um novo.
+    {% if pode_pedir %}
+    <a class="botao secundario compacto" href="/epis/requisicoes/nova?item={{ l.registro.epi_item_id }}">Pedir troca</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Últimos pedidos</h2>
+      <span class="contador">{{ total_pedidos }}</span>
+      {% if total_pedidos > pedidos|length %}<a class="a-direita" href="/epis/requisicoes">Todos</a>{% endif %}
+    </div>
+    <div class="tabela-cartao lista sem-altura">
+    <table class="empilhavel">
+      <thead>
+        <tr><th scope="col">Pedido</th><th scope="col">Situação</th><th scope="col">Desde</th></tr>
+      </thead>
+      <tbody>
+      {% for r in pedidos %}
+      <tr>
+        <td><a class="mono" href="/epis/requisicoes/{{ r.id }}">{{ r.identificacao }}</a></td>
+        <td data-coluna="Situação">{{ ui.pilula_requisicao(r.estado, rotulos) }}</td>
+        <td data-coluna="Desde" class="mono">{{ r.entrou_no_estado_em|momento }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">
+        <div class="vazio">
+          <strong>Você ainda não pediu EPI por aqui.</strong>
+          {% if pode_pedir %}<span><a href="/epis/requisicoes/nova">Pedir EPI</a>.</span>{% endif %}
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% else %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
@@ -144,10 +233,9 @@
         {% else %}
         <div class="corpo">
           <div class="vazio">
-            <strong>A lista de quem deve troca pede <code>epi.ficha</code>.</strong>
-            <span>Ela é histórico sobre a segurança de pessoas determinadas. O
-              número acima continua sendo seu: ele é medida do setor, e não
-              histórico de ninguém.</span>
+            <strong>A lista nominal fica na ficha de cada servidor.</strong>
+            <span>Ela diz quem recebeu o quê, e por isso só aparece para quem lê
+              as fichas. O número acima é a medida do setor.</span>
           </div>
         </div>
         {% endif %}
@@ -173,7 +261,10 @@
           </thead>
           {% for i in p.esperando_estoque.slice(0, 10) %}
           <tr>
-            <td><a class="mono" href="/epis/requisicoes/{{ i.requisicao_id }}">{{ i.requisicao.identificacao }}</a></td>
+            {# só no escopo de quem lê (o serviço já recortou); o agregado lê o
+               protocolo sem link, porque não abre pedido de ninguém #}
+            <td>{% if abre_pedido %}<a class="mono" href="/epis/requisicoes/{{ i.requisicao_id }}">{{ i.requisicao.identificacao }}</a>
+              {%- else %}<span class="mono">{{ i.requisicao.identificacao }}</span>{% endif %}</td>
             <td>{{ i.item.nome }}</td>
             <td class="mono">{{ i.tamanho or '—' }}</td>
             <td class="mono">{{ i.quantidade_devida }}</td>
@@ -240,16 +331,18 @@
         {% if ve_ficha %}
         <table>
           <thead>
-            <tr><th scope="col">Data</th><th scope="col">EPI</th><th scope="col">Quantidade</th><th scope="col">Servidor</th></tr>
+            {# Servidor primeiro: na coluna da direita ele saía cortado no
+               desktop, e é a coluna que se procura #}
+            <tr><th scope="col">Servidor</th><th scope="col">EPI</th><th scope="col">Data</th><th class="numerico" scope="col">Qtd.</th></tr>
           </thead>
           {% for r in p.entregas_do_mes.slice(0, 8) %}
           {% set quem = identificar(servidores[r.servidor_id]) %}
           <tr>
-            <td class="mono">{{ r.data_evento|data }}</td>
-            <td>{{ r.nome_epi_snapshot }}</td>
-            <td class="mono">{{ r.quantidade }}</td>
             <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
               {%- else %}{{ quem.nome }}{% endif %}</td>
+            <td>{{ r.nome_epi_snapshot }}</td>
+            <td class="mono">{{ r.data_evento|data }}</td>
+            <td class="numerico">{{ r.quantidade }}</td>
           </tr>
           {% else %}
           <tr><td colspan="4" class="nada">Nenhuma entrega neste mês.</td></tr>
@@ -258,9 +351,8 @@
         {% else %}
         <div class="corpo">
           <div class="vazio">
-            <strong>Quem recebeu o quê é a ficha.</strong>
-            <span>E a ficha pede <code>epi.ficha</code>: o total do mês, que é
-              medida do setor, continua acima.</span>
+            <strong>Quem recebeu o quê fica na ficha de cada servidor.</strong>
+            <span>O total do mês, que é medida do setor, está acima.</span>
           </div>
         </div>
         {% endif %}
@@ -272,7 +364,7 @@
     <strong>Os números são calculados na hora em que a tela abre.</strong>
     {% call ui.info('numeros-calculados', 'por que o painel calcula em vez de gravar') %}
       <p>Tudo aqui é calculado <strong>na abertura da tela</strong>, a partir do
-        que a ficha, o livro razão e a fila já registraram. Requisição parada, CA
+        que a ficha, o estoque e a fila já registraram. Requisição parada, CA
         a vencer e troca devida são estado, não fato guardado.</p>
       <p>Contagem gravada é contagem que envelhece em silêncio: o painel diria “3
         trocas devidas” durante meses depois de a quarta vencer, e ninguém teria
@@ -286,4 +378,5 @@
   </div>
 
 </div>
+{% endif %}
 {% endblock %}

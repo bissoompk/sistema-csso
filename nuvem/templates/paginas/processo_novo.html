@@ -13,8 +13,16 @@
    O nome pelo qual ela se identifica é o rótulo da tela, "observações". Era o
    nome da coluna entre aspas, e mudou junto com a mensagem, que deixou de
    falar como banco de dados com quem é engenheiro de segurança. #}
-{% set erro_observacoes = erro if erro and "campo observações" in erro else none %}
-{% set erro_nup = erro if erro and not erro_observacoes else none %}
+{# Hoje a rota diz de qual campo a recusa veio (`campo_do_erro`): a data, o
+   servidor, a unidade e o tipo também são conferidos, e "todo o resto é NUP"
+   deixou de ser verdade. Sem a marca (recusa antiga), vale o desvio de antes. #}
+{% set campo = campo_do_erro|default(none) %}
+{% set erro_observacoes = erro if erro and (campo == 'observacoes' or (not campo and "campo observações" in erro)) else none %}
+{% set erro_data = erro if erro and campo == 'data_autuacao' else none %}
+{% set erro_servidor = erro if erro and campo == 'servidor' else none %}
+{% set erro_unidade = erro if erro and campo == 'unidade' else none %}
+{% set erro_tipo = erro if erro and campo == 'tipo' else none %}
+{% set erro_nup = erro if erro and not (erro_observacoes or erro_data or erro_servidor or erro_unidade or erro_tipo) else none %}
 {% set erro = none %}
 {# O erro do DV vem do serviço em duas partes separadas por travessão: o fato e
    a explicação. A divisão é dele; aqui só se dá a cada parte o peso certo. #}
@@ -69,8 +77,15 @@
     </div>
 
     {# A dispensa mora dentro do aviso porque ela é a exceção, não uma opção do
-       formulário: quem marca precisa ler, na mesma caixa, o que a marca faz. #}
-    <div class="aviso aviso-alerta">
+       formulário: quem marca precisa ler, na mesma caixa, o que a marca faz.
+
+       `data-nup-dispensa`: com script, a caixa só aparece quando o DV digitado
+       diverge (a mesma conta do `data-nup`); sem script, fica à vista como
+       sempre. Quando o servidor já recusou pelo DV — ou a marca veio marcada —,
+       ela nasce `aberta`: esconder justamente a saída que a recusa aponta seria
+       mandar procurar. #}
+    {% set dispensa_aberta = (erro_nup and 'confirmei no SEI' in erro_nup) or d.get('dispensar_dv') == '1' %}
+    <div class="aviso aviso-alerta" data-nup-dispensa{% if dispensa_aberta %}="aberta"{% endif %}>
       <label class="discreto" for="dispensar_dv">
         <input type="checkbox" id="dispensar_dv" name="dispensar_dv" value="1"
                {{- ' checked' if d.get('dispensar_dv') == '1' }}>
@@ -80,29 +95,56 @@
     </div>
 
     <div class="linha-campos">
-      <div class="campo"><label for="tipo">Tipo</label>
+      {# O adicional ocupacional vem escolhido (a rota manda o padrão em
+         `digitado`): é o caso de uso do módulo, e "Acidente em Serviço" só vinha
+         primeiro por ordem alfabética. #}
+      <div class="campo {{ 'com-erro' if erro_tipo }}"><label for="tipo">Tipo</label>
         <select id="tipo" name="tipo_processo_id" required>
           {% for t in tipos %}<option value="{{ t.id }}"{{ sel(d.get('tipo_processo_id'), t.id) }}>{{ t.nome }}</option>{% endfor %}
-        </select></div>
-      <div class="campo"><label for="data">Data de autuação</label>
-        <input id="data" name="data_autuacao" type="date" value="{{ d.get('data_autuacao') or '' }}"></div>
+        </select>
+        {% if erro_tipo %}<span class="erro-campo">{{ erro_tipo }}</span>{% endif %}</div>
+      <div class="campo {{ 'com-erro' if erro_data }}"><label for="data">Data de autuação</label>
+        <input id="data" name="data_autuacao" type="date" value="{{ d.get('data_autuacao') or '' }}"
+               max="{{ hoje_iso|default('') }}" aria-describedby="{{ 'erro-data' if erro_data else 'dica-data' }}">
+        {% if erro_data %}<span class="erro-campo" id="erro-data">{{ erro_data }}</span>
+        {% else %}<span class="dica" id="dica-data">A do SEI — fato ocorrido, nunca depois de hoje.</span>{% endif %}</div>
     </div>
 
     <div class="linha-campos">
-      <div class="campo"><label for="servidor">Servidor</label>
-        <select id="servidor" name="servidor_id" aria-describedby="dica-servidor">
-          <option value="">—</option>
-          {%- for sv in servidores %}{% set quem = identificar(sv) %}
-          <option value="{{ sv.id }}"{{ sel(d.get('servidor_id'), sv.id) }}>{{ quem.nome }}{% if quem.siape %} ({{ quem.siape }}){% endif %}</option>
-          {%- endfor %}
-        </select>
-        <span class="dica" id="dica-servidor">Confira pelo SIAPE, nunca pelo nome: homônimo
-          na UFVJM não é raridade.</span></div>
-      <div class="campo"><label for="unidade">Unidade / UORG</label>
-        <select id="unidade" name="unidade_uorg_id"><option value="">—</option>
-          {% for u in unidades %}<option value="{{ u.id }}"{{ sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
-        </select></div>
+      {# Busca digitada, e não um `<select>` com o cadastro inteiro: são
+         centenas de servidores, e com a identificação suprimida (RN-19) as
+         opções começam todas por `SRV-` — as primeiras letras não achavam
+         ninguém. A busca troca só a lista (`hx-get`); sem script, a lista
+         inteira continua ali, como antes. #}
+      <div class="campo {{ 'com-erro' if erro_servidor }}">
+        <label for="busca-servidor">Buscar servidor</label>
+        <input id="busca-servidor" type="search" name="q" value="{{ q_servidor }}"
+               placeholder="{{ 'SIAPE' if busca_so_siape else 'Nome ou SIAPE' }}"
+               {%- if busca_so_siape %} inputmode="numeric"{% endif %}
+               hx-get="/processos/novo/servidores"
+               hx-target="#lista-de-servidores"
+               hx-trigger="input changed delay:300ms, search"
+               hx-include="this"
+               aria-describedby="dica-busca-servidor">
+        <span class="dica" id="dica-busca-servidor">
+          {%- if busca_so_siape -%}
+          Busque pelo SIAPE: sem permissão de ler identificação nominal, o nome não
+          acha ninguém e a lista mostra o código da sessão (RN-19).
+          {%- else -%}
+          Confira pelo SIAPE, nunca pelo nome: homônimo na UFVJM não é raridade.
+          {%- endif -%}</span>
+        {% if erro_servidor %}<span class="erro-campo">{{ erro_servidor }}</span>{% endif %}
+      </div>
+      <div class="campo" id="lista-de-servidores">
+        {% include "partes/processo_servidores.html" %}
+      </div>
     </div>
+
+    <div class="campo {{ 'com-erro' if erro_unidade }}"><label for="unidade">Unidade / UORG</label>
+      <select id="unidade" name="unidade_uorg_id"><option value="">—</option>
+        {% for u in unidades %}<option value="{{ u.id }}"{{ sel(d.get('unidade_uorg_id'), u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
+      </select>
+      {% if erro_unidade %}<span class="erro-campo">{{ erro_unidade }}</span>{% endif %}</div>
 
     <div class="campo {{ 'com-erro' if erro_observacoes }}">
       <label for="obs">Observações</label>

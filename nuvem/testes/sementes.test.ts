@@ -74,9 +74,10 @@ describe("sementes", () => {
       profissional_habilitado: 1,
       epi_categoria: 9,
       epi_motivo_recusa: 8,
-      // NUVEM: o genérico "Padrão da casa", com os 23 marcadores do .docx mapeados
-      certificado_modelo: 1,
-      certificado_modelo_tag: 23,
+      // NUVEM: o genérico "Padrão da casa" — a v1 (23 marcadores, superada,
+      // para as segundas vias) e a v2 vigente (22, as frases inteiras)
+      certificado_modelo: 2,
+      certificado_modelo_tag: 45,
     });
   });
 
@@ -180,17 +181,20 @@ describe("sementes", () => {
   });
 
   it("o modelo genérico semeado confere com o .docx e não volta depois de aposentado", async () => {
-    const [modelo] = await db.select().from(e.certificado_modelo);
+    const [modelo] = await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.vigente, true));
     expect(modelo!.treinamento_id).toBeNull();
     expect(modelo!.nome).toBe("Padrão da casa");
-    expect(modelo!.vigente).toBe(true);
+    expect(modelo!.versao).toBe(2);
+    expect(modelo!.arquivo).toBe("certificado_padrao_v2.docx");
+    const [v1] = await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.vigente, false));
+    expect([v1!.versao, v1!.arquivo]).toEqual([1, "certificado_padrao_v1.docx"]);
     const tags = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, modelo!.id));
     const mapa = Object.fromEntries(tags.map((t) => [t.marcador, t.campo]));
     expect(conferir_modelo(modelo!.arquivo, mapa).ok).toBe(true);
     // genérico existente (mesmo superado) não é recriado
     await db.update(e.certificado_modelo).set({ vigente: false }).where(eq(e.certificado_modelo.id, modelo!.id));
     await naTransacao((tx) => semear(tx));
-    expect(await db.select().from(e.certificado_modelo)).toHaveLength(1);
+    expect(await db.select().from(e.certificado_modelo)).toHaveLength(2);
     await db.update(e.certificado_modelo).set({ vigente: true }).where(eq(e.certificado_modelo.id, modelo!.id));
   });
 });

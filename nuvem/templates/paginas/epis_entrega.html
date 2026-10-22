@@ -102,8 +102,7 @@
                  hx-include="this"
                  aria-describedby="dica-busca-servidor">
           <span class="dica" id="dica-busca-servidor">O SIAPE acha sempre. O nome
-            só acha para quem tem permissão de ler identificação nominal — senão
-            o filtro viraria oráculo (RN-19).</span>
+            só acha para quem tem permissão de ler a identificação nominal.</span>
         </div>
 
         <div class="campo" id="lista-de-servidores">
@@ -143,13 +142,12 @@
         <textarea id="observacao" name="observacao" rows="2"
                   aria-describedby="dica-observacao">{{ d.observacao or '' }}</textarea>
         <span class="dica" id="dica-observacao">Sai impressa no comprovante.
-          Não escreva nada sobre a saúde de quem recebe: o sistema recusa
-          (RN-21).</span>
+          Não escreva nada sobre a saúde de quem recebe: o sistema recusa.</span>
       </div>
 
       <div class="acoes">
         <button type="submit">Registrar entrega</button>
-        <p class="discreto">Grava a linha da ficha, baixa o lote no livro razão e
+        <p class="discreto">Grava a linha da ficha, baixa o lote no extrato do estoque e
           abre a pendência do comprovante — tudo na mesma transação.</p>
       </div>
     </form>

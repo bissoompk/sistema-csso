@@ -54,7 +54,7 @@ import * as servico from "../servicos/epi_requisicao.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import * as textos from "../servicos/textos.js";
 import { hoje } from "../servicos/datas_br.js";
-import { PermissaoNegada, type UsuarioAtual } from "../servicos/rbac.js";
+import { ESCOPO_PROPRIO, PermissaoNegada, type UsuarioAtual } from "../servicos/rbac.js";
 import { cadastrar_pelo_fragmento, fragmento_servidores } from "./epi_fichas.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -311,7 +311,7 @@ async function _secao_dos_itens(
   c: Ctx,
   usuario: UsuarioAtual,
   requisicao_id: number,
-  opcoes: { recusa?: string | null; linha_id?: number | null } = {},
+  opcoes: { recusa?: string | null; linha_id?: number | null; sucesso?: string | null } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const requisicao = (await carregar(tx, requisicao_id))!;
@@ -335,11 +335,16 @@ async function _secao_dos_itens(
     pode_analisar: usuario.pode("epi.analisar"),
     pode_entregar: usuario.pode("epi.entregar"),
     pode_estocar: usuario.pode("epi.estoque"),
+    pode_cancelar: servico.pode_cancelar(usuario, requisicao),
     // a gaveta da linha recusada reabre
     digitado: dic(
       opcoes.linha_id !== undefined && opcoes.linha_id !== null ? { forma: `item-${opcoes.linha_id}` } : {},
     ),
     recusa: opcoes.recusa ?? null,
+    // o recado de sucesso da troca parcial: sem ele aprovar, recusar e
+    // reservar trocavam a lista em silêncio, e a pessoa não sabia se o clique
+    // tinha valido
+    sucesso: opcoes.sucesso ?? null,
   });
 }
 
@@ -382,8 +387,13 @@ rotas.get(FILA, async (c) => {
   usuario.exigir("epi.ver");
   const tx = c.get("tx");
   const q = c.req.query("q") ?? "";
-  const estado = c.req.query("estado") ?? "";
-  const estados = Object.hasOwn(ROTULO_EPI_REQUISICAO, estado) ? [estado] : [];
+  const bruto_estado = c.req.query("estado") ?? "";
+  // Estado desconhecido não vira "todos" em silêncio: a lista sai inteira, mas
+  // a tela diz que o filtro foi ignorado (o endereço colado de outro lugar, ou
+  // um código antigo, mostrava tudo como se fosse o recorte pedido).
+  const estado_valido = Object.hasOwn(ROTULO_EPI_REQUISICAO, bruto_estado);
+  const estado = estado_valido ? bruto_estado : "";
+  const estados = estado_valido ? [estado] : [];
   const ids = (await servico.fila(tx, usuario, { estados })).map((r) => r.id);
   let linhas = ids.length
     ? (
@@ -423,6 +433,10 @@ rotas.get(FILA, async (c) => {
     hoje: hoje(),
     pode_requisitar: usuario.pode("epi.requisitar"),
     pode_analisar: usuario.pode("epi.analisar"),
+    // a conta de escopo próprio só vê os próprios pedidos: para ela a tela é
+    // "Meus pedidos", e não a fila do setor
+    meus_pedidos: usuario.escopo === ESCOPO_PROPRIO,
+    filtro_ignorado: bruto_estado && !estado_valido ? bruto_estado : null,
     mensagem: c.req.query("mensagem") ?? null,
     erro: recado,
   });
@@ -432,24 +446,60 @@ rotas.get(FILA, async (c) => {
 // O formulário do pedido — declarado ANTES de `/epis/requisicoes/:id`
 // (as rotas de id só casam dígitos, então a ordem não é mais o que protege)
 // =====================================================================
-// A nota de rodapé do seletor: a RN-28 é assunto do pedido, não do balcão.
-export const NOTA_SERVIDOR =
-  "A RN-28 não se aplica a quem digita, e sim a quem vai usar: " + "a chefia pode abrir o pedido da equipe.";
+// A nota de rodapé do seletor: quem digita não precisa ser quem vai usar.
+export const NOTA_SERVIDOR = "A chefia ou a secretaria podem abrir o pedido por alguém da equipe.";
 
+/**
+ * O formulário do pedido. Duas formas, decididas pelo ESCOPO da conta:
+ *
+ * - **Próprio** (o servidor comum): o pedido é dele, e o campo "quem vai usar"
+ *   vem preenchido e travado com o próprio nome — sem busca e sem a lista do
+ *   cadastro inteiro em `SRV-xxxx`, que não servia a ninguém e deixava pedir em
+ *   nome de terceiros. A chefia também sai: a lista dela era a mesma lista de
+ *   códigos, e o campo é opcional.
+ * - **Unidade ou total** (chefia, secretaria, SESMT): a busca de servidor
+ *   continua, para pedir pela equipe.
+ *
+ * O primeiro item vem na MESMA tela (equipamento, tamanho, quantidade) com o
+ * botão "Enviar pedido": o caso comum — uma luva, uma bota — sai num envio só,
+ * em vez de rascunho → popup de item → popup de envio. O modelo continua o
+ * mesmo (rascunho + itens): "Salvar e acrescentar outro item" leva à ficha do
+ * rascunho, onde os outros itens entram.
+ */
 async function _tela_nova(
   c: Ctx,
   usuario: UsuarioAtual,
-  opcoes: { q?: string; mensagem?: string | null; erro?: string | null; digitado?: Record<string, unknown> } = {},
+  opcoes: {
+    q?: string;
+    mensagem?: string | null;
+    erro?: string | null;
+    digitado?: Record<string, unknown>;
+    item_id?: number | null;
+  } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const q = opcoes.q ?? "";
+  const proprio = usuario.escopo === ESCOPO_PROPRIO;
+  const [eu] =
+    proprio && usuario.servidor_id !== null
+      ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id))
+      : [];
+  const digitado = opcoes.digitado ?? {};
+  const item_id = opcoes.item_id ?? _id(String(digitado["item_id"] ?? ""));
+  const item = await _item_do_catalogo(tx, item_id);
   return pagina(c, "paginas/epis_requisicao_nova.html", usuario, {
-    servidores: await servico_servidores.buscar(tx, q, usuario),
+    proprio,
+    eu: eu ?? null,
+    // a lista de servidores só existe para quem pede por outro
+    servidores: proprio ? [] : await servico_servidores.buscar(tx, q, usuario),
     nota: NOTA_SERVIDOR,
     q,
     finalidades: FINALIDADES_REQUISICAO.map((cod) => [cod, ROTULO_FINALIDADE[cod] ?? cod]),
     urgencias: URGENCIAS_REQUISICAO.map((cod) => [cod, ROTULO_URGENCIA[cod] ?? cod]),
-    digitado: dic(opcoes.digitado ?? {}),
+    catalogo: await _itens_ativos(tx),
+    item_escolhido: item && item.ativo ? vestir_item(item) : null,
+    hoje: hoje(),
+    digitado: dic(digitado),
     mensagem: opcoes.mensagem ?? null,
     erro: opcoes.erro ?? null,
   });
@@ -462,6 +512,8 @@ rotas.get(NOVA, async (c) => {
     q: c.req.query("q") ?? "",
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
+    // "Pedir troca", da ficha do titular, chega com o item já escolhido
+    item_id: _id(c.req.query("item")),
   });
 });
 
@@ -513,34 +565,60 @@ rotas.get("/epis/requisicoes/item-saldo", async (c) => {
   });
 });
 
-/** O rascunho. **Não consome protocolo** — quem o consome é o envio (RN-03). */
+/**
+ * O rascunho — e, quando a tela já trouxe o item, a linha e o envio no mesmo
+ * POST. **Não consome protocolo** se não houver envio (RN-03). As três coisas
+ * correm num SAVEPOINT só: recusada qualquer uma, nada fica gravado e a tela
+ * volta com tudo o que foi digitado — cabeçalho e item.
+ */
 rotas.post(FILA, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.requisitar");
   const tx = c.get("tx");
   const f = await formulario(c);
   const q = f.texto("q");
+  const proprio = usuario.escopo === ESCOPO_PROPRIO;
   // tudo o que foi digitado, guardado antes da primeira recusa
   const digitado = {
-    servidor_id: f.texto("servidor_id"),
-    chefia_servidor_id: f.texto("chefia_servidor_id"),
+    // escopo próprio: o campo travado manda o próprio id; vazio vale o mesmo.
+    // Outro id NÃO é corrigido em silêncio — o serviço o recusa (403).
+    servidor_id: f.texto("servidor_id") || (proprio && usuario.servidor_id !== null ? String(usuario.servidor_id) : ""),
+    chefia_servidor_id: proprio ? "" : f.texto("chefia_servidor_id"),
     finalidade: f.texto("finalidade", "ROTINA"),
     descricao_atividade: f.texto("descricao_atividade"),
     riscos_declarados: f.texto("riscos_declarados"),
     urgencia: f.texto("urgencia", "NORMAL"),
     justificativa_urgencia: f.texto("justificativa_urgencia"),
+    item_id: f.texto("item_id"),
+    quantidade: f.texto("quantidade"),
+    tamanho: f.texto("tamanho"),
+    justificativa: f.texto("justificativa"),
   };
+  const acao = f.texto("acao");
+  const recusar = (erro: string) => _tela_nova(c, usuario, { q, erro, digitado });
+
+  if (proprio && usuario.servidor_id === null) {
+    return recusar(
+      "Sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
+        "Peça a quem administra as contas que faça a ligação, informando o seu SIAPE.",
+    );
+  }
   const servidor_id = _id(digitado.servidor_id);
   const [servidor] = servidor_id
     ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, servidor_id))
     : [];
-  if (!servidor) {
-    return _tela_nova(c, usuario, { q, erro: "Escolha o servidor que vai usar o equipamento.", digitado });
-  }
+  if (!servidor) return recusar("Escolha o servidor que vai usar o equipamento.");
   const chefia_id = _id(digitado.chefia_servidor_id);
   const [chefia] = chefia_id ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, chefia_id)) : [];
-  const r = await tentar(c, (sp) =>
-    servico.criar_rascunho(sp, usuario, {
+
+  // o item da própria tela: opcional para salvar, obrigatório para enviar
+  const item = await _item_do_catalogo(tx, _id(digitado.item_id));
+  if (acao === "enviar" && !item) return recusar("Escolha o equipamento antes de enviar: pedido sem item não é enviado.");
+  const quantas = item ? _inteiro(digitado.quantidade) : null;
+  if (item && quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
+
+  const r = await tentar(c, async (sp) => {
+    const requisicao = await servico.criar_rascunho(sp, usuario, {
       servidor,
       chefia_servidor_id: chefia ? chefia.id : null,
       finalidade: digitado.finalidade,
@@ -548,14 +626,32 @@ rotas.post(FILA, async (c) => {
       riscos_declarados: digitado.riscos_declarados,
       urgencia: digitado.urgencia,
       justificativa_urgencia: digitado.justificativa_urgencia,
-    }),
-  );
-  if (!r.ok) return _tela_nova(c, usuario, { q, erro: _motivos(r.falha), digitado });
+    });
+    if (item) {
+      await servico.adicionar_item(sp, usuario, requisicao, {
+        item,
+        quantidade: quantas!,
+        tamanho: digitado.tamanho,
+        justificativa: digitado.justificativa,
+      });
+    }
+    if (acao === "enviar") await servico.enviar(sp, usuario, requisicao);
+    return requisicao;
+  });
+  if (!r.ok) return recusar(_motivos(r.falha));
+  if (acao === "enviar") {
+    return _volta(
+      c,
+      _ficha(r.valor.id),
+      `Pedido enviado ao SESMT com o protocolo ${r.valor.protocolo}. Você acompanha a análise por aqui.`,
+    );
+  }
   return _volta(
     c,
     _ficha(r.valor.id),
-    "Rascunho aberto. Acrescente os itens e envie — o protocolo é consumido " +
-      "no envio, e rascunho abandonado não gasta número.",
+    item
+      ? `Rascunho salvo com '${item.nome}'. Acrescente outros itens abaixo e envie quando terminar.`
+      : "Rascunho salvo. Acrescente os itens e envie — o número do pedido só é gerado no envio.",
   );
 });
 
@@ -649,13 +745,26 @@ async function _tela_ficha(
       ...requisicao.itens.map((l) => l.autorizado_por),
     ], { c, usuario }),
     eventos: await _trilha_para_tela(c, usuario, await _trilha(tx, requisicao)),
-    servidores: await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)),
+    // a lista da chefia só existe para quem edita o rascunho e não é de escopo próprio
+    servidores:
+      servico.EDITAVEL.has(requisicao.estado) && usuario.escopo !== ESCOPO_PROPRIO
+        ? await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome))
+        : [],
     editavel: servico.EDITAVEL.has(requisicao.estado),
     // o estado admite cancelar E nada saiu ainda
     cancelavel:
       EPI_REQUISICAO_CANCELAVEL.has(requisicao.estado) && !requisicao.itens.some((l) => l.quantidade_entregue > 0),
     pode_requisitar: usuario.pode("epi.requisitar"),
     pode_analisar: usuario.pode("epi.analisar"),
+    proprio: usuario.escopo === ESCOPO_PROPRIO,
+    // requerente, quem abriu ou quem analisa — a mesma pergunta que o serviço faz
+    pode_cancelar: servico.pode_cancelar(usuario, requisicao),
+    // o botão de indeferir só aparece quando ele funciona
+    indeferivel: servico.indeferivel(requisicao, requisicao.itens),
+    // a guia é papel de balcão: só faz sentido com item aprovado a retirar
+    tem_aprovado: requisicao.itens.some((l) => ["APROVADO", "RESERVADO", "SEM_ESTOQUE", "ENTREGUE"].includes(l.estado)),
+    // servidor e secretaria leem a trilha de vez em quando; quem decide a lê sempre
+    trilha_aberta: usuario.pode("epi.analisar") || usuario.pode("epi.estoque") || usuario.pode("epi.entregar"),
     // o atalho "aprovar tudo como pedido": analista que não é o requerente
     // (RN-28) e ainda há item sem decisão
     aprova_tudo:
@@ -904,8 +1013,9 @@ acao_de_envelope(
   "concluir",
   (sp, usuario, requisicao, f) => servico.concluir_analise(sp, usuario, requisicao, { parecer: f.texto("parecer") }),
   () =>
-    "Análise concluída. O que foi aprovado pode ser entregue; " +
-    "`EM_ATENDIMENTO` e `ATENDIDA` chegam sozinhas, conforme as entregas.",
+    "Análise concluída. O que foi aprovado pode ser entregue; o pedido passa a " +
+    `${ROTULO_EPI_REQUISICAO.EM_ATENDIMENTO!.toLowerCase()} e depois a ${ROTULO_EPI_REQUISICAO.ATENDIDA!.toLowerCase()} ` +
+    "sozinho, conforme as entregas.",
 );
 
 /** ENVIADA/EM_ANALISE → ANALISADA de uma vez: tudo aprovado como pedido. */
@@ -926,7 +1036,9 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/indeferir`, async (c) => {
   const destino = _ficha(requisicao.id);
   const f = await formulario(c);
   const motivo = await _motivo(c.get("tx"), _id(f.texto("motivo_id")));
-  if (!motivo) return _erro(c, destino, "Escolha o motivo do indeferimento no catálogo.");
+  if (!motivo) return _erro(c, destino, "Escolha o motivo do indeferimento na lista.");
+  // contados ANTES: o recado só fala dos itens recusados no ato quando houve algum
+  const sem_decisao = (await servico.itens_de(c.get("tx"), requisicao.id)).filter((i) => i.estado === "SOLICITADO").length;
   const r = await tentar(c, (sp) =>
     servico.indeferir(sp, usuario, requisicao, {
       motivo,
@@ -935,7 +1047,12 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/indeferir`, async (c) => {
     }),
   );
   if (!r.ok) return _erro(c, destino, _motivos(r.falha));
-  return _volta(c, destino, `Pedido indeferido com o motivo ${motivo.codigo}.`);
+  return _volta(
+    c,
+    destino,
+    `Pedido indeferido: ${motivo.rotulo}.` +
+      (sem_decisao ? " Os itens que estavam sem decisão foram recusados com o mesmo motivo." : ""),
+  );
 });
 
 /** INDEFERIDA → EM_ANALISE. O único caminho de volta de um terminal. */
@@ -953,6 +1070,8 @@ acao_de_envelope(
   "cancelar",
   (sp, usuario, requisicao, f) => servico.cancelar(sp, usuario, requisicao, f.texto("motivo")),
   () => "Pedido cancelado, com o motivo registrado.",
+  // a primeira porta é a permissão; quem, entre os que a têm, pode cancelar
+  // ESTE pedido é o serviço que decide (`servico.pode_cancelar`)
   (u) => {
     if (!(u.pode("epi.requisitar") || u.pode("epi.analisar"))) throw new PermissaoNegada("epi.requisitar");
   },
@@ -998,7 +1117,7 @@ function acao_de_item(a: AcaoDeItem) {
     }
     const r = await tentar(c, (sp) => a.executar(sp, usuario, linha, f, dados));
     if (!r.ok) return _parcial_ou_erro(c, usuario, requisicao_id, _motivos(r.falha), parcial, linha_id);
-    if (parcial) return _secao_dos_itens(c, usuario, requisicao_id);
+    if (parcial) return _secao_dos_itens(c, usuario, requisicao_id, { sucesso: a.recado(linha, nome, dados) });
     return _volta(c, destino, a.recado(linha, nome, dados), ANCORA_ITENS);
   });
 }
@@ -1023,7 +1142,7 @@ acao_de_item({
     let recado = `'${nome}': ${linha.quantidade_aprovada} aprovado(s).`;
     if (linha.excedeu_maximo) {
       recado +=
-        " O máximo da RN-26 foi excedido e a exceção ficou registrada com o " +
+        " O máximo do item foi excedido e a exceção ficou registrada com o " +
         "seu nome, com a justificativa por escrito.";
     }
     return recado;
@@ -1039,8 +1158,7 @@ acao_de_item({
     if (!motivo) {
       return {
         recusa:
-          "Escolha o motivo da recusa no catálogo: negativa em texto livre sai " +
-          "diferente a cada vez, não cita norma e não se conta (RN-27).",
+          "Escolha o motivo da recusa na lista: é o texto dele que vai para o requerente.",
       };
     }
     return { dados: { motivo } };
@@ -1048,8 +1166,7 @@ acao_de_item({
   executar: (sp, usuario, linha, f, d) =>
     servico.recusar_item(sp, usuario, linha, { motivo: d.motivo, complemento: f.texto("complemento") }),
   recado: (_linha, nome, d) =>
-    `'${nome}' recusado com o motivo ${d.motivo.codigo}. ` +
-    "O texto que vai para o requerente ficou congelado na linha.",
+    `'${nome}' recusado: ${d.motivo.rotulo}. ` + "O texto que vai para o requerente ficou guardado na linha.",
 });
 
 /** A linha sai do pedido sem virar recusa. Motivo obrigatório. */

@@ -123,7 +123,7 @@
     {# declaradas e não clicáveis: quem usa o sistema precisa saber o que ainda
        não está aqui, mesma regra dos módulos previstos em /modulos #}
     {% for rotulo, fatia in abas_previstas %}
-    <span class="discreto" style="padding:8px 14px"
+    <span class="discreto"
           title="ainda não desenvolvido ({{ fatia }})">{{ rotulo }} · em breve</span>
     {% endfor %}
   </nav>
@@ -199,10 +199,22 @@
         {% endif %}
       </div>
 
+      {% if minha_inscricao %}
+      {# Para quem participa, e não opera a turma: a própria inscrição, e só. #}
+      <p class="sem-margem">Minha inscrição: <strong>{{ minha_situacao }}</strong>
+        · <a href="/turmas/minhas">Meus treinamentos</a></p>
+      {% elif pode_pedir_aqui %}
+      <form method="post" action="/turmas/{{ turma.id }}/inscrever-me" class="acoes">
+        <button type="submit">Quero me inscrever</button>
+        <span class="dica">A vaga fica reservada; a CSSO confirma depois.</span>
+      </form>
+      {% endif %}
+
+      {% if gerencia %}
       {% if ja_realizada %}
       {# O curso que já aconteceu, num clique: presença de todos pela carga e o
          fecho com a apuração. Com nota mínima, só a presença — nota não se inventa. #}
-      <form method="post" action="/turmas/{{ turma.id }}/realizada" style="margin-top:12px">
+      <form method="post" action="/turmas/{{ turma.id }}/realizada" class="acoes">
         <button type="submit">Registrar turma já realizada</button>
         <span class="dica">
           {%- if turma.nota_minima_aprovacao is not none %} Marca todos presentes pela carga
@@ -214,8 +226,15 @@
       </form>
       {% endif %}
 
+      {% if conclui_a_partir %}
+      {# Concluir libera o certificado, e o certificado atesta curso que terminou:
+         o botão só aparece no último dia. A frase diz por que ele não está aqui. #}
+      <p class="discreto">“{{ CONCLUIR_TURMA }}” aparece a partir de {{ conclui_a_partir|data }},
+        o último dia da turma.</p>
+      {% endif %}
+
       {% if destinos %}
-      <div class="acoes" style="margin-top:12px">
+      <div class="acoes">
         {% for codigo, rotulo in destinos %}
         {% if usuario.pode(permissao_por_destino[codigo]) %}
         {% if codigo == 'CONCLUIDA' %}
@@ -263,6 +282,7 @@
         <span>Não há para onde ir. Erro em turma encerrada se corrige por anulação e
           reemissão do certificado, nunca por volta de estado.</span>
       </div>
+      {% endif %}
       {% endif %}
     </section>
 
@@ -333,11 +353,17 @@
     <strong>pedido pelo link, a conferir</strong>, não ocupa vaga e abre uma pendência;
     vira inscrição quando alguém o aceita. Só funciona com a turma em “inscrições
     abertas” e até a data de “inscrições até”.</p>
+  {# "Gerar" só onde daria certo: com a turma fechada, encerrada ou fora do
+     prazo o botão sempre falhava. O motivo fica escrito no lugar dele, e o
+     "Desligar" continua — é o que se faz com o link de uma turma que acabou. #}
+  {% if link_impedimento %}<p class="discreto sem-margem">{{ link_impedimento }}</p>{% endif %}
   <div class="acoes">
+    {% if not link_impedimento %}
     <form method="post" action="/turmas/{{ turma.id }}/link-publico">
       <button type="submit" class="secundario">
         {{- 'Gerar um link novo (o atual para de funcionar)' if turma.inscricao_publica else 'Gerar o link e o QR' -}}
       </button></form>
+    {% endif %}
     {% if turma.inscricao_publica %}
     <form method="post" action="/turmas/{{ turma.id }}/link-publico/desligar">
       <button type="submit" class="perigo">Desligar o link</button></form>
@@ -362,6 +388,29 @@
       identificação suprimida</span>
     {% endif %}
   </div>
+  {# Os pedidos do link de uma vez, como no IntegraSST (lá o link inscrevia
+     sozinho). A mesma rota de /turmas/pedidos; o que travar volta com o motivo. #}
+  {% set pedidos_link = inscricoes|selectattr('situacao', 'equalto', 'AGUARDANDO_EMAIL')|list %}
+  {% if pode_inscrever and pedidos_link|length %}
+  <div class="corpo">
+    <form method="post" action="/turmas/pedidos" class="aviso aviso-alerta sem-margem">
+      <input type="hidden" name="turma_id" value="{{ turma.id }}">
+      {% for i in pedidos_link %}<input type="hidden" name="inscricao_id" value="{{ i.id }}">{% endfor %}
+      {# mais pedidos do que vagas: "aceitar todos" seria recusado inteiro
+         (`pedidos_link.decidir`), então a tela já manda escolher #}
+      {% set cabem = vagas_restantes is none or pedidos_link|length <= vagas_restantes %}
+      <p><strong>{{ pedidos_link|length }} pedido(s) pelo link a conferir.</strong>
+        {% if cabem %}Conferidos na lista abaixo, aceite todos de uma vez; para recusar um, use “ações” na linha.
+        {%- else %}A turma tem {{ vagas_restantes }} vaga(s) livre(s): escolha quem aceitar em
+        <a href="/turmas/pedidos">Pedidos pelo link</a>, ou um por um em “ações”, na linha.{% endif %}</p>
+      {% if cabem %}
+      <div class="acoes sem-margem">
+        <button type="submit" name="acao" value="aceitar" class="compacto">{{ ui.icone('check-circle') }} Aceitar os {{ pedidos_link|length }} pedidos</button>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+  {% endif %}
   {% if inscricoes %}
   <table>
     <thead>
@@ -731,6 +780,10 @@
     {% endif %}
   </div>
 
+  {# A FOLHA É UM FORMULÁRIO SÓ (`presenca.salvar_folha`): uma caixa por dia em
+     cada linha, e um "Salvar folha" no pé. O cabeçalho de cada dia marca a
+     coluna inteira (`data-marca-grupo`, csso.js) — a folha do dia em papel. #}
+  {% if pode_lancar %}<form method="post" action="/turmas/{{ turma.id }}/presencas/folha" id="f-folha">{% endif %}
   <table>
     {# O `<thead>` vem antes dos vários `<tbody>` — é HTML válido e é a ordem que
        o navegador exige. Aqui ele rende duas vezes mais que na tabela comum: com
@@ -740,7 +793,10 @@
     <thead>
       <tr>
         <th scope="col">Participante</th>
-        {% for dia in dias %}<th class="mono" scope="col">{{ dia|data }}</th>{% endfor %}
+        {% for dia in dias %}<th class="mono" scope="col">
+          {%- if pode_lancar and dia <= hoje %}<label><input type="checkbox" data-marca-grupo="dia-{{ dia }}"
+            aria-label="Presença de todos em {{ dia|data }} (a coluna inteira)" title="Marcar ou desmarcar a coluna inteira"> {{ dia|data }}</label>
+          {%- else %}{{ dia|data }}{% endif %}</th>{% endfor %}
         <th scope="col">Horas</th><th scope="col">Frequência</th>
         <th scope="col">Nota</th><th scope="col">Situação</th>
       </tr>
@@ -765,6 +821,22 @@
     </td></tr>
     {% endfor %}
   </table>
+  {% if pode_lancar %}
+  <div class="corpo">
+    {% if retificando %}
+    <div class="campo"><label for="motivo-folha">Motivo da retificação</label>
+      <input id="motivo-folha" name="motivo" required maxlength="300"
+             placeholder="por que a folha está sendo corrigida"></div>
+    {% endif %}
+    <div class="acoes">
+      <button type="submit">Salvar folha</button>
+      <p class="discreto sem-margem">Caixa marcada é presença com a carga do dia
+        {%- if dias|length > 1 %} ({% for dia in dias %}{{ dia|data }}: {{ horas_padrao[dia]|num if horas_padrao[dia] else '—' }} h{% if not loop.last %}; {% endif %}{% endfor %}){% endif %};
+        desmarcada num dia já lançado é falta. Quem chegou atrasado: “ajustar horas”.</p>
+    </div>
+  </div>
+  </form>
+  {% endif %}
 
   {% if pode_lancar and dias|length > 1 %}
   {# ===============================================================
@@ -811,7 +883,7 @@
         Marca <strong>todo mundo</strong> presente naquele dia, com as horas informadas
         ao lado — <strong>inclusive quem já estava lançado como falta</strong>. Cada
         sobrescrita entra na trilha com o valor de antes. Quem faltou se desmarca
-        depois, célula a célula, na grade.
+        depois na grade, e “Salvar folha” grava a falta.
       </div>
       {% for dia in dias %}
       <form method="post" action="/turmas/{{ turma.id }}/presencas/dia">
@@ -887,6 +959,12 @@
   {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }}. O certificado atesta um curso que
   terminou: conclua a turma na aba <em>Turma</em> antes de emitir.
 </div>
+{% endif %}
+
+{# O aviso do modelo genérico é o mesmo para todo inscrito: uma vez, aqui, e não
+   repetido em cada linha da coluna "O que falta" (a rota o tira de lá). #}
+{% if aviso_modelo %}
+<div class="aviso aviso-info"><p>{{ aviso_modelo }}.</p></div>
 {% endif %}
 
 {# ===== campos que o modelo do certificado pede (NUVEM) =====
@@ -1071,8 +1149,9 @@
           {{- falta if pode_nominal
               else texto_livre(falta, sobre=inscricao.participante.servidor) -}}</span>
         {% else %}<span class="pilula ok">apto</span>{% endif %}
-        {% if apto and apto.avisos %}
-        {% set aviso = apto.avisos|join('; ') %}
+        {% set avisos_da_linha = avisos_linha[inscricao.id] or [] %}
+        {% if avisos_da_linha|length %}
+        {% set aviso = avisos_da_linha|join('; ') %}
         <span class="quebra discreto">aviso:
           {{ aviso if pode_nominal
              else texto_livre(aviso, sobre=inscricao.participante.servidor) }}</span>
@@ -1353,9 +1432,37 @@
 {% endif %}
 
 {% if aba == 'inscricoes' and pode_inscrever and turma.aceita_inscricao %}
+{# `externo_digitado` e `parecidos` chegam quando o cadastro foi interrompido pela
+   pergunta "é a mesma pessoa?" (`participante.parecidos`): a camada reabre com o
+   que foi digitado — menos o CPF, que nenhuma resposta ecoa. #}
+{% set ed = externo_digitado or {} %}
+{% set ha_parecidos = true if (parecidos and parecidos|length) else false %}
 {% call ui.popup_cadastro('cadastrar-externo', CADASTRAR_EXTERNO,
-                          '/turmas/' ~ turma.id ~ '/inscricoes', 'Cadastrar e inscrever',
+                          '/turmas/' ~ turma.id ~ '/inscricoes',
+                          'Não é: cadastrar como pessoa nova' if ha_parecidos else 'Cadastrar e inscrever',
+                          aberto=ha_parecidos,
                           nota='terceirizado, discente ou visitante') %}
+  {% if ha_parecidos %}
+  {# A pergunta antes da segunda linha da mesma pessoa. Só chega aqui quem pode
+     ler os nomes listados (a RN-19 já filtrou em `parecidos`). "Sim" envia o
+     `participante_id` do cadastro existente pelo mesmo formulário; "não" grava
+     a pessoa nova com `confirmar_novo`. #}
+  <div class="aviso aviso-alerta" role="alert">
+    <p><strong>Já existe na base alguém com este nome ou este e-mail. É a mesma pessoa?</strong></p>
+    <ul class="motivos">
+      {% for p in parecidos %}
+      <li>{{ p.nome_exibicao }} <span class="mono">({{ p.identificador_publico }})</span>
+        · {{ rotulo_vinculo[p.vinculo] or p.vinculo }}{% if p.organizacao %} · {{ p.organizacao }}{% endif %}
+        {%- if p.email_exibicao %} · {{ p.email_exibicao }}{% endif %}
+        <button type="submit" name="participante_id" value="{{ p.id }}" formnovalidate
+                class="secundario compacto">Sim, inscrever {{ p.identificador_publico }}</button></li>
+      {% endfor %}
+    </ul>
+    {% if ed.tinha_cpf %}<p class="discreto">O CPF digitado não volta na tela: digite-o de novo, se for o caso.</p>{% endif %}
+  </div>
+  <input type="hidden" name="confirmar_novo" value="1">
+  {% endif %}
+  <input type="hidden" name="busca" value="{{ busca }}">
   {# FICA dentro do popup: é lido no instante da digitação, que é onde o lugar
      certo do CPF precisa ser explicado — e onde alguém tentaria escrevê-lo noutro campo. #}
   <div class="aviso aviso-info">
@@ -1364,22 +1471,24 @@
     O CPF só entra no campo próprio abaixo, e só se o certificado exigir.
   </div>
   <div class="campo"><label for="ext-nome">Nome</label>
-    <input id="ext-nome" name="nome" required></div>
+    <input id="ext-nome" name="nome" required value="{{ ed.nome or '' }}"></div>
   <div class="linha-campos">
     <div class="campo"><label for="ext-vinculo">Vínculo</label>
       <select id="ext-vinculo" name="vinculo">
         {% for v in vinculos %}
-        <option value="{{ v }}">{{ rotulo_vinculo[v] }}</option>
+        <option value="{{ v }}"{{ ui.sel(ed.vinculo, v) }}>{{ rotulo_vinculo[v] }}</option>
         {% endfor %}
       </select></div>
     <div class="campo"><label for="ext-org">Organização</label>
-      <input id="ext-org" name="organizacao" placeholder="empresa contratada, curso…"></div>
+      <input id="ext-org" name="organizacao" placeholder="empresa contratada, curso…"
+             value="{{ ed.organizacao or '' }}"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="ext-email">E-mail</label>
-      <input id="ext-email" name="email"></div>
+      <input id="ext-email" name="email" value="{{ ed.email or '' }}"></div>
     <div class="campo"><label for="ext-matricula">Matrícula ou nº do contrato</label>
-      <input id="ext-matricula" name="matricula_externa" aria-describedby="dica-matricula">
+      <input id="ext-matricula" name="matricula_externa" aria-describedby="dica-matricula"
+             value="{{ ed.matricula_externa or '' }}">
       <span class="dica atencao" id="dica-matricula">Opcional; nunca CPF nem RG.</span></div>
   </div>
   <div class="campo"><label for="ext-cpf">CPF (só se o certificado exigir)</label>

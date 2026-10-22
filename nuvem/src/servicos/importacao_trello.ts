@@ -501,6 +501,18 @@ function nome_do_erro(erro: unknown): string {
   return erro instanceof Error ? erro.name || "Error" : "Error";
 }
 
+/**
+ * O JSON tem a forma do export do quadro? `cards` e `lists` são as duas listas
+ * que o Trello sempre manda (vazias num quadro vazio, mas presentes). Sem elas
+ * a carga simulava "0 cartões" — e quem mandou o arquivo errado lia isso como
+ * "o quadro está vazio".
+ */
+export function parece_export_do_trello(dados: unknown): boolean {
+  if (dados === null || typeof dados !== "object" || Array.isArray(dados)) return false;
+  const d = dados as Record<string, unknown>;
+  return Array.isArray(d.cards) && Array.isArray(d.lists);
+}
+
 export async function importar(
   tx: Executor,
   dados: Json,

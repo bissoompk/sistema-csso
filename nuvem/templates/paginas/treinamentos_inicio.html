@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Certificados e Treinamentos · CSSO{% endblock %}
+
+{# A porta de entrada de quem opera o módulo (o "Centro de Certificações e
+   Inscrições" do IntegraSST). Um bloco só de cartões, na ordem do trabalho e
+   numerados sem buraco pelo que o perfil abre (`hub_treinamentos.cartoes`);
+   os nomes são os do menu. Cada cartão leva à tela e diz quanto espera nela,
+   com as mesmas contagens das telas de destino. #}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="hub-titulo">
+    <h1>{{ ui.icone('award-fill') }} Certificados e Treinamentos</h1>
+    <div class="ao-lado">
+      {% if usuario.pode('turma.criar') %}
+      <a class="botao redondo" href="/turmas#nova-turma">{{ ui.icone('plus-circle') }} Abrir turma</a>
+      {% endif %}
+    </div>
+  </div>
+  <p class="sub">Do catálogo ao certificado, na ordem do trabalho: o treinamento, a
+    turma, a presença e a nota, a emissão e a reciclagem. Cada cartão diz quanto espera nele.</p>
+
+  <div class="acoes-hub">
+    {% for x in cartoes %}
+    <a class="acao-hub {{ x.cor }}" href="{{ x.href }}">
+      {{ ui.icone(x.icone) }}
+      <strong>{{ x.numero }}. {{ x.titulo }}</strong>
+      <span>{{ x.descricao }}</span>
+      {% if x.contagem %}<span class="contagem {{ x.contagem.classe }}">{{ x.contagem.texto }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  <h2 class="secao-hub">{{ ui.icone('calendar-event') }} Próximas turmas</h2>
+  {% if r.proximas|length %}
+  <div class="tabela-cartao">
+    <table>
+      <thead><tr><th>Turma</th><th>Treinamento</th><th>Período</th><th>Local</th><th>Situação</th></tr></thead>
+      <tbody>
+      {% for t in r.proximas %}
+      <tr>
+        <td><a class="mono" href="/turmas/{{ t.id }}">{{ t.codigo }}</a></td>
+        <td>{{ t.treinamento }}</td>
+        <td class="mono">{{ t.data_inicio|data }}{% if t.data_fim != t.data_inicio %} a {{ t.data_fim|data }}{% endif %}</td>
+        <td>{{ t.local or '—' }}</td>
+        <td>{{ ui.pilula_turma(t.situacao) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="vazio"><strong>Nenhuma turma por vir.</strong>
+    <span>Planejadas, com inscrição aberta ou em andamento aparecem aqui.</span></div>
+  {% endif %}
+
+</div>
+{% endblock %}

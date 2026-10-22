@@ -8,6 +8,11 @@
    chamada como lista de toque.
    ===================================================================== */
 .conteudo.celular { max-width: 560px; margin: 0 auto; padding: 12px 14px 40px; }
+/* A barra de abas e fixa embaixo e tem ~51px: sem esta reserva o rodape
+   institucional (versao, orgao) ficava escondido atras dela, e a ultima linha
+   do conteudo tambem, quando a pagina era curta. A reserva acompanha a area
+   segura do iPhone, como a propria barra. */
+body { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 .app-celular h1 { font-size: 22px; margin: 6px 0 4px; }
 .app-celular .sub { margin: 0 0 14px; color: var(--tinta-media); }
 
@@ -32,6 +37,10 @@
 }
 .cartao-inicio strong { font-size: 17px; }
 .cartao-inicio span { color: var(--tinta-media); font-size: 14px; }
+
+/* os atalhos do servidor: a grade de resumo, uma coluna, cartao de dedo */
+.atalhos-celular { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.atalhos-celular > .cartao-resumo { min-height: 64px; padding: 14px 16px; }
 
 /* campos maiores do que na mesa: 16px e o minimo que o iOS nao amplia */
 .app-celular input:not([type]), .app-celular input[type=search], .app-celular input[type=date],

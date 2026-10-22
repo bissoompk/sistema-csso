@@ -40,6 +40,7 @@
     "@types/nodemailer": "8.0.2",
     "@types/nunjucks": "^3.2.6",
     "@types/qrcode": "1.5.5",
+    "bootstrap-icons": "^1.11.3",
     "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

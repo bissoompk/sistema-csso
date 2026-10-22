@@ -238,6 +238,33 @@ export const ROTULO_ESTADO_TELA: Rotulos = {
   EM_RECURSO: 'Em recurso',
 };
 
+/**
+ * O caminho de volta, da trilha para a tela: o rotulo ASCII gravado na
+ * descricao do evento -> o mesmo estado com acento.
+ *
+ * A descricao do ESTADO_ALTERADO e texto encadeado por hash (`Em triagem ->
+ * Aguardando inspecao`), e por isso nao se reescreve. Quem acentua e a TELA, na
+ * hora de mostrar: troca cada rotulo ASCII conhecido pelo da tela e a seta
+ * `->` por `→`. O gravado continua o mesmo, e a conferencia da cadeia tambem.
+ *
+ * Os rotulos mais longos vem primeiro na troca: "Parecer pronto para
+ * assinatura" tem de casar antes de qualquer rotulo que fosse prefixo dele.
+ */
+export const ROTULO_TELA_DO_ASCII: Rotulos = Object.fromEntries(
+  Object.entries(ROTULO_ESTADO).map(([codigo, ascii]) => [ascii, ROTULO_ESTADO_TELA[codigo] ?? ascii]),
+);
+const _ASCII_POR_TAMANHO = Object.keys(ROTULO_TELA_DO_ASCII)
+  .filter((ascii) => ascii !== ROTULO_TELA_DO_ASCII[ascii])
+  .sort((a, b) => b.length - a.length);
+
+/** A descricao da trilha de estado como a tela a escreve (so a exibicao muda). */
+export function rotulo_tela_do_ascii(texto: string | null | undefined): string {
+  if (!texto) return texto ?? '';
+  let saida = texto.replaceAll(' -> ', ' → ');
+  for (const ascii of _ASCII_POR_TAMANHO) saida = saida.replaceAll(ascii, ROTULO_TELA_DO_ASCII[ascii]!);
+  return saida;
+}
+
 // Incisos do art. 11 da IN 15/2022 - obrigatorio ao indeferir tecnicamente
 export const INCISOS_ART11: Rotulos = {
   I: 'exposicao eventual, sem a excecao do art. 9o, paragrafo unico',
@@ -437,6 +464,16 @@ export const ROTULO_TURMA: Rotulos = {
   INSCRICOES_ABERTAS: 'Inscricoes abertas',
   EM_ANDAMENTO: 'Em andamento',
   CONCLUIDA: 'Concluida',
+  CANCELADA: 'Cancelada',
+};
+
+// O de cima entra na descricao da trilha (texto conferido por digest) e nao
+// muda; este e o que a pessoa le nas mensagens e nas telas. Mesmas chaves.
+export const ROTULO_TURMA_TELA: Rotulos = {
+  PLANEJADA: 'Planejada',
+  INSCRICOES_ABERTAS: 'Inscrições abertas',
+  EM_ANDAMENTO: 'Em andamento',
+  CONCLUIDA: 'Concluída',
   CANCELADA: 'Cancelada',
 };
 
@@ -685,25 +722,52 @@ export function exigir_transicao(origem: string, destino: string, curto = false)
  * SOBRESTADO, que a tela oferece a parte. Os requisitos de saida NAO entram
  * aqui (dependem de anexo); quem confere e o servico, ao mover.
  */
-export function destinos_do_processo(origem: string, curto = false): string[] {
+export function destinos_do_processo(
+  origem: string,
+  curto = false,
+  evitar: ReadonlySet<string> = VAZIO,
+): string[] {
   const diretos = saidas_do_processo(origem, curto);
   return ESTADOS_PROCESSO.filter(
     (e) =>
       e !== origem &&
       e !== 'SOBRESTADO' &&
-      (diretos.has(e) || (!curto && caminhos_de_avanco(origem, e).length > 0)),
+      !evitar.has(e) &&
+      (diretos.has(e) || (!curto && caminhos_de_avanco(origem, e, evitar).length > 0)),
   );
 }
+
+/** So os passos DIRETOS da maquina (o "proximo passo" da ficha), sem SOBRESTADO. */
+export function passos_diretos(origem: string, curto = false, evitar: ReadonlySet<string> = VAZIO): string[] {
+  const diretos = saidas_do_processo(origem, curto);
+  return ESTADOS_PROCESSO.filter((e) => e !== origem && e !== 'SOBRESTADO' && !evitar.has(e) && diretos.has(e));
+}
+
+// Os estados do parecer: so o PROPRIO parecer leva o processo ate eles (emitido
+// -> pronto para assinatura; assinado -> parecer assinado, `acompanhar_parecer`).
+// A mao, entra-se neles so quando o documento ja existe — e o servico confere.
+export const ESTADOS_DO_PARECER: ReadonlySet<string> = conjunto(
+  'PARECER_PRONTO_P_ASSINATURA',
+  'PARECER_ASSINADO',
+);
 
 /**
  * Os caminhos de AVANCO de `origem` ate `destino` na cadeia longa, do mais
  * curto ao mais longo. O primeiro passo e qualquer transicao admitida (sair de
  * PENDENTE_DOCUMENTO pela triagem, por exemplo); dali em diante, so para a
  * frente na `CADEIA_ADICIONAL`. Vazio quando nao ha salto possivel.
+ *
+ * `evitar`: estados que o caminho nao pode tocar, nem como destino nem de
+ * passagem — os do parecer cujo documento ainda nao existe (ver
+ * `ESTADOS_DO_PARECER`).
  */
-export function caminhos_de_avanco(origem: string, destino: string): string[][] {
+export function caminhos_de_avanco(
+  origem: string,
+  destino: string,
+  evitar: ReadonlySet<string> = VAZIO,
+): string[][] {
   const alvo = CADEIA_ADICIONAL.indexOf(destino);
-  if (alvo < 0 || origem === destino) return [];
+  if (alvo < 0 || origem === destino || evitar.has(destino)) return [];
   const achados: string[][] = [];
   const andar = (atual: string, caminho: string[]) => {
     if (atual === destino) {
@@ -713,7 +777,7 @@ export function caminhos_de_avanco(origem: string, destino: string): string[][] 
     const i = CADEIA_ADICIONAL.indexOf(atual);
     for (const proximo of saidas_de(TRANSICOES, atual)) {
       const j = CADEIA_ADICIONAL.indexOf(proximo);
-      if (j < 0 || j > alvo || caminho.includes(proximo)) continue;
+      if (j < 0 || j > alvo || caminho.includes(proximo) || evitar.has(proximo)) continue;
       if (i >= 0 && j <= i) continue;
       andar(proximo, [...caminho, proximo]);
     }
@@ -785,24 +849,29 @@ const CANDIDATOS_DA_COLUNA_CURTA: Readonly<Record<string, readonly string[]>> = 
  * da coluna que seja passo direto; senao, na cadeia longa, o mais proximo
  * adiante (salto). `null` quando a coluna nao e destino para esta maquina.
  */
-export function estado_para_coluna(origem: string, coluna: string, curto = false): string | null {
+export function estado_para_coluna(
+  origem: string,
+  coluna: string,
+  curto = false,
+  evitar: ReadonlySet<string> = VAZIO,
+): string | null {
   const tabela = curto ? CANDIDATOS_DA_COLUNA_CURTA : CANDIDATOS_DA_COLUNA;
   const candidatos = (Object.hasOwn(tabela, coluna) ? tabela[coluna]! : []).filter(
-    (e) => e !== origem && coluna_de(e, curto) === coluna,
+    (e) => e !== origem && coluna_de(e, curto) === coluna && !evitar.has(e),
   );
   const direto = candidatos.find((e) => pode_transitar(origem, e, curto));
   if (direto) return direto;
   if (curto) return null;
   const adiante = candidatos
-    .filter((e) => caminhos_de_avanco(origem, e).length > 0)
+    .filter((e) => caminhos_de_avanco(origem, e, evitar).length > 0)
     .sort((a, b) => CADEIA_ADICIONAL.indexOf(a) - CADEIA_ADICIONAL.indexOf(b));
   return adiante[0] ?? null;
 }
 
 /** As colunas do quadro para onde o cartao pode ir (o menu "mover para..."). */
-export function colunas_destino(origem: string, curto = false): string[] {
+export function colunas_destino(origem: string, curto = false, evitar: ReadonlySet<string> = VAZIO): string[] {
   return COLUNAS_KANBAN.map(([codigo]) => codigo).filter(
-    (codigo) => codigo !== coluna_de(origem, curto) && estado_para_coluna(origem, codigo, curto) !== null,
+    (codigo) => codigo !== coluna_de(origem, curto) && estado_para_coluna(origem, codigo, curto, evitar) !== null,
   );
 }
 

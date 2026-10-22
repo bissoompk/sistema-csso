@@ -23,13 +23,17 @@
  * gravação — e a recusa sobe como exceção para a rota devolver o formulário com
  * o que foi digitado.
  */
-import { and, asc, eq, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, or, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   agora_utc,
+  atribuicao,
   demanda as tabela_demanda,
   demanda_encaminhamento,
   pendencia as tabela_pendencia,
+  perfil,
+  perfil_permissao,
+  permissao,
   processo as tabela_processo,
   servidor as tabela_servidor,
   usuario as tabela_usuario,
@@ -42,6 +46,7 @@ import {
   exigir_transicao_demanda,
 } from "../dominio/estados.js";
 import { RegraViolada } from "../nucleo/erros.js";
+import { exigir_ate_hoje, exigir_ordem } from "./datas_br.js";
 import * as auditoria from "./auditoria.js";
 import * as pendencias from "./pendencias.js";
 import * as textos from "./textos.js";
@@ -123,6 +128,52 @@ export async function _sincronizar_pendencia(
   await tx.update(tabela_pendencia).set(campos).where(eq(tabela_pendencia.id, existente.id));
   Object.assign(existente, campos);
   return existente;
+}
+
+// ---------------------------------------------------------------------
+// Quem pode ser responsável
+// ---------------------------------------------------------------------
+/**
+ * Quem pode receber uma demanda: conta ativa que ABRE a tela de demandas.
+ *
+ * O filtro é por `demanda.ver` — tarefa com dono que o dono não consegue abrir
+ * é lista que ninguém lê —, e não por `demanda.registrar`: quem lê a fila pode
+ * ser dono do acompanhamento. A vigência da atribuição entra na consulta.
+ *
+ * É a lista do seletor da tela E a regra do POST: o mesmo critério nos dois
+ * lugares, para o formulário forjado não entregar a demanda a quem recebe 403.
+ */
+export async function pessoas_que_recebem(tx: Executor) {
+  const hoje = hoje_iso();
+  const com_a_permissao = tx
+    .select({ id: atribuicao.usuario_id })
+    .from(atribuicao)
+    .innerJoin(perfil, eq(perfil.id, atribuicao.perfil_id))
+    .innerJoin(perfil_permissao, eq(perfil_permissao.perfil_id, perfil.id))
+    .innerJoin(permissao, eq(permissao.id, perfil_permissao.permissao_id))
+    .where(
+      and(
+        eq(perfil.ativo, true),
+        eq(permissao.codigo, PERMISSAO_VER),
+        lte(atribuicao.vigencia_inicio, hoje),
+        or(isNull(atribuicao.vigencia_fim), gte(atribuicao.vigencia_fim, hoje)),
+      ),
+    );
+  return tx
+    .select()
+    .from(tabela_usuario)
+    .where(and(eq(tabela_usuario.ativo, true), inArray(tabela_usuario.id, com_a_permissao)))
+    .orderBy(asc(tabela_usuario.nome));
+}
+
+export const RECUSA_RESPONSAVEL =
+  "Escolha o responsável na lista: só quem abre a tela de demandas pode ser dono de uma.";
+
+/** O responsável escolhido está na lista de quem pode receber — ou a recusa. */
+async function _exigir_responsavel(tx: Executor, responsavel_id: number | null | undefined): Promise<void> {
+  if (responsavel_id === null || responsavel_id === undefined) return;
+  const ids = (await pessoas_que_recebem(tx)).map((p) => p.id);
+  if (!ids.includes(responsavel_id)) throw new RegraDaDemanda(RECUSA_RESPONSAVEL);
 }
 
 // ---------------------------------------------------------------------
@@ -209,10 +260,18 @@ export async function registrar(tx: Executor, usuario: UsuarioAtual, d: DadosReg
   solicitante ??= SOLICITANTE_NAO_IDENTIFICADO;
   const descricao = _limpar(d.descricao, "descrição da demanda", ok);
 
+  // A chegada é fato ocorrido: não passa de hoje. O prazo é planejado — pode
+  // ser futuro, e até já vencido numa demanda registrada com atraso —, mas não
+  // vem antes da chegada.
+  const data_chegada = d.data_chegada || hoje_iso();
+  exigir_ate_hoje(data_chegada, "A data de chegada");
+  if (d.prazo) exigir_ordem(data_chegada, d.prazo, "Data de chegada", "O prazo");
+  if (d.responsavel_id) await _exigir_responsavel(tx, d.responsavel_id);
+
   const [demanda] = await tx
     .insert(tabela_demanda)
     .values({
-      data_chegada: d.data_chegada || hoje_iso(),
+      data_chegada,
       canal: d.canal,
       solicitante_nome: solicitante,
       solicitante_servidor_id: d.solicitante_servidor_id ?? null,
@@ -258,6 +317,7 @@ export async function atribuir(
   if (demanda.estado === "ENCERRADA") throw new RegraDaDemanda("Demanda encerrada não muda de responsável.");
   const anterior = demanda.responsavel_id;
   if (anterior === responsavel_id) return demanda;
+  await _exigir_responsavel(tx, responsavel_id);
   await _gravar(tx, demanda, { responsavel_id });
   await auditoria.registrar(tx, {
     entidade: "demanda",
@@ -334,11 +394,16 @@ export async function encaminhar(
     );
   }
 
+  // o encaminhamento é fato ocorrido, entre a chegada e hoje
+  const data_encaminhamento = d.data_encaminhamento || hoje_iso();
+  exigir_ate_hoje(data_encaminhamento, "A data do encaminhamento");
+  exigir_ordem(demanda.data_chegada, data_encaminhamento, "Data de chegada", "A data do encaminhamento");
+
   const [encaminhamento] = await tx
     .insert(demanda_encaminhamento)
     .values({
       demanda_id: demanda.id,
-      data_encaminhamento: d.data_encaminhamento || hoje_iso(),
+      data_encaminhamento,
       para_quem: destino,
       pedido: texto,
       registrado_por: usuario.id,
@@ -424,6 +489,9 @@ export async function encerrar(
       );
     }
     data_desfecho = data_desfecho || hoje_iso();
+    // o desfecho aconteceu: entre a chegada da demanda e hoje
+    exigir_ate_hoje(data_desfecho, "A data do encaminhamento");
+    exigir_ordem(demanda.data_chegada, data_desfecho, "Data de chegada", "A data do encaminhamento");
   }
   // RESOLVIDA dispensa o relato (o banco guarda a frase-padrão); "sem
   // providência" continua pedindo o motivo — é decisão de não fazer.

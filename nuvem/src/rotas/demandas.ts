@@ -10,22 +10,17 @@
  * desfecho `VIROU_PROCESSO`.
  */
 import { Hono } from "hono";
-import { and, asc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { desfazer } from "../nucleo/contexto.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import {
-  atribuicao,
   demanda as tabela_demanda,
-  perfil,
-  perfil_permissao,
-  permissao,
   processo as tabela_processo,
   servidor as tabela_servidor,
   tipo_processo,
   unidade_uorg,
-  usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import type { Executor } from "../db/cliente.js";
 import { hoje_iso } from "../dominio/datas.js";
@@ -38,6 +33,7 @@ import {
   ROTULO_DESFECHO_DEMANDA,
   TransicaoInvalida,
 } from "../dominio/estados.js";
+import { ler_data_formulario } from "../servicos/datas_br.js";
 import * as servico from "../servicos/demandas.js";
 import * as servico_nup from "../servicos/nup.js";
 import * as servico_processo from "../servicos/processo.js";
@@ -70,33 +66,11 @@ export function _voltar(c: Ctx, destino: string, recado: { mensagem?: string; er
 }
 
 /**
- * Quem pode receber uma demanda: conta ativa que ABRE a tela de demandas.
- *
- * O filtro é por `demanda.ver` — tarefa com dono que o dono não consegue abrir
- * é lista que ninguém lê —, e não por `demanda.registrar`: quem lê a fila pode
- * ser dono do acompanhamento. A vigência da atribuição entra na consulta.
+ * Quem pode receber uma demanda — a regra mora no serviço
+ * (`pessoas_que_recebem`), que a usa também para recusar o POST forjado.
  */
 export async function _pessoas(tx: Executor) {
-  const hoje = hoje_iso();
-  const com_a_permissao = tx
-    .select({ id: atribuicao.usuario_id })
-    .from(atribuicao)
-    .innerJoin(perfil, eq(perfil.id, atribuicao.perfil_id))
-    .innerJoin(perfil_permissao, eq(perfil_permissao.perfil_id, perfil.id))
-    .innerJoin(permissao, eq(permissao.id, perfil_permissao.permissao_id))
-    .where(
-      and(
-        eq(perfil.ativo, true),
-        eq(permissao.codigo, servico.PERMISSAO_VER),
-        lte(atribuicao.vigencia_inicio, hoje),
-        or(isNull(atribuicao.vigencia_fim), gte(atribuicao.vigencia_fim, hoje)),
-      ),
-    );
-  return tx
-    .select()
-    .from(tabela_usuario)
-    .where(and(eq(tabela_usuario.ativo, true), inArray(tabela_usuario.id, com_a_permissao)))
-    .orderBy(asc(tabela_usuario.nome));
+  return servico.pessoas_que_recebem(tx);
 }
 
 /** A demanda com o que a tela lê dela, e o `atrasada(hoje)` do modelo. */
@@ -135,7 +109,7 @@ async function _tela_lista(
   extra: Recado = {},
 ) {
   const tx = c.get("tx");
-  const estado = filtro.estado ?? "";
+  const estado = _visao(filtro.estado);
   const minhas = filtro.minhas ?? "";
   const q = filtro.q ?? "";
   let lista = await servico.listar(tx, {
@@ -168,7 +142,11 @@ async function _tela_lista(
     rotulo_canal: ROTULO_CANAL_DEMANDA,
     rotulo_estado_demanda: ROTULO_DEMANDA,
     rotulo_desfecho: ROTULO_DESFECHO_DEMANDA,
-    servidores: await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.id)),
+    // quem não vê nome digita o SIAPE (M65): a lista de códigos opacos nem vai
+    servidores: usuario.ve_dado_nominal
+      ? await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.id))
+      : [],
+    escolhe_por_siape: !usuario.ve_dado_nominal,
     unidades: await tx.select().from(unidade_uorg).orderBy(asc(unidade_uorg.nome_extenso)),
     pessoas: await _pessoas(tx),
     pode_escrever: usuario.pode(servico.PERMISSAO_ESCREVER),
@@ -209,21 +187,40 @@ export function _id(bruto: string | null | undefined): number | null {
   return bruto && /^\d+$/.test(bruto) ? Number(bruto) : null;
 }
 
-/** `<input type=date>` manda AAAA-MM-DD ou vazio. Vazio é ausência, não erro. */
-export function _data(bruto: string | null | undefined): string | null {
-  const texto = (bruto ?? "").trim();
-  if (!texto) return null;
-  const dia = texto.slice(0, 10);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dia);
-  let valida = false;
-  if (m) {
-    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-    valida =
-      d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+/**
+ * `<input type=date>` manda AAAA-MM-DD ou vazio; o celular e a extensão que
+ * cola às vezes mandam dd/mm/aaaa. Vazio é ausência, não erro; o resto passa
+ * por `ler_data_formulario`, que recusa com o rótulo do campo em português.
+ */
+export function _data(bruto: string | null | undefined, rotulo: string): string | null {
+  return ler_data_formulario(bruto, rotulo);
+}
+
+/** O código da ficha de filtro — e o estado desconhecido cai em "Em aberto". */
+export function _visao(bruto: string | null | undefined): string {
+  const codigo = (bruto ?? "").trim();
+  return VISOES.some(([c]) => c === codigo) ? codigo : "";
+}
+
+/**
+ * M65: quem não vê nome escolhe o servidor do cadastro pelo SIAPE — um select
+ * de "SRV-xxxx" não deixa escolher ninguém. O SIAPE casa para todo mundo
+ * (mesma regra da busca de /servidores, `casa_a_busca`), então conferir que ele
+ * existe não é oráculo de nome. Vazio é "sem vínculo".
+ */
+async function _servidor_do_siape(tx: Executor, bruto: string | null | undefined): Promise<number | null> {
+  const siape = (bruto ?? "").replace(/\D/g, "");
+  if (!(bruto ?? "").trim()) return null;
+  if (!/^\d{7}$/.test(siape)) {
+    throw new servico.RegraDaDemanda("SIAPE do servidor: são 7 dígitos. Deixe em branco se quem pediu não é do cadastro.");
   }
-  // o `date.fromisoformat` do Python levanta ValueError, que a rota devolve à tela
-  if (!valida) throw new RegraViolada(`Invalid isoformat string: '${dia}'`);
-  return dia;
+  const [srv] = await tx.select({ id: tabela_servidor.id }).from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
+  if (!srv) {
+    throw new servico.RegraDaDemanda(
+      `Não há servidor com o SIAPE ${siape} no cadastro. Confira o número, ou deixe em branco e escreva quem demandou.`,
+    );
+  }
+  return srv.id;
 }
 
 /** As recusas que voltam à tela (o `except (RegraDaDemanda, TextoProibido, ValueError, TransicaoInvalida)`). */
@@ -287,7 +284,7 @@ rotas.get("/demandas", async (c) => {
 
 rotas.post("/demandas", async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir(servico.PERMISSAO_VER);
+  usuario.exigir(servico.PERMISSAO_ESCREVER);
   const f = await formulario(c);
   // Tudo o que foi digitado, guardado ANTES da primeira recusa.
   const d: Digitado = {
@@ -297,6 +294,7 @@ rotas.post("/demandas", async (c) => {
     data_chegada: f.texto("data_chegada"),
     descricao: f.texto("descricao"),
     solicitante_servidor_id: f.texto("solicitante_servidor_id"),
+    solicitante_siape: f.texto("solicitante_siape"),
     solicitante_unidade_uorg_id: f.texto("solicitante_unidade_uorg_id"),
     responsavel_id: f.texto("responsavel_id"),
     prazo: f.texto("prazo"),
@@ -305,16 +303,19 @@ rotas.post("/demandas", async (c) => {
   const tx = c.get("tx");
   let demanda: servico.Demanda;
   try {
+    const solicitante_servidor_id = usuario.ve_dado_nominal
+      ? _id(d.solicitante_servidor_id)
+      : await _servidor_do_siape(tx, d.solicitante_siape);
     demanda = await servico.registrar(tx, usuario, {
       assunto: d.assunto!,
       canal: d.canal!,
       solicitante_nome: d.solicitante_nome!,
-      data_chegada: _data(d.data_chegada),
+      data_chegada: _data(d.data_chegada, "Data de chegada"),
       descricao: d.descricao,
-      solicitante_servidor_id: _id(d.solicitante_servidor_id),
+      solicitante_servidor_id,
       solicitante_unidade_uorg_id: _id(d.solicitante_unidade_uorg_id),
       responsavel_id: _id(d.responsavel_id),
-      prazo: _data(d.prazo),
+      prazo: _data(d.prazo, "Prazo"),
       confirmo_mencao_saude: d.confirmo_mencao_saude === "1",
     });
   } catch (falha) {
@@ -337,17 +338,21 @@ rotas.get("/demandas/:id{[0-9]+}", async (c) => {
   return _tela_ficha(c, usuario, id, { mensagem: c.req.query("mensagem") ?? null, erro: c.req.query("erro") ?? null });
 });
 
-/** O começo comum dos quatro POSTs da ficha: a demanda, ou o recado de que ela não existe. */
-async function _alvo(c: Ctx, usuario: UsuarioAtual) {
+/**
+ * O começo comum dos quatro POSTs da ficha: a demanda, ou o recado de que ela
+ * não existe. A permissão de escrita já foi exigida na primeira linha de cada
+ * POST — antes do formulário e de qualquer consulta (D77).
+ */
+async function _alvo(c: Ctx) {
   const id = Number(c.req.param("id"));
   const demanda = await _demanda(c.get("tx"), id);
-  if (!demanda) usuario.exigir(servico.PERMISSAO_VER);
   return { id, demanda };
 }
 
 rotas.post("/demandas/:id{[0-9]+}/iniciar", async (c) => {
   const usuario = await usuarioLogado(c);
-  const { id, demanda } = await _alvo(c, usuario);
+  usuario.exigir(servico.PERMISSAO_ESCREVER);
+  const { id, demanda } = await _alvo(c);
   if (!demanda) return _voltar(c, "/demandas", { erro: "Demanda não encontrada." });
   try {
     await servico.iniciar(c.get("tx"), usuario, demanda);
@@ -361,8 +366,9 @@ rotas.post("/demandas/:id{[0-9]+}/iniciar", async (c) => {
 
 rotas.post("/demandas/:id{[0-9]+}/atribuir", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(servico.PERMISSAO_ESCREVER);
   const f = await formulario(c);
-  const { id, demanda } = await _alvo(c, usuario);
+  const { id, demanda } = await _alvo(c);
   if (!demanda) return _voltar(c, "/demandas", { erro: "Demanda não encontrada." });
   try {
     await servico.atribuir(c.get("tx"), usuario, demanda, _id(f.texto("responsavel_id")));
@@ -376,8 +382,9 @@ rotas.post("/demandas/:id{[0-9]+}/atribuir", async (c) => {
 
 rotas.post("/demandas/:id{[0-9]+}/encaminhar", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(servico.PERMISSAO_ESCREVER);
   const f = await formulario(c);
-  const { id, demanda } = await _alvo(c, usuario);
+  const { id, demanda } = await _alvo(c);
   if (!demanda) return _voltar(c, "/demandas", { erro: "Demanda não encontrada." });
   const d: Digitado = {
     forma: "encaminhar",
@@ -389,7 +396,7 @@ rotas.post("/demandas/:id{[0-9]+}/encaminhar", async (c) => {
     await servico.encaminhar(c.get("tx"), usuario, demanda, {
       para_quem: d.para_quem!,
       pedido: d.pedido!,
-      data_encaminhamento: _data(d.data_encaminhamento),
+      data_encaminhamento: _data(d.data_encaminhamento, "Data do encaminhamento"),
       confirmo_mencao_saude: f.texto("confirmo_mencao_saude") === "1",
     });
   } catch (falha) {
@@ -402,8 +409,9 @@ rotas.post("/demandas/:id{[0-9]+}/encaminhar", async (c) => {
 
 rotas.post("/demandas/:id{[0-9]+}/encerrar", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir(servico.PERMISSAO_ESCREVER);
   const f = await formulario(c);
-  const { id, demanda } = await _alvo(c, usuario);
+  const { id, demanda } = await _alvo(c);
   if (!demanda) return _voltar(c, "/demandas", { erro: "Demanda não encontrada." });
   const tx = c.get("tx");
   const d: Digitado = {
@@ -443,7 +451,9 @@ rotas.post("/demandas/:id{[0-9]+}/encerrar", async (c) => {
       relato: d.relato,
       processo_id,
       setor: d.setor,
-      data_desfecho: _data(d.data_desfecho),
+      // a data só vale para "encaminhada" (é a do encaminhamento); nos outros
+      // desfechos o campo nem é lido — data errada ali não recusa nada
+      data_desfecho: d.desfecho === "ENCAMINHADA" ? _data(d.data_desfecho, "Data do encaminhamento") : null,
       confirmo_mencao_saude: confirmado,
     });
   } catch (falha) {

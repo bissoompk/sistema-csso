@@ -4,7 +4,7 @@
  * (`servicos/pendencias.ts`); esta rota só o chama.
  */
 import { Hono } from "hono";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { ErroHttp } from "../nucleo/erros.js";
 import { formulario, usuarioCom, usuarioLogado } from "../dependencias.js";
@@ -16,7 +16,7 @@ import { ParecerTecnico } from "../dominio/processo.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as direito from "../servicos/direito.js";
 import * as servico_pendencias from "../servicos/pendencias.js";
-import { aplicar_escopo } from "../servicos/rbac.js";
+import { ESCOPO_PROPRIO, aplicar_escopo } from "../servicos/rbac.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -25,7 +25,7 @@ function _voltar(c: Ctx, destino: string, o: { mensagem?: string; erro?: string 
   const p = new URLSearchParams();
   if (o.mensagem) p.set("mensagem", o.mensagem);
   if (o.erro) p.set("erro", o.erro);
-  const sufixo = p.toString() ? `?${p.toString()}` : "";
+  const sufixo = p.toString() ? `${destino.includes("?") ? "&" : "?"}${p.toString()}` : "";
   return redirecionar(c, destino + sufixo);
 }
 
@@ -35,8 +35,8 @@ function _id(c: Ctx, nome: string): number {
   return Number(v);
 }
 
-function _data(v: string | null, nome: string): string {
-  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new ErroHttp(422, `Campo obrigatório ausente ou inválido: ${nome}`);
+function _data(v: string | null, rotulo: string): string {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new ErroHttp(422, `Informe uma data válida em “${rotulo}”.`);
   return v;
 }
 
@@ -91,6 +91,10 @@ rotas.get("/adicionais", async (c) => {
     motivos: dicionario(direito.MOTIVOS_SUSPENSAO),
     lacunas: dicionario(lacunas),
     filtro_estado: estado,
+    // O titular (escopo próprio) vê o PRÓPRIO adicional: um cartão com a frase
+    // inteira, e não a tabela de gestão com filtros de estado e uma coluna de
+    // ações vazia para uma linha só.
+    vista_do_titular: usuario.escopo === ESCOPO_PROPRIO,
     hoje: datas_br.hoje(),
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
@@ -119,8 +123,11 @@ async function _tentar(c: Ctx, acao: () => Promise<unknown>, sucesso: string): P
   return _voltar(c, "/adicionais", { mensagem: sucesso });
 }
 
+// Toda ação desta tela pede `parecer.emitir`, e pede na PRIMEIRA linha: quem não
+// a tem recebe 403, e não um 422 sobre um campo do formulário que ele nem
+// deveria ver. O serviço confere de novo — é ele a regra.
 rotas.post("/adicionais/propor/:parecer_id{[0-9]+}", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "parecer.emitir");
   const tx = c.get("tx");
   const parecer = await tx.query.parecer_tecnico.findFirst({
     // o escopo da leitura vale para a escrita: parecer fora dele "não existe"
@@ -132,6 +139,13 @@ rotas.post("/adicionais/propor/:parecer_id{[0-9]+}", async (c) => {
     },
   });
   if (!parecer) return _voltar(c, "/adicionais", { erro: "Parecer não encontrado." });
+  // O serviço devolve o direito que já existe sem criar outro (é idempotente);
+  // a frase é que não pode dizer "proposto" de novo — nada foi proposto agora.
+  const [ja] = await tx
+    .select({ id: adicional_vigencia.id })
+    .from(adicional_vigencia)
+    .where(eq(adicional_vigencia.parecer_id, parecer.id));
+  if (ja) return _voltar(c, "/adicionais", { erro: "Este parecer já tem direito registrado." });
   try {
     await direito.propor(tx, parecer, usuario);
   } catch (falha) {
@@ -142,23 +156,23 @@ rotas.post("/adicionais/propor/:parecer_id{[0-9]+}", async (c) => {
 });
 
 rotas.post("/adicionais/:vigencia_id{[0-9]+}/conceder", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "parecer.emitir");
   const f = await formulario(c);
-  if (!f.tem("portaria_concessao")) throw new ErroHttp(422, "Campo obrigatório ausente: portaria_concessao");
+  if (!f.tem("portaria_concessao")) throw new ErroHttp(422, "Informe a portaria de concessão.");
   const vigencia = await _vigencia(c);
   if (!vigencia) return _voltar(c, "/adicionais", { erro: "Adicional não encontrado." });
   const d = {
     portaria_concessao: f.texto("portaria_concessao"),
-    data_portaria: _data(f.opcional("data_portaria"), "data_portaria"),
-    data_inicio: _data(f.opcional("data_inicio"), "data_inicio"),
+    data_portaria: _data(f.opcional("data_portaria"), "Data da portaria"),
+    data_inicio: _data(f.opcional("data_inicio"), "Efeito financeiro a partir de"),
   };
   return _tentar(c, () => direito.conceder(c.get("tx"), vigencia, usuario, d), "Adicional em vigor.");
 });
 
 rotas.post("/adicionais/:vigencia_id{[0-9]+}/suspender", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "parecer.emitir");
   const f = await formulario(c);
-  if (!f.tem("motivo")) throw new ErroHttp(422, "Campo obrigatório ausente: motivo");
+  if (!f.tem("motivo")) throw new ErroHttp(422, "Escolha o motivo da suspensão.");
   const vigencia = await _vigencia(c);
   if (!vigencia) return _voltar(c, "/adicionais", { erro: "Adicional não encontrado." });
   return _tentar(
@@ -169,11 +183,16 @@ rotas.post("/adicionais/:vigencia_id{[0-9]+}/suspender", async (c) => {
 });
 
 rotas.post("/adicionais/:vigencia_id{[0-9]+}/cessar", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "parecer.emitir");
   const f = await formulario(c);
-  const data_fim = _data(f.opcional("data_fim"), "data_fim");
+  const data_fim = _data(f.opcional("data_fim"), "Data de término");
   const vigencia = await _vigencia(c);
   if (!vigencia) return _voltar(c, "/adicionais", { erro: "Adicional não encontrado." });
+  // A caixa de confirmação da camada vale também aqui: cessar não tem volta, e
+  // `required` no HTML não protege quem posta direto.
+  if (f.texto("ciente") !== "1") {
+    return _voltar(c, "/adicionais", { erro: "Marque “Confirmo a cessação deste adicional.” para cessar." });
+  }
   return _tentar(
     c,
     () => direito.cessar(c.get("tx"), vigencia, usuario, { data_fim, motivo: f.texto("motivo", "CESSACAO_RISCO") }),
@@ -182,19 +201,19 @@ rotas.post("/adicionais/:vigencia_id{[0-9]+}/cessar", async (c) => {
 });
 
 rotas.post("/adicionais/:vigencia_id{[0-9]+}/retomar", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "parecer.emitir");
   const f = await formulario(c);
-  const data_inicio = _data(f.opcional("data_inicio"), "data_inicio");
+  const data_inicio = _data(f.opcional("data_inicio"), "Vigente a partir de");
   const vigencia = await _vigencia(c);
   if (!vigencia) return _voltar(c, "/adicionais", { erro: "Adicional não encontrado." });
   return _tentar(c, () => direito.retomar(c.get("tx"), vigencia, usuario, data_inicio), "Adicional retomado.");
 });
 
 rotas.post("/adicionais/:vigencia_id{[0-9]+}/alterar", async (c) => {
-  const usuario = await usuarioLogado(c);
+  const usuario = await usuarioCom(c, "parecer.emitir");
   const f = await formulario(c);
   const percentual_id = f.inteiro("percentual_id");
-  if (percentual_id === null || !f.tem("motivo")) throw new ErroHttp(422, "Campo obrigatório ausente: percentual_id, motivo");
+  if (percentual_id === null || !f.tem("motivo")) throw new ErroHttp(422, "Escolha o novo percentual e escreva o motivo.");
   const vigencia = await _vigencia(c);
   if (!vigencia) return _voltar(c, "/adicionais", { erro: "Adicional não encontrado." });
   return _tentar(
@@ -214,13 +233,17 @@ rotas.get("/pendencias", async (c) => {
   const minhas = c.req.query("minhas") === "1";
   const hoje = datas_br.hoje();
   const abertas = await servico_pendencias.abertas(tx, usuario, minhas);
+  // As mais RECENTES primeiro: por id crescente a seção parava nas 30 primeiras
+  // conclusões da história, e as de hoje sumiam. O id desempata o mesmo instante.
   const concluidas_linhas = await tx
     .select()
     .from(pendencia)
     .where(and(eq(pendencia.concluida, true), servico_pendencias.no_escopo(usuario)))
-    .orderBy(asc(pendencia.id))
+    .orderBy(desc(pendencia.concluida_em), desc(pendencia.id))
     .limit(30);
-  const de_quem = await servico_pendencias.titular_de(tx, [...abertas, ...concluidas_linhas]);
+  // A frase (RN-19 já decidida) e o "onde" de cada linha — o mesmo serviço que
+  // a API usa, e por isso a mesma resposta nos dois lugares.
+  const leitura = await servico_pendencias.leitura(tx, usuario, [...abertas, ...concluidas_linhas]);
 
   // `atrasada` era método do modelo; a tela o chama como método.
   const responsaveis = new Map<number, { id: number; nome: string }>();
@@ -234,15 +257,13 @@ rotas.get("/pendencias", async (c) => {
     ...p,
     responsavel: p.responsavel_id !== null ? (responsaveis.get(p.responsavel_id) ?? null) : null,
     atrasada: (quando?: string) => servico_pendencias.atrasada(p, quando ?? hoje),
+    leitura: leitura.get(p.id)!,
   });
   const itens = abertas.map(vestir);
   return pagina(c, "paginas/pendencias.html", usuario, {
     pendencias: itens,
     concluidas: concluidas_linhas.map(vestir),
     tipos: servico_pendencias.TIPOS,
-    // De quem é o texto de cada linha, quando a âncora sabe dizer — é o que
-    // devolve ao TITULAR a leitura da própria tarefa.
-    de_quem: dicionario(de_quem),
     // o botão aparece pendência a pendência; esconder botão nunca foi a
     // checagem — a rota refaz a mesma conta
     concluiveis: abertas.filter((p) => servico_pendencias.pode_concluir(usuario, p)).map((p) => p.id),
@@ -255,18 +276,22 @@ rotas.get("/pendencias", async (c) => {
 
 rotas.post("/pendencias/:pendencia_id{[0-9]+}/concluir", async (c) => {
   const usuario = await usuarioLogado(c);
+  // 403 antes de qualquer leitura: quem não pode ver a tela não descobre por
+  // aqui quais ids existem
+  servico_pendencias.exigir_ver(usuario);
   const tx = c.get("tx");
+  const volta = c.req.query("minhas") === "1" ? "/pendencias?minhas=1" : "/pendencias";
+  // O escopo da leitura vale para a escrita: pendência fora dele "não existe",
+  // com a mesma frase da que não existe.
   const [p] = await tx
     .select()
     .from(pendencia)
-    .where(eq(pendencia.id, _id(c, "pendencia_id")));
-  if (!p) {
-    // 403 antes de 404: quem não pode ver a tela não descobre por aqui quais
-    // ids existem
-    servico_pendencias.exigir_ver(usuario);
-    return _voltar(c, "/pendencias", { erro: "Pendência não encontrada." });
-  }
+    .where(and(eq(pendencia.id, _id(c, "pendencia_id")), servico_pendencias.no_escopo(usuario)));
+  if (!p) return _voltar(c, volta, { erro: "Pendência não encontrada." });
   servico_pendencias.exigir_concluir(usuario, p);
+  // Concluir de novo não grava nada (o serviço já não regravava), e a resposta
+  // deixa de fingir que acabou de concluir.
+  if (p.concluida) return _voltar(c, volta, { mensagem: "Esta pendência já estava concluída." });
   await servico_pendencias.concluir(tx, p, usuario);
-  return _voltar(c, "/pendencias", { mensagem: "Pendência concluída." });
+  return _voltar(c, volta, { mensagem: "Pendência concluída." });
 });

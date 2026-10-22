@@ -11,9 +11,12 @@ import { carregarEnvLocal } from "./env-local.js";
 
 carregarEnvLocal();
 process.env.NODE_ENV ??= "development";
+// a porta vai para o ambiente: o link público e o QR do certificado sem
+// endereço declarado (`url_base_validacao`) apontam para ela, e não para outra
+process.env.PORTA = (process.env.PORTA ?? "").trim() || "8766";
 const { obterApp } = await import("../src/app.js");
 
-const porta = Number(process.env.PORTA ?? 8766);
+const porta = Number(process.env.PORTA);
 const raiz = new Hono();
 raiz.use("/estaticos/*", serveStatic({ root: "./public" }));
 // `fetch` do app inteiro, e não `raiz.route(...)`: montado como sub-app, o

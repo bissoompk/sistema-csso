@@ -9,7 +9,8 @@
     <div class="titulo">
       <h1>Indicadores de treinamento</h1>
       <p class="sub">
-        {%- if de and ate %}Turmas iniciadas de {{ de|data }} a {{ ate|data }}
+        {%- if invertido %}Intervalo inválido: a data inicial é posterior à final
+        {%- elif de and ate %}Turmas iniciadas de {{ de|data }} a {{ ate|data }}
         {%- elif de %}Turmas iniciadas a partir de {{ de|data }}
         {%- elif ate %}Turmas iniciadas até {{ ate|data }}
         {%- else %}Todas as turmas{% endif %}
@@ -30,29 +31,36 @@
     </div>
   </div>
 
-  <form method="get" action="/treinamentos/indicadores" class="fileira filtro-inline">
-    <label class="oculto" for="f-periodo">Período</label>
-    <select id="f-periodo" name="periodo">
-      {% for codigo, rotulo in periodos %}
-      <option value="{{ codigo }}"{{ ' selected' if codigo == periodo }}>{{ rotulo }}</option>
-      {% endfor %}
-    </select>
-    <label class="oculto" for="f-de">De</label>
-    <input id="f-de" type="date" name="de" value="{{ de if periodo == 'intervalo' else '' }}"
-           aria-describedby="dica-intervalo">
-    <label class="oculto" for="f-ate">Até</label>
-    <input id="f-ate" type="date" name="ate" value="{{ ate if periodo == 'intervalo' else '' }}">
-    <label class="oculto" for="f-setor">Setor promotor</label>
-    <select id="f-setor" name="setor">
-      <option value="">Setor promotor: todos</option>
-      {% for s in setores %}
-      <option value="{{ s.id }}"{{ ' selected' if setor == s.id|string }}>{{ s.nome }}{% if s.sigla %} ({{ s.sigla }}){% endif %}</option>
-      {% endfor %}
-    </select>
-    <button type="submit" class="secundario">Aplicar</button>
-    <span class="dica" id="dica-intervalo">As datas valem com “De… até…”.</span>
+  {# Os filtros numa linha só (`.filtros .linha-campos`); De e Até só aparecem
+     com “De… até…” (`data-mostra-quando`, csso.js) — sem JavaScript, à vista. #}
+  <form method="get" action="/treinamentos/indicadores" class="cartao filtros">
+    <div class="linha-campos">
+      <div><label for="f-periodo">Período</label>
+        <select id="f-periodo" name="periodo">
+          {% for codigo, rotulo in periodos %}
+          <option value="{{ codigo }}"{{ ' selected' if codigo == periodo }}>{{ rotulo }}</option>
+          {% endfor %}
+        </select></div>
+      <div data-mostra-quando="periodo=intervalo"><label for="f-de">De</label>
+        <input id="f-de" type="date" name="de" value="{{ de if periodo == 'intervalo' else '' }}"
+               {% if invertido %}class="com-erro" aria-invalid="true"{% endif %}></div>
+      <div data-mostra-quando="periodo=intervalo"><label for="f-ate">Até</label>
+        <input id="f-ate" type="date" name="ate" value="{{ ate if periodo == 'intervalo' else '' }}"
+               {% if invertido %}class="com-erro" aria-invalid="true"{% endif %}></div>
+      <div><label for="f-setor">Setor promotor</label>
+        <select id="f-setor" name="setor">
+          <option value="">Todos</option>
+          {% for s in setores %}
+          <option value="{{ s.id }}"{{ ' selected' if setor == s.id|string }}>{{ s.nome }}{% if s.sigla %} ({{ s.sigla }}){% endif %}</option>
+          {% endfor %}
+        </select></div>
+    </div>
+    <div class="acoes">
+      <button type="submit" class="secundario">Aplicar</button>
+    </div>
   </form>
 
+  {% if not invertido %}
   <div class="grade grade-kpi">
     <div class="kpi">
       <div class="rotulo">Turmas</div>
@@ -81,7 +89,7 @@
       <div class="rotulo">Certificados emitidos</div>
       <div class="medida"><span class="valor">{{ cartoes_pessoas.emitidos }}</span></div>
     </div>
-    <div class="kpi {% if r.pendentes %}alerta{% endif %}">
+    <div class="kpi {% if pendentes_em_alerta %}alerta{% endif %}">
       <div class="rotulo">Pendentes de emissão</div>
       <div class="medida"><span class="valor">{{ cartoes_pessoas.pendentes }}</span>
         <span class="nota">aprovados sem certificado</span></div>
@@ -114,6 +122,7 @@
       {{ ui.distribuicao(participantes_por_treinamento, limiar, 'Ninguém inscrito no período.') }}
     </section>
   </div>
+  {% endif %}
 
 </div>
 {% endblock %}

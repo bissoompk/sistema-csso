@@ -26,10 +26,19 @@
    chega, realça o que acabou de mudar e escreve a falha DENTRO do alvo — e
    vale para todo `hx-*` sem marcação nova. Foi ele que tornou isto barato.
 
-   **SEM JAVASCRIPT CONTINUA SENDO UM `<form method="post">`.** Os atributos
-   `hx-post`/`hx-target` são acréscimo: o `action` e o `method` continuam
-   escritos, e sem o htmx carregado o navegador envia o formulário e a rota
-   responde com o 303 de sempre. Nada do que existia foi trocado por script.
+   **A FOLHA INTEIRA NUM ENVIO (21/10/2026).** Cada célula era um trio — campo
+   de horas, "presente" e "falta" — e cada clique um envio: 30 pessoas × 2 dias,
+   60 envios no dia do curso. Agora a célula é UMA caixa por dia, dentro do
+   formulário da grade (`turma_ficha.html`, `#f-folha`), e um único "Salvar
+   folha" manda tudo para `presenca.salvar_folha`. A caixa marcada vale a carga
+   do dia (`horas_padrao`); as horas parciais de quem chegou atrasado continuam
+   existindo, num "ajustar" recolhido, porque a frequência é por hora e não por
+   dia. Dia que ainda não chegou sai com a caixa desligada — o serviço recusa do
+   mesmo jeito. Sem JavaScript é um `<form method="post">` comum.
+
+   As rotas de uma célula (`/presencas`, `/notas`) continuam de pé e continuam
+   devolvendo ESTE arquivo quando quem chamou foi o htmx; é por isso que a
+   linha segue num arquivo próprio.
 
    **A RECUSA NÃO É UM ERRO DE REDE.** "Informe as horas deste dia", "o
    total passaria da carga da turma" e "a turma não está em andamento" são
@@ -58,7 +67,8 @@
    caixa de falha. #}
 {% set recusa_onde = recusa_onde | default(none) %}
 {% set recusa = recusa | default(none) %}
-{% set alvo_htmx = 'closest tbody' %}
+{% set hoje = hoje | default('9999-12-31') %}
+{% set horas_padrao = horas_padrao | default({}) %}
 {# RN-19: a grade é a lista de chamada transcrita, e nomeia a mesma gente que a
    aba de inscrições. A decisão é a de `turma_ficha.html` e vem de lá pelo
    `include`; o `default` é o caminho da TROCA PARCIAL, onde `turmas._linha_trocada`
@@ -71,6 +81,7 @@
 {% set quem = identificar(linha.inscricao.participante.servidor,
                           vazio='identificação suprimida (RN-19)') %}
 {% set nominal = pode_nominal or quem.nominal %}
+{% set rotulo_pessoa = linha.inscricao.participante.identificador_publico if nominal else quem.nome %}
 <tr>
   <td class="nome">
     {%- if nominal %}{{ linha.inscricao.participante.nome_exibicao }}
@@ -79,7 +90,30 @@
   </td>
   {% for dia in dias %}
   {% set marca = linha.por_dia[dia] %}
+  {% set chave = linha.inscricao.id ~ '_' ~ dia %}
+  {% set futuro = dia > hoje %}
   <td>
+    {% if pode_lancar %}
+    <label class="discreto"{% if futuro %} title="{{ dia|data }} ainda não chegou"{% endif %}>
+      <input type="checkbox" name="presente" value="{{ chave }}" data-grupo="dia-{{ dia }}"
+             {{- ' checked' if marca and marca.presente }}{{ ' disabled' if futuro }}
+             aria-label="{{ rotulo_pessoa }} presente em {{ dia|data }}">
+      {%- if marca and marca.presente %} <span class="mono">{{ marca.horas|num }} h</span>
+      {%- elif marca %} <span class="pilula erro sem-ponto" title="{{ marca.justificativa or 'sem justificativa' }}">falta</span>
+      {%- elif not futuro %} presente{% endif %}</label>
+    {% if not futuro %}
+    {# na recusa da troca parcial o campo volta com o que foi digitado: quem
+       escreveu "8" e recebeu "passaria da carga" precisa ver o 8 #}
+    <details class="ajuste-horas">
+      <summary class="discreto">ajustar horas</summary>
+      <input class="campo-curto" name="h_{{ chave }}" inputmode="decimal"
+             placeholder="{{ horas_padrao[dia]|num if horas_padrao[dia] else 'h' }}"
+             aria-label="horas de {{ rotulo_pessoa }} em {{ dia|data }}"
+             value="{{ digitado_horas if recusa_onde == dia
+                       else (marca.horas|num if marca and marca.presente else '') }}">
+    </details>
+    {% endif %}
+    {% else %}
     {% if marca and marca.presente %}
     <span class="pilula ok sem-ponto">{{ marca.horas|num }} h</span>
     {% elif marca %}
@@ -88,28 +122,6 @@
     {% else %}
     <span class="discreto">—</span>
     {% endif %}
-    {% if pode_lancar %}
-    <form method="post" action="/turmas/{{ turma.id }}/presencas" style="margin-top:5px"
-          hx-post="/turmas/{{ turma.id }}/presencas"
-          hx-target="{{ alvo_htmx }}" hx-swap="innerHTML">
-      <input type="hidden" name="inscricao_id" value="{{ linha.inscricao.id }}">
-      <input type="hidden" name="data" value="{{ dia }}">
-      {% if dias|length > 1 %}
-      {# na recusa o campo volta com o que foi digitado, e não com o que está
-         gravado: quem escreveu "8" e recebeu "passaria da carga" precisa ver o
-         8 para saber o que corrigir #}
-      <input class="campo-curto" name="horas" inputmode="decimal"
-             placeholder="h" aria-label="horas do dia {{ dia|data }}"
-             value="{{ digitado_horas if recusa_onde == dia
-                       else (marca.horas if marca and marca.presente else '') }}">
-      {% endif %}
-      {% if retificando %}
-      <input class="campo-medio" name="motivo" required placeholder="motivo"
-             aria-label="motivo da retificação">
-      {% endif %}
-      <button type="submit" name="presente" value="1" class="secundario marcador">presente</button>
-      <button type="submit" class="secundario marcador">falta</button>
-    </form>
     {% endif %}
     {% if recusa and recusa_onde == dia %}
     <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
@@ -129,24 +141,17 @@
     </span>
   </td>
   <td>
-    <span class="mono">{{ linha.inscricao.nota_final|num }}</span>
     {% if pode_lancar %}
-    <form method="post" action="/turmas/{{ turma.id }}/notas" style="margin-top:5px"
-          hx-post="/turmas/{{ turma.id }}/notas"
-          hx-target="{{ alvo_htmx }}" hx-swap="innerHTML">
-      <input type="hidden" name="inscricao_id" value="{{ linha.inscricao.id }}">
-      <input class="campo-curto" name="nota" inputmode="decimal" placeholder="0 a 10"
-             aria-label="nota de {{ linha.inscricao.participante.identificador_publico
-                                    if nominal else quem.nome }}"
-             value="{{ digitado_nota if recusa_onde == 'nota' else '' }}">
-      {% if retificando %}
-      <input class="campo-medio" name="motivo" required placeholder="motivo"
-             aria-label="motivo da retificação">
-      {% endif %}
-      <button type="submit" class="secundario marcador">salvar</button>
-      <button type="submit" name="apagar" value="1" class="secundario marcador"
-              title="campo em branco não apaga">apagar</button>
-    </form>
+    {# campo em branco não apaga a nota lançada: apagar é a caixa própria #}
+    <input class="campo-curto" name="n_{{ linha.inscricao.id }}" inputmode="decimal" placeholder="0 a 10"
+           aria-label="nota de {{ rotulo_pessoa }}"
+           value="{{ digitado_nota if recusa_onde == 'nota'
+                     else (linha.inscricao.nota_final|num if linha.inscricao.nota_final is not none else '') }}">
+    {% if linha.inscricao.nota_final is not none %}
+    <label class="quebra discreto"><input type="checkbox" name="apagar_nota" value="{{ linha.inscricao.id }}"> apagar</label>
+    {% endif %}
+    {% else %}
+    <span class="mono">{{ linha.inscricao.nota_final|num }}</span>
     {% endif %}
     {% if recusa and recusa_onde == 'nota' %}
     <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
@@ -154,8 +159,9 @@
   </td>
   <td>
     {{ ui.pilula_inscricao(linha.inscricao.situacao) }}
-    {% if linha.avaliacao.motivos %}
-    <span class="quebra discreto">{{ linha.avaliacao.motivos|join('; ') }}</span>
-    {% endif %}
+    {# curta: o que falta, ou o motivo principal; a frase inteira no `title` #}
+    <span class="quebra discreto"
+          {%- if linha.avaliacao.motivos|length %} title="{{ linha.avaliacao.motivos|join('; ') }}"{% endif %}>
+      {{- linha.resumo -}}</span>
   </td>
 </tr>

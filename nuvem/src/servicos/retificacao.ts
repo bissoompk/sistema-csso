@@ -34,6 +34,7 @@ import * as datas_br from "./datas_br.js";
 import * as servico_presenca from "./presenca.js";
 import {
   carregar_inscricao,
+  conferir_periodo,
   editar_turma,
   inscricoes_da_turma,
   RegraDaTurma,
@@ -284,6 +285,9 @@ export async function retificar_turma(
   const inscricoes = await inscricoes_da_turma(tx, turma);
   const inicio = so_permitidos.data_inicio ?? turma.data_inicio;
   const fim = so_permitidos.data_fim ?? turma.data_fim;
+  // o período invertido antes da trava da presença: senão a recusa diria que
+  // há presença "fora do período novo", e o erro é o período (D41)
+  conferir_periodo(inicio, fim);
   const fora = inscricoes.flatMap((i) => i.presencas.filter((p) => p.data < inicio || p.data > fim).map((p) => p.data));
   if (fora.length) {
     const dias = [...new Set(fora)].sort().map(datas_br.numerica);

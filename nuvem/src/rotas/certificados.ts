@@ -7,7 +7,7 @@
  * arquivo: a guarda que importa é a do serviço (`emissao_certificado.ts`).
  */
 import { Hono } from "hono";
-import { and, asc, count, desc, eq, gt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import { certificado as tabela_certificado, treinamento as tabela_treinamento } from "../db/esquema/index.js";
@@ -23,6 +23,7 @@ import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencia
 import * as auditoria from "../servicos/auditoria.js";
 import { CAMPOS_CERTIFICADO, chave_valida, normalizar_chave } from "../servicos/certificado.js";
 import * as datas_br from "../servicos/datas_br.js";
+import { somar_dias } from "../dominio/datas.js";
 import * as servico from "../servicos/emissao_certificado.js";
 import { COM_PARTICIPANTE } from "../servicos/participante.js";
 import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
@@ -84,11 +85,13 @@ function _sem_acento(expr: SQL): SQL {
 /**
  * O que o campo de busca da lista procura:
  *
- * - a chave de validação inteira (o suporte com o papel na mão);
+ * - a chave de validação inteira (o suporte com o papel na mão), com ou sem
+ *   traços e em qualquer caixa (`normalizar_chave`);
  * - o número, `12/2026`;
  * - senão, cada palavra em algum lugar: o nome que está no papel (congelado)
- *   ou o de hoje do participante, o SIAPE, o `PTC-…`, o código da turma e o
- *   treinamento. Sem acento nem caixa.
+ *   ou o de hoje do participante, o SIAPE, o `PTC-…`, o código da turma, o
+ *   treinamento e um trecho da chave de 5 caracteres ou mais ("R9R68",
+ *   traços não contam). Sem acento nem caixa.
  *
  * `null` quando não há o que buscar.
  */
@@ -104,11 +107,17 @@ export function filtro_da_busca(busca: string): SQL | null {
   const palavras = chave_busca(limpa).split(" ").filter(Boolean).slice(0, 6);
   const condicoes = palavras.map((p) => {
     const curinga = `%${p.replace(/[\\%_]/g, (x) => `\\${x}`)}%`;
+    // o trecho da chave só a partir de um bloco inteiro (5 caracteres): "csso",
+    // "2026" ou "ana" casariam com a chave de quase todo certificado
+    const trecho_chave = p.replaceAll("-", "");
     return or(
       sql`${_sem_acento(congelado("participante_nome"))} LIKE ${curinga}`,
       sql`${_sem_acento(congelado("treinamento_nome"))} LIKE ${curinga}`,
       sql`lower(${congelado("turma_codigo")}) LIKE ${curinga}`,
       sql`lower(${congelado("participante_identificador")}) LIKE ${curinga}`,
+      trecho_chave.length >= 5
+        ? sql`lower(replace(${tabela_certificado.chave_validacao}, '-', '')) LIKE ${curinga.replaceAll("-", "")}`
+        : undefined,
       sql`${tabela_certificado.participante_id} IN (
         SELECT p.id FROM participante p LEFT JOIN servidor s ON s.id = p.servidor_id
         WHERE ${_sem_acento(sql`coalesce(s.nome, p.nome, '')`)} LIKE ${curinga}
@@ -282,13 +291,28 @@ rotas.post(`${FILA}/emitir`, async (c) => {
   const ids = [...new Set(f.todos("inscricao_id").map((v) => id_opcional(v)).filter((v): v is number => v !== null))];
   if (!ids.length) return _erro(c, FILA, "Marque quem vai receber o certificado.");
   const resultado = await fila_emissao.emitir_escolhidas(tx, usuario, ids);
+  // o marcado que nem emitiu nem travou: já tinha certificado, não está
+  // aprovado, saiu da fila ou está fora do escopo de quem emite
+  const ignorados = ids.length - resultado.emitidos - resultado.travados.length;
+  const sobre_ignorados =
+    ignorados > 0
+      ? ` ${ignorados} marcado(s) já não estava(m) apto(s) na fila (certificado já emitido, resultado mudado ou fora do seu escopo) — atualize a lista.`
+      : "";
+  if (!resultado.emitidos) {
+    // nada saiu: é erro, não "OK: 0 emitidos"
+    const frase =
+      "Nenhum dos marcados pôde ser emitido." +
+      (resultado.travados.length ? " O motivo de cada um está abaixo." : "") +
+      sobre_ignorados;
+    if (resultado.travados.length) return _tela_fila(c, usuario, { erro: frase, travados: resultado.travados });
+    return _erro(c, FILA, frase);
+  }
   const frase =
     `${resultado.emitidos} certificado(s) emitido(s)` +
-    (resultado.travados.length ? `, ${resultado.travados.length} travado(s) — o motivo está abaixo.` : ".");
+    (resultado.travados.length ? `, ${resultado.travados.length} travado(s) — o motivo está abaixo.` : ".") +
+    sobre_ignorados;
   // o travado fica na tela com o motivo: o recado da URL não cabe a lista
-  if (resultado.travados.length) {
-    return _tela_fila(c, usuario, { [resultado.emitidos ? "mensagem" : "erro"]: frase, travados: resultado.travados });
-  }
+  if (resultado.travados.length) return _tela_fila(c, usuario, { mensagem: frase, travados: resultado.travados });
   return _volta(c, FILA, frase);
 });
 
@@ -322,10 +346,26 @@ rotas.get(MEUS, async (c) => {
   usuario.exigir("treinamento.ver");
   const recorte = await _pagina_de_certificados(c, servico.consulta_do_titular(usuario));
   const hoje = datas_br.hoje();
+  // o anulado vai para uma seção à parte, recolhida, com o número do substituto:
+  // na mesma lista, com os mesmos botões, ele parecia tão utilizável quanto o válido
+  const anulados = recorte.itens.filter((x) => C.anulado(x as never));
+  const ids_substitutos = anulados.map((x) => x.substituido_por_id).filter((id): id is number => id !== null);
+  const substitutos = ids_substitutos.length
+    ? await c
+        .get("tx")
+        .select({ id: tabela_certificado.id, numero: tabela_certificado.numero, ano: tabela_certificado.ano })
+        .from(tabela_certificado)
+        .where(and(inArray(tabela_certificado.id, ids_substitutos), servico.consulta_do_titular(usuario)))
+    : [];
   return pagina(c, "paginas/certificados_meus.html", usuario, {
     itens: recorte.itens,
+    validos: recorte.itens.filter((x) => !C.anulado(x as never)),
+    anulados,
+    substitutos: Object.fromEntries(substitutos.map((s) => [s.id, { id: s.id, rotulo: `${s.numero}/${s.ano}` }])),
     recorte,
     hoje,
+    // o que vence nos próximos 60 dias pede reciclagem: linha em amarelo
+    limite_atencao: somar_dias(hoje, 60),
     situacao_publica: Object.fromEntries(recorte.itens.map((x) => [x.id, C.situacao_publica(x as never, hoje)])),
     // a conta sem cadastro de servidor não é erro: é a tela dizendo por que está vazia
     sem_servidor: usuario.servidor_id === null,

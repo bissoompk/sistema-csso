@@ -41,6 +41,9 @@ export const LARGURA_RUBRICA_MM = 35.0;
 export const LARGURA_QR_MM = 25.0;
 
 export const SEM_VENCIMENTO = "não expira";
+// a frase inteira do rodapé quando o treinamento não vence (o v2 do padrão);
+// "válido até não expira" era o que o v1 imprimia
+export const SEM_VALIDADE = "Validade: indeterminada";
 
 const _ALFABETO_CHAVE = ALFABETO_IDENTIFICADOR;
 const _RE_CHAVE = new RegExp(`^(?:${PADRAO_CHAVE_VALIDACAO})$`);
@@ -84,9 +87,19 @@ export function gerar_chave(ano: number): string {
   return montar_chave(ano, sorteio);
 }
 
-/** Caixa alta e sem espaço. Não "conserta" caractere ambíguo. */
+const _RE_CHAVE_COMPACTA = new RegExp(`^(?:${PREFIXO_CHAVE})?(\\d{4})([A-Z0-9]{5})([A-Z0-9]{5})([A-Z0-9])$`);
+
+/**
+ * Caixa alta e sem espaço; e, quando sobram os 15 caracteres da chave (com ou
+ * sem o `CSSO`), com os traços no lugar — "csso2026r9r68vj7vgp" e
+ * "CSSO 2026–R9R68–VJ7VG–P" viram "CSSO-2026-R9R68-VJ7VG-P", como a página
+ * pública promete ("maiúsculas e traços não importam"). Não "conserta"
+ * caractere ambíguo: um O no lugar do 0 continua errado.
+ */
 export function normalizar_chave(bruta: string | null | undefined): string {
-  return (bruta ?? "").replace(/\s+/g, "").toUpperCase();
+  const sem_espaco = (bruta ?? "").replace(/\s+/g, "").toUpperCase();
+  const partes = _RE_CHAVE_COMPACTA.exec(sem_espaco.replace(/[-‐‑‒–—―−_.]/g, ""));
+  return partes ? `${PREFIXO_CHAVE}-${partes[1]}-${partes[2]}-${partes[3]}-${partes[4]}` : sem_espaco;
 }
 
 /** Formato E dígito verificador, sem tocar no banco. */
@@ -132,6 +145,23 @@ export interface CampoLivreCongelado {
   tipo: string;
   rotulo: string;
   valor: string;
+}
+
+/**
+ * O nome do treinamento já traz a norma? "Uso e conservação de EPI — NR-6"
+ * com norma "NR-6" sim; "NR 6" e "nr-6" também. "NR-60" não conta como "NR-6".
+ */
+export function norma_no_nome(nome: string, norma: string): boolean {
+  const limpa = (norma ?? "").trim();
+  if (!limpa) return true;
+  // "NR6" vale como "NR-6": letra colada em número também é fronteira
+  const padrao = limpa
+    .replace(/(\p{L})(\p{N})/gu, "$1 $2")
+    .split(/[\s\-–—]+/)
+    .filter((p) => p)
+    .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[\\s\\-–—]*");
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${padrao}(?![\\p{L}\\p{N}])`, "iu").test(nome ?? "");
 }
 
 export function linha_do_instrutor(instrutor: InstrutorCongelado): string {
@@ -191,7 +221,13 @@ export interface DadosContextoCertificado {
   campos_livres?: Record<string, CampoLivreCongelado>;
   tags_obrigatorias?: readonly string[];
   avisos?: string[];
+  // NUVEM: a redação do PDF da casa. 1 (ou ausente: o congelado de antes) é a
+  // do v1, reimpressa igual; 2 escreve as frases inteiras (norma sem repetir,
+  // "Validade: indeterminada"). Só a emissão nova grava 2.
+  redacao?: number | null;
 }
+
+export const REDACAO_ATUAL = 2;
 
 const CAMPOS_CONGELADOS = [
   "participante_nome", "participante_identificador", "participante_vinculo",
@@ -204,7 +240,7 @@ const CAMPOS_CONGELADOS = [
   "data_emissao", "chave_validacao", "data_vencimento", "url_validacao",
   "setor_sigla", "setor_nome", "setor_endereco", "cidade", "modelo_id",
   "modelo_arquivo", "modelo_sha256", "modelo_versao", "mapa_tags",
-  "campos_livres", "tags_obrigatorias", "modelo_chave",
+  "campos_livres", "tags_obrigatorias", "modelo_chave", "redacao",
 ] as const;
 
 const _DATAS = ["turma_data_inicio", "turma_data_fim", "data_base_vencimento", "data_emissao", "data_vencimento"] as const;
@@ -261,6 +297,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   campos_livres: Record<string, CampoLivreCongelado> = {};
   tags_obrigatorias: readonly string[] = [];
   avisos: string[] = [];
+  redacao = 1;
 
   static readonly CAMPOS_CONGELADOS = CAMPOS_CONGELADOS;
 
@@ -270,6 +307,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
     // certificado emitido antes destes campos não os tem no congelado
     this.turma_campus_cidade = d.turma_campus_cidade ?? "";
     this.turma_descricao = d.turma_descricao ?? "";
+    this.redacao = Number(d.redacao ?? 1) || 1;
     this.campos_livres = Object.fromEntries(
       Object.entries(d.campos_livres ?? {}).map(([k, v]) => [k, { ...v }]),
     );
@@ -429,6 +467,14 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     _rich(c.treinamento_conteudo),
   ),
   treinamento_norma: _c("Treinamento", "Norma de referência", "NR-35", (c) => c.treinamento_norma),
+  // a frase inteira, para o modelo que escreve «curso» sem «norma» ao lado: a
+  // norma só entra quando o nome ainda não a traz (o v1 imprimia "NR-6 NR-6")
+  treinamento_nome_e_norma: _c(
+    "Treinamento",
+    "Nome do treinamento com a norma, sem repetir",
+    "Trabalho em Altura — NR-35",
+    (c) => (norma_no_nome(c.treinamento_nome, c.treinamento_norma) ? c.treinamento_nome : `${c.treinamento_nome} ${(c.treinamento_norma ?? "").trim()}`),
+  ),
   turma_data_inicio: _c("Turma", "Data de início", "03/03/2026", (c) => _data(c.turma_data_inicio)),
   turma_data_fim: _c("Turma", "Data de término", "05/03/2026", (c) => _data(c.turma_data_fim)),
   turma_periodo_extenso: _c("Turma", "Período por extenso", "de 03 a 05 de março de 2026", (c) =>
@@ -452,6 +498,17 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     "Unidade promotora",
     "Coordenadoria de Segurança e Saúde Ocupacional",
     (c) => c.turma_unidade_promotora,
+  ),
+  // o trecho inteiro, vazio quando a turma não tem unidade promotora: o v1
+  // escrevia ", promovido por {{ promotora }}" e saía "promovido por ,"
+  turma_trecho_promotora: _c(
+    "Turma",
+    "“, promovido por …” (vazio sem unidade promotora)",
+    ", promovido por Coordenadoria de Segurança e Saúde Ocupacional",
+    (c) => {
+      const unidade = (c.turma_unidade_promotora ?? "").trim();
+      return unidade ? `, promovido por ${unidade}` : "";
+    },
   ),
   turma_instrutores: _c("Turma", "Instrutores", "um por linha", (c) =>
     _rich(c.instrutores.map(linha_do_instrutor).join("\n")),
@@ -486,6 +543,13 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     "Vencimento",
     "12/03/2028 ou “não expira”",
     (c) => _data(c.data_vencimento) || SEM_VENCIMENTO,
+  ),
+  // a frase inteira do rodapé: "válido até 12/03/2028" ou "Validade: indeterminada"
+  certificado_frase_validade: _c(
+    "Documento",
+    "Frase da validade",
+    "válido até 12/03/2028 ou “Validade: indeterminada”",
+    (c) => (c.data_vencimento ? `válido até ${_data(c.data_vencimento)}` : SEM_VALIDADE),
   ),
   nota_final: _c("Resultado", "Nota final", "9,5", (c) => (c.nota_final !== null ? numero_br(c.nota_final) : "")),
   // a nota é de 0 a 10; o modelo que pede «___ %» quer o aproveitamento (9,5 -> 95%)
@@ -576,28 +640,36 @@ export function arquivos_de_modelo(): string[] {
   );
 }
 
-// o layout que acompanha o sistema, semeado como modelo genérico "Padrão da casa"
-export const MODELO_PADRAO_ARQUIVO = "certificado_padrao_v1.docx";
+// o layout que acompanha o sistema, semeado como modelo genérico "Padrão da casa".
+// O v2 escreve as frases inteiras (norma sem repetir, unidade promotora e
+// validade opcionais); o v1 continua no disco para a segunda via de quem foi
+// emitido com ele — o hash é o do texto do v1 (RN-15).
+export const MODELO_PADRAO_ARQUIVO = "certificado_padrao_v2.docx";
+export const MODELO_PADRAO_V1 = "certificado_padrao_v1.docx";
 export const MODELO_PADRAO_NOME = "Padrão da casa";
 
 // {marcador no .docx: código do campo} — o `MAPA_SUGERIDO` de
-// `ferramentas/gerar_modelo_certificado.py`, que casa com certificado_padrao_v1.docx.
+// `ferramentas/gerar_modelo_certificado.py`, que casa com certificado_padrao_v1.docx,
+// mais os três marcadores de frase inteira do v2.
 // Serve à semente e ao "mapear sugeridos" da ficha de qualquer modelo.
 export const MAPA_SUGERIDO: Readonly<Record<string, string>> = {
   nome_do_aluno: "participante_nome",
   identificador: "participante_identificador",
   vinculo: "participante_vinculo",
   curso: "treinamento_nome",
+  curso_e_norma: "treinamento_nome_e_norma", // v2
   carga: "treinamento_carga_horaria",
   norma: "treinamento_norma",
   conteudo: "treinamento_conteudo",
   periodo: "turma_periodo_extenso",
   local: "turma_local",
   promotora: "turma_unidade_promotora",
+  trecho_promotora: "turma_trecho_promotora", // v2
   frequencia: "frequencia_percentual",
   numero_certificado: "certificado_rotulo",
   data_extenso: "certificado_data_extenso",
   vencimento: "certificado_data_vencimento",
+  frase_validade: "certificado_frase_validade", // v2
   chave: "certificado_chave",
   url_validacao: "certificado_url_validacao",
   instrutores: "turma_instrutores",
@@ -613,6 +685,7 @@ export const MAPA_SUGERIDO: Readonly<Record<string, string>> = {
 export const OBRIGATORIOS: readonly string[] = [
   "nome_do_aluno",
   "curso",
+  "curso_e_norma",
   "carga",
   "periodo",
   "numero_certificado",

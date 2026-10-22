@@ -76,42 +76,86 @@
         <option value="{{ t.id }}" {% if filtro_treinamento == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
         {% endfor %}
       </select>
+      {% if setores_do_filtro|length %}
+      <label class="oculto" for="f-setor">Filtrar por setor promotor</label>
+      <select id="f-setor" name="setor" data-envia-ao-mudar>
+        <option value="">Setor promotor: todos</option>
+        {% for u in setores_do_filtro %}
+        <option value="{{ u.id }}" {% if filtro_setor == u.id|string %}selected{% endif %}>{{ u.nome_extenso }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
       <button type="submit" class="secundario">Filtrar</button>
     </form>
   </div>
 
-  <div class="tabela-cartao lista">
-  <table>
+  {# Cada ícone de ação só para quem tem a aba dele: quem não tem a permissão
+     abria a ficha na aba Turma, sem saber por quê. Ícone com `aria-label` E
+     `title` (`.botao-icone`, csso.css): sem os dois ele é uma adivinhação.
+     `empilhavel`: no celular cada turma vira um cartão. #}
+  {% set icone_inscricoes = usuario.pode('turma.inscrever') or usuario.pode('turma.criar') %}
+  {% set icone_presenca = usuario.pode('turma.avaliar') %}
+  {% set icone_emissao = usuario.pode('certificado.emitir') %}
+  {% set colunas = 6 if (icone_inscricoes or icone_presenca or icone_emissao) else 5 %}
+  <div class="tabela-cartao lista sem-altura">
+  <table class="empilhavel">
     <thead>
       <tr>
-        <th scope="col">Código</th><th scope="col">Treinamento</th><th scope="col">Período</th><th scope="col">Local</th>
-        <th scope="col">Campus</th><th scope="col">Inscritos</th><th scope="col">Situação</th>
+        <th scope="col">Treinamento</th><th scope="col">Período</th><th scope="col">Local</th>
+        <th scope="col">Inscritos</th><th scope="col">Situação</th>
+        {% if icone_inscricoes or icone_presenca or icone_emissao %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}
       </tr>
     </thead>
+    <tbody>
     {% for turma in itens %}
+    {% set prazo_vencido = turma.situacao == 'INSCRICOES_ABERTAS' and turma.inscricao_aberta_ate and turma.inscricao_aberta_ate < hoje %}
     <tr>
-      <td><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a></td>
-      <td class="nome">{{ turma.treinamento.nome }}</td>
-      <td class="mono">{{ turma.data_inicio|data }}
+      {# o nome do treinamento é o título da linha, com o código embaixo; o
+         instrutor e o setor promotor numa linha discreta só #}
+      <td class="nome">{{ turma.treinamento.nome }}
+        <span class="quebra discreto"><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a>
+        {%- if turma.instrutores|length %} · {{ ui.icone('pen') }} {{ turma.instrutores[0].instrutor.nome_exibicao }}
+          {%- if turma.instrutores|length > 1 %} e mais {{ turma.instrutores|length - 1 }}{% endif %}{% endif %}
+        {%- if turma.unidade_promotora %} · {{ ui.icone('building') }} {{ turma.unidade_promotora.sigla or turma.unidade_promotora.nome_extenso }}{% endif %}</span></td>
+      <td class="mono" data-coluna="Período">{{ turma.data_inicio|data }}
         {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</td>
-      <td><span class="recorte" title="{{ turma.local or '' }}">
-          {{- turma.local or '—' -}}</span></td>
-      <td>{{ turma.campus.sigla if turma.campus else '—' }}</td>
+      <td data-coluna="Local"><span class="recorte" title="{{ turma.local or '' }}">
+          {{- turma.local or '—' -}}</span>
+        {%- if turma.campus %}<span class="quebra discreto">{{ turma.campus.sigla }}</span>{% endif %}</td>
       {# "18 de 20" diz mais que "18": a vaga livre é a decisão de quem lê. #}
-      <td><span class="selo">{{ (inscritos[turma.id] or 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% endif %}</span></td>
-      <td>{{ ui.pilula_turma(turma.situacao) }}</td>
+      <td data-coluna="Inscritos"><span class="selo">{{ (inscritos[turma.id] or 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% endif %}</span>
+        {%- if pedidos[turma.id] and icone_inscricoes %}<span class="quebra"><a class="pilula alerta" href="{{ '/turmas/pedidos' if pode_inscrever else '/turmas/' ~ turma.id ~ '?aba=inscricoes' }}">{{ pedidos[turma.id] }} a conferir</a></span>{% endif %}</td>
+      <td data-coluna="Situação">{{ ui.pilula_turma(turma.situacao) }}
+        {%- if link_no_ar[turma.id] %}<span class="quebra discreto">{{ ui.icone('link-45deg') }} link no ar até {{ turma.inscricao_aberta_ate|data }}</span>
+        {%- elif prazo_vencido %}<span class="quebra discreto">prazo de inscrição acabou em {{ turma.inscricao_aberta_ate|data }}</span>{% endif %}</td>
+      {% if icone_inscricoes or icone_presenca or icone_emissao %}
+      <td class="acoes-linha-rapidas acao-linha">
+        {% if icone_inscricoes %}
+        <a class="botao-icone" href="/turmas/{{ turma.id }}?aba=inscricoes"
+           title="Inscrições" aria-label="Inscrições de {{ turma.codigo }}">{{ ui.icone('people') }}</a>
+        {% endif %}
+        {% if icone_presenca and (turma.situacao in ['EM_ANDAMENTO', 'CONCLUIDA'] or turma.data_inicio <= hoje) %}
+        <a class="botao-icone" href="/turmas/{{ turma.id }}?aba=presencas"
+           title="Presença e notas" aria-label="Presença e notas de {{ turma.codigo }}">{{ ui.icone('clipboard2-check') }}</a>
+        {% endif %}
+        {% if icone_emissao and turma.situacao == 'CONCLUIDA' %}
+        <a class="botao-icone" href="/turmas/{{ turma.id }}?aba=emissao"
+           title="Emissão dos certificados" aria-label="Emissão dos certificados de {{ turma.codigo }}">{{ ui.icone('printer') }}</a>
+        {% endif %}
+      </td>
+      {% endif %}
     </tr>
     {% else %}
     {# Dois vazios diferentes acima do mesmo `<tbody>`: com ficha de situação ou
        treinamento escolhido, a lista vazia é recorte; sem nenhum, é o primeiro
        dia. A saída de cada um é outra — no primeiro caso o caminho é desfazer o
        recorte, no segundo é abrir a primeira turma. #}
-    {% if filtro_situacao or filtro_treinamento %}
+    {% if filtro_situacao or filtro_treinamento or filtro_setor %}
     {{ ui.vazio_de_lista(
          'Nenhuma turma nesta seleção.',
          'A ficha de situação e o seletor de treinamento valem os dois ao mesmo
           tempo. “Todas”, na fileira acima, desfaz o recorte de situação; o
-          seletor volta a “Treinamento: todos”.', 7) }}
+          seletor volta a “Treinamento: todos”.', colunas) }}
     {% else %}
     {# o botão só existe para quem tem `turma.criar`; nomeá-lo para quem não o vê
        seria mandar a pessoa procurar o que não está na tela dela #}
@@ -120,9 +164,10 @@
          'A turma é a oferta de um treinamento do catálogo — é ela que recebe
           inscrição, presença e nota, e sem ela não há certificado.'
          ~ (' Use “' ~ CADASTRAR ~ '”, no canto superior direito.'
-            if pode_criar else ' Abrir turma pede a permissão turma.criar.'), 7) }}
+            if pode_criar else ' Abrir turma pede a permissão turma.criar.'), colunas) }}
     {% endif %}
     {% endfor %}
+    </tbody>
   </table>
   </div>
 
@@ -133,7 +178,24 @@
    participaria do `gap` dela. #}
 {% call ui.popup_cadastro('nova-turma', CADASTRAR, '/turmas', CADASTRAR,
                           aberto=recusado, erro=erro_cadastro, largo=true,
-                          nota='nasce planejada; o ano do código sai da data de início') %}
+                          nota='o ano do código sai da data de início') %}
+  {# A escolha que o IntegraSST fazia antes do formulário ("turma aberta com
+     link" ou "registro manual"): aqui é a primeira pergunta do mesmo
+     formulário, e a turma com link já sai com inscrições abertas e o link na
+     tela, sem os dois passos a mais na ficha. #}
+  <fieldset class="escolha-cartoes">
+    <legend>Como a turma começa</legend>
+    <label class="escolha-cartao">
+      <input type="radio" name="abertura" value="PLANEJADA"{{ ' checked' if d['abertura'] != 'LINK' }}>
+      <span>{{ ui.icone('calendar-event') }}<strong>Planejada</strong>
+        <small>Inscrevo eu, pela lista ou um por um. O link pode ser ligado depois.</small></span>
+    </label>
+    <label class="escolha-cartao">
+      <input type="radio" name="abertura" value="LINK"{{ ' checked' if d['abertura'] == 'LINK' }}>
+      <span>{{ ui.icone('qr-code') }}<strong>Aberta com link público</strong>
+        <small>Inscrições abertas e o link com QR já na próxima tela. Preencha “inscrições até”.</small></span>
+    </label>
+  </fieldset>
   <div class="campo {{ 'com-erro' if recusado }}">
     <label for="nova-treinamento">Treinamento</label>
     {# O `autofocus` é condicional à reabertura, e não fixo: numa tela cuja
@@ -147,7 +209,8 @@
       <option value="">escolha o treinamento</option>
       {% for t in treinamentos %}
       <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}
-              {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|num }} h)</option>
+              {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|num }} h
+              {%- if t.validade_meses %}; reciclagem a cada {{ t.validade_meses }} meses{% endif %})</option>
       {% endfor %}
     </select></div>
   <div class="linha-campos">

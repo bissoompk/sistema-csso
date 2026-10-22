@@ -163,5 +163,33 @@
       "vencimento",
       "vinculo"
     ]
+  },
+  "certificados/certificado_padrao_v2.docx": {
+    "sha256_origem": "a833c6c0af6938321c03ab35139c6a97aca734affcd386128b8bae9b0c512585",
+    "sha256_convertido": "5488a538e4e53ad1f9c338241a3d498741e61b63aadd568d5276ec1962a9788b",
+    "marcadores": [
+      "assinante",
+      "assinante_titulo",
+      "carga",
+      "chave",
+      "cidade",
+      "conteudo",
+      "curso_e_norma",
+      "data_extenso",
+      "frase_validade",
+      "frequencia",
+      "identificador",
+      "instrutores",
+      "local",
+      "nome_do_aluno",
+      "numero_certificado",
+      "periodo",
+      "rubrica",
+      "setor_nome",
+      "setor_sigla",
+      "trecho_promotora",
+      "url_validacao",
+      "vinculo"
+    ]
   }
 }

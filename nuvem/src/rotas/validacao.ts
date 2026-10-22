@@ -17,6 +17,7 @@ import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario } from "../dependencias.js";
 import { normalizar_chave } from "../servicos/certificado.js";
 import * as datas_br from "../servicos/datas_br.js";
+import * as email from "../servicos/email.js";
 import * as servico from "../servicos/validacao_certificado.js";
 import { pagina, redirecionar } from "../web.js";
 import { ipDoCliente } from "./autenticacao.js";
@@ -63,6 +64,9 @@ async function _tela(
       excedeu: d.excedeu ?? false,
       hoje: datas_br.hoje(),
       limite_curto: servico.LIMITE_CURTO,
+      // o convite "receba por e-mail" só quando o envio está ligado: sem ele a
+      // página de acesso só responde "indisponível"
+      acesso_por_email: email.configurado(),
     },
     d.status ?? 200,
   );

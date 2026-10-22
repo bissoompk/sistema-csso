@@ -259,7 +259,7 @@ describe("decisão 8", () => {
 
     const corpo = (await cli.get(`${FICHAS}/${c.servidor}`)).text;
     expect(corpo).toContain("sem comprovante");
-    expect(corpo).toContain("registro e sem prova");
+    expect(corpo).toContain("registrada(s) sem o comprovante");
     expect((await cli.get(FICHAS)).text).toContain("1 pendente(s)");
   });
 

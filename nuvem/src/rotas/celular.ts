@@ -21,18 +21,38 @@ import { existsSync, readFileSync } from "node:fs";
 import type { Ambiente } from "../nucleo/contexto.js";
 import { usuarioLogado } from "../dependencias.js";
 import { ErroHttp } from "../nucleo/erros.js";
+import { Item } from "../modulos.js";
 import { pagina } from "../web.js";
 import { pastaDeEstaticos } from "./aplicativo.js";
 
 export const rotas = new Hono<Ambiente>();
 
+/**
+ * Os atalhos de quem não tem balcão nem chamada: o servidor que instalou a
+ * tela no celular. São `Item`s do menu, com a mesma permissão das rotas e a
+ * mesma marca de "tela do titular" — sem servidor vinculado eles abririam
+ * vazios, e então não aparecem. Nada de código de permissão na tela.
+ */
+export const ATALHOS: readonly Item[] = [
+  new Item("Meus certificados", "/certificados/meus", "treinamento.ver", "O que foi emitido em seu nome, para baixar.", true),
+  new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true),
+  new Item("Turmas abertas", "/turmas/minhas", "treinamento.ver", "Treinamentos com inscrição aberta, e os seus pedidos.", true),
+];
+
 rotas.get("/celular", async (c) => {
   const usuario = await usuarioLogado(c);
-  return pagina(c, "paginas/celular.html", usuario, {
+  const resposta = await pagina(c, "paginas/celular.html", usuario, {
     pode_entregar: usuario.pode("epi.entregar"),
     pode_chamada: usuario.pode("turma.avaliar"),
     tem_ficha: usuario.servidor_id !== null,
+    atalhos: ATALHOS.filter((item) => item.visivel_para(usuario)),
   });
+  // A página leva o nome de quem entrou ("Olá, Adelaide"). O service worker já
+  // não a guarda (`sw.js`); `no-store` fecha a outra porta, o cache HTTP do
+  // próprio navegador, que num celular de balcão também fica no disco depois
+  // do "sair".
+  resposta.headers.set("cache-control", "no-store");
+  return resposta;
 });
 
 /**

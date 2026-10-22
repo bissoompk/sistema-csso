@@ -103,10 +103,12 @@ describe("mover sem arrastar", () => {
     expect(cartao).not.toContain('value="A_FAZER"');
     // só as colunas que a máquina do tipo admite: "Não iniciado" não é destino
     expect(cartao).not.toContain('value="NAO_INICIADO"');
-    for (const destino of ["EM_ANDAMENTO", "AGUARDANDO", "CONCLUIDO"]) {
+    for (const destino of ["EM_ANDAMENTO", "AGUARDANDO"]) {
       expect(cartao, destino).toContain(`name="coluna" value="${destino}"`);
     }
-    expect(cartao).toContain("mover para…");
+    // nem "Concluído": o salto não atravessa os estados do parecer sem parecer (D0)
+    expect(cartao).not.toContain('name="coluna" value="CONCLUIDO"');
+    expect(cartao).toContain("Mover para…");
   });
 
   it("quem não move processo não ganha o menu", async () => {

@@ -356,9 +356,12 @@ describe("aviso de reciclagem por e-mail", () => {
   it("o automático vem desligado; ligado, a varredura avisa quem entra na janela, uma vez", async () => {
     await na_janela();
     await entrar(cliente, "coordenador_csso");
-    expect((await cliente.get("/certificados/vencimentos")).text).toContain("Ligar o aviso automático por e-mail");
+    // o interruptor mora na configuração recolhida da tela, e o estado no cabeçalho
+    const antes = (await cliente.get("/certificados/vencimentos")).text;
+    expect(antes).toContain("Avisar sozinho quem entra na janela de reciclagem");
+    expect(antes).toContain("aviso automático desligado");
     await cliente.post("/certificados/vencimentos/automatico", { ligado: "sim" });
-    expect((await cliente.get("/certificados/vencimentos")).text).toContain("Aviso automático: ligado");
+    expect((await cliente.get("/certificados/vencimentos")).text).toContain("aviso automático ligado");
     const r = await reciclagem.varrer(db, HOJE);
     // a vencida há 5 dias não entra na janela (e nem tem e-mail): só Marco
     expect(r).toEqual({ abertas: 1, fechadas: 0, avisados: 1 });

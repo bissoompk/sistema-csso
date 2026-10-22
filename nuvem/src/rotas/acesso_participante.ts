@@ -32,6 +32,7 @@ async function _tela(
     recebido?: boolean;
     excedeu?: boolean;
     itens?: servico.ItemDoTitular[] | null;
+    aberto?: servico.LinkAberto | null;
     token?: string;
     expirado?: boolean;
     status?: number;
@@ -51,6 +52,13 @@ async function _tela(
         resposta_padrao: servico.RESPOSTA_PADRAO,
         itens: d.itens ?? null,
         aberto: d.itens !== undefined && d.itens !== null,
+        ambiguo: d.aberto?.ambiguo ?? false,
+        titular: d.aberto?.titular ?? "",
+        // quanto falta, e a hora em Brasília: "vence às 14:32 (daqui a 1 h 47 min)"
+        vence_as: d.aberto
+          ? d.aberto.expira_em.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })
+          : "",
+        falta: d.aberto ? servico.tempo_restante(d.aberto.expira_em) : "",
         token: d.token ?? "",
         expirado: d.expirado ?? false,
         caminho: servico.CAMINHO,
@@ -82,7 +90,7 @@ rotas.get(`${servico.CAMINHO}/:token`, async (c) => {
   const token = c.req.param("token");
   const aberto = await servico.abrir(c.get("tx"), token);
   if (!aberto) return _tela(c, { expirado: true, status: 404 });
-  return _tela(c, { itens: servico.itens(aberto.certificados), token });
+  return _tela(c, { itens: servico.itens(aberto.certificados), aberto, token });
 });
 
 rotas.get(`${servico.CAMINHO}/:token/:certificado_id{[0-9]+}`, async (c) => {
@@ -91,7 +99,9 @@ rotas.get(`${servico.CAMINHO}/:token/:certificado_id{[0-9]+}`, async (c) => {
   if (!aberto) return _tela(c, { expirado: true, status: 404 });
   const certificado = aberto.certificados.find((x) => x.id === Number(c.req.param("certificado_id")));
   // o certificado de outra pessoa e o que não existe são o mesmo "não"
-  if (!certificado) return _tela(c, { itens: servico.itens(aberto.certificados), token: c.req.param("token"), status: 404 });
+  if (!certificado) {
+    return _tela(c, { itens: servico.itens(aberto.certificados), aberto, token: c.req.param("token"), status: 404 });
+  }
   const arquivo = await emissao.arquivo_do_titular(tx, certificado);
   return _sem_rastro(baixar(c, arquivo.bytes, arquivo.nome, arquivo.tipo));
 });

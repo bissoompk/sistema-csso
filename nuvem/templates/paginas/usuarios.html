@@ -41,7 +41,7 @@
       <p class="sub">Cada concessão de perfil registra o ato normativo que a autoriza
         (Resolução Consu 11/2026, art. 11, IX); sem ele, fica “pendente” até ser
         informado em Gerir.
-        <a href="/perfis">Ver matriz de perfis »</a></p>
+        {% if usuario.pode('processo.ver') %}<a href="/perfis">Ver matriz de perfis »</a>{% endif %}</p>
     </div>
   </div>
 
@@ -49,8 +49,10 @@
      coluna vazia em toda linha se lê como funcionalidade quebrada, e não como
      permissão que falta. #}
   {% set pode_gerir = usuario.pode('usuario.resetar_senha') or usuario.pode('usuario.criar_conta') or usuario.pode('perfil.conceder') %}
+  {# No celular a tabela vira cartões (`table.empilhavel`): o nome é o título
+     do cartão, cada outra célula diz a própria coluna, e "Gerir" vai embaixo. #}
   <div class="tabela-cartao lista">
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfis vigentes</th><th scope="col">Situação</th>
             <th scope="col">Último acesso</th>{% if pode_gerir %}<th scope="col">Ações</th>{% endif %}</tr>
@@ -58,8 +60,10 @@
       {% for u in usuarios %}
       <tr>
         <td class="nome">{{ u.nome }}</td>
-        <td class="mono">{{ u.login }}</td>
-        <td>
+        {# O login no `<span class="mono">` sozinho na célula, que não quebra:
+           "teste-ba-comum" partido no hífen lia-se como dois logins. #}
+        <td data-coluna="Login"><span class="mono">{{ u.login }}</span></td>
+        <td data-coluna="Perfis vigentes">
           {# `vigente_em` é método, e não atributo: não dá para filtrar com
              `selectattr`. A lista se monta aqui para a linha poder dizer
              "sem perfil vigente" — conta sem perfil e conta com perfil vencido
@@ -76,7 +80,7 @@
           <span class="discreto">sem perfil vigente</span>
           {% endfor %}
         </td>
-        <td>
+        <td data-coluna="Situação">
           {# NÃO é `pilula_sim_nao`, e a exceção está escrita no macro: conta
              inativa é bloqueio — alguém tenta entrar e não consegue —, e não a
              escolha de inventário que o "inativo" dos catálogos registra. Por
@@ -86,9 +90,9 @@
           {% if u.precisa_trocar_senha %}<span class="pilula alerta">senha provisória</span>{% endif %}
           {% if u.bloqueado_ate %}<span class="pilula erro">bloqueado</span>{% endif %}
         </td>
-        <td class="mono discreto">{{ u.ultimo_login_em|momento or 'nunca' }}</td>
+        <td data-coluna="Último acesso" class="discreto"><span class="mono">{{ u.ultimo_login_em|momento or 'nunca' }}</span></td>
         {% if pode_gerir %}
-        <td>
+        <td class="acao-linha">
           {# Um controle por linha, como em /adicionais: os dois botões soltos não
              cabiam lado a lado na coluna e dobravam a altura de toda linha. Era
              `<details class="acoes-linha">`; virou a camada de `ui.popup_gaveta`
@@ -133,10 +137,10 @@
                   <div class="acoes"><button type="submit" class="secundario compacto">
                     Salvar ato</button></div>
                 </form>
-                <form method="post" action="/usuarios/atribuicoes/{{ a.id }}/encerrar">
-                  <div class="acoes"><button type="submit" class="perigo compacto">
-                    Encerrar perfil</button></div>
-                </form>
+                {# Encerrar pede confirmação numa camada própria (ao fim da
+                   linha): é o perfil que deixa de valer, e a um clique ele
+                   saía junto do "Salvar ato", que fica logo acima. #}
+                <div class="acoes">{{ ui.botao_cadastro('encerrar-perfil-' ~ a.id, 'Encerrar perfil…', 'perigo compacto') }}</div>
               </div>
               {% endif %}
               {% else %}
@@ -158,18 +162,56 @@
                   Salvar vínculo</button></div>
               </form>
               {% endif %}
+              {# As travas de `_recusa_de_inativacao` (D66), escritas antes do
+                 clique: a própria conta, a conta de administração para quem
+                 não concede perfil, e a última conta que concede perfil não
+                 oferecem "Inativar". A rota recusa do mesmo jeito. #}
               {% if usuario.pode('usuario.criar_conta') %}
+              <h3>{{ 'Inativar conta' if u.ativo else 'Reativar conta' }}</h3>
+              {% if u.ativo and u.id == usuario.id %}
+              <p class="discreto">A sua própria conta não se inativa por aqui: quem faz
+                isso se tranca fora do sistema.</p>
+              {% elif governo and not usuario.pode('perfil.conceder') %}
+              <p class="discreto"><strong>Conta de administração.</strong> Só quem concede
+                perfil (o superintendente) a {{ 'inativa' if u.ativo else 'reativa' }}.</p>
+              {% elif u.ativo and u.id == ultima_que_concede %}
+              <p class="discreto">É a última conta ativa que concede perfil: sem ela
+                ninguém mais cria conta nem concede acesso. Conceda esse perfil a
+                outra conta antes.</p>
+              {% elif u.ativo %}
+              <p class="discreto">A conta deixa de entrar e as sessões abertas caem.</p>
+              <div class="acoes">{{ ui.botao_cadastro('inativar-conta-' ~ u.id, 'Inativar…', 'perigo compacto') }}</div>
+              {% else %}
               <form method="post" action="/usuarios/{{ u.id }}/inativar">
-                <h3>{{ 'Inativar conta' if u.ativo else 'Reativar conta' }}</h3>
-                <p class="discreto">
-                  {%- if u.ativo %}A conta deixa de entrar e as sessões abertas caem.
-                  {%- else %}A conta volta a entrar com a senha que já tinha.{% endif %}</p>
-                <div class="acoes"><button type="submit"
-                  class="{{ 'perigo' if u.ativo else 'secundario' }} compacto">
-                  {{- 'Inativar' if u.ativo else 'Ativar' }}</button></div>
+                <p class="discreto">A conta volta a entrar com a senha que já tinha.</p>
+                <div class="acoes"><button type="submit" class="secundario compacto">Ativar</button></div>
               </form>
               {% endif %}
+              {% endif %}
           {% endcall %}
+          {# As confirmações moram fora da gaveta (um <form> não entra noutro, e
+             a camada de confirmação abre por cima da gaveta). #}
+          {% if usuario.pode('usuario.criar_conta') and u.ativo %}
+          {% call ui.popup_cadastro('inativar-conta-' ~ u.id, 'Inativar a conta de ' ~ u.nome ~ '?',
+                                    '/usuarios/' ~ u.id ~ '/inativar', 'Inativar a conta',
+                                    classe_botao='perigo', nota=u.login) %}
+            <p>As sessões abertas desta conta caem agora, e ela deixa de entrar. Os
+              perfis e a trilha ficam; reativar depois volta com a mesma senha.</p>
+          {% endcall %}
+          {% endif %}
+          {% if usuario.pode('perfil.conceder') %}
+          {% for a in atribuicoes[u.id] %}
+          {% if not a.vigencia_fim or a.vigencia_fim >= hoje %}
+          {% call ui.popup_cadastro('encerrar-perfil-' ~ a.id, 'Encerrar o perfil ' ~ a.perfil.nome ~ ' de ' ~ u.nome ~ '?',
+                                    '/usuarios/atribuicoes/' ~ a.id ~ '/encerrar', 'Encerrar o perfil',
+                                    classe_botao='perigo', nota=u.login) %}
+            <p>A concessão deixa de valer a partir de hoje: o que este perfil abre sai
+              da conta na próxima página que ela carregar. A linha da concessão fica,
+              com o fim, na trilha.</p>
+          {% endcall %}
+          {% endif %}
+          {% endfor %}
+          {% endif %}
         </td>
         {% endif %}
       </tr>

@@ -284,10 +284,12 @@ describe("classificação e exposições", () => {
     const corpo = (await cliente.get(caminho)).text;
     const acao = `${caminho}/exposicoes/${x!.id}/excluir`;
     expect(corpo).toContain(acao);
-    const gatilho = `href="#acoes-exposicao-${x!.id}"`;
+    // M7: a lixeira (ícone com nome acessível) abre a camada de confirmação
+    const gatilho = `href="#remover-exposicao-${x!.id}"`;
     expect(corpo).toContain(gatilho);
+    expect(corpo).toContain(`aria-label="Remover ${agente.descricao}"`);
     expect(corpo.indexOf(gatilho)).toBeLessThan(corpo.indexOf(acao));
-    expect(corpo).toContain(`<dialog class="popup popup-gaveta" id="acoes-exposicao-${x!.id}"`);
+    expect(corpo).toContain(`<dialog class="popup" id="remover-exposicao-${x!.id}"`);
     expect(corpo).toContain("as horas e a jornada declaradas");
     expect(corpo).toContain(agente.descricao);
     await cliente.post(acao, {}, { seguir: false });

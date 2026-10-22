@@ -1,0 +1,30 @@
+{# O servidor do processo novo. Fragmento HTMX: a busca de `processo_novo.html`
+   troca só esta lista, e não a página — recarregar perderia o NUP e as
+   observações já digitados.
+
+   A regra da busca é a de `/servidores` (`servidores.buscar`), por LINHA: o
+   SIAPE acha para todo mundo, o nome só acha para quem já podia ler aquele
+   nome. A opção sai por `identificar()`: quem não lê nome vê o código opaco da
+   sessão — e casar nome para ele amarraria o nome ao código (RN-19).
+
+   O servidor é OPCIONAL no processo (a demanda que vira processo pode não ter
+   ninguém ainda): a primeira opção é o traço, e o campo não é `required`. #}
+{% set marcado = servidor_escolhido|default(none) %}
+<label for="servidor">Servidor</label>
+<select id="servidor" name="servidor_id">
+  <option value="">—</option>
+  {%- for sv in servidores %}{% set quem = identificar(sv) %}
+  <option value="{{ sv.id }}"
+    {{- ' selected' if marcado not in [none, ''] and marcado|string == sv.id|string }}>{{ quem.com_siape }}</option>
+  {%- endfor %}
+</select>
+<span class="dica" role="status">
+  {%- if q_servidor and not servidores|length -%}
+  Nada encontrado para “{{ q_servidor }}”.
+  {%- if busca_so_siape %} Sem permissão de ler identificação nominal, só o SIAPE acha (RN-19).{% endif -%}
+  {%- elif q_servidor -%}
+  {{ servidores|length }} servidor(es) para “{{ q_servidor }}”.
+  {%- else -%}
+  {{ servidores|length }} servidor(es) no cadastro — digite ao lado para filtrar.
+  {%- endif -%}
+</span>

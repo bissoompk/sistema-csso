@@ -529,6 +529,58 @@ export async function revogar_do_usuario(
 }
 
 /**
+ * A senha atual na troca de senha, com o MESMO teto de tentativas do login
+ * (M74). Sem ele, uma sessão aberta numa máquina compartilhada testava senhas
+ * sem limite pela tela de troca — e a senha atual é o que se descobre para
+ * entrar de outro lugar depois.
+ *
+ * O contador é o da conta (`tentativas_falhas`), o mesmo do login: as falhas
+ * são "tentativas malsucedidas seguidas" de uma conta só, venha de onde vier.
+ * Errar abaixo do teto diz quantas restam; atingir o teto bloqueia a conta
+ * pelo tempo do login e derruba TODAS as sessões, inclusive esta — quem
+ * estava ali sem saber a senha sai junto. Acertar zera o contador.
+ *
+ * Devolve `null` (conferiu), ou a recusa: `bloqueada` diz se a sessão caiu.
+ */
+export async function conferir_senha_atual(
+  tx: Executor,
+  conta_id: number,
+  senha: string,
+): Promise<{ mensagem: string; bloqueada: boolean } | null> {
+  const cfg = obterConfig();
+  const agora = agora_utc();
+  // travada até o fim da requisição, pelo mesmo motivo do login: tentativas em
+  // paralelo não podem ler o mesmo contador
+  const [conta] = await tx.select().from(usuario).where(eq(usuario.id, conta_id)).for("update");
+  if (!conta) return { mensagem: "Senha atual incorreta.", bloqueada: false };
+  if (await conferir_senha(conta.senha_hash, senha)) {
+    if (conta.tentativas_falhas) await tx.update(usuario).set({ tentativas_falhas: 0 }).where(eq(usuario.id, conta.id));
+    return null;
+  }
+  const tentativas = conta.tentativas_falhas + 1;
+  if (tentativas >= cfg.maxTentativas) {
+    const bloqueado_ate = new Date(agora.getTime() + cfg.bloqueioMinutos * 60_000);
+    await tx.update(usuario).set({ tentativas_falhas: tentativas, bloqueado_ate }).where(eq(usuario.id, conta.id));
+    await revogar_do_usuario(tx, conta.id);
+    return {
+      mensagem:
+        `Senha atual incorreta pela ${cfg.maxTentativas}ª vez seguida. Por segurança a conta ficou bloqueada até ` +
+        `${local_formatado(bloqueado_ate)} e as sessões abertas foram encerradas. Se a senha se perdeu, quem ` +
+        "administra o sistema redefine — não há redefinição por e-mail.",
+      bloqueada: true,
+    };
+  }
+  await tx.update(usuario).set({ tentativas_falhas: tentativas }).where(eq(usuario.id, conta.id));
+  const restam = cfg.maxTentativas - tentativas;
+  return {
+    mensagem:
+      `Senha atual incorreta. ${restam === 1 ? "Resta 1 tentativa" : `Restam ${restam} tentativas`} ` +
+      "antes de a conta ser bloqueada.",
+    bloqueada: false,
+  };
+}
+
+/**
  * Grava a senha nova e derruba as OUTRAS sessões. Devolve quantas caíram.
  * Trocar a própria senha é o gesto de quem desconfia que alguém a viu;
  * `token_atual` poupa quem está trocando.

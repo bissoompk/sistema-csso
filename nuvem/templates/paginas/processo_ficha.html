@@ -34,12 +34,24 @@
 {% block conteudo %}
 <div class="tela">
 
+  {# Com o nome suprimido (RN-19), o título é o NUP: "SRV-2ee7" como título não
+     diz nada a quem abriu a ficha, e o NUP é o que a secretaria confere. O
+     código da sessão continua escrito, na linha de baixo — é ele que diz que
+     HÁ um servidor, e que o nome foi escondido. #}
+  {% set titular = identificar(processo, vazio=processo.nup) %}
   <div class="cabecalho-pagina">
     <div class="titulo">
-      <h1>{{ identificar(processo, vazio=processo.nup) }}</h1>
+      {% if titular.suprimida %}
+      <h1 class="mono">{{ processo.nup }}</h1>
+      <p class="identificacao">
+        <span class="mono discreto" title="identificação suprimida (RN-19)">{{ titular.nome }}</span>
+        <span class="ponto">·</span>
+      {% else %}
+      <h1>{{ titular }}</h1>
       <p class="identificacao">
         <span class="mono">{{ processo.nup }}</span>
         <span class="ponto">·</span>
+      {% endif %}
         <span>{{ processo.tipo_processo.nome }}</span>
         {{ ui.pilula_estado(processo.estado_tecnico) }}
         {{ ui.selo_dias(resumo) }}
@@ -144,9 +156,13 @@
         <p class="discreto">O sistema <strong>não</strong> conversa com o SEI: inserir o
           documento é trabalho seu, lá.</p>
         <p class="mono">NUP para copiar: {{ processo.nup }}</p>
+        {# O botão só sai para quem pode gravar o link: a camada sem a permissão
+           era um formulário que terminava em 403. #}
+        {% if usuario.pode('processo.editar') %}
         <div class="acoes">
           {{ ui.botao_cadastro('salvar-link-sei', SALVAR_LINK, 'secundario') }}
         </div>
+        {% endif %}
       </section>
     </div>
   </div>
@@ -190,7 +206,7 @@
       {% for a in anexos %}
       <tr>
         <td><a href="/anexos/{{ a.id }}">{{ a.nome_original }}</a></td>
-        <td>{{ a.categoria }}</td>
+        <td>{{ rotulos_categoria.get(a.categoria, a.categoria) }}</td>
         <td>{% if a.nivel_acesso == 'RESTRITO' %}<span class="pilula alerta">restrito</span>
             {% else %}<span class="discreto">{{ a.nivel_acesso|lower }}</span>{% endif %}</td>
         <td class="mono discreto">{{ a.sha256.slice(0, 12) }}…</td>
@@ -198,6 +214,23 @@
       </tr>
       {% else %}<tr><td colspan="5" class="nada">Sem anexos.</td></tr>{% endfor %}
     </table>
+    {# O reenvio idêntico em OUTRA categoria: o arquivo não duplica (é o mesmo
+       SHA-256), e a saída é trocar a categoria do que já está aqui. A troca fica
+       na trilha, com o antes e o depois. #}
+    {% if reclassificar and usuario.pode('anexo.enviar') %}
+    <div class="corpo">
+      <form method="post" class="aviso aviso-alerta"
+            action="/processos/{{ processo.id }}/anexos/{{ reclassificar.anexo_id }}/categoria">
+        <input type="hidden" name="categoria" value="{{ reclassificar.para }}">
+        <p><strong>{{ reclassificar.nome }}</strong> está como
+          “{{ rotulos_categoria.get(reclassificar.de, reclassificar.de) }}”.</p>
+        <div class="acoes">
+          <button type="submit" class="secundario">Reclassificar como “{{ rotulos_categoria.get(reclassificar.para, reclassificar.para) }}”</button>
+          <span class="dica">A troca fica registrada no histórico do processo.</span>
+        </div>
+      </form>
+    </div>
+    {% endif %}
     {% if usuario.pode('anexo.enviar') %}
     <div class="corpo">
       <div class="acoes">
@@ -304,7 +337,9 @@
         {# Texto livre gravado no ato: passa por `texto_livre` pela mesma razao
            da ficha da requisicao. `sobre=processo` mantem o titular lendo a
            historia do proprio processo. #}
-        <strong>{{ e.tipo_evento|evento }}</strong> — {{ texto_livre(e.descricao, processo) }}
+        {# `descricao_tela`: a trilha de estado é gravada em ASCII com "->" (o
+           texto entra no digest da cadeia); a rota acentua só na exibição. #}
+        <strong>{{ e.tipo_evento|evento }}</strong> — {{ texto_livre(e.descricao_tela, processo) }}
         <div class="quando">{{ e.ocorrido_em|momento }} · {{ e.usuario_nome }}
           {% if e.origem != 'SISTEMA' %}· origem {{ e.origem }}{% endif %}</div>
       </li>
@@ -323,31 +358,97 @@
    =================================================================== #}
 {% if aba == 'dados' %}
 {% if usuario.pode('processo.status') %}
+{# ===================================================================
+   MOVER DE ESTADO — o próximo passo à vista, o salto recolhido
+   ===================================================================
+   Um `<select>` só, com as saídas diretas e os saltos misturados, era o
+   desenho que levava o processo de "Recebido" a "Concluído" num clique. Agora:
+
+   - **Próximo passo** é o que se escolhe sem pensar duas vezes: as saídas
+     diretas da máquina, com o seguinte da cadeia primeiro (e já escolhido).
+   - **Avançar vários passos** mora num `details.recolhido` e cobra a caixa
+     "Confirmo pular etapas" — conferida no SERVIDOR, e não só aqui. Cada
+     estado pulado vira um passo na trilha, com os requisitos de cada um.
+   - Os estados do parecer cujo documento ainda não existe não aparecem em
+     nenhum dos dois: quem leva o processo até eles é o parecer emitido e o
+     assinado.
+
+   A recusa sai UMA vez: aqui dentro, com a camada reaberta e o que foi
+   escolhido e digitado de volta (e não também na faixa do topo). #}
+{% set md = mover_digitado %}
+{% set recusa_mover = true if erro_mover else false %}
 {% call ui.popup_cadastro('mover-estado', MOVER,
                           '/processos/' ~ processo.id ~ '/estado', 'Mover',
+                          aberto=recusa_mover, erro=erro_mover,
                           nota='a máquina de estados confere os requisitos de saída') %}
-  <div class="linha-campos">
-    <div class="campo"><label for="mover-destino">Mover para</label>
-      <select id="mover-destino" name="destino" required>
-        {% if processo.estado_tecnico == 'SOBRESTADO' %}
-        <option value="__voltar__">Voltar ao estado anterior</option>{% endif %}
-        {# `|estado` e nao `rotulos[d]`: aquele mapa e o ASCII da trilha
-           de auditoria, e quem escreve na tela e o filtro. #}
-        {% for d in destinos %}<option value="{{ d }}">{{ d|estado }}</option>{% endfor %}
-        <option value="SOBRESTADO">Sobrestar</option>
-      </select></div>
-    <div class="campo"><label for="mover-inciso">Inciso do art. 11
-        <span class="discreto">(só para indeferimento técnico)</span></label>
-      <select id="mover-inciso" name="inciso_art11"><option value="">—</option>
-        {% for k, v in incisos.items() %}<option value="{{ k }}">{{ k }} — {{ v }}</option>{% endfor %}
-      </select></div>
-  </div>
+  <input type="hidden" name="aba" value="{{ aba }}">
+  <div class="campo"><label for="mover-destino">Próximo passo</label>
+    <select id="mover-destino" name="destino">
+      {% if processo.estado_tecnico == 'SOBRESTADO' %}
+      <option value="__voltar__">Voltar ao estado anterior</option>
+      {% elif not proximos %}
+      {# Sem passo manual (o parecer é que leva adiante), a primeira opção não
+         pode ser "Sobrestar": um "Mover" distraído sobrestaria o processo. #}
+      <option value="">— nenhum passo manual agora —</option>{% endif %}
+      {# `|estado` e nao `rotulos[d]`: aquele mapa e o ASCII da trilha
+         de auditoria, e quem escreve na tela e o filtro. #}
+      {% for d in proximos %}<option value="{{ d }}"{{ ui.sel(md.get('destino'), d) }}>{{ d|estado }}</option>{% endfor %}
+      {% if processo.estado_tecnico not in ['ARQUIVADO', 'SOBRESTADO'] %}
+      <option value="SOBRESTADO"{{ ui.sel(md.get('destino'), 'SOBRESTADO') }}>Sobrestar</option>{% endif %}
+    </select>
+    {% if 'PARECER_PRONTO_P_ASSINATURA' in sem_documento and processo.estado_tecnico == 'PARECER_EM_ELABORACAO' %}
+    <span class="dica">“Parecer pronto para assinatura” vem sozinho quando o parecer
+      deste processo é emitido — pela aba Parecer.</span>
+    {% elif 'PARECER_ASSINADO' in sem_documento and processo.estado_tecnico == 'PARECER_PRONTO_P_ASSINATURA' %}
+    <span class="dica">“Parecer assinado” vem sozinho quando o parecer é marcado como
+      assinado, na ficha dele.</span>
+    {% endif %}</div>
+
+  {% if saltos %}
+  <details class="recolhido"{{ ' open' if md.get('destino_salto') }}>
+    <summary>Avançar vários passos</summary>
+    <div class="campo"><label for="mover-salto">Ir direto para</label>
+      <select id="mover-salto" name="destino_salto">
+        <option value="">— escolha só se for pular etapas —</option>
+        {% for d in saltos %}<option value="{{ d }}"{{ ui.sel(md.get('destino_salto'), d) }}>{{ d|estado }}</option>{% endfor %}
+      </select>
+      <span class="dica">Cada estado pulado é gravado na trilha, um a um, e os
+        requisitos de todos eles são conferidos.</span></div>
+    <label class="discreto" for="mover-confirmo-salto">
+      <input type="checkbox" id="mover-confirmo-salto" name="confirmo_salto" value="1"
+             {{- ' checked' if md.get('confirmo_salto') == '1' }}>
+      Confirmo pular etapas</label>
+  </details>
+  {% endif %}
+
+  {# Só faz sentido para o indeferimento técnico: com script, o campo aparece
+     quando é o destino escolhido; sem script, fica à vista com a nota. O
+     servidor exige o inciso no indeferimento e o ignora nos outros destinos. #}
+  {% if 'INDEFERIDO_TECNICAMENTE' in proximos or 'INDEFERIDO_TECNICAMENTE' in saltos %}
+  <div class="campo" data-mostra-quando="destino=INDEFERIDO_TECNICAMENTE">
+    <label for="mover-inciso">Inciso do art. 11
+      <span class="discreto">(só para indeferimento técnico)</span></label>
+    <select id="mover-inciso" name="inciso_art11"><option value="">—</option>
+      {% for k, v in incisos.items() %}<option value="{{ k }}"{{ ui.sel(md.get('inciso_art11'), k) }}>{{ k }} — {{ v }}</option>{% endfor %}
+    </select></div>
+  {% endif %}
+
   <div class="campo"><label for="mover-comentario">Comentário</label>
-    <input id="mover-comentario" name="comentario" placeholder="Fica registrado na auditoria"></div>
-  {% if faltas_saida %}
+    <textarea id="mover-comentario" name="comentario" rows="2"
+              placeholder="Fica registrado na auditoria"
+              aria-describedby="dica-mover-comentario">{{ md.get('comentario') or '' }}</textarea>
+    <span class="dica" id="dica-mover-comentario">
+      {%- if processo.estado_tecnico == 'AGUARDANDO_QUANTIFICACAO' -%}
+      Sem relatório de ensaio anexado, escreva aqui a justificativa da avaliação
+      qualitativa: ela é o registro que fica no lugar do ensaio.
+      {%- else -%}
+      Evite estado de saúde, diagnóstico ou gestação; CPF e CID nunca (RN-21).
+      {%- endif -%}</span></div>
+
+  {% if faltas_saida and not recusa_mover %}
   {# A mesma lista que está no cartão, repetida aqui de propósito: a camada cobre
      o cartão, e quem abriu "Mover de estado" deixaria de ver justamente o que
-     vai fazer a máquina recusar. #}
+     vai fazer a máquina recusar. Na recusa ela sai: a recusa já a diz. #}
   <div class="aviso aviso-erro">
     <strong>Pendências para sair deste estado:</strong>
     <ul>{% for f in faltas_saida %}<li>{{ f }}</li>{% endfor %}</ul>
@@ -356,13 +457,21 @@
 {% endcall %}
 {% endif %}
 
+{% if usuario.pode('processo.editar') %}
+{% set recusa_sei = true if erro_sei else false %}
 {% call ui.popup_cadastro('salvar-link-sei', SALVAR_LINK,
                           '/processos/' ~ processo.id ~ '/sei', 'Salvar link',
+                          aberto=recusa_sei, erro=erro_sei,
                           nota='o endereço permanente do processo no SEI') %}
-  <div class="campo"><label for="sei-url">Link permanente no SEI</label>
-    <input id="sei-url" name="url_permanente" value="{{ processo.url_permanente or '' }}"
-           placeholder="https://sei.ufvjm.edu.br/…"></div>
+  <div class="campo {{ 'com-erro' if recusa_sei }}"><label for="sei-url">Link permanente no SEI</label>
+    <input id="sei-url" name="url_permanente" type="url" inputmode="url"
+           value="{{ sei_digitado if sei_digitado is not none else (processo.url_permanente or '') }}"
+           placeholder="https://sei.ufvjm.edu.br/…" aria-describedby="dica-sei-url"
+           {{- ' autofocus' if recusa_sei }}>
+    <span class="dica" id="dica-sei-url">Começa com <span class="mono">https://sei.</span> — é o
+      “link para acesso direto” do processo, lá no SEI. Vazio, o link é removido.</span></div>
 {% endcall %}
+{% endif %}
 {% endif %}
 
 {% if aba == 'anexos' and usuario.pode('anexo.enviar') %}
@@ -374,7 +483,7 @@
     <div class="campo"><label for="anexo-arquivo">Arquivo</label>
       <input id="anexo-arquivo" type="file" name="arquivo" required></div>
     <div class="campo"><label for="anexo-categoria">Categoria</label>
-      <select id="anexo-categoria" name="categoria">{% for c in categorias %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <select id="anexo-categoria" name="categoria">{% for c in categorias %}<option value="{{ c }}">{{ rotulos_categoria.get(c, c) }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="anexo-sei">Nº do documento SEI</label>
       <input id="anexo-sei" name="numero_documento_sei" class="mono"></div>
   </div>

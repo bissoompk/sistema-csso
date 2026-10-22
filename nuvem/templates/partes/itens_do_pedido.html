@@ -63,6 +63,15 @@
       <span class="pilula alerta">{{ pendentes|length }} sem decisão</span>
       {% endif %}
     </div>
+    {% if sucesso|default(none) %}
+    {# O recado da troca parcial que deu certo. Sem ele aprovar, recusar e
+       reservar trocavam a lista em silêncio: a pílula mudava de cor e mais
+       nada dizia que o clique tinha valido. `role="status"` para o leitor de
+       tela anunciar sem roubar o foco. #}
+    <div class="corpo">
+      <div class="aviso aviso-ok" role="status">{{ sucesso }}</div>
+    </div>
+    {% endif %}
     {% if recusa %}
     {# A recusa de REGRA do serviço, na troca parcial: HTTP 200 com o motivo
        escrito aqui, no topo da lista que a pessoa estava olhando. Sem
@@ -97,7 +106,7 @@
           <span class="quebra discreto texto-literal">{{ i.justificativa }}</span>{% endif %}
           {% if i.excedeu_maximo %}
           <span class="quebra"><span class="pilula erro"
-            title="exceção da RN-26 autorizada por {{ nomes.get(i.autorizado_por, 'quem decidiu') }}">
+            title="exceção ao máximo autorizada por {{ nomes.get(i.autorizado_por, 'quem decidiu') }}">
             máximo excedido · autorizado por {{ nomes.get(i.autorizado_por, '—') }}</span></span>
           {% endif %}
           {# A reserva vem ANTES da lista de candidatos: quando ela existe, ela é
@@ -116,6 +125,7 @@
           {% for l in lotes.get(i.id, []) %}
           <span class="quebra discreto mono">lote {{ l.entrada.lote or '—' }}
             {%- if l.entrada.tamanho %} · tam. {{ l.entrada.tamanho }}{% endif %}
+            {%- if l.entrada.nota_fiscal %} · NF {{ l.entrada.nota_fiscal }}{% endif %}
             · CA {{ l.entrada.numero_ca or '—' }} · {{ l.saldo }} disponível
             {{- ' · ' ~ l.impedimento if l.impedimento }}</span>
           {% if l.impedimento %}{{ ui.pilula_ca(l.entrada.validade_ca, hoje, i.item.exige_ca) }}{% endif %}
@@ -135,7 +145,6 @@
         <td>
           {% if i.motivo_recusa %}
           <strong>{{ i.motivo_recusa.rotulo }}</strong>
-          <span class="quebra discreto mono">{{ i.motivo_recusa.codigo }}</span>
           {# o texto CONGELADO na decisão, e não o do catálogo de hoje: editar o
              catálogo amanhã não reescreve a negativa que a pessoa recebeu #}
           <span class="quebra texto-literal">{{ i.texto_recusa_snapshot }}</span>
@@ -199,7 +208,7 @@
                 <div class="campo">
                   <label for="j-{{ i.id }}">Justificativa
                     {%- if i.item.exige_justificativa %}
-                    <span class="pilula alerta">obrigatória (RN-29)</span>{% endif %}</label>
+                    <span class="pilula alerta">obrigatória para este item</span>{% endif %}</label>
                   <textarea id="j-{{ i.id }}" name="justificativa" rows="2"
                             {% if i.item.exige_justificativa %}required{% endif %}>{{ dl.get('justificativa', i.justificativa or '') }}</textarea>
                 </div>
@@ -249,7 +258,7 @@
                 </div>
                 <label class="discreto" for="ex-{{ i.id }}">
                   <input id="ex-{{ i.id }}" type="checkbox" name="autorizar_excesso" value="1">
-                  Autorizar a exceção ao máximo (RN-26)
+                  Autorizar a exceção ao máximo
                 </label>
                 <p class="discreto">O máximo deste item é
                   <strong>{{ i.item.regra_de_quantidade }}</strong>, contado pelo
@@ -268,7 +277,7 @@
                 <h3>Recusar</h3>
                 <p class="discreto">A negativa sai <strong>congelada</strong>: o
                   texto do motivo é copiado para a linha no ato, e editar o
-                  catálogo depois não reescreve o que a pessoa recebeu (RN-27).</p>
+                  catálogo depois não reescreve o que a pessoa recebeu.</p>
                 {{ ui.seletor_de_motivo('rec-' ~ i.id, 'motivo_id', motivos) }}
                 <div class="acoes">
                   <button type="submit" class="perigo-discreto compacto">Recusar item</button>
@@ -276,9 +285,11 @@
               </form>
               {% endif %}
 
+              {# cancelar a linha é do requerente, de quem abriu e de quem
+                 analisa (`pode_cancelar`), como cancelar o pedido inteiro #}
               {% if not requisicao.encerrada and not i.decidido
                     and i.quantidade_entregue == 0
-                    and (pode_requisitar or pode_analisar) %}
+                    and pode_cancelar %}
               <form method="post"
                     action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/cancelar"
                     hx-post="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/cancelar"
@@ -317,7 +328,7 @@
                 <p class="discreto">É a reserva que impede dois pedidos de
                   prometerem o mesmo par de botas. Ela <strong>não</strong> é
                   movimento: as unidades continuam no saldo físico do lote e saem
-                  do disponível dos outros pedidos (RN-24).</p>
+                  do disponível dos outros pedidos.</p>
                 <div class="linha-campos">
                   <div class="campo">
                     <label for="qr-{{ i.id }}">Quantidade</label>
@@ -422,11 +433,11 @@
               <form method="post"
                     action="/epis/requisicoes/{{ requisicao.id }}/itens/{{ i.id }}/entregar">
                 <h3>Entregar</h3>
-                <p class="discreto">Grava a linha da ficha, baixa o lote no livro
-                  razão e abre a pendência do comprovante assinado — a mesma
-                  entrega da fatia 2, e não uma segunda. O CA do lote é conferido
+                <p class="discreto">Grava a linha da ficha, baixa o lote no estoque
+                  e abre a pendência do comprovante assinado — a mesma entrega do
+                  balcão, e não uma segunda. O CA do lote é conferido
                   <strong>de novo, na data da entrega</strong>: ele pode ter
-                  vencido entre a reserva e o balcão (RN-25).</p>
+                  vencido entre a reserva e o balcão.</p>
                 <div class="linha-campos">
                   <div class="campo">
                     <label for="qe-{{ i.id }}">Quantidade</label>
@@ -481,7 +492,7 @@
                   <input id="obs-{{ i.id }}" name="observacao"
                          aria-describedby="dica-obs-{{ i.id }}">
                   <span class="dica" id="dica-obs-{{ i.id }}">Sai impressa no
-                    comprovante. Nada sobre a saúde de quem recebe (RN-21).</span>
+                    comprovante. Nada sobre a saúde de quem recebe.</span>
                 </div>
                 <div class="acoes">
                   {% set travado = (reserva and reservas_impedidas.get(i.id)) or
@@ -514,8 +525,7 @@
       <tr><td colspan="8">
         <div class="vazio">
           <strong>Nenhum item no pedido.</strong>
-          <span>Um envelope vazio ocuparia protocolo e fila sem pedir nada — o
-            envio recusa.</span>
+          <span>Acrescente ao menos um equipamento para poder enviar.</span>
         </div>
       </td></tr>
       {% endfor %}

@@ -183,7 +183,8 @@ describe("ações em lote pela tela", () => {
     const p = await processo(db, "23086.000608/2026-84");
     const cliente = await entrar(novoCliente(), "tecnico_seguranca"); // não tem processo.atribuir
     const r = await cliente.post("/processos/lote", { processo_id: String(p.id), acao: "responsavel", responsavel_id: "1" });
-    expect(r.text).toContain("não passaram");
+    // a permissão é do pedido: conferida antes do primeiro processo
+    expect(r.text).toContain("Você não tem permissão para atribuir responsável: nenhum processo foi alterado.");
     expect((await db.select().from(e.processo).where(eq(e.processo.id, p.id)))[0]!.responsavel_id).toBeNull();
   });
 });

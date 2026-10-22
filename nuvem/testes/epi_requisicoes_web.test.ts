@@ -219,7 +219,10 @@ describe("permissões", () => {
   it.each([
     ["coordenador_csso", 303, 303],
     ["secretaria_csso", 303, 403],
-    ["servidor_consulta", 303, 403],
+    // escopo próprio sem servidor ligado: a conta não tem por quem pedir, e a
+    // tela volta dizendo isso (200) — antes ela abria rascunho para qualquer
+    // servidor do cadastro (D18, `correcoes_epi.test.ts`)
+    ["servidor_consulta", 200, 403],
     ["almoxarife_sesmt", 403, 403],
     ["auditor_interno", 403, 403],
   ])("escrever e decidir para %s", async (perfil, pode_abrir, decidir) => {
@@ -546,7 +549,7 @@ describe("a recusa", () => {
       { seguir: false },
     );
     expect(r.status).toBe(303);
-    expect(recado(r)).toContain("RN-27");
+    expect(recado(r)).toContain("Escolha o motivo da recusa");
     expect((await linhas(amb, requisicao_id))[0]!.estado).toBe("SOLICITADO");
   });
 });
@@ -572,13 +575,13 @@ describe("só o rascunho se edita", () => {
     await abrir(cliente, cen);
     const requisicao_id = (await ultima(amb)).id;
     const rascunho = (await cliente.get(`${FILA}/${requisicao_id}`)).text;
-    expect(rascunho).toContain('id="novo-item"');
+    expect(rascunho).toContain('id="acrescentar-item"');
     expect(rascunho).toContain(`action="${FILA}/${requisicao_id}/excluir"`);
 
     await acrescentar(cliente, requisicao_id, cen);
     await cliente.post(`${FILA}/${requisicao_id}/enviar`, {}, { seguir: false });
     const enviado = (await cliente.get(`${FILA}/${requisicao_id}`)).text;
-    expect(enviado).not.toContain('id="novo-item"');
+    expect(enviado).not.toContain('id="acrescentar-item"');
     expect(enviado).not.toContain(`action="${FILA}/${requisicao_id}/excluir"`);
 
     const bloqueado = await acrescentar(cliente, requisicao_id, cen, { tamanho: "G" });
@@ -893,7 +896,7 @@ describe("troca parcial", () => {
       { seguir: false, cabecalhos: { "HX-Request": "true" } },
     );
     expect(r.status).toBe(200);
-    expect(r.text).toContain("RN-27");
+    expect(r.text).toContain("Escolha o motivo da recusa");
     expect(r.text).toContain("Itens do pedido");
     expect((await linhas(amb, requisicao_id))[0]!.estado).toBe("SOLICITADO");
   });
@@ -1070,7 +1073,9 @@ describe("o sino do requerente", () => {
     );
     const sem = (await tecnico.get(`${FILA}/${requisicao_id}`)).text;
     expect(sem).toContain("local de retirada ainda não está registrado");
-    expect(sem).toContain("CSSO_EPI_LOCAL_RETIRADA");
+    // o nome da variável de instalação não vai para a tela (M30): quem lê aqui
+    // é quem vai buscar o EPI
+    expect(sem).not.toContain("CSSO_EPI_LOCAL_RETIRADA");
 
     const endereco = "Almoxarifado do SESMT — prédio 5, sala 12, de 8h às 11h";
     process.env.CSSO_EPI_LOCAL_RETIRADA = endereco;

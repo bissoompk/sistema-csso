@@ -7,6 +7,99 @@
 {% endblock %}
 
 {% block conteudo %}
+{% if inicio_do_servidor %}
+{# ===================================================================
+   INÍCIO DO SERVIDOR — o painel de quem só alcança o próprio dado
+   ===================================================================
+   O painel do setor, para o servidor, era KPI da instituição, um gráfico de
+   riscos que não era dele e dez linhas de "conteúdo suprimido" sobre o que ele
+   mesmo fez. Aqui ficam só as cinco perguntas que ele traz: tenho adicional? em
+   que pé estão os meus processos? qual o meu próximo treinamento? algum
+   certificado vencendo? algum EPI para trocar? Cada cartão leva à tela que já
+   é dele (`/processos`, `/certificados/meus`, `/turmas/minhas`,
+   `/epis/fichas/minha`), com a mesma permissão do menu. #}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Início</h1>
+      <p class="sub">O que é seu no sistema: adicional, processos, treinamentos e EPI.</p>
+    </div>
+  </div>
+
+  {% if not tem_servidor %}
+  <div class="aviso aviso-alerta">Esta conta não está vinculada a um cadastro de
+    servidor: os cartões abaixo ficam vazios até a CSSO fazer o vínculo.</div>
+  {% endif %}
+
+  {# O contrato de `.grade-resumo > .cartao-resumo` (csso.css): `.rotulo` diz o
+     que é, `.valor` o estado ou o número, `.detalhe` a frase, `a.acao` para onde
+     ir. `.atencao` (amarelo) é "vence logo"; `.alerta` (vermelho), "venceu". #}
+  <div class="grade-resumo">
+    <section class="cartao-resumo">
+      <span class="rotulo">Meu adicional</span>
+      {% if adicional %}
+      <span class="valor">{{ ui.pilula_direito(adicional.estado) }}
+        {%- if adicional.percentual %} {{ adicional.percentual }}{% endif %}</span>
+      <span class="detalhe">{{ adicional.tipo or 'Adicional ocupacional' }}
+        {%- if adicional.desde %} · desde <span class="mono">{{ adicional.desde|data }}</span>{% endif %}</span>
+      {% else %}
+      <span class="valor">Nenhum</span>
+      <span class="detalhe">Nenhum adicional registrado em seu nome. Se você pediu, o
+        andamento está em Meus processos.</span>
+      {% endif %}
+    </section>
+
+    <section class="cartao-resumo">
+      <span class="rotulo">Meus processos</span>
+      <span class="valor">{{ total_meus }}</span>
+      <span class="detalhe">
+        {%- for r in meus_processos %}
+        <a class="mono" href="/processos/{{ r.processo.id }}">{{ r.processo.nup }}</a> — {{ r.processo.estado_tecnico|estado }}{% if not loop.last %}<br>{% endif %}
+        {%- else %}Nenhum processo em seu nome no fluxo da CSSO.{% endfor %}</span>
+      {% if total_meus %}<a class="acao" href="/processos">{{ ui.icone('arrow-right') }}Ver meus processos</a>{% endif %}
+    </section>
+
+    <section class="cartao-resumo">
+      <span class="rotulo">Próximo treinamento</span>
+      {% if proximo_treinamento %}
+      <span class="valor">{{ proximo_treinamento.data_inicio|data }}</span>
+      <span class="detalhe">{{ proximo_treinamento.treinamento }}
+        {%- if proximo_treinamento.local %} · {{ proximo_treinamento.local }}{% endif %}</span>
+      {% else %}
+      <span class="valor">Nenhum</span>
+      <span class="detalhe">Nenhuma inscrição em turma a vir.</span>
+      {% endif %}
+      {% if usuario.pode('treinamento.ver') %}<a class="acao" href="/turmas/minhas">{{ ui.icone('arrow-right') }}Turmas abertas</a>{% endif %}
+    </section>
+
+    {% set vencido = certificados_a_vencer|length and certificados_a_vencer[0].data_vencimento < hoje %}
+    <section class="cartao-resumo {{ 'alerta' if vencido else ('atencao' if certificados_a_vencer|length) }}">
+      <span class="rotulo">Certificados a vencer</span>
+      <span class="valor">{{ certificados_a_vencer|length }}</span>
+      <span class="detalhe">
+        {%- for cert in certificados_a_vencer.slice(0, 3) %}
+        {{ cert.treinamento }} — {{ 'venceu em' if cert.data_vencimento < hoje else 'vence em' }}
+        <span class="mono">{{ cert.data_vencimento|data }}</span>{% if not loop.last %}<br>{% endif %}
+        {%- else %}Nenhum vencido nem vencendo nos próximos três meses.{% endfor %}</span>
+      {% if usuario.pode('treinamento.ver') %}<a class="acao" href="/certificados/meus">{{ ui.icone('arrow-right') }}Meus certificados</a>{% endif %}
+    </section>
+
+    <section class="cartao-resumo {{ 'alerta' if trocas_vencidas|length }}">
+      <span class="rotulo">EPI com troca vencida</span>
+      <span class="valor">{{ trocas_vencidas|length }}</span>
+      <span class="detalhe">
+        {%- for t in trocas_vencidas.slice(0, 3) %}
+        {{ t.nome }} — troca prevista para <span class="mono">{{ t.previsao_troca|data }}</span>{% if not loop.last %}<br>{% endif %}
+        {%- else %}Nenhum equipamento com a troca vencida.{% endfor %}</span>
+      {% if trocas_vencidas|length and usuario.pode('epi.requisitar') %}
+      <a class="acao" href="/epis/requisicoes/nova">{{ ui.icone('arrow-right') }}Pedir a troca</a>
+      {% elif usuario.pode('epi.ver') %}
+      <a class="acao" href="/epis/fichas/minha">{{ ui.icone('arrow-right') }}Minha ficha de EPI</a>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% else %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
@@ -177,7 +270,7 @@
                sistema, entao nao ha um titular a quem perguntar — e o painel e
                a tela que mais gente abre, que foi o que ja fez dele o pior caso
                da supressao estatistica. #}
-            <strong>{{ evento.tipo_evento|evento }}</strong> — {{ texto_livre(evento.descricao) }}
+            <strong>{{ evento.tipo_evento|evento }}</strong> — {{ texto_livre(evento.descricao_tela) }}
             <div class="quando">{{ evento.ocorrido_em|momento }} · {{ evento.usuario_nome }}</div>
           </li>
           {% else %}<li class="nada">Sem eventos.</li>{% endfor %}
@@ -187,4 +280,5 @@
   </div>
 
 </div>
+{% endif %}
 {% endblock %}

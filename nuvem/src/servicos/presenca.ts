@@ -33,8 +33,11 @@ import {
   INSCRICAO_FORA_DA_APURACAO,
   ROTULO_INSCRICAO,
   ROTULO_TURMA,
+  ROTULO_TURMA_TELA,
+  TransicaoInvalida,
   exigir_transicao_inscricao,
 } from "../dominio/estados.js";
+import { RegraViolada } from "../nucleo/erros.js";
 import { Certificado as C, Inscricao as I, Turma as T } from "../dominio/treinamento.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
@@ -233,6 +236,25 @@ export class LinhaDaGrade {
     return !this.avaliacao.aprovado;
   }
   /**
+   * A coluna Situação em poucas palavras: o que falta para a pessoa passar
+   * ("Faltam presença e nota"), ou o resultado já apurado com o motivo
+   * principal. A frase inteira de `avaliacao.motivos` vai no `title` — quatro
+   * linhas de texto por pessoa escondiam, numa grade de 30, quem está pendente.
+   */
+  get resumo(): string {
+    const turma = this.inscricao.turma;
+    const falta_nota = turma.nota_minima_aprovacao !== null && this.inscricao.nota_final === null;
+    const sem_presenca = !I.compareceu(this.inscricao);
+    if (sem_presenca && falta_nota) return "Faltam presença e nota";
+    if (sem_presenca) return "Falta presença";
+    if (this.frequencia_baixa) return `Frequência abaixo de ${numero(turma.frequencia_minima_percentual)}%`;
+    if (falta_nota) return "Falta a nota";
+    if (turma.nota_minima_aprovacao !== null && comparar(this.inscricao.nota_final!, turma.nota_minima_aprovacao) < 0) {
+      return `Nota abaixo de ${numero(turma.nota_minima_aprovacao)}`;
+    }
+    return INSCRICAO_COM_RESULTADO.has(this.inscricao.situacao) ? "Critérios atendidos" : "Em dia";
+  }
+  /**
    * A frequência contra o mínimo da turma (a cor da barra). No Jinja era
    * `linha.frequencia < turma.frequencia_minima_percentual` entre dois
    * `Decimal`; aqui os dois são texto, e comparar texto diria que 100 < 75.
@@ -240,6 +262,16 @@ export class LinhaDaGrade {
   get frequencia_baixa(): boolean {
     return comparar(this.frequencia, this.inscricao.turma.frequencia_minima_percentual) < 0;
   }
+}
+
+/**
+ * O motivo da reprovação numa frase só, para a tela da emissão: "reprovado(a):
+ * frequência de 50% abaixo do mínimo de 75%". As mesmas palavras de `avaliar`,
+ * que é quem decide — a frase não se recalcula em outro lugar.
+ */
+export function frase_de_reprovacao(turma: TurmaCarregada, inscricao: InscricaoCarregada): string {
+  const motivos = avaliar(turma, inscricao).motivos;
+  return "reprovado(a)" + (motivos.length ? `: ${motivos.join("; ")}` : "");
 }
 
 /** A grade da tela, montada uma vez e no serviço, com a MESMA `avaliar` do fecho. */
@@ -308,7 +340,7 @@ async function _exigir_lancamento(
   }
   if (!aceita_lancamento(turma)) {
     throw new RegraDaTurma(
-      `${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}: passe a ` +
+      `${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()}: passe a ` +
         "turma para em andamento antes de lançar presença ou nota.",
     );
   }
@@ -322,6 +354,23 @@ async function _exigir_lancamento(
 export function aceita_lancamento(turma: TurmaRegistro): boolean {
   if (turma.situacao === "EM_ANDAMENTO") return true;
   return turma.situacao === "PLANEJADA" && turma.data_inicio <= datas_br.hoje();
+}
+
+/**
+ * O dia é da turma e já aconteceu. Presença é FATO: lançar o dia de amanhã
+ * deixava a frequência em 100% antes de o curso acontecer, e com ela a turma
+ * concluída e o certificado emitido.
+ */
+function _exigir_dia_da_turma(turma: TurmaRegistro, data: string): void {
+  if (!(turma.data_inicio <= data && data <= turma.data_fim)) {
+    throw new RegraDaTurma(
+      `${datas_br.numerica(data)} não é dia de ${turma.codigo}, que vai de ` +
+        `${datas_br.numerica(turma.data_inicio)} a ${datas_br.numerica(turma.data_fim)}.`,
+    );
+  }
+  if (data > datas_br.hoje()) {
+    throw new RegraDaTurma(`${datas_br.numerica(data)} ainda não chegou: presença só se lança do dia que já aconteceu.`);
+  }
 }
 
 function _exigir_inscricao_lancavel(inscricao: InscricaoCarregada): void {
@@ -446,12 +495,7 @@ export async function lancar_presenca(
   const retificacao = await _exigir_lancamento(tx, usuario, inscricao, d.motivo);
   _exigir_inscricao_lancavel(inscricao);
 
-  if (!(turma.data_inicio <= d.data && d.data <= turma.data_fim)) {
-    throw new RegraDaTurma(
-      `${datas_br.numerica(d.data)} não é dia de ${turma.codigo}, que vai de ` +
-        `${datas_br.numerica(turma.data_inicio)} a ${datas_br.numerica(turma.data_fim)}.`,
-    );
-  }
+  _exigir_dia_da_turma(turma, d.data);
 
   const carga = T.carga_efetiva(turma);
   let lancadas: string;
@@ -469,6 +513,7 @@ export async function lancar_presenca(
         "Assumir a carga inteira daria 100% a quem veio um dia só.",
     );
   }
+  if (comparar(lancadas, "0") < 0) throw new RegraDaTurma("As horas do dia não podem ser negativas.");
   if (presente && comparar(lancadas, "0") <= 0) {
     throw new RegraDaTurma(
       "Informe as horas do dia: presença de zero hora não é presença, e " + "deixaria a frequência mentindo para mais.",
@@ -549,6 +594,7 @@ export async function marcar_todos_presentes(
   opcoes: { motivo?: string | null } = {},
 ): Promise<InscricaoCarregada[]> {
   usuario.exigir("turma.avaliar");
+  _exigir_dia_da_turma(turma, turma.data_inicio);
   if (turma.data_inicio !== turma.data_fim) {
     const dias = dias_da_turma(turma).length;
     throw new RegraDaTurma(
@@ -591,12 +637,7 @@ export async function marcar_dia_presente(
   d: { data: string; horas?: string | null; motivo?: string | null },
 ): Promise<InscricaoCarregada[]> {
   usuario.exigir("turma.avaliar");
-  if (!(turma.data_inicio <= d.data && d.data <= turma.data_fim)) {
-    throw new RegraDaTurma(
-      `${datas_br.numerica(d.data)} não é dia de ${turma.codigo}, que vai de ` +
-        `${datas_br.numerica(turma.data_inicio)} a ${datas_br.numerica(turma.data_fim)}.`,
-    );
-  }
+  _exigir_dia_da_turma(turma, d.data);
   const alcancadas = (await inscricoes_da_turma(tx, turma)).filter((i) => !INSCRICAO_FORA_DA_APURACAO.has(i.situacao));
   if (!alcancadas.length) throw new RegraDaTurma(`${turma.codigo} não tem ninguém para marcar presente.`);
   for (const inscricao of alcancadas) {
@@ -618,6 +659,109 @@ export async function marcar_dia_presente(
     usuario,
   });
   return alcancadas;
+}
+
+// ---------------------------------------------------------------------
+// A folha inteira de uma vez
+// ---------------------------------------------------------------------
+/** O que a grade enviou: as caixas marcadas, as horas ajustadas e as notas. */
+export interface Folha {
+  /** `"<inscricao_id>_<AAAA-MM-DD>"` de cada caixa marcada (presente) */
+  marcadas: ReadonlySet<string>;
+  /** horas digitadas no "ajustar", pela mesma chave; vazio usa a carga do dia */
+  horas: ReadonlyMap<string, string>;
+  /** nota digitada por inscrição; `null` é "apagar a nota" (pedido explícito) */
+  notas: ReadonlyMap<number, string | null>;
+  motivo?: string | null;
+}
+
+export interface FolhaSalva {
+  presencas: number;
+  notas: number;
+  recusas: string[];
+}
+
+export function chave_da_celula(inscricao_id: number, dia: string): string {
+  return `${inscricao_id}_${dia}`;
+}
+
+/**
+ * NUVEM: a grade inteira num envio — a caixa de cada dia e um único "Salvar
+ * folha". Antes eram três controles por célula (horas, presente, falta) e um
+ * envio por clique: 30 pessoas × 2 dias, 60 envios no dia do curso.
+ *
+ * Cada célula continua passando por `lancar_presenca`, com as mesmas guardas
+ * (dia que já aconteceu, carga, certificado emitido, retificação com motivo), e
+ * no seu savepoint: a que trava vai para `recusas` sem derrubar as outras. Só
+ * se grava o que MUDOU — a trilha não ganha uma linha por caixa que já estava
+ * como estava.
+ *
+ * Caixa desmarcada sem lançamento só vira FALTA quando o dia está na folha
+ * (alguém marcado nele, ou já lançado): a folha do dia de amanhã, ainda em
+ * branco, não pode virar trinta faltas por um clique em "Salvar".
+ *
+ * As horas: a caixa marcada vale a carga do dia (`horas_por_dia`); quem chegou
+ * atrasado tem as horas ajustadas à parte, porque a frequência é por hora.
+ */
+export async function salvar_folha(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada,
+  folha: Folha,
+  quem: (inscricao: InscricaoCarregada) => string,
+): Promise<FolhaSalva> {
+  usuario.exigir("turma.avaliar");
+  const saida: FolhaSalva = { presencas: 0, notas: 0, recusas: [] };
+  const hoje = datas_br.hoje();
+  const inscricoes = (await inscricoes_da_turma(tx, turma)).filter((i) => !INSCRICAO_FORA_DA_APURACAO.has(i.situacao));
+  const padrao = new Map(horas_por_dia(turma));
+  const dias = dias_da_turma(turma).filter((dia) => dia <= hoje);
+  const na_folha = new Set(
+    dias.filter((dia) =>
+      inscricoes.some((i) => folha.marcadas.has(chave_da_celula(i.id, dia)) || i.presencas.some((p) => p.data === dia)),
+    ),
+  );
+  const tentar = async (rotulo: string, f: (sp: Executor) => Promise<unknown>): Promise<boolean> => {
+    try {
+      await tx.transaction(async (sp) => f(sp as Executor));
+      return true;
+    } catch (erro) {
+      if (!(erro instanceof RegraViolada || erro instanceof TransicaoInvalida)) throw erro;
+      saida.recusas.push(`${rotulo}: ${erro.message.replace(/\.$/, "")}`);
+      return false;
+    }
+  };
+
+  for (const inscricao of inscricoes) {
+    for (const dia of dias) {
+      const chave = chave_da_celula(inscricao.id, dia);
+      const presente = folha.marcadas.has(chave);
+      const ja = inscricao.presencas.find((p) => p.data === dia) ?? null;
+      const digitadas = (folha.horas.get(chave) ?? "").trim();
+      const horas = presente ? digitadas || padrao.get(dia) || null : null;
+      if (ja) {
+        const igual = ja.presente === presente && (!presente || (horas !== null && comparar(ja.horas, horas) === 0));
+        if (igual) continue;
+      } else if (!presente && !na_folha.has(dia)) {
+        continue;
+      }
+      const feito = await tentar(`${quem(inscricao)}, ${datas_br.numerica(dia)}`, (sp) =>
+        lancar_presenca(sp, usuario, inscricao, { data: dia, presente, horas, motivo: folha.motivo }),
+      );
+      if (feito) saida.presencas += 1;
+    }
+  }
+  for (const inscricao of inscricoes) {
+    if (!folha.notas.has(inscricao.id)) continue;
+    const nota = folha.notas.get(inscricao.id)!;
+    const anterior = inscricao.nota_final;
+    if (nota === anterior || (nota !== null && anterior !== null && comparar(nota, anterior) === 0)) continue;
+    const feito = await tentar(`${quem(inscricao)}, nota`, (sp) =>
+      lancar_nota(sp, usuario, inscricao, nota, { motivo: folha.motivo }),
+    );
+    if (feito) saida.notas += 1;
+  }
+  return saida;
 }
 
 // ---------------------------------------------------------------------
@@ -663,7 +807,7 @@ export async function registrar_turma_realizada(
   usuario.exigir("turma.avaliar");
   usuario.exigir("turma.concluir");
   if (!["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"].includes(turma.situacao)) {
-    throw new RegraDaTurma(`${turma.codigo} está ${ROTULO_TURMA[turma.situacao]!.toLowerCase()}.`);
+    throw new RegraDaTurma(`${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()}.`);
   }
   if (turma.data_fim > datas_br.hoje()) {
     throw new RegraDaTurma(

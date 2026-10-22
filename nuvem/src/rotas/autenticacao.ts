@@ -200,9 +200,14 @@ rotas.post("/primeiro-acesso", async (c) => {
   return redirecionar(c, "/login");
 });
 
+/** A tela da troca, com o teto de tentativas que ela anuncia (o mesmo do login). */
+function _tela_troca(c: Ctx, usuario: Awaited<ReturnType<typeof usuarioLogado>>, extra: { erro?: string } = {}) {
+  return pagina(c, "paginas/trocar_senha.html", usuario, { max_tentativas: obterConfig().maxTentativas, ...extra });
+}
+
 rotas.get("/trocar-senha", async (c) => {
   const usuario = await usuarioLogado(c);
-  return pagina(c, "paginas/trocar_senha.html", usuario);
+  return _tela_troca(c, usuario);
 });
 
 rotas.post("/trocar-senha", async (c) => {
@@ -214,12 +219,17 @@ rotas.post("/trocar-senha", async (c) => {
   const nova = f.texto("nova");
   const confirmacao = f.texto("confirmacao");
 
-  const [registro] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id));
-  if (!registro || !(await autenticacao.conferir_senha(registro.senha_hash, senha_atual))) {
-    return pagina(c, "paginas/trocar_senha.html", usuario, { erro: "Senha atual incorreta." });
+  const recusa = await autenticacao.conferir_senha_atual(tx, usuario.id, senha_atual);
+  if (recusa?.bloqueada) {
+    // as sessões caíram (a desta também): a próxima tela é o login, com o porquê
+    deleteCookie(c, autenticacao.COOKIE_SESSAO, { path: "/" });
+    return pagina(c, "paginas/login.html", null, { erro: recusa.mensagem, proximo: INICIO, login: usuario.login });
   }
+  if (recusa) return _tela_troca(c, usuario, { erro: recusa.mensagem });
+  const [registro] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id));
+  if (!registro) return _tela_troca(c, usuario, { erro: "Senha atual incorreta." });
   if (nova !== confirmacao) {
-    return pagina(c, "paginas/trocar_senha.html", usuario, { erro: "A confirmação não confere." });
+    return _tela_troca(c, usuario, { erro: "A confirmação não confere." });
   }
   try {
     // O cookie da requisição diz "esta sessão é a de quem está trocando": ela
@@ -227,7 +237,7 @@ rotas.post("/trocar-senha", async (c) => {
     await autenticacao.trocar_senha(tx, registro, nova, getCookie(c, autenticacao.COOKIE_SESSAO) ?? null);
   } catch (erro) {
     if (!(erro instanceof autenticacao.SenhaRecusada)) throw erro;
-    return pagina(c, "paginas/trocar_senha.html", usuario, { erro: erro.message });
+    return _tela_troca(c, usuario, { erro: erro.message });
   }
   return redirecionar(c, INICIO);
 });

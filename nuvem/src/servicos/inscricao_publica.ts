@@ -36,7 +36,7 @@ import { VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
 import * as servico_participante from "./participante.js";
-import { DadosDoParticipante, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
+import { DadosDoParticipante, mesmo_nome, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
 import * as servico_turma from "./turma.js";
@@ -160,6 +160,13 @@ export async function turma_do_token(
   if (!fechada && turma.inscricao_token_expira_em !== null && turma.inscricao_token_expira_em <= agora) {
     fechada = `As inscrições de ${turma.codigo} pelo link encerraram.`;
   }
+  // turma lotada não recebe pedido: no IntegraSST a lotação fechava a
+  // inscrição; aqui a pessoa recebia "pedido recebido" e a recusa só aparecia
+  // quando a CSSO tentava aceitar. O pedido em espera não ocupa vaga, então
+  // conta só quem já foi aceito.
+  if (!fechada && (await servico_turma.vagas_restantes(tx, turma)) === 0) {
+    fechada = `As vagas de ${turma.codigo} se esgotaram.`;
+  }
   return { turma, fechada };
 }
 
@@ -190,6 +197,10 @@ function _ler(d: Pedido): Pedido {
     throw new PedidoInvalido("Não informe CPF: o pedido não precisa dele.");
   }
   if (p.nome.length < 5 || !p.nome.includes(" ")) throw new PedidoInvalido("Informe o nome completo.");
+  // o nome vai para o certificado e para o e-mail: marcação não é nome de ninguém
+  if (/[<>{}]/.test(p.nome) || /[<>{}]/.test(p.organizacao)) {
+    throw new PedidoInvalido("O nome e a organização não podem ter os caracteres < > { }.");
+  }
   if (p.nome.length > 160 || p.organizacao.length > 160 || p.email.length > 160) {
     throw new PedidoInvalido("Algum campo passou de 160 caracteres.");
   }
@@ -206,20 +217,49 @@ function _ler(d: Pedido): Pedido {
   return p;
 }
 
-/** Primeiro e último nome iguais, sem acento nem caixa — o bastante para não casar estranho. */
-export function mesmo_nome(a: string, b: string): boolean {
-  const x = textos.chave_busca(a).split(" ").filter(Boolean);
-  const y = textos.chave_busca(b).split(" ").filter(Boolean);
-  return x.length > 1 && y.length > 1 && x[0] === y[0] && x.at(-1) === y.at(-1);
+export { mesmo_nome };
+
+/**
+ * O pedido que esta mesma pessoa já deixou na turma e a CSSO ainda não
+ * conferiu: mesmo nome inteiro (sem acento, sem caixa, sem espaço sobrando),
+ * externo, vindo do link. É o que segura o duplo clique, o "reenviar" do
+ * celular e o pedido repetido de quem não deixou e-mail — cada um nascia como
+ * participante novo, e a CSSO recebia três "a conferir" da mesma pessoa.
+ */
+async function _pedido_em_espera(tx: Executor, turma: TurmaCarregada, p: Pedido): Promise<ParticipanteCarregado | null> {
+  const alvo = textos.chave_busca(p.nome);
+  const linhas = await tx
+    .select({ participante_id: tabela_inscricao.participante_id })
+    .from(tabela_inscricao)
+    .where(
+      and(
+        eq(tabela_inscricao.turma_id, turma.id),
+        eq(tabela_inscricao.origem, "PUBLICA"),
+        eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL"),
+      ),
+    );
+  for (const { participante_id } of linhas) {
+    const pessoa = await servico_participante.carregar(tx, participante_id);
+    if (!pessoa || pessoa.servidor_id !== null || textos.chave_busca(nome_exibicao(pessoa)) !== alvo) continue;
+    // e-mails diferentes dos dois lados são duas pessoas de mesmo nome (o mesmo
+    // e-mail já casou acima, por `por_email_todos`): juntar as duas sumiria
+    // com o pedido da segunda, e a duplicata na mesclagem é o mal menor
+    if (p.email && pessoa.emails.length) continue;
+    return pessoa;
+  }
+  return null;
 }
 
 /**
  * Quem é a pessoa do pedido. Casa com cadastro existente SÓ quando o nome
  * digitado confere com o do cadastro (pelo SIAPE, ou pelo e-mail): digitar o
- * SIAPE de outra pessoa não pendura o pedido nela. Sem casamento, nasce um
- * participante externo — a duplicata, se for, aparece para a CSSO mesclar.
+ * SIAPE de outra pessoa não pendura o pedido nela. O e-mail é procurado em
+ * TODOS os participantes que o usam (dois podem dividir o endereço, e o
+ * primeiro nem sempre é o do nome digitado). Sem casamento, o pedido em espera
+ * da mesma pessoa na turma é reaproveitado; só então nasce um participante
+ * externo — a duplicata, se for, aparece para a CSSO mesclar.
  */
-async function _participante(tx: Executor, p: Pedido): Promise<[ParticipanteCarregado, string]> {
+async function _participante(tx: Executor, turma: TurmaCarregada, p: Pedido): Promise<[ParticipanteCarregado, string]> {
   if (p.siape) {
     const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, p.siape));
     if (servidor && mesmo_nome(servidor.nome, p.nome)) {
@@ -227,9 +267,12 @@ async function _participante(tx: Executor, p: Pedido): Promise<[ParticipanteCarr
     }
   }
   if (p.email) {
-    const ja = await servico_participante.por_email(tx, p.email);
-    if (ja && ja.ativo && ja.mesclado_em_id === null && mesmo_nome(nome_exibicao(ja), p.nome)) return [ja, ""];
+    const do_endereco = await servico_participante.por_email_todos(tx, p.email);
+    const ja = do_endereco.find((x) => x.ativo && x.mesclado_em_id === null && mesmo_nome(nome_exibicao(x), p.nome));
+    if (ja) return [ja, ""];
   }
+  const em_espera = await _pedido_em_espera(tx, turma, p);
+  if (em_espera) return [em_espera, ""];
   const nota = p.siape ? `Pedido pelo link: o SIAPE ${p.siape} informado não confere com o cadastro de servidor.` : "";
   const novo = await servico_participante.criar_externo(tx, {
     nome: p.nome,
@@ -257,6 +300,9 @@ export async function pedir(
   const p = _ler(dados);
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
   if (impedimento) throw new RegraDaTurma(impedimento.replace(" Fale com a CSSO.", ""));
+  if ((await servico_turma.vagas_restantes(tx, turma)) === 0) {
+    throw new RegraDaTurma(`As vagas de ${turma.codigo} se esgotaram.`);
+  }
   const [em_espera] = await tx
     .select({ n: count() })
     .from(tabela_inscricao)
@@ -273,7 +319,7 @@ export async function pedir(
   let pessoa: ParticipanteCarregado;
   let nota: string;
   try {
-    [pessoa, nota] = await _participante(tx, p);
+    [pessoa, nota] = await _participante(tx, turma, p);
   } catch (erro) {
     if (erro instanceof DadosDoParticipante) throw new PedidoInvalido(erro.message);
     throw erro;

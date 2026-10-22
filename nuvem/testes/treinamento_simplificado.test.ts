@@ -106,8 +106,10 @@ describe("treinamento simplificado: o curso já dado até o certificado", () => 
     redireciona(await cliente.post(`/turmas/${turma!.id}/certificados`, {}, { seguir: false }));
     const certificados = await db.select().from(e.certificado);
     expect(certificados).toHaveLength(2);
-    const [generico] = await db.select().from(e.certificado_modelo);
+    // o vigente é a v2 (frases inteiras); a v1 fica, superada, para as segundas vias
+    const [generico] = await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.vigente, true));
     expect(generico!.nome).toBe("Padrão da casa");
+    expect(generico!.versao).toBe(2);
     expect(certificados.every((c) => c.modelo_id === generico!.id)).toBe(true);
     const docx = await cliente.get(`/certificados/${certificados[0]!.id}/documento`);
     expect(docx.status).toBe(200);

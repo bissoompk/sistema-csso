@@ -1,0 +1,360 @@
+/* =====================================================================
+   TEMA — a aparência do IntegraSST sobre a folha de base
+   =====================================================================
+   `csso.css` continua sendo a estrutura (grade, lateral, popup, tabela,
+   foco). Este arquivo só troca a pele: a fonte Inter, o verde-azulado
+   do IntegraSST, cantos arredondados, sombra macia, ícones no menu,
+   títulos de página coloridos e pílulas de estado em cor viva.
+
+   O verde do IntegraSST (#0d9488) dá 3,7:1 com branco, abaixo dos 4,5:1
+   que texto pequeno pede. Ele fica para o que é desenho (ícone, borda,
+   barra de progresso); texto e fundo de botão usam o tom de baixo
+   (#0f766e, 5,5:1), que no olho é a mesma cor.
+   ===================================================================== */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("/estaticos/fontes/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("/estaticos/fontes/inter-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  --tinta: #0f172a;
+  --tinta-media: #334155;
+  --tinta-fraca: #475569;
+  --tinta-dica: #64748b;
+
+  --cartao: #ffffff;
+  --linha-hover: #f8fafc;
+  --papel: #f1f5f9;
+  --superficie-fraca: #f1f5f9;
+  --divisor: #e2e8f0;
+  --borda-fraca: #eef2f6;
+  --borda: #e2e8f0;
+  --borda-campo: #7c8ba1;
+  --borda-hover: #5b6b82;
+  --ponto: #94a3b8;
+
+  --acento: #0f766e;
+  --acento-forte: #115e59;
+  --acento-claro: #ccfbf1;
+  --acento-vivo: #0d9488;
+  --acento-suave: #f0fdfa;
+
+  --lateral: #1e293b;
+  --lateral-texto: #cbd5e1;
+  --lateral-texto-fraco: #94a3b8;
+  --lateral-acento: #5eead4;
+  --lateral-linha: #334155;
+  --lateral-realce: #334155;
+
+  --ok: #047857;
+  --ok-fundo: #d1fae5;
+  --ok-borda: #6ee7b7;
+  --info-fundo: #e0f2fe;
+  --info-borda: #7dd3fc;
+  --info: #0369a1;
+  --alerta: #b45309;
+  --alerta-texto: #92400e;
+  --alerta-texto-longo: #78350f;
+  --alerta-fundo: #fef3c7;
+  --alerta-borda: #fbbf24;
+  --erro: #b91c1c;
+  --erro-fundo: #fee2e2;
+  --erro-borda: #fca5a5;
+  --erro-forte: #991b1b;
+  --neutra-fundo: #f1f5f9;
+  --neutra-borda: #cbd5e1;
+  --roxo: #6d28d9;
+  --roxo-fundo: #ede9fe;
+  --roxo-borda: #c4b5fd;
+
+  --raio-item: 10px;
+  --raio: 8px;
+  --raio-aviso: 10px;
+  --raio-cartao: 14px;
+
+  --sombra: 0 1px 2px rgba(15, 23, 42, .04), 0 4px 6px -1px rgba(15, 23, 42, .03);
+  --sombra-hover: 0 10px 20px -5px rgba(15, 23, 42, .10);
+  --sombra-alta: 0 24px 48px -12px rgba(15, 23, 42, .28);
+
+  --largura-lateral: 264px;
+  --anel-foco: 4px solid rgba(13, 148, 136, .18);
+}
+
+body {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- ícone ---------- */
+.ico {
+  display: inline-block; flex: none;
+  width: 1em; height: 1em; vertical-align: -.125em;
+  fill: currentColor;
+}
+
+/* ---------- lateral ---------- */
+.lateral { padding: 20px 12px 14px; gap: 18px; }
+.lateral .rotulo-secao {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  color: var(--lateral-texto-fraco);
+}
+.marca-texto strong { font-weight: 800; color: var(--lateral-acento); letter-spacing: -.01em; }
+
+.modulos-lateral > a.modulo {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; border-radius: var(--raio-item);
+  font-size: 14px; font-weight: 600;
+}
+.modulos-lateral > a.modulo .ico { font-size: 17px; opacity: .9; }
+.modulos-lateral > a.modulo.atual {
+  background: var(--lateral-realce); border-color: transparent; color: #fff;
+}
+.modulos-lateral .menu-modulo {
+  margin: 4px 0 10px 6px; padding-left: 6px;
+  border-left: 1px solid var(--lateral-linha);
+}
+
+.lateral .menu a {
+  gap: 11px; padding: 9px 12px; border-radius: var(--raio-item);
+  font-size: 14px; transition: background .15s ease, color .15s ease;
+}
+/* com ícone, o ponto do item deixa de ser preciso para alinhar o texto */
+.lateral .menu a::before { display: none; }
+.lateral .menu a .ico { font-size: 16px; opacity: .85; }
+.lateral .menu a:hover { background: rgba(255, 255, 255, .06); }
+.lateral .menu a.ativo, .lateral .menu a[aria-current="page"] {
+  background: var(--acento); color: #fff; font-weight: 600;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, .12);
+}
+.lateral .menu a.ativo .ico, .lateral .menu a[aria-current="page"] .ico { opacity: 1; }
+.lateral .menu-base a { padding: 8px 12px; font-size: 13px; }
+.lateral .menu-base a.ativo, .lateral .menu-base a[aria-current="page"] { color: #fff; }
+
+/* ---------- cabeçalho ---------- */
+.cabecalho {
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: saturate(1.4) blur(8px);
+  border-bottom-color: var(--divisor);
+}
+.busca input[type=search] { border-radius: 999px; background: var(--papel); border-color: transparent; }
+.busca input[type=search]:focus { background: var(--cartao); }
+.avatar { background: var(--acento); color: #fff; }
+
+/* ---------- títulos ---------- */
+h1 { font-weight: 800; letter-spacing: -.02em; }
+h1:not(.mono) { color: var(--acento); }
+h2 { font-weight: 700; }
+.cabecalho-pagina { padding-bottom: 14px; border-bottom: 1px solid var(--divisor); }
+
+/* ---------- cartões ---------- */
+.cartao { border-color: var(--borda); box-shadow: var(--sombra); }
+.cartao.link { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.cartao.link:hover { transform: translateY(-3px); border-color: var(--acento-vivo); box-shadow: var(--sombra-hover); }
+.cartao.destaque { border-left: 4px solid var(--acento-vivo); }
+
+/* ---------- botões ---------- */
+.botao, button { border-radius: var(--raio); padding: 10px 18px; transition: background .15s ease, transform .15s ease, box-shadow .15s ease; }
+.botao:hover, button:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(13, 148, 136, .20); }
+.botao.secundario:hover, button.secundario:hover,
+.botao.perigo-discreto:hover, button.perigo-discreto:hover { box-shadow: none; }
+.botao.redondo, button.redondo { border-radius: 999px; }
+button.como-link:hover, button.sair:hover { transform: none; box-shadow: none; }
+.botao .ico, button .ico { font-size: 1.05em; }
+
+/* ---------- campos ---------- */
+input:not([type]), input[type=text], input[type=search], input[type=password],
+input[type=email], input[type=date], input[type=number], select, textarea {
+  border-radius: var(--raio); transition: border-color .15s ease, box-shadow .15s ease;
+}
+input:not([type]):focus, input[type=text]:focus, input[type=search]:focus,
+input[type=password]:focus, input[type=email]:focus, input[type=date]:focus,
+input[type=number]:focus, select:focus, textarea:focus {
+  border-color: var(--acento-vivo);
+}
+
+/* ---------- tabelas ---------- */
+.tabela-cartao { border-color: var(--borda); box-shadow: var(--sombra); }
+th {
+  background: #f8fafc; color: var(--tinta-dica);
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+}
+table.tabela-dados th { text-transform: none; letter-spacing: 0; font-weight: 500; }
+tr:hover td { background: var(--acento-suave); }
+
+/* ---------- filtros e pílulas ---------- */
+.ficha-filtro { border-color: var(--divisor); font-weight: 600; transition: border-color .15s ease; }
+.ficha-filtro:hover { border-color: var(--acento-vivo); }
+.ficha-filtro.ativa { background: var(--acento); border-color: var(--acento); }
+.pilula { font-weight: 700; font-size: 12px; letter-spacing: .02em; padding: 4px 11px; }
+.pilula.info { color: var(--info); }
+
+/* ---------- aviso, vazio, popup ---------- */
+.vazio { border-color: var(--divisor); background: #fcfdfe; }
+.popup-caixa { border: 0; border-radius: 16px; overflow: hidden; }
+.popup-topo {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  color: #fff; border-bottom: 0;
+}
+.popup-topo h2 { color: #fff; }
+.popup-topo .nota { color: #cbd5e1; }
+.popup-fechar { color: #fff; }
+
+/* =====================================================================
+   HUB — a porta de entrada do módulo, como o "Centro de Certificações"
+   do IntegraSST: os quatro passos do trabalho e os cartões de ação, cada
+   um com o que está esperando nele.
+   ===================================================================== */
+.hub-titulo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hub-titulo h1 { display: flex; align-items: center; gap: 10px; margin: 0; }
+.hub-titulo .ao-lado { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.passos-hub {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px;
+  margin: 26px 0 8px; padding: 0; list-style: none;
+}
+.passo-hub {
+  --cor: var(--acento);
+  position: relative; padding: 26px 18px 18px; text-align: center;
+  background: var(--cartao); border: 1px solid var(--borda); border-radius: 12px;
+  box-shadow: var(--sombra);
+}
+.passo-hub .n {
+  position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--cor); color: #fff; font-weight: 800; font-size: 14px;
+  border: 3px solid var(--papel);
+}
+.passo-hub h2 { margin: 4px 0 6px; font-size: 15px; font-weight: 800; color: var(--cor); }
+.passo-hub p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--tinta-fraca); }
+.passo-hub.p1 { --cor: #0f172a; }
+.passo-hub.p2 { --cor: #a16207; border-color: #fcd34d; }
+.passo-hub.p3 { --cor: #1d4ed8; border-color: #93c5fd; }
+.passo-hub.p4 { --cor: var(--acento); border-color: #5eead4; }
+
+.secao-hub {
+  display: flex; align-items: center; gap: 8px;
+  margin: 26px 0 12px; font-size: 14px; font-weight: 700; color: var(--tinta-fraca);
+}
+.acoes-hub {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px;
+}
+.acao-hub {
+  --cor: var(--acento-vivo); --fundo: var(--cartao);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 24px 18px 20px; text-align: center; color: var(--tinta);
+  background: var(--fundo); border: 1px solid var(--cor); border-radius: 12px;
+  box-shadow: var(--sombra);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.acao-hub:hover { transform: translateY(-3px); box-shadow: var(--sombra-hover); text-decoration: none; }
+.acao-hub > .ico { font-size: 38px; color: var(--cor); }
+.acao-hub > strong { font-size: 15px; font-weight: 700; }
+.acao-hub > span { font-size: 13px; color: var(--tinta-fraca); line-height: 1.4; }
+.acao-hub .numero {
+  position: absolute; top: 12px; right: 12px;
+}
+.acao-hub { position: relative; }
+.acao-hub .contagem {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 2px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; background: var(--neutra-fundo); color: var(--tinta-media);
+}
+.acao-hub .contagem.atencao { background: var(--alerta-fundo); color: var(--alerta-texto); }
+.acao-hub .contagem.urgente { background: var(--erro-fundo); color: var(--erro); }
+.acao-hub .contagem.ok { background: var(--ok-fundo); color: var(--ok); }
+.acao-hub.roxo { --cor: #8b5cf6; }
+.acao-hub.amarelo { --cor: #eab308; }
+.acao-hub.escuro { --cor: #0f172a; }
+.acao-hub.teal { --cor: #14b8a6; }
+.acao-hub.verde { --cor: #10b981; }
+.acao-hub.vermelho { --cor: #ef4444; --fundo: #fef2f2; }
+.acao-hub.vermelho > strong { color: var(--erro); }
+.acao-hub.laranja { --cor: #f97316; --fundo: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); }
+.acao-hub.laranja > strong { color: #c2410c; }
+.acao-hub.azul { --cor: #3b82f6; }
+
+.kpis-hub {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;
+  margin-top: 4px;
+}
+.kpi-hub {
+  padding: 16px; text-align: center; background: var(--cartao);
+  border: 1px solid var(--borda); border-radius: 12px;
+}
+.kpi-hub strong { display: block; font-size: 30px; font-weight: 900; line-height: 1.1; color: var(--cor, var(--tinta)); }
+.kpi-hub span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--tinta-dica); }
+
+@media (max-width: 900px) {
+  .passos-hub { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 26px; }
+}
+@media (max-width: 520px) {
+  .passos-hub { grid-template-columns: 1fr; }
+}
+
+/* ---------- escolha em cartões (o "choice-card" do IntegraSST) ----------
+   Um rádio de verdade por baixo: teclado, leitor de tela e envio sem
+   JavaScript continuam os do navegador; o cartão é só o desenho. */
+.escolha-cartoes {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+  margin: 0 0 16px; padding: 0; border: 0;
+}
+.escolha-cartoes > legend { padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--tinta-media); }
+.escolha-cartao { position: relative; display: block; margin: 0; cursor: pointer; font-weight: 400; }
+.escolha-cartao > input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.escolha-cartao > span {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 2px; align-items: center;
+  height: 100%; padding: 14px 16px;
+  border: 2px solid var(--divisor); border-radius: 12px; background: var(--cartao);
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.escolha-cartao > span > .ico { grid-row: span 2; font-size: 26px; color: var(--acento-vivo); }
+.escolha-cartao > span > strong { font-size: 14px; color: var(--tinta); }
+.escolha-cartao > span > small { font-size: 12.5px; line-height: 1.4; color: var(--tinta-fraca); }
+.escolha-cartao:hover > span { border-color: var(--acento-vivo); background: var(--acento-suave); }
+.escolha-cartao > input:checked + span { border-color: var(--acento); background: var(--acento-suave); box-shadow: 0 0 0 3px rgba(13, 148, 136, .15); }
+.escolha-cartao > input:focus-visible + span { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+.qr-cartao { text-align: center; }
+.qr-cartao img { image-rendering: pixelated; border: 1px solid var(--divisor); border-radius: 12px; padding: 8px; background: #fff; }
+.qr-cartao .acoes { justify-content: center; }
+
+/* ações rápidas na linha da lista (o "gerir / link / concluir" do IntegraSST) */
+.acoes-linha-rapidas { white-space: nowrap; text-align: right; }
+.acoes-linha-rapidas .botao.compacto { padding: 6px 9px; border-radius: 8px; }
+.acoes-linha-rapidas .botao .ico { font-size: 15px; }
+a.pilula:hover { text-decoration: none; filter: brightness(.97); }
+/* código de turma, NUP, protocolo: não quebram no hífen */
+td a.mono, td > .mono:only-child { white-space: nowrap; }
+@media (max-width: 600px) {
+  .acoes-hub { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .acao-hub { padding: 16px 10px 14px; }
+  .acao-hub > .ico { font-size: 28px; }
+  .acao-hub > span:not(.contagem) { display: none; }
+  .passos-hub { display: none; }
+}
+
+/* O rótulo da célula empilhada no celular segue a fonte do tema, também
+   quando a célula é `.mono` (csso.css, `table.empilhavel`). */
+@media screen and (max-width: 600px) {
+  table.empilhavel.empilhavel > tbody > tr > td[data-coluna]::before {
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+}

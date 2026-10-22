@@ -169,11 +169,20 @@ describe("criar processo pela tela", () => {
 });
 
 describe("laudos pela tela", () => {
+  // o cadastro exige subscritor com habilitação vigente (IN 15/2022, art. 10, §2º, I)
+  const subscritor = async () => String((await servico_parecer.habilitados_vigentes(db))[0]!.id);
+
   it("cadastrar laudo e marcar superado", async () => {
     const cliente = await entrar(novoCliente(), "coordenador_csso");
     const r = await cliente.post(
       "/laudos",
-      { numero_siape: "26255-000.777/2019", tipo_adicional_id: "1", unidade_uorg_id: "1", data_emissao: "2019-06-01" },
+      {
+        numero_siape: "26255-000.777/2019",
+        tipo_adicional_id: "1",
+        unidade_uorg_id: "1",
+        data_emissao: "2019-06-01",
+        subscritor_id: await subscritor(),
+      },
       { seguir: false },
     );
     expect(r.status).toBe(303);
@@ -196,7 +205,7 @@ describe("laudos pela tela", () => {
     const cliente = await entrar(novoCliente(), "coordenador_csso");
     const r = await cliente.post(
       "/laudos",
-      { numero_siape: "26255-000.778/2019", tipo_adicional_id: "1", unidade_uorg_id: "1" },
+      { numero_siape: "26255-000.778/2019", tipo_adicional_id: "1", unidade_uorg_id: "1", subscritor_id: await subscritor() },
       { seguir: false },
     );
     const id = Number(r.location!.split("/").pop());
@@ -264,7 +273,7 @@ describe("pendências (a fila e o sino)", () => {
       pendencias.abrir(tx, { tipo: "INCLUIR_NO_SEI", chave: "volta:1", descricao: "incluir no SEI", usuario: coord, processo_id }),
     );
     const fila = (await cliente.get("/pendencias")).text;
-    expect(fila).toContain(`href="/processos/${processo_id}?de=pendencias">processo</a>`);
+    expect(fila).toContain(`href="/processos/${processo_id}?de=pendencias"`);
     const com_volta = (await cliente.get(`/processos/${processo_id}?de=pendencias`)).text;
     expect(com_volta).toContain('class="volta-origem" href="/pendencias"');
     expect((await cliente.get(`/processos/${processo_id}`)).text).not.toContain("volta-origem");

@@ -13,10 +13,10 @@ import { Hono } from "hono";
 import { asc } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { desfazer } from "../nucleo/contexto.js";
-import { formulario, usuarioCom, usuarioLogado } from "../dependencias.js";
+import { formulario, usuarioCom } from "../dependencias.js";
 import { fragmento, pagina, redirecionar } from "../web.js";
 import { dicionario } from "../dicionario.js";
-import { tipo_processo, usuario as tabela_usuario } from "../db/esquema/index.js";
+import { tipo_processo } from "../db/esquema/index.js";
 import {
   COLUNAS_KANBAN,
   ESTADO_PARA_COLUNA,
@@ -25,7 +25,16 @@ import {
   estado_para_coluna,
 } from "../dominio/estados.js";
 import * as repo from "../repositorios/processos.js";
-import { RequisitoDeSaidaNaoAtendido, fluxo_curto_de, mover, resumir, resumir_varios, sla_vigente } from "../servicos/processo.js";
+import {
+  RequisitoDeSaidaNaoAtendido,
+  estados_sem_documento,
+  fluxo_curto_de,
+  mover,
+  responsaveis_possiveis,
+  resumir,
+  resumir_varios,
+  sla_vigente,
+} from "../servicos/processo.js";
 import { ErroHttp } from "../nucleo/erros.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -91,7 +100,7 @@ rotas.get("/kanban", async (c) => {
     filtro,
     busca: filtro.q,
     tipos: await tx.select().from(tipo_processo).orderBy(asc(tipo_processo.nome)),
-    responsaveis: await tx.select().from(tabela_usuario).orderBy(asc(tabela_usuario.nome)),
+    responsaveis: await responsaveis_possiveis(tx),
     estados_disponiveis: Object.keys(ESTADO_PARA_COLUNA).sort(),
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
@@ -99,7 +108,8 @@ rotas.get("/kanban", async (c) => {
 });
 
 rotas.post("/kanban/mover/:processo_id", async (c) => {
-  const usuario = await usuarioLogado(c);
+  // a permissão antes de ler o formulário (e de dizer se o processo existe)
+  const usuario = await usuarioCom(c, "processo.status");
   const tx = c.get("tx");
   const pagina_inteira = _quer_pagina(c);
   const f = await formulario(c);
@@ -115,10 +125,14 @@ rotas.post("/kanban/mover/:processo_id", async (c) => {
   // A coluna vira estado pela máquina do tipo: o primeiro passo direto que cai
   // nela ou, no adicional, o salto até o estado mais próximo adiante. Sem
   // nenhum, o padrão da coluna — e a recusa diz para onde dá para ir.
+  // Os estados do parecer ficam de fora enquanto o parecer não existe: soltar
+  // em "Aguardando" um processo em elaboração de parecer pede documento, e não
+  // vira "pronto para assinatura" sem ele.
   const curto = await fluxo_curto_de(tx, processo);
+  const evitar = await estados_sem_documento(tx, processo, curto);
   const destino =
     f.opcional("estado") ??
-    estado_para_coluna(processo.estado_tecnico, coluna, curto) ??
+    estado_para_coluna(processo.estado_tecnico, coluna, curto, evitar) ??
     ESTADO_PADRAO_DA_COLUNA[coluna] ??
     "EM_TRIAGEM";
   try {

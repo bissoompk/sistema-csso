@@ -188,11 +188,15 @@ describe("mudar estado pela ficha", () => {
   it("move, e a recusa volta à ficha com o motivo sem gravar", async () => {
     const p = await processo();
     const cliente = await entrar(novoCliente(), "coordenador_csso");
-    const ok = await cliente.post(`/processos/${p.id}/estado`, { destino: "EM_TRIAGEM" }, { seguir: false });
-    expect(ok.location).toBe(`/processos/${p.id}?aba=historico`);
+    const ok = await cliente.post(`/processos/${p.id}/estado`, { destino: "EM_TRIAGEM", aba: "dados" }, { seguir: false });
+    // fica na aba em que estava, e diz para onde foi
+    expect(ok.location).toBe(`/processos/${p.id}?aba=dados&mensagem=${encodeURIComponent("Processo movido para “Em triagem”.")}`);
     const recusa = await cliente.post(`/processos/${p.id}/estado`, { destino: "AGUARDANDO_INSPECAO" });
     expect(recusa.status).toBe(200);
     expect(recusa.text).toContain("anexe a portaria de localização");
+    // a recusa sai uma vez só: dentro da camada reaberta, e não na faixa do topo
+    expect(recusa.text).toContain('<dialog class="popup" id="mover-estado" aria-labelledby="mover-estado-titulo" open>');
+    expect(recusa.text.split("anexe a portaria de localização").length - 1).toBe(2); // a recusa + o cartão de pendências
     const [atual] = await db.select().from(e.processo).where(eq(e.processo.id, p.id));
     expect(atual!.estado_tecnico).toBe("EM_TRIAGEM");
     // sobrestar e voltar pelo __voltar__
@@ -310,7 +314,8 @@ describe("ficha inexistente não responde 200", () => {
     expect(r.status).toBe(404);
     expect(r.text).toContain('<aside class="lateral">');
     expect(r.text).toContain("não existe ou está fora do seu escopo");
-    const j = await cliente.get(`/processos/${INEXISTENTE}`, { cabecalhos: { accept: "*/*" } });
+    // `*/*` num GET de navegação também ganha a tela (M85); JSON é de quem o pede
+    const j = await cliente.get(`/processos/${INEXISTENTE}`, { cabecalhos: { accept: "application/json" } });
     expect(j.status).toBe(404);
     expect(j.json().detail).toBeTruthy();
   });

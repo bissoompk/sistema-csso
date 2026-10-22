@@ -212,7 +212,7 @@ describe("excluir a turma aberta por engano", () => {
     const motivos = await servico_turma.impedimentos_da_exclusao(db, d.turma);
     expect(motivos.join(" | ")).toContain("só se exclui a planejada");
     expect(motivos.join(" | ")).toContain("certificado emitido");
-    await expect(servico_turma.excluir_turma(db, u, d.turma, "x")).rejects.toThrow("Cancele a turma");
+    await expect(servico_turma.excluir_turma(db, u, d.turma, "x")).rejects.toThrow("não pode ser excluída");
 
     // o pedido do próprio participante: a pessoa precisa ler o cancelamento
     const [inscricao] = await db.select().from(e.inscricao).where(eq(e.inscricao.turma_id, turma.id));

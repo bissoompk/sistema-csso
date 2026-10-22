@@ -14,13 +14,14 @@
  */
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import {
   assinatura_instrutor as tabela_assinatura,
   campus as tabela_campus,
   certificado as tabela_certificado,
+  inscricao as tabela_inscricao,
   servidor as tabela_servidor,
   treinamento as tabela_treinamento,
   turma as tabela_turma,
@@ -30,6 +31,7 @@ import {
   ESTADOS_TURMA,
   ROTULO_INSCRICAO,
   ROTULO_TURMA,
+  ROTULO_TURMA_TELA,
   TransicaoInvalida,
   destinos_de_turma,
 } from "../dominio/estados.js";
@@ -50,6 +52,8 @@ import { qr_png } from "../servicos/qr.js";
 import * as servico_lista from "../servicos/lista_presenca.js";
 import * as servico_participante from "../servicos/participante.js";
 import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js";
+import * as pedidos_link from "../servicos/pedidos_link.js";
+import { RegraViolada } from "../nucleo/erros.js";
 import * as servico_presenca from "../servicos/presenca.js";
 import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
@@ -111,7 +115,7 @@ function _data(valor: string, rotulo: string, obrigatoria = true): string | null
     return null;
   }
   const dia = data_iso(bruto);
-  if (dia === null) throw new CampoInvalido(`${primeira_maiuscula(rotulo)} inválida: use AAAA-MM-DD.`);
+  if (dia === null) throw new CampoInvalido(`${invalido(rotulo)}: use AAAA-MM-DD (o dia tem de existir).`);
   return dia;
 }
 
@@ -120,19 +124,30 @@ function primeira_maiuscula(texto: string): string {
   return texto ? texto[0]!.toUpperCase() + texto.slice(1).toLowerCase() : texto;
 }
 
+/**
+ * "A data de início é inválida", "O número de vagas é inválido", "As horas do
+ * dia são inválidas": o artigo do rótulo decide a concordância. Antes saía "O
+ * número de vagas inválido" — sem o verbo, e no feminino para todo mundo.
+ */
+function invalido(rotulo: string): string {
+  const artigo = rotulo.split(" ")[0]!.toLowerCase();
+  const fim = { o: "é inválido", a: "é inválida", os: "são inválidos", as: "são inválidas" }[artigo] ?? "é inválido";
+  return `${primeira_maiuscula(rotulo)} ${fim}`;
+}
+
 /** Aceita 8, 8,5 e 8.5 — a vírgula é o separador que o setor digita. */
 function _decimal(valor: string, rotulo: string, padrao: string | null = null): string | null {
   const bruto = (valor ?? "").trim().replace(",", ".");
   if (!bruto) return padrao;
   const numero = servico_presenca.normalizar_decimal(bruto);
-  if (numero === null) throw new CampoInvalido(`${primeira_maiuscula(rotulo)} inválida: informe um número.`);
+  if (numero === null) throw new CampoInvalido(`${invalido(rotulo)}: informe um número.`);
   return numero;
 }
 
 function _inteiro(valor: string, rotulo: string): number | null {
   const bruto = (valor ?? "").trim();
   if (!bruto) return null;
-  if (!/^\d+$/.test(bruto)) throw new CampoInvalido(`${primeira_maiuscula(rotulo)} inválido: informe um número inteiro.`);
+  if (!/^\d+$/.test(bruto)) throw new CampoInvalido(`${invalido(rotulo)}: informe um número inteiro.`);
   return Number(bruto);
 }
 
@@ -165,6 +180,7 @@ async function _tela_lista(
   d: {
     situacao?: string;
     treinamento_id?: string;
+    setor?: string;
     mensagem?: string | null;
     erro?: string | null;
     digitado?: Record<string, string> | null;
@@ -177,6 +193,9 @@ async function _tela_lista(
   if ((ESTADOS_TURMA as readonly string[]).includes(situacao)) filtros.push(eq(tabela_turma.situacao, situacao));
   const alvo = id_opcional(treinamento_id);
   if (alvo !== null) filtros.push(eq(tabela_turma.treinamento_id, alvo));
+  // o setor promotor, como o filtro do IntegraSST
+  const setor = id_opcional(d.setor ?? "");
+  if (setor !== null) filtros.push(eq(tabela_turma.unidade_promotora_id, setor));
   const itens = (
     (await tx.query.turma.findMany({
       where: and(...filtros),
@@ -188,7 +207,7 @@ async function _tela_lista(
   // oferecer "Abrir turma" sem treinamento para escolher.
   const comecando = !itens.length && !situacao && alvo === null && usuario.pode("turma.criar");
   // tudo junto: uma ida ao banco, e não uma por turma (ver `db/cliente.ts`)
-  const [ocupadas, treinamentos, campi, unidades, [instrutor]] = await Promise.all([
+  const [ocupadas, treinamentos, campi, unidades, [instrutor], setores_usados] = await Promise.all([
     Promise.all(itens.map((turma) => servico_turma.inscricoes_que_ocupam_vaga(tx, turma))),
     tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
     tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
@@ -196,9 +215,27 @@ async function _tela_lista(
     comecando
       ? tx.select({ id: tabela_assinatura.id }).from(tabela_assinatura).where(eq(tabela_assinatura.ativo, true)).limit(1)
       : Promise.resolve([]),
+    tx
+      .selectDistinct({ id: tabela_turma.unidade_promotora_id })
+      .from(tabela_turma)
+      .where(and(servico_turma.consulta_no_escopo(usuario), isNotNull(tabela_turma.unidade_promotora_id))),
   ]);
+  const usados_como_setor = new Set(setores_usados.map((s) => s.id));
   const inscritos: Record<number, number> = {};
   itens.forEach((turma, i) => (inscritos[turma.id] = ocupadas[i]!));
+  // os pedidos do link a conferir, por turma: o que pede ação na linha
+  const pedidos: Record<number, number> = {};
+  if (itens.length) {
+    const linhas = await tx
+      .select({ turma_id: tabela_inscricao.turma_id, n: count() })
+      .from(tabela_inscricao)
+      .where(and(inArray(tabela_inscricao.turma_id, itens.map((x) => x.id)), eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL")))
+      .groupBy(tabela_inscricao.turma_id);
+    for (const l of linhas) pedidos[l.turma_id] = Number(l.n);
+  }
+  const hoje = datas_br.hoje();
+  const link_no_ar: Record<number, boolean> = {};
+  for (const turma of itens) link_no_ar[turma.id] = inscricao_publica.link_no_ar(turma, hoje);
   let primeiros_passos: { rotulo: string; feito: boolean; href: string | null; dica: string }[] | null = null;
   if (comecando) {
     const tem_treinamento = treinamentos.some((t) => t.ativo);
@@ -233,6 +270,12 @@ async function _tela_lista(
     primeiros_passos,
     itens,
     inscritos,
+    pedidos,
+    link_no_ar,
+    hoje,
+    pode_inscrever: usuario.pode("turma.inscrever"),
+    filtro_setor: setor ? String(setor) : "",
+    setores_do_filtro: unidades.filter((u) => usados_como_setor.has(u.id)),
     // só treinamento ativo entra no seletor de nova turma
     treinamentos: treinamentos.filter((t) => t.ativo),
     // o filtro lista todos: turma antiga de curso desativado continua encontrável
@@ -240,7 +283,7 @@ async function _tela_lista(
     campi,
     unidades,
     descricoes: await _ultimas_descricoes(tx),
-    situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
+    situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
     digitado: d.digitado ?? {},
@@ -274,6 +317,7 @@ rotas.get(TURMAS, async (c) => {
   return _tela_lista(c, usuario, {
     situacao: c.req.query("situacao") ?? "",
     treinamento_id: c.req.query("treinamento_id") ?? "",
+    setor: c.req.query("setor") ?? "",
     ...recados(c),
   });
 });
@@ -281,7 +325,82 @@ rotas.get(TURMAS, async (c) => {
 // =====================================================================
 // "Meus treinamentos" — a tela do próprio servidor (antes de /turmas/{id})
 // =====================================================================
+// =====================================================================
+// Pedidos pelo link — conferir de uma vez, de todas as turmas
+// =====================================================================
+export const PEDIDOS = `${TURMAS}/pedidos`;
+
+async function _tela_pedidos(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string | null; erro?: string | null; travados?: pedidos_link.ResultadoLote["travados"] } = {}) {
+  return pagina(c, "paginas/turmas_pedidos.html", usuario, {
+    turmas: await pedidos_link.a_conferir(c.get("tx"), usuario),
+    rotulo_vinculo: ROTULO_VINCULO,
+    travados: d.travados ?? [],
+    ...recados(c),
+    ...(d.mensagem ? { mensagem: d.mensagem } : {}),
+    ...(d.erro ? { erro: d.erro } : {}),
+  });
+}
+
+rotas.get(PEDIDOS, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  return _tela_pedidos(c, usuario);
+});
+
+/**
+ * Aceitar ou recusar os pedidos marcados. Vem desta tela ou da aba Inscrições
+ * da turma (`volta`); o que travar (turma lotada, por exemplo) fica como
+ * estava e volta na tela com o motivo.
+ */
+rotas.post(PEDIDOS, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  const f = await formulario(c);
+  const volta_turma = id_opcional(f.texto("turma_id"));
+  const volta = volta_turma ? `${TURMAS}/${volta_turma}?aba=inscricoes` : PEDIDOS;
+  const ids = [...new Set(f.todos("inscricao_id").map((v) => id_opcional(v)).filter((v): v is number => v !== null))];
+  if (!ids.length) return _erro(c, volta, "Marque os pedidos.");
+  const aceitar = f.texto("acao") !== "recusar";
+  let resultado: pedidos_link.ResultadoLote;
+  try {
+    resultado = await pedidos_link.decidir(c.get("tx"), usuario, ids, aceitar ? "INSCRITA" : "CANCELADA", f.texto("motivo") || null);
+  } catch (erro) {
+    if (erro instanceof RegraViolada) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  const frase =
+    `${resultado.feitos} pedido(s) ${aceitar ? "aceito(s): já ocupam vaga" : "recusado(s)"}` +
+    (resultado.travados.length
+      ? `; ${resultado.travados.length} não ${resultado.travados.length > 1 ? "puderam" : "pôde"}: ` +
+        resultado.travados.map((x) => `${x.quem} — ${x.motivo.replace(/\.$/, "")}`).join("; ")
+      : "") +
+    // a turma em que se marcou mais do que cabe: nenhum dela foi aceito
+    resultado.excedidas
+      .map(
+        (x) =>
+          `. ${x.codigo}: ${x.marcados} pedidos marcados e ` +
+          (x.vagas === 0
+            ? "a turma está lotada — nenhum foi aceito"
+            : `${x.vagas === 1 ? "1 vaga livre" : `${x.vagas} vagas livres`} — nenhum foi aceito; ` +
+              `desmarque ${x.marcados - x.vagas} e aceite de novo`),
+      )
+      .join("") +
+    ".";
+  const problema = resultado.travados.length || resultado.excedidas.length;
+  if (problema && !volta_turma) {
+    return _tela_pedidos(c, usuario, { [resultado.feitos ? "mensagem" : "erro"]: frase, travados: resultado.travados });
+  }
+  return resultado.feitos && !resultado.excedidas.length ? _volta(c, volta, frase) : _erro(c, volta, frase);
+});
+
 export const MINHAS = `${TURMAS}/minhas`;
+
+/** "Restam 3 vagas", "Resta 1 vaga", "Lotada", "Sem limite de vagas". */
+export function frase_das_vagas(restantes: number | null): string {
+  if (restantes === null) return "Sem limite de vagas";
+  if (restantes <= 0) return "Lotada";
+  return restantes === 1 ? "Resta 1 vaga" : `Restam ${restantes} vagas`;
+}
 
 rotas.get(MINHAS, async (c) => {
   const usuario = await usuarioLogado(c);
@@ -289,21 +408,21 @@ rotas.get(MINHAS, async (c) => {
   const tx = c.get("tx");
   const hoje = datas_br.hoje();
   const minhas_inscricoes = (await servico_turma.inscricoes_do_titular(tx, usuario)).map(vista_inscricao);
-  const ja_inscrito = [...new Set(minhas_inscricoes.map((i) => i.turma_id))];
-  const abertas = (await servico_turma.turmas_abertas(tx, hoje)).map(vista_turma);
-  const inscritos: Record<number, number> = {};
+  // a situação REAL de cada turma em que já há inscrição minha — a cancelada
+  // também: "já inscrito" para quem desistiu era o rótulo que enganava
+  const minha_situacao: Record<number, string> = {};
+  for (const i of minhas_inscricoes) minha_situacao[i.turma_id] = servico_turma.situacao_para_o_titular(i.situacao);
   const restantes: Record<number, number | null> = {};
-  for (const turma of abertas) {
-    inscritos[turma.id] = await servico_turma.inscricoes_que_ocupam_vaga(tx, turma);
-    restantes[turma.id] = await servico_turma.vagas_restantes(tx, turma);
-  }
+  const abertas = (await servico_turma.turmas_abertas(tx, hoje)).map(vista_turma);
+  for (const turma of abertas) restantes[turma.id] = await servico_turma.vagas_restantes(tx, turma);
+  // a lotada vai para o fim: quem procura vaga lê de cima para baixo
+  abertas.sort((a, b) => Number(restantes[a.id] === 0) - Number(restantes[b.id] === 0));
   return pagina(c, "paginas/turmas_minhas.html", usuario, {
     hoje,
     abertas,
-    // "18 de 20" diz mais do que "18"
-    inscritos,
     vagas_restantes: restantes,
-    ja_inscrito,
+    frase_vagas: Object.fromEntries(abertas.map((t) => [t.id, frase_das_vagas(restantes[t.id] ?? null)])),
+    minha_situacao,
     inscricoes: minhas_inscricoes,
     desistivel: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, servico_turma.pode_desistir(i, hoje)])),
     pode_pedir: usuario.pode("turma.inscrever_se"),
@@ -319,6 +438,7 @@ rotas.get(MINHAS, async (c) => {
  */
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscrever-me`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever_se");
   const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")));
   if (!turma) return redirecionar(c, MINHAS);
   try {
@@ -338,17 +458,22 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscrever-me`, async (c) => {
 /** A própria desistência. Mesma disciplina: nenhum "quem" entra por aqui. */
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/desistir`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever_se");
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
   if (!turma) return redirecionar(c, MINHAS);
   const minha = (await servico_turma.inscricoes_do_titular(tx, usuario)).find((i) => i.turma_id === turma.id);
   if (!minha) return _erro(c, MINHAS, `Você não tem inscrição em ${turma.codigo}.`);
+  const era_pedido = minha.situacao === "AGUARDANDO_EMAIL";
   try {
     await _no_savepoint(c, (sp) => servico_turma.desistir(sp, usuario, minha, { motivo: texto_ou_nulo(f.texto("motivo")) }));
   } catch (erro) {
     if (erro instanceof RegraDaTurma || erro instanceof TransicaoInvalida) return _erro(c, MINHAS, erro.message);
     throw erro;
+  }
+  if (era_pedido) {
+    return _volta(c, MINHAS, `Pedido de vaga em ${turma.codigo} retirado. O registro fica, com o motivo — nada foi apagado.`);
   }
   return _volta(
     c,
@@ -378,6 +503,7 @@ rotas.post(TURMAS, async (c) => {
     "nota_minima_aprovacao",
     "frequencia_minima_percentual",
     "observacoes",
+    "abertura",
   ];
   const digitado: Record<string, string> = Object.fromEntries(campos.map((k) => [k, f.texto(k)]));
   const recusar = (mensagem: string) => _tela_lista(c, usuario, { erro: mensagem, digitado });
@@ -387,12 +513,22 @@ rotas.post(TURMAS, async (c) => {
     .from(tabela_treinamento)
     .where(eq(tabela_treinamento.id, id_opcional(digitado.treinamento_id) ?? 0));
   if (!treinamento) return recusar("Escolha o treinamento da turma.");
+  const com_link = digitado.abertura === "LINK";
+  if (com_link && !digitado.inscricao_aberta_ate) {
+    return recusar("Turma aberta com link precisa de “inscrições até”: é a data em que o link deixa de funcionar.");
+  }
   let turma: TurmaCarregada;
+  let token: string | null = null;
   try {
     turma = await _no_savepoint(c, async (sp) => {
       const inicio = _data(digitado.data_inicio!, "a data de início")!;
       const fim = _data(digitado.data_fim!, "a data de término")!;
-      return servico_turma.criar_turma(sp, usuario, {
+      // o link fecha quando a turma começa (`aberta_a_pedido_proprio`): recusado
+      // aqui, antes de a turma existir, a frase não cita um código que não vai ficar
+      if (com_link && inicio <= datas_br.hoje()) {
+        throw new CampoInvalido("Turma com link público precisa começar depois de hoje: a partir do início, quem inscreve é a CSSO.");
+      }
+      let criada = await servico_turma.criar_turma(sp, usuario, {
         treinamento,
         data_inicio: inicio,
         data_fim: fim,
@@ -408,11 +544,20 @@ rotas.post(TURMAS, async (c) => {
         frequencia_minima_percentual: _decimal(digitado.frequencia_minima_percentual!, "a frequência mínima", "75")!,
         observacoes: texto_ou_nulo(digitado.observacoes),
       });
+      // o atalho "turma aberta com link": tudo ou nada, no mesmo savepoint
+      if (com_link) {
+        criada = await servico_turma.mudar_situacao(sp, usuario, criada, "INSCRICOES_ABERTAS");
+        token = await inscricao_publica.gerar_link(sp, usuario, criada);
+      }
+      return criada;
     });
   } catch (erro) {
-    if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma) return recusar(erro.message);
+    if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma || erro instanceof TransicaoInvalida) {
+      return recusar(erro.message);
+    }
     throw erro;
   }
+  if (token) return _tela_link(c, usuario, turma, token);
   return _volta(c, `${TURMAS}/${turma.id}`, `Turma ${turma.codigo} aberta.`);
 });
 
@@ -432,19 +577,29 @@ async function _instrutores_livres(tx: Executor, turma: TurmaCarregada) {
     .map(vista_assinatura);
 }
 
-rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
-  const usuario = await usuarioLogado(c);
-  usuario.exigir("treinamento.ver");
+// quem opera a turma (e lê o bloco das regras da máquina); o resto é participante
+const PERMISSOES_DE_QUEM_GERENCIA = ["turma.criar", "turma.inscrever", "turma.avaliar", "turma.concluir"];
+
+/**
+ * A ficha, com a aba pedida. Serve ao GET e às recusas que precisam devolver a
+ * tela com o que foi digitado (o "é a mesma pessoa?" do cadastro de externo):
+ * `extras` vai por cima do contexto.
+ */
+async function _tela_ficha(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada,
+  d: { aba?: string; busca?: string; extras?: Record<string, unknown>; status?: number } = {},
+): Promise<Response> {
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
-  if (!turma) return redirecionar(c, TURMAS);
   vista_turma(turma);
+  const hoje = datas_br.hoje();
   // quem só lê o cartaz recebe uma aba só, e as nominais nem são carregadas
   const ve_nominal = PERMISSOES_DAS_ABAS_NOMINAIS.some((p) => usuario.pode(p));
   const abas = ve_nominal ? ABAS : ABAS.slice(0, 1);
-  let aba = c.req.query("aba") ?? "turma";
+  let aba = d.aba ?? "turma";
   if (!abas.some(([chave]) => chave === aba)) aba = "turma";
-  const busca = c.req.query("busca") ?? "";
+  const busca = d.busca ?? "";
   const tem_busca = Boolean(busca.trim()) && ve_nominal;
   // As leituras da ficha não dependem umas das outras: saem juntas, numa ida
   // ao banco (ver `db/cliente.ts`).
@@ -459,7 +614,7 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     instrutores_livres,
     campi,
     unidades,
-    [modelo_emissao],
+    [modelo_emissao, aviso_modelo],
     valores_turma,
     valores_inscritos,
     trilha_campos,
@@ -545,8 +700,42 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
       ? await servico_turma.impedimentos_da_exclusao(tx, turma)
       : null;
 
+  // o aviso de "sem modelo próprio" é o mesmo para todo inscrito: sai uma vez,
+  // no topo da aba, e não repetido em cada linha da tabela
+  const avisos_linha: Record<number, string[]> = {};
+  for (const [id, v] of Object.entries(aptidao)) avisos_linha[Number(id)] = v.avisos.filter((a) => a !== aviso_modelo);
+
+  // quem não opera a turma vê só o cartaz, a situação e a própria inscrição
+  const gerencia = PERMISSOES_DE_QUEM_GERENCIA.some((p) => usuario.pode(p));
+  const minha_inscricao =
+    !gerencia && usuario.servidor_id !== null
+      ? ((await servico_turma.inscricoes_do_titular(tx, usuario)).find((i) => i.turma_id === turma.id) ?? null)
+      : null;
+
+  // o link só se gera onde daria certo; com a turma fechada fica só "desligar"
+  const link_impedimento =
+    turma.inscricao_aberta_ate === null
+      ? "Defina antes até quando a turma recebe inscrição (“inscrições até”, em Editar dados da turma)."
+      : servico_turma.aberta_a_pedido_proprio(turma, hoje).replace(" Fale com a CSSO.", "");
+  const destinos_possiveis = destinos_de_turma(turma.situacao);
+
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
+    hoje,
+    gerencia,
+    minha_inscricao: minha_inscricao ? vista_inscricao(minha_inscricao) : null,
+    minha_situacao: minha_inscricao ? servico_turma.situacao_para_o_titular(minha_inscricao.situacao) : "",
+    // o servidor que abre a ficha de uma turma com inscrições abertas pede dali mesmo
+    pode_pedir_aqui:
+      !gerencia &&
+      !minha_inscricao &&
+      usuario.pode("turma.inscrever_se") &&
+      usuario.servidor_id !== null &&
+      !servico_turma.aberta_a_pedido_proprio(turma, hoje) &&
+      vagas_restantes !== 0,
+    link_impedimento,
+    aviso_modelo: aba === "emissao" ? aviso_modelo : "",
+    avisos_linha,
     impedimentos_exclusao,
     descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
     link_no_ar: inscricao_publica.link_no_ar(turma),
@@ -560,10 +749,13 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     rotulo_vinculo: ROTULO_VINCULO,
     vinculos: VINCULOS_PARTICIPANTE.filter((v) => v !== "SERVIDOR"),
     vagas_restantes,
-    // de planejada direto a concluída, só turma que já terminou (a guarda é do serviço)
-    destinos: destinos_de_turma(turma.situacao)
-      .filter((codigo) => !(turma.situacao === "PLANEJADA" && codigo === "CONCLUIDA" && turma.data_fim > datas_br.hoje()))
-      .map((codigo) => [codigo, ROTULO_TURMA[codigo]]),
+    // concluir, só turma que já terminou, de qualquer origem (a guarda é do serviço)
+    destinos: destinos_possiveis
+      .filter((codigo) => !(codigo === "CONCLUIDA" && turma.data_fim > hoje))
+      .map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
+    // e o dia em que o "Concluir" aparece, para a tela dizer por que ele não está lá
+    conclui_a_partir:
+      destinos_possiveis.includes("CONCLUIDA") && turma.data_fim > hoje && usuario.pode("turma.concluir") ? turma.data_fim : null,
     // o atalho "turma já realizada": datas passadas e nada lançado ainda
     ja_realizada:
       ["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"].includes(turma.situacao) &&
@@ -580,6 +772,8 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     unidades,
     // --- aba 3 ---
     dias: servico_presenca.dias_da_turma(turma),
+    // a caixa marcada vale a carga do dia; quem chegou atrasado se ajusta à parte
+    horas_padrao: Object.fromEntries(servico_presenca.horas_por_dia(turma)),
     grade,
     contagem: ve_nominal ? await servico_presenca.contagem_por_situacao(tx, turma) : {},
     carga_efetiva: turma.carga_horaria_horas || turma.treinamento.carga_horaria_horas,
@@ -597,7 +791,16 @@ rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
     pode_preencher_turma: campos_certificado.pode_preencher_turma(usuario),
     pode_preencher_participante: usuario.pode(campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE),
     ...recados(c),
-  });
+    ...(d.extras ?? {}),
+  }, d.status);
+}
+
+rotas.get(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.ver");
+  const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")));
+  if (!turma) return redirecionar(c, TURMAS);
+  return _tela_ficha(c, usuario, turma, { aba: c.req.query("aba") ?? "turma", busca: c.req.query("busca") ?? "" });
 });
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
@@ -637,8 +840,19 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
   const usuario = await usuarioLogado(c);
+  // quem não tem nenhuma das permissões de destino nem chega a mandar o
+  // formulário (M84); a específica do destino vem logo depois de lê-lo
+  const de_destino = [...new Set(Object.values(servico_turma.PERMISSAO_POR_SITUACAO_TURMA))];
+  if (!de_destino.some((p) => usuario.pode(p))) usuario.exigir(de_destino[0]!);
   const tx = c.get("tx");
   const f = await formulario(c);
+  // a permissão depende do destino (`PERMISSAO_POR_SITUACAO_TURMA`); destino
+  // desconhecido segue para o serviço, que o recusa com a mensagem dele
+  // (`Object.hasOwn`, como no serviço: "constructor" não é destino de ninguém)
+  const pedido = f.texto("destino");
+  if (Object.hasOwn(servico_turma.PERMISSAO_POR_SITUACAO_TURMA, pedido)) {
+    usuario.exigir(servico_turma.PERMISSAO_POR_SITUACAO_TURMA[pedido]!);
+  }
   const turma_id = Number(c.req.param("turma_id"));
   const turma = await _turma_no_escopo(tx, usuario, turma_id);
   if (!turma) return redirecionar(c, TURMAS);
@@ -655,7 +869,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
   if (turma.situacao === "CONCLUIDA") {
     return _volta(c, `${volta}?aba=emissao`, `${turma.codigo}: concluída. Confira os dados e emita os certificados.`);
   }
-  const rotulo = { INSCRICOES_ABERTAS: "inscrições abertas" }[turma.situacao as string] ?? ROTULO_TURMA[turma.situacao]!.toLowerCase();
+  const rotulo = ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase();
   return _volta(c, volta, `${turma.codigo}: ${rotulo}.`);
 });
 
@@ -671,14 +885,19 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/retificar`, async (c) => {
   const destino = `${TURMAS}/${turma_id}`;
   let r: retificacao.ResultadoTurma;
   try {
+    const data_inicio = _data(f.texto("data_inicio"), "a data de início")!;
+    const data_fim = _data(f.texto("data_fim"), "a data de término")!;
+    // o período invertido é o erro de digitação, e a frase tem de dizer isso —
+    // não "há presença fora do período novo", que é a trava seguinte
+    servico_turma.conferir_periodo(data_inicio, data_fim);
     r = await _no_savepoint(c, (sp) =>
       retificacao.retificar_turma(
         sp,
         usuario,
         turma,
         {
-          data_inicio: _data(f.texto("data_inicio"), "a data de início")!,
-          data_fim: _data(f.texto("data_fim"), "a data de término")!,
+          data_inicio,
+          data_fim,
           local: texto_ou_nulo(f.texto("local")),
           descricao: texto_ou_nulo(f.texto("descricao")),
           campus_id: id_opcional(f.texto("campus_id")),
@@ -765,6 +984,8 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/excluir`, async (c) => {
  */
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/realizada`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.avaliar");
+  usuario.exigir("turma.concluir");
   const tx = c.get("tx");
   const turma_id = Number(c.req.param("turma_id"));
   const turma = await _turma_no_escopo(tx, usuario, turma_id);
@@ -796,6 +1017,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/realizada`, async (c) => {
 // =====================================================================
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
@@ -887,6 +1109,24 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
       (k) => [k, f.texto(k)],
     ),
   );
+  // Externo novo: antes de criar a segunda linha da mesma pessoa, a pergunta.
+  // `confirmar_novo` é a resposta "não, é outra pessoa"; "sim" volta com o
+  // `participante_id` do cadastro que já existe.
+  const externo_novo = id_opcional(d.participante_id) === null && id_opcional(d.servidor_id) === null && d.nome!.trim();
+  if (externo_novo && f.texto("confirmar_novo") !== "1") {
+    const parecidos = await servico_participante.parecidos(tx, { nome: d.nome!, email: d.email }, usuario);
+    if (parecidos.length) {
+      return _tela_ficha(c, usuario, turma, {
+        aba: "inscricoes",
+        busca,
+        extras: {
+          parecidos: parecidos.map(vista_participante),
+          // o CPF não volta: a recusa nunca ecoa o número (`cpf_certificado.ts`)
+          externo_digitado: { ...d, tinha_cpf: Boolean(f.texto(CAMPO_CPF_CERTIFICADO).trim()) },
+        },
+      });
+    }
+  }
   let pessoa: servico_participante.ParticipanteCarregado;
   try {
     // CPF opcional, só para o certificado (`cpf_certificado.ts`): conferido
@@ -1001,15 +1241,20 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico`, async (c) => {
     if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
     throw erro;
   }
-  const endereco = `${await servico_emissao.url_base_validacao(tx)}${inscricao_publica.CAMINHO}/${token}`;
+  return _tela_link(c, usuario, turma, token);
+});
+
+/** A única vez em que o link aparece: o endereço, o QR e a mensagem pronta. */
+async function _tela_link(c: Ctx, usuario: UsuarioAtual, turma: TurmaCarregada, token: string): Promise<Response> {
+  const endereco = `${await servico_emissao.url_base_validacao(c.get("tx"))}${inscricao_publica.CAMINHO}/${token}`;
   const resposta = await pagina(c, "paginas/turma_link.html", usuario, {
     turma: vista_turma(turma),
     endereco,
-    qr: `data:image/png;base64,${Buffer.from(qr_png(endereco, 6)).toString("base64")}`,
+    qr: `data:image/png;base64,${Buffer.from(qr_png(endereco, 8)).toString("base64")}`,
   });
   resposta.headers.set("cache-control", "no-store");
   return resposta;
-});
+}
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/desligar`, async (c) => {
   const usuario = await usuarioLogado(c);
@@ -1023,6 +1268,8 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/desligar`, async (c) => {
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
+  // toda situação que se escolhe aqui pede `turma.inscrever` (PERMISSAO_POR_SITUACAO_INSCRICAO)
+  usuario.exigir("turma.inscrever");
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
@@ -1165,6 +1412,8 @@ function _linha_trocada(
     turma,
     linha: servico_presenca.linha_da_grade(turma, inscricao),
     dias: servico_presenca.dias_da_turma(turma),
+    hoje: datas_br.hoje(),
+    horas_padrao: Object.fromEntries(servico_presenca.horas_por_dia(turma)),
     // a guarda que decide é a do serviço (`_exigir_lancamento`), que já correu
     pode_lancar: true,
     retificando: turma.situacao === "CONCLUIDA",
@@ -1177,6 +1426,7 @@ function _linha_trocada(
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
@@ -1221,6 +1471,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas`, async (c) => {
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/todos`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
@@ -1239,9 +1490,63 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/todos`, async (c) => {
   return _volta(c, volta, `${alcancadas.length} presença(s) lançada(s).`, ANCORA_GRADE);
 });
 
+/**
+ * A folha inteira num envio só (`presenca.salvar_folha`): `presente` traz a
+ * chave `<inscricao_id>_<dia>` de cada caixa marcada, `h_<chave>` as horas
+ * ajustadas, `n_<inscricao_id>` a nota e `apagar_nota` o pedido de apagá-la. O
+ * que travar volta escrito, e o resto fica gravado.
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.avaliar");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")));
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}${PRESENCAS}`;
+  const horas = new Map<string, string>();
+  const notas = new Map<number, string | null>();
+  try {
+    for (const [campo, valor] of f.dados) {
+      if (typeof valor !== "string" || !valor.trim()) continue;
+      const celula = /^h_(\d+_\d{4}-\d{2}-\d{2})$/.exec(campo);
+      if (celula) horas.set(celula[1]!, _decimal(valor, "as horas do dia")!);
+      const nota = /^n_(\d+)$/.exec(campo);
+      if (nota) notas.set(Number(nota[1]), _decimal(valor, "a nota"));
+    }
+  } catch (erro) {
+    if (erro instanceof CampoInvalido) return _erro(c, volta, erro.message, ANCORA_GRADE);
+    throw erro;
+  }
+  for (const valor of f.todos("apagar_nota")) {
+    const id = id_opcional(valor);
+    if (id !== null) notas.set(id, null);
+  }
+  // RN-19: a recusa nomeia a pessoa só para quem pode ler o nome dela
+  const quem = (i: InscricaoCarregada) =>
+    servico_participante.pode_identificar(usuario, i.participante) ? nome_exibicao(i.participante) : "uma inscrição";
+  const r = await servico_presenca.salvar_folha(
+    tx,
+    usuario,
+    turma,
+    { marcadas: new Set(f.todos("presente")), horas, notas, motivo: texto_ou_nulo(f.texto("motivo")) },
+    quem,
+  );
+  const feito = [
+    r.presencas ? `${r.presencas} presença(s)` : "",
+    r.notas ? `${r.notas} nota(s)` : "",
+  ].filter(Boolean);
+  const frase = feito.length ? `Folha salva: ${feito.join(" e ")} gravada(s).` : "Nada mudou na folha.";
+  if (r.recusas.length) {
+    return _erro(c, volta, `${feito.length ? frase + " " : ""}Ficaram como estavam — ${r.recusas.join("; ")}.`, ANCORA_GRADE);
+  }
+  return _volta(c, volta, frase, ANCORA_GRADE);
+});
+
 /** Uma COLUNA da grade: todo mundo presente naquele dia (a folha em papel). */
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/dia`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
@@ -1272,6 +1577,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/dia`, async (c) => {
  */
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/notas`, async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
@@ -1381,6 +1687,8 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
  */
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-certificado`, async (c) => {
   const usuario = await usuarioLogado(c);
+  // qualquer uma das duas (`campos_certificado.pode_preencher_turma`)
+  if (!campos_certificado.pode_preencher_turma(usuario)) usuario.exigir(campos_certificado.PERMISSOES_CAMPO_TURMA[0]);
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));

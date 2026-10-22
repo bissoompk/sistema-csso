@@ -165,7 +165,10 @@
           <td>{{ ui.pilula_parecer(p.situacao) }}</td>
           <td class="mono">{{ p.data_emissao|data or '—' }}</td>
           <td>
-            {%- if p.laudo %}<a class="mono" href="/laudos/{{ p.laudo_id }}">{{ p.laudo.numero_siape }}</a>
+            {#- Sem `laudo.ver` o número sai como texto (D81): o servidor abre a
+                própria ficha, e o link dava 403 na cara dele. #}
+            {%- if p.laudo and usuario.pode('laudo.ver') %}<a class="mono" href="/laudos/{{ p.laudo_id }}">{{ p.laudo.numero_siape }}</a>
+            {%- elif p.laudo %}<span class="mono">{{ p.laudo.numero_siape }}</span>
             {%- else %}<span class="discreto">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
@@ -311,7 +314,7 @@
     <div class="campo"><label for="id-situacao">Situação</label>
       <select id="id-situacao" name="situacao">
         {% for st in situacoes %}
-        <option value="{{ st }}" {% if servidor.situacao == st %}selected{% endif %}>{{ st }}</option>
+        <option value="{{ st }}" {% if servidor.situacao == st %}selected{% endif %}>{{ (ui.ROTULO_SITUACAO_SERVIDOR[st] or st)|capitalize }}</option>
         {% endfor %}
       </select></div>
   </div>

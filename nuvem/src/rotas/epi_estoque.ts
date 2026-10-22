@@ -22,7 +22,8 @@ import * as epi_requisicao from "../servicos/epi_requisicao.js";
 import * as datas_br from "../servicos/datas_br.js";
 import { TextoProibido } from "../servicos/textos.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
-import { comMensagem, pagina, redirecionar } from "../web.js";
+import { comMensagem, fragmento, pagina, redirecionar } from "../web.js";
+import { EpiItem as EpiItemDominio } from "../dominio/epi.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -124,9 +125,13 @@ async function _tela_nova_entrada(
   r: { erro?: string | null; campo_com_erro?: string | null; digitado?: Record<string, string> | null } = {},
 ): Promise<Response> {
   const itens = await c.get("tx").select().from(epi_item).where(eq(epi_item.ativo, true)).orderBy(asc(epi_item.nome));
+  const escolhido = itens.find((i) => String(i.id) === (r.digitado?.["item_id"] ?? "").trim()) ?? null;
   return pagina(c, "paginas/epis_estoque_nova_entrada.html", usuario, {
     hoje: datas_br.hoje(),
     itens,
+    // o seletor de tamanho já montado para o item que voltou na recusa
+    tamanhos: escolhido ? EpiItemDominio.lista_de_tamanhos(escolhido) : [],
+    item_escolhido: escolhido,
     digitado: r.digitado ?? {},
     campo_com_erro: r.campo_com_erro ?? null,
     erro: r.erro ?? null,
@@ -138,6 +143,23 @@ rotas.get(NOVA_ENTRADA, async (c) => {
   // a mesma permissão da POST que grava — conferida, não presumida
   usuario.exigir("epi.estoque");
   return _tela_nova_entrada(c, usuario);
+});
+
+/**
+ * Fragmento HTMX: escolhido o item, o seletor dos tamanhos DELE. O campo era
+ * texto livre, e "XGG" num item P/M/G gravava um lote que nada encontrava.
+ */
+rotas.get(`${ESTOQUE}/tamanhos`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.estoque");
+  const bruto = (c.req.query("item_id") ?? "").trim();
+  const item = /^\d+$/.test(bruto) ? await _item(c.get("tx"), Number(bruto)) : null;
+  return fragmento(c, "partes/epi_tamanho_lote.html", {
+    item_escolhido: item,
+    tamanhos: item ? EpiItemDominio.lista_de_tamanhos(item) : [],
+    digitado: {},
+    campo_com_erro: null,
+  });
 });
 
 const CAMPOS_ENTRADA = [
@@ -201,9 +223,16 @@ rotas.post(ESTOQUE, async (c) => {
     throw falha;
   }
 
+  let valor: string | null;
+  try {
+    valor = servico.valor_decimal(d.valor_unitario);
+  } catch (falha) {
+    if (falha instanceof servico.EstoqueBloqueado) return recusar(falha.motivos.join(" · "), "valor_unitario");
+    throw falha;
+  }
+
   let entrada: servico.EpiEntradaEstoque;
   try {
-    const valor = servico.valor_decimal(d.valor_unitario);
     entrada = await servico.registrar_entrada(tx, usuario, {
       item,
       quantidade_recebida: recebida,
@@ -228,7 +257,8 @@ rotas.post(ESTOQUE, async (c) => {
     const texto = _texto_da_falha(falha);
     if (texto === null) throw falha;
     desfazer(c);
-    return recusar(texto);
+    // o serviço diz qual campo produziu a recusa (tamanho, lote, valor...)
+    return recusar(texto, falha instanceof servico.EstoqueBloqueado ? falha.campo : null);
   }
 
   let recado = `Lote ${entrada.lote || "sem número"} de '${item.nome}' registrado com ` + `${recebida} em estoque.`;
@@ -299,7 +329,7 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}/ajuste`, async (c) => {
     c,
     `Inventário registrado no lote ${entrada.lote || entrada.id}: ` +
       `${sinal}, saldo agora ${contada}. ` +
-      "A linha do razão guarda a contagem, o motivo e o seu nome.",
+      "O extrato do lote guarda a contagem, o motivo e o seu nome.",
   );
 });
 
@@ -323,7 +353,7 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}/descarte`, async (c) => {
   return _volta(
     c,
     `${quantas} unidade(s) descartada(s) do lote ${entrada.lote || entrada.id}. ` +
-      "O descarte é decisão registrada: a linha fica no razão, com o motivo.",
+      "O descarte fica no extrato do lote, com o motivo.",
   );
 });
 

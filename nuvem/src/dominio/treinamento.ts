@@ -255,6 +255,20 @@ export const Turma = {
   },
 };
 
+// O rótulo da inscrição para a TELA e para a mensagem, com acento — o de
+// `estados.ROTULO_INSCRICAO` entra na descrição da trilha (texto conferido por
+// digest) e não muda. Mesmas chaves, e o mesmo texto de `partes/macros.html`.
+export const ROTULO_INSCRICAO_TELA: Readonly<Record<string, string>> = {
+  AGUARDANDO_EMAIL: 'Pedido pelo link (a conferir)',
+  INSCRITA: 'Inscrita',
+  CONFIRMADA: 'Confirmada',
+  PRESENTE: 'Presente',
+  AUSENTE: 'Ausente',
+  APROVADO: 'Aprovado',
+  REPROVADO: 'Reprovado',
+  CANCELADA: 'Cancelada',
+};
+
 export const Inscricao = {
   ocupa_vaga(inscricao: { situacao: string }): boolean {
     return INSCRICAO_OCUPA_VAGA.has(inscricao.situacao);

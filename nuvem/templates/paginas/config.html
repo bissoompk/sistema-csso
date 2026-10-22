@@ -11,13 +11,17 @@
    que a rota exige (`PERMISSOES_CONFIG`). Se um dia a permissão da rota mudar, a
    de lá muda junto — é o mesmo invariante do menu.
 
-   A tela abre para duas pessoas diferentes e mostra coisas diferentes a cada
-   uma. Quem instrui processo (`processo.ver`) vê o que é congelado no parecer e
-   o SLA que pinta o vermelho das listas; quem opera a máquina
-   (`backup.executar`) vê onde o dado mora, o backup e a exportação. O
-   `admin_ti` é o segundo caso, e a base normativa do perfil dele — "sem acesso
-   ao conteúdo técnico" — é a razão de os dois primeiros cartões continuarem
-   fechados para ele. Abrir demais é defeito do mesmo tamanho que trancar. #}
+   A página é uma só, em duas seções, e cada conta vê a sua. **Configuração do
+   setor** — o que é congelado no parecer, o SLA que pinta o vermelho das
+   listas e o local de retirada de EPI — é de quem instrui processo ou gere
+   catálogo (`processo.editar`, `catalogo.gerenciar`). **Sistema** — onde o
+   dado mora, o backup e a exportação — é de quem opera a máquina
+   (`backup.executar`); a exportação completa também de quem
+   `pode_exportar_tudo`. O `admin_ti` só tem a segunda, e a base normativa do
+   perfil dele — "sem acesso ao conteúdo técnico" — é a razão de a primeira
+   continuar fechada para ele. O servidor comum não entra (D47): `processo.ver`
+   é a permissão de acompanhar o PRÓPRIO processo, e abria o host do banco e os
+   caminhos de disco. Abrir demais é defeito do mesmo tamanho que trancar. #}
 {% set trilha_raiz = 'Sistema' %}
 {% import "partes/macros.html" as ui with context %}
 {% block titulo %}Configuração · CSSO{% endblock %}
@@ -39,11 +43,14 @@
          não pode ler o setor emissor é a mesma porta trancada do menu, escrita
          em prosa. #}
       <p class="sub">
-        {%- if do_processo %}O que vale para o sistema inteiro: quem assina, quanto
-        tempo cada coluna pode levar, onde o dado mora.
+        {%- if do_processo and da_maquina %}O que vale para o sistema inteiro: quem
+        assina, quanto tempo cada coluna pode levar, onde o dado mora e o backup.
+        {%- elif do_processo %}O que vale para o setor inteiro: quem assina e quanto
+        tempo cada coluna pode levar{% if pode_exportar_tudo %} — e a exportação
+        completa da base{% endif %}.
         {%- else %}Onde o dado mora, o backup cifrado e a exportação. O que é
-        parâmetro do processo — setor emissor, autoridade e SLA — pede
-        <code>processo.ver</code>.{% endif %}</p>
+        parâmetro do setor — setor emissor, autoridade e prazos — fica com a
+        coordenação.{% endif %}</p>
     </div>
     <div class="ao-lado">
       {# Versão e ambiente são fato, não alerta: quem avisa que a configuração
@@ -57,6 +64,7 @@
      congelados no parecer (RN-15) e o SLA é o prazo de cada coluna do kanban:
      nenhum dos três é operação de máquina, e é isso que o perfil de TI não vê. #}
   {% if do_processo %}
+  <h2 class="secao-hub">Configuração do setor</h2>
   <div class="grade grade-2">
     <section class="cartao liso">
       <div class="cabecalho-cartao">
@@ -115,7 +123,7 @@
       <div class="corpo">
         <table class="tabela-dados">
           {% for coluna, dias in sla.items() %}
-          <tr><th scope="row">{{ coluna }}</th>
+          <tr><th scope="row">{{ rotulo_coluna[coluna] or coluna }}</th>
               <td class="mono">{{ dias if dias is not none else '—' }}</td>
               <td>{% if dias == 0 %}<span class="pilula sem-ponto">alerta desligado</span>
                   {% else %}<span class="discreto">padrão {{ sla_padrao[coluna] }}</span>{% endif %}</td></tr>
@@ -124,12 +132,34 @@
       </div>
     </section>
   </div>
+
+  {# Onde RETIRAR o EPI reservado. Morava na lista "Onde o dado mora", mas é
+     parâmetro do setor, e não da máquina: quem precisa descobri-lo é quem
+     atende o pedido de EPI, não quem faz o backup. Lido do .env e não
+     editável por tela — está aqui para ser DESCOBERTO: vazio, a ficha do
+     pedido diz que o local não está registrado em vez de inventar endereço. #}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Retirada de EPI</h2>
+      <span class="nota">parâmetro desta instalação</span>
+    </div>
+    <p class="corpo">{% if cfg.epi_local_retirada|trim %}{{ cfg.epi_local_retirada }}
+      {%- else %}<span class="discreto">Não informado — a ficha do pedido diz
+      que o local não está registrado, e a pessoa continua ligando para
+      perguntar. Peça à TI que preencha <span class="mono">CSSO_EPI_LOCAL_RETIRADA</span>
+      com o prédio, a sala e o horário.</span>
+      {%- endif %}</p>
+  </section>
+  {% endif %}
+
+  {% if da_maquina or pode_exportar_tudo %}
+  <h2 class="secao-hub">Sistema</h2>
   {% endif %}
 
   {# Os caminhos saíram de dentro do cartão de SLA. Onde o banco, os documentos e
-     os anexos moram é a pergunta de quem responde pela máquina — e era
-     justamente ela que ficava atrás de `processo.ver`, junto do prazo do kanban,
-     por morarem no mesmo cartão. #}
+     os anexos moram é a pergunta de quem responde pela máquina — e só ela os
+     recebe: sem `backup.executar`, `onde` nem chega ao contexto. #}
+  {% if da_maquina %}
   <section class="cartao liso">
     <div class="cabecalho-cartao">
       <h2>Onde o dado mora</h2>
@@ -141,21 +171,11 @@
       <dt>Anexos</dt><dd class="mono">{{ onde.anexos }}</dd>
       <dt>Backup</dt><dd class="mono">{{ onde.backup }}</dd>
       <dt>Exportação</dt><dd class="mono">{{ onde.exportacao }}</dd>
-      {# Onde RETIRAR o EPI reservado. Entra nesta lista, e não num cartão
-         próprio, porque é da mesma natureza: parâmetro desta instalação, lido do
-         .env e não editável por tela. Está aqui para ser DESCOBERTO — o sistema
-         não tinha como saber a que porta mandar quem pediu EPI, e vazio a ficha
-         do pedido diz isso em vez de inventar endereço. #}
-      <dt>Retirada de EPI</dt>
-      <dd>{% if cfg.epi_local_retirada|trim %}{{ cfg.epi_local_retirada }}
-        {%- else %}<span class="discreto">não informado — a ficha do pedido diz
-        que o local não está registrado, e a pessoa continua ligando para
-        perguntar. Preencha <span class="mono">CSSO_EPI_LOCAL_RETIRADA</span> no
-        <span class="mono">.env</span> com o prédio, a sala e o horário.</span>
-        {%- endif %}</dd>
     </dl>
   </section>
+  {% endif %}
 
+  {% if da_maquina or pode_exportar_tudo %}
   <section class="cartao">
     <div class="titulo-cartao">
       <h2>Backup e exportação</h2>
@@ -173,7 +193,6 @@
       terceiros (LGPD arts. 33-36, 39 e 46). Qualquer destino em nuvem exige autorização
       formal da UFVJM e contrato de operador.
     </div>
-    {% if usuario.pode('backup.executar') or pode_exportar_tudo %}
     {# As duas ações passaram a ser CAMADA, e não por poluição: elas movem a base
        inteira, e o texto que diz o que cada uma produz precisava ser lido ANTES
        do clique. Estava embaixo dos dois botões, num rodapé que se lê depois —
@@ -186,12 +205,8 @@
       {{ ui.botao_cadastro('exportar-tudo', EXPORTAR, 'secundario') }}
       {% endif %}
     </div>
-    {% else %}
-    <p class="discreto rodape-cartao sem-margem">Sua conta lê esta tela e não executa
-      backup nem exportação — as duas ações movem a base inteira e pedem permissão
-      própria.</p>
-    {% endif %}
   </section>
+  {% endif %}
 
   <section class="cartao">
     <div class="titulo-cartao">
@@ -222,7 +237,7 @@
                           nota='0 desliga o alerta da coluna') %}
   <div class="linha-campos">
     {% for coluna, dias in sla.items() %}
-    <div class="campo"><label for="sla-{{ coluna }}">{{ coluna }}</label>
+    <div class="campo"><label for="sla-{{ coluna }}">{{ rotulo_coluna[coluna] or coluna }}</label>
       <input id="sla-{{ coluna }}" type="number"
              name="sla_{{ coluna }}" value="{{ dias }}"
              min="0" max="3650" aria-describedby="padrao-{{ coluna }}">
@@ -263,8 +278,9 @@
       comprovantes de EPI com a assinatura do servidor.</p>
     <p>É assim de propósito — ele existe para o setor trabalhar amanhã sem este
       sistema, e um pacote que só este sistema abre não serviria a isso.</p>
-    <p>Uma cópia fica em
-      <code class="mono">{{ onde.exportacao }}</code> e <strong>não é
+    <p>Uma cópia fica {% if onde %}em
+      <code class="mono">{{ onde.exportacao }}</code>{% else %}no armazenamento de
+      exportações desta instalação{% endif %} e <strong>não é
       apagada sozinha</strong>. Quem clica leva a base inteira embora.</p>
   </div>
 {% endcall %}

@@ -125,6 +125,30 @@ export async function por_email(tx: Executor, email: string): Promise<Participan
 }
 
 /**
+ * TODOS os participantes que já usaram o endereço, o confirmado primeiro.
+ *
+ * `por_email` devolve um só, e serve a quem confia no endereço (a CSSO, a
+ * inscrição em lote). O pedido público não confia: o mesmo e-mail digitado por
+ * duas pessoas (a mãe que inscreve o filho, o e-mail do setor) liga a ele dois
+ * participantes, e quem procura "a mesma pessoa" precisa olhar todos eles.
+ */
+export async function por_email_todos(tx: Executor, email: string): Promise<ParticipanteCarregado[]> {
+  const normalizado = normalizar_email(email);
+  if (!normalizado) return [];
+  const linhas = await tx
+    .select({ participante_id: tabela_email.participante_id })
+    .from(tabela_email)
+    .where(eq(tabela_email.email_normalizado, normalizado))
+    .orderBy(sql`${tabela_email.confirmado_em} IS NULL`, asc(tabela_email.id));
+  const saida: ParticipanteCarregado[] = [];
+  for (const id of [...new Set(linhas.map((l) => l.participante_id))]) {
+    const pessoa = await carregar(tx, id);
+    if (pessoa) saida.push(pessoa);
+  }
+  return saida;
+}
+
+/**
  * Acrescenta um endereço ao participante, sem duplicar o que já está lá.
  *
  * Devolve `null` para e-mail vazio: endereço é opcional para quem entra pela
@@ -144,7 +168,7 @@ export async function registrar_email(
   }
   const normalizado = normalizar_email(limpo);
   if (!normalizado.includes("@") || normalizado.startsWith("@") || normalizado.endsWith("@")) {
-    throw new DadosDoParticipante(`E-mail invalido: '${limpo}'.`);
+    throw new DadosDoParticipante(`E-mail inválido: '${limpo}'.`);
   }
 
   let ja = participante.emails.find((e) => e.email_normalizado === normalizado) ?? null;
@@ -240,12 +264,12 @@ export async function criar_externo(
   const limpo = (d.nome ?? "").trim();
   if (!limpo) throw new DadosDoParticipante("Informe o nome do participante externo.");
   if (!(VINCULOS_PARTICIPANTE as readonly string[]).includes(d.vinculo)) {
-    throw new DadosDoParticipante(`Vinculo desconhecido: ${d.vinculo}.`);
+    throw new DadosDoParticipante(`Vínculo desconhecido: ${d.vinculo}.`);
   }
   if (d.vinculo === "SERVIDOR") {
     throw new DadosDoParticipante(
       "Servidor da UFVJM entra pelo cadastro de servidor, pelo SIAPE — " +
-        "nao como participante externo.",
+        "não como participante externo.",
     );
   }
   const [linha] = await tx
@@ -376,4 +400,63 @@ export async function buscar_servidores(
     .where(notInArray(tabela_servidor.id, ja_participantes as never))
     .orderBy(asc(tabela_servidor.nome));
   return candidatos.filter((s) => identificacao.casa_a_busca(alvo, s, usuario)).slice(0, limite);
+}
+
+/** Primeiro e último nome iguais, sem acento nem caixa — o bastante para não casar estranho. */
+export function mesmo_nome(a: string, b: string): boolean {
+  const x = textos.chave_busca(a).split(" ").filter(Boolean);
+  const y = textos.chave_busca(b).split(" ").filter(Boolean);
+  return x.length > 1 && y.length > 1 && x[0] === y[0] && x.at(-1) === y.at(-1);
+}
+
+/**
+ * Quem já está na base e PARECE ser a pessoa que está para ser cadastrada como
+ * externa: mesmo nome (primeiro e último, sem acento) ou o mesmo e-mail. A tela
+ * pergunta "é a mesma pessoa?" antes de criar a segunda linha — sem a pergunta a
+ * duplicata nascia em silêncio e o trabalho caía na mesclagem.
+ *
+ * RN-19 do lado do filtro, a mesma de `buscar`: só entra quem `usuario` pode
+ * identificar. Para quem não lê nomes a lista sai vazia, e a pergunta não é
+ * feita — perguntar "já existe Fulano?" a quem digitou "Fulano" diria que ele
+ * existe, que é o oráculo que a busca fecha.
+ */
+export async function parecidos(
+  tx: Executor,
+  d: { nome: string; email?: string | null },
+  usuario: UsuarioAtual | null,
+  limite = 5,
+): Promise<ParticipanteCarregado[]> {
+  const nome = (d.nome ?? "").trim().replace(/\s+/g, " ");
+  const partes = textos.chave_busca(nome).split(" ").filter(Boolean);
+  const candidatos = new Map<number, ParticipanteCarregado>();
+  if (partes.length > 1) {
+    // o SQL é o recorte largo (primeiro e último nome, com o que houver no
+    // meio); quem decide é `mesmo_nome`. Só o primeiro nome trazia todas as
+    // Marias da base, uma carga de cada
+    const literal = (t: string) => t.replace(/[\\%_]/g, "\\$&");
+    const curinga = `${literal(partes[0]!)}%${literal(partes.at(-1)!)}%`;
+    const ids = await tx
+      .selectDistinct({ id: tabela_participante.id })
+      .from(tabela_participante)
+      .leftJoin(tabela_servidor, eq(tabela_participante.servidor_id, tabela_servidor.id))
+      .where(
+        and(
+          eq(tabela_participante.ativo, true),
+          isNull(tabela_participante.mesclado_em_id),
+          or(
+            sql`translate(lower(${tabela_participante.nome}), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc') ilike ${curinga}`,
+            sql`translate(lower(${tabela_servidor.nome}), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc') ilike ${curinga}`,
+          ),
+        ),
+      )
+      .orderBy(asc(tabela_participante.id));
+    for (const { id } of ids) {
+      const pessoa = (await carregar(tx, id))!;
+      if (mesmo_nome(nome_exibicao(pessoa), nome)) candidatos.set(pessoa.id, pessoa);
+    }
+  }
+  for (const pessoa of await por_email_todos(tx, d.email ?? "")) {
+    if (pessoa.ativo && pessoa.mesclado_em_id === null) candidatos.set(pessoa.id, pessoa);
+  }
+  return [...candidatos.values()].filter((p) => pode_identificar(usuario, p)).slice(0, limite);
 }

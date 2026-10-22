@@ -102,8 +102,13 @@
 {% endblock %}
 
 {% block acoes_cabecalho %}
+{# A guia é o papel do balcão: só existe o que retirar depois de item aprovado.
+   No rascunho e na fila ela saía em branco, e o botão ocupava a linha do
+   cabeçalho que, a 1366px, empurrava a trilha para duas linhas. #}
+{% if tem_aprovado %}
 <a class="botao secundario" href="/epis/requisicoes/{{ requisicao.id }}/guia"
-   target="_blank" rel="noopener">Imprimir guia de entrega</a>
+   target="_blank" rel="noopener">Imprimir guia</a>
+{% endif %}
 {% if pode_requisitar %}
 <a class="botao" href="/epis/requisicoes/nova">Nova requisição</a>
 {% endif %}
@@ -126,7 +131,7 @@
       <h1>{{ requisicao.identificacao }}</h1>
       <p class="identificacao">
         {% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
-          <span class="discreto">· identificação suprimida (RN-19)</span>
+          <span class="discreto">· identificação suprimida</span>
         {% else %}<span>{{ quem.com_siape }}</span>{% endif %}
         <span class="ponto">·</span>
         <span>{{ rotulo_finalidade }}</span>
@@ -147,9 +152,9 @@
      Sem `<p>`: assim o (i) fecha a linha do texto, em vez de cair sozinho na
      linha de baixo. É a mesma forma que os avisos de `epis_ficha.html` já usam. #}
   <div class="aviso aviso-alerta">
-    <strong>Rascunho: ainda não há protocolo, e ninguém no SESMT viu este
-      pedido.</strong> O número é consumido no envio e <strong>não volta</strong>;
-    depois dele, corrigir passa a ser cancelar com motivo e abrir outro.
+    <strong>Rascunho: o pedido ainda não foi enviado, e ninguém no SESMT o
+      viu.</strong> Confira os itens e envie; depois do envio, corrigir passa a
+    ser cancelar com motivo e pedir de novo.
     {% call ui.info('rascunho', 'o que rascunho é, e por que ele pode ser apagado') %}
       <p>O protocolo é consumido <strong>no envio</strong>, e não na abertura
         (RN-03): um rascunho abandonado não abre buraco na sequência — que é a
@@ -186,10 +191,11 @@
        coluna de localização em lote nenhum, e o endereço do setor emissor é o de
        quem assina parecer, não o do balcão. Mandar alguém ao lugar errado com a
        aparência de informação do sistema é pior do que a lacuna. #}
+    {# o parâmetro de instalação é `CSSO_EPI_LOCAL_RETIRADA`: preenchido uma
+       vez, esta linha passa a dizer o prédio, a sala e o horário. O nome da
+       variável não vai para a tela — quem lê aqui é quem vai buscar o EPI. #}
     <span class="quebra">O <strong>local de retirada ainda não está registrado
-      neste sistema</strong> — procure a CSSO antes de ir. Quem instala preenche
-      <code>CSSO_EPI_LOCAL_RETIRADA</code> uma vez, e esta linha passa a dizer o
-      prédio, a sala e o horário.</span>
+      neste sistema</strong> — procure a CSSO antes de ir.</span>
     {% endif %}
     <span class="quebra discreto">Reserva parada segura estoque que nenhum outro
       pedido pode receber: o que não for retirado volta ao disponível quando
@@ -254,7 +260,7 @@
             {% if quem.nominal %}{{ quem.nome }}
               <span class="discreto">· SIAPE <span class="mono">{{ quem.siape }}</span></span>
             {% elif quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
-              <span class="discreto">· identificação suprimida (RN-19)</span>
+              <span class="discreto">· identificação suprimida</span>
             {% else %}—{% endif %}
           </dd>
 
@@ -301,7 +307,6 @@
           {% if requisicao.motivo_recusa %}
           <dt>Motivo do indeferimento</dt>
           <dd><strong>{{ requisicao.motivo_recusa.rotulo }}</strong>
-            <span class="discreto mono">{{ requisicao.motivo_recusa.codigo }}</span>
             <span class="quebra texto-literal">{{ requisicao.motivo_recusa.texto }}</span>
             {%- if requisicao.complemento_recusa %}
             <span class="quebra">{{ requisicao.complemento_recusa }}</span>{% endif %}</dd>
@@ -380,13 +385,22 @@
         </div>
 
         {% if passo == 'enviar' %}
-        <p class="discreto sem-margem"><strong>Consome o protocolo e congela a
-          lotação</strong> — e nenhuma das duas coisas volta atrás.</p>
-        <div class="acoes">{{ ui.botao_cadastro('enviar-pedido', 'Enviar pedido') }}</div>
+        {# Botão direto, e não popup: é o caminho normal do rascunho, e o que ele
+           consome está escrito ao lado. Sem item ele fica desabilitado com o
+           motivo — o serviço recusaria do mesmo jeito. #}
+        <p class="discreto sem-margem">O pedido ganha número, vai para a fila do
+          SESMT e <strong>deixa de ser editável</strong>.</p>
+        <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/enviar" class="acoes">
+          <button type="submit"{{ ' disabled' if not itens|length }}>Enviar pedido</button>
+          {% if not itens|length %}
+          <span class="dica"><strong>Botão desabilitado:</strong> acrescente ao
+            menos um item abaixo.</span>
+          {% endif %}
+        </form>
 
         {% elif passo == 'pegar' %}
         <p class="discreto sem-margem"><strong>Quem pega o pedido assume o nome
-          nele.</strong> A RN-28 recusa a análise do próprio pedido, sem exceção.</p>
+          nele.</strong> Ninguém analisa o próprio pedido.</p>
         <div class="acoes">
           {% if aprova_tudo %}
           <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/aprovar-tudo">
@@ -424,7 +438,7 @@
 
       {% set tem_excecoes = (requisicao.estado == 'RASCUNHO' and pode_requisitar)
                          or (requisicao.estado == 'EM_ANALISE' and pode_analisar)
-                         or (cancelavel and (pode_requisitar or pode_analisar)) %}
+                         or (cancelavel and pode_cancelar) %}
       <section class="cartao">
         <div class="titulo-cartao">
           <h2>Trâmite</h2>
@@ -466,12 +480,17 @@
         <div class="acoes">
 
           {% if requisicao.estado == 'EM_ANALISE' and pode_analisar %}
+          {# Só quando funciona: com item aprovado o caminho é concluir. #}
+          {% if indeferivel %}
           {{ ui.botao_cadastro('indeferir', 'Indeferir o pedido inteiro',
                                'perigo-discreto') }}
+          {% endif %}
           {{ ui.botao_cadastro('devolver', 'Devolver à fila', 'secundario') }}
           {% endif %}
 
-          {% if cancelavel and (pode_requisitar or pode_analisar) %}
+          {# Cancelar é do requerente, de quem abriu e de quem analisa — e não
+             de toda conta que pode abrir pedido (`pode_cancelar`). #}
+          {% if cancelavel and pode_cancelar %}
           {{ ui.botao_cadastro('cancelar-pedido', 'Cancelar o pedido',
                                'perigo-discreto') }}
           {% endif %}
@@ -484,12 +503,11 @@
         </div>
         {% endif %}
 
-        {% if not (pode_requisitar or pode_analisar or pode_entregar or pode_estocar) %}
+        {% if not (pode_cancelar or pode_analisar or pode_entregar or pode_estocar) %}
         <div class="vazio">
-          <strong>Você lê este pedido e não age sobre ele.</strong>
-          <span>Pedir exige <code>epi.requisitar</code>, decidir exige
-            <code>epi.analisar</code>, reservar lote exige <code>epi.estoque</code>
-            e entregar exige <code>epi.entregar</code>.</span>
+          <strong>Você acompanha este pedido por aqui.</strong>
+          <span>Quem decide é o SESMT; quem separa e entrega é o
+            almoxarifado.</span>
         </div>
         {% endif %}
       </section>
@@ -516,24 +534,55 @@
   </section>
 
   {% if editavel and pode_requisitar %}
-  {# O que sobrou do cartão "Acrescentar item": o botão. Ele fica ENCOSTADO na
-     tabela, e não no canto do cabeçalho da página, porque é da tabela que se lê
-     o que ainda falta pedir — e o botão mora no template da PÁGINA, e não no
-     fragmento, porque é aqui que a varredura de invariante do popup casa botão e
-     diálogo (`test_todo_botao_de_cadastro_tem_o_popup_que_ele_abre`); no
-     fragmento, que as rotas renderizam sozinho, ela não o veria. #}
-  <div class="acoes">{{ ui.botao_cadastro('novo-item', 'Acrescentar item') }}</div>
+  {# ACRESCENTAR ITEM, NA PRÓPRIA TELA. Era um botão que abria popup, e o
+     rascunho virava popup → popup → popup (item, item, envio). Aberto aqui,
+     embaixo da lista que ele alimenta, o próximo item é escolher e clicar.
+
+     O HTMX continua: o `<select>` recarrega `#opcoes-do-item` (quantidade,
+     tamanhos e a justificativa que o catálogo exige) sem perder o que já foi
+     digitado. Recusado, o formulário volta com o digitado e a mensagem dentro
+     dele — `forma = 'item-novo'`. #}
+  <section class="cartao" id="acrescentar-item">
+    <div class="titulo-cartao">
+      <h2>Acrescentar item</h2>
+      <span class="nota">só enquanto for rascunho</span>
+    </div>
+    <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/itens">
+      {% if erro_item_novo %}<div class="aviso aviso-erro" role="alert">{{ erro_item_novo }}</div>{% endif %}
+      <div class="campo{{ ' com-erro' if erro_item_novo and not dn.get('item_id') }}">
+        <label for="item_id">Equipamento</label>
+        <select id="item_id" name="item_id" required
+                {{- ' autofocus' if erro_item_novo }}
+                hx-get="/epis/requisicoes/item-opcoes"
+                hx-target="#opcoes-do-item"
+                hx-trigger="change"
+                hx-include="this">
+          <option value="">—</option>
+          {% for c in catalogo %}
+          <option value="{{ c.id }}"{{ sel(dn.get('item_id'), c.id) }}>{{ c.nome }}{% if c.modelo %} · {{ c.modelo }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {# O MESMO fragmento que o HTMX traz no `change`, montado aqui pelo
+         servidor: na recusa ele devolve quantidade, tamanho e justificativa. #}
+      <div id="opcoes-do-item">
+        {% set item = item_escolhido %}
+        {% set digitado_item = dn %}
+        {% include "partes/epi_requisicao_opcoes.html" %}
+      </div>
+      <div class="acoes"><button type="submit" class="secundario">Acrescentar ao pedido</button></div>
+    </form>
+  </section>
   {% endif %}
 
   {# ================================================================
      A trilha — as duas máquinas na mesma linha do tempo
      ================================================================ #}
-  <section class="cartao">
-    <div class="titulo-cartao">
-      <h2>Trilha de auditoria</h2>
-      <span class="contador">{{ eventos|length }}</span>
-      <span class="nota">append-only, encadeada por hash</span>
-    </div>
+  {# Recolhida para quem só acompanha (servidor, secretaria): é consulta de vez
+     em quando, e aberta ela empurrava o fim da tela para longe. Para quem
+     decide, separa ou entrega ela já vem aberta. #}
+  <details class="recolhido" id="trilha-do-pedido"{{ ' open' if trilha_aberta }}>
+    <summary>Histórico do pedido <span class="contador">{{ eventos|length }}</span></summary>
     <ul class="linha-tempo">
       {% for e in eventos %}
       <li>
@@ -551,7 +600,7 @@
       </li>
       {% else %}<li class="nada">Sem eventos.</li>{% endfor %}
     </ul>
-  </section>
+  </details>
 
 </div>
 
@@ -575,9 +624,14 @@
                           aberto=(recusado and forma == 'cabecalho'),
                           erro=erro_cabecalho, nota='só enquanto for rascunho') %}
   <div class="linha-campos">
+    {% set chefia = dc.get('chefia_servidor_id', requisicao.chefia_servidor_id) %}
+    {% if proprio %}
+    {# Para o servidor comum a lista de chefias era o cadastro inteiro em
+       códigos: o campo sai, e o valor que já estava gravado continua. #}
+    <input type="hidden" name="chefia_servidor_id" value="{{ chefia if chefia is not none else '' }}">
+    {% else %}
     <div class="campo">
       <label for="ed-chefia">Chefia responsável</label>
-      {% set chefia = dc.get('chefia_servidor_id', requisicao.chefia_servidor_id) %}
       <select id="ed-chefia" name="chefia_servidor_id">
         <option value="">—</option>
         {% for pessoa in servidores %}
@@ -586,6 +640,7 @@
         {% endfor %}
       </select>
     </div>
+    {% endif %}
     <div class="campo">
       <label for="ed-finalidade">Finalidade</label>
       {% set finalidade_atual = dc.get('finalidade') or requisicao.finalidade %}
@@ -616,28 +671,13 @@
     <label for="ed-rotina">Rotina de trabalho</label>
     <textarea id="ed-rotina" name="descricao_atividade" rows="3"
               aria-describedby="dica-ed-rotina">{{ dc.get('descricao_atividade', requisicao.descricao_atividade or '') }}</textarea>
-    <span class="dica" id="dica-ed-rotina">Nada sobre saúde, gestação, CID,
-      diagnóstico ou atestado — o sistema recusa o texto (RN-21).</span>
+    <span class="dica" id="dica-ed-rotina">Nada sobre saúde, gestação, doença ou
+      atestado — o sistema recusa o texto.</span>
   </div>
   <div class="campo">
     <label for="ed-riscos">Riscos declarados</label>
     <textarea id="ed-riscos" name="riscos_declarados" rows="3">{{ dc.get('riscos_declarados', requisicao.riscos_declarados or '') }}</textarea>
   </div>
-{% endcall %}
-{% endif %}
-
-{% if passo == 'enviar' %}
-{% call ui.popup_cadastro('enviar-pedido', 'Enviar para o SESMT',
-                          '/epis/requisicoes/' ~ requisicao.id ~ '/enviar',
-                          'Enviar pedido',
-                          nota='daqui não se volta editando') %}
-  <p><strong>Consome o protocolo, congela a lotação e coloca o pedido na
-    fila.</strong> O número da sequência é gasto neste clique e não volta (RN-03).</p>
-  <p>Exige pelo menos um item, e a justificativa dos itens que o catálogo exige
-    (RN-29) — sem isso o envio é recusado e nada é consumido.</p>
-  <p>Depois daqui o pedido é <strong>documento protocolado</strong>: a rotina de
-    trabalho, os riscos, o cargo e a unidade ficam como estão agora, e corrigir
-    passa a ser cancelar com motivo e abrir outro pedido.</p>
 {% endcall %}
 {% endif %}
 
@@ -648,11 +688,10 @@
                           nota='o seu nome fica no pedido') %}
   <p><strong>Quem pega o pedido assume o nome nele.</strong> A partir daqui a
     ficha diz que foi você quem analisou, e a trilha guarda a hora.</p>
-  <p>A RN-28 recusa a análise do próprio pedido, sem exceção: gravar “analisado
-    por X” num pedido de X produziria a aparência de um controle que não houve.
-    Quem trabalha no SESMT e precisa do próprio EPI continua atendido pela
-    entrega avulsa de balcão, que registra ficha, lote, CA e comprovante do mesmo
-    jeito.</p>
+  <p>Ninguém analisa o próprio pedido: gravar “analisado por X” num pedido de X
+    produziria a aparência de um controle que não houve. Quem trabalha no SESMT
+    e precisa do próprio EPI é atendido pela entrega direta no balcão, que
+    registra ficha, lote, CA e comprovante do mesmo jeito.</p>
 {% endcall %}
 {% endif %}
 
@@ -674,7 +713,7 @@
 {% call ui.popup_cadastro('reconsiderar', 'Reconsiderar',
                           '/epis/requisicoes/' ~ requisicao.id ~ '/reconsiderar',
                           'Reabrir para análise') %}
-  <p>O único caminho de volta de um terminal.</p>
+  <p>O pedido indeferido volta para análise.</p>
   <p>As recusas de item <strong>não</strong> voltam sozinhas: cada uma foi
     decisão própria, com texto congelado, e desfazê-las em bloco reescreveria em
     silêncio negativas que talvez estivessem certas.</p>
@@ -690,10 +729,13 @@
 {% call ui.popup_cadastro('indeferir', 'Indeferir o pedido inteiro',
                           '/epis/requisicoes/' ~ requisicao.id ~ '/indeferir',
                           'Indeferir', classe_botao='perigo-discreto') %}
-  <p>É a resposta quando <strong>todo</strong> item foi recusado.</p>
-  <p>O motivo vem do catálogo porque é ele que sai na resposta ao requerente:
-    negativa em texto livre sai diferente a cada vez, não cita norma e não se
-    conta (RN-27).</p>
+  {% set sem_decisao = itens|selectattr('estado', 'equalto', 'SOLICITADO')|list|length %}
+  <p>É a resposta quando <strong>nenhum</strong> item é devido.
+    {%- if sem_decisao %} Os <strong>{{ sem_decisao }} item(ns) ainda sem
+    decisão</strong> são recusados agora, com este mesmo motivo — cada um fica
+    registrado no histórico.{% endif %}</p>
+  <p>O motivo vem da lista porque é o texto dele que vai para o requerente,
+    igual para todos e com a norma citada.</p>
   {{ ui.seletor_de_motivo('ind', 'motivo_id', motivos) }}
   <div class="campo">
     <label for="ind-parecer">Parecer da análise</label>
@@ -714,7 +756,7 @@
 {% endcall %}
 {% endif %}
 
-{% if cancelavel and (pode_requisitar or pode_analisar) %}
+{% if cancelavel and pode_cancelar %}
 {% call ui.popup_cadastro('cancelar-pedido', 'Cancelar o pedido',
                           '/epis/requisicoes/' ~ requisicao.id ~ '/cancelar',
                           'Cancelar pedido', classe_botao='perigo-discreto',
@@ -722,62 +764,12 @@
   <p>A desistência, com motivo — e ela é diferente do indeferimento:
     <strong>indeferir</strong> é decisão de mérito (“o item não é devido”),
     <strong>cancelar</strong> é desistência.</p>
-  <p>No legado a desistência não existia, e cancelar era registrar uma recusa
-    mentirosa que a contagem por motivo somava: por isso o relatório de recusas
-    dele não valia nada.</p>
+  <p>Os itens que ainda não saíram são cancelados junto, e o que estava
+    separado no almoxarifado volta ao estoque.</p>
   <div class="campo">
     <label for="motivo-cancelamento">Motivo</label>
     <input id="motivo-cancelamento" name="motivo" required
            placeholder="servidor mudou de posto e não usa mais o item">
-  </div>
-{% endcall %}
-{% endif %}
-
-{% if editavel and pode_requisitar %}
-{# Acrescentar item existe AQUI e em lugar nenhum mais: só RASCUNHO é editável.
-   Depois do envio o pedido é documento protocolado.
-
-   O HTMX continua dentro da camada: o `<select>` do equipamento recarrega
-   `#opcoes-do-item`, que é um bloco DENTRO deste mesmo diálogo — a troca não
-   toca na camada, então ela não se fecha nem perde o que já foi digitado.
-
-   (Sem escrever o nome da etiqueta HTML do diálogo aqui: há uma varredura que
-   proíbe telas de montarem o elemento à mão, e ela procura o texto cru — citá-lo
-   em prosa acusaria um defeito que não existe.) #}
-{% call ui.popup_cadastro('novo-item', 'Acrescentar item',
-                          '/epis/requisicoes/' ~ requisicao.id ~ '/itens',
-                          'Acrescentar ao pedido',
-                          aberto=(recusado and forma == 'item-novo'),
-                          erro=erro_item_novo, nota='só enquanto for rascunho') %}
-  <div class="campo">
-    <label for="item_id">Equipamento</label>
-    {# ao escolher o item, o bloco abaixo se recarrega sozinho: quantidade
-       padrão, tamanhos e a justificativa da RN-29 dependem dele, e recarregar a
-       página inteira perderia o que já foi digitado #}
-    <select id="item_id" name="item_id" required
-            hx-get="/epis/requisicoes/item-opcoes"
-            hx-target="#opcoes-do-item"
-            hx-trigger="change"
-            hx-include="this">
-      <option value="">—</option>
-      {% for c in catalogo %}
-      <option value="{{ c.id }}"{{ sel(dn.get('item_id'), c.id) }}>{{ c.nome }}{% if c.modelo %} · {{ c.modelo }}{% endif %}
-        — CA {{ c.numero_ca or '—' }}</option>
-      {% endfor %}
-    </select>
-  </div>
-
-  {# O MESMO fragmento que o HTMX traz no `change`, montado aqui pelo servidor.
-     Sem isto a recusa devolvia o formulário à frase "escolha o equipamento" com
-     o equipamento já escolhido no seletor acima: os três campos que a pessoa
-     preencheu — quantidade, tamanho e a justificativa da RN-29, que é a mais
-     cara de reescrever — não existem no HTML da página, eles chegam neste bloco.
-     Na leitura normal `item_escolhido` é nulo e o próprio fragmento escreve a
-     frase de antes da escolha. #}
-  <div id="opcoes-do-item">
-    {% set item = item_escolhido %}
-    {% set digitado_item = dn %}
-    {% include "partes/epi_requisicao_opcoes.html" %}
   </div>
 {% endcall %}
 {% endif %}
@@ -798,17 +790,15 @@
   <div class="aviso aviso-erro">
     <p><strong>Isto apaga o pedido de verdade</strong> — é a única exclusão
       física do sistema, e existe só porque rascunho não é documento: ele não
-      tem protocolo, ninguém no SESMT o viu e nenhum número da sequência foi
-      consumido (RN-03, RN-31).</p>
+      tem número, ninguém no SESMT o viu e nada foi consumido.</p>
     <p>Vão junto, e <strong>não voltam</strong>:</p>
     <ul class="motivos erro">
       <li>{{ requisicao.itens|length }} linha(s) de item, com quantidade,
         tamanho e justificativa de cada uma</li>
       <li>a rotina de trabalho e os riscos declarados escritos neste pedido</li>
     </ul>
-    <p>O que fica é o <strong>evento</strong> da exclusão na trilha, com o seu
-      nome e a hora: apagar sem rastro seria repetir o defeito da planilha, em
-      que a linha sumia e nada dizia que ela existiu.</p>
+    <p>O que fica é o registro da exclusão no histórico, com o seu nome e a
+      hora.</p>
     <p class="discreto">Se a intenção era só corrigir o pedido, ele ainda é
       rascunho — tudo aqui se edita, e não há por que apagar.</p>
   </div>

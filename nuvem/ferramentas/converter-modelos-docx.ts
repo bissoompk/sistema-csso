@@ -30,6 +30,10 @@ export const MODELOS = [
   "lista_presenca_v1.docx",
   "comprovante_epi_v1.docx",
   "certificados/certificado_padrao_v1.docx",
+  // v2: as frases inteiras (norma sem repetir, unidade promotora e validade
+  // opcionais) — feito do v1 trocando três marcadores; o v1 fica, intacto,
+  // para a segunda via dos certificados emitidos com ele (RN-15)
+  "certificados/certificado_padrao_v2.docx",
 ];
 
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");

@@ -22,6 +22,7 @@ import {
 } from "../src/servicos/processo.js";
 import { PermissaoNegada, UsuarioAtual } from "../src/servicos/rbac.js";
 import { bancoLimpo, criarUsuario } from "./ajuda";
+import { cenario } from "./ajuda_processos.js";
 
 const PERMISSOES = ["processo.ver", "processo.criar", "processo.editar", "processo.status", "anexo.enviar"];
 
@@ -64,6 +65,35 @@ async function anexar(categoria: string) {
   });
 }
 
+// Os estados que afirmam documento (laudo, parecer emitido, parecer assinado)
+// só se alcançam com o documento: estes dois montam o que falta.
+let documentos = 0;
+async function laudo_da_unidade() {
+  documentos += 1;
+  const [insal] = await db.select().from(e.tipo_adicional).where(eq(e.tipo_adicional.codigo, "INSALUBRIDADE"));
+  await db.insert(e.laudo_tecnico).values({
+    numero_siape: `26255-000.${String(500 + documentos).padStart(3, "0")}/2019`,
+    ano: 2019,
+    tipo_adicional_id: insal!.id,
+    unidade_uorg_id: processo.unidade_uorg_id!,
+  });
+}
+
+async function parecer_do_processo(situacao: "EMITIDO" | "ASSINADO") {
+  documentos += 1;
+  const n = documentos;
+  const c = await cenario(db, {
+    nup: `23086.${String(700000 + n)}/2024-11`,
+    siape: String(3300000 + n),
+    laudo: `26255-000.${String(600 + n).padStart(3, "0")}/2019`,
+    numero_portaria: String(900 + n),
+  });
+  await db
+    .update(e.parecer_tecnico)
+    .set({ processo_id: processo.id, situacao, numero: 800 + n })
+    .where(eq(e.parecer_tecnico.id, c.parecer_id));
+}
+
 async function mudar(campos: Partial<typeof e.processo.$inferSelect>) {
   await db.update(e.processo).set(campos).where(eq(e.processo.id, processo.id));
   Object.assign(processo, campos);
@@ -90,9 +120,10 @@ describe("requisitos de saída", () => {
     await mudar({ estado_tecnico: "AGUARDANDO_QUANTIFICACAO" });
     const faltas = await requisitos_de_saida(db, processo, "LAUDO_EM_ELABORACAO");
     expect(faltas.some((f) => f.includes("relatório de ensaio"))).toBe(true);
-    await mudar({ observacoes: "Avaliação qualitativa justificada conforme Anexo 13 da NR-15." });
-    expect(await requisitos_de_saida(db, processo, "LAUDO_EM_ELABORACAO")).toEqual([]);
-    await mover(db, processo, "LAUDO_EM_ELABORACAO", ator);
+    // a justificativa é do ATO: vai no comentário do movimento
+    const justificativa = "Avaliação qualitativa justificada conforme Anexo 13 da NR-15.";
+    expect(await requisitos_de_saida(db, processo, "LAUDO_EM_ELABORACAO", null, { comentario: justificativa })).toEqual([]);
+    await mover(db, processo, "LAUDO_EM_ELABORACAO", ator, { comentario: justificativa });
   });
 
   it("atalho de reúso exige laudo vigente", async () => {
@@ -157,6 +188,7 @@ describe("transições", () => {
 
   it("conclusão preenche a data", async () => {
     await mudar({ estado_tecnico: "DEVOLVIDO_A_PROGEP" });
+    await parecer_do_processo("ASSINADO");
     await mover(db, processo, "CONCLUIDO", ator);
     expect(processo.situacao).toBe("CONCLUIDO");
     expect(processo.data_conclusao).toBe(datas_br.hoje());
@@ -204,6 +236,8 @@ describe("cadeia do adicional: atalhos e saltos", () => {
   it("salto com requisitos atendidos passa e registra cada passo", async () => {
     await anexar("PORTARIA");
     await anexar("FORMULARIO");
+    // "Laudo emitido" afirma o laudo: o da unidade do processo tem de existir
+    await laudo_da_unidade();
     await mover(db, processo, "LAUDO_EMITIDO", ator);
     expect(processo.estado_tecnico).toBe("LAUDO_EMITIDO");
     const passos = await db
@@ -232,6 +266,8 @@ describe("cadeia do adicional: atalhos e saltos", () => {
 
   it("o processo acompanha o parecer, só para a frente", async () => {
     await mudar({ estado_tecnico: "PARECER_EM_ELABORACAO" });
+    // quem chama `acompanhar_parecer` já gravou o parecer como emitido
+    await parecer_do_processo("EMITIDO");
     expect(await acompanhar_parecer(db, processo.id, "PARECER_PRONTO_P_ASSINATURA", ator, "parecer 1/2026 emitido")).toBeNull();
     let [gravado] = await db.select().from(e.processo).where(eq(e.processo.id, processo.id));
     expect(gravado!.estado_tecnico).toBe("PARECER_PRONTO_P_ASSINATURA");

@@ -70,53 +70,96 @@
     base da turma.
   </div>
 
-  <div class="tabela-cartao lista">
-  <table>
+  {# Uma linha de leitura por treinamento, para todos: o nome inteiro (é o nome
+     oficial que vai no certificado, e numa caixa de texto da largura da coluna
+     ele se lia "Segurai"), a carga como número brasileiro e a reciclagem por
+     extenso. Quem edita abre a ficha da linha (`popup_gaveta`), com cada campo
+     na largura dele. #}
+  <div class="tabela-cartao lista sem-altura">
+  <table class="empilhavel">
     <thead>
       <tr>
-        <th scope="col">Código</th><th scope="col">Nome</th><th scope="col">Carga</th><th scope="col">Reciclagem</th>
-        <th scope="col">Norma</th><th scope="col">Modelo do certificado</th><th scope="col">Instrutor padrão</th>
-        <th scope="col">Situação</th>{% if editavel %}<th scope="col"></th>{% endif %}
+        {# Menos colunas, para o nome ter largura: a norma vai sob o código, e o
+           instrutor padrão sob o modelo (os dois dizem como o certificado sai). #}
+        <th scope="col">Código</th><th scope="col">Nome</th><th scope="col">Carga</th>
+        <th scope="col">Reciclagem (meses, 0 = não vence)</th>
+        <th scope="col">Certificado</th>
+        <th scope="col">Situação</th>{% if editavel %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}
       </tr>
     </thead>
     {% for t in itens %}
     {% set id = 'f-trein-' ~ t.id %}
     <tr>
-      <td class="mono">{{ t.codigo }}
-        {% if editavel %}<form method="post" action="/treinamentos/catalogo/{{ t.id }}" id="{{ id }}"></form>{% endif %}</td>
-      {% if editavel %}
-      <td><input form="{{ id }}" name="nome" value="{{ t.nome }}" required
-                 aria-label="Nome de {{ t.codigo }}"></td>
-      <td><input class="campo-curto" form="{{ id }}" name="carga_horaria_horas" value="{{ t.carga_horaria_horas }}"
-                 required aria-label="Carga horária de {{ t.codigo }}"></td>
-      <td><input class="campo-curto" form="{{ id }}" name="validade_meses" value="{{ t.validade_meses }}"
-                 required
-                 aria-label="Validade da reciclagem de {{ t.codigo }}, em meses"
-                 title="0 = não expira"></td>
-      <td><input class="campo-medio" form="{{ id }}" name="norma_referencia" value="{{ t.norma_referencia or '' }}" aria-label="Norma de referência de {{ t.codigo }}"></td>
-      {# o modelo cadastrado para outro treinamento não entra na lista: o
-         treinamento_id do modelo diz a que curso o layout serve, e NULL serve a
-         qualquer um. O que a linha já aponta continua na lista mesmo superado ou
-         inativo — fora dela, o navegador selecionaria "—" e salvar a linha
-         apagaria o vínculo sem ninguém pedir. #}
-      <td><select form="{{ id }}" name="modelo_vigente_id"><option value="">—</option>
-          {% for m in modelos %}{% if (m.treinamento_id is none or m.treinamento_id == t.id)
-                                 and (m.vigente or m.id == t.modelo_vigente_id) %}
-          <option value="{{ m.id }}" {% if t.modelo_vigente_id == m.id %}selected{% endif %}>{{ m.rotulo }}{% if not m.vigente %} (superada){% endif %}</option>
-          {% endif %}{% endfor %}</select>
-        {%- if t.modelo_vigente and not t.modelo_vigente.vigente %}
-        {{ ui.pilula_versao(false) }}{% endif %}</td>
-      <td><select form="{{ id }}" name="instrutor_padrao_id"><option value="">—</option>
-          {% for i in instrutores %}{% if i.ativo or i.id == t.instrutor_padrao_id %}
-          <option value="{{ i.id }}" {% if t.instrutor_padrao_id == i.id %}selected{% endif %}>{{ i.nome_exibicao }}{% if not i.ativo %} (inativa){% endif %}</option>
-          {% endif %}{% endfor %}</select></td>
-      <td>
-        <label class="discreto"><input form="{{ id }}" type="checkbox" name="obrigatorio" value="1"
-            {% if t.obrigatorio %}checked{% endif %}> exigido por norma</label>
-        <label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-            {% if t.ativo %}checked{% endif %}> ativo</label>
+      <td><span class="mono">{{ t.codigo }}</span>
+        {% if t.norma_referencia and t.norma_referencia != t.codigo %}<span class="quebra discreto">{{ t.norma_referencia }}</span>{% endif %}</td>
+      {# O conteúdo programático vem sob o nome, e não numa segunda linha da
+         tabela: é o que distingue dois treinamentos de nome parecido, e numa
+         linha própria ele se lia como outro registro. #}
+      <td class="nome">{{ t.nome }}
+        {% if t.topicos %}
+        <span class="quebra discreto">{{ t.topicos|join(' · ') }}</span>
+        {% endif %}</td>
+      <td data-coluna="Carga" class="mono">{{ t.carga_horaria_horas|num }} h</td>
+      <td data-coluna="Reciclagem">{% if t.expira %}<span class="mono">{{ t.validade_meses }}</span>
+          <span class="discreto">({{ t.validade_rotulo }})</span>
+          {% else %}<span class="mono">0</span> <span class="selo">não vence</span>{% endif %}</td>
+      <td data-coluna="Certificado">{{ t.modelo_vigente.rotulo if t.modelo_vigente else 'o genérico vigente' }}
+        {% if t.modelo_vigente and not t.modelo_vigente.vigente %}
+        {{ ui.pilula_versao(false) }}{% endif %}
+        {% if t.instrutor_padrao %}<span class="quebra discreto">assina: {{ t.instrutor_padrao.nome_exibicao }}</span>{% endif %}</td>
+      <td data-coluna="Situação">
+        {% if t.obrigatorio %}<span class="pilula info">obrigatório</span>{% endif %}
+        {{ ui.pilula_sim_nao(t.ativo, 'ativo', 'inativo') }}
       </td>
-      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button>
+      {% if editavel %}
+      <td class="acao-linha">
+        {% call ui.popup_gaveta('editar-trein-' ~ t.id, 'editar', 'Editar · ' ~ t.codigo,
+                                nota='o certificado já emitido guarda o que valia no dia') %}
+          <form method="post" action="/treinamentos/catalogo/{{ t.id }}" id="{{ id }}">
+            <div class="campo"><label>Nome (sai no certificado)
+              <input form="{{ id }}" name="nome" value="{{ t.nome }}" required></label></div>
+            <div class="linha-campos">
+              <div class="campo"><label>Carga horária (horas)
+                <input form="{{ id }}" name="carga_horaria_horas" value="{{ t.carga_horaria_horas|num }}"
+                       required inputmode="decimal"></label></div>
+              <div class="campo"><label>Reciclagem (meses, 0 = não vence)
+                <input form="{{ id }}" name="validade_meses" value="{{ t.validade_meses }}"
+                       required inputmode="numeric"></label></div>
+              <div class="campo"><label>Norma de referência
+                <input form="{{ id }}" name="norma_referencia" value="{{ t.norma_referencia or '' }}"></label></div>
+            </div>
+            <div class="linha-campos">
+              {# o modelo cadastrado para outro treinamento não entra na lista: o
+                 treinamento_id do modelo diz a que curso o layout serve, e NULL serve a
+                 qualquer um. O que a linha já aponta continua na lista mesmo superado ou
+                 inativo — fora dela, o navegador selecionaria "—" e salvar a linha
+                 apagaria o vínculo sem ninguém pedir. #}
+              <div class="campo"><label>Modelo do certificado
+                <select form="{{ id }}" name="modelo_vigente_id"><option value="">— o genérico vigente</option>
+                  {% for m in modelos %}{% if (m.treinamento_id is none or m.treinamento_id == t.id)
+                                         and (m.vigente or m.id == t.modelo_vigente_id) %}
+                  <option value="{{ m.id }}" {% if t.modelo_vigente_id == m.id %}selected{% endif %}>{{ m.rotulo }}{% if not m.vigente %} (superada){% endif %}</option>
+                  {% endif %}{% endfor %}</select></label>
+                {%- if t.modelo_vigente and not t.modelo_vigente.vigente %}
+                {{ ui.pilula_versao(false) }}{% endif %}</div>
+              <div class="campo"><label>Instrutor padrão
+                <select form="{{ id }}" name="instrutor_padrao_id"><option value="">—</option>
+                  {% for i in instrutores %}{% if i.ativo or i.id == t.instrutor_padrao_id %}
+                  <option value="{{ i.id }}" {% if t.instrutor_padrao_id == i.id %}selected{% endif %}>{{ i.nome_exibicao }}{% if not i.ativo %} (inativa){% endif %}</option>
+                  {% endif %}{% endfor %}</select></label></div>
+            </div>
+            <div class="campo"><label>Conteúdo programático (um tópico por linha)
+              <textarea form="{{ id }}" name="conteudo_programatico" rows="4"
+                        placeholder="um tópico por linha">{{ t.conteudo_programatico or '' }}</textarea></label></div>
+            <div class="campo">
+              <label class="discreto"><input form="{{ id }}" type="checkbox" name="obrigatorio" value="1"
+                  {% if t.obrigatorio %}checked{% endif %}> exigido por norma</label>
+              <label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
+                  {% if t.ativo %}checked{% endif %}> ativo</label>
+            </div>
+            <div class="acoes"><button form="{{ id }}" type="submit">Salvar {{ t.codigo }}</button></div>
+          </form>
+        {% endcall %}
         {# só o que nunca teve turma se apaga; o resto se desativa (o serviço recusa e diz) #}
         {% call ui.popup_gaveta('excluir-trein-' ~ t.id, 'excluir', 'Excluir · ' ~ t.codigo, largo=false) %}
           <form method="post" action="/treinamentos/catalogo/{{ t.id }}/excluir">
@@ -125,39 +168,8 @@
             <div class="acoes"><button type="submit" class="perigo compacto">Excluir {{ t.codigo }}</button></div>
           </form>
         {% endcall %}</td>
-      {% else %}
-      {# O conteúdo programático vem sob o nome, e não numa segunda linha da
-         tabela: é o que distingue dois treinamentos de nome parecido, e numa
-         linha própria ele se lia como outro registro. #}
-      <td class="nome">{{ t.nome }}
-        {% if t.topicos %}
-        <span class="quebra discreto">{{ t.topicos|join(' · ') }}</span>
-        {% endif %}</td>
-      <td class="mono">{{ t.carga_horaria_horas|num }} h</td>
-      <td>{% if t.expira %}<span class="mono">{{ t.validade_rotulo }}</span>
-          {% else %}<span class="selo">não expira</span>{% endif %}</td>
-      <td>{{ t.norma_referencia or '—' }}</td>
-      <td><span class="recorte" title="{{ t.modelo_vigente.rotulo if t.modelo_vigente else '' }}">
-          {{- t.modelo_vigente.rotulo if t.modelo_vigente else '—' -}}</span>
-        {% if t.modelo_vigente and not t.modelo_vigente.vigente %}
-        {{ ui.pilula_versao(false) }}{% endif %}</td>
-      <td><span class="recorte" title="{{ t.instrutor_padrao.nome_exibicao if t.instrutor_padrao else '' }}">
-          {{- t.instrutor_padrao.nome_exibicao if t.instrutor_padrao else '—' -}}</span></td>
-      <td>
-        {% if t.obrigatorio %}<span class="pilula info">obrigatório</span>{% endif %}
-        {{ ui.pilula_sim_nao(t.ativo, 'ativo', 'inativo') }}
-      </td>
       {% endif %}
     </tr>
-    {% if editavel %}
-    <tr>
-      <td class="discreto">conteúdo</td>
-      <td colspan="8">
-        <textarea form="{{ id }}" name="conteudo_programatico" rows="2"
-                  aria-label="Conteúdo programático de {{ t.codigo }}"
-                  placeholder="um tópico por linha">{{ t.conteudo_programatico or '' }}</textarea></td>
-    </tr>
-    {% endif %}
     {% else %}
     {{ ui.vazio_de_lista(
          'Nenhum treinamento cadastrado ainda.',
@@ -165,7 +177,7 @@
           não há turma para abrir, e sem turma não há certificado.'
          ~ (' Use “' ~ CADASTRAR ~ '”, no canto superior direito.'
             if editavel else ' Cadastrar pede a permissão treinamento.gerenciar.'),
-         9 if editavel else 8) }}
+         7 if editavel else 6) }}
     {% endfor %}
   </table>
   </div>

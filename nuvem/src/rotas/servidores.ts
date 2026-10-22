@@ -36,7 +36,7 @@ import { comMensagem, marcarDownload, numeroDaPagina, pagina, recortar, redireci
 
 export const rotas = new Hono<Ambiente>();
 
-export const SITUACOES = ["ATIVO", "APOSENTADO", "EXONERADO", "CEDIDO", "LICENCA"] as const;
+export const SITUACOES = servico_servidores.SITUACOES_SERVIDOR;
 
 type Unidade = typeof unidade_uorg.$inferSelect;
 
@@ -139,6 +139,11 @@ rotas.post("/servidores", async (c) => {
       digitado,
     });
   }
+  // D70: o `required` do nome deixa passar espaços, e a ficha sem nome não
+  // se acha por busca nenhuma — a edição já recusava, o cadastro não
+  if (!nome.trim()) {
+    return _tela_lista(c, usuario, "", { erro: "Informe o nome do servidor: ele não pode ficar em branco.", digitado });
+  }
   const [existente] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
   if (existente) {
     // A ficha é o destino certo; o que faltava era dizer por que se está nela
@@ -152,6 +157,14 @@ rotas.post("/servidores", async (c) => {
       ),
     );
   }
+  let email_conferido: string | null;
+  try {
+    email_conferido = await servico_servidores.conferir_email(tx, email);
+  } catch (erro) {
+    if (!(erro instanceof servico_servidores.LotacaoInvalida)) throw erro;
+    const motivo = erro.message.charAt(0).toUpperCase() + erro.message.slice(1);
+    return _tela_lista(c, usuario, "", { erro: `${motivo}.`, digitado });
+  }
   const [servidor] = await tx
     .insert(tabela_servidor)
     .values({
@@ -161,7 +174,7 @@ rotas.post("/servidores", async (c) => {
       funcao: funcao || null,
       unidade_uorg_id: unidade_uorg_id ? Number(unidade_uorg_id) : null,
       uorg_id: uorg_id ? Number(uorg_id) : null,
-      email: email || null,
+      email: email_conferido,
     })
     .returning();
   await auditoria.registrar(tx, {
@@ -240,6 +253,10 @@ rotas.post("/servidores/importar/confirmar", async (c) => {
 /** Corrige nome, SIAPE, e-mail e situação. Lotação muda pelo histórico. */
 rotas.post("/servidores/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  // a permissão antes da consulta de escopo e do formulário (D77); o serviço
+  // exige de novo — e RN-19: quem não lê nome e SIAPE também não os corrige
+  usuario.exigir("processo.editar");
+  usuario.exigir("exposicao.ver");
   const id = Number(c.req.param("id"));
   const tx = c.get("tx");
   const servidor = await _servidor_no_escopo(tx, usuario, id);
@@ -263,6 +280,7 @@ rotas.post("/servidores/:id{[0-9]+}", async (c) => {
 /** Muda unidade/UORG/postos/cargo abrindo um período novo — nada é sobrescrito. */
 rotas.post("/servidores/:id{[0-9]+}/lotacao", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("processo.editar");
   const id = Number(c.req.param("id"));
   const tx = c.get("tx");
   const servidor = await _servidor_no_escopo(tx, usuario, id);
@@ -299,6 +317,7 @@ rotas.post("/servidores/:id{[0-9]+}/lotacao", async (c) => {
 
 rotas.post("/servidores/:id{[0-9]+}/lotacao/:lotacao{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
+  usuario.exigir("processo.editar");
   const id = Number(c.req.param("id"));
   const tx = c.get("tx");
   const f = await formulario(c);

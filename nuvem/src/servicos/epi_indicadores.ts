@@ -46,6 +46,7 @@ import * as epi_estoque from "./epi_estoque.js";
 import * as epi_ficha from "./epi_ficha.js";
 import * as epi_requisicao from "./epi_requisicao.js";
 import * as servidores from "./servidores.js";
+import type { UsuarioAtual } from "./rbac.js";
 
 export type EpiFichaRegistro = typeof epi_ficha_registro.$inferSelect;
 export type EpiEntradaEstoque = typeof epi_entrada_estoque.$inferSelect;
@@ -137,12 +138,20 @@ export class Painel {
  * recontada aqui: um segundo cálculo seria um segundo número — e o painel
  * existe para ser conferido contra as telas, não para discordar delas.
  */
-export async function painel(tx: Executor, quando: string | null = null): Promise<Painel> {
+export async function painel(
+  tx: Executor,
+  quando: string | null = null,
+  usuario: UsuarioAtual | null = null,
+): Promise<Painel> {
   const dia = quando ?? hoje();
-  // as cinco medidas são independentes: saem juntas (uma ida ao banco cada etapa)
+  // as cinco medidas são independentes: saem juntas (uma ida ao banco cada etapa).
+  // Com `usuario`, os pedidos e a fila de falta são os do ESCOPO dele, como na
+  // fila de `/epis/requisicoes`: o painel contava todos os pedidos e listava o
+  // de terceiros com link que a ficha não abria — o número do painel tem de
+  // bater com a fila que ele promete.
   const [estados, esperando, lotes, entregas, trocas] = await Promise.all([
-    epi_requisicao.resumo_de_estados(tx),
-    epi_requisicao.itens_esperando_estoque(tx).then((itens) => _com_o_que_a_tela_le(tx, itens)),
+    epi_requisicao.resumo_de_estados(tx, usuario),
+    epi_requisicao.itens_esperando_estoque(tx, { usuario }).then((itens) => _com_o_que_a_tela_le(tx, itens)),
     lotes_a_vencer(tx, dia),
     entregas_do_mes(tx, dia),
     epi_ficha.trocas_devidas(tx, { quando: dia }),
@@ -286,7 +295,17 @@ export class LinhaEmpenho {
   get custo_texto(): string | null {
     return this.custo === null ? null : _texto_da_escala(_para_escala(this.custo), 2);
   }
+  /**
+   * `R$ 3.150,00` — o que a TELA imprime. O CSV continua com `custo_texto`
+   * (ponto decimal, sem milhar), que é o que planilha e conferência importam
+   * sem depender da língua de quem abre.
+   */
+  get custo_tela(): string | null {
+    const texto = this.custo_texto;
+    return texto === null ? null : epi_estoque.dinheiro(texto);
+  }
 }
+
 
 export interface Relatorio {
   inicio: string;

@@ -24,7 +24,7 @@
  * importar este módulo fecharia o ciclo web → epi_estoque → pendencias → web,
  * e `pendencias.ts` usa `ganchos` de `web.ts` já no carregamento.
  */
-import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   epi_entrada_estoque,
@@ -34,6 +34,7 @@ import {
   pendencia as tabela_pendencia,
 } from "../db/esquema/index.js";
 import { RegraViolada } from "../nucleo/erros.js";
+import { EpiItem as EpiItemDominio } from "../dominio/epi.js";
 import { filtro } from "../web.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
@@ -66,7 +67,15 @@ export const DIAS_AVISO_CA = 60;
 
 /** O que impede este movimento, tudo de uma vez (lista, e não primeiro-erro). */
 export class EstoqueBloqueado extends RegraViolada {
-  constructor(public motivos: string[]) {
+  /**
+   * `campo`: o `name` do campo do formulário que produziu a PRIMEIRA recusa,
+   * quando há um só culpado — a tela o marca e põe o foco nele. Vazio quando o
+   * motivo cruza campos.
+   */
+  constructor(
+    public motivos: string[],
+    public campo: string | null = null,
+  ) {
     super("Movimento recusado: " + motivos.join("; "));
   }
 }
@@ -147,6 +156,8 @@ export class LoteDisponivel {
   get rotulo(): string {
     const partes = [this.entrada.lote ? `Lote ${this.entrada.lote}` : "Lote sem número"];
     if (this.entrada.tamanho) partes.push(`tam. ${this.entrada.tamanho}`);
+    // o mesmo lote pode chegar em duas compras: a nota é o que as separa
+    if (this.entrada.nota_fiscal) partes.push(`NF ${this.entrada.nota_fiscal}`);
     partes.push(`CA ${this.entrada.numero_ca || "—"}`);
     partes.push(`${this.saldo} em estoque`);
     return partes.join(" · ");
@@ -445,7 +456,7 @@ export async function descartar(
   if (quantidade > saldo) {
     throw new EstoqueBloqueado([
       `o lote tem ${saldo} em estoque e o descarte pede ${quantidade}: ` +
-        "saldo não fica negativo (RN-24). Se a prateleira discorda do " +
+        "saldo não fica negativo. Se a prateleira discorda do " +
         "sistema, o caminho é o ajuste de inventário",
     ]);
   }
@@ -599,28 +610,82 @@ export async function registrar_entrada(tx: Executor, usuario: UsuarioAtual, d: 
   const data_fabricacao = d.data_fabricacao || null;
 
   const problemas: string[] = [];
-  if (d.quantidade_recebida <= 0) problemas.push("a quantidade recebida tem de ser maior que zero");
+  // o primeiro campo culpado, para a tela marcar (ver `EstoqueBloqueado.campo`)
+  let campo: string | null = null;
+  const recusa = (nome: string, texto: string) => {
+    problemas.push(texto);
+    campo ??= nome;
+  };
+  if (d.quantidade_recebida <= 0) recusa("quantidade_recebida", "a quantidade recebida tem de ser maior que zero");
   if (quantidade_empenhada !== null && quantidade_empenhada < d.quantidade_recebida) {
-    problemas.push(
+    recusa(
+      "quantidade_empenhada",
       `o empenho é de ${quantidade_empenhada} e a entrada registra ` +
         `${d.quantidade_recebida} recebidas: receber mais do que se empenhou é ` +
         "erro de digitação ou entrega fora do contrato",
     );
   }
-  if (quando > hoje) problemas.push("a data de entrada não pode ser futura");
+  if (quando > hoje) recusa("data_entrada", "a data de entrada não pode ser futura");
   if (valor_unitario !== null && valor_unitario.trim().startsWith("-") && /[1-9]/.test(valor_unitario)) {
-    problemas.push("o valor unitário não pode ser negativo");
+    recusa("valor_unitario", "o valor unitário não pode ser negativo");
   }
   if (data_fabricacao !== null && validade_ca !== null && data_fabricacao > validade_ca) {
-    problemas.push("a fabricação é posterior à validade do CA: confira as duas datas");
+    recusa("data_fabricacao", "a fabricação é posterior à validade do CA: confira as duas datas");
   }
-  if (problemas.length) throw new EstoqueBloqueado(problemas);
+  // O tamanho do lote é um dos tamanhos do ITEM: é por ele que a reserva e a
+  // entrega acham o lote. Antes o campo era livre, e um lote "XGG" de um item
+  // P/M/G nunca casava com pedido nenhum — ficava na prateleira sem saída.
+  const tamanho = _ou_nada(d.tamanho);
+  const [catalogo] = await tx
+    .select({ tamanhos: epi_item.tamanhos })
+    .from(epi_item)
+    .where(eq(epi_item.id, d.item.id));
+  const tamanhos = EpiItemDominio.lista_de_tamanhos({ tamanhos: catalogo?.tamanhos ?? null });
+  if (tamanhos.length && !tamanho) {
+    recusa("tamanho", `'${d.item.nome}' tem tamanhos no catálogo (${tamanhos.join(", ")}): escolha o tamanho deste lote`);
+  } else if (tamanho && tamanhos.length && !tamanhos.includes(tamanho)) {
+    recusa("tamanho", `'${tamanho}' não é um dos tamanhos de '${d.item.nome}' no catálogo: ${tamanhos.join(", ")}`);
+  }
+  // Lote repetido do mesmo item e tamanho: na reserva e na entrega apareciam
+  // duas opções idênticas, impossíveis de distinguir. O mesmo número de lote
+  // em OUTRO tamanho é legítimo (a caixa de P e a de M do mesmo lote de
+  // fábrica), e em OUTRA nota fiscal também: é uma segunda compra, com empenho
+  // e custo próprios — mandá-la para o ajuste de inventário apagaria essa
+  // ligação. Só passa quando as DUAS entradas têm nota e as notas diferem; aí a
+  // nota entra no rótulo do lote (`LoteDisponivel.rotulo`) e separa as opções.
+  const lote = _ou_nada(d.lote);
+  if (lote) {
+    const nota = _ou_nada(d.nota_fiscal);
+    const [repetido] = await tx
+      .select({ id: epi_entrada_estoque.id })
+      .from(epi_entrada_estoque)
+      .where(
+        and(
+          eq(epi_entrada_estoque.epi_item_id, d.item.id),
+          eq(epi_entrada_estoque.lote, lote),
+          tamanho === null ? isNull(epi_entrada_estoque.tamanho) : eq(epi_entrada_estoque.tamanho, tamanho),
+          nota === null
+            ? undefined
+            : or(isNull(epi_entrada_estoque.nota_fiscal), eq(epi_entrada_estoque.nota_fiscal, nota)),
+        ),
+      )
+      .limit(1);
+    if (repetido) {
+      recusa(
+        "lote",
+        `o lote ${lote}${tamanho ? ` no tamanho ${tamanho}` : ""} já tem entrada para '${d.item.nome}'. ` +
+          "Se chegou mais da mesma caixa, registre um ajuste de inventário nesse lote; " +
+          "se é outra compra, informe a nota fiscal dela (diferente da primeira); se é outro lote, confira o número",
+      );
+    }
+  }
+  if (problemas.length) throw new EstoqueBloqueado(problemas, campo);
 
   const [entrada] = await tx
     .insert(epi_entrada_estoque)
     .values({
       epi_item_id: d.item.id,
-      tamanho: _ou_nada(d.tamanho),
+      tamanho,
       pregao: _ou_nada(d.pregao),
       item_pregao: _ou_nada(d.item_pregao),
       empenho: _ou_nada(d.empenho),
@@ -688,28 +753,76 @@ function _ou_nada(valor: string | null | undefined): string | null {
  * `12.345.678/0001-90` e `12345678000190` são o mesmo CNPJ. Vazio vira `null`.
  * Contagem errada é RECUSA ESCRITA, não corte silencioso (o `maxlength` cortava
  * no décimo quarto caractere sem avisar ninguém).
+ *
+ * O CNPJ alfanumérico da Receita (IN RFB 2.229/2024, emitido desde julho de
+ * 2026) também entra: as 12 primeiras posições podem ser letras, os dois
+ * dígitos verificadores continuam números. Letra minúscula vira maiúscula; a
+ * pontuação é descartada como antes.
  */
 export function normalizar_cnpj(bruto: string | null | undefined): string | null {
-  const digitos = (bruto || "").replace(/\D/g, "");
-  if (!digitos) return null;
-  if (digitos.length !== 14) {
+  const caracteres = (bruto || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+  if (!caracteres) return null;
+  if (caracteres.length !== 14) {
     throw new EstoqueBloqueado([
-      `CNPJ do fornecedor com ${digitos.length} dígito(s): o CNPJ tem 14. ` +
+      `CNPJ do fornecedor com ${caracteres.length} caractere(s): o CNPJ tem 14. ` +
         "Copie o número inteiro da nota — a pontuação pode vir junto, " +
         "ela é descartada na gravação",
     ]);
   }
-  return digitos;
+  // Os dígitos verificadores: 14 dígitos quaisquer passavam, e
+  // 11.111.111/1111-11 virava fornecedor de lote. A conta é a mesma do aviso
+  // no navegador (`data-cnpj`, em `csso.js`), para os dois não discordarem.
+  if (!cnpj_valido(caracteres)) {
+    throw new EstoqueBloqueado([
+      "CNPJ do fornecedor inválido: o dígito verificador não confere. " +
+        "Confira o número na nota fiscal ou no cartão CNPJ",
+    ]);
+  }
+  return caracteres;
 }
 
-/** Os 14 dígitos guardados, de volta ao formato em que se conferem. */
+/**
+ * Módulo 11 da Receita, pesos 5..2 e 9..2 (e 6..2 e 9..2); todos iguais é
+ * inválido. Cada posição vale o código ASCII menos 48 — o dígito vale ele
+ * mesmo, e a letra do CNPJ alfanumérico vale A=17, B=18… —, que é a regra
+ * única da Receita para os dois formatos.
+ */
+export function cnpj_valido(cnpj: string): boolean {
+  if (!/^[0-9A-Z]{12}\d{2}$/.test(cnpj) || /^(.)\1{13}$/.test(cnpj)) return false;
+  const dv = (base: string, pesos: number[]) => {
+    const resto = [...base].reduce((soma, c, i) => soma + (c.charCodeAt(0) - 48) * pesos[i]!, 0) % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  const d1 = dv(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const d2 = dv(cnpj.slice(0, 12) + d1, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return cnpj.slice(12) === `${d1}${d2}`;
+}
+
+/** Os 14 caracteres guardados, de volta ao formato em que se conferem. */
 export function formatar_cnpj(valor: string | null | undefined): string {
-  const digitos = (valor || "").replace(/\D/g, "");
+  const digitos = (valor || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
   if (digitos.length !== 14) return valor || "";
   return `${digitos.slice(0, 2)}.${digitos.slice(2, 5)}.${digitos.slice(5, 8)}/${digitos.slice(8, 12)}-${digitos.slice(12)}`;
 }
 
 filtro("cnpj", formatar_cnpj);
+
+/**
+ * `12.5` → `R$ 12,50`, com milhar: o dinheiro da tela. O `numeric` chega como
+ * texto exato; arredonda a duas casas (meio para cima, como a nota fiscal).
+ */
+export function dinheiro(valor: string | number | null | undefined): string {
+  if (valor === null || valor === undefined || valor === "") return "";
+  const n = typeof valor === "number" ? valor : Number(valor);
+  if (!Number.isFinite(n)) return String(valor);
+  const [inteira, fracao] = Math.abs(n).toFixed(2).split(".") as [string, string];
+  return `${n < 0 ? "-" : ""}R$ ${inteira.replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${fracao}`;
+}
+
+filtro("dinheiro", dinheiro);
+
+/** A recusa do valor unitário, numa grafia só (a rota marca o campo com ela). */
+export const VALOR_INVALIDO = "Valor unitário inválido: use números, ex. 12,50.";
 
 /**
  * Lê `12,50` e `12.50` como o mesmo número. Vazio vira `null` (≠ zero).
@@ -721,7 +834,7 @@ export function valor_decimal(bruto: string | null | undefined): string | null {
   if (!limpo) return null;
   const m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(limpo);
   if (!m || (!m[2] && !m[3])) {
-    throw new EstoqueBloqueado([`valor unitário inválido: '${(bruto || "").trim()}' não é um número`]);
+    throw new EstoqueBloqueado([VALOR_INVALIDO], "valor_unitario");
   }
   // `Decimal('012.50')` -> '12.50'; `Decimal('.5')` -> '0.5'; `Decimal('5.')` -> '5'
   const inteira = (m[2] || "0").replace(/^0+(?=\d)/, "");

@@ -103,10 +103,11 @@ describe("quem vê e quem fecha", () => {
 
   it("o dono fecha a própria tarefa sem permissão de escrita; a dos outros pede escrita", () => {
     const leitor = conta(["demanda.ver"], [], 42);
-    expect(pendencias.pode_concluir(leitor, { responsavel_id: 42 })).toBe(true);
-    expect(pendencias.pode_concluir(leitor, { responsavel_id: 7 })).toBe(false);
-    expect(pendencias.pode_concluir(conta(["processo.ver", "processo.editar"]), { responsavel_id: 7 })).toBe(true);
-    expect(() => pendencias.exigir_concluir(leitor, { responsavel_id: 7 })).toThrow(/escrita no módulo/);
+    const tipo = "INCLUIR_NO_SEI";
+    expect(pendencias.pode_concluir(leitor, { responsavel_id: 42, tipo })).toBe(true);
+    expect(pendencias.pode_concluir(leitor, { responsavel_id: 7, tipo })).toBe(false);
+    expect(pendencias.pode_concluir(conta(["processo.ver", "processo.editar"]), { responsavel_id: 7, tipo })).toBe(true);
+    expect(() => pendencias.exigir_concluir(leitor, { responsavel_id: 7, tipo })).toThrow(/escrita no módulo/);
   });
 
   it("o escopo próprio só vê o que a regra atribuiu a ele", async () => {

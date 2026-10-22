@@ -87,16 +87,14 @@
                e inventar um rótulo aqui esconderia justamente isso. #}
             <span class="rotulo-tipo {{ 'mono' if p.tipo not in tipos }}">
               {{- tipos[p.tipo][0] if p.tipo in tipos else p.tipo -}}</span>
-            {# Texto livre, agora COM `sobre` quando a ancora sabe dizer de quem
-               e a tarefa (`pendencias.titular_de` resolve requisicao, item de
-               requisicao e registro da ficha). `Pendencia` continua sem
-               `servidor_id`; o que mudou e a lista deixar de fingir que nao
-               sabe. Sem dono resolvido a regra continua caindo no lado seguro —
-               le a frase quem le nome de qualquer pessoa —, e com dono resolvido
-               o TITULAR le a propria (LGPD art. 18, II), que e o que faz o aviso
-               do requerente ser aviso e nao "conteudo suprimido". O tipo, o
-               prazo, o responsavel e a ancora nunca dependeram disto. #}
-            <strong>{{ texto_livre(p.descricao, de_quem.get(p.id)) }}</strong>
+            {# A frase vem pronta do serviço (`pendencias.leitura`), com a RN-19
+               já decidida: quem lê nome — ou o TITULAR, pela âncora (LGPD art.
+               18, II) — lê a descrição gravada; quem não lê recebe uma frase
+               neutra montada do tipo e da âncora ("Demanda: <assunto>",
+               "… — entrega nº 7"), que não passa pela descrição e por isso não
+               carrega nome. Era "conteúdo suprimido (RN-19)" em toda linha, e a
+               lista da secretaria virava uma coluna de frases iguais. #}
+            <strong>{{ p.leitura.texto }}</strong>
           </div>
         </td>
         <td>
@@ -120,57 +118,29 @@
           <div class="onde">
             {# `?de=pendencias` em toda âncora: é o que faz a tela de destino
                oferecer o caminho de volta (o "← voltar às pendências" do
-               cabeçalho, em `base.html`). Sem isso a volta era o botão do
-               navegador ou procurar "Pendências" na lateral — e para quem
-               opera só o EPI a lateral nem tem o item. #}
-            {% if p.processo_id %}<a href="/processos/{{ p.processo_id }}?de=pendencias">processo</a>{% endif %}
-            {% if p.parecer_id %} <a href="/pareceres/{{ p.parecer_id }}?de=pendencias">parecer</a>{% endif %}
-            {% if p.laudo_id %} <a href="/laudos/{{ p.laudo_id }}?de=pendencias">laudo</a>{% endif %}
-            {# Âncora dos módulos sem processo. Entidade cuja tela já existe vira
-               link; a que ainda não tem tela mostra o que é, em vez de oferecer
-               porta trancada. Módulo novo acrescenta uma linha ao mapa quando
-               entregar a tela — e não antes. #}
-            {# (prefixo, sufixo, rótulo, permissão que a rota exige). A permissão
-               entra no mapa porque o link só pode existir para quem a rota deixa
-               entrar — oferecer porta trancada é a mesma mentira do menu. #}
-            {# `epi_requisicao` entrou com os dois avisos do requerente. A rota
-               `/epis/requisicoes/{id}` ja e escopada (`epi_requisicao.no_escopo`),
-               entao o link nao abre nada que a fila nao abrisse: fora do escopo
-               ela redireciona, e e por isso que `epi.ver` basta aqui. Era esta
-               ancora que faltava para a tarefa levar a algum lugar — a auditoria
-               mediu a coluna "Onde" como texto puro, sem link nenhum. #}
-            {# `turma` entrou com a inscrição pedida pelo próprio servidor. A
-               tarefa é sobre uma INSCRIÇÃO e a âncora é a TURMA, de propósito: a
-               inscrição não tem tela própria, e o lugar onde o trabalho se faz é
-               a aba de inscrições da turma — que é onde está o botão de
-               confirmar. `turma.inscrever` e não `treinamento.ver`: o link só
-               aparece para quem pode agir, e é a mesma permissão que a aba
-               nominal da ficha exige. #}
-            {% set TELA_DA_ANCORA = {
-              'epi_ficha_registro': ['/epis/fichas/registros/', '', 'ficha de EPI', 'epi.ficha'],
-              'epi_entrada_estoque': ['/epis/estoque/', '/movimentos', 'extrato do lote', 'epi.ver'],
-              'epi_requisicao': ['/epis/requisicoes/', '', 'pedido de EPI', 'epi.ver'],
-              'demanda': ['/demandas/', '', 'demanda', 'demanda.ver'],
-              'turma': ['/turmas/', '?aba=inscricoes', 'inscrições da turma', 'turma.inscrever'],
-              'certificado': ['/certificados/', '', 'certificado', 'certificado.ver']
-            } %}
-            {% if p.entidade %}
-            {% set ancora = TELA_DA_ANCORA[p.entidade] %}
-            {% if ancora and usuario.pode(ancora[3]) %}
-            <a class="mono" href="{{ ancora[0] }}{{ p.entidade_id }}{{ ancora[1] }}{{ '&' if '?' in ancora[1] else '?' }}de=pendencias">{{ ancora[2] }}</a>
+               cabeçalho, em `base.html`). O rótulo é legível ("Ficha de EPI —
+               entrega nº 1", "Processo 23086…") e não o nome da tabela; o mapa
+               de cada âncora — com a permissão que a rota dela exige, porque
+               oferecer porta trancada é a mesma mentira do menu — mora no
+               serviço, e a API lê o mesmo. Sem permissão, o rótulo fica e o link
+               não. #}
+            {% for a in p.leitura.onde %}
+            {# `quebra`: um lugar por linha — "Processo 23086…" e "Parecer 1/2026"
+               corridos na mesma linha se liam como um rótulo só. #}
+            {% if a.href %}<a class="quebra" href="{{ a.href }}{{ '&' if '?' in a.href else '?' }}de=pendencias">{{ a.rotulo }}</a>
+            {% else %}<span class="discreto quebra">{{ a.rotulo }}</span>{% endif %}
             {% else %}
-            <span class="discreto mono">{{ p.entidade }} #{{ p.entidade_id }}</span>
-            {% endif %}
-            {% endif %}
             {# Pendência sem âncora nenhuma existe (a CHECK do banco permite): a
                célula vazia se leria como link que não carregou. #}
-            {% if not (p.processo_id or p.parecer_id or p.laudo_id or p.entidade) %}
-            <span class="discreto">sem âncora</span>{% endif %}
+            <span class="discreto">sem âncora</span>
+            {% endfor %}
           </div>
         </td>
         <td>
           {% if p.id in concluiveis %}
-          <form method="post" action="/pendencias/{{ p.id }}/concluir">
+          {# Volta à mesma visão de onde saiu: concluir em "Só as minhas" e cair
+             em "Todas" desorientava. #}
+          <form method="post" action="/pendencias/{{ p.id }}/concluir{{ '?minhas=1' if apenas_minhas }}">
             <button type="submit" class="secundario marcador">concluir</button>
           </form>
           {% endif %}
@@ -191,7 +161,7 @@
     <table>
       {% for p in concluidas %}
       <tr>
-        <td>{{ texto_livre(p.descricao, de_quem.get(p.id)) }}</td>
+        <td>{{ p.leitura.texto }}</td>
         <td class="mono discreto">{{ p.concluida_em|momento }}</td>
       </tr>
       {% endfor %}

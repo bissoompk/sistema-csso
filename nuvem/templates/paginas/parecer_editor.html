@@ -13,6 +13,13 @@
 
 {% block acoes_cabecalho %}
 {% if parecer.numero %}
+{# Quem não lê o nome do servidor na tela continua podendo baixar o documento
+   (DESVIOS: o .docx do parecer é saída nominal deliberada para quem tem
+   `parecer.ver`, com linha em `acesso_dado_sensivel`). O aviso diz isso ANTES do
+   clique: o arquivo traz o nome, e o download fica registrado. #}
+{% if identificar(parecer).suprimida %}
+<span class="nota">O documento traz o nome do servidor; o download fica registrado.</span>
+{% endif %}
 <a class="botao secundario" href="/pareceres/{{ parecer.id }}/docx"
    data-baixar="Gerando o DOCX…">Gerar DOCX</a>
 {# Sem LibreOffice o botão entrega o .docx com o aviso dentro da resposta,
@@ -62,9 +69,47 @@
    estava certa; a tela mentia ao parecer editável. Um `<fieldset disabled>`
    em volta dos campos desliga todos de uma vez, inclusive o Enter. #}
 {% set congelado = parecer.situacao in ['EMITIDO','ASSINADO','ANULADO'] %}
+{# Sem `parecer.editar` (a secretaria, a PROGEP, o auditor) a tela é a mesma —
+   quem acompanha o processo lê o rascunho e a validação —, mas desligada: o
+   `<fieldset disabled>` que já valia para o congelado, e nenhum botão que grava.
+   Antes o formulário inteiro ficava editável e "Salvar rascunho", "remover" e
+   "Adicionar exposição" terminavam em 403. #}
+{% set pode_editar = usuario.pode('parecer.editar') %}
+{% set somente_leitura = congelado or not pode_editar %}
 
 {% block conteudo %}
 <div class="tela">
+{% if vista_do_titular %}
+  {# O TITULAR lê o próprio parecer (LGPD art. 18, II): o documento como sai, e o
+     botão para baixá-lo, lá em cima. O editor, a validação e o "pronto para
+     emitir" são de quem redige e emite — para ele eram um formulário que não
+     edita e um quadro que não lhe diz respeito. #}
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Parecer técnico {{ parecer.numero or '—' }}/{{ parecer.ano }}</h1>
+      <p class="identificacao">
+        {{ ui.pilula_parecer(parecer.situacao) }}
+        {% if parecer.processo %}<span>processo <span class="mono">{{ parecer.processo.nup }}</span></span>{% endif %}
+      </p>
+    </div>
+  </div>
+  {% if parecer.situacao in ['RASCUNHO','EM_REVISAO'] %}
+  <div class="aviso aviso-info"><strong>Ainda não emitido.</strong> O parecer está sendo
+    redigido pela CSSO e o conteúdo pode mudar até a emissão.</div>
+  {% elif parecer.situacao == 'ANULADO' %}
+  <div class="aviso aviso-info"><strong>Parecer anulado.</strong> Ele não vale mais; se
+    houver versão nova, ela tem outro número.</div>
+  {% endif %}
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>O parecer</h2>
+      <span class="nota">é o que sai no documento</span>
+    </div>
+    <div class="moldura-previa">
+      {% include "partes/previa_parecer.html" %}
+    </div>
+  </section>
+{% else %}
 
   {# A âncora era a volta de quem descia até a confirmação de emissão e desistia.
      A confirmação virou camada e o "Cancelar" dela não rola a página — mas o id
@@ -88,6 +133,12 @@
   <div class="lado-a-lado editor">
     <div class="pilha">
 
+      {% if not congelado and not pode_editar %}
+      <div class="aviso aviso-info">
+        <strong>Somente leitura.</strong> Você acompanha este rascunho, mas redigir o
+        parecer é de quem tem permissão de edição.
+      </div>
+      {% endif %}
       {% if congelado %}
       <div class="aviso aviso-info">
         {% if parecer.situacao == 'ANULADO' %}
@@ -125,7 +176,7 @@
           {% endfor %}
         </div>
         {% endif %}
-        <fieldset class="campos"{{ ' disabled' if congelado }}>
+        <fieldset class="campos"{{ ' disabled' if somente_leitura }}>
         <div class="pilha">
 
           <section class="cartao">
@@ -202,12 +253,36 @@
             </div>
             <div class="campo"><label for="pa-laudo">Laudo técnico
                 <span class="discreto">— 1 laudo sustenta N pareceres</span></label>
-              <select id="pa-laudo" name="laudo_id"><option value="">—</option>
+              {# Três grupos: o sugerido (o vigente da unidade do processo), os
+                 outros vigentes e, à parte, os superados — que continuam
+                 escolhíveis, porque o sistema não impede, mas não ficam no meio
+                 dos que valem. #}
+              {% set escolhido = parecer.laudo_id or laudo_sugerido_id %}
+              <select id="pa-laudo" name="laudo_id"{% if laudos_sugeridos|length %} aria-describedby="dica-laudo"{% endif %}><option value="">—</option>
+                {% for grupo, criterio in [['Sugerido — unidade do processo', 'sugerido'], ['Vigentes', 'vigente'], ['Superados', 'superado']] %}
+                {% set itens = [] %}
                 {% for l in laudos %}
-                <option value="{{ l.id }}" {% if parecer.laudo_id == l.id %}selected{% endif %}>
-                  {{ l.numero_siape }} — {{ l.unidade.nome_extenso if l.unidade }}{% if l.status == 'SUPERADO' %} (superado){% endif %}
-                </option>{% endfor %}
-              </select></div>
+                  {% set sugerido = l.id in laudos_sugeridos %}
+                  {% if (criterio == 'sugerido' and sugerido)
+                        or (criterio == 'vigente' and l.status == 'VIGENTE' and not sugerido)
+                        or (criterio == 'superado' and l.status != 'VIGENTE') %}{% set _ = itens.push(l) %}{% endif %}
+                {% endfor %}
+                {% if itens|length %}
+                <optgroup label="{{ grupo }}">
+                  {% for l in itens %}
+                  <option value="{{ l.id }}"{{ ' selected' if escolhido == l.id }}>
+                    {{ l.numero_siape }} — {{ l.unidade.nome_extenso if l.unidade }}{% if l.status != 'VIGENTE' %} (superado){% endif %}</option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
+                {% endfor %}
+              </select>
+              {% if laudos_sugeridos|length %}
+              <span class="dica" id="dica-laudo">
+                {%- if laudo_sugerido_id %}Pré-selecionado o laudo vigente da unidade do processo —
+                confira e salve.{% else %}O grupo “Sugerido” traz os laudos vigentes da unidade
+                do processo.{% endif %}</span>
+              {% endif %}</div>
             <div class="linha-campos">
               <div class="campo"><label for="pa-unidade">Unidade <span class="discreto">(nome no corpo do parecer)</span></label>
                 <select id="pa-unidade" name="unidade_uorg_id"><option value="">—</option>
@@ -230,6 +305,183 @@
                 <option value="{{ p.id }}" {% if p.id in atuais %}selected{% endif %}>
                   {{ p.nome }} — {{ p.unidade.sigla or p.unidade.nome_extenso }}</option>{% endfor %}
               </select></div>
+          </section>
+
+          {# A ordem é a do trabalho: o objeto e o laudo, depois a exposição, depois
+             o marco e por fim os textos — o modelo de recomendação é montado a
+             partir da exposição principal, e com ela no fim da tela a pessoa
+             escolhia o modelo antes de ter com o que montá-lo. A tabela mora DENTRO
+             do formulário do parecer; os formulários dela (a avaliação de EPI) são
+             `<form>` vazios no fim da página, ligados aos campos pelo atributo
+             `form` — formulário não se aninha. #}
+          <section class="cartao liso">
+            <div class="cabecalho-cartao">
+              <h2>Exposições</h2>
+              <span class="contador">{{ parecer.exposicoes|length }}</span>
+            </div>
+            {# rola por dentro do cartão no celular: cinco colunas não cabem em 390px #}
+            <div class="tabela-rolavel">
+            <table>
+              <thead>
+                <tr><th scope="col">Agente</th><th scope="col">Risco</th><th scope="col">Percentual</th><th scope="col">Classificação</th><th scope="col"></th></tr>
+              </thead>
+              {% for e in parecer.exposicoes %}
+              <tr>
+                <td>{{ e.agente_nocivo.descricao }}{% if e.principal %} <span class="pilula ok">principal</span>{% endif %}</td>
+                <td>{{ e.agente_nocivo.tipo_risco.nome }}</td>
+                <td class="mono">{{ e.percentual.rotulo }}</td>
+                <td>{{ e.classificacao_exposicao or '—' }}
+                  {% if e.classificacao_exposicao %}
+                    <span class="pilula {{ 'ok' if e.classificacao_origem == 'CALCULADA' else 'alerta' }}">{{
+                      'medida' if e.classificacao_origem == 'CALCULADA' else 'informada' }}</span>
+                  {% endif %}
+                  {% if e.excecao_art9_par_unico %}<span class="pilula alerta">art. 9º p.ú.</span>{% endif %}</td>
+                <td class="acao-linha">{% if not somente_leitura %}
+                  {# A lixeira, e não o botão "remover" que a coluna cortava: a ação
+                     se repete em cada linha e o ícone a diz sozinho (`aria-label`
+                     para o leitor de tela, `title` para o mouse). Ela ABRE a camada
+                     de confirmação, que fica no fim da página e diz o que some junto
+                     — remover nunca foi um clique só. #}
+                  <a class="botao-icone perigo" href="#remover-exposicao-{{ e.id }}" data-abre-popup
+                     aria-label="Remover {{ e.agente_nocivo.descricao }}"
+                     title="Remover {{ e.agente_nocivo.descricao }}">{{ ui.icone('trash') }}</a>
+                  {% endif %}</td>
+              </tr>
+              {% else %}<tr><td colspan="5" class="nada">Nenhuma exposição.</td></tr>{% endfor %}
+            </table>
+            </div>
+            {# O painel de EPI de cada exposição vem DEPOIS da tabela, e não numa
+               linha `colspan` dentro dela: a tabela das entregas (seis colunas) e o
+               formulário da avaliação são mais largos que a coluna do editor, e
+               dentro da célula empurravam a tabela inteira para fora do cartão — a
+               lixeira da última coluna era a primeira a sumir. #}
+            {% for e in parecer.exposicoes %}
+              {#
+                §7 do desenho de EPI. O painel fica ao lado da exposição — e não numa
+                tela separada — porque a pergunta que ele responde só existe aqui: se
+                o EPI neutraliza ESTE agente. E ele DIZ o que não sustenta, em vez de
+                mostrar duas datas e esperar que quem lê faça a comparação de cabeça.
+              #}
+              {% set pe = epi.get(e.id) %}
+              {% if pe %}
+              <div class="corpo linha-epi">
+                  <div class="titulo-cartao">
+                    <h4>EPI recebido até {{ pe.referencia|data }} · {{ e.agente_nocivo.descricao }}</h4>
+                    {# A coluna "Sustenta?" FICA — é ela que muda a decisão. O porquê
+                       normativo dela, que se lê uma vez, vai para o (i). #}
+                    {% call ui.info('epi-sustenta-' ~ e.id,
+                                    'quando o EPI sustenta alegação de neutralização') %}
+                      <p>A validade do CA e a troca prevista são lidas <strong>na data da
+                        avaliação</strong>, não na de hoje: um CA que valia naquele dia e
+                        venceu depois não desmente o parecer.</p>
+                      <p>EPI com CA vencido na data da avaliação, ou com troca vencida
+                        (RN-32), <strong>não sustenta</strong> alegação de neutralização: sem
+                        Certificado de Aprovação vigente o equipamento não é EPI (NR-6), e
+                        passada a vida útil ninguém pode afirmar o que a pessoa estava
+                        usando. Entrega registrada não é proteção comprovada.</p>
+                      {% if not pe.pode_neutralizar %}
+                      <p>E para <strong>periculosidade</strong> o EPI não cessa nada: a
+                        insalubridade é exposição gradual a agente que o EPI pode barrar
+                        abaixo do limite de tolerância; a periculosidade é risco de acidente
+                        — inflamável, explosivo, energia elétrica, radiação ionizante — e o
+                        equipamento reduz a consequência, não a existência do risco
+                        (IN SGP/SEDGG/ME 15/2022; Lei 8.112/90, art. 68, §2º).</p>
+                      {% endif %}
+                    {% endcall %}
+                  </div>
+
+                  {% if pe.entregas %}
+                  {# A tabela das entregas rola sozinha: com seis colunas ela é mais
+                     larga que a coluna do editor, e dentro do `colspan` empurrava a
+                     tabela de exposições inteira para fora do cartão — e a lixeira
+                     da última coluna era a primeira a sumir. #}
+                  <div class="tabela-rolavel">
+                  <table>
+                    <thead>
+                      <tr><th scope="col">Equipamento</th><th scope="col">CA</th><th scope="col">Validade do CA</th>
+                          <th scope="col">Troca prevista</th><th scope="col">Entregue em</th><th scope="col">Sustenta?</th></tr>
+                    </thead>
+                    {% for f in pe.entregas %}
+                    <tr>
+                      <td>{{ f.quantidade }} × {{ f.epi }}</td>
+                      <td class="mono">{{ f.numero_ca or '—' }}</td>
+                      <td class="mono">{{ f.validade_ca|data or '—' }}</td>
+                      <td class="mono">{{ f.previsao_troca|data or '—' }}</td>
+                      <td class="mono">{{ f.entregue_em|data }}</td>
+                      <td>{% if f.sustenta_neutralizacao %}<span class="pilula ok">sim</span>
+                          {% else %}<span class="pilula alerta">não</span>{% endif %}</td>
+                    </tr>
+                    {% if f.ressalvas %}
+                    <tr><td colspan="6" class="discreto">Não sustenta neutralização porque
+                      {{ f.ressalvas|join('; e ') }}.</td></tr>
+                    {% endif %}
+                    {% endfor %}
+                  </table>
+                  </div>
+                  {% else %}
+                  <p class="nada">Nenhuma entrega de EPI registrada para
+                    {{ identificar(parecer.servidor).nome }} até essa data.</p>
+                  {% endif %}
+
+                  {% if not pe.pode_neutralizar %}
+                  {# FICA: sem esta linha, quem procurar "neutraliza" no seletor e não
+                     achar conclui que a lista está quebrada. O fundamento — por que EPI
+                     não cessa periculosidade — está no (i) do cabeçalho deste painel. #}
+                  <div class="aviso aviso-alerta">
+                    <strong>EPI não cessa periculosidade.</strong> Para este adicional o
+                    sistema só aceita <span class="mono">NAO_AVALIADO</span> ou
+                    <span class="mono">NAO_NEUTRALIZA</span>.
+                  </div>
+                  {% endif %}
+
+                  {% if not somente_leitura %}
+                  {# Os campos moram aqui, ao lado das entregas que eles julgam; o
+                     `<form>` é o vazio `epi-N` do fim da página,
+                     ligado pelo atributo `form` (este trecho está dentro do
+                     formulário do parecer, e formulário não se aninha). #}
+                  <div class="form-epi">
+                    {# Os `id` levam o da exposição: este formulário se repete uma vez
+                       por linha da tabela, e `id` duplicado na mesma página é pior do
+                       que `id` nenhum — o rótulo passa a apontar para o campo da
+                       primeira linha, e quem clica no da terceira foca a errada. #}
+                    <div class="linha-campos">
+                      <div class="campo"><label for="epi-neutraliza-{{ e.id }}">O EPI neutraliza este agente?</label>
+                        <select id="epi-neutraliza-{{ e.id }}" name="epi_neutraliza" form="epi-{{ e.id }}">
+                          {% for v in epi_valores %}
+                          {% if pe.pode_neutralizar or v not in epi_alega %}
+                          <option value="{{ v }}" {% if e.epi_neutraliza == v %}selected{% endif %}>
+                            {{ v.replaceAll('_', ' ')|lower }}</option>
+                          {% endif %}{% endfor %}
+                        </select></div>
+                      <div class="campo"><label for="epi-justificativa-{{ e.id }}">Justificativa técnica</label>
+                        <input id="epi-justificativa-{{ e.id }}" name="justificativa_epi" form="epi-{{ e.id }}"
+                               value="{{ e.justificativa_epi or '' }}"
+                               placeholder="Qual EPI, com que CA vigente na data, e por que leva o agente abaixo do limite de tolerância"></div>
+                      <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+                        <button type="submit" class="secundario" form="epi-{{ e.id }}">Registrar avaliação</button></div>
+                    </div>
+                    <p class="discreto">Alegar neutralização reduz ou cessa o direito de
+                      alguém: exige justificativa por escrito e habilitação técnica vigente
+                      (RN-01). Quem entrega o EPI não decide isso — o adicional só muda por
+                      parecer.</p>
+                  </div>
+                  {% else %}
+                  <p class="discreto">Avaliação de EPI:
+                    <span class="mono">{{ e.epi_neutraliza }}</span>
+                    {% if e.epi_avaliado_em %} em {{ e.epi_avaliado_em|data }}{% endif %}
+                    {% if e.justificativa_epi %} — {{ e.justificativa_epi }}{% endif %}</p>
+                  {% endif %}
+              </div>
+              {% endif %}
+            {% endfor %}
+
+            {% if not somente_leitura %}
+            <div class="corpo">
+              <div class="acoes">
+                {{ ui.botao_cadastro('nova-exposicao', NOVA_EXPOSICAO, 'secundario') }}
+              </div>
+            </div>
+            {% endif %}
           </section>
 
           <section class="cartao">
@@ -329,7 +581,7 @@
             </div>
             {% endif %}
 
-            {% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO'] %}
+            {% if not somente_leitura %}
             <div class="acoes">
               <button type="submit">Salvar rascunho</button>
               <p class="discreto">Salvar não consome número nem congela nada: o parecer só
@@ -342,182 +594,6 @@
         </fieldset>
       </form>
 
-      <section class="cartao liso">
-        <div class="cabecalho-cartao">
-          <h2>Exposições</h2>
-          <span class="contador">{{ parecer.exposicoes|length }}</span>
-        </div>
-        <table>
-          <thead>
-            <tr><th scope="col">Agente</th><th scope="col">Risco</th><th scope="col">Percentual</th><th scope="col">Classificação</th><th scope="col"></th></tr>
-          </thead>
-          {% for e in parecer.exposicoes %}
-          <tr>
-            <td>{{ e.agente_nocivo.descricao }}{% if e.principal %} <span class="pilula ok">principal</span>{% endif %}</td>
-            <td>{{ e.agente_nocivo.tipo_risco.nome }}</td>
-            <td class="mono">{{ e.percentual.rotulo }}</td>
-            <td>{{ e.classificacao_exposicao or '—' }}
-              {% if e.classificacao_exposicao %}
-                <span class="pilula {{ 'ok' if e.classificacao_origem == 'CALCULADA' else 'alerta' }}">{{
-                  'medida' if e.classificacao_origem == 'CALCULADA' else 'informada' }}</span>
-              {% endif %}
-              {% if e.excecao_art9_par_unico %}<span class="pilula alerta">art. 9º p.ú.</span>{% endif %}</td>
-            <td>{% if parecer.situacao not in ['EMITIDO','ASSINADO'] %}
-              {# "remover" era um clique só, e apagava mais do que a linha que se
-                 vê: horas, jornada, classificação, exceção do art. 9º e a
-                 avaliação de EPI inteira — que é trabalho de outra pessoa e não
-                 tem cópia. Era `<details class="acoes-linha">`, a gaveta que abre
-                 na própria célula; virou `popup_gaveta` pelo motivo escrito no
-                 macro: a gaveta resolvia dentro de uma coluna estreita, e a lista
-                 de baixo era empurrada para longe. A ação continua a UM clique
-                 depois de aberta, e o que ela leva junto está escrito no ponto da
-                 escolha, não num "tem certeza?" que ninguém lê. #}
-              {% call ui.popup_gaveta('acoes-exposicao-' ~ e.id, 'remover',
-                                      'Remover ' ~ e.agente_nocivo.descricao,
-                                      nota='do parecer ' ~ (parecer.numero or '—') ~ '/' ~ parecer.ano) %}
-                <div class="aviso aviso-erro">
-                  <p>Some do parecer, e o que some com ela não
-                    volta: as horas e a jornada declaradas, a classificação
-                    {% if e.classificacao_origem == 'CALCULADA' %}medida{% else %}informada{% endif %},
-                    a fundamentação{% if e.excecao_art9_par_unico %}, a exceção do
-                    art. 9º, parágrafo único{% endif %}
-                    {%- if epi.get(e.id) %} e <strong>a avaliação de EPI deste
-                    agente</strong>, com a justificativa técnica de quem a
-                    escreveu{% endif %}.</p>
-                  <p class="discreto">Se o agente estava errado, a saída é
-                    acrescentar a exposição certa — o parecer ainda é rascunho e
-                    aceita as duas até a emissão.</p>
-                </div>
-                <form method="post" action="/pareceres/{{ parecer.id }}/exposicoes/{{ e.id }}/excluir">
-                  <div class="acoes">
-                    <button type="submit" class="perigo compacto">Remover
-                      {{ e.agente_nocivo.descricao }}</button>
-                  </div>
-                </form>
-              {% endcall %}{% endif %}</td>
-          </tr>
-          {#
-            §7 do desenho de EPI. O painel fica ao lado da exposição — e não numa
-            tela separada — porque a pergunta que ele responde só existe aqui: se
-            o EPI neutraliza ESTE agente. E ele DIZ o que não sustenta, em vez de
-            mostrar duas datas e esperar que quem lê faça a comparação de cabeça.
-          #}
-          {% set pe = epi.get(e.id) %}
-          {% if pe %}
-          <tr class="linha-epi">
-            <td colspan="5">
-              <div class="titulo-cartao">
-                <h4>EPI recebido até {{ pe.referencia|data }}</h4>
-                {# A coluna "Sustenta?" FICA — é ela que muda a decisão. O porquê
-                   normativo dela, que se lê uma vez, vai para o (i). #}
-                {% call ui.info('epi-sustenta-' ~ e.id,
-                                'quando o EPI sustenta alegação de neutralização') %}
-                  <p>A validade do CA e a troca prevista são lidas <strong>na data da
-                    avaliação</strong>, não na de hoje: um CA que valia naquele dia e
-                    venceu depois não desmente o parecer.</p>
-                  <p>EPI com CA vencido na data da avaliação, ou com troca vencida
-                    (RN-32), <strong>não sustenta</strong> alegação de neutralização: sem
-                    Certificado de Aprovação vigente o equipamento não é EPI (NR-6), e
-                    passada a vida útil ninguém pode afirmar o que a pessoa estava
-                    usando. Entrega registrada não é proteção comprovada.</p>
-                  {% if not pe.pode_neutralizar %}
-                  <p>E para <strong>periculosidade</strong> o EPI não cessa nada: a
-                    insalubridade é exposição gradual a agente que o EPI pode barrar
-                    abaixo do limite de tolerância; a periculosidade é risco de acidente
-                    — inflamável, explosivo, energia elétrica, radiação ionizante — e o
-                    equipamento reduz a consequência, não a existência do risco
-                    (IN SGP/SEDGG/ME 15/2022; Lei 8.112/90, art. 68, §2º).</p>
-                  {% endif %}
-                {% endcall %}
-              </div>
-
-              {% if pe.entregas %}
-              <table>
-                <thead>
-                  <tr><th scope="col">Equipamento</th><th scope="col">CA</th><th scope="col">Validade do CA</th>
-                      <th scope="col">Troca prevista</th><th scope="col">Entregue em</th><th scope="col">Sustenta?</th></tr>
-                </thead>
-                {% for f in pe.entregas %}
-                <tr>
-                  <td>{{ f.quantidade }} × {{ f.epi }}</td>
-                  <td class="mono">{{ f.numero_ca or '—' }}</td>
-                  <td class="mono">{{ f.validade_ca|data or '—' }}</td>
-                  <td class="mono">{{ f.previsao_troca|data or '—' }}</td>
-                  <td class="mono">{{ f.entregue_em|data }}</td>
-                  <td>{% if f.sustenta_neutralizacao %}<span class="pilula ok">sim</span>
-                      {% else %}<span class="pilula alerta">não</span>{% endif %}</td>
-                </tr>
-                {% if f.ressalvas %}
-                <tr><td colspan="6" class="discreto">Não sustenta neutralização porque
-                  {{ f.ressalvas|join('; e ') }}.</td></tr>
-                {% endif %}
-                {% endfor %}
-              </table>
-              {% else %}
-              <p class="nada">Nenhuma entrega de EPI registrada para
-                {{ identificar(parecer.servidor).nome }} até essa data.</p>
-              {% endif %}
-
-              {% if not pe.pode_neutralizar %}
-              {# FICA: sem esta linha, quem procurar "neutraliza" no seletor e não
-                 achar conclui que a lista está quebrada. O fundamento — por que EPI
-                 não cessa periculosidade — está no (i) do cabeçalho deste painel. #}
-              <div class="aviso aviso-alerta">
-                <strong>EPI não cessa periculosidade.</strong> Para este adicional o
-                sistema só aceita <span class="mono">NAO_AVALIADO</span> ou
-                <span class="mono">NAO_NEUTRALIZA</span>.
-              </div>
-              {% endif %}
-
-              {% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO']
-                    and usuario.pode('parecer.editar') %}
-              <form method="post"
-                    action="/pareceres/{{ parecer.id }}/exposicoes/{{ e.id }}/epi">
-                {# Os `id` levam o da exposição: este formulário se repete uma vez
-                   por linha da tabela, e `id` duplicado na mesma página é pior do
-                   que `id` nenhum — o rótulo passa a apontar para o campo da
-                   primeira linha, e quem clica no da terceira foca a errada. #}
-                <div class="linha-campos">
-                  <div class="campo"><label for="epi-neutraliza-{{ e.id }}">O EPI neutraliza este agente?</label>
-                    <select id="epi-neutraliza-{{ e.id }}" name="epi_neutraliza">
-                      {% for v in epi_valores %}
-                      {% if pe.pode_neutralizar or v not in epi_alega %}
-                      <option value="{{ v }}" {% if e.epi_neutraliza == v %}selected{% endif %}>
-                        {{ v.replaceAll('_', ' ')|lower }}</option>
-                      {% endif %}{% endfor %}
-                    </select></div>
-                  <div class="campo"><label for="epi-justificativa-{{ e.id }}">Justificativa técnica</label>
-                    <input id="epi-justificativa-{{ e.id }}" name="justificativa_epi"
-                           value="{{ e.justificativa_epi or '' }}"
-                           placeholder="Qual EPI, com que CA vigente na data, e por que leva o agente abaixo do limite de tolerância"></div>
-                  <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
-                    <button type="submit" class="secundario">Registrar avaliação</button></div>
-                </div>
-                <p class="discreto">Alegar neutralização reduz ou cessa o direito de
-                  alguém: exige justificativa por escrito e habilitação técnica vigente
-                  (RN-01). Quem entrega o EPI não decide isso — o adicional só muda por
-                  parecer.</p>
-              </form>
-              {% else %}
-              <p class="discreto">Avaliação de EPI:
-                <span class="mono">{{ e.epi_neutraliza }}</span>
-                {% if e.epi_avaliado_em %} em {{ e.epi_avaliado_em|data }}{% endif %}
-                {% if e.justificativa_epi %} — {{ e.justificativa_epi }}{% endif %}</p>
-              {% endif %}
-            </td>
-          </tr>
-          {% endif %}
-          {% else %}<tr><td colspan="5" class="nada">Nenhuma exposição.</td></tr>{% endfor %}
-        </table>
-
-        {% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO'] %}
-        <div class="corpo">
-          <div class="acoes">
-            {{ ui.botao_cadastro('nova-exposicao', NOVA_EXPOSICAO, 'secundario') }}
-          </div>
-        </div>
-        {% endif %}
-      </section>
 
     </div>
 
@@ -588,6 +664,7 @@
       </section>
     </div>
   </div>
+{% endif %}
 
 </div>
 
@@ -597,7 +674,34 @@
    aninha. Foi por isso que "cadastrar a portaria" não pôde ficar no cartão do
    marco inicial, onde o BOTÃO dela mora.
    =================================================================== #}
-{% if parecer.situacao not in ['EMITIDO','ASSINADO','ANULADO'] %}
+{% if not somente_leitura and not vista_do_titular %}
+{# Os formulários da avaliação de EPI, vazios: os campos estão na tabela de
+   exposições (dentro do formulário do parecer) e chegam aqui pelo atributo
+   `form`. #}
+{% for e in parecer.exposicoes %}
+<form id="epi-{{ e.id }}" method="post" action="/pareceres/{{ parecer.id }}/exposicoes/{{ e.id }}/epi"></form>
+{% call ui.popup_cadastro('remover-exposicao-' ~ e.id, 'Remover ' ~ e.agente_nocivo.descricao,
+                          '/pareceres/' ~ parecer.id ~ '/exposicoes/' ~ e.id ~ '/excluir',
+                          'Remover a exposição', classe_botao='perigo',
+                          nota='do parecer ' ~ (parecer.numero or '—') ~ '/' ~ parecer.ano) %}
+  {# O que some junto está escrito no ponto da escolha, e não num "tem certeza?"
+     que ninguém lê: é trabalho de outra pessoa e não tem cópia. #}
+  <div class="aviso aviso-erro">
+    <p>Some do parecer, e o que some com ela não
+      volta: as horas e a jornada declaradas, a classificação
+      {% if e.classificacao_origem == 'CALCULADA' %}medida{% else %}informada{% endif %},
+      a fundamentação{% if e.excecao_art9_par_unico %}, a exceção do
+      art. 9º, parágrafo único{% endif %}
+      {%- if epi.get(e.id) %} e <strong>a avaliação de EPI deste
+      agente</strong>, com a justificativa técnica de quem a
+      escreveu{% endif %}.</p>
+    <p class="discreto">Se o agente estava errado, a saída é
+      acrescentar a exposição certa — o parecer ainda é rascunho e
+      aceita as duas até a emissão.</p>
+  </div>
+{% endcall %}
+{% endfor %}
+
 {% call ui.popup_cadastro('nova-exposicao', NOVA_EXPOSICAO,
                           '/pareceres/' ~ parecer.id ~ '/exposicoes', NOVA_EXPOSICAO,
                           nota='com horas informadas a classificação é calculada; sem medição, escolha-a (art. 9º)') %}

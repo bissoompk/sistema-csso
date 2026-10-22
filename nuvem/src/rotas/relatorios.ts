@@ -6,12 +6,13 @@
  * secundária; recorte com menos de 5 servidores exige `exposicao.ver`.
  */
 import { Hono } from "hono";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import type { Ambiente } from "../nucleo/contexto.js";
 import { usuarioCom } from "../dependencias.js";
 import { marcarDownload, pagina } from "../web.js";
 import { dicionario } from "../dicionario.js";
 import { adicional_vigencia, laudo_tecnico, parecer_tecnico, processo } from "../db/esquema/index.js";
+import { ROTULO_ESTADO_TELA } from "../dominio/estados.js";
 import * as repo from "../repositorios/processos.js";
 import * as datas_br from "../servicos/datas_br.js";
 import { lacunas_de_numeracao } from "../servicos/numeracao.js";
@@ -124,20 +125,38 @@ export function suprimir_aninhado(grupos: Record<string, Contagens>, pode_ver: b
   );
 }
 
+/** O ano em que o processo entrou: a autuação no SEI, ou, sem ela, o cadastro aqui. */
+function _ano_do_processo(p: { data_autuacao: string | null; criado_em: Date | string }): number | null {
+  if (p.data_autuacao) return Number(p.data_autuacao.slice(0, 4));
+  const local = datas_br.data_local(p.criado_em);
+  return local ? Number(local.slice(0, 4)) : null;
+}
+
 rotas.get("/relatorios", async (c) => {
   const usuario = await usuarioCom(c, "indicador.ver");
   const tx = c.get("tx");
   const bruto = c.req.query("exercicio") ?? "";
-  const ano = /^\d+$/.test(bruto) && Number(bruto) ? Number(bruto) : Number(datas_br.hoje().slice(0, 4));
+  const ano_corrente = Number(datas_br.hoje().slice(0, 4));
+  const ano = /^\d{4}$/.test(bruto) ? Number(bruto) : ano_corrente;
 
+  // O exercício vale para as duas distribuições: o subtítulo dizia "exercício
+  // 2026" e os cartões contavam todos os anos. Processo pelo ano de autuação;
+  // parecer pelo ano do próprio parecer, e o ANULADO fora — anulado não é
+  // parecer que existiu para efeito de indicador, e contá-lo inflava o risco
+  // que teve reemissão.
+  const anos_vistos = new Set<number>([ano_corrente]);
   const por_unidade: Contagens = {};
   for (const p of await tx.query.processo.findMany({ with: { unidade: true }, orderBy: [asc(processo.id)] })) {
+    const do_ano = _ano_do_processo(p);
+    if (do_ano !== null) anos_vistos.add(do_ano);
+    if (do_ano !== ano) continue;
     const nome = p.unidade ? p.unidade.nome_extenso : "(sem unidade)";
     por_unidade[nome] = (por_unidade[nome] ?? 0) + 1;
   }
 
   const por_risco: Contagens = {};
   for (const parecer of await tx.query.parecer_tecnico.findMany({
+    where: and(eq(parecer_tecnico.ano, ano), ne(parecer_tecnico.situacao, "ANULADO")),
     with: {
       exposicoes: { with: { agente_nocivo: { with: { tipo_risco: true } } }, orderBy: (e, { asc: a }) => [a(e.id)] },
     },
@@ -153,6 +172,7 @@ rotas.get("/relatorios", async (c) => {
   const anos = [
     ...new Set((await tx.selectDistinct({ ano: parecer_tecnico.ano }).from(parecer_tecnico)).map((l) => l.ano)),
   ].sort((a, b) => a - b);
+  for (const a of anos) anos_vistos.add(a);
   const lacunas: Record<string, number[]> = {};
   for (const a of anos) lacunas[a] = await lacunas_de_numeracao(tx, a);
 
@@ -167,6 +187,8 @@ rotas.get("/relatorios", async (c) => {
     if (laudo.data_ultima_conferencia === null || meses! > 24) laudos_fila.push([laudo, meses]);
   }
 
+  // Os vigentes são o retrato de HOJE (não do exercício): a pergunta do cartão é
+  // "o que cai em reavaliação se este laudo for superado agora".
   const vigencias_por_laudo: Contagens = {};
   for (const v of await tx.query.adicional_vigencia.findMany({
     where: eq(adicional_vigencia.estado, "VIGENTE"),
@@ -177,14 +199,24 @@ rotas.get("/relatorios", async (c) => {
     const chave = laudo ? laudo.numero_siape : "(sem laudo)";
     vigencias_por_laudo[chave] = (vigencias_por_laudo[chave] ?? 0) + 1;
   }
+  // A mesma supressão dos outros cartões (RN-19): laudo de uma unidade só com
+  // um vigente É a pessoa, e o aviso do topo promete a regra para a tela toda.
+  // O total do cartão sai da contagem crua só para quem vê tudo; para os demais
+  // ele sairia somando o que a supressão escondeu, então some junto.
+  const vigentes_total = Object.values(vigencias_por_laudo).reduce((a, b) => a + b, 0);
 
   return pagina(c, "paginas/relatorios.html", usuario, {
     exercicio: ano,
+    exercicios: [...anos_vistos].sort((a, b) => b - a),
     por_unidade: dicionario(suprimir(por_unidade, usuario.ve_dado_nominal)),
     por_risco: dicionario(suprimir(por_risco, usuario.ve_dado_nominal)),
     lacunas: dicionario(lacunas),
     laudos_fila,
-    vigencias_por_laudo: dicionario(vigencias_por_laudo),
+    vigencias_por_laudo: dicionario(suprimir(vigencias_por_laudo, usuario.ve_dado_nominal)),
+    vigentes_total:
+      usuario.ve_dado_nominal || Object.values(vigencias_por_laudo).every((n) => n >= LIMIAR_SUPRESSAO)
+        ? vigentes_total
+        : null,
     rodape_fila: RODAPE_FILA_LAUDOS,
     limiar: LIMIAR_SUPRESSAO,
   });
@@ -200,18 +232,22 @@ rotas.get("/relatorios/exportar-processos", async (c) => {
   });
   const [itens] = await repo.listar(tx, usuario, filtro);
 
+  // Quem abre no Excel lê o rótulo da tela ("Aguardando quantificação") e a data
+  // como se escreve aqui (03/06/2026); o código do estado e a data ISO eram
+  // leitura de banco de dados.
+  const data = (v: string | null) => (v ? datas_br.numerica(v) : "");
   let texto = linha_csv(["NUP", "Estado", "Servidor", "SIAPE", "Unidade", "Responsável", "Autuação", "Prazo"]);
   const nominal = usuario.ve_dado_nominal;
   for (const p of itens) {
     texto += linha_csv([
       p.nup,
-      p.estado_tecnico,
+      ROTULO_ESTADO_TELA[p.estado_tecnico] ?? p.estado_tecnico,
       nominal ? (p.servidor ? p.servidor.nome : "") : MARCA_SUPRIMIDO,
       nominal ? (p.servidor ? p.servidor.siape : "") : MARCA_SUPRIMIDO,
       p.unidade ? p.unidade.nome_extenso : "",
       p.responsavel ? p.responsavel.nome : "",
-      p.data_autuacao ?? "",
-      p.prazo ?? "",
+      data(p.data_autuacao ?? null),
+      data(p.prazo ?? null),
     ]);
   }
   marcarDownload(c);

@@ -10,18 +10,11 @@
 {% set CONFERIR = 'Registrar conferência' %}
 {% set SUPERAR = 'Marcar como superado' %}
 {% set VINCULAR = 'Vincular posto' %}
+{% set EDITAR = 'Editar dados do laudo' %}
 
-{% block acoes_cabecalho %}
-{% if usuario.pode('laudo.criar') %}
-{# As duas ações da ficha são formulários com motivo obrigatório: o botão do
-   cabeçalho ABRE a camada com o formulário, não dispara nada sozinho. Ação
-   destrutiva sem motivo escrito é exatamente o que a auditoria não perdoa. #}
-{{ ui.botao_cadastro('registrar-conferencia', CONFERIR, 'secundario') }}
-{% if laudo.status == 'VIGENTE' %}
-{{ ui.botao_cadastro('superar-laudo', SUPERAR, 'perigo-discreto') }}
-{% endif %}
-{% endif %}
-{% endblock %}
+{# Sem `acoes_cabecalho`: as três ações da ficha moram no cartão "Dados do
+   laudo", ao lado do que elas mudam. No topo, com o número do laudo em mono e
+   as pílulas, a fileira quebrava em 1366px e empurrava o título para baixo. #}
 
 {% block conteudo %}
 <div class="tela">
@@ -84,6 +77,21 @@
           <dt>Nº do documento SEI</dt>
           <dd class="mono">{{ laudo.numero_documento_sei or '—' }}</dd>
         </dl>
+        {% if usuario.pode('laudo.criar') %}
+        {# As ações são formulários: o botão ABRE a camada, não dispara nada
+           sozinho. Conferir e superar pedem motivo escrito — ação destrutiva sem
+           motivo é exatamente o que a auditoria não perdoa —, e superar diz,
+           antes do botão, quantos pareceres vão para reavaliação. #}
+        <div class="corpo">
+          <div class="acoes">
+            {{ ui.botao_cadastro('editar-laudo', EDITAR, 'secundario compacto') }}
+            {{ ui.botao_cadastro('registrar-conferencia', CONFERIR, 'secundario compacto') }}
+            {% if laudo.status == 'VIGENTE' %}
+            {{ ui.botao_cadastro('superar-laudo', SUPERAR, 'perigo-discreto compacto') }}
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
       </section>
 
       <section class="cartao liso">
@@ -92,12 +100,22 @@
           <span class="contador">{{ laudo.postos|length }}</span>
         </div>
         {% if laudo.postos %}
-        <div class="lista-linhas simples">
+        {# Três colunas, e não a variante `simples`: a lixeira de cada posto
+           precisa de coluna própria para ficar alinhada de linha a linha. #}
+        <div class="lista-linhas">
           {% for lp in laudo.postos %}
           <div>
-            <span class="quem"><strong>{{ lp.posto.nome }}</strong>
-              <span class="onde">{{ lp.posto.unidade.sigla or lp.posto.unidade.nome_extenso
-                                      if lp.posto.unidade else '' }}</span></span>
+            <span class="quem"><strong>{{ lp.posto.nome }}</strong></span>
+            <span class="onde">{{ lp.posto.unidade.sigla or lp.posto.unidade.nome_extenso
+                                    if lp.posto.unidade else '' }}</span>
+            <span>
+            {%- if usuario.pode('laudo.criar') %}
+            {# Ícone com `aria-label` e `title`: a lixeira se repete em cada linha
+               e a camada que ela abre nomeia o posto e o que muda. #}
+            <a class="botao-icone perigo" href="#desvincular-posto-{{ lp.posto.id }}" data-abre-popup
+               aria-label="Desvincular {{ lp.posto.nome }}" title="Desvincular {{ lp.posto.nome }}">
+              {{- ui.icone('trash') -}}</a>
+            {%- endif %}</span>
           </div>
           {% endfor %}
         </div>
@@ -188,6 +206,47 @@
     </select></div>
 {% endcall %}
 
+{% for lp in laudo.postos %}
+{% call ui.popup_cadastro('desvincular-posto-' ~ lp.posto.id, 'Desvincular ' ~ lp.posto.nome,
+                          '/laudos/' ~ laudo.id ~ '/postos/' ~ lp.posto.id ~ '/desvincular',
+                          'Desvincular', classe_botao='perigo') %}
+  <div class="aviso aviso-alerta">
+    <p>O laudo deixa de cobrir <strong>{{ lp.posto.nome }}</strong>: quem trabalha nesse
+      posto deixa de ser alcançado por esta avaliação de risco. Os pareceres já
+      emitidos com este laudo não mudam.</p>
+    <p class="discreto">Fica registrado na auditoria. Vinculou por engano? É só
+      vincular de novo.</p>
+  </div>
+{% endcall %}
+{% endfor %}
+
+{% call ui.popup_cadastro('editar-laudo', EDITAR,
+                          '/laudos/' ~ laudo.id ~ '/editar', 'Salvar',
+                          nota='número, tipo e unidade não se editam: corrigi-los é laudo novo que supera este') %}
+  <div class="linha-campos">
+    <div class="campo"><label for="ed-emissao">Data de emissão</label>
+      <input id="ed-emissao" name="data_emissao" type="date" class="mono" max="{{ hoje }}"
+             value="{{ laudo.data_emissao or '' }}"></div>
+    <div class="campo"><label for="ed-avaliacao">Data da avaliação</label>
+      <input id="ed-avaliacao" name="data_avaliacao" type="date" class="mono" max="{{ hoje }}"
+             value="{{ laudo.data_avaliacao or '' }}" aria-describedby="dica-avaliacao">
+      <span class="dica" id="dica-avaliacao">Quando o ambiente foi avaliado — antes da
+        emissão, ou no mesmo dia.</span></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="ed-subscritor">Subscritor habilitado</label>
+      <select id="ed-subscritor" name="subscritor_id" required>
+        {% if not laudo.subscritor_id %}<option value="">—</option>{% endif %}
+        {% for sb in subscritores %}
+        <option value="{{ sb.id }}"{{ ui.sel(laudo.subscritor_id, sb.id) }}>{{ sb.nome }}</option>{% endfor %}
+      </select></div>
+    <div class="campo codigo"><label for="ed-sei">Nº do documento SEI</label>
+      <input id="ed-sei" name="numero_documento_sei" class="mono" inputmode="numeric"
+             maxlength="10" pattern="[0-9]{1,10}" value="{{ laudo.numero_documento_sei or '' }}"
+             placeholder="0123456"></div>
+  </div>
+{% endcall %}
+
 {% call ui.popup_cadastro('registrar-conferencia', CONFERIR,
                           '/laudos/' ~ laudo.id ~ '/conferencia', 'Registrar',
                           nota='não altera o laudo: só data o último olhar') %}
@@ -215,6 +274,13 @@
     {% endif %}
     <p>Não há como desfazer em lote: cada parecer volta a ser tratado um a um.</p>
   </div>
+  {% if derivados %}
+  {# A confirmação explícita: o motivo prova que a pessoa sabe POR QUE supera; a
+     caixa, que ela leu o que o clique desencadeia. #}
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="ciente" value="1" required>
+      Entendo que {{ derivados|length }} parecer(es) vão para reavaliação.</label></div>
+  {% endif %}
   <div class="campo"><label for="motivo-superar">Motivo</label>
     <input id="motivo-superar" name="motivo" required
            placeholder="mudança no processo de trabalho, obra no bloco, nova legislação…"

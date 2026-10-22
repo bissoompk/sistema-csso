@@ -19,13 +19,23 @@ import * as servico_participante from "../src/servicos/participante.js";
 import * as servico_presenca from "../src/servicos/presenca.js";
 import { UsuarioAtual } from "../src/servicos/rbac.js";
 import * as servico_turma from "../src/servicos/turma.js";
-import { MAPA_SUGERIDO, OBRIGATORIOS } from "../src/servicos/certificado.js";
+import {
+  MAPA_SUGERIDO as MAPA_COMPLETO,
+  OBRIGATORIOS as OBRIGATORIOS_TODOS,
+  marcadores_do_arquivo,
+} from "../src/servicos/certificado.js";
 import { SENHA_TESTE } from "./ajuda.js";
 
-export { MAPA_SUGERIDO, OBRIGATORIOS };
-
 export const INICIO = somar_dias(datas_br.hoje(), -2);
+// os testes de congelamento seguem no v1: é o layout dos certificados já
+// emitidos, que tem de reimprimir igual (o v2 tem os testes dele)
 export const MODELO_ARQUIVO = "certificado_padrao_v1.docx";
+
+/** O `MAPA_SUGERIDO` só com os marcadores que o .docx v1 tem. */
+export const MAPA_SUGERIDO: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(MAPA_COMPLETO).filter(([m]) => marcadores_do_arquivo(MODELO_ARQUIVO)!.has(m)),
+);
+export const OBRIGATORIOS: readonly string[] = OBRIGATORIOS_TODOS.filter((m) => Object.hasOwn(MAPA_SUGERIDO, m));
 
 export const TODAS: ReadonlySet<string> = new Set([
   "treinamento.ver",

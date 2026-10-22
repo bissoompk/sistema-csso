@@ -30,7 +30,8 @@
 {% block titulo %}Dar entrada em lote · CSSO{% endblock %}
 {# terceiro nível: os dois primeiros ("Gestão de EPI" e "Estoque") o
    `modulos.py` já escreve, e é dele que sai o caminho de volta com a permissão
-   conferida — `epi.ver`, que todo perfil com `epi.estoque` tem. #}
+   conferida — `epi.ver`, que todo perfil com `epi.estoque` tem. Aqui o terceiro
+   nível NÃO repete o segundo, e por isso o bloco fica. #}
 {% block trilha %}<span class="atual" aria-current="page">Dar entrada em lote</span>{% endblock %}
 
 {# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
@@ -61,9 +62,8 @@
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Dar entrada em lote</h1>
-      <p class="sub">Grava a linha da compra pública e o primeiro movimento do
-        livro razão, na mesma transação. Daí em diante o saldo é a soma do
-        razão — a quantidade recebida nunca mais muda.</p>
+      <p class="sub">Registra a compra e a entrada no estoque. Daí em diante o
+        saldo muda só por movimento — a quantidade recebida nunca mais muda.</p>
     </div>
     <div class="ao-lado">
       <a class="botao secundario" href="/epis/estoque">Ver o estoque</a>
@@ -81,7 +81,13 @@
       <div class="linha-campos">
         <div class="campo{{ erro_em('item_id') }}">
           <label for="item_id">Item do catálogo</label>
-          <select id="item_id" name="item_id" required{{ foco_em('item_id') }}>
+          {# escolhido o item, o seletor de tamanho ao lado se troca pelos
+             tamanhos DELE (`partes/epi_tamanho_lote.html`) #}
+          <select id="item_id" name="item_id" required{{ foco_em('item_id') }}
+                  hx-get="/epis/estoque/tamanhos"
+                  hx-target="#campo-tamanho"
+                  hx-trigger="change"
+                  hx-include="this">
             <option value="">—</option>
             {% for i in itens %}
             <option value="{{ i.id }}"{{ ui.sel(d.item_id, i.id) }}>{{ i.nome }}{% if i.modelo %} · {{ i.modelo }}{% endif %}</option>
@@ -95,14 +101,10 @@
                  value="{{ d.quantidade_recebida or '' }}"
                  aria-describedby="dica-qtd">
           <span class="dica" id="dica-qtd">É o que a nota fiscal entregou. Nunca
-            mais muda: daqui em diante o saldo é a soma do razão.</span>
+            mais muda: daqui em diante o saldo muda por movimento.</span>
         </div>
-        <div class="campo">
-          <label for="tamanho">Tamanho</label>
-          <input id="tamanho" name="tamanho" value="{{ d.tamanho or '' }}"
-                 aria-describedby="dica-tamanho">
-          <span class="dica" id="dica-tamanho">Escrito igual ao do catálogo do
-            item: é por ele que a entrega encontra o lote.</span>
+        <div class="campo{{ erro_em('tamanho') }}" id="campo-tamanho">
+          {% include "partes/epi_tamanho_lote.html" %}
         </div>
         <div class="campo{{ erro_em('data_entrada') }}">
           <label for="data_entrada">Data de entrada</label>
@@ -162,10 +164,12 @@
           <input id="data_fabricacao" type="date" name="data_fabricacao"
                  {{- foco_em('data_fabricacao') }}
                  value="{{ d.data_fabricacao or '' }}"></div>
-        <div class="campo">
+        <div class="campo{{ erro_em('lote') }}">
           <label for="lote">Lote</label>
-          <input id="lote" name="lote" placeholder="L-2026-08"
-                 value="{{ d.lote or '' }}"></div>
+          <input id="lote" name="lote" placeholder="L-2026-08"{{ foco_em('lote') }}
+                 value="{{ d.lote or '' }}" aria-describedby="dica-lote">
+          <span class="dica" id="dica-lote">O mesmo lote, item e tamanho não
+            entram duas vezes: mais unidades da mesma caixa são ajuste.</span></div>
       </div>
     </section>
 
@@ -210,14 +214,14 @@
           <label for="nota_fiscal">Nota fiscal</label>
           <input id="nota_fiscal" name="nota_fiscal"
                  value="{{ d.nota_fiscal or '' }}"></div>
-        <div class="campo">
+        <div class="campo{{ erro_em('valor_unitario') }}">
           <label for="valor_unitario">Valor unitário (R$)</label>
           {# `decimal` e não `numeric`: o teclado de `decimal` traz a vírgula, e a
              vírgula é como se lê e se digita dinheiro em português — que é o que
              o `placeholder` já promete e o `valor_decimal` do serviço já aceita.
              `numeric` daria um teclado sem separador nenhum. #}
           <input id="valor_unitario" name="valor_unitario" placeholder="12,50"
-                 inputmode="decimal"
+                 inputmode="decimal"{{ foco_em('valor_unitario') }}
                  value="{{ d.valor_unitario or '' }}"
                  aria-describedby="dica-valor">
           <span class="dica" id="dica-valor">Em branco quando não se sabe — zero
@@ -235,12 +239,16 @@
            o servidor sabe acertar a pontuação. #}
         <div class="campo codigo{{ erro_em('fornecedor_cnpj') }}">
           <label for="fornecedor_cnpj">CNPJ</label>
-          <input id="fornecedor_cnpj" name="fornecedor_cnpj" inputmode="numeric"
-                 placeholder="12.345.678/0001-90"{{ foco_em('fornecedor_cnpj') }}
+          {# `data-cnpj`: o aviso do dígito verificador no navegador
+             (`csso.js`), a mesma conta que o servidor faz ao gravar. Sem
+             `inputmode="numeric"`: o CNPJ alfanumérico tem letras, e o teclado
+             numérico do celular não as digita. #}
+          <input id="fornecedor_cnpj" name="fornecedor_cnpj" autocapitalize="characters" data-cnpj
+                 placeholder="12.345.678/0001-95"{{ foco_em('fornecedor_cnpj') }}
                  value="{{ d.fornecedor_cnpj or '' }}"
                  aria-describedby="dica-cnpj">
           <span class="dica" id="dica-cnpj">Cole da nota: ponto, barra e traço
-            são descartados sozinhos.</span></div>
+            são descartados sozinhos. O dígito verificador é conferido, também no CNPJ com letras.</span></div>
         <div class="campo">
           <label for="fornecedor_contato">Contato do fornecedor</label>
           <input id="fornecedor_contato" name="fornecedor_contato"
@@ -255,16 +263,14 @@
         <textarea id="observacao" name="observacao" rows="2"
                   aria-describedby="dica-observacao">{{ d.observacao or '' }}</textarea>
         <span class="dica atencao" id="dica-observacao">Nunca registre estado de
-          saúde, CID, diagnóstico ou gestação (RN-21).</span>
+          saúde, doença, diagnóstico ou gestação.</span>
       </div>
 
       <div class="acoes">
         <button type="submit">Dar entrada em lote</button>
         <a class="botao secundario" href="/epis/estoque">Cancelar</a>
-        <p class="discreto">Grava a linha da compra e o primeiro movimento do
-          razão, na mesma transação. Se algum item de pedido estiver esperando
-          este equipamento, a tela avisa — reservar continua sendo ato de gente,
-          na ficha do pedido.</p>
+        <p class="discreto">Se algum pedido estiver esperando este equipamento, a
+          tela avisa — reservar continua sendo feito na ficha do pedido.</p>
       </div>
     </section>
   </form>

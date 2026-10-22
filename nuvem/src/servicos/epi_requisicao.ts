@@ -46,6 +46,8 @@ import { EpiItem as EpiItemDominio, EpiRequisicao as EpiRequisicaoDominio, EpiRe
 import {
   EPI_ITEM_DECIDIDO,
   EPI_ITEM_PENDENTE_DE_ATENDIMENTO,
+  EPI_REQUISICAO_CANCELAVEL,
+  EPI_REQUISICAO_ENCERRADA,
   ROTULO_EPI_ITEM,
   ROTULO_EPI_REQUISICAO,
   exigir_transicao_epi_item,
@@ -418,9 +420,9 @@ export async function sincronizar_pendencia_de_decisao(
         : undefined;
     descricao =
       `O pedido ${identificacao(requisicao)} foi indeferido` +
-      (motivo ? ` — motivo ${motivo.codigo}` : "") +
+      (motivo ? ` — motivo: ${motivo.rotulo}` : "") +
       ". Abra o pedido e leia a negativa: o texto é o que estava vigente " +
-      "no dia da decisão e não muda depois (RN-27). Discordando, o caminho " +
+      "no dia da decisão e não muda depois. Discordando, o caminho " +
       "é pedir reconsideração à CSSO, não abrir outro pedido igual.";
   } else {
     const itens = await itens_de(tx, requisicao.id);
@@ -579,6 +581,53 @@ export interface CamposCabecalho {
   justificativa_urgencia?: string;
 }
 
+/**
+ * Para quem a conta pode abrir pedido. `epi.requisitar` é larga de propósito
+ * (servidor, chefia, secretaria), e por isso quem decide o ALVO é o escopo:
+ *
+ * - Próprio: só para o servidor ligado à conta. A tela antiga listava o
+ *   cadastro inteiro como `SRV-xxxx` e aceitava qualquer id — o servidor comum
+ *   abria pedido em nome de terceiros e passava a ler o pedido deles.
+ * - Unidade com campus: só para quem está lotado hoje num desses campi (ou
+ *   ainda sem lotação, como o cadastrado na hora pelo balcão).
+ * - Total e unidade sem campus: qualquer servidor.
+ *
+ * Conta de escopo próprio sem servidor é recusa de REGRA, e não 403: a pessoa
+ * tem a permissão, falta a ligação — a tela diz a quem pedir.
+ */
+export async function exigir_requerente_permitido(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  servidor: Pick<Servidor, "id">,
+): Promise<void> {
+  if (usuario.escopo === ESCOPO_PROPRIO) {
+    if (usuario.servidor_id === null) {
+      throw new RequisicaoBloqueada([
+        "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
+          "Peça a quem administra as contas que faça a ligação, informando o seu SIAPE",
+      ]);
+    }
+    if (servidor.id !== usuario.servidor_id) {
+      throw new PermissaoNegada("epi.requisitar", "Pelo seu perfil, você pede EPI só para você mesmo.");
+    }
+    return;
+  }
+  if (usuario.escopo === ESCOPO_UNIDADE && usuario.campi.length) {
+    const [linha] = await tx
+      .select({ campus_id: unidade_uorg.campus_id })
+      .from(tabela_servidor)
+      .leftJoin(unidade_uorg, eq(unidade_uorg.id, tabela_servidor.unidade_uorg_id))
+      .where(eq(tabela_servidor.id, servidor.id));
+    const campus = linha?.campus_id ?? null;
+    if (campus !== null && !usuario.campi.includes(campus)) {
+      throw new PermissaoNegada(
+        "epi.requisitar",
+        "Este servidor está lotado em outro campus: o pedido dele é aberto por quem atende aquele campus.",
+      );
+    }
+  }
+}
+
 /** O pedido em digitação. **Não consome protocolo** — ver RN-03. */
 export async function criar_rascunho(
   tx: Executor,
@@ -586,6 +635,7 @@ export async function criar_rascunho(
   opcoes: { servidor: Pick<Servidor, "id"> } & CamposCabecalho,
 ): Promise<EpiRequisicao> {
   usuario.exigir("epi.requisitar");
+  await exigir_requerente_permitido(tx, usuario, opcoes.servidor);
   const campos = _campos_do_cabecalho({
     finalidade: opcoes.finalidade ?? "ROTINA",
     descricao_atividade: opcoes.descricao_atividade ?? "",
@@ -693,7 +743,7 @@ function _exigir_editavel(requisicao: EpiRequisicao, acao: string): void {
       `${identificacao(requisicao)} está em ` +
       `${rotulo_req(requisicao.estado).toLowerCase()}. ` +
       "Pedido protocolado se corrige por cancelamento com motivo e pedido " +
-      "novo (RN-31) — não por edição em silêncio do que já circulou",
+      "novo — não por edição em silêncio do que já circulou",
   ]);
 }
 
@@ -707,7 +757,7 @@ export async function excluir_rascunho(tx: Executor, usuario: UsuarioAtual, requ
     throw new RequisicaoBloqueada([
       `${identificacao(requisicao)} está em ` +
         `${rotulo_req(requisicao.estado).toLowerCase()} ` +
-        "e não se exclui: requisição enviada cancela com motivo (RN-31). " +
+        "e não se exclui: requisição enviada cancela com motivo. " +
         "Só rascunho pode sumir de verdade",
     ]);
   }
@@ -963,7 +1013,7 @@ export async function concluir_analise(
   if (!itens.some((i) => i.estado === "APROVADO")) {
     problemas.push(
       "nenhum item foi aprovado: se a resposta é negativa em tudo, o " +
-        "caminho é indeferir, que exige o motivo do catálogo (RN-27)",
+        "caminho é indeferir o pedido, com o motivo da lista",
     );
   }
   if (problemas.length) throw new RequisicaoBloqueada(problemas);
@@ -1000,7 +1050,33 @@ export async function aprovar_tudo(tx: Executor, usuario: UsuarioAtual, requisic
   return concluir_analise(tx, usuario, requisicao);
 }
 
-/** EM_ANALISE → INDEFERIDA: todo item RECUSADO, com motivo do catálogo. */
+/** Os estados de item que não impedem o indeferimento do envelope. */
+export const INDEFERIVEL_ITEM: ReadonlySet<string> = new Set(["SOLICITADO", "RECUSADO", "CANCELADO"]);
+
+/**
+ * O pedido inteiro pode ser indeferido de uma vez: está em análise, nenhum
+ * item foi aprovado (aprovado é resposta positiva — o caminho é concluir) e
+ * sobra ao menos um item que não foi cancelado. A tela lê daqui para mostrar o
+ * botão só quando ele funciona.
+ */
+export function indeferivel(requisicao: Pick<EpiRequisicao, "estado">, itens: Pick<EpiRequisicaoItem, "estado">[]): boolean {
+  return (
+    requisicao.estado === "EM_ANALISE" &&
+    itens.every((i) => INDEFERIVEL_ITEM.has(i.estado)) &&
+    itens.some((i) => i.estado !== "CANCELADO")
+  );
+}
+
+/**
+ * EM_ANALISE → INDEFERIDA, com motivo do catálogo. O item ainda sem decisão é
+ * RECUSADO ali mesmo, com o MESMO motivo e complemento, cada um com o seu
+ * evento na trilha — o efeito de recusar item a item, num clique. Antes o botão
+ * "Indeferir o pedido inteiro" só funcionava depois de recusar cada linha à
+ * mão, e o nome prometia o que ele não fazia. Item aprovado continua
+ * impedindo: com resposta positiva, o caminho é concluir a análise. Item
+ * cancelado não impede (era o caso sem saída: um item cancelado e o resto
+ * recusado não concluía nem indeferia).
+ */
 export async function indeferir(
   tx: Executor,
   usuario: UsuarioAtual,
@@ -1012,20 +1088,25 @@ export async function indeferir(
   const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento do indeferimento");
   const itens = await itens_de(tx, requisicao.id);
   const problemas: string[] = [];
-  if (!itens.length) problemas.push("não há item para indeferir");
-  const nao_recusados = itens.filter((i) => i.estado !== "RECUSADO");
-  if (nao_recusados.length) {
+  if (!itens.some((i) => i.estado !== "CANCELADO")) problemas.push("não há item para indeferir");
+  const impedem = itens.filter((i) => !INDEFERIVEL_ITEM.has(i.estado));
+  if (impedem.length) {
     const nomes: string[] = [];
-    for (const i of nao_recusados) nomes.push((await _item(tx, i.epi_item_id)).nome);
+    for (const i of impedem) nomes.push((await _item(tx, i.epi_item_id)).nome);
     problemas.push(
-      "indeferir é a resposta quando TODO item foi recusado, e ainda há " +
+      "indeferir é a resposta quando nenhum item é devido, e " +
         nomes.sort().join(", ") +
-        " fora disso. Com item aprovado, o caminho é concluir a análise",
+        " já foi aprovado. Com item aprovado, o caminho é recusar os outros e concluir a análise",
     );
   }
-  if (!motivo.ativo) problemas.push(`o motivo ${motivo.codigo} está inativo no catálogo`);
-  if (motivo.exige_complemento && !limpo) problemas.push(`o motivo ${motivo.codigo} exige o complemento por escrito`);
+  if (!motivo.ativo) problemas.push(`o motivo “${motivo.rotulo}” está inativo no catálogo`);
+  if (motivo.exige_complemento && !limpo) problemas.push(`o motivo “${motivo.rotulo}” exige o complemento por escrito`);
   if (problemas.length) throw new RequisicaoBloqueada(problemas);
+
+  // os pendentes recebem a recusa do envelope, linha a linha
+  for (const linha of itens) {
+    if (linha.estado === "SOLICITADO") await recusar_item(tx, usuario, linha, { motivo, complemento: limpo });
+  }
 
   await _gravar(tx, requisicao, {
     motivo_recusa_id: motivo.id,
@@ -1057,9 +1138,37 @@ export async function reconsiderar(
 }
 
 /**
- * A desistência, com motivo — em qualquer estado antes da entrega. Aceita
- * `epi.requisitar` OU `epi.analisar`; a RN-28 governa a decisão, não a
- * desistência.
+ * Quem pode desistir do pedido: o requerente (a conta ligada ao servidor que
+ * vai usar o equipamento), quem o abriu, ou quem analisa (`epi.analisar`).
+ *
+ * `epi.requisitar` sozinho NÃO basta. Ela é larga de propósito — a secretaria
+ * a tem para abrir pedido por quem não tem conta —, e antes bastava ela para
+ * cancelar qualquer pedido do escopo: a secretaria cancelava pedido alheio já
+ * analisado, e os itens aprovados e reservados iam junto, com a reserva solta.
+ * A RN-28 governa a decisão, não a desistência: o analista pode cancelar o que
+ * é dele também.
+ */
+export function pode_cancelar(
+  usuario: UsuarioAtual,
+  requisicao: Pick<EpiRequisicao, "servidor_id" | "solicitado_por_id">,
+): boolean {
+  if (usuario.pode("epi.analisar")) return true;
+  if (!usuario.pode("epi.requisitar")) return false;
+  if (requisicao.solicitado_por_id === usuario.id) return true;
+  return usuario.servidor_id !== null && usuario.servidor_id === requisicao.servidor_id;
+}
+
+function _exigir_quem_cancela(usuario: UsuarioAtual, requisicao: EpiRequisicao): void {
+  if (pode_cancelar(usuario, requisicao)) return;
+  throw new PermissaoNegada(
+    "epi.analisar",
+    "Cancelar este pedido cabe a quem vai usar o equipamento, a quem abriu o pedido ou a quem analisa pedidos de EPI.",
+  );
+}
+
+/**
+ * A desistência, com motivo — em qualquer estado antes da entrega e antes da
+ * resposta final (`EPI_REQUISICAO_CANCELAVEL`). Quem pode: `pode_cancelar`.
  */
 export async function cancelar(
   tx: Executor,
@@ -1067,7 +1176,13 @@ export async function cancelar(
   requisicao: EpiRequisicao,
   motivo: string,
 ): Promise<EpiRequisicao> {
-  if (!(usuario.pode("epi.requisitar") || usuario.pode("epi.analisar"))) throw new PermissaoNegada("epi.requisitar");
+  _exigir_quem_cancela(usuario, requisicao);
+  if (!EPI_REQUISICAO_CANCELAVEL.has(requisicao.estado)) {
+    throw new RequisicaoBloqueada([
+      `${identificacao(requisicao)} está ${rotulo_req(requisicao.estado).toLowerCase()} e não se cancela mais: ` +
+        "a resposta já foi dada",
+    ]);
+  }
   const limpo = _motivo_obrigatorio(motivo, "motivo do cancelamento");
   const itens = await itens_de(tx, requisicao.id);
   const entregues = itens.filter((i) => i.quantidade_entregue > 0);
@@ -1131,7 +1246,7 @@ export async function aprovar_item(
   if (quantidade <= 0) {
     problemas.push(
       "aprovar zero não é aprovar: se o item não vai sair, o caminho é " +
-        "recusar com motivo do catálogo (RN-27), que é o que o requerente " +
+        "recusar com motivo da lista, que é o que o requerente " +
         "precisa receber por escrito",
     );
   }
@@ -1152,7 +1267,7 @@ export async function aprovar_item(
         `${item.quantidade_maxima} e esta aprovação soma ` +
         `${ja + quantidade}`;
       if (!opcoes.autorizar_excesso) {
-        problemas.push(`${recado}. Para aprovar assim mesmo, autorize a exceção: ` + "ela fica registrada com o seu nome (RN-26)");
+        problemas.push(`${recado}. Para aprovar assim mesmo, autorize a exceção: ` + "ela fica registrada com o seu nome");
       } else if (!limpa) {
         problemas.push(
           `${recado}. A exceção exige a justificativa por escrito — é ` + "ela que sustenta a decisão de quem a assinou",
@@ -1222,10 +1337,10 @@ export async function recusar_item(
         `${rotulo_req(requisicao.estado).toLowerCase()}`,
     );
   }
-  if (!motivo.ativo) problemas.push(`o motivo ${motivo.codigo} está inativo no catálogo`);
+  if (!motivo.ativo) problemas.push(`o motivo “${motivo.rotulo}” está inativo no catálogo`);
   if (motivo.exige_complemento && !limpo) {
     problemas.push(
-      `o motivo ${motivo.codigo} exige o complemento por escrito: sem ele ` + "a negativa não diz à pessoa o que fazer a seguir",
+      `o motivo “${motivo.rotulo}” exige o complemento por escrito: sem ele ` + "a negativa não diz à pessoa o que fazer a seguir",
     );
   }
   if (problemas.length) throw new RequisicaoBloqueada(problemas);
@@ -1271,7 +1386,14 @@ export async function cancelar_item(
   linha: EpiRequisicaoItem,
   motivo: string,
 ): Promise<EpiRequisicaoItem> {
-  if (!(usuario.pode("epi.requisitar") || usuario.pode("epi.analisar"))) throw new PermissaoNegada("epi.analisar");
+  const requisicao = await _requisicao_da_linha(tx, linha);
+  _exigir_quem_cancela(usuario, requisicao);
+  if (EPI_REQUISICAO_ENCERRADA.has(requisicao.estado)) {
+    throw new RequisicaoBloqueada([
+      `${identificacao(requisicao)} está ${rotulo_req(requisicao.estado).toLowerCase()}: ` +
+        "não há mais linha a cancelar",
+    ]);
+  }
   const limpo = _motivo_obrigatorio(motivo, "motivo do cancelamento do item");
   if (linha.quantidade_entregue > 0) {
     const item = await _item(tx, linha.epi_item_id);
@@ -1371,8 +1493,7 @@ export async function reservar_item(
       `o lote ${entrada.lote || "—"} tem ${livre} disponível(is) ` +
         `(físico ${await epi_estoque.saldo_fisico(tx, entrada.id)}, ` +
         `${await epi_estoque.reservado(tx, entrada.id)} já prometido(s) a outro ` +
-        `pedido) e a reserva pede ${quantidade}: saldo não fica negativo ` +
-        "(RN-24)",
+        `pedido) e a reserva pede ${quantidade}: saldo não fica negativo`,
     );
   }
   if (problemas.length) throw new RequisicaoBloqueada(problemas);
@@ -1554,20 +1675,30 @@ async function _rotulo_do_lote(tx: Executor, entrada_id: number | null): Promise
  */
 export async function itens_esperando_estoque(
   tx: Executor,
-  opcoes: { epi_item_id?: number | null; tamanho?: string | null } = {},
+  opcoes: { epi_item_id?: number | null; tamanho?: string | null; usuario?: UsuarioAtual | null } = {},
 ): Promise<EpiRequisicaoItem[]> {
-  let linhas = await tx
-    .select()
-    .from(epi_requisicao_item)
-    .where(
-      and(
-        eq(epi_requisicao_item.estado, "SEM_ESTOQUE"),
-        opcoes.epi_item_id !== undefined && opcoes.epi_item_id !== null
-          ? eq(epi_requisicao_item.epi_item_id, opcoes.epi_item_id)
-          : undefined,
-      ),
-    )
-    .orderBy(asc(epi_requisicao_item.id));
+  // Com `usuario`, a fila é a do escopo dele — a mesma regra da fila de
+  // pedidos. Sem ela o painel do servidor comum listava o pedido de outra
+  // pessoa (protocolo, item e tamanho), com um link que voltava para a fila
+  // sem explicar nada. Sem `usuario` (o aviso da entrada de lote, que só conta
+  // quantos esperam) continua sendo a fila inteira.
+  const escopo = opcoes.usuario ? _no_escopo(opcoes.usuario) : undefined;
+  let linhas = (
+    await tx
+      .select({ linha: epi_requisicao_item })
+      .from(epi_requisicao_item)
+      .innerJoin(epi_requisicao, eq(epi_requisicao.id, epi_requisicao_item.requisicao_id))
+      .where(
+        and(
+          eq(epi_requisicao_item.estado, "SEM_ESTOQUE"),
+          opcoes.epi_item_id !== undefined && opcoes.epi_item_id !== null
+            ? eq(epi_requisicao_item.epi_item_id, opcoes.epi_item_id)
+            : undefined,
+          escopo,
+        ),
+      )
+      .orderBy(asc(epi_requisicao_item.id))
+  ).map((r) => r.linha);
   if (opcoes.tamanho) {
     // linha sem tamanho casa com qualquer lote
     linhas = linhas.filter((i) => !i.tamanho || i.tamanho === opcoes.tamanho);
@@ -1653,8 +1784,7 @@ export async function entregar_item(
       if (quantidade > folga) {
         problemas.push(
           `o lote ${entrada.lote || "—"} tem ${folga} para este pedido ` +
-            `e a entrega pede ${quantidade}: saldo não fica negativo ` +
-            "(RN-24)",
+            `e a entrega pede ${quantidade}: saldo não fica negativo`,
         );
       }
     }
