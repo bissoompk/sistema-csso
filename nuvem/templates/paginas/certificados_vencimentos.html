@@ -78,37 +78,43 @@
   </form>
   {% endif %}
 
+  {# No celular a linha vira cartão (`table.empilhavel`): vencimento e situação
+     dividem a primeira linha (`curta`), e o participante é o título. A caixinha
+     de avisar mora na célula do participante, no mesmo `label.marca-linha` do
+     nome; o "avisado" vai logo abaixo do nome. #}
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr>
-        {% if marcavel %}<th scope="col"><span class="oculto">Avisar</span></th>{% endif %}
         <th scope="col">Vencimento</th><th scope="col">Situação</th><th scope="col">Participante</th>
         <th scope="col">Lotação</th><th scope="col">Treinamento</th><th scope="col">Certificado</th>
       </tr>
     </thead>
     {% for x in itens %}
     <tr>
-      {% if marcavel %}
-      {# marcado de saída: quem está a vencer e ainda não foi avisado #}
-      <td>{% if x.situacao != 'VALIDO' and x.id not in avisados %}
-        <input form="f-avisar" type="checkbox" name="certificado_id" value="{{ x.id }}"
-               {{ 'checked' if x.situacao == 'A_VENCER' }}
-               aria-label="Avisar {{ x.participante_nome }} por e-mail">
-        {% elif x.id in avisados %}<span class="pilula sem-ponto" title="aviso de reciclagem enviado ou na fila">avisado</span>{% endif %}</td>
-      {% endif %}
-      <td class="mono">{{ x.data_vencimento|data }}</td>
-      <td>
+      <td class="mono curta" data-coluna="Vencimento">{{ x.data_vencimento|data }}</td>
+      <td class="curta" data-coluna="Situação">
         {%- if x.situacao == 'VENCIDO' %}<span class="pilula erro">Vencido</span>
         {%- elif x.situacao == 'A_VENCER' %}<span class="pilula alerta">A vencer</span>
         {%- else %}<span class="pilula ok">Válido</span>{% endif -%}
       </td>
-      <td class="nome">{{ x.participante_nome }}
-        <span class="quebra discreto mono">{{ x.participante_identificador }}</span></td>
-      <td>{{ x.participante_lotacao or '—' }}</td>
-      <td>{{ x.treinamento_nome }}
+      {# marcado de saída: quem está a vencer e ainda não foi avisado #}
+      <td class="nome">
+        {%- if marcavel and x.situacao != 'VALIDO' and x.id not in avisados %}<label class="marca-linha"><input
+               class="marcar" form="f-avisar" type="checkbox" name="certificado_id" value="{{ x.id }}"
+               {{ 'checked' if x.situacao == 'A_VENCER' }}
+               aria-label="Avisar {{ x.participante_nome }} por e-mail">
+          <span>{{ x.participante_nome }}
+            <span class="quebra discreto mono">{{ x.participante_identificador }}</span></span></label>
+        {%- else %}{{ x.participante_nome }}
+        <span class="quebra discreto mono">{{ x.participante_identificador }}</span>
+        {%- if marcavel and x.id in avisados %}
+        <span class="quebra"><span class="pilula sem-ponto" title="aviso de reciclagem enviado ou na fila">avisado</span></span>{% endif %}
+        {%- endif %}</td>
+      <td data-coluna="Lotação">{{ x.participante_lotacao or '—' }}</td>
+      <td data-coluna="Treinamento">{{ x.treinamento_nome }}
         {% if x.turma_codigo %}<span class="quebra discreto mono">{{ x.turma_codigo }}</span>{% endif %}</td>
-      <td><a class="mono" href="/certificados/{{ x.id }}">{{ x.rotulo }}</a>
+      <td data-coluna="Certificado"><a class="mono" href="/certificados/{{ x.id }}">{{ x.rotulo }}</a>
         <span class="quebra discreto">emitido em {{ x.data_emissao|data }}</span></td>
     </tr>
     {% else %}

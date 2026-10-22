@@ -29,13 +29,25 @@
     </div>
   </div>
 
+  {# Cada perfil é um cartão recolhido (`details.cartao.perfil`): abertos, os
+     doze perfis davam 14.650px de altura no celular, e quem chega aqui vem
+     ver UM perfil. O resumo diz nome, código e quantas permissões; o índice
+     leva direto ao cartão. #}
+  {% if perfis %}
+  <nav class="fileira" aria-label="Ir para o perfil">
+    {% for p in perfis %}
+    <a class="ficha-filtro" href="#perfil-{{ p.codigo }}">{{ p.nome }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
   {% for p in perfis %}
-  <section class="cartao">
-    <div class="titulo-cartao">
+  <details class="cartao perfil" id="perfil-{{ p.codigo }}">
+    <summary>
       <h2>{{ p.nome }}</h2>
       <span class="mono discreto">{{ p.codigo }}</span>
       <span class="nota a-direita">{{ p.permissoes|length }} permissões</span>
-    </div>
+    </summary>
     {% if p.ajustado %}<p class="discreto"><span class="pilula info sem-ponto">ajustado por módulo</span>
       <a href="/perfis/niveis?perfil={{ p.codigo }}">ver os níveis</a></p>{% endif %}
     {% if p.base_normativa %}<p class="discreto">{{ p.base_normativa }}</p>{% endif %}
@@ -45,7 +57,8 @@
     {# Agrupadas como quem concede perfil pensa, e escritas em português (M75):
        a matriz é lida por gestor, e "epi.requisitar" não diz nada a quem não
        escreveu o código. O código continua ao lado, em mono discreto — é o que
-       aparece na mensagem de 403 e na conversa com a TI. #}
+       aparece na mensagem de 403 e na conversa com a TI. No celular a pílula
+       (`perm-pilula`) empilha o texto sobre o código. #}
     {% for g in p.grupos %}
     <div class="corpo">
       <h3>{{ g.rotulo }}</h3>
@@ -54,7 +67,7 @@
         {# `parecer.assinar` sai em alerta porque é a única permissão do sistema
            que não basta sozinha: sem habilitação técnica vigente ela não assina
            nada, e quem concede o perfil precisa ver isso aqui. #}
-        <span class="pilula sem-ponto {{ 'alerta' if perm.codigo == 'parecer.assinar' }}"
+        <span class="pilula perm-pilula sem-ponto {{ 'alerta' if perm.codigo == 'parecer.assinar' }}"
               title="{{ perm.codigo }}">{{ perm.texto }}
           <span class="mono discreto">{{ perm.codigo }}</span></span>
         {% endfor %}
@@ -72,7 +85,7 @@
       recusa por trigger.
     </p>
     {% endif %}
-  </section>
+  </details>
   {% else %}
   <div class="cartao">
     <div class="vazio">

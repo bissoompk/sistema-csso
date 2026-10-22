@@ -100,8 +100,8 @@
         {% if t.topicos %}
         <span class="quebra discreto">{{ t.topicos|join(' · ') }}</span>
         {% endif %}</td>
-      <td data-coluna="Carga" class="mono">{{ t.carga_horaria_horas|num }} h</td>
-      <td data-coluna="Reciclagem">{% if t.expira %}<span class="mono">{{ t.validade_meses }}</span>
+      <td data-coluna="Carga" class="mono curta">{{ t.carga_horaria_horas|num }} h</td>
+      <td class="curta" data-coluna="Reciclagem">{% if t.expira %}<span class="mono">{{ t.validade_meses }}</span>
           <span class="discreto">({{ t.validade_rotulo }})</span>
           {% else %}<span class="mono">0</span> <span class="selo">não vence</span>{% endif %}</td>
       <td data-coluna="Certificado">{{ t.modelo_vigente.rotulo if t.modelo_vigente else 'o genérico vigente' }}

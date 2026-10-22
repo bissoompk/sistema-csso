@@ -199,7 +199,7 @@
                 {% if parecer.situacao in ['EMITIDO','ASSINADO','ANULADO'] %}
                 <input id="pa-numero" value="{{ parecer.numero }}" class="mono" disabled>
                 {% else %}
-                <input id="pa-numero" name="numero" type="number" min="1" max="9999" class="mono"
+                <input id="pa-numero" name="numero" type="number" inputmode="numeric" min="1" max="9999" class="mono"
                        value="{{ parecer.numero or '' }}" placeholder="automático"
                        aria-describedby="dica-numero">
                 <span class="dica" id="dica-numero">Em branco, o sistema atribui o próximo
@@ -207,7 +207,7 @@
                 {% endif %}
               </div>
               <div class="campo"><label for="pa-ano">Ano</label>
-                <input id="pa-ano" name="ano" type="number" class="mono" value="{{ parecer.ano }}" min="2000" max="2100"></div>
+                <input id="pa-ano" name="ano" type="number" inputmode="numeric" class="mono" value="{{ parecer.ano }}" min="2000" max="2100"></div>
               <div class="campo"><label for="pa-data-emissao">Data de emissão</label>
                 <input id="pa-data-emissao" name="data_emissao" type="date" class="mono"
                        value="{{ parecer.data_emissao or '' }}"></div>
@@ -572,7 +572,7 @@
             <h3>Radiológicos (RN-22)</h3>
             <div class="linha-campos">
               <div class="campo"><label for="pa-horas-fonte">Horas semanais junto à fonte</label>
-                <input id="pa-horas-fonte" name="horas_semanais_fonte" type="number" step="0.5" class="mono"
+                <input id="pa-horas-fonte" name="horas_semanais_fonte" type="number" inputmode="decimal" step="0.5" class="mono"
                        value="{{ parecer.horas_semanais_fonte or '' }}"></div>
               <div class="campo"><label for="pa-area-radiologica">Área radiológica</label>
                 <select id="pa-area-radiologica" name="area_radiologica">
@@ -733,9 +733,9 @@
         <option value="PERMANENTE">Permanente</option>
       </select></div>
     <div class="campo"><label for="nx-horas">Horas de exposição/mês</label>
-      <input id="nx-horas" name="horas_exposicao_mensais" type="number" step="0.5" class="mono"></div>
+      <input id="nx-horas" name="horas_exposicao_mensais" type="number" inputmode="decimal" step="0.5" class="mono"></div>
     <div class="campo"><label for="nx-jornada">Jornada mensal (h)</label>
-      <input id="nx-jornada" name="jornada_mensal_horas" type="number" step="0.5" class="mono"></div>
+      <input id="nx-jornada" name="jornada_mensal_horas" type="number" inputmode="decimal" step="0.5" class="mono"></div>
     <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
       <label class="discreto"><input type="checkbox" name="principal" value="1"> principal</label></div>
   </div>

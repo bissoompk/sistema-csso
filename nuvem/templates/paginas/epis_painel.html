@@ -208,7 +208,7 @@
            segurança de uma pessoa determinada. Ler a lista aqui sem a permissão
            seria abrir pela porta do painel o que a tela da ficha fecha. #}
         {% if ve_ficha %}
-        <table>
+        <table class="empilhavel">
           <thead>
             <tr><th scope="col">Servidor</th><th scope="col">EPI</th><th scope="col">Entregue</th><th scope="col">Troca prevista</th><th scope="col"></th></tr>
           </thead>
@@ -217,10 +217,10 @@
           <tr>
             <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
               {%- else %}{{ quem.nome }}{% endif %}</td>
-            <td>{{ r.nome_epi_snapshot }}</td>
-            <td class="mono">{{ r.data_evento|data }}</td>
-            <td>{{ ui.pilula_troca(r.previsao_troca, hoje) }}</td>
-            <td><a class="botao secundario compacto" href="/epis/fichas/{{ r.servidor_id }}">Abrir ficha</a></td>
+            <td data-coluna="EPI">{{ r.nome_epi_snapshot }}</td>
+            <td data-coluna="Entregue" class="mono curta">{{ r.data_evento|data }}</td>
+            <td data-coluna="Troca prevista" class="curta">{{ ui.pilula_troca(r.previsao_troca, hoje) }}</td>
+            <td class="acao-linha"><a class="botao secundario compacto" href="/epis/fichas/{{ r.servidor_id }}">Abrir ficha</a></td>
           </tr>
           {% else %}
           <tr><td colspan="5" class="nada">Nenhuma troca vencida.</td></tr>
@@ -255,7 +255,7 @@
           {% endcall %}
           <span class="contador {{ 'alerta' if p.esperando_estoque else 'ok' }}">{{ p.esperando_estoque|length }}</span>
         </div>
-        <table>
+        <table class="empilhavel">
           <thead>
             <tr><th scope="col">Pedido</th><th scope="col">EPI</th><th scope="col">Tamanho</th><th scope="col">Devido</th><th scope="col"></th></tr>
           </thead>
@@ -265,10 +265,10 @@
                protocolo sem link, porque não abre pedido de ninguém #}
             <td>{% if abre_pedido %}<a class="mono" href="/epis/requisicoes/{{ i.requisicao_id }}">{{ i.requisicao.identificacao }}</a>
               {%- else %}<span class="mono">{{ i.requisicao.identificacao }}</span>{% endif %}</td>
-            <td>{{ i.item.nome }}</td>
-            <td class="mono">{{ i.tamanho or '—' }}</td>
-            <td class="mono">{{ i.quantidade_devida }}</td>
-            <td>{{ ui.pilula_item_requisicao(i.estado, rotulos_item) }}</td>
+            <td data-coluna="EPI">{{ i.item.nome }}</td>
+            <td data-coluna="Tamanho" class="mono curta">{{ i.tamanho or '—' }}</td>
+            <td data-coluna="Devido" class="mono curta">{{ i.quantidade_devida }}</td>
+            <td data-coluna="Situação">{{ ui.pilula_item_requisicao(i.estado, rotulos_item) }}</td>
           </tr>
           {% else %}
           <tr><td colspan="5" class="nada">Nada esperando compra.</td></tr>
@@ -294,7 +294,7 @@
           {% endcall %}
           <span class="contador {{ 'alerta' if p.lotes_a_vencer else 'ok' }}">{{ p.lotes_a_vencer|length }}</span>
         </div>
-        <table>
+        <table class="empilhavel">
           <thead>
             <tr><th scope="col">Item · lote</th><th scope="col">Saldo</th><th scope="col">CA</th><th scope="col"></th></tr>
           </thead>
@@ -302,9 +302,9 @@
           <tr>
             <td>{{ lote.entrada.item.nome }}
               <span class="quebra discreto mono">{{ lote.entrada.lote or 'sem número' }}</span></td>
-            <td class="mono">{{ lote.saldo }}</td>
-            <td>{{ ui.pilula_ca(lote.entrada.validade_ca, hoje) }}</td>
-            <td><a class="botao secundario compacto"
+            <td data-coluna="Saldo" class="mono curta">{{ lote.saldo }}</td>
+            <td data-coluna="CA" class="curta">{{ ui.pilula_ca(lote.entrada.validade_ca, hoje) }}</td>
+            <td class="acao-linha"><a class="botao secundario compacto"
                    href="/epis/estoque/{{ lote.entrada.id }}/movimentos">Extrato</a></td>
           </tr>
           {% else %}
@@ -329,7 +329,7 @@
           {% if usuario.pode('epi.ficha') %}<a class="a-direita" href="/epis/fichas">Fichas</a>{% endif %}
         </div>
         {% if ve_ficha %}
-        <table>
+        <table class="empilhavel">
           <thead>
             {# Servidor primeiro: na coluna da direita ele saía cortado no
                desktop, e é a coluna que se procura #}
@@ -340,9 +340,9 @@
           <tr>
             <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
               {%- else %}{{ quem.nome }}{% endif %}</td>
-            <td>{{ r.nome_epi_snapshot }}</td>
-            <td class="mono">{{ r.data_evento|data }}</td>
-            <td class="numerico">{{ r.quantidade }}</td>
+            <td data-coluna="EPI">{{ r.nome_epi_snapshot }}</td>
+            <td data-coluna="Data" class="mono curta">{{ r.data_evento|data }}</td>
+            <td data-coluna="Qtd." class="numerico curta">{{ r.quantidade }}</td>
           </tr>
           {% else %}
           <tr><td colspan="4" class="nada">Nenhuma entrega neste mês.</td></tr>

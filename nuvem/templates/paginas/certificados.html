@@ -67,8 +67,11 @@
     pelo identificador PTC-…, pela turma ou pela chave de validação.</div>
   {% endif %}
 
+  {# No celular a linha vira cartão (`table.empilhavel`): o participante é o
+     título (sem `data-coluna`), e as datas e a situação dividem a linha
+     (`curta`). Na mesa, a mesma tabela de sempre. #}
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr>
         <th scope="col">Nº</th><th scope="col">Participante</th><th scope="col">Treinamento</th><th scope="col">Emissão</th>
@@ -78,20 +81,20 @@
     {% for c in itens %}
     {% set congelado = c.contexto_congelado or {} %}
     <tr>
-      <td><a class="mono" href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
+      <td data-coluna="Nº"><a class="mono" href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
       {# O nome vem do congelado: é o que o papel diz. Renomear depois não muda
          quem consta no documento que circulou. #}
       <td class="nome">{{ congelado['participante_nome'] or c.participante.nome_exibicao }}
         <span class="quebra discreto mono">{{ c.participante.identificador_publico }}</span></td>
-      <td>{{ congelado['treinamento_nome'] or c.treinamento.nome }}
+      <td data-coluna="Treinamento">{{ congelado['treinamento_nome'] or c.treinamento.nome }}
         {% if congelado['turma_codigo'] %}
         <span class="quebra discreto mono">{{ congelado['turma_codigo'] }}</span>{% endif %}</td>
-      <td class="mono">{{ c.data_emissao|data }}</td>
-      <td>
+      <td class="mono curta" data-coluna="Emissão">{{ c.data_emissao|data }}</td>
+      <td class="curta" data-coluna="Vencimento">
         {% if c.data_vencimento %}<span class="mono">{{ c.data_vencimento|data }}</span>
         {% else %}<span class="selo">não expira</span>{% endif %}
       </td>
-      <td>{{ ui.pilula_certificado(situacao_publica[c.id]) }}</td>
+      <td class="curta" data-coluna="Situação">{{ ui.pilula_certificado(situacao_publica[c.id]) }}</td>
     </tr>
     {% else %}
     {# A saída diz onde a busca olhou: quem não acha conclui que o certificado não

@@ -80,7 +80,10 @@
       <div class="aviso aviso-erro" role="alert">{{ recusa }}</div>
     </div>
     {% endif %}
-    <table>
+    {# `empilhavel`: abaixo de 600px cada item vira um cartão (eram 847px de
+       tabela numa tela de 390). O equipamento, sem `data-coluna`, é o título;
+       o botão das ações vai em `acao-linha`, embaixo. #}
+    <table class="empilhavel">
       {# Pedido, Aprovado e Entregue vão em `.numerico` pelo mesmo motivo das
          quatro colunas do estoque: são as que se conferem de cima a baixo — "o
          que pedi bate com o que saiu?" —, e numa coluna à esquerda `2` e `12`
@@ -135,14 +138,14 @@
             estoque</span></span>
           {% endif %}
           {% endfor %}</td>
-        <td>{{ i.tamanho or '—' }}</td>
-        <td class="numerico">{{ i.quantidade_solicitada }}</td>
-        <td class="numerico">{{ i.quantidade_aprovada if i.quantidade_aprovada is not none else '—' }}</td>
-        <td class="numerico">{{ i.quantidade_entregue }}
+        <td class="curta" data-coluna="Tamanho">{{ i.tamanho or '—' }}</td>
+        <td class="numerico curta" data-coluna="Pedido">{{ i.quantidade_solicitada }}</td>
+        <td class="numerico curta" data-coluna="Aprovado">{{ i.quantidade_aprovada if i.quantidade_aprovada is not none else '—' }}</td>
+        <td class="numerico curta" data-coluna="Entregue">{{ i.quantidade_entregue }}
           {% if i.quantidade_devida %}
           <span class="quebra discreto">devendo {{ i.quantidade_devida }}</span>{% endif %}</td>
-        <td>{{ ui.pilula_item_requisicao(i.estado, rotulos_item) }}</td>
-        <td>
+        <td class="curta" data-coluna="Estado">{{ ui.pilula_item_requisicao(i.estado, rotulos_item) }}</td>
+        <td data-coluna="Decisão">
           {% if i.motivo_recusa %}
           <strong>{{ i.motivo_recusa.rotulo }}</strong>
           {# o texto CONGELADO na decisão, e não o do catálogo de hoje: editar o
@@ -155,7 +158,7 @@
           <span class="quebra discreto mono">{{ i.decidido_em|momento }}</span>
           {% else %}<span class="discreto">—</span>{% endif %}
         </td>
-        <td>
+        <td class="acao-linha">
           {# A GAVETA DA LINHA VIROU CAMADA — e continua custando um clique.
              Era um `<details class="acoes-linha">` que abria na própria célula:
              até nove formulários, com rótulo, dica e parágrafo, espremidos nos

@@ -870,7 +870,7 @@ describe("troca parcial", () => {
     expect(r.status, r.text).toBe(200);
     expect(r.text).not.toContain("<html");
     expect(r.text).toContain("Itens do pedido");
-    expect(r.text).toContain("<table>");
+    expect(r.text).toContain('<table class="empilhavel">');
     expect(r.text).not.toContain("sem decisão");
     expect((await linhas(amb, requisicao_id))[0]!.estado).toBe("APROVADO");
   });

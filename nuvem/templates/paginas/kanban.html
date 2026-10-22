@@ -16,7 +16,7 @@
     <div class="ao-lado">
       {# Quadro e tabela são a mesma lista em duas formas: um controle só, e o
          filtro atual viaja junto para a outra forma. #}
-      <div class="alternador">
+      <div class="alternador" role="group" aria-label="Ver a lista como">
         <span class="ativo" aria-current="page">Quadro</span>
         <a href="/processos?{{ filtro.como_query_string() }}">Tabela</a>
       </div>
@@ -65,7 +65,7 @@
           {% endfor %}
         </select></div>
       <div><label for="kanban-exercicio">Exercício</label>
-        <input id="kanban-exercicio" type="number" name="exercicio"
+        <input id="kanban-exercicio" type="number" inputmode="numeric" name="exercicio"
                value="{{ filtro.exercicio or '' }}" min="2000" max="2100"></div>
       <div><label for="kanban-responsavel">Responsável</label>
         <select id="kanban-responsavel" name="responsavel_id">

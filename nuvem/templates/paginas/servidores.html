@@ -87,7 +87,10 @@
   </form>
 
   <div class="tabela-cartao lista">
-    <table>
+    {# No celular cada linha vira cartão (`empilhavel`): o nome é o título;
+       quando a sessão não vê nome (RN-19), o título passa a ser o código e o
+       "—" do nome ganha rótulo, para o cartão não ter título vazio. #}
+    <table class="empilhavel">
       <thead>
         <tr>
           <th scope="col">Identificação</th><th scope="col">Nome</th><th scope="col">Cargo</th>
@@ -99,23 +102,23 @@
          supressão vale, `nome` já vem como o código opaco da sessão. #}
       {% set quem = identificar(sv) %}
       <tr>
-        <td><a class="mono" href="/servidores/{{ sv.id }}">{{ quem.siape or quem.nome }}</a></td>
-        <td class="nome">
+        <td{% if quem.nominal %} data-coluna="Identificação"{% endif %}><a class="mono" href="/servidores/{{ sv.id }}">{{ quem.siape or quem.nome }}</a></td>
+        <td class="nome"{% if not quem.nominal %} data-coluna="Nome"{% endif %}>
           {%- if quem.nominal %}{{ quem.nome }}
           {%- else %}<span class="discreto">—</span>{% endif %}</td>
-        <td><span class="recorte" title="{{ sv.cargo.nome if sv.cargo else '' }}">
+        <td data-coluna="Cargo"><span class="recorte" title="{{ sv.cargo.nome if sv.cargo else '' }}">
             {{- sv.cargo.nome if sv.cargo else '—' -}}</span></td>
-        <td><span class="recorte" title="{{ sv.unidade.nome_extenso if sv.unidade else '' }}">
+        <td data-coluna="Unidade"><span class="recorte" title="{{ sv.unidade.nome_extenso if sv.unidade else '' }}">
             {{- sv.unidade.nome_extenso if sv.unidade else '—' -}}</span></td>
         {# Só o código na coluna, e o `uorg_bruto` inteiro no `title`: a UORG do
            parecer é "250 - FACULDADE DE MEDICINA DE DIAMANTINA", que numa coluna
            de tabela repete a Unidade ao lado e rouba a largura de todas as
            outras. Sem código, mostra o que houver. #}
         {% set uo = sv.uorg or sv.unidade %}
-        <td class="mono">
+        <td class="mono curta" data-coluna="UORG">
           {%- if uo %}<span title="{{ uo.uorg_bruto }}">{{ uo.codigo_uorg or uo.sigla or uo.nome_oficial }}</span>
           {%- else %}—{% endif %}</td>
-        <td>{{ ui.pilula_situacao_servidor(sv.situacao) }}</td>
+        <td class="curta" data-coluna="Situação">{{ ui.pilula_situacao_servidor(sv.situacao) }}</td>
       </tr>
       {% else %}
       {# A saída muda com a permissão, e tem de mudar: para quem não vê nome, a

@@ -72,8 +72,10 @@
     </form>
   </div>
 
+  {# `empilhavel`: no celular cada laudo vira um cartão, com o Nº SIAPE de
+     título e o rótulo da coluna sobre cada valor (`data-coluna`). #}
   <div class="tabela-cartao lista">
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr>
           <th scope="col">Nº SIAPE</th><th scope="col">Unidade</th><th scope="col">Tipo</th><th scope="col">Subscritor</th>
@@ -84,15 +86,15 @@
       <tr>
         <td><a class="mono" href="/laudos/{{ l.id }}">{{ l.numero_siape }}</a>
           {%- if l.coletivo %} <span class="pilula sem-ponto">coletivo</span>{% endif %}</td>
-        <td><span class="recorte" title="{{ l.unidade.nome_extenso if l.unidade else '' }}">
+        <td data-coluna="Unidade"><span class="recorte" title="{{ l.unidade.nome_extenso if l.unidade else '' }}">
             {{- l.unidade.nome_extenso if l.unidade else '—' -}}</span></td>
-        <td>{{ l.tipo_adicional.nome if l.tipo_adicional else '—' }}</td>
-        <td>{{ l.subscritor.nome if l.subscritor else '—' }}</td>
-        <td class="mono">{{ l.data_emissao|data or '—' }}</td>
-        <td>{% if l.data_ultima_conferencia %}<span class="mono">{{ l.data_ultima_conferencia|data }}</span>
+        <td data-coluna="Tipo">{{ l.tipo_adicional.nome if l.tipo_adicional else '—' }}</td>
+        <td data-coluna="Subscritor">{{ l.subscritor.nome if l.subscritor else '—' }}</td>
+        <td class="mono curta" data-coluna="Emissão">{{ l.data_emissao|data or '—' }}</td>
+        <td class="curta" data-coluna="Última conferência">{% if l.data_ultima_conferencia %}<span class="mono">{{ l.data_ultima_conferencia|data }}</span>
             {% else %}<span class="selo">nunca</span>{% endif %}</td>
-        <td><span class="contador">{{ derivados[l.id]|length }}</span></td>
-        <td>{{ ui.pilula_laudo(l.status) }}</td>
+        <td class="curta" data-coluna="Pareceres"><span class="contador">{{ derivados[l.id]|length }}</span></td>
+        <td class="curta" data-coluna="Situação">{{ ui.pilula_laudo(l.status) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="8">

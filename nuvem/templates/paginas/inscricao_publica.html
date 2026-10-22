@@ -98,12 +98,13 @@
       <span class="dica" id="dica-siape">Só para servidor da UFVJM: 6 ou 7 dígitos.</span></div>
     <div class="campo"><label for="p-email">E-mail</label>
       <input id="p-email" name="email" type="email" value="{{ pedido.email }}" maxlength="160"
-             autocomplete="email" aria-describedby="dica-email">
+             autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+             aria-describedby="dica-email">
       <span class="dica" id="dica-email">Recomendado: é por ele que a equipe{{ equipe_de }} avisa quando conferir o
         pedido e que você recebe o certificado.</span></div>
     <div class="campo"><label for="p-org">Empresa, curso ou setor</label>
       <input id="p-org" name="organizacao" value="{{ pedido.organizacao }}" maxlength="160"
-             placeholder="empresa contratada, curso, unidade…"></div>
+             placeholder="empresa contratada, curso, unidade…" autocomplete="organization"></div>
     {# o campo que gente não vê; robô preenche #}
     <div class="oculto" aria-hidden="true"><label for="p-site">Não preencha</label>
       <input id="p-site" name="site" tabindex="-1" autocomplete="off"></div>

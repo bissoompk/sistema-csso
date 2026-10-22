@@ -24,7 +24,7 @@
     <div class="campo">
       <label for="chave">Chave de validação</label>
       <input id="chave" class="mono" name="chave" value="{{ digitada if not (resposta and resposta.encontrado) else '' }}"
-             maxlength="40" autocapitalize="characters" autocomplete="off"
+             maxlength="40" autocapitalize="characters" autocorrect="off" autocomplete="off"
              spellcheck="false" placeholder="CSSO-2026-K7QMX-3FTB9-H"
              {% if not resposta and not excedeu %}autofocus{% endif %} required aria-describedby="dica-chave">
       <span class="dica" id="dica-chave">Ela está impressa no rodapé do

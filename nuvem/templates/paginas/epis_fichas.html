@@ -53,7 +53,7 @@
   {% endif %}
 
   <div class="tabela-cartao lista">
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Servidor</th><th scope="col">Unidade</th><th scope="col">Registros</th>
           <th scope="col">Sem comprovante</th><th scope="col"></th></tr>
@@ -63,11 +63,11 @@
       <tr>
         <td class="nome"><a href="/epis/fichas/{{ sv.id }}">{{ quem.nome }}</a>
           {% if quem.nominal %}<span class="quebra discreto mono">SIAPE {{ quem.siape }}</span>{% endif %}</td>
-        <td>{{ sv.unidade.nome_extenso if sv.unidade else '—' }}</td>
-        <td class="mono">{{ total }}</td>
-        <td>{% if faltando %}<span class="pilula alerta">{{ faltando }} pendente(s)</span>
+        <td data-coluna="Unidade">{{ sv.unidade.nome_extenso if sv.unidade else '—' }}</td>
+        <td data-coluna="Registros" class="mono curta">{{ total }}</td>
+        <td data-coluna="Sem comprovante" class="curta">{% if faltando %}<span class="pilula alerta">{{ faltando }} pendente(s)</span>
           {%- else %}<span class="pilula ok">completa</span>{% endif %}</td>
-        <td><a class="botao secundario compacto" href="/epis/fichas/{{ sv.id }}">Abrir ficha</a></td>
+        <td class="acao-linha"><a class="botao secundario compacto" href="/epis/fichas/{{ sv.id }}">Abrir ficha</a></td>
       </tr>
       {% else %}
       <tr><td colspan="5">

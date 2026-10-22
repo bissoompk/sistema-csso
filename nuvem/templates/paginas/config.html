@@ -79,7 +79,7 @@
             segue a mesma regra e é congelada na emissão pelo mesmo motivo.</p>
         {% endcall %}
       </div>
-      <table>
+      <table class="coluna-fixa">
         <thead>
           <tr><th scope="col">Sigla</th><th scope="col">Nome extenso</th><th scope="col">Vigência</th></tr>
         </thead>
@@ -94,7 +94,7 @@
       </table>
 
       <div class="corpo"><h3>Autoridade destinatária</h3></div>
-      <table>
+      <table class="coluna-fixa">
         {% for d in destinatarios %}
         <tr><td>{{ d.nome }}</td><td>{{ d.cargo }}</td>
             <td class="mono discreto">desde {{ d.vigencia_inicio|data }}</td></tr>
@@ -238,7 +238,7 @@
   <div class="linha-campos">
     {% for coluna, dias in sla.items() %}
     <div class="campo"><label for="sla-{{ coluna }}">{{ rotulo_coluna[coluna] or coluna }}</label>
-      <input id="sla-{{ coluna }}" type="number"
+      <input id="sla-{{ coluna }}" type="number" inputmode="numeric" pattern="[0-9]*"
              name="sla_{{ coluna }}" value="{{ dias }}"
              min="0" max="3650" aria-describedby="padrao-{{ coluna }}">
       <span class="dica" id="padrao-{{ coluna }}">padrão {{ sla_padrao[coluna] }}</span></div>

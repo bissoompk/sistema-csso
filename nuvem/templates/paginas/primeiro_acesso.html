@@ -38,7 +38,8 @@
     <div class="campo"><label for="email">E-mail institucional</label>
       <input id="email" name="email" type="email" value="{{ email or '' }}"
              placeholder="nome@ufvjm.edu.br"
-             required autocomplete="email" aria-describedby="dica-email">
+             required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+             aria-describedby="dica-email">
       <span class="dica" id="dica-email">É por ele que se entra. O nome de usuário
         sai da parte antes do <code>@</code>, sozinho.</span></div>
 

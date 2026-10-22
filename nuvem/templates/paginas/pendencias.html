@@ -66,8 +66,10 @@
     </div>
   </div>
   {% else %}
+  {# `empilhavel`: no celular cada pendência vira um cartão, com a Tarefa de
+     título e o rótulo da coluna sobre cada valor (`data-coluna`). #}
   <div class="tabela-cartao lista tabela-pendencias">
-    <table>
+    <table class="empilhavel">
       <thead>
         <tr>
           <th scope="col">Tarefa</th><th scope="col">Responsável</th><th scope="col">Prazo</th><th scope="col">Onde</th><th scope="col"></th>
@@ -97,11 +99,11 @@
             <strong>{{ p.leitura.texto }}</strong>
           </div>
         </td>
-        <td>
+        <td class="curta" data-coluna="Responsável">
           {%- if p.responsavel %}<span class="recorte" title="{{ p.responsavel.nome }}">
             {{- p.responsavel.nome -}}</span>
           {%- else %}<span class="discreto">sem dono</span>{% endif %}</td>
-        <td>
+        <td class="curta" data-coluna="Prazo">
           {% if p.prazo and p.atrasada(hoje) %}
           <span class="selo erro" title="{{ dias_entre(p.prazo, hoje) }} dia(s) de atraso">
             {{ p.prazo|data }}</span>
@@ -114,7 +116,7 @@
         {# O teto de largura mora no <div>, e não na célula: `max-width` não se
            aplica a `display: table-cell`, e a âncora genérica é uma palavra só e
            longa que passava por baixo do botão da coluna seguinte. #}
-        <td>
+        <td data-coluna="Onde">
           <div class="onde">
             {# `?de=pendencias` em toda âncora: é o que faz a tela de destino
                oferecer o caminho de volta (o "← voltar às pendências" do
@@ -136,14 +138,16 @@
             {% endfor %}
           </div>
         </td>
-        <td>
-          {% if p.id in concluiveis %}
+        {# Os `-` deixam a célula vazia de fato (`:empty`) quando não há o que
+           concluir: no cartão do celular ela some em vez de sobrar um vão. #}
+        <td class="acao-linha">
+          {%- if p.id in concluiveis %}
           {# Volta à mesma visão de onde saiu: concluir em "Só as minhas" e cair
              em "Todas" desorientava. #}
           <form method="post" action="/pendencias/{{ p.id }}/concluir{{ '?minhas=1' if apenas_minhas }}">
             <button type="submit" class="secundario marcador">concluir</button>
           </form>
-          {% endif %}
+          {%- endif -%}
         </td>
       </tr>
       {% endfor %}

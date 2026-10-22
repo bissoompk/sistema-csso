@@ -1,14 +1,14 @@
 {% import "partes/macros.html" as ui with context %}
 {% set p = r.processo %}
-{# A cor do tipo de processo entra como variável, não como propriedade: o
-   desenho da borda continua na folha, o template só informa o valor. E quando o
-   tipo não tem cor o `style` não sai: a cor da AUSÊNCIA é o `var(--cor-tipo, …)`
-   do `csso.css`, e escrevê-la aqui também era manter o mesmo cinza em dois
-   arquivos — dos quais só um seria corrigido no dia em que ele mudasse. #}
+{# A cor do tipo de processo sai como DADO (`data-cor-tipo`), e não como
+   atributo de estilo: a CSP do sistema não admite estilo escrito no HTML. O `csso.css`
+   traduz as cores conhecidas (as dos tipos semeados) para `--cor-tipo`, e o
+   `csso.js` cobre um hexadecimal que a folha não conheça. Quando o tipo não tem
+   cor o atributo não sai: a cor da AUSÊNCIA é o `var(--cor-tipo, …)` da folha. #}
 <article class="cartao-kanban" draggable="true"
          data-processo="{{ p.id }}"
          {% if p.tipo_processo and p.tipo_processo.cor_hex %}
-         style="--cor-tipo: {{ p.tipo_processo.cor_hex }}"{% endif %}
+         data-cor-tipo="{{ p.tipo_processo.cor_hex | lower }}"{% endif %}
          id="cartao-{{ p.id }}">
   <div class="topo">
     {# A coluna já diz o grupo; o ponto diz o estado exato dentro dele. #}

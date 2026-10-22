@@ -78,7 +78,10 @@
     {% endif %}
 
     {% if lotacoes %}
-    <table>
+    {# Os históricos desta ficha são `empilhavel`: no celular cada linha vira
+       um cartão, com o rótulo da coluna em cada valor. Aqui o Período é o
+       título. #}
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Período</th><th scope="col">Unidade</th><th scope="col">UORG</th><th scope="col">Postos de trabalho</th>
             <th scope="col">Cargo</th><th scope="col">Função</th><th scope="col">Documento</th></tr>
@@ -90,20 +93,20 @@
             {%- if not l.aberta %} {{ l.vigencia_fim|data }}{% endif %}</span>
           {% if l.aberta %}<span class="pilula ok">atual</span>{% endif %}
         </td>
-        <td><span class="recorte" title="{{ l.unidade.nome_extenso if l.unidade else '' }}">
+        <td data-coluna="Unidade"><span class="recorte" title="{{ l.unidade.nome_extenso if l.unidade else '' }}">
             {{- l.unidade.nome_extenso if l.unidade else '—' -}}</span></td>
         {# Só o código; o `uorg_bruto` inteiro fica no `title`. Ver /servidores. #}
-        <td class="mono">
+        <td class="mono curta" data-coluna="UORG">
           {%- if l.uorg %}<span title="{{ l.uorg.uorg_bruto }}">
             {{- l.uorg.codigo_uorg or l.uorg.sigla or l.uorg.nome_oficial -}}</span>
           {%- else %}—{% endif %}</td>
-        <td>
+        <td data-coluna="Postos de trabalho">
           {%- for p in l.postos %}<span class="quebra">{{ p.nome }}</span>
           {%- else %}<span class="discreto">—</span>{% endfor %}
         </td>
-        <td>{{ l.cargo.nome if l.cargo else '—' }}</td>
-        <td>{{ l.funcao or '—' }}</td>
-        <td class="discreto">{{ l.documento or '—' }}
+        <td data-coluna="Cargo">{{ l.cargo.nome if l.cargo else '—' }}</td>
+        <td class="curta" data-coluna="Função">{{ l.funcao or '—' }}</td>
+        <td class="discreto" data-coluna="Documento">{{ l.documento or '—' }}
           {% if l.observacao %}<span class="quebra">{{ l.observacao }}</span>{% endif %}</td>
       </tr>
       {% endfor %}
@@ -127,15 +130,15 @@
         <span class="contador">{{ processos|length }}</span>
       </div>
       {% if processos %}
-      <table>
+      <table class="empilhavel">
         <thead>
           <tr><th scope="col">NUP</th><th scope="col">Estado</th><th scope="col">Autuação</th></tr>
         </thead>
         {% for p in processos %}
         <tr>
           <td><a class="mono" href="/processos/{{ p.id }}">{{ p.nup }}</a></td>
-          <td>{{ ui.pilula_estado(p.estado_tecnico) }}</td>
-          <td class="mono">{{ p.data_autuacao|data or '—' }}</td>
+          <td class="curta" data-coluna="Estado">{{ ui.pilula_estado(p.estado_tecnico) }}</td>
+          <td class="mono curta" data-coluna="Autuação">{{ p.data_autuacao|data or '—' }}</td>
         </tr>
         {% endfor %}
       </table>
@@ -155,16 +158,16 @@
         <span class="contador">{{ pareceres|length }}</span>
       </div>
       {% if pareceres %}
-      <table>
+      <table class="empilhavel">
         <thead>
           <tr><th scope="col">Nº</th><th scope="col">Situação</th><th scope="col">Emissão</th><th scope="col">Laudo</th></tr>
         </thead>
         {% for p in pareceres %}
         <tr>
           <td><a class="mono" href="/pareceres/{{ p.id }}">{{ p.numero }}/{{ p.ano }}</a></td>
-          <td>{{ ui.pilula_parecer(p.situacao) }}</td>
-          <td class="mono">{{ p.data_emissao|data or '—' }}</td>
-          <td>
+          <td class="curta" data-coluna="Situação">{{ ui.pilula_parecer(p.situacao) }}</td>
+          <td class="mono curta" data-coluna="Emissão">{{ p.data_emissao|data or '—' }}</td>
+          <td class="curta" data-coluna="Laudo">
             {#- Sem `laudo.ver` o número sai como texto (D81): o servidor abre a
                 própria ficha, e o link dava 403 na cara dele. #}
             {%- if p.laudo and usuario.pode('laudo.ver') %}<a class="mono" href="/laudos/{{ p.laudo_id }}">{{ p.laudo.numero_siape }}</a>
@@ -202,21 +205,22 @@
       {% endcall %}
     </div>
     {% if vigencias %}
-    <table>
+    {# `empilhavel`, com o Tipo de título do cartão. #}
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Estado</th><th scope="col">Tipo</th><th scope="col">Percentual</th><th scope="col">Portaria de concessão</th>
             <th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Base da suspensão</th></tr>
       </thead>
       {% for v in vigencias %}
       <tr>
-        <td>{{ ui.pilula_direito(v.estado) }}</td>
+        <td class="curta" data-coluna="Estado">{{ ui.pilula_direito(v.estado) }}</td>
         <td>{{ v.tipo_adicional.nome }}</td>
-        <td class="mono">{{ v.percentual.rotulo if v.percentual else '—' }}</td>
-        <td><span class="recorte" title="{{ v.portaria_concessao or '' }}">
+        <td class="mono curta" data-coluna="Percentual">{{ v.percentual.rotulo if v.percentual else '—' }}</td>
+        <td data-coluna="Portaria de concessão"><span class="recorte" title="{{ v.portaria_concessao or '' }}">
             {{- v.portaria_concessao or '—' -}}</span></td>
-        <td class="mono">{{ v.data_inicio|data or '—' }}</td>
-        <td class="mono">{{ v.data_fim|data or '—' }}</td>
-        <td class="discreto">{{ v.motivo_suspensao or '' }} {{ v.base_legal_suspensao or '' }}</td>
+        <td class="mono curta" data-coluna="Início">{{ v.data_inicio|data or '—' }}</td>
+        <td class="mono curta" data-coluna="Fim">{{ v.data_fim|data or '—' }}</td>
+        <td class="discreto" data-coluna="Base da suspensão">{{ v.motivo_suspensao or '' }} {{ v.base_legal_suspensao or '' }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -245,7 +249,8 @@
       <a class="a-direita" href="/epis/fichas/{{ servidor.id }}">Ver a ficha completa →</a>
     </div>
     {% if epi_linhas %}
-    <table>
+    {# `empilhavel`, com o Equipamento de título do cartão. #}
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Data</th><th scope="col">Evento</th><th scope="col">Equipamento</th><th scope="col">CA congelado</th>
           <th scope="col">Qtd.</th><th scope="col">Comprovante</th></tr>
@@ -253,15 +258,15 @@
       {% for l in epi_linhas %}
       {% set r = l.registro %}
       <tr>
-        <td class="mono">{{ r.data_evento|data }}</td>
-        <td>{{ ui.pilula_ficha(r.tipo) }}
+        <td class="mono curta" data-coluna="Data">{{ r.data_evento|data }}</td>
+        <td class="curta" data-coluna="Evento">{{ ui.pilula_ficha(r.tipo) }}
           {% if l.estornado %}<span class="pilula erro">estornado</span>{% endif %}</td>
         <td>{{ r.nome_epi_snapshot }}
           <span class="quebra discreto">{{ r.categoria_snapshot }}</span></td>
-        <td class="mono">{{ r.numero_ca_snapshot or '—' }}
+        <td class="mono curta" data-coluna="CA congelado">{{ r.numero_ca_snapshot or '—' }}
           {{ ui.pilula_troca(r.previsao_troca, hoje) }}</td>
-        <td class="mono">{{ r.quantidade }}</td>
-        <td>{% if r.tipo == 'ESTORNO' or l.estornado %}<span class="discreto">—</span>
+        <td class="mono curta" data-coluna="Qtd.">{{ r.quantidade }}</td>
+        <td data-coluna="Comprovante">{% if r.tipo == 'ESTORNO' or l.estornado %}<span class="discreto">—</span>
           {%- else %}{{ ui.pilula_comprovante(l.comprovante) }}{% endif %}</td>
       </tr>
       {% endfor %}

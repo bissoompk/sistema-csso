@@ -19,11 +19,13 @@
    (`pode_lote`): para o servidor eram caixas que não serviam para nada. #}
 {% macro linha(r) %}
 <tr>
-  {% if pode_lote %}
-  <td><input type="checkbox" name="processo_id" value="{{ r.processo.id }}" class="marcar" data-grupo="processos"
-             aria-label="Selecionar o processo {{ r.processo.nup }}"></td>
-  {% endif %}
-  <td><a class="mono" href="/processos/{{ r.processo.id }}">{{ r.processo.nup }}</a></td>
+  {# A caixa de seleção mora na célula-título, num `label.marca-linha` com o
+     NUP: no celular o cartão empilhado ganha alvo de toque de 44px e o leitor
+     de tela lê o que se marca. O NUP continua link (o clique nele navega; no
+     resto do rótulo, marca). #}
+  <td>{% if pode_lote %}<label class="marca-linha"><input type="checkbox" name="processo_id" value="{{ r.processo.id }}" class="marcar" data-grupo="processos"
+             aria-label="Selecionar o processo {{ r.processo.nup }}">{% endif -%}
+    <a class="mono" href="/processos/{{ r.processo.id }}">{{ r.processo.nup }}</a>{% if pode_lote %}</label>{% endif %}</td>
   {% set quem = identificar(r.processo) %}
   <td class="nome" data-coluna="Servidor">
     {% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
@@ -31,12 +33,12 @@
   </td>
   <td data-coluna="Unidade"><span class="recorte" title="{{ r.processo.unidade.nome_extenso if r.processo.unidade else '' }}">
       {{- r.processo.unidade.nome_extenso if r.processo.unidade else '—' -}}</span></td>
-  <td data-coluna="Estado">{{ ui.pilula_estado(r.processo.estado_tecnico) }}</td>
-  <td data-coluna="Dias · responsável">{{ ui.selo_dias(r) }}
+  <td class="curta" data-coluna="Estado">{{ ui.pilula_estado(r.processo.estado_tecnico) }}</td>
+  <td class="curta" data-coluna="Dias · responsável">{{ ui.selo_dias(r) }}
     {%- if r.processo.responsavel %}
     <span class="recorte discreto" title="Responsável: {{ r.processo.responsavel.nome }}">{{ r.processo.responsavel.nome }}</span>
     {%- endif %}</td>
-  <td class="mono" data-coluna="Prazo">{{ r.processo.prazo|data or '—' }}</td>
+  <td class="mono curta" data-coluna="Prazo">{{ r.processo.prazo|data or '—' }}</td>
 </tr>
 {% endmacro %}
 
@@ -49,11 +51,8 @@
 {% macro cabecalho_tabela(com_marcar_todos) %}
 <thead>
   <tr>
-    {% if pode_lote %}
-    <th scope="col">{% if com_marcar_todos %}<input type="checkbox" id="marcar-todos" data-marca-grupo="processos" title="marcar todos"
-          aria-label="Marcar todos os processos da página">{% endif %}</th>
-    {% endif %}
-    <th scope="col">NUP</th><th scope="col">Servidor</th><th scope="col">Unidade</th><th scope="col">Estado</th>
+    <th scope="col">{% if pode_lote and com_marcar_todos %}<label class="marca-linha"><input type="checkbox" id="marcar-todos" data-marca-grupo="processos" title="marcar todos"
+          aria-label="Marcar todos os processos da página">NUP</label>{% else %}NUP{% endif %}</th><th scope="col">Servidor</th><th scope="col">Unidade</th><th scope="col">Estado</th>
     <th scope="col">Dias · responsável</th><th scope="col">Prazo</th>
   </tr>
 </thead>
@@ -71,7 +70,7 @@
         {%- else %}{{ total }} processo(s) no filtro atual.{% endif %}</p>
     </div>
     <div class="ao-lado">
-      <div class="alternador">
+      <div class="alternador" role="group" aria-label="Ver a lista como">
         <a href="/kanban?{{ filtro.como_query_string() }}">Quadro</a>
         <span class="ativo" aria-current="page">Tabela</span>
       </div>
@@ -85,7 +84,9 @@
      nenhuma: "Precisam de você hoje", "Sem percentual", "Campus avançados" são
      recortes do trabalho do setor. #}
   {% if visoes|length %}
-  <div class="fileira">
+  {# `rola`: no celular as fichas viram uma faixa que rola de lado, e não seis
+     linhas empurrando a lista para baixo (P18). #}
+  <div class="fileira rola">
     <span class="rotulo-grupo">Visões</span>
     {% for nome, qs in visoes %}
     <a class="ficha-filtro {{ 'ativa' if qs == '?' ~ filtro.como_query_string() }}"
@@ -233,12 +234,12 @@
              'Nenhum processo casa com “' ~ filtro.q ~ '”.',
              'A busca olha NUP, SIAPE, observações, link do SEI e número de laudo — e o
               nome do servidor só de quem você pode identificar (RN-19). Nome de
-              quem está suprimido não acha por aqui; o SIAPE acha sempre.', 6 + (1 if pode_lote else 0)) }}
+              quem está suprimido não acha por aqui; o SIAPE acha sempre.', 6) }}
         {% else %}
         {{ ui.vazio_de_lista(
              'Nenhum processo neste filtro.',
              'Os filtros do cartão acima e a visão escolhida valem os dois ao mesmo
-              tempo. “Limpar” devolve a lista inteira.', 6 + (1 if pode_lote else 0)) }}
+              tempo. “Limpar” devolve a lista inteira.', 6) }}
         {% endif %}
         {% endfor %}
       </table>

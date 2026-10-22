@@ -6,7 +6,9 @@
    Os dois primeiros saem de `app/modulos.py` — "Base compartilhada / Demandas"
    —, e o link de volta para /demandas está lá, guardado pela mesma permissão
    que esta rota exige. #}
-{% block trilha %}<span class="atual" aria-current="page">{{ demanda.assunto }}</span>{% endblock %}
+{# `title`: no celular o último item da trilha corta com reticências; o assunto
+   inteiro fica no `title` (e o h1 o repete). #}
+{% block trilha %}<span class="atual" aria-current="page" title="{{ demanda.assunto }}">{{ demanda.assunto }}</span>{% endblock %}
 
 {% set ENCAMINHAR = 'Encaminhar' %}
 {% set ENCERRAR = 'Encerrar demanda' %}
@@ -249,7 +251,7 @@
   <div class="linha-campos">
     <div class="campo">
       <label for="nup">NUP do processo (só em “virou processo SEI”)</label>
-      <input id="nup" name="nup" class="mono" inputmode="numeric" data-nup
+      <input id="nup" name="nup" class="mono" inputmode="numeric" autocomplete="off" data-nup
              value="{{ de['nup'] or '' }}" placeholder="23086.000000/0000-00"
              aria-describedby="dica-nup"></div>
     <div class="campo">

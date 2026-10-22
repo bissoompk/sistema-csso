@@ -627,9 +627,9 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
       <input id="set-nome" name="nome_extenso" required value="{{ dn['nome_extenso'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="set-email">E-mail</label>
-        <input id="set-email" name="email" value="{{ dn['email'] or '' }}"></div>
+        <input id="set-email" name="email" type="email" autocomplete="email" value="{{ dn['email'] or '' }}"></div>
       <div class="campo"><label for="set-tel">Telefone</label>
-        <input id="set-tel" name="telefone" value="{{ dn['telefone'] or '' }}"></div>
+        <input id="set-tel" name="telefone" type="tel" autocomplete="tel" value="{{ dn['telefone'] or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="set-end">Endereço</label>
@@ -980,9 +980,9 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
       <input id="ed-setor-emissor-{{ st.id }}-nome" name="nome_extenso" required value="{{ v.nome_extenso or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-email">E-mail</label>
-        <input id="ed-setor-emissor-{{ st.id }}-email" name="email" value="{{ v.email or '' }}"></div>
+        <input id="ed-setor-emissor-{{ st.id }}-email" name="email" type="email" autocomplete="email" value="{{ v.email or '' }}"></div>
       <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-tel">Telefone</label>
-        <input id="ed-setor-emissor-{{ st.id }}-tel" name="telefone" value="{{ v.telefone or '' }}"></div>
+        <input id="ed-setor-emissor-{{ st.id }}-tel" name="telefone" type="tel" autocomplete="tel" value="{{ v.telefone or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-end">Endereço</label>

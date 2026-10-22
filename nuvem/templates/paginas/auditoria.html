@@ -110,7 +110,12 @@
   </form>
 
   <div class="tabela-cartao lista">
-    <table>
+    {# `empilhavel`: no celular cada evento vira um cartão, com o rótulo da
+       coluna escrito em cada valor. O título do cartão é a conta que agiu, e a
+       célula dela fica `<td>` puro: é a forma que a varredura da RN-19
+       (`privacidade_varredura.test.ts`) aceita como nome de CONTA, e não de
+       titular. #}
+    <table class="empilhavel">
       <thead>
         {# Cinco colunas, e não sete (M68): entidade sob o evento e o campo junto
            do "antes → depois". Com sete, a Descrição — a informação principal —
@@ -120,11 +125,11 @@
       </thead>
       {% for e in eventos %}
       <tr>
-        <td class="mono discreto">{{ e.ocorrido_em|momento }}</td>
+        <td class="mono discreto curta" data-coluna="Quando">{{ e.ocorrido_em|momento }}</td>
         <td>{{ e.usuario_nome }}</td>
-        <td><span class="nome">{{ e.tipo_evento|evento }}</span>
+        <td data-coluna="Evento"><span class="nome">{{ e.tipo_evento|evento }}</span>
           <span class="quebra mono discreto">{{ e.tipo_evento }} · {{ e.entidade }}#{{ e.entidade_id }}</span></td>
-        <td class="mono discreto">
+        <td class="mono discreto" data-coluna="Campo: antes → depois">
           {%- if e.campo %}<span class="quebra">{{ e.campo }}:</span>{{ e.valor_anterior }} → {{ e.valor_novo }}
           {%- else %}—{% endif %}</td>
         {# A trilha inteira, de todas as entidades: nao ha titular a quem
@@ -139,7 +144,7 @@
            `details`, e a coluna nao empurra a tabela para fora da tela em
            1366px (M68). #}
         {%- set descricao = e.descricao_tela %}
-        <td>
+        <td data-coluna="Descrição">
           {%- if descricao|length > 60 %}
           <details class="descricao-trilha">
             <summary>{{ descricao|truncate(48, true, '…') }}</summary>
@@ -197,19 +202,21 @@
         a mais recente primeiro, {{ acessos_por_pagina }} por página</span>
     </div>
     {% if acessos %}
-    <table>
+    {# `empilhavel`, com a conta que leu de título do cartão (`<td>` puro, como
+       na trilha acima). #}
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Quando</th><th scope="col">Usuário</th><th scope="col">Campo</th><th scope="col">Servidor</th><th scope="col">Finalidade</th></tr>
       </thead>
       {% for a in acessos %}
       <tr>
-        <td class="mono discreto">{{ a.ocorrido_em|momento }}</td>
+        <td class="mono discreto curta" data-coluna="Quando">{{ a.ocorrido_em|momento }}</td>
         {# O nome da conta que leu, como na coluna "Usuário" da trilha: "#7"
            obrigava a cruzar com /usuarios para saber quem foi. #}
         <td>{{ a.usuario_nome or ('#' ~ a.usuario_id) }}</td>
-        <td class="mono">{{ a.campo }}</td>
-        <td class="mono">{{ a.servidor_id or '—' }}</td>
-        <td class="discreto">{{ a.finalidade }}</td>
+        <td class="mono curta" data-coluna="Campo">{{ a.campo }}</td>
+        <td class="mono" data-coluna="Servidor">{{ a.servidor_id or '—' }}</td>
+        <td class="discreto" data-coluna="Finalidade">{{ a.finalidade }}</td>
       </tr>
       {% endfor %}
     </table>

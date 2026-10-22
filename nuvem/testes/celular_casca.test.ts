@@ -82,7 +82,7 @@ describe("a folha global no celular", () => {
   });
 
   it("as classes-contrato que as telas aplicam existem (lote 0)", () => {
-    for (const contrato of [".coluna-fixa", ".fileira.rola", ".marca-linha", ".perm-pilula", "td.curta", ".so-celular", "details.cartao.perfil"]) {
+    for (const contrato of [".coluna-fixa", ".fileira.rola", ".marca-linha", ".perm-pilula", "td.curta", ".so-celular", "details.cartao.perfil", "label.alvo-marca"]) {
       const alvo = contrato === "td.curta" ? /\.curta\b/ : new RegExp(contrato.replace(/\./g, "\\."));
       expect(R.some((x) => alvo.test(x.seletor)), contrato).toBe(true);
     }
@@ -121,9 +121,9 @@ describe("a folha global no celular", () => {
   it("fora das classes-contrato, toda regra do bloco CELULAR está numa faixa ou num tipo de ponteiro", () => {
     for (const r of regras(blocoCelular())) {
       if (r.media.length) {
-        expect(r.media.join(" "), r.seletor).toMatch(/max-width:\s*(900|600)px|pointer:\s*coarse|hover:\s*hover/);
+        expect(r.media.join(" "), r.seletor).toMatch(/max-width:\s*(900|600|480)px|pointer:\s*coarse|hover:\s*hover/);
       } else {
-        expect(r.seletor, "regra solta no bloco CELULAR").toMatch(/so-celular|marca-linha|details\.cartao\.perfil/);
+        expect(r.seletor, "regra solta no bloco CELULAR").toMatch(/so-celular|marca-linha|alvo-marca|details\.cartao\.perfil/);
       }
     }
   });

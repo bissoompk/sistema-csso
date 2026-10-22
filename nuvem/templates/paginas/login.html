@@ -27,7 +27,7 @@
          da rota. Sem isto, todo erro de senha cobrava o e-mail institucional
          inteiro de novo. #}
       <input id="login" name="login" value="{{ login or '' }}"
-             autocomplete="username email"
+             autocomplete="username email" autocapitalize="none" autocorrect="off" spellcheck="false"
              inputmode="email" placeholder="nome@ufvjm.edu.br" autofocus required
              aria-describedby="dica-login">
       <span class="dica" id="dica-login">O e-mail institucional é a credencial de

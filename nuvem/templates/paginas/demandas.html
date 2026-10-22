@@ -137,7 +137,7 @@
           {%- if dm.responsavel %}<span class="recorte" title="{{ dm.responsavel.nome }}">
             {{- dm.responsavel.nome -}}</span>
           {%- else %}<span class="discreto">sem dono</span>{% endif %}</td>
-        <td data-coluna="Prazo">
+        <td class="curta" data-coluna="Prazo">
           {% if dm.prazo and dm.atrasada(hoje) %}
           <span class="selo erro" title="{{ dias_entre(dm.prazo, hoje) }} dia(s) de atraso">
             {{ dm.prazo|data }}</span>
@@ -147,7 +147,7 @@
           <span class="discreto">sem prazo</span>
           {% endif %}
         </td>
-        <td data-coluna="Situação">{{ ui.pilula_demanda(dm.estado, rotulo_estado_demanda) }}</td>
+        <td class="curta" data-coluna="Situação">{{ ui.pilula_demanda(dm.estado, rotulo_estado_demanda) }}</td>
       </tr>
       {% else %}
       {{ ui.vazio_de_lista(
