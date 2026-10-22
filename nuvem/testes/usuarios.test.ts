@@ -158,6 +158,46 @@ describe("perfil e habilitação", () => {
     expect(corpo).toContain("Habilitação externa exige justificativa");
   });
 
+  it("a conta do habilitado se edita num popup, e a lista fica só leitura", async () => {
+    await entrar(amb.cliente, "superintendente");
+    const [h] = await amb.db.select().from(e.profissional_habilitado).orderBy(asc(e.profissional_habilitado.id)).limit(1);
+    const corpo = (await amb.cliente.get("/usuarios")).text;
+    // nenhum `<select>` de conta na célula: só o "Editar" que abre o popup
+    expect(corpo).not.toContain('class="filtro-inline"');
+    expect(corpo).not.toContain(`id="hab-conta-${h!.id}"`);
+    expect(corpo).toMatch(new RegExp(`href="#editar-conta-hab-${h!.id}"[^>]*>Editar<`));
+    const popup = corpo.match(new RegExp(`<dialog class="popup" id="editar-conta-hab-${h!.id}"[\\s\\S]*?</dialog>`))![0];
+    expect(popup).toContain(`action="/habilitacoes/${h!.id}/conta"`);
+    expect(popup).toContain('name="usuario_id"');
+    expect(popup).toContain("(engenheiro_seguranca)");
+    expect(abertos(corpo)).toEqual([]);
+    // quem só consulta não ganha o botão nem o popup
+    await entrar(amb.cliente, "admin_ti");
+    const so_le = (await amb.cliente.get("/usuarios")).text;
+    expect(so_le).not.toContain("editar-conta-hab-");
+  });
+
+  it("a recusa da conta do habilitado reabre só o popup daquela linha", async () => {
+    await entrar(amb.cliente, "superintendente");
+    const [h] = await amb.db.select().from(e.profissional_habilitado).orderBy(asc(e.profissional_habilitado.id)).limit(1);
+    const r = await amb.cliente.post(`/habilitacoes/${h!.id}/conta`, { usuario_id: "999999" }, { seguir: false });
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`<dialog class="popup" id="editar-conta-hab-${h!.id}"[^>]* open>`));
+    expect(abertos(r.text)).toEqual([`editar-conta-hab-${h!.id}`]);
+    const popup = r.text.match(new RegExp(`<dialog class="popup" id="editar-conta-hab-${h!.id}"[\\s\\S]*?</dialog>`))![0];
+    expect(popup).toContain("Conta não encontrada.");
+    expect(r.text).not.toContain('form="f-');
+    const [depois] = await amb.db.select().from(e.profissional_habilitado).where(eq(e.profissional_habilitado.id, h!.id));
+    expect(depois!.usuario_id).toBe(h!.usuario_id);
+    // e a conta que existe, escolhida no popup, grava como antes
+    const [conta] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "engenheiro_seguranca"));
+    const ok = await amb.cliente.post(`/habilitacoes/${h!.id}/conta`, { usuario_id: String(conta!.id) }, { seguir: false });
+    expect(ok.status).toBe(303);
+    const tela = (await amb.cliente.get("/usuarios")).text;
+    const popup_ok = tela.match(new RegExp(`<dialog class="popup" id="editar-conta-hab-${h!.id}"[\\s\\S]*?</dialog>`))![0];
+    expect(popup_ok).toContain(`<option value="${conta!.id}" selected>`);
+  });
+
   it("habilitação atestada entra na lista e na trilha", async () => {
     await entrar(amb.cliente, "superintendente");
     const r = await amb.cliente.post(

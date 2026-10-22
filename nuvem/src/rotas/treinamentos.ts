@@ -17,6 +17,8 @@ import {
   confere_regex,
   servidor as tabela_servidor,
   treinamento as tabela_treinamento,
+  turma as tabela_turma,
+  unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
 import {
   AssinaturaInstrutor,
@@ -44,6 +46,7 @@ import { obterArmazenamento } from "../servicos/armazenamento.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as textos from "../servicos/textos.js";
 import * as indicadores from "../servicos/treinamento_indicadores.js";
+import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as hub from "../servicos/hub_treinamentos.js";
 import { LIMIAR_SUPRESSAO, MARCA_SUPRIMIDO, suprimir } from "./relatorios.js";
 import { dicionario } from "../dicionario.js";
@@ -72,6 +75,7 @@ export const CATALOGO = "/treinamentos/catalogo";
 export const MODELOS = "/treinamentos/modelos";
 export const ASSINATURAS = "/treinamentos/assinaturas";
 export const PARTICIPANTES = "/treinamentos/participantes";
+export const SETORES = setor_promotor.TELA;
 
 // NUVEM: o início de vigência de quem foi cadastrado sem data ("desde sempre").
 // `vigencia_inicio` é NOT NULL; uma data bem anterior a qualquer turma basta.
@@ -157,7 +161,17 @@ async function _modelos_ordenados(tx: Executor) {
   return (itens as any[]).map(vista_modelo);
 }
 
-type Recado = { mensagem?: string | null; erro?: string | null; digitado?: Record<string, string> | null };
+/**
+ * O que a tela recebe além dos dados: o recado da faixa, o que foi digitado e,
+ * na recusa de uma EDIÇÃO, de qual registro ela veio (`editando_id`) — é ele
+ * que diz ao template qual popup volta aberto. Nulo é o popup de cadastro.
+ */
+type Recado = {
+  mensagem?: string | null;
+  erro?: string | null;
+  digitado?: Record<string, string> | null;
+  editando_id?: number | null;
+};
 
 // =====================================================================
 // Catálogo de treinamentos
@@ -179,6 +193,7 @@ async function _tela_catalogo(c: Ctx, usuario: UsuarioAtual, d: Recado = {}): Pr
     mensagem: d.mensagem ?? null,
     erro: d.erro ?? null,
     digitado: d.digitado ?? {},
+    editando_id: d.editando_id ?? null,
   });
 }
 
@@ -284,22 +299,37 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
   const tx = c.get("tx");
   const treinamento_id = Number(c.req.param("treinamento_id"));
   const f = await formulario(c);
-  const horas = _horas(f.texto("carga_horaria_horas"));
-  if (horas === null) return _erro(c, CATALOGO, "Carga horária inválida: informe um número maior que zero.");
-  const meses = _inteiro(f.texto("validade_meses"));
-  if (meses === null) return _erro(c, CATALOGO, "Validade inválida: informe meses inteiros, ou 0 para não expira.");
-  const nome_limpo = f.texto("nome").trim();
+  // Tudo o que o popup de edição mandou, para a recusa devolver — antes ela
+  // voltava à lista com a faixa vermelha, e o que fora escrito no popup se perdia.
+  const digitado = {
+    nome: f.texto("nome"),
+    carga_horaria_horas: f.texto("carga_horaria_horas"),
+    validade_meses: f.texto("validade_meses"),
+    norma_referencia: f.texto("norma_referencia"),
+    conteudo_programatico: f.texto("conteudo_programatico"),
+    modelo_vigente_id: f.texto("modelo_vigente_id"),
+    instrutor_padrao_id: f.texto("instrutor_padrao_id"),
+    obrigatorio: f.texto("obrigatorio", ""),
+    ativo: f.texto("ativo", ""),
+  };
+  const recusar = (mensagem: string) =>
+    _tela_catalogo(c, usuario, { erro: mensagem, digitado, editando_id: treinamento_id });
+  const horas = _horas(digitado.carga_horaria_horas);
+  if (horas === null) return recusar("Carga horária inválida: informe um número maior que zero.");
+  const meses = _inteiro(digitado.validade_meses);
+  if (meses === null) return recusar("Validade inválida: informe meses inteiros, ou 0 para não expira.");
+  const nome_limpo = digitado.nome.trim();
   const [homonimo] = await tx
     .select()
     .from(tabela_treinamento)
     .where(and(eq(tabela_treinamento.nome, nome_limpo), ne(tabela_treinamento.id, treinamento_id)));
-  if (homonimo) return _erro(c, CATALOGO, `Já existe outro treinamento chamado '${nome_limpo}'.`);
+  if (homonimo) return recusar(`Já existe outro treinamento chamado '${nome_limpo}'.`);
   const [alvo] = await tx.select().from(tabela_treinamento).where(eq(tabela_treinamento.id, treinamento_id));
   if (!alvo) return redirecionar(c, CATALOGO);
-  const modelo_escolhido = id_opcional(f.texto("modelo_vigente_id"));
-  const instrutor_escolhido = id_opcional(f.texto("instrutor_padrao_id"));
+  const modelo_escolhido = id_opcional(digitado.modelo_vigente_id);
+  const instrutor_escolhido = id_opcional(digitado.instrutor_padrao_id);
   const problema = await _confere_vinculos(tx, alvo, modelo_escolhido, instrutor_escolhido);
-  if (problema) return _erro(c, CATALOGO, problema);
+  if (problema) return recusar(problema);
   return salvar_com_diff(
     c,
     usuario,
@@ -309,15 +339,94 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
       nome: nome_limpo,
       carga_horaria_horas: horas,
       validade_meses: meses,
-      norma_referencia: texto_ou_nulo(f.texto("norma_referencia")),
-      conteudo_programatico: texto_ou_nulo(f.texto("conteudo_programatico")),
+      norma_referencia: texto_ou_nulo(digitado.norma_referencia),
+      conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
       modelo_vigente_id: modelo_escolhido,
       instrutor_padrao_id: instrutor_escolhido,
-      obrigatorio: marcado(f.texto("obrigatorio")),
-      ativo: marcado(f.texto("ativo")),
+      obrigatorio: marcado(digitado.obrigatorio),
+      ativo: marcado(digitado.ativo),
     },
     { permissao: "treinamento.gerenciar", rotulo: "Treinamento", volta: CATALOGO },
   );
+});
+
+// =====================================================================
+// NUVEM: setores promotores — as unidades que o seletor "Unidade promotora"
+// da turma oferece (`servicos/setor_promotor.ts`)
+// =====================================================================
+async function _tela_setores(c: Ctx, usuario: UsuarioAtual, d: Recado = {}): Promise<Response> {
+  const tx = c.get("tx");
+  const gerencia = usuario.pode(setor_promotor.PERMISSAO);
+  const [promotores, turmas_por_unidade, candidatas] = await Promise.all([
+    tx.query.unidade_uorg.findMany({
+      where: eq(tabela_unidade.promove_treinamento, true),
+      with: { campus: true },
+      orderBy: [asc(tabela_unidade.nome_extenso)],
+    }),
+    tx
+      .select({ id: tabela_turma.unidade_promotora_id, n: count() })
+      .from(tabela_turma)
+      .groupBy(tabela_turma.unidade_promotora_id),
+    // só quem inclui precisa da lista inteira da UFVJM
+    gerencia
+      ? tx
+          .select()
+          .from(tabela_unidade)
+          .where(and(eq(tabela_unidade.promove_treinamento, false), eq(tabela_unidade.ativo, true)))
+          .orderBy(asc(tabela_unidade.nome_extenso))
+      : Promise.resolve([]),
+  ]);
+  const turmas = new Map(turmas_por_unidade.map((l) => [l.id, Number(l.n)]));
+  // a unidade que promoveu turma e saiu da lista: os filtros ainda a mostram
+  const fora = turmas_por_unidade.filter((l) => l.id !== null && !promotores.some((u) => u.id === l.id)).length;
+  return pagina(c, "paginas/setores_promotores.html", usuario, {
+    promotores: promotores.map((u) => ({ ...u, turmas: turmas.get(u.id) ?? 0 })),
+    candidatas,
+    gerencia,
+    fora_da_lista_com_turma: fora,
+    mensagem: d.mensagem ?? null,
+    erro: d.erro ?? null,
+  });
+}
+
+rotas.get(SETORES, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.ver");
+  return _tela_setores(c, usuario, recados(c));
+});
+
+/** Inclui a unidade na lista (`unidade_id`) — diff na trilha, como os catálogos. */
+rotas.post(SETORES, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir(setor_promotor.PERMISSAO);
+  const f = await formulario(c);
+  const unidade_id = id_opcional(f.texto("unidade_id"));
+  if (unidade_id === null) return _erro(c, SETORES, "Escolha a unidade que passa a promover treinamentos.");
+  try {
+    const u = await setor_promotor.marcar(c.get("tx"), usuario, unidade_id, true);
+    return _volta(c, SETORES, `${u.nome_extenso} passa a aparecer no seletor “Unidade promotora” das turmas.`);
+  } catch (e) {
+    if (e instanceof setor_promotor.SetorPromotorRecusado) return _erro(c, SETORES, e.message);
+    throw e;
+  }
+});
+
+/** Retira da lista. A turma que já aponta para a unidade fica com ela. */
+rotas.post(`${SETORES}/:unidade_id{[0-9]+}/retirar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir(setor_promotor.PERMISSAO);
+  try {
+    const u = await setor_promotor.marcar(c.get("tx"), usuario, Number(c.req.param("unidade_id")), false);
+    return _volta(
+      c,
+      SETORES,
+      `${u.nome_extenso} saiu da lista: não aparece mais em turma nova. ` +
+        "As turmas que já a têm continuam com ela, e os certificados emitidos não mudam.",
+    );
+  } catch (e) {
+    if (e instanceof setor_promotor.SetorPromotorRecusado) return _erro(c, SETORES, e.message);
+    throw e;
+  }
 });
 
 /** O treinamento cadastrado por engano, que nunca teve turma (`exclusao_cadastro.ts`). */
@@ -487,11 +596,14 @@ rotas.post(MODELOS, async (c) => {
   );
 });
 
-rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
-  const usuario = await usuarioLogado(c);
-  usuario.exigir("treinamento.gerenciar");
+/**
+ * A ficha do modelo. Recebe recado porque a edição de uma linha do mapa de
+ * marcadores, recusada, volta a ela com o popup daquela linha aberto e o que
+ * foi digitado (`editando_id` é o id da tag).
+ */
+async function _tela_modelo(c: Ctx, usuario: UsuarioAtual, modelo_id: number, d: Recado = {}): Promise<Response> {
   const tx = c.get("tx");
-  const modelo = await _modelo(tx, Number(c.req.param("modelo_id")));
+  const modelo = await _modelo(tx, modelo_id);
   if (!modelo) return redirecionar(c, MODELOS);
   vista_modelo(modelo);
   const conferencia = certificado.conferir_modelo(modelo, CertificadoModelo.marcadores_mapeados(modelo));
@@ -518,8 +630,17 @@ rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
       .where(eq(tabela_treinamento.modelo_vigente_id, modelo.id))
       .orderBy(asc(tabela_treinamento.nome)),
     orientacoes: ORIENTACOES,
-    ...recados(c),
+    mensagem: d.mensagem ?? null,
+    erro: d.erro ?? null,
+    digitado: d.digitado ?? {},
+    editando_id: d.editando_id ?? null,
   });
+}
+
+rotas.get(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  return _tela_modelo(c, usuario, Number(c.req.param("modelo_id")), recados(c));
 });
 
 rotas.post(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
@@ -949,7 +1070,18 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/:tag_id{[0-9]+}`, async (c) => {
   }
   // formulário antigo (sem `tipo`) continua sendo campo do sistema
   const [dados, recusa] = _tag_digitada(f, tag.tipo);
-  if (!dados) return _erro(c, volta, recusa);
+  if (!dados) {
+    // A recusa reabre o popup DESTA linha com o que foi digitado, em vez de
+    // voltar à ficha com a faixa vermelha e o popup fechado.
+    const digitado = {
+      tipo: f.texto("tipo"),
+      campo: f.texto("campo"),
+      detalhe: f.texto("detalhe"),
+      ordem: f.texto("ordem"),
+      obrigatorio: f.texto("obrigatorio", ""),
+    };
+    return _tela_modelo(c, usuario, modelo_id, { erro: recusa, digitado, editando_id: tag_id });
+  }
   return salvar_com_diff(
     c,
     usuario,
@@ -985,9 +1117,12 @@ async function _tela_assinaturas(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) 
     vinculos: VINCULOS_INSTRUTOR,
     em_uso,
     hoje: datas_br.hoje(),
+    // o início gravado quando o campo veio em branco: a tela o escreve "desde sempre"
+    desde_sempre: VIGENCIA_DESDE_SEMPRE,
     mensagem: d.mensagem ?? null,
     erro: d.erro ?? null,
     digitado: d.digitado ?? {},
+    editando_id: d.editando_id ?? null,
   });
 }
 
@@ -1099,8 +1234,13 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("assinatura.gerenciar");
   const tx = c.get("tx");
+  const assinatura_id = Number(c.req.param("assinatura_id"));
   const f = await formulario(c);
-  const digitado = _campos_do_formulario(f);
+  // A recusa reabre o popup DESTE instrutor com o que foi digitado — menos o
+  // CPF, que não volta à tela nem na recusa (`cpf_certificado.ts`, RN-19).
+  const digitado = { ..._campos_do_formulario(f), ativo: f.texto("ativo", ""), apagar_cpf: f.texto("apagar_cpf", "") };
+  const recusar = (mensagem: string) =>
+    _tela_assinaturas(c, usuario, { erro: mensagem, digitado, editando_id: assinatura_id });
   const e_externo = marcado(digitado.externo);
   const [campos, problema] = await _dados_da_assinatura(tx, {
     externo: e_externo,
@@ -1109,30 +1249,30 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
     vigencia_inicio: digitado.vigencia_inicio,
     vigencia_fim: digitado.vigencia_fim,
   });
-  if (campos === null) return _erro(c, ASSINATURAS, problema);
+  if (campos === null) return recusar(problema);
   // O CPF fica FORA do `salvar_com_diff`: o diff grava antes → depois na
   // trilha, e do CPF a trilha guarda só o fato (`cpf_certificado.ts`).
   try {
-    const cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO), marcado(f.texto("apagar_cpf")));
+    const cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO), marcado(digitado.apagar_cpf));
     if (cpf !== undefined) {
-      await cpf_certificado.definir_do_instrutor(tx, usuario, Number(c.req.param("assinatura_id")), cpf);
+      await cpf_certificado.definir_do_instrutor(tx, usuario, assinatura_id, cpf);
     }
   } catch (erro) {
-    if (erro instanceof cpf_certificado.CpfInvalido) return _erro(c, ASSINATURAS, erro.message);
+    if (erro instanceof cpf_certificado.CpfInvalido) return recusar(erro.message);
     throw erro;
   }
   return salvar_com_diff(
     c,
     usuario,
     tabela_assinatura,
-    Number(c.req.param("assinatura_id")),
+    assinatura_id,
     {
       ...campos,
       titulo: texto_ou_nulo(digitado.titulo),
       conselho: (texto_ou_nulo(digitado.conselho) ?? "").toUpperCase() || null,
       registro_conselho: texto_ou_nulo(digitado.registro_conselho),
       organizacao: texto_ou_nulo(digitado.organizacao),
-      ativo: marcado(f.texto("ativo")),
+      ativo: marcado(digitado.ativo),
     },
     { permissao: "assinatura.gerenciar", rotulo: "Instrutor", volta: ASSINATURAS },
   );

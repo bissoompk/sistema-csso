@@ -211,7 +211,7 @@ describe("a tela de bolso (M53, D59)", () => {
     const casca = texto.slice(inicio, texto.indexOf("];", inicio));
     expect(casca).not.toContain("'/celular'");
     // a versão subiu: a ativação apaga o cache que ainda tinha a página
-    expect(texto).toContain("var VERSAO = 'csso-celular-v3'");
+    expect(texto).toContain("var VERSAO = 'csso-celular-v4'");
     expect(texto).toContain("caches.delete(n)");
     // a página sem rede é fixa: nem nome nem script nem estilo embutido
     const pagina = texto.slice(texto.indexOf("var SEM_REDE"), texto.indexOf("';\n", texto.indexOf("var SEM_REDE")));

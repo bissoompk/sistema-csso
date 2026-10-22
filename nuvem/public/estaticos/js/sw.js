@@ -25,15 +25,17 @@
    abertura seguinte; o cache só fala quando a rede não fala. O nome do cache
    carrega a versão para o cache velho ser apagado na ativação — e a v3 existe
    para isso: a ativação apaga o `csso-celular-v2`, que é o que ainda guardava a
-   página com o nome.
+   página com o nome. A v4 entra com a identidade da Sisa: o tema novo e o
+   símbolo do cabeçalho (`marca-sisa.png`) na casca, e a ativação apaga a v3.
    ===================================================================== */
-var VERSAO = 'csso-celular-v3';
+var VERSAO = 'csso-celular-v4';
 var CASCA = [
   '/estaticos/css/csso.css',
   '/estaticos/css/tema.css',
   '/estaticos/css/celular.css',
   '/estaticos/fontes/inter-latin.woff2',
   '/estaticos/img/icones.svg',
+  '/estaticos/img/marca-sisa.png',
   '/estaticos/js/csso.js',
   '/estaticos/js/celular.js'
 ];

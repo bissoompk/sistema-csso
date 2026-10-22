@@ -12,6 +12,14 @@
 {% set MAPEAR = 'Mapear marcador' %}
 {% set EDITAR_MODELO = 'Editar o modelo' %}
 
+{# O que foi digitado no popup de uma linha do mapa, devolvido pela rota quando
+   a gravação é recusada, e de QUAL linha veio (`editando_id`, o id da tag).
+   `digitado`, e não `d`, no teste: `{}` é verdadeiro no JavaScript. #}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and digitado) else false %}
+{% set erro_popup = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
 {% block acoes_cabecalho %}
 {% if modelo.vigente %}
 {# Publicar uma versão clona o dicionário inteiro e aposenta esta: o botão do
@@ -94,57 +102,36 @@
       </div>
     </div>
 
-    <table class="mapa-tags">
+    {# Uma linha de LEITURA por marcador, vigente ou não: quem corrige usa o
+       "Editar" da linha, que abre o popup (o mesmo padrão dos catálogos). O
+       "remover" fica na linha: é um clique, e a rota remove antes de validar.
+       `empilhavel`: a 390px a linha vira cartão, e o "Editar" não fica fora da tela. #}
+    <table class="mapa-tags empilhavel">
       <thead>
         <tr><th scope="col">Marcador</th><th scope="col">Preenchimento</th><th scope="col">De onde vem o valor</th>
             <th scope="col">Ordem</th><th scope="col">Vazio bloqueia</th>
-            {% if modelo.vigente %}<th scope="col"></th><th scope="col"></th>{% endif %}</tr>
+            {% if modelo.vigente %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}</tr>
       </thead>
       {% for tag in modelo.tags %}
-      {% set fid = 'f-tag-' ~ tag.id %}
+      {% set tipo = tag.tipo or 'SISTEMA' %}
       <tr>
-        <td>
-          <span class="marcador-docx">{{ '{{' }} {{ tag.marcador }} {{ '}}' }}</span>
-          {% if modelo.vigente %}
-          <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/{{ tag.id }}" id="{{ fid }}"></form>
-          {% endif %}</td>
-        {% set tipo = tag.tipo or 'SISTEMA' %}
+        <td><span class="marcador-docx">{{ '{{' }} {{ tag.marcador }} {{ '}}' }}</span></td>
+        <td data-coluna="Preenchimento">{{ rotulo_tipo_tag[tipo] }}</td>
+        <td data-coluna="De onde vem o valor"><span class="para"><span class="seta" aria-hidden="true">→</span>
+          <span class="campo-fixo">{% if tipo == 'SISTEMA' %}{{ campos[tag.campo].rotulo if tag.campo in campos else tag.campo }}
+            {%- else %}{{ tag.texto_fixo or tag.rotulo or '—' }}{% endif %}</span></span></td>
+        <td class="mono" data-coluna="Ordem">{{ tag.ordem }}</td>
+        <td data-coluna="Vazio bloqueia">{{ ui.pilula_sim_nao(tag.obrigatorio, 'bloqueia', 'não bloqueia') }}</td>
         {% if modelo.vigente %}
-        <td><select form="{{ fid }}" name="tipo" aria-label="Preenchimento de {{ tag.marcador }}">
-            {% for codigo, rotulo in tipos_tag %}
-            <option value="{{ codigo }}" {% if tipo == codigo %}selected{% endif %}>{{ rotulo }}</option>
-            {% endfor %}
-          </select></td>
-        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
-          <select form="{{ fid }}" name="campo" aria-label="Dado que vai em {{ tag.marcador }}">
-            {% for grupo, lista in campos_por_grupo %}
-            <optgroup label="{{ grupo }}">
-              {% for codigo, campo in lista %}
-              <option value="{{ codigo }}" {% if tipo == 'SISTEMA' and tag.campo == codigo %}selected{% endif %}>{{ campo.rotulo }}</option>
-              {% endfor %}
-            </optgroup>
-            {% endfor %}
-          </select></span>
-          {# uma caixa só: o texto, no texto fixo; o nome do campo, na turma/participante #}
-          <input form="{{ fid }}" name="detalhe" value="{{ tag.texto_fixo or tag.rotulo or '' }}"
-                 placeholder="texto fixo, ou nome do campo da turma/participante"
-                 aria-label="Texto fixo ou nome do campo de {{ tag.marcador }}"></td>
-        <td><input class="campo-curto" form="{{ fid }}" name="ordem" value="{{ tag.ordem }}"
-                   aria-label="Ordem de {{ tag.marcador }}"></td>
-        <td><label class="discreto"><input form="{{ fid }}" type="checkbox" name="obrigatorio" value="1"
-            {% if tag.obrigatorio %}checked{% endif %}> bloqueia</label></td>
-        <td><button form="{{ fid }}" type="submit" class="secundario marcador">salvar</button></td>
-        <td><button form="{{ fid }}" type="submit" name="remover" value="1"
-                    class="perigo marcador">remover</button></td>
-        {% else %}
-        <td><span class="para"><span class="seta" aria-hidden="true">→</span>
-          <span class="campo-fixo">{{ campos[tag.campo].rotulo if tag.campo in campos else tag.campo }}</span></span></td>
-        <td class="mono">{{ tag.ordem }}</td>
-        <td>{{ ui.pilula_sim_nao(tag.obrigatorio, 'bloqueia', 'não bloqueia') }}</td>
+        <td class="acao-linha">{{ ui.botao_cadastro('editar-tag-' ~ tag.id, 'Editar', 'secundario compacto') }}
+          <form method="post" action="/treinamentos/modelos/{{ modelo.id }}/tags/{{ tag.id }}" class="em-linha">
+            <input type="hidden" name="remover" value="1">
+            <button type="submit" class="perigo marcador">remover</button>
+          </form></td>
         {% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="{{ 6 if modelo.vigente else 4 }}" class="nada">
+      <tr><td colspan="{{ 6 if modelo.vigente else 5 }}" class="nada">
         Nenhum marcador ligado a um dado.</td></tr>
       {% endfor %}
     </table>
@@ -335,6 +322,56 @@
     <label class="discreto"><input type="checkbox" name="obrigatorio" value="1" checked>
       vazio neste campo bloqueia a emissão</label></div>
 {% endcall %}
+
+{# A edição de cada linha do mapa (só existe quando o arquivo sumiu: com o
+   arquivo, o mapa se edita de uma vez no formulário `f-mapa`). Na recusa, só o
+   popup DESTA linha volta aberto, com o digitado e a mensagem. #}
+{% for tag in modelo.tags %}
+{% set deste = recusado and editando_id == tag.id %}
+{# com o arquivo presente a linha não tem "Editar"; o popup só se desenha se a
+   recusa veio dele — senão a mensagem sumiria sem popup nem faixa #}
+{% if not conferencia.arquivo_encontrado or deste %}
+{% set p = 'ed-tag-' ~ tag.id %}
+{% set v = d if deste else {'tipo': tag.tipo or 'SISTEMA', 'campo': tag.campo,
+            'detalhe': tag.texto_fixo or tag.rotulo or '', 'ordem': tag.ordem,
+            'obrigatorio': '1' if tag.obrigatorio else ''} %}
+{% call ui.popup_cadastro('editar-tag-' ~ tag.id, 'Editar · {{ ' ~ tag.marcador ~ ' }}',
+                          '/treinamentos/modelos/' ~ modelo.id ~ '/tags/' ~ tag.id, 'Salvar',
+                          aberto=deste, erro=(erro_popup if deste else none),
+                          nota='o certificado emitido guarda o mapa do dia') %}
+  <div class="linha-campos">
+    <div class="campo{{ ' com-erro' if deste }}"><label for="{{ p }}-tipo">Preenchimento</label>
+      <select id="{{ p }}-tipo" name="tipo"{{ ' autofocus' if deste }}>
+        {% for codigo, rotulo in tipos_tag %}
+        <option value="{{ codigo }}"{{ ui.sel(v.tipo, codigo) }}>{{ rotulo }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo"><label for="{{ p }}-ordem">Ordem</label>
+      <input id="{{ p }}-ordem" name="ordem" value="{{ v.ordem }}" inputmode="numeric"></div>
+  </div>
+  <div class="campo"><label for="{{ p }}-campo">Campo do sistema</label>
+    <select id="{{ p }}-campo" name="campo" aria-describedby="{{ p }}-dica-campo">
+      {% for grupo, lista in campos_por_grupo %}
+      <optgroup label="{{ grupo }}">
+        {% for codigo, campo in lista %}
+        <option value="{{ codigo }}"{{ ui.sel(v.campo, codigo) if (deste or v.tipo == 'SISTEMA') }}>{{ campo.rotulo }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+    <span class="dica" id="{{ p }}-dica-campo">Usado só quando o preenchimento é “campo do sistema”.</span></div>
+  {# uma caixa só: o texto, no texto fixo; o nome do campo, na turma/participante #}
+  <div class="campo"><label for="{{ p }}-detalhe">Texto fixo, ou nome do campo</label>
+    <input id="{{ p }}-detalhe" name="detalhe" value="{{ v.detalhe or '' }}"
+           placeholder="texto fixo, ou nome do campo da turma/participante" aria-describedby="{{ p }}-dica-detalhe">
+    <span class="dica" id="{{ p }}-dica-detalhe">Para “texto fixo”, o texto que sai igual em todo
+      certificado; para “campo da turma” ou “do participante”, o nome do campo.</span></div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="obrigatorio" value="1"
+      {{- ' checked' if v.obrigatorio == '1' }}> vazio neste campo bloqueia a emissão</label></div>
+{% endcall %}
+{% endif %}
+{% endfor %}
 
 {% call ui.popup_cadastro('editar-modelo', EDITAR_MODELO,
                           '/treinamentos/modelos/' ~ modelo.id, 'Salvar modelo',

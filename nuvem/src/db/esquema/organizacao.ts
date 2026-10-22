@@ -49,6 +49,10 @@ export const unidade_uorg = pgTable(
       .references(() => campus.id),
     emite_portaria: boolean('emite_portaria').notNull().default(false),
     ativo: boolean('ativo').notNull().default(true),
+    // NUVEM: pode ser a unidade promotora de uma turma ("promovido por …" no
+    // certificado). Quem decide é o setor, em /treinamentos/setores-promotores;
+    // a migração 0011 e a semente marcam os setores da Sisa uma vez só
+    promove_treinamento: boolean('promove_treinamento').notNull().default(false),
   },
   () => [
     check(

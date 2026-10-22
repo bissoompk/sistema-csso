@@ -8,13 +8,14 @@
    em `partes/macros.html`. #}
 {% set CADASTRAR = 'Cadastrar motivo de recusa' %}
 
-{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
-   abertura da tela — e é a presença dele que reabre o popup. #}
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada, e de
+   QUAL popup veio (`editando_id`: vazio é o cadastro). Vazio na abertura da
+   tela — e é a presença dele que reabre o popup. #}
 {% set d = digitado or {} %}
 {#- `digitado`, e não `d`: no JavaScript `{}` é verdadeiro, e a tela reabriria o
-   popup em toda recusa de edição em linha. -#}
+   popup em toda recusa que não traz o digitado. -#}
 {% set recusado = true if (erro and digitado) else false %}
-{% set erro_cadastro = erro if recusado else none %}
+{% set erro_popup = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
 
 {% block acoes_cabecalho %}
@@ -70,38 +71,33 @@
     {% endcall %}
   </div>
 
+  {# A lista é só leitura para todos, como no catálogo de itens: o texto da
+     negativa vai inteiro, porque é ele que se vem conferir; editar abre o motivo
+     num popup. #}
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr>
         <th scope="col">Código</th><th scope="col">Rótulo</th><th scope="col">Texto da negativa</th>
         <th scope="col">Base normativa</th><th scope="col">Complemento</th><th scope="col">Situação</th>
-        {% if editavel %}<th scope="col"></th>{% endif %}
+        {% if editavel %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}
       </tr>
     </thead>
+    <tbody>
     {% for m in itens %}
-    {% set id = 'f-motivo-' ~ m.id %}
     <tr>
-      <td class="mono">{{ m.codigo }}
-        {% if editavel %}<form method="post" action="/epis/catalogo/motivos-recusa/{{ m.id }}" id="{{ id }}"></form>{% endif %}</td>
+      {# `<wbr>` depois de cada sublinhado: sem os campos de edição a linha cabe em
+         1366px, mas COMPETENCIA_DE_ENSINO inteiro empurrava o "Editar" para fora
+         do cartão. Peça a peça, e não `|replace|safe`, para o código continuar
+         escapado. #}
+      <td class="mono">{% for parte in m.codigo.split('_') %}{{ parte }}{% if not loop.last %}_<wbr>{% endif %}{% endfor %}</td>
+      <td data-coluna="Rótulo" class="nome">{{ m.rotulo }}</td>
+      <td data-coluna="Texto da negativa"><span class="texto-literal">{{ m.texto }}</span></td>
+      <td data-coluna="Base normativa">{{ m.base_normativa or '—' }}</td>
+      <td data-coluna="Complemento">{{ ui.pilula_sim_nao(m.exige_complemento, 'exige', 'dispensa') }}</td>
+      <td data-coluna="Situação">{{ ui.pilula_sim_nao(m.ativo, 'ativo', 'inativo') }}</td>
       {% if editavel %}
-      <td><input form="{{ id }}" name="rotulo" value="{{ m.rotulo }}" required
-                 aria-label="Rótulo do motivo {{ m.codigo }}"></td>
-      <td><textarea form="{{ id }}" name="texto" rows="4" required
-                    aria-label="Texto da negativa do motivo {{ m.codigo }}">{{ m.texto }}</textarea></td>
-      <td><input form="{{ id }}" name="base_normativa" value="{{ m.base_normativa or '' }}"
-                 aria-label="Base normativa do motivo {{ m.codigo }}"></td>
-      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="exige_complemento" value="1"
-            {% if m.exige_complemento %}checked{% endif %}> exige</label></td>
-      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-            {% if m.ativo %}checked{% endif %}> ativo</label></td>
-      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button></td>
-      {% else %}
-      <td class="nome">{{ m.rotulo }}</td>
-      <td><span class="texto-literal">{{ m.texto }}</span></td>
-      <td>{{ m.base_normativa or '—' }}</td>
-      <td>{{ ui.pilula_sim_nao(m.exige_complemento, 'exige', 'dispensa') }}</td>
-      <td>{{ ui.pilula_sim_nao(m.ativo, 'ativo', 'inativo') }}</td>
+      <td class="acao-linha">{{ ui.botao_cadastro('editar-motivo-' ~ m.id, 'Editar', 'secundario compacto') }}</td>
       {% endif %}
     </tr>
     {% else %}
@@ -115,44 +111,81 @@
              administra o catálogo de EPI.'),
          7 if editavel else 6) }}
     {% endfor %}
+    </tbody>
   </table>
   </div>
 
 </div>
 
 {% if editavel %}
-{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. A edição em linha da
-   tabela acima continua em linha — lá o formulário aberto É o registro, e é o
-   texto da negativa que se veio conferir. #}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. O cadastro só volta
+   aberto quando a recusa foi DELE (`editando_id` vazio). #}
+{% set rn = recusado and not editando_id %}
+{% set dn = d if rn else {} %}
 {% call ui.popup_cadastro('novo-motivo', CADASTRAR,
                           '/epis/catalogo/motivos-recusa', CADASTRAR,
-                          aberto=recusado, erro=erro_cadastro,
+                          aberto=rn, erro=(erro_popup if rn else none),
                           nota='o código não é editável depois') %}
   <div class="linha-campos">
     {# O código é o campo que esta rota recusa — formato inválido e duplicata —,
        e é nele que o foco cai na reabertura. #}
-    <div class="campo codigo {{ 'com-erro' if recusado }}">
+    <div class="campo codigo {{ 'com-erro' if rn }}">
       <label for="novo-codigo">Código</label>
       <input id="novo-codigo" name="codigo" required placeholder="SEM_EXPOSICAO"
-             value="{{ d.codigo or '' }}"
-             aria-describedby="dica-codigo"{{ ' autofocus' if recusado }}>
+             value="{{ dn.codigo or '' }}"
+             aria-describedby="dica-codigo"{{ ' autofocus' if rn }}>
       <span class="dica" id="dica-codigo">Maiúsculas, números e sublinhado.</span></div>
     <div class="campo"><label for="novo-rotulo">Rótulo</label>
       <input id="novo-rotulo" name="rotulo" required placeholder="Sem exposição ao risco"
-             value="{{ d.rotulo or '' }}"></div>
+             value="{{ dn.rotulo or '' }}"></div>
     <div class="campo"><label for="nova-base">Base normativa</label>
       <input id="nova-base" name="base_normativa" placeholder="NR-6"
-             value="{{ d.base_normativa or '' }}"></div>
+             value="{{ dn.base_normativa or '' }}"></div>
   </div>
   <div class="campo"><label for="novo-texto">Texto da negativa</label>
     <textarea id="novo-texto" name="texto" rows="4" required
-              aria-describedby="dica-texto">{{ d.texto or '' }}</textarea>
+              aria-describedby="dica-texto">{{ dn.texto or '' }}</textarea>
     <span class="dica" id="dica-texto">Sai literal para quem pediu. Uma negativa que
       encaminha vale mais que um “não”: diga o que a pessoa deve fazer.</span></div>
   <div class="campo">
     <label class="discreto"><input type="checkbox" name="exige_complemento" value="1"
-      {{- ' checked' if d.exige_complemento == '1' }}>
+      {{- ' checked' if dn.exige_complemento == '1' }}>
       exige complemento escrito na hora da recusa</label></div>
 {% endcall %}
+
+{# A edição de cada motivo: os mesmos campos do cadastro, menos o código, que
+   não se edita. Recusada a gravação, só o popup deste motivo volta aberto, com
+   o que foi digitado. #}
+{% for m in itens %}
+{% set deste = recusado and editando_id == m.id %}
+{% set v = d if deste else m %}
+{#- a rota recusa o texto em branco primeiro e o rótulo depois: a marca e o foco
+   vão para o campo que falhou #}
+{% set erro_texto = deste and not (d.texto or '')|trim %}
+{% set erro_rotulo = deste and not erro_texto %}
+{% call ui.popup_cadastro('editar-motivo-' ~ m.id, 'Editar · ' ~ m.rotulo, '/epis/catalogo/motivos-recusa/' ~ m.id, 'Salvar',
+                          aberto=deste, erro=(erro_popup if deste else none), largo=true,
+                          nota='editar não reescreve negativa já emitida, e o código não se edita') %}
+  <div class="linha-campos">
+    <div class="campo{{ ' com-erro' if erro_rotulo }}"><label for="ed-motivo-{{ m.id }}-rotulo">Rótulo</label>
+      <input id="ed-motivo-{{ m.id }}-rotulo" name="rotulo" value="{{ v.rotulo or '' }}" required{{ ' autofocus' if erro_rotulo }}></div>
+    <div class="campo"><label for="ed-motivo-{{ m.id }}-base">Base normativa</label>
+      <input id="ed-motivo-{{ m.id }}-base" name="base_normativa" value="{{ v.base_normativa or '' }}"></div>
+  </div>
+  <div class="campo{{ ' com-erro' if erro_texto }}"><label for="ed-motivo-{{ m.id }}-texto">Texto da negativa</label>
+    <textarea id="ed-motivo-{{ m.id }}-texto" name="texto" rows="6" required
+              aria-describedby="ed-motivo-{{ m.id }}-dica"{{ ' autofocus' if erro_texto }}>{{ v.texto or '' }}</textarea>
+    <span class="dica" id="ed-motivo-{{ m.id }}-dica">Sai literal para quem pediu. A negativa já
+      emitida guarda o texto do dia em que saiu.</span></div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="exige_complemento" value="1"
+      {{- ' checked' if (d.exige_complemento == '1' if deste else m.exige_complemento) }}>
+      exige complemento escrito na hora da recusa</label></div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="ativo" value="1"
+      {{- ' checked' if (d.ativo == '1' if deste else m.ativo) }}>
+      ativo</label></div>
+{% endcall %}
+{% endfor %}
 {% endif %}
 {% endblock %}

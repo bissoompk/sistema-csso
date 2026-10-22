@@ -370,7 +370,13 @@ describe("a tela de bolso", () => {
     const manifesto = JSON.parse(readFileSync(path.join(estaticos, "manifest.webmanifest"), "utf-8"));
     expect(manifesto.start_url).toBe("/celular");
     readFileSync(path.join(estaticos, "css", "celular.css"));
-    readFileSync(path.join(estaticos, "img", "icone.svg"));
+    // cada ícone do manifesto existe e é PNG (o símbolo da Sisa)
+    expect(manifesto.icons.length).toBeGreaterThan(0);
+    for (const icone of manifesto.icons as { src: string }[]) {
+      const bytes = readFileSync(path.join(estaticos, icone.src.replace(/^\/estaticos\//, "")));
+      expect(bytes.subarray(1, 4).toString("latin1")).toBe("PNG");
+    }
+    expect(manifesto.icons.some((i: { purpose?: string }) => i.purpose === "maskable")).toBe(true);
   });
 
   it("o service worker nunca guarda resposta da API", () => {

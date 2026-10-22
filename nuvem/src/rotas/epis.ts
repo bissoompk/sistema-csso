@@ -49,11 +49,6 @@ function _volta(c: Ctx, destino: string, mensagem: string): Response {
   return redirecionar(c, comMensagem(destino, mensagem, "mensagem"));
 }
 
-/** Não deu: banner vermelho. */
-function _erro(c: Ctx, destino: string, mensagem: string): Response {
-  return redirecionar(c, comMensagem(destino, mensagem, "erro"));
-}
-
 /** Inteiro positivo, ou `null` quando vem vazio OU com lixo (quem chama distingue). */
 function _inteiro(valor: string | null | undefined): number | null {
   const limpo = (valor || "").trim();
@@ -338,9 +333,17 @@ rotas.post(CATALOGO, async (c) => {
 // =====================================================================
 // Categorias da NR-6
 // =====================================================================
-rotas.get(CATEGORIAS, async (c) => {
-  const usuario = await usuarioLogado(c);
-  usuario.exigir("epi.ver");
+async function _tela_categorias(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  r: {
+    mensagem?: string | null;
+    erro?: string | null;
+    digitado?: Record<string, string> | null;
+    /** de qual popup veio a recusa: o id da categoria editada */
+    editando_id?: number | null;
+  } = {},
+): Promise<Response> {
   const tx = c.get("tx");
   const itens = await _categorias(tx);
   // quantos itens estão em cada categoria: desativar uma em uso esconde o item do formulário
@@ -356,9 +359,17 @@ rotas.get(CATEGORIAS, async (c) => {
     aba: CATEGORIAS,
     itens,
     em_uso,
-    mensagem: c.req.query("mensagem") ?? null,
-    erro: c.req.query("erro") ?? null,
+    editando_id: r.editando_id ?? null,
+    mensagem: r.mensagem ?? null,
+    erro: r.erro ?? null,
+    digitado: r.digitado ?? null,
   });
+}
+
+rotas.get(CATEGORIAS, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.ver");
+  return _tela_categorias(c, usuario, { mensagem: c.req.query("mensagem"), erro: c.req.query("erro") });
 });
 
 /**
@@ -371,14 +382,27 @@ rotas.post(`${CATEGORIAS}/:categoria_id{[0-9]+}`, async (c) => {
   // "preencha o campo" (o `salvar_com_diff` confere de novo)
   usuario.exigir("epi.catalogo");
   const f = await formulario(c);
+  const categoria_id = Number(c.req.param("categoria_id"));
+  const digitado: Record<string, string> = {
+    ..._campos(f, ["nome", "referencia_nr6", "ordem"]),
+    ativo: f.texto("ativo", ""),
+  };
+  // A recusa reabre o popup DESTA categoria com o digitado, como no catálogo de
+  // itens: voltar para a lista com a faixa vermelha perdia o que foi escrito.
+  const recusar = (mensagem: string) =>
+    _tela_categorias(c, usuario, { erro: mensagem, digitado, editando_id: categoria_id });
+  const nome = (digitado.nome || "").trim();
+  // o `required` do campo segura o navegador; isto segura quem posta sem ele —
+  // categoria sem nome sairia em branco no formulário do item e na ficha
+  if (!nome) return recusar("O nome da categoria não pode ficar em branco.");
   const numero = _inteiro(f.texto("ordem", "1"));
   return salvar_com_diff(
     c,
     usuario,
     epi_categoria,
-    Number(c.req.param("categoria_id")),
+    categoria_id,
     {
-      nome: f.texto("nome").trim(),
+      nome,
       referencia_nr6: _texto(f.texto("referencia_nr6")),
       ordem: numero !== null ? numero : 1,
       ativo: _marcado(f.texto("ativo")),
@@ -393,13 +417,20 @@ rotas.post(`${CATEGORIAS}/:categoria_id{[0-9]+}`, async (c) => {
 async function _tela_motivos(
   c: Ctx,
   usuario: UsuarioAtual,
-  r: { mensagem?: string | null; erro?: string | null; digitado?: Record<string, string> | null } = {},
+  r: {
+    mensagem?: string | null;
+    erro?: string | null;
+    digitado?: Record<string, string> | null;
+    /** de qual popup veio a recusa: o id do motivo editado, ou nulo (o cadastro) */
+    editando_id?: number | null;
+  } = {},
 ): Promise<Response> {
   const itens = await c.get("tx").select().from(epi_motivo_recusa).orderBy(asc(epi_motivo_recusa.codigo));
   return pagina(c, "paginas/epis_motivos.html", usuario, {
     abas: ABAS,
     aba: MOTIVOS,
     itens,
+    editando_id: r.editando_id ?? null,
     mensagem: r.mensagem ?? null,
     erro: r.erro ?? null,
     digitado: r.digitado ?? null,
@@ -463,15 +494,25 @@ rotas.post(`${MOTIVOS}/:motivo_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("epi.catalogo");
   const f = await formulario(c);
+  const motivo_id = Number(c.req.param("motivo_id"));
+  const digitado = _campos(f, ["rotulo", "texto", "base_normativa", "exige_complemento", "ativo"]);
+  // A recusa reabre o popup DESTE motivo com o digitado — antes voltava para a
+  // lista com a faixa vermelha, e o texto da negativa escrito se perdia.
+  const recusar = (mensagem: string) =>
+    _tela_motivos(c, usuario, { erro: mensagem, digitado, editando_id: motivo_id });
   const corpo = f.texto("texto").trim();
-  if (!corpo) return _erro(c, MOTIVOS, "O texto da recusa não pode ficar em branco.");
+  if (!corpo) return recusar("O texto da recusa não pode ficar em branco.");
+  const rotulo = f.texto("rotulo").trim();
+  // o `required` do campo segura o navegador; isto segura quem posta sem ele —
+  // motivo sem rótulo sairia em branco na lista e no "Editar · " do popup
+  if (!rotulo) return recusar("O rótulo do motivo não pode ficar em branco.");
   return salvar_com_diff(
     c,
     usuario,
     epi_motivo_recusa,
-    Number(c.req.param("motivo_id")),
+    motivo_id,
     {
-      rotulo: f.texto("rotulo").trim(),
+      rotulo,
       texto: textos.aspas_curvas(corpo),
       base_normativa: _texto(f.texto("base_normativa")),
       exige_complemento: _marcado(f.texto("exige_complemento")),

@@ -220,6 +220,43 @@ describe("categorias da NR-6", () => {
     expect(c!.nome).toBe("Proteção dos ouvidos");
   });
 
+  it("a lista é só leitura, e editar abre o popup da categoria", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const alvo = await _id_da_categoria("PROT_AUDITIVA");
+    const lista = (await cliente.get(CATEGORIAS)).text;
+    expect(lista).not.toContain(`form="f-cat-`);
+    expect(lista).toContain(`href="#editar-cat-${alvo}"`);
+    const popup = lista.slice(lista.indexOf(`<dialog class="popup" id="editar-cat-${alvo}"`));
+    expect(popup).toMatch(new RegExp(`<form class="popup-caixa[^"]*" method="post" action="${CATEGORIAS}/${alvo}"`));
+    expect(popup).toContain(`<label for="ed-cat-${alvo}-nome">Nome</label>`);
+    expect(_popups_abertos({ text: lista } as Resposta)).toEqual([]);
+  });
+
+  it("categoria sem nome é recusada com o popup dela aberto e o digitado", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const alvo = await _id_da_categoria("PROT_AUDITIVA");
+    const r = await cliente.post(
+      `${CATEGORIAS}/${alvo}`,
+      { nome: "  ", referencia_nr6: "Z9", ordem: "7", ativo: "" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`<dialog class="popup" id="editar-cat-${alvo}"[^>]* open>`));
+    expect(_popups_abertos(r)).toEqual([`editar-cat-${alvo}`]);
+    expect(r.text).toContain("O nome da categoria não pode ficar em branco.");
+    expect(r.text).toMatch(new RegExp(`id="ed-cat-${alvo}-ref" name="referencia_nr6" value="Z9"`));
+    expect(r.text).not.toContain(`form="f-cat-`);
+    const [c] = await db.select().from(e.epi_categoria).where(eq(e.epi_categoria.id, alvo));
+    expect(c!.nome).not.toBe("");
+  });
+
+  it("quem só consulta não vê o Editar das categorias", async () => {
+    await entrar(cliente, "medico_trabalho");
+    const lista = (await cliente.get(CATEGORIAS)).text;
+    expect(lista).not.toContain(`id="editar-cat-`);
+    expect(lista).not.toContain(">Editar<");
+  });
+
   it("a tela conta os itens de cada categoria", async () => {
     await entrar(cliente, "coordenador_csso");
     await _cadastrar(cliente);
@@ -299,6 +336,45 @@ describe("motivos de recusa", () => {
     expect(linhas.length).toBe(1);
     expect(linhas[0]!.texto).not.toBe(antes);
     expect(linhas[0]!.dispositivo_conferido_em).toBe(hoje());
+  });
+
+  it("motivo editado com texto em branco reabre o popup dele com o digitado", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const [m] = await db.select().from(e.epi_motivo_recusa).where(eq(e.epi_motivo_recusa.codigo, "SEM_EXPOSICAO"));
+    const lista = (await cliente.get(MOTIVOS)).text;
+    expect(lista).not.toContain(`form="f-motivo-`);
+    expect(lista).toContain(`href="#editar-motivo-${m!.id}"`);
+    // o texto inteiro fica na linha, em leitura
+    expect(lista).toContain(`<span class="texto-literal">`);
+    const r = await cliente.post(
+      `${MOTIVOS}/${m!.id}`,
+      { rotulo: "Rótulo digitado", texto: "   ", base_normativa: "NR-9", exige_complemento: "1", ativo: "1" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(200);
+    expect(_popups_abertos(r)).toEqual([`editar-motivo-${m!.id}`]);
+    expect(r.text).toContain("O texto da recusa não pode ficar em branco.");
+    expect(r.text).toContain('value="Rótulo digitado"');
+    expect(r.text).not.toContain(`form="f-motivo-`);
+    const [depois] = await db.select().from(e.epi_motivo_recusa).where(eq(e.epi_motivo_recusa.id, m!.id));
+    expect(depois!.rotulo).toBe(m!.rotulo);
+  });
+
+  it("motivo editado sem rótulo é recusado, com a marca no rótulo e o texto de volta", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const [m] = await db.select().from(e.epi_motivo_recusa).where(eq(e.epi_motivo_recusa.codigo, "SEM_EXPOSICAO"));
+    const r = await cliente.post(
+      `${MOTIVOS}/${m!.id}`,
+      { rotulo: "  ", texto: "Texto digitado na recusa", base_normativa: "", exige_complemento: "", ativo: "1" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(200);
+    expect(_popups_abertos(r)).toEqual([`editar-motivo-${m!.id}`]);
+    expect(r.text).toContain("O rótulo do motivo não pode ficar em branco.");
+    expect(r.text).toContain("Texto digitado na recusa</textarea>");
+    expect(r.text).toMatch(new RegExp(`id="ed-motivo-${m!.id}-rotulo" name="rotulo" value="  " required autofocus>`));
+    const [depois] = await db.select().from(e.epi_motivo_recusa).where(eq(e.epi_motivo_recusa.id, m!.id));
+    expect(depois!.rotulo).toBe(m!.rotulo);
   });
 
   it("motivo com código repetido é recusado, com o texto de volta", async () => {

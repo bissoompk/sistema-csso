@@ -2,9 +2,10 @@
  * /catalogos/* — catálogos versionados do domínio.
  * Porte de `app/rotas/catalogos.py`.
  *
- * Recusa de CADASTRO renderiza a tela com o popup reaberto e o que foi
- * digitado; recusa de EDIÇÃO em linha redireciona com `?erro=` (a linha da
- * tabela é o formulário e volta do banco intacta).
+ * Recusa de CADASTRO renderiza a tela com o popup de cadastro reaberto e o
+ * que foi digitado; recusa de EDIÇÃO faz o mesmo com o popup "Editar" daquela
+ * linha (`editando_id`). A lista é só leitura: a linha deixou de ser o
+ * formulário, e redirecionar com `?erro=` perderia o que a pessoa digitou.
  */
 import { Hono } from "hono";
 import { and, asc, count, desc, eq, ne } from "drizzle-orm";
@@ -73,10 +74,6 @@ export const TIPOS_UNIDADE: readonly (readonly [string, string])[] = [
 /** O recado vai codificado: quase toda mensagem daqui cita o que foi digitado. */
 function _volta(c: Ctx, destino: string, mensagem: string) {
   return redirecionar(c, comMensagem(destino, mensagem));
-}
-/** A recusa de edição volta no banner vermelho, e não no verde. */
-function _erro(c: Ctx, destino: string, mensagem: string) {
-  return redirecionar(c, comMensagem(destino, mensagem, "erro"));
 }
 
 /** Campo obrigatório ausente: o 422 do `Form(...)` do FastAPI. */
@@ -212,7 +209,13 @@ async function _tela(
   c: Ctx,
   usuario: UsuarioAtual,
   nome: string,
-  recado: { mensagem?: string | null; erro?: string | null; digitado?: Record<string, unknown> } = {},
+  recado: {
+    mensagem?: string | null;
+    erro?: string | null;
+    digitado?: Record<string, unknown>;
+    /** A linha cujo popup de editar volta aberto; vazio é o cadastro. */
+    editando_id?: number | null;
+  } = {},
 ) {
   const tx = c.get("tx");
   const { itens, extra } = await _itens(tx, nome);
@@ -229,9 +232,12 @@ async function _tela(
     mensagem: recado.mensagem ?? null,
     erro: recado.erro ?? null,
     digitado: recado.digitado ?? {},
+    editando_id: recado.editando_id ?? null,
     hoje: hoje_iso(),
     campi: await tx.select().from(campus).orderBy(asc(campus.sigla)),
     tipos: TIPOS_UNIDADE,
+    // a lista mostra o rótulo do tipo, e não o código, agora que é só leitura
+    rotulo_tipo: Object.fromEntries(TIPOS_UNIDADE),
     riscos: await tx.select().from(tipo_risco).orderBy(asc(tipo_risco.nome)),
     fundamentacoes: await tx.select().from(fundamentacao_legal).orderBy(asc(fundamentacao_legal.codigo)),
     unidades: await tx.query.unidade_uorg.findMany({ with: { campus: true }, orderBy: [asc(unidade_uorg.nome_extenso)] }),
@@ -355,8 +361,15 @@ rotas.post("/catalogos/campi", async (c) => {
   const sigla = f.texto("sigla").trim().toUpperCase();
   const nome = f.texto("nome").trim();
   const cidade = f.texto("cidade").trim();
+  // a recusa reabre o popup de cadastro com o digitado, como nos outros
+  // catálogos (era um redirect que perdia tudo)
+  const recusar = (mensagem: string) =>
+    _tela(c, usuario, "campi", {
+      erro: mensagem,
+      digitado: Object.fromEntries(["sigla", "nome", "cidade", "uf", "avancado"].map((k) => [k, f.texto(k)])),
+    });
   const vazio = _em_branco({ sigla, nome, cidade });
-  if (vazio) return _erro(c, "/catalogos/campi", vazio);
+  if (vazio) return recusar(vazio);
   const uf = f.texto("uf", "MG").trim().toUpperCase().slice(0, 2);
   const avancado = f.texto("avancado") === "1";
   const [existente] = await tx.select().from(campus).where(eq(campus.sigla, sigla));
@@ -365,7 +378,7 @@ rotas.post("/catalogos/campi", async (c) => {
     // trilha ("como no Python") — quem cadastrava "DIA" sem perceber reescrevia
     // o Campus JK. Agora recusa e aponta a edição, que passa por
     // `salvar_com_diff` e deixa o diff na trilha.
-    return _erro(c, "/catalogos/campi", `Já existe campus com a sigla ${sigla} (${existente.nome}) — edite-o na lista.`);
+    return recusar(`Já existe campus com a sigla ${sigla} (${existente.nome}) — use o “Editar” da linha dele.`);
   }
   const [novo] = await tx
     .insert(campus)
@@ -478,10 +491,14 @@ rotas.post("/catalogos/cargos", async (c) => {
   const cargo_id = f.texto("cargo_id");
   const limpo = nome.trim();
   const editando = /^\d+$/.test(cargo_id);
+  // As duas recusas renderizam a tela com o popup de onde vieram: o de
+  // cadastro, ou o "Editar" daquele cargo (`editando_id`), com o digitado.
   const recusar = (mensagem: string) =>
-    editando
-      ? _erro(c, "/catalogos/cargos", mensagem)
-      : _tela(c, usuario, "cargos", { erro: mensagem, digitado: { nome, codigo_siape } });
+    _tela(c, usuario, "cargos", {
+      erro: mensagem,
+      digitado: editando ? { nome, codigo_siape, cargo_id } : { nome, codigo_siape },
+      editando_id: editando ? Number(cargo_id) : null,
+    });
 
   if (!limpo) return recusar("O nome do cargo não pode ficar em branco.");
   const codigo = codigo_siape.trim() || null;
@@ -662,7 +679,12 @@ function _campos_setor(f: Formulario) {
 }
 
 // ---------------------------------------------------------------------
-// Edições em linha (sempre com diff campo a campo na auditoria)
+// Edições pelo popup "Editar" de cada linha (sempre com diff campo a campo na
+// auditoria)
+//
+// A recusa de VALIDAÇÃO renderiza a tela com o popup daquela linha aberto, a
+// mensagem dentro dele e o digitado (`_recusar_edicao`). Registro inexistente
+// e o 422 de campo ausente continuam como eram: não são erro de quem digita.
 //
 // A permissão vem na PRIMEIRA linha de cada rota, antes do formulário e de
 // qualquer consulta (D77): quem não gere catálogo recebe 403, e não o 422
@@ -670,6 +692,23 @@ function _campos_setor(f: Formulario) {
 // continua exigindo de novo — a segunda camada não sai.
 // ---------------------------------------------------------------------
 const GERENCIAR = "catalogo.gerenciar";
+
+/**
+ * A recusa de uma edição: a tela do catálogo com o popup `editar-…-<id>`
+ * reaberto. `campos` são os `name=` do popup, lidos como texto — as caixas de
+ * marcar chegam '1' ou '' —, que é a forma que o template compara.
+ */
+function _recusar_edicao(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  nome: string,
+  f: Formulario,
+  campos: readonly string[],
+  mensagem: string,
+) {
+  const digitado = Object.fromEntries(campos.map((k) => [k, f.texto(k)]));
+  return _tela(c, usuario, nome, { erro: mensagem, digitado, editando_id: Number(c.req.param("id")) });
+}
 
 rotas.post("/catalogos/autoridades-destinatarias/:id{[0-9]+}", async (c) => {
   const usuario = await usuarioLogado(c);
@@ -710,7 +749,10 @@ rotas.post("/catalogos/setores-emissores/:id{[0-9]+}", async (c) => {
         ne(setor_emissor.id, id),
       ),
     );
-  if (ja) return _erro(c, "/catalogos/setores-emissores", "Já existe outro setor com essa sigla e esse início de vigência.");
+  if (ja) {
+    return _recusar_edicao(c, usuario, "setores-emissores", f, CAMPOS_SETOR,
+      "Já existe outro setor com essa sigla e esse início de vigência.");
+  }
   return salvar_com_diff(c, usuario, setor_emissor, id, campos, {
     permissao: GERENCIAR,
     rotulo: "Setor emissor",
@@ -724,7 +766,7 @@ rotas.post("/catalogos/campi/:id{[0-9]+}", async (c) => {
   const f = await formulario(c);
   exigidos(f, "nome", "cidade");
   const vazio = _em_branco({ nome: f.texto("nome"), cidade: f.texto("cidade") });
-  if (vazio) return _erro(c, "/catalogos/campi", vazio);
+  if (vazio) return _recusar_edicao(c, usuario, "campi", f, ["nome", "cidade", "uf", "avancado"], vazio);
   return salvar_com_diff(
     c,
     usuario,
@@ -753,7 +795,16 @@ rotas.post("/catalogos/unidades-uorg/:id{[0-9]+}", async (c) => {
       .select()
       .from(unidade_uorg)
       .where(and(eq(unidade_uorg.codigo_uorg, codigo), ne(unidade_uorg.id, id)));
-    if (ja) return _erro(c, "/catalogos/unidades-uorg", `O código ${codigo} já é de outra unidade.`);
+    if (ja) {
+      return _recusar_edicao(
+        c,
+        usuario,
+        "unidades-uorg",
+        f,
+        ["codigo_uorg", "sigla", "nome_oficial", "nome_extenso", "tipo", "campus_id", "emite_portaria", "ativo"],
+        `O código ${codigo} já é de outra unidade.`,
+      );
+    }
   }
   return salvar_com_diff(
     c,
@@ -789,7 +840,10 @@ rotas.post("/catalogos/postos-trabalho/:id{[0-9]+}", async (c) => {
     .where(
       and(eq(posto_trabalho.unidade_uorg_id, unidade_uorg_id), eq(posto_trabalho.nome, limpo), ne(posto_trabalho.id, id)),
     );
-  if (ja) return _erro(c, "/catalogos/postos-trabalho", "Já existe esse posto nesta unidade.");
+  if (ja) {
+    return _recusar_edicao(c, usuario, "postos-trabalho", f, ["nome", "sigla", "unidade_uorg_id", "descricao", "ativo"],
+      "Já existe esse posto nesta unidade.");
+  }
   return salvar_com_diff(
     c,
     usuario,

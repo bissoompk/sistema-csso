@@ -5,16 +5,25 @@
 {# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
    em `partes/macros.html`. #}
 {% set CADASTRAR = 'Cadastrar instrutor' %}
+
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada, e de
+   QUAL popup veio (`editando_id`: vazio é o cadastro). `digitado`, e não `d`,
+   no teste: `{}` é verdadeiro no JavaScript. #}
 {% set d = digitado or {} %}
-{% set recusado = true if (erro and d) else false %}
-{% set erro_cadastro = erro if recusado else none %}
+{% set recusado = true if (erro and digitado) else false %}
+{% set erro_popup = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
 
 {% block acoes_cabecalho %}
+{% if usuario.pode('assinatura.gerenciar') %}
 {{ ui.botao_cadastro('nova-assinatura', CADASTRAR) }}
+{% endif %}
 {% endblock %}
 
 {% block conteudo %}
+{# A tela inteira já exige a permissão; a guarda fica mesmo assim, para o botão
+   e os popups não dependerem de a rota continuar exigindo. #}
+{% set editavel = usuario.pode('assinatura.gerenciar') %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
@@ -26,9 +35,9 @@
       {% call ui.info('servidor-ou-externo', 'de onde vem o nome de cada assinatura') %}
         <p>Instrutor da UFVJM aponta para o cadastro de servidor e <strong>o nome é lido
           de lá</strong> — não copiado, para os dois não divergirem no dia em que um for
-          corrigido. Por isso a célula do nome, nessas linhas, não é editável.</p>
+          corrigido. Por isso, no “Editar” dessas linhas, o nome não é editável.</p>
         <p>Instrutor externo existe só aqui: é o único lugar do sistema onde aquele nome
-          está escrito, e por isso ele é digitado na própria linha.</p>
+          está escrito, e por isso ele se corrige no “Editar” da própria linha.</p>
       {% endcall %}
     </div>
   </div>
@@ -43,25 +52,26 @@
     instrutor serve também para cursos já dados.
   </div>
 
+  {# Uma linha de LEITURA por instrutor: era uma grade de caixas de texto, e a
+     1366px o título saía cortado ("Engenheiro de Segura") e a vigência caía
+     para fora da tela. Quem edita usa o "Editar" da linha, que abre o popup
+     com cada campo na largura dele — o mesmo padrão do catálogo de EPI e do
+     de treinamentos. Menos colunas que a grade antiga, para caber a 1366px sem
+     rolar: conselho e registro se leem juntos ("CREA MG-123"), com a máscara do CPF
+     embaixo, a organização vai
+     sob o título e o "vigente hoje" sob as datas da vigência. #}
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
-      <tr><th scope="col">Nome</th><th scope="col">Título de assinatura</th><th scope="col">Conselho</th><th scope="col">Registro</th>
-          <th scope="col">Organização</th><th scope="col">CPF (certificado)</th><th scope="col">Vínculo</th><th scope="col">Vigência</th>
-          <th scope="col">Vigente hoje</th><th scope="col">Ativa</th><th scope="col"></th></tr>
+      <tr><th scope="col">Nome</th><th scope="col">Título e organização</th><th scope="col">Registro e CPF</th>
+          <th scope="col">Vínculo</th><th scope="col">Vigência</th>
+          <th scope="col">Ativa</th>{% if editavel %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}</tr>
     </thead>
     {% for a in itens %}
-    {% set id = 'f-assin-' ~ a.id %}
     <tr>
       <td class="nome">
-        <form method="post" action="/treinamentos/assinaturas/{{ a.id }}" id="{{ id }}"></form>
-        {% if a.servidor %}
-        <span title="lido do cadastro de servidor">{{ a.nome_exibicao }}</span>
-        <input form="{{ id }}" type="hidden" name="servidor_id" value="{{ a.servidor_id }}">
-        {% else %}
-        <input form="{{ id }}" name="nome" value="{{ a.nome }}" required
-               aria-label="Nome do instrutor externo">
-        {% endif %}
+        {% if a.servidor %}<span title="lido do cadastro de servidor">{{ a.nome_exibicao }}</span>
+        {%- else %}{{ a.nome_exibicao }}{% endif %}
         {# A rubrica em imagem é o que sai desenhado no papel; quando ela existe,
            a linha diz. Não há "sem rubrica" escrito: o certificado sai sem ela
            do mesmo jeito, e uma coluna de vazios não é resposta. #}
@@ -69,68 +79,54 @@
         <img class="rubrica-miniatura quebra" src="/treinamentos/assinaturas/{{ a.id }}/rubrica"
              alt="Rubrica de {{ a.nome_exibicao }}" loading="lazy">
         {% endif %}
-        {# A rubrica tem formulário próprio: o arquivo não vai junto com o
-           "salvar" da linha, que é edição de texto. #}
-        <details class="quebra rubrica-envio">
-          <summary class="discreto">{{ 'trocar rubrica' if a.imagem_anexo_id else 'enviar rubrica' }}</summary>
-          <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/rubrica" enctype="multipart/form-data">
-            <input type="file" name="imagem" accept="image/png,image/jpeg" required
-                   aria-label="Imagem da rubrica de {{ a.nome_exibicao }} (PNG ou JPEG)">
-            <button type="submit" class="secundario marcador">enviar</button>
-          </form>
-          {% if a.imagem_anexo_id %}
-          <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/rubrica">
-            <input type="hidden" name="remover" value="1">
-            <button type="submit" class="secundario marcador">retirar rubrica</button>
-          </form>
-          {% endif %}
-          <span class="dica">PNG com fundo transparente, de preferência (cerca de 3:1). Vale para os certificados emitidos daqui em diante.</span>
-        </details>
         {% if em_uso[a.id] %}
         <span class="quebra discreto"
               title="treinamentos que a têm como instrutor padrão">
           instrutor padrão em {{ em_uso[a.id] }} treinamento(s)</span>
         {% endif %}
       </td>
-      <td><input class="campo-longo" form="{{ id }}" name="titulo" value="{{ a.titulo or '' }}" placeholder="Eng. Seg. do Trabalho"
-                 aria-label="Título de assinatura de {{ a.nome_exibicao }}"></td>
-      <td><input class="campo-curto" form="{{ id }}" name="conselho" value="{{ a.conselho or '' }}"
-                 maxlength="8" placeholder="CREA"
-                 aria-label="Conselho de {{ a.nome_exibicao }}"></td>
-      <td><input class="campo-medio" form="{{ id }}" name="registro_conselho" value="{{ a.registro_conselho or '' }}"
-                 aria-label="Registro no conselho de {{ a.nome_exibicao }}"></td>
-      <td><input class="campo-longo" form="{{ id }}" name="organizacao" value="{{ a.organizacao or '' }}"
-                 aria-label="Organização de {{ a.nome_exibicao }}"></td>
+      <td data-coluna="Título e organização">{{ a.titulo or '—' }}
+        {% if a.organizacao %}<span class="quebra discreto">{{ a.organizacao }}</span>{% endif %}</td>
       {# CPF só para o certificado que a norma exige (ver `cpf_certificado.ts`):
-         a tela nunca recebe o número, só a máscara sem dígito. Em branco = não
-         mexe; trocar é digitar o novo. #}
-      <td>
-        <span class="discreto mono">{{ a.cpf_exibicao }}</span>
-        <input class="campo-medio" form="{{ id }}" name="cpf_certificado" value=""
-               inputmode="numeric" autocomplete="off" placeholder="{{ 'trocar' if a.tem_cpf else 'informar' }}"
-               aria-label="CPF de {{ a.nome_exibicao }} para o certificado (em branco: não muda)">
-        {% if a.tem_cpf %}
-        <label class="discreto quebra"><input form="{{ id }}" type="checkbox" name="apagar_cpf" value="1"> apagar</label>
-        {% endif %}
-      </td>
-      <td>
+         a tela nunca recebe o número, só a máscara sem dígito. #}
+      <td data-coluna="Registro e CPF"><span class="mono">{{ a.registro_completo or a.conselho or '—' }}</span>
+        <span class="quebra discreto">CPF: <span class="mono">{{ a.cpf_exibicao }}</span></span></td>
+      <td data-coluna="Vínculo">
         {% if a.externo %}<span class="pilula sem-ponto">externo</span>
-        <input form="{{ id }}" type="hidden" name="externo" value="1">
         {% else %}<span class="pilula ok">servidor</span>{% endif %}
       </td>
-      <td>
-        <input form="{{ id }}" type="date" name="vigencia_inicio"
-               value="{{ a.vigencia_inicio }}" required
-               aria-label="Início da vigência de {{ a.nome_exibicao }}">
-        <input form="{{ id }}" type="date" name="vigencia_fim"
-               value="{{ a.vigencia_fim if a.vigencia_fim else '' }}"
-               aria-label="Fim da vigência de {{ a.nome_exibicao }} (vazio: sem termo)">
-      </td>
-      <td>{% if a.vigente_em(hoje) %}<span class="pilula ok">vigente</span>
-          {% else %}<span class="pilula alerta">fora de vigência</span>{% endif %}</td>
-      <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-          {% if a.ativo %}checked{% endif %}> ativa</label></td>
-      <td><button form="{{ id }}" type="submit" class="secundario marcador">salvar</button>
+      {# `desde_sempre` é como a rota grava o início em branco: escrita por
+         extenso, a data parecia um cadastro de verdade. #}
+      <td data-coluna="Vigência">
+        {%- if a.vigencia_inicio and a.vigencia_inicio != desde_sempre %}{{ a.vigencia_inicio|data }}
+        {%- else %}desde sempre{% endif %}
+        <span class="quebra discreto">{{ ('até ' ~ (a.vigencia_fim|data)) if a.vigencia_fim else 'sem termo' }}</span>
+        {# pílula, e não texto: assinatura fora de vigência é recusada na emissão #}
+        <span class="quebra">{% if a.vigente_em(hoje) %}<span class="pilula ok" title="vigente hoje">vigente</span>
+          {% else %}<span class="pilula alerta">fora de vigência</span>{% endif %}</span></td>
+      <td data-coluna="Ativa">{{ ui.pilula_sim_nao(a.ativo, 'ativa', 'inativa') }}</td>
+      {% if editavel %}
+      <td class="acao-linha">{{ ui.botao_cadastro('editar-assin-' ~ a.id, 'Editar', 'secundario compacto') }}
+        {# A rubrica tem formulário próprio — o arquivo não vai junto com a
+           edição, que é de texto —, e são dois (enviar e retirar): por isso a
+           gaveta, e não o popup de um formulário só. #}
+        {% call ui.popup_gaveta('rubrica-assin-' ~ a.id, 'trocar rubrica' if a.imagem_anexo_id else 'enviar rubrica',
+                                'Rubrica · ' ~ a.nome_exibicao, largo=false) %}
+          <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/rubrica" enctype="multipart/form-data">
+            <div class="campo"><label for="rubrica-{{ a.id }}-imagem">Imagem da rubrica (PNG ou JPEG)</label>
+              <input id="rubrica-{{ a.id }}-imagem" type="file" name="imagem" accept="image/png,image/jpeg" required
+                     aria-describedby="rubrica-{{ a.id }}-dica">
+              <span class="dica" id="rubrica-{{ a.id }}-dica">PNG com fundo transparente, de preferência
+                (cerca de 3:1). Vale para os certificados emitidos daqui em diante.</span></div>
+            <div class="acoes"><button type="submit" class="compacto">Enviar rubrica</button></div>
+          </form>
+          {% if a.imagem_anexo_id %}
+          <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/rubrica">
+            <input type="hidden" name="remover" value="1">
+            <div class="acoes"><button type="submit" class="secundario compacto">Retirar rubrica</button></div>
+          </form>
+          {% endif %}
+        {% endcall %}
         {% call ui.popup_gaveta('excluir-assin-' ~ a.id, 'excluir', 'Excluir · ' ~ a.nome_exibicao, largo=false) %}
           <form method="post" action="/treinamentos/assinaturas/{{ a.id }}/excluir">
             <p class="discreto">Só para o instrutor cadastrado por engano, que nunca esteve em
@@ -138,12 +134,13 @@
             <div class="acoes"><button type="submit" class="perigo compacto">Excluir</button></div>
           </form>
         {% endcall %}</td>
+      {% endif %}
     </tr>
     {% else %}
     {{ ui.vazio_de_lista(
          'Nenhum instrutor cadastrado ainda.',
          'O instrutor assina o certificado. Use “' ~ CADASTRAR ~ '”, no canto
-          superior direito; de fora da UFVJM, marque “externo”.', 11) }}
+          superior direito; de fora da UFVJM, marque “externo”.', 7 if editavel else 6) }}
     {% endfor %}
   </table>
   </div>
@@ -151,45 +148,49 @@
 
 </div>
 
-{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. A edição em linha da
-   tabela acima continua em linha — lá o formulário aberto É o registro. #}
+{% if editavel %}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. O cadastro só
+   volta aberto na recusa DO CADASTRO; a recusa de uma edição reabre o popup
+   daquela linha, mais abaixo. #}
+{% set do_cadastro = recusado and not editando_id %}
+{% set dn = d if do_cadastro else {} %}
 {% call ui.popup_cadastro('nova-assinatura', CADASTRAR, '/treinamentos/assinaturas',
-                          CADASTRAR, aberto=recusado, erro=erro_cadastro,
+                          CADASTRAR, aberto=do_cadastro, erro=(erro_popup if do_cadastro else none),
                           nota='servidor da UFVJM ou instrutor externo') %}
   {# O vínculo é o que esta rota recusa — "instrutor da UFVJM precisa estar
      vinculado a um servidor" —, e é aqui que ele se escolhe. #}
-  <div class="campo {{ 'com-erro' if recusado }}">
+  <div class="campo {{ 'com-erro' if do_cadastro }}">
     <label for="assin-servidor">Instrutor da UFVJM</label>
-    <select id="assin-servidor" name="servidor_id"{{ ' autofocus' if recusado }}>
+    <select id="assin-servidor" name="servidor_id"{{ ' autofocus' if do_cadastro }}>
       <option value="">— (marque “externo” abaixo se não for servidor)</option>
       {% for sv in servidores %}
       {# RN-19: a lista é o cadastro inteiro; sem permissão nominal sai o código opaco #}
-      <option value="{{ sv.id }}"{{ ui.sel(d['servidor_id'], sv.id) }}>{{ identificar(sv).com_siape }}</option>
+      <option value="{{ sv.id }}"{{ ui.sel(dn['servidor_id'], sv.id) }}>{{ identificar(sv).com_siape }}</option>
       {% endfor %}
     </select></div>
   <div class="linha-campos">
     <div class="campo"><label for="assin-nome">Nome (só para externo)</label>
-      <input id="assin-nome" name="nome" value="{{ d['nome'] or '' }}"></div>
+      <input id="assin-nome" name="nome" value="{{ dn['nome'] or '' }}"></div>
     <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
       <label class="discreto"><input type="checkbox" name="externo" value="1"
-        {{- ' checked' if d['externo'] == '1' or (not d and not servidores) }}>
+        {{- ' checked' if dn['externo'] == '1' or (not do_cadastro and not servidores) }}>
         instrutor externo</label></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="assin-titulo">Título de assinatura</label>
       <input id="assin-titulo" name="titulo" placeholder="Eng. Seg. do Trabalho"
-             value="{{ d['titulo'] or '' }}"></div>
+             value="{{ dn['titulo'] or '' }}"></div>
     <div class="campo"><label for="assin-conselho">Conselho</label>
       <input id="assin-conselho" name="conselho" maxlength="8" placeholder="CREA"
-             value="{{ d['conselho'] or '' }}"></div>
+             value="{{ dn['conselho'] or '' }}"></div>
     <div class="campo codigo"><label for="assin-registro">Registro</label>
       <input id="assin-registro" name="registro_conselho"
-             value="{{ d['registro_conselho'] or '' }}"></div>
+             value="{{ dn['registro_conselho'] or '' }}"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="assin-org">Organização</label>
       <input id="assin-org" name="organizacao" placeholder="UFVJM"
-             value="{{ d['organizacao'] or '' }}"></div>
+             value="{{ dn['organizacao'] or '' }}"></div>
     <div class="campo"><label for="assin-cpf">CPF (só se o certificado exigir)</label>
       <input id="assin-cpf" name="cpf_certificado" value="" inputmode="numeric" autocomplete="off"
              aria-describedby="dica-cpf">
@@ -198,18 +199,81 @@
   <div class="linha-campos">
     <div class="campo"><label for="assin-de">Vigência — início</label>
       <input id="assin-de" type="date" name="vigencia_inicio"
-             value="{{ d['vigencia_inicio'] or '' }}" aria-describedby="dica-inicio">
+             value="{{ dn['vigencia_inicio'] or '' }}" aria-describedby="dica-inicio">
       <span class="dica" id="dica-inicio">Vazio: desde sempre (assina turma já realizada).</span></div>
     <div class="campo"><label for="assin-ate">Vigência — fim</label>
       <input id="assin-ate" type="date" name="vigencia_fim"
-             value="{{ d['vigencia_fim'] or '' }}"
+             value="{{ dn['vigencia_fim'] or '' }}"
              aria-describedby="dica-vigencia">
       <span class="dica" id="dica-vigencia">Vazio: sem termo.</span></div>
   </div>
   <p class="discreto rodape-cartao sem-margem">
-    A rubrica em imagem (PNG ou JPEG) se envia na linha do instrutor, depois de
-    cadastrado. No IntegraSST ela era um link do Google Drive — e certificado não
+    A rubrica em imagem (PNG ou JPEG) se envia na linha do instrutor (“enviar
+    rubrica”), depois de cadastrado. No IntegraSST ela era um link do Google Drive — e certificado não
     pode depender de arquivo que alguém move na nuvem.
   </p>
 {% endcall %}
+
+{# A edição de cada instrutor, num popup por linha. Os valores vêm do
+   cadastro; na recusa, só o popup DESTA linha volta aberto, com o digitado e a
+   mensagem. O CPF nunca vem preenchido — nem na recusa: a tela não recebe o
+   número (RN-19, `cpf_certificado.ts`), só a máscara. #}
+{% for a in itens %}
+{% set deste = recusado and editando_id == a.id %}
+{% set p = 'ed-assin-' ~ a.id %}
+{% set v = d if deste else {'nome': a.nome, 'titulo': a.titulo, 'conselho': a.conselho,
+            'registro_conselho': a.registro_conselho, 'organizacao': a.organizacao,
+            'vigencia_inicio': (a.vigencia_inicio if a.vigencia_inicio != desde_sempre else ''),
+            'vigencia_fim': a.vigencia_fim, 'ativo': '1' if a.ativo else '', 'apagar_cpf': ''} %}
+{% call ui.popup_cadastro('editar-assin-' ~ a.id, 'Editar · ' ~ a.nome_exibicao, '/treinamentos/assinaturas/' ~ a.id, 'Salvar',
+                          aberto=deste, erro=(erro_popup if deste else none),
+                          nota=('instrutor externo' if a.externo else 'servidor da UFVJM')) %}
+  {% if a.servidor %}
+  {# o nome do servidor é lido do cadastro, não copiado: não se edita aqui #}
+  <div class="campo"><span class="rotulo">Nome</span>
+    <span>{{ a.nome_exibicao }}</span>
+    <span class="dica">Lido do cadastro de servidor: corrige-se lá, e a assinatura acompanha.</span>
+    <input type="hidden" name="servidor_id" value="{{ a.servidor_id }}"></div>
+  {% else %}
+  <div class="campo{{ ' com-erro' if deste }}"><label for="{{ p }}-nome">Nome</label>
+    <input id="{{ p }}-nome" name="nome" value="{{ v.nome or '' }}" required{{ ' autofocus' if deste }}></div>
+  {% endif %}
+  {% if a.externo %}<input type="hidden" name="externo" value="1">{% endif %}
+  <div class="linha-campos">
+    <div class="campo"><label for="{{ p }}-titulo">Título de assinatura</label>
+      <input id="{{ p }}-titulo" name="titulo" value="{{ v.titulo or '' }}" placeholder="Eng. Seg. do Trabalho"></div>
+    <div class="campo"><label for="{{ p }}-conselho">Conselho</label>
+      <input id="{{ p }}-conselho" name="conselho" value="{{ v.conselho or '' }}" maxlength="8" placeholder="CREA"></div>
+    <div class="campo codigo"><label for="{{ p }}-registro">Registro</label>
+      <input id="{{ p }}-registro" name="registro_conselho" value="{{ v.registro_conselho or '' }}"></div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="{{ p }}-org">Organização</label>
+      <input id="{{ p }}-org" name="organizacao" value="{{ v.organizacao or '' }}" placeholder="UFVJM"></div>
+    <div class="campo"><label for="{{ p }}-cpf">CPF (só se o certificado exigir)</label>
+      <input id="{{ p }}-cpf" name="cpf_certificado" value="" inputmode="numeric" autocomplete="off"
+             placeholder="{{ 'trocar' if a.tem_cpf else 'informar' }}" aria-describedby="{{ p }}-dica-cpf">
+      <span class="dica" id="{{ p }}-dica-cpf">Hoje: <span class="mono">{{ a.cpf_exibicao }}</span>.
+        Em branco, não muda; para trocar, digite o novo. A tela nunca o mostra.</span>
+      {% if a.tem_cpf %}
+      <label class="discreto"><input type="checkbox" name="apagar_cpf" value="1"
+        {{- ' checked' if v.apagar_cpf == '1' }}> apagar o CPF</label>
+      {% endif %}</div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo"><label for="{{ p }}-de">Vigência — início</label>
+      <input id="{{ p }}-de" type="date" name="vigencia_inicio" value="{{ v.vigencia_inicio or '' }}"
+             aria-describedby="{{ p }}-dica-inicio">
+      <span class="dica" id="{{ p }}-dica-inicio">Vazio: desde sempre (assina turma já realizada).</span></div>
+    <div class="campo"><label for="{{ p }}-ate">Vigência — fim</label>
+      <input id="{{ p }}-ate" type="date" name="vigencia_fim" value="{{ v.vigencia_fim or '' }}"
+             aria-describedby="{{ p }}-dica-fim">
+      <span class="dica" id="{{ p }}-dica-fim">Vazio: sem termo.</span></div>
+  </div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="ativo" value="1"
+      {{- ' checked' if v.ativo == '1' }}> ativa</label></div>
+{% endcall %}
+{% endfor %}
+{% endif %}
 {% endblock %}

@@ -7,14 +7,21 @@
    que alguém arrumar o botão de salvar de um só. O redesign entra por dentro —
    mesma estrutura, vocabulário novo.
 
-   A edição é em linha, pelo padrão do `form` por atributo: um <form> vazio com
-   `id` na primeira célula e cada campo apontando para ele com `form="…"`. É o
-   que permite editar a linha inteira sem aninhar formulário em tabela, o que o
-   HTML proíbe. #}
+   A lista é de LEITURA, para todo mundo, e a edição de cada linha mora num
+   popup aberto pelo "Editar" — o padrão do catálogo de EPI e do de
+   treinamentos. Era edição em linha (um <form> vazio por linha e cada campo
+   apontando para ele com `form="…"`), e a tabela virava uma grade de caixas de
+   texto cortadas: "COORDENADORIA DE", "Faculdade de Ciê". Quem abre um catálogo
+   quase sempre vem LER (qual é o código? qual é o nome que sai no parecer?);
+   editar é a exceção, e a exceção ganha a largura de um popup.
+
+   Recusada, a edição volta com o popup DAQUELA linha aberto, com o que foi
+   digitado e a mensagem dentro dele (`editando_id`, da rota) — e não mais com
+   a faixa vermelha no topo e a linha devolvida do banco, que perdia o digitado. #}
 
 {% set NOTA = {
   'campi': 'A sigla é o escopo dos perfis — trocar a sigla muda o alcance de quem tem escopo por campus.',
-  'unidades-uorg': 'O nome oficial sai no UORG do parecer com a caixa preservada byte a byte.',
+  'unidades-uorg': 'O nome oficial sai no UORG do parecer com a caixa preservada byte a byte. Quem pode promover turma se escolhe em Treinamentos → Setores promotores.',
   'postos-trabalho': 'O par (unidade, nome) é que precisa ser único: o mesmo laboratório existe em mais de uma unidade.',
   'cargos': 'O nome sai no parecer exatamente como for digitado, inclusive a caixa.',
   'agentes-nocivos': 'Sinônimo aponta para o agente canônico e não vira agente novo.',
@@ -48,13 +55,21 @@
   'setores-emissores': 'Cadastrar setor emissor'
 } %}
 
-{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Só um
-   catálogo aparece por vez, então o próprio `nome` já discrimina de qual
-   formulário o erro veio — não faz falta a FORMA que /usuarios precisa ter. #}
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada, e de
+   QUAL popup veio: `editando_id` vazio é o cadastro; preenchido é o "Editar"
+   daquela linha. Só um catálogo aparece por vez, então o próprio `nome` já
+   discrimina o catálogo — não faz falta a FORMA que /usuarios precisa ter.
+
+   `digitado`, e não `d`, decide a recusa: `{}` é verdadeiro no JavaScript. O
+   cadastro só lê o digitado quando foi ELE o recusado (`dn`); senão o popup de
+   cadastro, fechado, nasceria preenchido com a edição de outra linha. #}
 {% set d = digitado or {} %}
-{% set recusado = true if (erro and d) else false %}
-{% set erro_cadastro = erro if recusado else none %}
+{% set recusado = true if (erro and digitado) else false %}
+{% set erro_popup = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
+{% set recusado_novo = recusado and not editando_id %}
+{% set erro_cadastro = erro_popup if not editando_id else none %}
+{% set dn = d if recusado_novo else {} %}
 
 {#- Nunjucks não tem o `for ... if` do Jinja: o rótulo do catálogo vem pronto
     da rota (`titulo_catalogo`), com o mesmo recuo para o nome da URL. -#}
@@ -74,13 +89,16 @@
 {% block conteudo %}
 {% set editavel = usuario.pode('catalogo.gerenciar') %}
 
-{# O botão de salvar de cada linha. Fica na última coluna e pertence ao <form>
-   da primeira célula — por isso o `form=`, e por isso ele existe só para quem
-   pode gerenciar: sem a permissão a linha inteira é leitura. #}
-{% macro salvar(id) %}
-  <td>{% if editavel %}<button form="{{ id }}" type="submit"
-        class="secundario marcador">salvar</button>{% endif %}</td>
+{# A última célula de cada linha: o "Editar" que abre o popup daquela linha.
+   Existe só para quem pode gerenciar — sem a permissão a linha é só leitura, e
+   não sobra nem a célula vazia (o cabeçalho também a omite). #}
+{% macro editar(alvo) %}
+  {% if editavel %}<td class="acao-linha">{{ ui.botao_cadastro(alvo, 'Editar', 'secundario compacto') }}</td>{% endif %}
 {% endmacro %}
+
+{# O cabeçalho da coluna do botão: sem título visível, mas com nome para o
+   leitor de tela. #}
+{% macro th_acoes() %}{% if editavel %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}{% endmacro %}
 
 {# Lista vazia diz que está vazia. Sem isto sobra o cabeçalho da tabela sozinho,
    que se lê como falha de carregamento e não como catálogo por povoar.
@@ -91,8 +109,10 @@
    é ele quem escreve o texto do cabeçalho —, então a saída nomeia o botão certo
    sem que ninguém tenha de manter uma segunda lista de nomes. Quem não tem
    `catalogo.gerenciar` não vê botão nenhum, e mandá-lo procurar um seria pior
-   do que não dizer nada. #}
-{% macro nenhum(colunas) %}
+   do que não dizer nada.
+
+   `colunas` conta a do "Editar"; quem lê sem editar tem uma a menos. #}
+{% macro nenhum(colunas, com_acoes=true) %}
 {{ ui.vazio_de_lista(
      'Nenhum registro neste catálogo.',
      'Catálogo é vocabulário: é daqui que saem as opções dos seletores das telas
@@ -101,7 +121,7 @@
      ~ ((' Use “' ~ ROTULO_NOVO[nome] ~ '”, no canto superior direito.')
         if (editavel and nome in ROTULO_NOVO)
         else ' Cadastrar aqui pede a permissão catalogo.gerenciar.'),
-     colunas) }}
+     (colunas - 1) if (com_acoes and not editavel) else colunas) }}
 {% endmacro %}
 
 <div class="tela">
@@ -113,7 +133,7 @@
         {{- ' ' }}{{ NOTA[nome] or 'Catálogo do domínio do adicional ocupacional.' }}</p>
       {% if nome == 'percentuais' %}
       {# De onde vem o número é fundamento legal — lê-se uma vez. O que muda a
-         edição está na tela: o campo do valor não é editável, e a coluna mostra
+         edição está na tela: o popup não tem campo de valor, e a coluna mostra
          por quê sem precisar de prosa. #}
       {% call ui.info('percentual-e-lei', 'por que só o rótulo é editável') %}
         <p>Só o rótulo é editável. O <strong>valor</strong> é a lei — 5/10/20% para
@@ -134,198 +154,116 @@
 
 <div class="tabela-cartao lista">
 {% if nome == 'campi' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Sigla</th><th scope="col">Nome</th><th scope="col">Cidade</th><th scope="col">UF</th><th scope="col">Tipo</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for c in itens %}
-  {% set id = 'f-campus-' ~ c.id %}
   <tr>
-    <td class="mono">{{ c.sigla }}
-      {% if editavel %}<form method="post" action="/catalogos/campi/{{ c.id }}" id="{{ id }}"></form>{% endif %}</td>
-    {% if editavel %}
-    <td><input form="{{ id }}" name="nome" value="{{ c.nome }}" required
-               aria-label="Nome do campus {{ c.sigla }}"></td>
-    <td><input form="{{ id }}" name="cidade" value="{{ c.cidade }}" required
-               aria-label="Cidade do campus {{ c.sigla }}"></td>
-    <td><input class="campo-curto" form="{{ id }}" name="uf" value="{{ c.uf }}" maxlength="2"
-               aria-label="UF do campus {{ c.sigla }}"></td>
-    <td><label class="discreto"><input form="{{ id }}" type="checkbox" name="avancado" value="1"
-        {% if c.avancado %}checked{% endif %}> avançado</label></td>
-    {% else %}
-    <td>{{ c.nome }}</td><td>{{ c.cidade }}</td><td class="mono">{{ c.uf }}</td>
-    <td>{% if c.avancado %}<span class="pilula sem-ponto">avançado</span>
+    <td class="mono">{{ c.sigla }}</td>
+    <td data-coluna="Nome">{{ c.nome }}</td>
+    <td data-coluna="Cidade">{{ c.cidade }}</td>
+    <td data-coluna="UF" class="mono">{{ c.uf }}</td>
+    <td data-coluna="Tipo">{% if c.avancado %}<span class="pilula sem-ponto">avançado</span>
         {% else %}<span class="discreto">sede</span>{% endif %}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</table>
+    {{ editar('editar-campus-' ~ c.id) }}
+  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'unidades-uorg' %}
-<table><thead>
-  <tr><th scope="col">Código</th><th scope="col">Sigla</th><th scope="col">Nome oficial (SIAPE)</th><th scope="col">Nome no parecer</th>
-    <th scope="col">Tipo</th><th scope="col">Campus</th><th scope="col">Portaria</th><th scope="col">Ativa</th>{% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+<table class="empilhavel"><thead>
+  {# Código e sigla dividem a primeira coluna, e "ativa" e "emite portaria" a
+     de situação, tipo e campus a mesma: com dez colunas o "Editar" caía para fora do cartão a 1366px. #}
+  <tr><th scope="col">Sigla · código</th><th scope="col">Nome oficial (SIAPE)</th><th scope="col">Nome no parecer</th>
+    <th scope="col">Tipo · campus</th><th scope="col">Situação</th>
+    <th scope="col"><a href="/treinamentos/setores-promotores" title="a lista se mantém em Treinamentos → Setores promotores">Promove treinamento</a></th>{{ th_acoes() }}</tr>
+</thead><tbody>
   {% for u in itens %}
-  {% set id = 'f-uorg-' ~ u.id %}
   <tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/unidades-uorg/{{ u.id }}" id="{{ id }}"></form>
-        <input form="{{ id }}" name="codigo_uorg" class="campo-curto mono" value="{{ u.codigo_uorg or '' }}" aria-label="Código UORG de {{ u.nome_extenso }}"></td>
-    <td><input class="campo-medio" form="{{ id }}" name="sigla" value="{{ u.sigla or '' }}"
-               aria-label="Sigla de {{ u.nome_extenso }}"></td>
-    <td><input form="{{ id }}" name="nome_oficial" value="{{ u.nome_oficial }}" required
-               aria-label="Nome oficial de {{ u.nome_extenso }}"></td>
-    <td><input form="{{ id }}" name="nome_extenso" value="{{ u.nome_extenso }}" required
-               aria-label="Nome no parecer de {{ u.nome_extenso }}"></td>
-    <td><select form="{{ id }}" name="tipo" aria-label="Tipo de {{ u.nome_extenso }}">
-        {% for codigo, rotulo in tipos %}
-        <option value="{{ codigo }}" {% if u.tipo == codigo %}selected{% endif %}>{{ rotulo }}</option>
-        {% endfor %}</select></td>
-    <td><select form="{{ id }}" name="campus_id" aria-label="Campus de {{ u.nome_extenso }}">
-        {% for c in campi %}
-        <option value="{{ c.id }}" {% if u.campus_id == c.id %}selected{% endif %}>{{ c.sigla }}</option>
-        {% endfor %}</select></td>
-    <td><input form="{{ id }}" type="checkbox" name="emite_portaria" value="1"
-        {% if u.emite_portaria %}checked{% endif %}
-        aria-label="{{ u.nome_extenso }} emite portaria de localização"></td>
-    <td><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-        {% if u.ativo %}checked{% endif %} aria-label="{{ u.nome_extenso }} está ativa"></td>
-    {% else %}
-    <td class="mono">{{ u.codigo_uorg or '—' }}</td><td>{{ u.sigla or '—' }}</td>
-    <td>{{ u.nome_oficial }}</td><td>{{ u.nome_extenso }}</td><td>{{ u.tipo }}</td>
-    <td>{{ u.campus.sigla if u.campus }}</td>
-    <td>{{ ui.pilula_sim_nao(u.emite_portaria) }}</td>
-    <td>{{ ui.pilula_sim_nao(u.ativo) }}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(9) }}{% endfor %}</table>
+    <td>{{ u.sigla or '—' }}<span class="quebra discreto mono">{{ u.codigo_uorg or 'sem código' }}</span></td>
+    <td data-coluna="Nome oficial (SIAPE)">{{ u.nome_oficial }}</td>
+    <td data-coluna="Nome no parecer">{{ u.nome_extenso }}</td>
+    <td data-coluna="Tipo · campus">{{ rotulo_tipo[u.tipo] or u.tipo }}<span class="quebra discreto">{{ u.campus.sigla if u.campus else 'sem campus' }}</span></td>
+    <td data-coluna="Situação">{{ ui.pilula_sim_nao(u.ativo, 'ativa', 'inativa') }}
+      {%- if u.emite_portaria %} <span class="pilula info">emite portaria</span>{% endif %}</td>
+    {# NUVEM: só leitura aqui — a lista de setores promotores é do módulo de
+       Treinamentos (`servicos/setor_promotor.ts`); o popup de editar não manda
+       o campo e a gravação não o reescreve #}
+    <td data-coluna="Promove treinamento">{{ ui.pilula_sim_nao(u.promove_treinamento) }}</td>
+    {{ editar('editar-uorg-' ~ u.id) }}
+  </tr>{% else %}{{ nenhum(7) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'postos-trabalho' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Posto</th><th scope="col">Sigla</th><th scope="col">Unidade</th><th scope="col">Ativo</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for p in itens %}
-  {% set id = 'f-posto-' ~ p.id %}
   <tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/postos-trabalho/{{ p.id }}" id="{{ id }}"></form>
-        <input form="{{ id }}" name="nome" value="{{ p.nome }}" required
-               aria-label="Nome do posto {{ p.nome }}"></td>
-    <td><input class="campo-medio" form="{{ id }}" name="sigla" value="{{ p.sigla or '' }}"
-               aria-label="Sigla do posto {{ p.nome }}"></td>
-    <td><select form="{{ id }}" name="unidade_uorg_id" aria-label="Unidade do posto {{ p.nome }}">
-        {% for u in unidades %}
-        <option value="{{ u.id }}" {% if p.unidade_uorg_id == u.id %}selected{% endif %}>
-          {{ u.nome_extenso }}</option>{% endfor %}</select></td>
-    <td><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-        {% if p.ativo %}checked{% endif %} aria-label="Posto {{ p.nome }} está ativo"></td>
-    {% else %}
-    <td>{{ p.nome }}</td><td>{{ p.sigla or '—' }}</td>
-    <td>{{ p.unidade.nome_extenso if p.unidade }}</td>
-    <td>{{ ui.pilula_sim_nao(p.ativo) }}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(5) }}{% endfor %}</table>
+    <td>{{ p.nome }}
+      {%- if p.descricao %}<span class="quebra discreto">{{ p.descricao }}</span>{% endif %}</td>
+    <td data-coluna="Sigla">{{ p.sigla or '—' }}</td>
+    <td data-coluna="Unidade">{{ p.unidade.nome_extenso if p.unidade else '—' }}</td>
+    <td data-coluna="Ativo">{{ ui.pilula_sim_nao(p.ativo) }}</td>
+    {{ editar('editar-posto-' ~ p.id) }}
+  </tr>{% else %}{{ nenhum(5) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'agentes-nocivos' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Descrição</th><th scope="col">Risco</th><th scope="col">Fundamentação</th>
-    <th scope="col">Quantitativa</th><th scope="col">Ativo</th><th scope="col">Canônico</th>{% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    <th scope="col">Quantitativa</th><th scope="col">Ativo</th><th scope="col">Canônico</th>{{ th_acoes() }}</tr>
+</thead><tbody>
   {% for a in itens %}
-  {% set id = 'f-agente-' ~ a.id %}
   <tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/agentes-nocivos/{{ a.id }}" id="{{ id }}"></form>
-        <input form="{{ id }}" name="descricao" value="{{ a.descricao }}" required
-               aria-label="Descrição do agente"></td>
-    <td><select form="{{ id }}" name="tipo_risco_id" aria-label="Tipo de risco do agente">
-        {% for r in riscos %}
-        <option value="{{ r.id }}" {% if a.tipo_risco_id == r.id %}selected{% endif %}>{{ r.nome }}</option>
-        {% endfor %}</select></td>
-    <td><select form="{{ id }}" name="fundamentacao_id" aria-label="Fundamentação do agente">
-        <option value="">—</option>
-        {% for f in fundamentacoes %}
-        <option value="{{ f.id }}" {% if a.fundamentacao_id == f.id %}selected{% endif %}>{{ f.codigo }}</option>
-        {% endfor %}</select></td>
-    <td><input form="{{ id }}" type="checkbox" name="exige_quantitativa" value="1"
-        {% if a.exige_reavaliacao_quantitativa %}checked{% endif %}
-        aria-label="Exige avaliação quantitativa"></td>
-    <td><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-        {% if a.ativo %}checked{% endif %} aria-label="Agente ativo"></td>
-    {% else %}
-    <td>{{ a.descricao }}</td><td>{{ a.tipo_risco.nome if a.tipo_risco }}</td>
-    <td class="mono">{{ a.fundamentacao.codigo if a.fundamentacao else '—' }}</td>
-    <td>{{ ui.pilula_sim_nao(a.exige_reavaliacao_quantitativa) }}</td>
-    <td>{{ ui.pilula_sim_nao(a.ativo) }}</td>
-    {% endif %}
-    <td>{% if a.agente_canonico_id %}<span class="pilula alerta">sinônimo</span>
+    <td>{{ a.descricao }}</td>
+    <td data-coluna="Risco">{{ a.tipo_risco.nome if a.tipo_risco else '—' }}</td>
+    <td data-coluna="Fundamentação" class="mono">{{ a.fundamentacao.codigo if a.fundamentacao else '—' }}</td>
+    <td data-coluna="Quantitativa">{{ ui.pilula_sim_nao(a.exige_reavaliacao_quantitativa) }}</td>
+    <td data-coluna="Ativo">{{ ui.pilula_sim_nao(a.ativo) }}</td>
+    <td data-coluna="Canônico">{% if a.agente_canonico_id %}<span class="pilula alerta">sinônimo</span>
         {% else %}<span class="discreto">—</span>{% endif %}</td>
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(7) }}{% endfor %}</table>
+    {{ editar('editar-agente-' ~ a.id) }}
+  </tr>{% else %}{{ nenhum(7) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'tipos-risco' %}
-<table><thead>
-  <tr><th scope="col">Código</th><th scope="col">Nome</th>{% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+<table class="empilhavel"><thead>
+  <tr><th scope="col">Código</th><th scope="col">Nome</th>{{ th_acoes() }}</tr>
+</thead><tbody>
   {% for t in itens %}
-  {% set id = 'f-risco-' ~ t.id %}
   <tr>
-    <td class="mono">{{ t.codigo }}
-      {% if editavel %}<form method="post" action="/catalogos/tipos-risco/{{ t.id }}" id="{{ id }}"></form>{% endif %}</td>
-    {% if editavel %}
-    <td><input form="{{ id }}" name="nome" value="{{ t.nome }}" required
-               aria-label="Nome do tipo de risco {{ t.codigo }}"></td>
-    {% else %}<td>{{ t.nome }}</td>{% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(3) }}{% endfor %}</table>
+    <td class="mono">{{ t.codigo }}</td>
+    <td data-coluna="Nome">{{ t.nome }}</td>
+    {{ editar('editar-risco-' ~ t.id) }}
+  </tr>{% else %}{{ nenhum(3) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'fundamentacoes-legais' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Código</th><th scope="col">Norma</th><th scope="col">Anexo</th><th scope="col">Texto</th><th scope="col">Vigente</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for f in itens %}
-  {% set id = 'f-fund-' ~ f.id %}
   <tr>
-    <td class="mono">{{ f.codigo }}
-      {% if editavel %}<form method="post" action="/catalogos/fundamentacoes-legais/{{ f.id }}" id="{{ id }}"></form>{% endif %}</td>
-    {% if editavel %}
-    <td><input class="campo-medio" form="{{ id }}" name="norma" value="{{ f.norma }}" required
-               aria-label="Norma de {{ f.codigo }}"></td>
-    <td><input class="campo-medio" form="{{ id }}" name="anexo" value="{{ f.anexo or '' }}"
-               aria-label="Anexo de {{ f.codigo }}"></td>
-    <td><textarea form="{{ id }}" name="texto" rows="4" required
-                  aria-label="Texto de {{ f.codigo }}">{{ f.texto }}</textarea></td>
-    <td><input form="{{ id }}" type="checkbox" name="vigente" value="1"
-        {% if f.vigente %}checked{% endif %} aria-label="{{ f.codigo }} vigente"></td>
-    {% else %}
-    <td>{{ f.norma }}</td><td>{{ f.anexo or '—' }}</td>
-    <td><span class="texto-literal">{{ f.texto }}</span></td>
-    <td>{{ ui.pilula_sim_nao(f.vigente, sim='vigente', nao='revogada') }}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</table>
+    <td class="mono">{{ f.codigo }}</td>
+    <td data-coluna="Norma">{{ f.norma }}</td>
+    <td data-coluna="Anexo">{{ f.anexo or '—' }}</td>
+    <td data-coluna="Texto"><span class="texto-literal">{{ f.texto }}</span></td>
+    <td data-coluna="Vigente">{{ ui.pilula_sim_nao(f.vigente, sim='vigente', nao='revogada') }}</td>
+    {{ editar('editar-fund-' ~ f.id) }}
+  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'percentuais' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Adicional</th><th scope="col">Grau</th><th scope="col">Rótulo</th><th scope="col">Valor</th><th scope="col">Base de cálculo</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for p in itens %}
-  {% set id = 'f-perc-' ~ p.id %}
   <tr>
-    <td>{{ p.tipo_adicional.codigo }}
-      {% if editavel %}<form method="post" action="/catalogos/percentuais/{{ p.id }}" id="{{ id }}"></form>{% endif %}</td>
-    <td>{{ p.grau }}</td>
-    {% if editavel %}
-    <td><input form="{{ id }}" name="rotulo" value="{{ p.rotulo }}" required
-               aria-label="Rótulo do percentual {{ p.grau }}"></td>
-    {% else %}<td>{{ p.rotulo }}</td>{% endif %}
-    <td class="mono">{{ p.valor }}%</td><td>{{ p.base_calculo }}</td>
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</table>
+    <td>{{ p.tipo_adicional.codigo }}</td>
+    <td data-coluna="Grau">{{ p.grau }}</td>
+    <td data-coluna="Rótulo">{{ p.rotulo }}</td>
+    <td data-coluna="Valor" class="mono">{{ p.valor }}%</td>
+    <td data-coluna="Base de cálculo">{{ p.base_calculo }}</td>
+    {{ editar('editar-perc-' ~ p.id) }}
+  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'textos-padrao' %}
 <table><thead>
@@ -337,146 +275,88 @@
     <td>{% if t.renderizado_pelo_modelo %}<span class="pilula ok">sim</span>
         {% else %}<span class="pilula sem-ponto" title="o texto está fixo no .docx">estático</span>{% endif %}</td>
     <td><span class="texto-literal">{{ t.template }}</span></td></tr>
-  {% else %}{{ nenhum(6) }}{% endfor %}</table>
+  {% else %}{{ nenhum(6, false) }}{% endfor %}</table>
 
 {% elif nome == 'cargos' %}
-<table><thead>
-  <tr><th scope="col" style="width:45%">Cargo</th><th scope="col">Código SIAPE</th><th scope="col">Servidores</th>
-    {% if editavel %}<th scope="col">Editar</th>{% endif %}</tr>
-</thead>
+<table class="empilhavel"><thead>
+  <tr><th scope="col">Cargo</th><th scope="col">Código SIAPE</th><th scope="col">Servidores</th>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for c in itens %}<tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/cargos" id="cargo-{{ c.id }}"></form>
-        <input form="cargo-{{ c.id }}" name="nome" value="{{ c.nome }}" required
-               aria-label="Nome do cargo">
-        <input form="cargo-{{ c.id }}" type="hidden" name="cargo_id" value="{{ c.id }}"></td>
-    <td><input form="cargo-{{ c.id }}" name="codigo_siape" class="campo-medio mono"
-               value="{{ c.codigo_siape or '' }}"
-               aria-label="Código SIAPE do cargo"></td>
-    <td><span class="contador" title="servidores neste cargo">{{ em_uso[c.id] }}</span></td>
-    <td><button form="cargo-{{ c.id }}" type="submit" class="secundario marcador">salvar</button></td>
-    {% else %}
-    <td>{{ c.nome }}</td><td class="mono">{{ c.codigo_siape or '—' }}</td>
-    <td><span class="contador">{{ em_uso[c.id] }}</span></td>
-    {% endif %}
+    <td>{{ c.nome }}</td>
+    <td data-coluna="Código SIAPE" class="mono">{{ c.codigo_siape or '—' }}</td>
+    <td data-coluna="Servidores"><span class="contador" title="servidores neste cargo">{{ em_uso[c.id] }}</span></td>
+    {{ editar('editar-cargo-' ~ c.id) }}
   </tr>{% else %}
   {# a única lista deste arquivo que não passava pelo macro `nenhum`, e por isso
      era a única que não migrou junto — é assim que a divergência nasce #}
   {{ nenhum(4) }}
-  {% endfor %}</table>
+  {% endfor %}</tbody></table>
 
 {% elif nome == 'checklists-modelo' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Nome</th><th scope="col">Tipo de processo</th><th scope="col">Estado alvo</th><th scope="col">Itens</th><th scope="col">Ativo</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for m in itens %}
-  {% set id = 'f-chk-' ~ m.id %}
   <tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/checklists-modelo/{{ m.id }}" id="{{ id }}"></form>
-        <input form="{{ id }}" name="nome" value="{{ m.nome }}" required
-               aria-label="Nome do modelo"></td>
-    {% else %}<td>{{ m.nome }}</td>{% endif %}
-    <td>{{ m.tipo_processo.nome if m.tipo_processo else 'qualquer' }}</td>
-    <td>{{ m.estado_alvo|estado if m.estado_alvo else 'qualquer' }}</td>
-    {% if editavel %}
-    <td><textarea form="{{ id }}" name="itens" rows="4" required
-                  aria-label="Itens do modelo, um por linha">{{ m.itens }}</textarea></td>
-    <td><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-        {% if m.ativo %}checked{% endif %} aria-label="Modelo ativo"></td>
-    {% else %}
-    <td><ol class="lista-itens">
+    <td>{{ m.nome }}</td>
+    <td data-coluna="Tipo de processo">{{ m.tipo_processo.nome if m.tipo_processo else 'qualquer' }}</td>
+    <td data-coluna="Estado alvo">{{ m.estado_alvo|estado if m.estado_alvo else 'qualquer' }}</td>
+    <td data-coluna="Itens"><ol class="lista-itens">
       {% for i in m.lista_de_itens %}<li>{{ i }}</li>{% endfor %}</ol></td>
-    <td>{{ ui.pilula_sim_nao(m.ativo) }}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</table>
+    <td data-coluna="Ativo">{{ ui.pilula_sim_nao(m.ativo) }}</td>
+    {{ editar('editar-chk-' ~ m.id) }}
+  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'portarias' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Texto original</th><th scope="col">Emissora</th><th scope="col">Nº</th><th scope="col">Publicação</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for p in itens %}
-  {% set id = 'f-port-' ~ p.id %}
   <tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/portarias/{{ p.id }}" id="{{ id }}"></form>
-        <input form="{{ id }}" name="texto_original" value="{{ p.texto_original }}" required
-               aria-label="Texto original da portaria"></td>
-    <td>{{ p.unidade_emissora.sigla or p.unidade_emissora.nome_extenso }}</td>
-    <td><input form="{{ id }}" name="numero" class="campo-curto mono" value="{{ p.numero }}" required aria-label="Número da portaria"></td>
-    <td><input form="{{ id }}" name="data_publicacao" type="date"
-               value="{{ p.data_publicacao }}" required
-               aria-label="Data de publicação da portaria"></td>
-    {% else %}
     <td>{{ p.texto_original }}</td>
-    <td>{{ p.unidade_emissora.sigla or p.unidade_emissora.nome_extenso }}</td>
-    <td class="mono">{{ p.numero }}</td><td class="mono">{{ p.data_publicacao|data }}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(5) }}{% endfor %}</table>
+    <td data-coluna="Emissora">{{ p.unidade_emissora.sigla or p.unidade_emissora.nome_extenso }}</td>
+    <td data-coluna="Nº" class="mono">{{ p.numero }}</td>
+    <td data-coluna="Publicação" class="mono">{{ p.data_publicacao|data }}</td>
+    {{ editar('editar-port-' ~ p.id) }}
+  </tr>{% else %}{{ nenhum(5) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'autoridades-destinatarias' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Nome</th><th scope="col">Cargo</th><th scope="col">Tratamento</th>
     <th scope="col">Desde</th><th scope="col">Até</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for a in itens %}
-  {% set id = 'f-aut-' ~ a.id %}
   <tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/autoridades-destinatarias/{{ a.id }}" id="{{ id }}"></form>
-        <input form="{{ id }}" name="nome" value="{{ a.nome }}" required aria-label="Nome da autoridade"></td>
-    <td><input form="{{ id }}" name="cargo" value="{{ a.cargo }}" required aria-label="Cargo da autoridade"></td>
-    <td><input form="{{ id }}" name="tratamento" value="{{ a.tratamento }}" required aria-label="Tratamento"></td>
-    <td><input form="{{ id }}" name="vigencia_inicio" type="date" value="{{ a.vigencia_inicio }}" required
-               aria-label="Início da vigência"></td>
-    <td><input form="{{ id }}" name="vigencia_fim" type="date" value="{{ a.vigencia_fim or '' }}"
-               aria-label="Fim da vigência"></td>
-    {% else %}
-    <td>{{ a.nome }}</td><td>{{ a.cargo }}</td><td>{{ a.tratamento }}</td>
-    <td class="mono">{{ a.vigencia_inicio|data }}</td>
-    <td class="mono">{{ a.vigencia_fim|data if a.vigencia_fim else '—' }}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</table>
+    <td>{{ a.nome }}</td>
+    <td data-coluna="Cargo">{{ a.cargo }}</td>
+    <td data-coluna="Tratamento">{{ a.tratamento }}</td>
+    <td data-coluna="Desde" class="mono">{{ a.vigencia_inicio|data }}</td>
+    <td data-coluna="Até" class="mono">{{ a.vigencia_fim|data if a.vigencia_fim else '—' }}</td>
+    {{ editar('editar-aut-' ~ a.id) }}
+  </tr>{% else %}{{ nenhum(6) }}{% endfor %}</tbody></table>
 
 {% elif nome == 'setores-emissores' %}
-<table><thead>
+<table class="empilhavel"><thead>
   <tr><th scope="col">Sigla</th><th scope="col">Nome extenso</th><th scope="col">Unidade SEI</th>
     <th scope="col">Contato</th><th scope="col">Cidade</th><th scope="col">Desde</th><th scope="col">Até</th>
-    {% if editavel %}<th scope="col"></th>{% endif %}</tr>
-</thead>
+    {{ th_acoes() }}</tr>
+</thead><tbody>
   {% for st in itens %}
-  {% set id = 'f-setor-' ~ st.id %}
   <tr>
-    {% if editavel %}
-    <td><form method="post" action="/catalogos/setores-emissores/{{ st.id }}" id="{{ id }}"></form>
-        <input form="{{ id }}" name="sigla_composta" class="mono" value="{{ st.sigla_composta }}" required
-               aria-label="Sigla composta"></td>
-    <td><input form="{{ id }}" name="nome_extenso" value="{{ st.nome_extenso }}" required aria-label="Nome extenso"></td>
-    <td><input form="{{ id }}" name="unidade_sei" class="campo-medio" value="{{ st.unidade_sei or '' }}"
-               aria-label="Unidade no SEI"></td>
-    <td><input form="{{ id }}" name="email" value="{{ st.email or '' }}" aria-label="E-mail">
-        <input form="{{ id }}" name="telefone" value="{{ st.telefone or '' }}" aria-label="Telefone">
-        <input form="{{ id }}" name="endereco" value="{{ st.endereco or '' }}" aria-label="Endereço"></td>
-    <td><input form="{{ id }}" name="cidade" class="campo-medio" value="{{ st.cidade }}" aria-label="Cidade de emissão"></td>
-    <td><input form="{{ id }}" name="vigencia_inicio" type="date" value="{{ st.vigencia_inicio }}" required
-               aria-label="Início da vigência"></td>
-    <td><input form="{{ id }}" name="vigencia_fim" type="date" value="{{ st.vigencia_fim or '' }}"
-               aria-label="Fim da vigência"></td>
-    {% else %}
-    <td class="mono">{{ st.sigla_composta }}</td><td>{{ st.nome_extenso }}</td>
-    <td>{{ st.unidade_sei or '—' }}</td>
-    <td>{{ st.email or '' }} {{ st.telefone or '' }}</td><td>{{ st.cidade }}</td>
-    <td class="mono">{{ st.vigencia_inicio|data }}</td>
-    <td class="mono">{{ st.vigencia_fim|data if st.vigencia_fim else '—' }}</td>
-    {% endif %}
-    {{ salvar(id) }}
-  </tr>{% else %}{{ nenhum(8) }}{% endfor %}</table>
+    <td class="mono">{{ st.sigla_composta }}</td>
+    <td data-coluna="Nome extenso">{{ st.nome_extenso }}</td>
+    <td data-coluna="Unidade SEI">{{ st.unidade_sei or '—' }}</td>
+    <td data-coluna="Contato">{% if st.email or st.telefone %}{{ st.email or '' }}
+      {%- if st.telefone %}<span class="quebra">{{ st.telefone }}</span>{% endif %}{% else %}—{% endif %}</td>
+    <td data-coluna="Cidade">{{ st.cidade }}</td>
+    <td data-coluna="Desde" class="mono">{{ st.vigencia_inicio|data }}</td>
+    <td data-coluna="Até" class="mono">{{ st.vigencia_fim|data if st.vigencia_fim else '—' }}</td>
+    {{ editar('editar-setor-emissor-' ~ st.id) }}
+  </tr>{% else %}{{ nenhum(8) }}{% endfor %}</tbody></table>
 
 {% else %}
 <p class="nada">Catálogo sem visão dedicada.</p>
@@ -508,143 +388,143 @@
 </div>
 {% endif %}
 
-{# A partir daqui é camada, e não bloco da coluna: os diálogos ficam fora de
-   `.tela` para não entrarem no `gap` da pilha. A edição em linha da tabela
-   acima NÃO virou popup — ali o formulário aberto é o próprio recurso, e
-   escondê-lo atrás de um clique tiraria da vista o que se veio conferir. #}
+{# A partir daqui é camada, e não bloco da coluna: os diálogos — o de cadastro
+   e os de editar cada linha — ficam fora de `.tela` para não entrarem no `gap`
+   da pilha, e fora da tabela, onde <form> não pode morar. #}
 </div>
 
 {% if usuario.pode('catalogo.gerenciar') %}
+  {# O popup de CADASTRO: abre sozinho só quando foi ele o recusado. #}
   {% if nome == 'campi' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/campi', ROTULO_NOVO[nome],
-                            aberto=recusado, erro=erro_cadastro,
-                            nota='sigla já cadastrada atualiza o campus em vez de duplicar') %}
+                            aberto=(recusado and not editando_id), erro=erro_cadastro,
+                            nota='sigla já cadastrada é recusada: corrija pelo “Editar” da linha') %}
     <div class="linha-campos">
       <div class="campo"><label for="novo-sigla">Sigla</label>
         <input id="novo-sigla" name="sigla" required placeholder="DIA"
-               value="{{ d['sigla'] or '' }}"></div>
+               value="{{ dn['sigla'] or '' }}"></div>
       <div class="campo"><label for="novo-nome">Nome</label>
         <input id="novo-nome" name="nome" required placeholder="Campus JK / Diamantina"
-               value="{{ d['nome'] or '' }}"></div>
+               value="{{ dn['nome'] or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="nova-cidade">Cidade</label>
         <input id="nova-cidade" name="cidade" required placeholder="Diamantina"
-               value="{{ d['cidade'] or '' }}"></div>
+               value="{{ dn['cidade'] or '' }}"></div>
       <div class="campo"><label for="nova-uf">UF</label>
-        <input id="nova-uf" name="uf" value="{{ d['uf'] or 'MG' }}" maxlength="2"></div>
+        <input id="nova-uf" name="uf" value="{{ dn['uf'] or 'MG' }}" maxlength="2"></div>
     </div>
     <div class="campo">
       <label class="discreto" for="novo-avancado">
         <input id="novo-avancado" type="checkbox" name="avancado" value="1"
-          {{- ' checked' if d['avancado'] == '1' }}> campus avançado</label>
+          {{- ' checked' if dn['avancado'] == '1' }}> campus avançado</label>
     </div>
   {% endcall %}
 
   {% elif nome == 'unidades-uorg' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/unidades-uorg',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro) %}
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro) %}
     <div class="linha-campos">
       {# O código UORG é o único campo que esta rota recusa (ele é único no
          catálogo), então é nele que o foco cai na reabertura. #}
-      <div class="campo codigo {{ 'com-erro' if recusado }}">
+      <div class="campo codigo {{ 'com-erro' if recusado_novo }}">
         <label for="novo-codigo">Código UORG</label>
         <input id="novo-codigo" name="codigo_uorg" placeholder="250"
-               value="{{ d['codigo_uorg'] or '' }}"{{ ' autofocus' if recusado }}
+               value="{{ dn['codigo_uorg'] or '' }}"{{ ' autofocus' if recusado_novo }}
                aria-describedby="dica-codigo">
         <span class="dica" id="dica-codigo">Vazio se a unidade não tiver código.</span></div>
       <div class="campo"><label for="nova-sigla-un">Sigla</label>
         <input id="nova-sigla-un" name="sigla" placeholder="FAMED"
-               value="{{ d['sigla'] or '' }}"></div>
+               value="{{ dn['sigla'] or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="novo-campus">Campus</label>
         <select id="novo-campus" name="campus_id" required>
-          {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.sigla }} — {{ c.cidade }}</option>{% endfor %}
+          {% for c in campi %}<option value="{{ c.id }}"{{ ui.sel(dn['campus_id'], c.id) }}>{{ c.sigla }} — {{ c.cidade }}</option>{% endfor %}
         </select></div>
       <div class="campo"><label for="novo-tipo">Tipo</label>
         <select id="novo-tipo" name="tipo" required>
-          {% for codigo, rotulo in tipos %}<option value="{{ codigo }}"{{ ui.sel(d['tipo'], codigo) }}>{{ rotulo }}</option>{% endfor %}
+          {% for codigo, rotulo in tipos %}<option value="{{ codigo }}"{{ ui.sel(dn['tipo'], codigo) }}>{{ rotulo }}</option>{% endfor %}
         </select></div>
     </div>
     <div class="campo"><label for="novo-oficial">Nome oficial (como sai no UORG do parecer)</label>
       <input id="novo-oficial" name="nome_oficial" required
-             value="{{ d['nome_oficial'] or '' }}"
+             value="{{ dn['nome_oficial'] or '' }}"
              placeholder="FACULDADE DE MEDICINA DE DIAMANTINA" aria-describedby="dica-oficial">
       <span class="dica" id="dica-oficial">A caixa é preservada byte a byte — digite
         como aparece no SIAPE.</span></div>
     <div class="campo"><label for="novo-extenso">Nome no corpo do parecer</label>
       <input id="novo-extenso" name="nome_extenso" required
-             value="{{ d['nome_extenso'] or '' }}"
+             value="{{ dn['nome_extenso'] or '' }}"
              placeholder="Faculdade de Medicina de Diamantina"></div>
     <div class="linha-campos">
       <div class="campo"><label for="nova-pai">Unidade superior</label>
         <select id="nova-pai" name="unidade_pai_id"><option value="">—</option>
-          {% for u in itens %}<option value="{{ u.id }}"{{ ui.sel(d['unidade_pai_id'], u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
+          {% for u in itens %}<option value="{{ u.id }}"{{ ui.sel(dn['unidade_pai_id'], u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
         </select></div>
       <div class="campo">
         <span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
         <label class="discreto" for="nova-emite">
           <input id="nova-emite" type="checkbox" name="emite_portaria" value="1"
-            {{- ' checked' if d['emite_portaria'] == '1' }}>
+            {{- ' checked' if dn['emite_portaria'] == '1' }}>
           emite portaria de localização</label></div>
     </div>
   {% endcall %}
 
   {% elif nome == 'postos-trabalho' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/postos-trabalho',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro,
                             nota='o par (unidade, nome) é que precisa ser único') %}
     <div class="campo"><label for="posto-unidade">Unidade</label>
       <select id="posto-unidade" name="unidade_uorg_id" required>
         {% for u in unidades %}
-        <option value="{{ u.id }}"{{ ui.sel(d['unidade_uorg_id'], u.id) }}>{{ u.nome_extenso }}{% if u.campus %} — {{ u.campus.sigla }}{% endif %}</option>
+        <option value="{{ u.id }}"{{ ui.sel(dn['unidade_uorg_id'], u.id) }}>{{ u.nome_extenso }}{% if u.campus %} — {{ u.campus.sigla }}{% endif %}</option>
         {% endfor %}
       </select></div>
     <div class="linha-campos">
       {# A duplicata é do par (unidade, nome), e o nome é a metade que se
          corrige — a unidade a pessoa escolheu de propósito. #}
-      <div class="campo {{ 'com-erro' if recusado }}">
+      <div class="campo {{ 'com-erro' if recusado_novo }}">
         <label for="posto-nome">Nome do posto</label>
         <input id="posto-nome" name="nome" required
-               value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}
+               value="{{ dn['nome'] or '' }}"{{ ' autofocus' if recusado_novo }}
                placeholder="Laboratório Escola de análises Clínicas (LEAC)"
                aria-describedby="dica-posto-nome">
         <span class="dica" id="dica-posto-nome">Sai no parecer exatamente como for
           digitado, inclusive a caixa.</span></div>
       <div class="campo"><label for="posto-sigla">Sigla</label>
         <input id="posto-sigla" name="sigla" placeholder="LEAC"
-               value="{{ d['sigla'] or '' }}"></div>
+               value="{{ dn['sigla'] or '' }}"></div>
     </div>
     <div class="campo"><label for="posto-descricao">Descrição</label>
-      <input id="posto-descricao" name="descricao" value="{{ d['descricao'] or '' }}"></div>
+      <input id="posto-descricao" name="descricao" value="{{ dn['descricao'] or '' }}"></div>
     <p class="discreto rodape-cartao sem-margem">“Laboratório de Química” pode existir em
       mais de uma unidade — o par (unidade, nome) é que precisa ser único.</p>
   {% endcall %}
 
   {% elif nome == 'portarias' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/portarias',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro,
                             nota='número e data saem do próprio texto quando ficam em branco') %}
     {# O texto original é de onde saem número e data quando eles vêm em branco,
        e é ele que a duplicata cita: é nele que o foco cai na reabertura. #}
-    <div class="campo {{ 'com-erro' if recusado }}">
+    <div class="campo {{ 'com-erro' if recusado_novo }}">
       <label for="port-texto">Texto original</label>
       <input id="port-texto" name="texto_original" required
-             value="{{ d['texto_original'] or '' }}"{{ ' autofocus' if recusado }}
+             value="{{ dn['texto_original'] or '' }}"{{ ' autofocus' if recusado_novo }}
              placeholder="PORTARIA/FAMED Nº 35, DE 17 DE SETEMBRO DE 2024"
              aria-describedby="dica-port">
       <span class="dica" id="dica-port">Byte a byte como no documento.</span></div>
     <div class="linha-campos">
       <div class="campo"><label for="port-emissora">Unidade emissora</label>
         <select id="port-emissora" name="unidade_emissora_id" required>
-          {% for u in emissoras %}<option value="{{ u.id }}"{{ ui.sel(d['unidade_emissora_id'], u.id) }}>{{ u.sigla or u.nome_extenso }}</option>{% endfor %}
+          {% for u in emissoras %}<option value="{{ u.id }}"{{ ui.sel(dn['unidade_emissora_id'], u.id) }}>{{ u.sigla or u.nome_extenso }}</option>{% endfor %}
         </select></div>
       <div class="campo codigo"><label for="port-numero">Número</label>
-        <input id="port-numero" name="numero" value="{{ d['numero'] or '' }}"></div>
+        <input id="port-numero" name="numero" value="{{ dn['numero'] or '' }}"></div>
       <div class="campo"><label for="port-data">Publicação</label>
         <input id="port-data" name="data_publicacao" type="date"
-               value="{{ d['data_publicacao'] or '' }}"></div>
+               value="{{ dn['data_publicacao'] or '' }}"></div>
     </div>
     <p class="discreto rodape-cartao sem-margem">001, 01 e 1 são a mesma portaria; o
       literal fica preservado.</p>
@@ -652,31 +532,31 @@
 
   {% elif nome == 'textos-padrao' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/textos-padrao',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro,
                             nota='a versão anterior é aposentada, não apagada') %}
     <div class="linha-campos">
       <div class="campo"><label for="txt-categoria">Categoria</label>
         <select id="txt-categoria" name="categoria">
           {% for c in ['ALTERACAO','RECOMENDACAO','REAVALIACAO','RODAPE_RESPONSABILIDADE',
-                       'ASSUNTO','PREAMBULO','ENCERRAMENTO'] %}<option{{ ui.sel(d['categoria'], c) }}>{{ c }}</option>{% endfor %}
+                       'ASSUNTO','PREAMBULO','ENCERRAMENTO'] %}<option{{ ui.sel(dn['categoria'], c) }}>{{ c }}</option>{% endfor %}
         </select></div>
       <div class="campo codigo"><label for="txt-codigo">Código</label>
-        <input id="txt-codigo" name="codigo" required value="{{ d['codigo'] or '' }}"></div>
+        <input id="txt-codigo" name="codigo" required value="{{ dn['codigo'] or '' }}"></div>
     </div>
     <div class="campo"><label for="txt-template">Template</label>
-      <textarea id="txt-template" name="template" required>{{ d['template'] or '' }}</textarea></div>
+      <textarea id="txt-template" name="template" required>{{ dn['template'] or '' }}</textarea></div>
   {% endcall %}
 
   {% elif nome == 'cargos' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/cargos', ROTULO_NOVO[nome],
-                            aberto=recusado, erro=erro_cadastro) %}
+                            aberto=(recusado and not editando_id), erro=erro_cadastro) %}
     <div class="linha-campos">
-      <div class="campo {{ 'com-erro' if recusado }}">
+      <div class="campo {{ 'com-erro' if recusado_novo }}">
         <label for="cargo-nome">Nome do cargo</label>
         <input id="cargo-nome" name="nome" required placeholder="TECNICO DE LABORATORIO AREA"
-               value="{{ d['nome'] or '' }}"{{ ' autofocus' if recusado }}></div>
+               value="{{ dn['nome'] or '' }}"{{ ' autofocus' if recusado_novo }}></div>
       <div class="campo codigo"><label for="cargo-codigo">Código SIAPE</label>
-        <input id="cargo-codigo" name="codigo_siape" value="{{ d['codigo_siape'] or '' }}"></div>
+        <input id="cargo-codigo" name="codigo_siape" value="{{ dn['codigo_siape'] or '' }}"></div>
     </div>
     <p class="discreto rodape-cartao sem-margem">
       O nome sai no parecer exatamente como for digitado, inclusive a caixa —
@@ -689,101 +569,435 @@
 
   {% elif nome == 'checklists-modelo' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/checklists-modelo',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro,
                             nota='nome já cadastrado atualiza o modelo em vez de duplicar') %}
     <div class="campo"><label for="chk-nome">Nome</label>
       <input id="chk-nome" name="nome" required placeholder="Instrução do adicional ocupacional"
-             value="{{ d['nome'] or '' }}"></div>
+             value="{{ dn['nome'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="chk-tipo">Tipo de processo</label>
         <select id="chk-tipo" name="tipo_processo_id"><option value="">qualquer</option>
-          {% for t in tipos_processo %}<option value="{{ t.id }}"{{ ui.sel(d['tipo_processo_id'], t.id) }}>{{ t.nome }}</option>{% endfor %}
+          {% for t in tipos_processo %}<option value="{{ t.id }}"{{ ui.sel(dn['tipo_processo_id'], t.id) }}>{{ t.nome }}</option>{% endfor %}
         </select></div>
       <div class="campo"><label for="chk-estado">Sugerir no estado</label>
         <select id="chk-estado" name="estado_alvo"><option value="">qualquer</option>
-          {% for codigo in estados %}<option value="{{ codigo }}"{{ ui.sel(d['estado_alvo'], codigo) }}>{{ codigo|estado }}</option>{% endfor %}
+          {% for codigo in estados %}<option value="{{ codigo }}"{{ ui.sel(dn['estado_alvo'], codigo) }}>{{ codigo|estado }}</option>{% endfor %}
         </select></div>
     </div>
     <div class="campo"><label for="chk-itens">Itens</label>
       <textarea id="chk-itens" name="itens" required aria-describedby="dica-chk"
-placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assinado por servidor e chefia&#10;Inspeção realizada&#10;Laudo vinculado">{{ d['itens'] or '' }}</textarea>
+placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assinado por servidor e chefia&#10;Inspeção realizada&#10;Laudo vinculado">{{ dn['itens'] or '' }}</textarea>
       <span class="dica" id="dica-chk">Um por linha, na ordem.</span></div>
   {% endcall %}
 
   {% elif nome == 'autoridades-destinatarias' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/autoridades-destinatarias',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro,
                             nota='ao trocar a gestão, feche a vigência da anterior') %}
     <div class="campo"><label for="aut-nome">Nome</label>
-      <input id="aut-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
+      <input id="aut-nome" name="nome" required value="{{ dn['nome'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="aut-cargo">Cargo</label>
         <input id="aut-cargo" name="cargo" required placeholder="Pró-Reitor de Gestão de Pessoas"
-               value="{{ d['cargo'] or '' }}"></div>
+               value="{{ dn['cargo'] or '' }}"></div>
       <div class="campo"><label for="aut-trat">Tratamento</label>
         <input id="aut-trat" name="tratamento" required placeholder="Senhor Pró-Reitor"
-               value="{{ d['tratamento'] or '' }}"></div>
+               value="{{ dn['tratamento'] or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="aut-ini">Vigente desde</label>
-        <input id="aut-ini" name="vigencia_inicio" type="date" required value="{{ d['vigencia_inicio'] or hoje }}"></div>
+        <input id="aut-ini" name="vigencia_inicio" type="date" required value="{{ dn['vigencia_inicio'] or hoje }}"></div>
       <div class="campo"><label for="aut-fim">Até (opcional)</label>
-        <input id="aut-fim" name="vigencia_fim" type="date" value="{{ d['vigencia_fim'] or '' }}"></div>
+        <input id="aut-fim" name="vigencia_fim" type="date" value="{{ dn['vigencia_fim'] or '' }}"></div>
     </div>
   {% endcall %}
 
   {% elif nome == 'setores-emissores' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/setores-emissores',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro,
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro,
                             nota='a chave é sigla + início de vigência') %}
     <div class="linha-campos">
       <div class="campo"><label for="set-sigla">Sigla composta</label>
         <input id="set-sigla" name="sigla_composta" required class="mono" placeholder="SEST/DASA/PROGEP"
-               value="{{ d['sigla_composta'] or '' }}"></div>
+               value="{{ dn['sigla_composta'] or '' }}"></div>
       <div class="campo"><label for="set-sei">Unidade no SEI</label>
-        <input id="set-sei" name="unidade_sei" value="{{ d['unidade_sei'] or '' }}"></div>
+        <input id="set-sei" name="unidade_sei" value="{{ dn['unidade_sei'] or '' }}"></div>
     </div>
     <div class="campo"><label for="set-nome">Nome extenso</label>
-      <input id="set-nome" name="nome_extenso" required value="{{ d['nome_extenso'] or '' }}"></div>
+      <input id="set-nome" name="nome_extenso" required value="{{ dn['nome_extenso'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="set-email">E-mail</label>
-        <input id="set-email" name="email" value="{{ d['email'] or '' }}"></div>
+        <input id="set-email" name="email" value="{{ dn['email'] or '' }}"></div>
       <div class="campo"><label for="set-tel">Telefone</label>
-        <input id="set-tel" name="telefone" value="{{ d['telefone'] or '' }}"></div>
+        <input id="set-tel" name="telefone" value="{{ dn['telefone'] or '' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="set-end">Endereço</label>
-        <input id="set-end" name="endereco" value="{{ d['endereco'] or '' }}"></div>
+        <input id="set-end" name="endereco" value="{{ dn['endereco'] or '' }}"></div>
       <div class="campo"><label for="set-cidade">Cidade de emissão</label>
-        <input id="set-cidade" name="cidade" value="{{ d['cidade'] or 'Diamantina' }}"></div>
+        <input id="set-cidade" name="cidade" value="{{ dn['cidade'] or 'Diamantina' }}"></div>
     </div>
     <div class="linha-campos">
       <div class="campo"><label for="set-ini">Vigente desde</label>
-        <input id="set-ini" name="vigencia_inicio" type="date" required value="{{ d['vigencia_inicio'] or hoje }}"></div>
+        <input id="set-ini" name="vigencia_inicio" type="date" required value="{{ dn['vigencia_inicio'] or hoje }}"></div>
       <div class="campo"><label for="set-fim">Até (opcional)</label>
-        <input id="set-fim" name="vigencia_fim" type="date" value="{{ d['vigencia_fim'] or '' }}"></div>
+        <input id="set-fim" name="vigencia_fim" type="date" value="{{ dn['vigencia_fim'] or '' }}"></div>
     </div>
   {% endcall %}
 
   {% elif nome == 'agentes-nocivos' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/agentes-nocivos',
-                            ROTULO_NOVO[nome], aberto=recusado, erro=erro_cadastro) %}
+                            ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro) %}
     <div class="campo"><label for="ag-descricao">Descrição</label>
-      <input id="ag-descricao" name="descricao" required value="{{ d['descricao'] or '' }}"></div>
+      <input id="ag-descricao" name="descricao" required value="{{ dn['descricao'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="ag-risco">Tipo de risco</label>
         <select id="ag-risco" name="tipo_risco_id" required>
-          {% for r in riscos %}<option value="{{ r.id }}"{{ ui.sel(d['tipo_risco_id'], r.id) }}>{{ r.nome }}</option>{% endfor %}</select></div>
+          {% for r in riscos %}<option value="{{ r.id }}"{{ ui.sel(dn['tipo_risco_id'], r.id) }}>{{ r.nome }}</option>{% endfor %}</select></div>
       <div class="campo"><label for="ag-fund">Fundamentação</label>
         <select id="ag-fund" name="fundamentacao_id"><option value="">—</option>
-          {% for f in fundamentacoes %}<option value="{{ f.id }}"{{ ui.sel(d['fundamentacao_id'], f.id) }}>{{ f.codigo }}</option>{% endfor %}</select></div>
+          {% for f in fundamentacoes %}<option value="{{ f.id }}"{{ ui.sel(dn['fundamentacao_id'], f.id) }}>{{ f.codigo }}</option>{% endfor %}</select></div>
     </div>
     <div class="campo">
       <label class="discreto" for="ag-quant">
         <input id="ag-quant" type="checkbox" name="exige_quantitativa" value="1"
-          {{- ' checked' if d['exige_quantitativa'] == '1' }}>
+          {{- ' checked' if dn['exige_quantitativa'] == '1' }}>
         exige avaliação quantitativa (RN-06)</label></div>
   {% endcall %}
+  {% endif %}
+
+  {# ---------------------------------------------------------------------
+     Os popups de EDITAR, um por linha. O padrão é o do catálogo de EPI:
+     `deste` diz se foi esta linha a recusada; se foi, o popup nasce aberto, com
+     a mensagem dentro e os valores do digitado (`d`); senão, fechado e com os
+     valores do registro. Os `name=` são exatamente os que a rota de edição já
+     lê — mudar um nome aqui seria gravar campo vazio sem aviso.
+
+     Nas caixas de marcar o digitado chega como '1' ou '' e o registro como
+     booleano, daí o `(d.x == '1') if deste else r.x` de cada uma.
+     --------------------------------------------------------------------- #}
+  {% if nome == 'campi' %}
+  {% for c in itens %}
+  {% set deste = recusado and editando_id == c.id %}
+  {% set v = d if deste else c %}
+  {% call ui.popup_cadastro('editar-campus-' ~ c.id, 'Editar · ' ~ (c.sigla or c.nome or 'campus'), '/catalogos/campi/' ~ c.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='a sigla não muda aqui: ela é o escopo dos perfis') %}
+    <div class="campo{{ ' com-erro' if deste }}"><label for="ed-campus-{{ c.id }}-nome">Nome</label>
+      <input id="ed-campus-{{ c.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="ed-campus-{{ c.id }}-cidade">Cidade</label>
+        <input id="ed-campus-{{ c.id }}-cidade" name="cidade" required value="{{ v.cidade or '' }}"></div>
+      <div class="campo"><label for="ed-campus-{{ c.id }}-uf">UF</label>
+        <input id="ed-campus-{{ c.id }}-uf" class="campo-curto" name="uf" maxlength="2" value="{{ v.uf or '' }}"></div>
+    </div>
+    <div class="campo">
+      <label class="discreto" for="ed-campus-{{ c.id }}-avancado">
+        <input id="ed-campus-{{ c.id }}-avancado" type="checkbox" name="avancado" value="1"
+          {{- ' checked' if ((d.avancado == '1') if deste else c.avancado) }}> campus avançado</label></div>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'unidades-uorg' %}
+  {% for u in itens %}
+  {% set deste = recusado and editando_id == u.id %}
+  {% set v = d if deste else u %}
+  {% call ui.popup_cadastro('editar-uorg-' ~ u.id, 'Editar · ' ~ u.nome_extenso, '/catalogos/unidades-uorg/' ~ u.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none), largo=true,
+                            nota='quem promove treinamento se escolhe em Treinamentos → Setores promotores') %}
+    <div class="linha-campos">
+      {# O código UORG é o único campo que esta rota recusa (ele é único no
+         catálogo), então é nele que o foco cai na reabertura. #}
+      <div class="campo codigo{{ ' com-erro' if deste }}"><label for="ed-uorg-{{ u.id }}-codigo">Código UORG</label>
+        <input id="ed-uorg-{{ u.id }}-codigo" name="codigo_uorg" value="{{ v.codigo_uorg or '' }}"{{ ' autofocus' if deste }}
+               aria-describedby="ed-uorg-{{ u.id }}-dica-codigo">
+        <span class="dica" id="ed-uorg-{{ u.id }}-dica-codigo">Vazio se a unidade não tiver código.</span></div>
+      <div class="campo"><label for="ed-uorg-{{ u.id }}-sigla">Sigla</label>
+        <input id="ed-uorg-{{ u.id }}-sigla" name="sigla" value="{{ v.sigla or '' }}"></div>
+      <div class="campo"><label for="ed-uorg-{{ u.id }}-tipo">Tipo</label>
+        <select id="ed-uorg-{{ u.id }}-tipo" name="tipo" required>
+          {% for codigo, rotulo in tipos %}<option value="{{ codigo }}"{{ ui.sel(v.tipo, codigo) }}>{{ rotulo }}</option>{% endfor %}
+        </select></div>
+      <div class="campo"><label for="ed-uorg-{{ u.id }}-campus">Campus</label>
+        <select id="ed-uorg-{{ u.id }}-campus" name="campus_id" required>
+          {% for cp in campi %}<option value="{{ cp.id }}"{{ ui.sel(v.campus_id, cp.id) }}>{{ cp.sigla }} — {{ cp.cidade }}</option>{% endfor %}
+        </select></div>
+    </div>
+    <div class="campo"><label for="ed-uorg-{{ u.id }}-oficial">Nome oficial (como sai no UORG do parecer)</label>
+      <input id="ed-uorg-{{ u.id }}-oficial" name="nome_oficial" required value="{{ v.nome_oficial or '' }}"
+             aria-describedby="ed-uorg-{{ u.id }}-dica-oficial">
+      <span class="dica" id="ed-uorg-{{ u.id }}-dica-oficial">A caixa é preservada byte a byte — digite
+        como aparece no SIAPE.</span></div>
+    <div class="campo"><label for="ed-uorg-{{ u.id }}-extenso">Nome no corpo do parecer</label>
+      <input id="ed-uorg-{{ u.id }}-extenso" name="nome_extenso" required value="{{ v.nome_extenso or '' }}"></div>
+    <div class="linha-campos">
+      <div class="campo">
+        <label class="discreto" for="ed-uorg-{{ u.id }}-emite">
+          <input id="ed-uorg-{{ u.id }}-emite" type="checkbox" name="emite_portaria" value="1"
+            {{- ' checked' if ((d.emite_portaria == '1') if deste else u.emite_portaria) }}>
+          emite portaria de localização</label></div>
+      <div class="campo">
+        <label class="discreto" for="ed-uorg-{{ u.id }}-ativo">
+          <input id="ed-uorg-{{ u.id }}-ativo" type="checkbox" name="ativo" value="1"
+            {{- ' checked' if ((d.ativo == '1') if deste else u.ativo) }}>
+          ativa</label></div>
+    </div>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'postos-trabalho' %}
+  {% for p in itens %}
+  {% set deste = recusado and editando_id == p.id %}
+  {% set v = d if deste else p %}
+  {% call ui.popup_cadastro('editar-posto-' ~ p.id, 'Editar · ' ~ p.nome, '/catalogos/postos-trabalho/' ~ p.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='o par (unidade, nome) é que precisa ser único') %}
+    <div class="campo"><label for="ed-posto-{{ p.id }}-unidade">Unidade</label>
+      <select id="ed-posto-{{ p.id }}-unidade" name="unidade_uorg_id" required>
+        {% for un in unidades %}
+        <option value="{{ un.id }}"{{ ui.sel(v.unidade_uorg_id, un.id) }}>{{ un.nome_extenso }}{% if un.campus %} — {{ un.campus.sigla }}{% endif %}</option>
+        {% endfor %}
+      </select></div>
+    <div class="linha-campos">
+      {# A duplicata é do par (unidade, nome), e o nome é a metade que se
+         corrige — a unidade a pessoa escolheu de propósito. #}
+      <div class="campo{{ ' com-erro' if deste }}"><label for="ed-posto-{{ p.id }}-nome">Nome do posto</label>
+        <input id="ed-posto-{{ p.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}
+               aria-describedby="ed-posto-{{ p.id }}-dica-nome">
+        <span class="dica" id="ed-posto-{{ p.id }}-dica-nome">Sai no parecer exatamente como for
+          digitado, inclusive a caixa.</span></div>
+      <div class="campo"><label for="ed-posto-{{ p.id }}-sigla">Sigla</label>
+        <input id="ed-posto-{{ p.id }}-sigla" name="sigla" value="{{ v.sigla or '' }}"></div>
+    </div>
+    {# A rota sempre gravou a descrição, e a linha da tabela não a mandava:
+       salvar a linha apagava a descrição do cadastro. No popup ela vai junto. #}
+    <div class="campo"><label for="ed-posto-{{ p.id }}-descricao">Descrição</label>
+      <input id="ed-posto-{{ p.id }}-descricao" name="descricao" value="{{ v.descricao or '' }}"></div>
+    <div class="campo">
+      <label class="discreto" for="ed-posto-{{ p.id }}-ativo">
+        <input id="ed-posto-{{ p.id }}-ativo" type="checkbox" name="ativo" value="1"
+          {{- ' checked' if ((d.ativo == '1') if deste else p.ativo) }}> ativo</label></div>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'cargos' %}
+  {% for cg in itens %}
+  {% set deste = recusado and editando_id == cg.id %}
+  {% set v = d if deste else cg %}
+  {# Mesma rota do cadastro: é o `cargo_id` escondido que a faz renomear em vez
+     de criar, e que diz para qual popup a recusa volta. #}
+  {% call ui.popup_cadastro('editar-cargo-' ~ cg.id, 'Editar · ' ~ cg.nome, '/catalogos/cargos', 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='o parecer já emitido guarda o nome que valia no dia') %}
+    <input type="hidden" name="cargo_id" value="{{ cg.id }}">
+    <div class="linha-campos">
+      <div class="campo{{ ' com-erro' if deste }}"><label for="ed-cargo-{{ cg.id }}-nome">Nome do cargo</label>
+        <input id="ed-cargo-{{ cg.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}></div>
+      <div class="campo codigo"><label for="ed-cargo-{{ cg.id }}-codigo">Código SIAPE</label>
+        <input id="ed-cargo-{{ cg.id }}-codigo" name="codigo_siape" value="{{ v.codigo_siape or '' }}"></div>
+    </div>
+    <p class="discreto rodape-cartao sem-margem">
+      {{ em_uso[cg.id] }} servidor(es) neste cargo: o nome novo aparece nas telas
+      deles assim que salvar. Renomear é seguro para o que já saiu — o parecer
+      congela o cargo na emissão.</p>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'agentes-nocivos' %}
+  {% for a in itens %}
+  {% set deste = recusado and editando_id == a.id %}
+  {% set v = d if deste else a %}
+  {% call ui.popup_cadastro('editar-agente-' ~ a.id, 'Editar agente nocivo', '/catalogos/agentes-nocivos/' ~ a.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none)) %}
+    <div class="campo{{ ' com-erro' if deste }}"><label for="ed-agente-{{ a.id }}-descricao">Descrição</label>
+      <input id="ed-agente-{{ a.id }}-descricao" name="descricao" required value="{{ v.descricao or '' }}"{{ ' autofocus' if deste }}></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="ed-agente-{{ a.id }}-risco">Tipo de risco</label>
+        <select id="ed-agente-{{ a.id }}-risco" name="tipo_risco_id" required>
+          {% for r in riscos %}<option value="{{ r.id }}"{{ ui.sel(v.tipo_risco_id, r.id) }}>{{ r.nome }}</option>{% endfor %}</select></div>
+      <div class="campo"><label for="ed-agente-{{ a.id }}-fund">Fundamentação</label>
+        <select id="ed-agente-{{ a.id }}-fund" name="fundamentacao_id"><option value="">—</option>
+          {% for f in fundamentacoes %}<option value="{{ f.id }}"{{ ui.sel(v.fundamentacao_id, f.id) }}>{{ f.codigo }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo">
+        <label class="discreto" for="ed-agente-{{ a.id }}-quant">
+          <input id="ed-agente-{{ a.id }}-quant" type="checkbox" name="exige_quantitativa" value="1"
+            {{- ' checked' if ((d.exige_quantitativa == '1') if deste else a.exige_reavaliacao_quantitativa) }}>
+          exige avaliação quantitativa (RN-06)</label></div>
+      <div class="campo">
+        <label class="discreto" for="ed-agente-{{ a.id }}-ativo">
+          <input id="ed-agente-{{ a.id }}-ativo" type="checkbox" name="ativo" value="1"
+            {{- ' checked' if ((d.ativo == '1') if deste else a.ativo) }}> ativo</label></div>
+    </div>
+    {% if a.agente_canonico_id %}
+    <p class="discreto rodape-cartao sem-margem">Este agente é sinônimo: aponta para o
+      agente canônico, e o vínculo não se edita aqui.</p>
+    {% endif %}
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'tipos-risco' %}
+  {% for t in itens %}
+  {% set deste = recusado and editando_id == t.id %}
+  {% set v = d if deste else t %}
+  {% call ui.popup_cadastro('editar-risco-' ~ t.id, 'Editar · ' ~ t.codigo, '/catalogos/tipos-risco/' ~ t.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='o código é chave interna e não muda') %}
+    <div class="campo{{ ' com-erro' if deste }}"><label for="ed-risco-{{ t.id }}-nome">Nome</label>
+      <input id="ed-risco-{{ t.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}
+             aria-describedby="ed-risco-{{ t.id }}-dica">
+      <span class="dica" id="ed-risco-{{ t.id }}-dica">Sai no parecer no campo “Tipo de risco”.</span></div>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'fundamentacoes-legais' %}
+  {% for f in itens %}
+  {% set deste = recusado and editando_id == f.id %}
+  {% set v = d if deste else f %}
+  {% call ui.popup_cadastro('editar-fund-' ~ f.id, 'Editar · ' ~ f.codigo, '/catalogos/fundamentacoes-legais/' ~ f.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none), largo=true,
+                            nota='o parecer já emitido não muda: reimprime do congelado') %}
+    <div class="linha-campos">
+      <div class="campo{{ ' com-erro' if deste }}"><label for="ed-fund-{{ f.id }}-norma">Norma</label>
+        <input id="ed-fund-{{ f.id }}-norma" name="norma" required value="{{ v.norma or '' }}"{{ ' autofocus' if deste }}></div>
+      <div class="campo"><label for="ed-fund-{{ f.id }}-anexo">Anexo</label>
+        <input id="ed-fund-{{ f.id }}-anexo" name="anexo" value="{{ v.anexo or '' }}"></div>
+    </div>
+    <div class="campo"><label for="ed-fund-{{ f.id }}-texto">Texto</label>
+      <textarea id="ed-fund-{{ f.id }}-texto" name="texto" rows="6" required
+                aria-describedby="ed-fund-{{ f.id }}-dica">{{ v.texto or '' }}</textarea>
+      <span class="dica" id="ed-fund-{{ f.id }}-dica">Sai literal no parecer. Aspas retas viram
+        curvas ao salvar, uma única vez.</span></div>
+    <div class="campo">
+      <label class="discreto" for="ed-fund-{{ f.id }}-vigente">
+        <input id="ed-fund-{{ f.id }}-vigente" type="checkbox" name="vigente" value="1"
+          {{- ' checked' if ((d.vigente == '1') if deste else f.vigente) }}> vigente</label></div>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'percentuais' %}
+  {% for p in itens %}
+  {% set deste = recusado and editando_id == p.id %}
+  {% set v = d if deste else p %}
+  {% call ui.popup_cadastro('editar-perc-' ~ p.id, 'Editar · ' ~ p.tipo_adicional.codigo ~ ' ' ~ p.grau, '/catalogos/percentuais/' ~ p.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='o valor é a lei e não se edita aqui') %}
+    <div class="campo{{ ' com-erro' if deste }}"><label for="ed-perc-{{ p.id }}-rotulo">Rótulo</label>
+      <input id="ed-perc-{{ p.id }}-rotulo" name="rotulo" required value="{{ v.rotulo or '' }}"{{ ' autofocus' if deste }}></div>
+    <p class="discreto rodape-cartao sem-margem">Valor: <span class="mono">{{ p.valor }}%</span>
+      sobre {{ p.base_calculo }}.</p>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'checklists-modelo' %}
+  {% for m in itens %}
+  {% set deste = recusado and editando_id == m.id %}
+  {% set v = d if deste else m %}
+  {% call ui.popup_cadastro('editar-chk-' ~ m.id, 'Editar · ' ~ m.nome, '/catalogos/checklists-modelo/' ~ m.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='o checklist já aplicado num processo é uma cópia e não muda') %}
+    <div class="campo{{ ' com-erro' if deste }}"><label for="ed-chk-{{ m.id }}-nome">Nome</label>
+      <input id="ed-chk-{{ m.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}></div>
+    <div class="campo"><label for="ed-chk-{{ m.id }}-itens">Itens</label>
+      <textarea id="ed-chk-{{ m.id }}-itens" name="itens" rows="6" required
+                aria-describedby="ed-chk-{{ m.id }}-dica">{{ v.itens or '' }}</textarea>
+      <span class="dica" id="ed-chk-{{ m.id }}-dica">Um por linha, na ordem.</span></div>
+    <div class="campo">
+      <label class="discreto" for="ed-chk-{{ m.id }}-ativo">
+        <input id="ed-chk-{{ m.id }}-ativo" type="checkbox" name="ativo" value="1"
+          {{- ' checked' if ((d.ativo == '1') if deste else m.ativo) }}> ativo</label></div>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'portarias' %}
+  {% for p in itens %}
+  {% set deste = recusado and editando_id == p.id %}
+  {% set v = d if deste else p %}
+  {% call ui.popup_cadastro('editar-port-' ~ p.id, 'Editar portaria', '/catalogos/portarias/' ~ p.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='emissora: ' ~ (p.unidade_emissora.sigla or p.unidade_emissora.nome_extenso)) %}
+    <div class="campo{{ ' com-erro' if deste }}"><label for="ed-port-{{ p.id }}-texto">Texto original</label>
+      <input id="ed-port-{{ p.id }}-texto" name="texto_original" required value="{{ v.texto_original or '' }}"{{ ' autofocus' if deste }}
+             aria-describedby="ed-port-{{ p.id }}-dica">
+      <span class="dica" id="ed-port-{{ p.id }}-dica">Byte a byte como no documento.</span></div>
+    <div class="linha-campos">
+      <div class="campo codigo"><label for="ed-port-{{ p.id }}-numero">Número</label>
+        <input id="ed-port-{{ p.id }}-numero" name="numero" required value="{{ v.numero or '' }}"></div>
+      <div class="campo"><label for="ed-port-{{ p.id }}-data">Publicação</label>
+        <input id="ed-port-{{ p.id }}-data" name="data_publicacao" type="date" required value="{{ v.data_publicacao or '' }}"></div>
+    </div>
+    <p class="discreto rodape-cartao sem-margem">Mudar a data de publicação pode brigar com o
+      marco inicial de um parecer em rascunho (RN-05): confira a validação do parecer
+      depois de corrigir.</p>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'autoridades-destinatarias' %}
+  {% for a in itens %}
+  {% set deste = recusado and editando_id == a.id %}
+  {% set v = d if deste else a %}
+  {% call ui.popup_cadastro('editar-aut-' ~ a.id, 'Editar · ' ~ a.nome, '/catalogos/autoridades-destinatarias/' ~ a.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none),
+                            nota='troca de gestão é registro novo: aqui só se corrige') %}
+    <div class="campo{{ ' com-erro' if deste }}"><label for="ed-aut-{{ a.id }}-nome">Nome</label>
+      <input id="ed-aut-{{ a.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="ed-aut-{{ a.id }}-cargo">Cargo</label>
+        <input id="ed-aut-{{ a.id }}-cargo" name="cargo" required value="{{ v.cargo or '' }}"></div>
+      <div class="campo"><label for="ed-aut-{{ a.id }}-trat">Tratamento</label>
+        <input id="ed-aut-{{ a.id }}-trat" name="tratamento" required value="{{ v.tratamento or '' }}"></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label for="ed-aut-{{ a.id }}-ini">Vigente desde</label>
+        <input id="ed-aut-{{ a.id }}-ini" name="vigencia_inicio" type="date" required value="{{ v.vigencia_inicio or '' }}"></div>
+      <div class="campo"><label for="ed-aut-{{ a.id }}-fim">Até (opcional)</label>
+        <input id="ed-aut-{{ a.id }}-fim" name="vigencia_fim" type="date" value="{{ v.vigencia_fim or '' }}"></div>
+    </div>
+  {% endcall %}
+  {% endfor %}
+
+  {% elif nome == 'setores-emissores' %}
+  {# `editar-setor-emissor-`, e não `f-setor-`/`editar-setor-`: `f-setor` já é o
+     id do filtro de /turmas, e o prefixo comprido não deixa os dois se
+     confundirem numa busca pelo código. #}
+  {% for st in itens %}
+  {% set deste = recusado and editando_id == st.id %}
+  {% set v = d if deste else st %}
+  {% call ui.popup_cadastro('editar-setor-emissor-' ~ st.id, 'Editar · ' ~ st.sigla_composta, '/catalogos/setores-emissores/' ~ st.id, 'Salvar',
+                            aberto=deste, erro=(erro_popup if deste else none), largo=true,
+                            nota='mudança de nome é registro novo com vigência; aqui só se corrige') %}
+    <div class="linha-campos">
+      {# A chave é (sigla, início de vigência), e a sigla é a metade que se
+         corrige na recusa por duplicata. #}
+      <div class="campo{{ ' com-erro' if deste }}"><label for="ed-setor-emissor-{{ st.id }}-sigla">Sigla composta</label>
+        <input id="ed-setor-emissor-{{ st.id }}-sigla" name="sigla_composta" class="mono" required
+               value="{{ v.sigla_composta or '' }}"{{ ' autofocus' if deste }}></div>
+      <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-sei">Unidade no SEI</label>
+        <input id="ed-setor-emissor-{{ st.id }}-sei" name="unidade_sei" value="{{ v.unidade_sei or '' }}"></div>
+    </div>
+    <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-nome">Nome extenso</label>
+      <input id="ed-setor-emissor-{{ st.id }}-nome" name="nome_extenso" required value="{{ v.nome_extenso or '' }}"></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-email">E-mail</label>
+        <input id="ed-setor-emissor-{{ st.id }}-email" name="email" value="{{ v.email or '' }}"></div>
+      <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-tel">Telefone</label>
+        <input id="ed-setor-emissor-{{ st.id }}-tel" name="telefone" value="{{ v.telefone or '' }}"></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-end">Endereço</label>
+        <input id="ed-setor-emissor-{{ st.id }}-end" name="endereco" value="{{ v.endereco or '' }}"></div>
+      <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-cidade">Cidade de emissão</label>
+        <input id="ed-setor-emissor-{{ st.id }}-cidade" name="cidade" value="{{ v.cidade or '' }}"></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-ini">Vigente desde</label>
+        <input id="ed-setor-emissor-{{ st.id }}-ini" name="vigencia_inicio" type="date" required value="{{ v.vigencia_inicio or '' }}"></div>
+      <div class="campo"><label for="ed-setor-emissor-{{ st.id }}-fim">Até (opcional)</label>
+        <input id="ed-setor-emissor-{{ st.id }}-fim" name="vigencia_fim" type="date" value="{{ v.vigencia_fim or '' }}"></div>
+    </div>
+  {% endcall %}
+  {% endfor %}
   {% endif %}
 {% endif %}
 {% endblock %}

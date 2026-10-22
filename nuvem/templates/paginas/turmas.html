@@ -236,12 +236,15 @@
         <option value="{{ c.id }}"{{ ui.sel(d['campus_id'], c.id) }}>{{ c.nome }}</option>
         {% endfor %}
       </select></div>
+    {# Só os setores promotores (`servicos/setor_promotor.ts`): a estrutura da
+       UFVJM inteira é para lotação, não para o "promovido por" do certificado. #}
     <div class="campo"><label for="nova-unidade">Unidade promotora</label>
-      <select id="nova-unidade" name="unidade_promotora_id"><option value="">—</option>
+      <select id="nova-unidade" name="unidade_promotora_id" aria-describedby="dica-nova-unidade"><option value="">—</option>
         {% for u in unidades %}
         <option value="{{ u.id }}"{{ ui.sel(d['unidade_promotora_id'], u.id) }}>{{ u.nome_extenso }}</option>
         {% endfor %}
-      </select></div>
+      </select>
+      <span class="dica" id="dica-nova-unidade">{{ dica_setor_promotor }}</span></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-vagas">Vagas</label>

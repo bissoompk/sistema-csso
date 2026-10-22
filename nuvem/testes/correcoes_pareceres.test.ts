@@ -289,7 +289,7 @@ describe("M8 — editar os dados do laudo e desvincular posto", () => {
       { data_emissao: "2019-06-01", data_avaliacao: "2019-05-20", subscritor_id: (await FABRICIO()).id, numero_documento_sei: "0123456" },
       HTML,
     );
-    expect(r.text).toContain("Laudo atualizado.");
+    expect(r.text).toContain("Laudo: alteração gravada.");
     const [laudo] = await db.select().from(e.laudo_tecnico).where(eq(e.laudo_tecnico.id, c.laudo_id));
     expect([laudo!.data_avaliacao, laudo!.numero_documento_sei]).toEqual(["2019-05-20", "0123456"]);
     const trilha = await db
