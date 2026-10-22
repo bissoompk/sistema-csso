@@ -21,7 +21,11 @@ import * as datas_br from "./datas_br.js";
 import * as documento from "./documento.js";
 import * as textos from "./textos.js";
 
-export const MODELO = "comprovante_epi_v1.docx";
+// v2: o v1 com a marca da Sisa no cabeçalho do Word. O registro não guarda o
+// modelo — só o contexto e o hash do TEXTO —, e a marca é imagem, não texto: a
+// segunda via de uma entrega impressa no v1 sai no v2 com o mesmo hash, sem o
+// aviso de divergência
+export const MODELO = "comprovante_epi_v2.docx";
 export const SUBPASTA = "epi";
 export const TIPO_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 

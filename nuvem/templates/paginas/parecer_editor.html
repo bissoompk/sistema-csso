@@ -227,9 +227,11 @@
               <div class="campo"><label for="pa-modelo">Modelo</label>
                 <select id="pa-modelo" name="modelo_arquivo">
                   <option value="modelo_parecer_v1.docx"
-                    {% if parecer.modelo_arquivo != 'modelo_parecer_v2.docx' %}selected{% endif %}>v1 (rótulo original)</option>
+                    {% if parecer.modelo_arquivo != 'modelo_parecer_v2.docx' and parecer.modelo_arquivo != 'modelo_parecer_v3.docx' %}selected{% endif %}>v1 (rótulo original)</option>
                   <option value="modelo_parecer_v2.docx"
                     {% if parecer.modelo_arquivo == 'modelo_parecer_v2.docx' %}selected{% endif %}>v2 (rótulo corrigido)</option>
+                  <option value="modelo_parecer_v3.docx"
+                    {% if parecer.modelo_arquivo == 'modelo_parecer_v3.docx' %}selected{% endif %}>v3 (rótulo corrigido e marca da Sisa)</option>
                 </select></div>
             </div>
           </section>

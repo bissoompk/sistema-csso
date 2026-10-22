@@ -76,6 +76,23 @@ async function quantos_eventos(tipo?: string): Promise<number> {
 // =====================================================================
 // Número editável (test_editor_ajustes)
 // =====================================================================
+describe("modelo do parecer", () => {
+  it("o rascunho novo nasce no v3 (marca da Sisa); o editor oferece v1, v2 e v3", async () => {
+    const [cliente, caminho] = await abrir_rascunho();
+    expect((await o_parecer()).modelo_arquivo).toBe("modelo_parecer_v3.docx");
+    const tela = (await cliente.get(caminho)).text;
+    expect(tela).toMatch(/<option value="modelo_parecer_v3.docx"\s+selected>/);
+    for (const v of ["v1", "v2"]) expect(tela).toContain(`<option value="modelo_parecer_${v}.docx"`);
+  });
+
+  it("o rascunho no v1 continua no v1 ao ser regravado", async () => {
+    const [cliente, caminho] = await abrir_rascunho();
+    await cliente.post(caminho, { modelo_arquivo: "modelo_parecer_v1.docx" }, { seguir: false });
+    expect((await o_parecer()).modelo_arquivo).toBe("modelo_parecer_v1.docx");
+    expect((await cliente.get(caminho)).text).toMatch(/<option value="modelo_parecer_v1.docx"\s+selected>/);
+  });
+});
+
 describe("número do parecer", () => {
   it("pode ser digitado no rascunho", async () => {
     const [cliente, caminho] = await abrir_rascunho();

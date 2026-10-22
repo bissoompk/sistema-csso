@@ -27,8 +27,15 @@ export const DESTINO = path.resolve(aqui, "../modelos-docx");
 export const MODELOS = [
   "modelo_parecer_v1.docx",
   "modelo_parecer_v2.docx",
+  // v3: o v2 com a marca da Sisa no cabeçalho, ao lado do brasão e da UFVJM;
+  // v1 e v2 ficam, intactos, para a reimpressão dos pareceres emitidos com eles
+  "modelo_parecer_v3.docx",
   "lista_presenca_v1.docx",
+  // v2 da lista e do comprovante: o v1 com a marca da Sisa no cabeçalho do
+  // Word (repete em toda página). O v1 continua sendo o do sistema da rede
+  "lista_presenca_v2.docx",
   "comprovante_epi_v1.docx",
+  "comprovante_epi_v2.docx",
   "certificados/certificado_padrao_v1.docx",
   // v2: as frases inteiras (norma sem repetir, unidade promotora e validade
   // opcionais) — feito do v1 trocando três marcadores; o v1 fica, intacto,

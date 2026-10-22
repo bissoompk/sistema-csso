@@ -61,6 +61,17 @@
    para o segundo item da lateral, que é exatamente o que o salto existe
    para evitar. #}
 <a class="salto" href="#conteudo">Ir para o conteúdo</a>
+{# A MARCA DA SISA NO PAPEL. Toda folha que sai do sistema pelo Ctrl+P (ficha
+   de EPI, guia de entrega, ficha do servidor, relatórios, a validação pública
+   do certificado) abre com a marca de quem a emite. Na tela ela não existe
+   (`.so-papel`): a lateral já diz onde a pessoa está. Fica aqui, e não numa
+   página, para nenhuma folha esquecer — e fora do `com_casca`, porque a tela
+   sem lateral (a validação pública) também é impressa. É elemento de verdade,
+   no alto do conteúdo, porque o Chrome não desenha `@page { @top-center }`.
+   Sai só na primeira folha; repetir em toda página pediria `position: fixed`,
+   que o Chrome sobrepõe ao texto em vez de reservar o espaço. #}
+<div class="so-papel marca-papel"><img src="/estaticos/img/logo-sisa.png" width="600" height="230"
+  alt="Sisa — Superintendência Integrada de Saúde · UFVJM"></div>
 {# Login, primeiro acesso e trocar senha não têm lateral: ninguém navega nelas —
    duas são anteriores à sessão e a terceira é um pedágio. Em vez de um segundo
    layout (que duplicaria o <head>, o rodapé, as faixas e o Ctrl+K só para tirar

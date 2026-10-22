@@ -2402,6 +2402,11 @@ tbody[data-carregando] td, tr[data-carregando] td { color: var(--tinta-dica); }
   text-align: center; font-size: 12px; line-height: 1.35; margin-bottom: 14px;
 }
 .previa .cabecalho strong { display: block; }
+/* No v3 a marca da Sisa entra a direita, como no .docx. A primeira coluna e
+   vazia e da mesma largura da terceira: o texto continua centrado na folha. */
+.previa .cabecalho.com-marca { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+.previa .cabecalho.com-marca > div { grid-column: 2; }
+.previa .cabecalho .marca-sisa { justify-self: end; width: 31mm; max-width: 100%; height: auto; }
 /* O `#333` da moldura da tabela nao vira token pelo mesmo motivo que a fonte
    aqui e Times: a previa imita o .docx que sai assinado, e nao a interface.
    Puxar --borda para ca faria o documento herdar o cinza do sistema e deixar de
@@ -2970,6 +2975,10 @@ a.botao-icone.primario, button.botao-icone.primario {
    aqui, e o bloco de impressao (abaixo) o liga. A ordem importa pelo mesmo
    motivo que o `@media print` e o ultimo da folha. */
 .so-papel { display: none; }
+/* A marca da Sisa no alto da folha impressa (`base.html`). 45mm e o tamanho do
+   cabecalho do comprovante de EPI: o papel do sistema tem uma marca so. */
+.marca-papel { margin: 0 0 8px; }
+.marca-papel img { display: block; width: 45mm; height: auto; }
 
 /* ---------- impressao ----------
    A previa do parecer e impressa. Sem isto a lateral escura vira uma faixa de
@@ -2998,6 +3007,9 @@ a.botao-icone.primario, button.botao-icone.primario {
 }
 @media print {
   .so-papel { display: block; }
+  /* A previa do parecer ja e papel timbrado (MEC/UFVJM e, no v3, a Sisa): a
+     marca da folha em cima dela seria um segundo cabecalho. */
+  body:has(.previa) .marca-papel { display: none; }
   .assinaturas-guia {
     display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
     margin: 28px 0 0; padding-top: 6px; break-inside: avoid;
@@ -3008,6 +3020,11 @@ a.botao-icone.primario, button.botao-icone.primario {
 
   body { display: block; background: #fff; }
   .cabecalho, .cabecalho-marca, .faixa-alerta, .rodape, .acoes-pagina { display: none; }
+  /* O interruptor do menu do celular e interface: em A4 (largura de celular
+     para o @media) ele apareceria como um botao "Menu" no alto da folha, e o
+     :has dele esconderia a linha de identidade. */
+  .lateral > details.menu-celular { display: none; }
+  .lateral:has(> details.menu-celular:not([open])) > .rodape-lateral { display: block; }
   .conteudo { padding: 0; }
   .cartao, .previa, .tabela-cartao { border: 0; box-shadow: none; }
   /* A moldura cinza existe para a previa se ler como folha na tela; no papel
