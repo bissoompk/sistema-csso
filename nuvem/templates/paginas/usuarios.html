@@ -19,6 +19,11 @@
 {% set erro_conta = erro if forma == 'conta' else none %}
 {% set erro_perfil = erro if forma == 'perfil' else none %}
 {% set erro_habilitacao = erro if forma == 'habilitacao' else none %}
+{# A quarta forma é a EDIÇÃO da conta ligada a um profissional habilitado: um
+   popup por linha, e `usuario_alvo` diz de qual linha veio a recusa — só o
+   popup daquela abre, com a conta que se escolheu. #}
+{% set erro_conta_hab = erro if forma == 'conta-hab' else none %}
+{% set editar_conta_hab = usuario.pode('habilitacao.atestar') %}
 {# A recusa que já está dentro de um popup sai da faixa da casca: escrita nos
    dois lugares, ela faz procurar dois problemas. #}
 {% set erro = none if forma else erro %}
@@ -250,39 +255,37 @@
     </div>
 
     {% if habilitados %}
-    <table>
+    {# Só leitura, como o catálogo de treinamentos: a conta ligada aparece
+       escrita, e trocá-la é "Editar", que abre o popup no fim da página. Era um
+       `<select>` com "Salvar" dentro da célula, em toda linha — quatro
+       formulários abertos numa tabela que se vem LER. No celular a tabela vira
+       cartões (`table.empilhavel`), como a de contas acima. #}
+    <table class="empilhavel">
       <thead>
         <tr><th scope="col">Nome</th><th scope="col">SIAPE</th><th scope="col">Habilitação</th><th scope="col">Título</th>
-            <th scope="col">Vigência</th><th scope="col">Externo</th><th scope="col">Conta no sistema</th></tr>
+            <th scope="col">Vigência</th><th scope="col">Externo</th><th scope="col">Conta no sistema</th>
+            {%- if editar_conta_hab %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}</tr>
       </thead>
       {% for h in habilitados %}
       <tr>
         <td class="nome">{{ h.nome }}</td>
-        <td class="mono">{{ h.siape or '—' }}</td>
-        <td>{{ HABILITACOES[h.habilitacao] or h.habilitacao }}</td>
-        <td>{{ h.titulo_assinatura }}</td>
-        <td class="mono">{{ h.vigencia_inicio|data }} —
+        <td class="mono" data-coluna="SIAPE">{{ h.siape or '—' }}</td>
+        <td data-coluna="Habilitação">{{ HABILITACOES[h.habilitacao] or h.habilitacao }}</td>
+        <td data-coluna="Título">{{ h.titulo_assinatura }}</td>
+        <td class="mono" data-coluna="Vigência">{{ h.vigencia_inicio|data }} —
           {{ h.vigencia_fim|data or 'sem termo' }}</td>
-        <td>{% if h.externo %}<span class="pilula alerta"
+        <td data-coluna="Externo">{% if h.externo %}<span class="pilula alerta"
                 title="{{ h.justificativa_art10_par5 or 'sem justificativa registrada' }}">art. 10, §5º</span>
             {% else %}<span class="discreto">não</span>{% endif %}</td>
         {# Sem conta ligada, o profissional não emite nem assina parecer pelo sistema. #}
-        <td>
-          {% if usuario.pode('habilitacao.atestar') %}
-          <form method="post" action="/habilitacoes/{{ h.id }}/conta" class="filtro-inline">
-            <label class="oculto" for="hab-conta-{{ h.id }}">Conta de {{ h.nome }}</label>
-            <select id="hab-conta-{{ h.id }}" name="usuario_id">
-              <option value="">{{ '— ligar a uma conta —' if not h.usuario_id else '— desligar —' }}</option>
-              {% for u in usuarios %}<option value="{{ u.id }}"{{ ' selected' if h.usuario_id == u.id }}>{{ u.nome }} ({{ u.login }})</option>{% endfor %}
-            </select>
-            <button type="submit" class="secundario compacto">Salvar</button>
-          </form>
-          {% if not h.usuario_id %}<span class="quebra discreto">Sem conta: não assina parecer.</span>{% endif %}
-          {% else %}
+        <td data-coluna="Conta no sistema">
           {% for u in usuarios %}{% if u.id == h.usuario_id %}{{ u.nome }}{% endif %}{% endfor %}
-          {% if not h.usuario_id %}<span class="discreto">sem conta</span>{% endif %}
-          {% endif %}
+          {#- Quem liga a conta lê o porquê de ligá-la; quem só consulta, o fato. #}
+          {% if not h.usuario_id %}<span class="discreto">{{ 'Sem conta: não assina parecer.' if editar_conta_hab else 'sem conta' }}</span>{% endif %}
         </td>
+        {% if editar_conta_hab %}
+        <td class="acao-linha">{{ ui.botao_cadastro('editar-conta-hab-' ~ h.id, 'Editar', 'secundario compacto') }}</td>
+        {% endif %}
       </tr>
       {% endfor %}
     </table>
@@ -399,6 +402,24 @@
 <datalist id="lista-servidores">
   {% for s in servidores %}<option value="{{ rotulo_servidor[s.id] }}">{% endfor %}
 </datalist>
+{% endif %}
+
+{% if editar_conta_hab %}
+{# Fora do cartão e da tabela: um `<dialog>` dentro de `<td>` herdaria a
+   largura da coluna e, no celular, o empilhamento do cartão. #}
+{% for h in habilitados %}
+{% set deste = forma == 'conta-hab' and d['usuario_alvo'] == h.id %}
+{% set escolhida = d['usuario_id'] if deste else h.usuario_id %}
+{% call ui.popup_cadastro('editar-conta-hab-' ~ h.id, 'Conta de ' ~ h.nome, '/habilitacoes/' ~ h.id ~ '/conta', 'Salvar',
+                          aberto=deste, erro=(erro_conta_hab if deste else none),
+                          nota='sem conta ligada, o profissional não emite nem assina parecer') %}
+  <div class="campo{{ ' com-erro' if deste }}"><label for="ed-conta-hab-{{ h.id }}-conta">Conta no sistema</label>
+    <select id="ed-conta-hab-{{ h.id }}-conta" name="usuario_id"{{ ' autofocus' if deste }}>
+      <option value="">{{ '— ligar a uma conta —' if not h.usuario_id else '— desligar —' }}</option>
+      {% for u in usuarios %}<option value="{{ u.id }}"{{ ui.sel(escolhida, u.id) }}>{{ u.nome }} ({{ u.login }})</option>{% endfor %}
+    </select></div>
+{% endcall %}
+{% endfor %}
 {% endif %}
 
 {% if usuario.pode('habilitacao.atestar') %}

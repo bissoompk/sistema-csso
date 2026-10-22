@@ -153,6 +153,13 @@ export async function semear_rbac(tx: Executor): Promise<void> {
   }
 }
 
+/**
+ * NUVEM: os setores que nascem podendo promover turma — os da Sisa. A lista
+ * vale uma vez: na criação da unidade, aqui, e na migração 0011 para o banco
+ * que já as tinha. Daí em diante quem decide é /treinamentos/setores-promotores.
+ */
+export const SETORES_PROMOTORES_INICIAIS: readonly string[] = ["Sisa", "CSSO", "SecSisa", "CSQV", "CPOS", "CPEL"];
+
 export async function semear_organizacao(
   tx: Executor,
 ): Promise<{ campus: Record<string, Linha>; uorg: Record<string, Linha> }> {
@@ -197,6 +204,9 @@ export async function semear_organizacao(
       tipo,
       campus_id: objetos_campus[cp]!.id,
       emite_portaria: emite,
+      // só ao CRIAR (`_obter_ou_criar` não reescreve quem já existe): a lista de
+      // promotores é do setor, e o que ele desmarcar não volta no próximo deploy
+      promove_treinamento: SETORES_PROMOTORES_INICIAIS.includes(sigla),
     };
     for (const k of Object.keys(chave)) delete valores[k];
     objetos_uorg[sigla] = await _obter_ou_criar(tx, unidade_uorg, chave, valores);

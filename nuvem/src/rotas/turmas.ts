@@ -55,6 +55,7 @@ import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js"
 import * as pedidos_link from "../servicos/pedidos_link.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as servico_presenca from "../servicos/presenca.js";
+import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
 import * as datas_br from "../servicos/datas_br.js";
@@ -275,13 +276,17 @@ async function _tela_lista(
     hoje,
     pode_inscrever: usuario.pode("turma.inscrever"),
     filtro_setor: setor ? String(setor) : "",
-    setores_do_filtro: unidades.filter((u) => usados_como_setor.has(u.id)),
+    // NUVEM: os setores promotores de hoje e qualquer unidade que já promoveu
+    // turma — a turma antiga, de unidade fora da lista, continua encontrável
+    setores_do_filtro: unidades.filter((u) => u.promove_treinamento || usados_como_setor.has(u.id)),
     // só treinamento ativo entra no seletor de nova turma
     treinamentos: treinamentos.filter((t) => t.ativo),
     // o filtro lista todos: turma antiga de curso desativado continua encontrável
     treinamentos_do_filtro: treinamentos,
     campi,
-    unidades,
+    // NUVEM: na turma nova, só os setores promotores (`setor_promotor.ts`)
+    unidades: unidades.filter((u) => u.promove_treinamento),
+    dica_setor_promotor: setor_promotor.DICA,
     descricoes: await _ultimas_descricoes(tx),
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     filtro_situacao: situacao,
@@ -630,7 +635,8 @@ async function _tela_ficha(
       servico_turma.vagas_restantes(tx, turma),
       _instrutores_livres(tx, turma),
       tx.select().from(tabela_campus).orderBy(asc(tabela_campus.nome)),
-      tx.select().from(tabela_unidade).orderBy(asc(tabela_unidade.nome_extenso)),
+      // NUVEM: os setores promotores e, se a turma já aponta para outra, ela
+      setor_promotor.opcoes(tx, turma.unidade_promotora_id),
       // NUVEM: campos de turma/participante do modelo (aba Emissão)
       na_emissao ? servico_emissao.modelo_da_turma(tx, turma) : Promise.resolve([null, ""] as const),
       na_emissao ? campos_certificado.valores_da_turma(tx, turma.id) : Promise.resolve({}),
@@ -770,6 +776,7 @@ async function _tela_ficha(
     busca,
     campi,
     unidades,
+    dica_setor_promotor: setor_promotor.DICA,
     // --- aba 3 ---
     dias: servico_presenca.dias_da_turma(turma),
     // a caixa marcada vale a carga do dia; quem chegou atrasado se ajusta à parte

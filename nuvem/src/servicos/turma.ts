@@ -53,6 +53,7 @@ import * as datas_br from "./datas_br.js";
 import * as numeracao from "./numeracao.js";
 import * as pendencias from "./pendencias.js";
 import * as servico_participante from "./participante.js";
+import * as setor_promotor from "./setor_promotor.js";
 import { COM_PARTICIPANTE, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import { comparar } from "./presenca.js";
@@ -274,6 +275,17 @@ function _conferir_numeros(d: {
   }
 }
 
+/**
+ * NUVEM: a unidade promotora sai da lista de setores promotores
+ * (`setor_promotor.ts`). Vazio passa; o valor que a turma JÁ tinha também — a
+ * turma antiga com unidade fora da lista se edita sem ser obrigada a trocar.
+ */
+async function _conferir_unidade_promotora(tx: Executor, escolhida: number | null, atual: number | null): Promise<void> {
+  if (escolhida === null || escolhida === atual) return;
+  const recusa = await setor_promotor.recusa(tx, escolhida);
+  if (recusa) throw new RegraDaTurma(recusa);
+}
+
 export interface DadosTurma {
   treinamento: TreinamentoRegistro;
   data_inicio: string;
@@ -313,6 +325,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
   if (d.data_base_vencimento && d.data_base_vencimento < d.data_inicio) {
     throw new RegraDaTurma("A data base do vencimento não pode ser anterior ao início da turma.");
   }
+  await _conferir_unidade_promotora(tx, d.unidade_promotora_id ?? null, null);
 
   const ano = datas_br.partes(d.data_inicio)[0];
   const numero = await numeracao.proximo_numero_turma(tx, ano);
@@ -405,6 +418,7 @@ export async function editar_turma(
         "que já foi divulgado. Cancele esta turma e abra outra.",
     );
   }
+  await _conferir_unidade_promotora(tx, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   const base = valor("data_base_vencimento");
   if (base !== null && base < novo_inicio) {
     throw new RegraDaTurma("A data base do vencimento não pode ser anterior ao início da turma.");

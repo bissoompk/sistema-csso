@@ -189,8 +189,9 @@ describe("validade da reciclagem", () => {
     await _criar();
     const alvo = await _id_do_treinamento();
     const resposta = await _editar_treinamento(alvo, { carga_horaria_horas: "16", validade_meses: "" });
-    expect(resposta.status).toBe(303);
-    expect((await cliente.get(resposta.location!)).text).toContain("Validade inválida");
+    // a recusa volta com o popup da linha aberto (ver "a recusa reabre o popup")
+    expect(resposta.status).toBe(200);
+    expect(resposta.text).toContain("Validade inválida");
     const t = await _treinamento(alvo);
     expect(t.validade_meses).toBe(24);
     // recusa é recusa: nada da edição entrou
@@ -417,9 +418,12 @@ describe("modelo e dicionário de tags", () => {
 // =====================================================================
 // O modelo vigente e o instrutor padrão da linha do catálogo
 // =====================================================================
-function _opcoes(html: string, form_id: string, campo: string): string[] {
-  const bloco = new RegExp(`<select form="${form_id}" name="${campo}">([\\s\\S]*?)</select>`).exec(html);
-  expect(bloco, `a tela não tem o seletor ${campo} de ${form_id}`).not.toBeNull();
+/** As opções do seletor `campo` no popup de edição do treinamento `id`. */
+function _opcoes(html: string, id: number, campo: string): string[] {
+  const popup = new RegExp(`<dialog class="popup" id="editar-trein-${id}"[\\s\\S]*?</dialog>`).exec(html);
+  expect(popup, `a tela não tem o popup de edição de ${id}`).not.toBeNull();
+  const bloco = new RegExp(`<select[^>]* name="${campo}">([\\s\\S]*?)</select>`).exec(popup![0]);
+  expect(bloco, `o popup de ${id} não tem o seletor ${campo}`).not.toBeNull();
   return [...bloco![1]!.matchAll(/value="([^"]*)"/g)].map((m) => m[1]!);
 }
 
@@ -436,10 +440,10 @@ describe("vínculos da linha do catálogo", () => {
     const generico = _id_do_modelo(await _criar_modelo("Genérico CSSO"));
     const so_brigada = _id_do_modelo(await _criar_modelo("Só da Brigada", { treinamento_id: String(brigada) }));
     const tela = (await cliente.get("/treinamentos/catalogo")).text;
-    const do_nr35 = _opcoes(tela, `f-trein-${nr35}`, "modelo_vigente_id");
+    const do_nr35 = _opcoes(tela, nr35, "modelo_vigente_id");
     expect(do_nr35).not.toContain(String(so_brigada));
     expect(do_nr35).toContain(String(generico));
-    expect(_opcoes(tela, `f-trein-${brigada}`, "modelo_vigente_id")).toContain(String(so_brigada));
+    expect(_opcoes(tela, brigada, "modelo_vigente_id")).toContain(String(so_brigada));
   });
 
   it("catálogo recusa modelo de outro treinamento", async () => {
@@ -447,8 +451,8 @@ describe("vínculos da linha do catálogo", () => {
     const [nr35, brigada] = await _dois_treinamentos();
     const so_brigada = _id_do_modelo(await _criar_modelo("Só da Brigada", { treinamento_id: String(brigada) }));
     const resposta = await _editar_treinamento(nr35, { modelo_vigente_id: String(so_brigada) });
-    expect(resposta.status).toBe(303);
-    expect((await cliente.get(resposta.location!)).text).toContain("outro treinamento");
+    expect(resposta.status).toBe(200);
+    expect(resposta.text).toContain("outro treinamento");
     expect((await _treinamento(nr35)).modelo_vigente_id).toBeNull();
   });
 
@@ -460,8 +464,8 @@ describe("vínculos da linha do catálogo", () => {
     await _criar();
     const alvo = await _id_do_treinamento();
     const resposta = await _editar_treinamento(alvo, { [campo]: valor });
-    expect(resposta.status).toBe(303);
-    expect((await cliente.get(resposta.location!)).text).toContain("não encontrad");
+    expect(resposta.status).toBe(200);
+    expect(resposta.text).toContain("não encontrad");
   });
 
   it("modelo superado continua na linha de quem o usa", async () => {
@@ -472,7 +476,7 @@ describe("vínculos da linha do catálogo", () => {
     await _editar_treinamento(alvo, { modelo_vigente_id: String(v1) });
     await cliente.post(`/treinamentos/modelos/${v1}/versao`, {}, { seguir: false });
     const tela = (await cliente.get("/treinamentos/catalogo")).text;
-    expect(_opcoes(tela, `f-trein-${alvo}`, "modelo_vigente_id")).toContain(String(v1));
+    expect(_opcoes(tela, alvo, "modelo_vigente_id")).toContain(String(v1));
     await _editar_treinamento(alvo, { carga_horaria_horas: "16", modelo_vigente_id: String(v1) });
     expect((await _treinamento(alvo)).modelo_vigente_id).toBe(v1);
   });
@@ -503,7 +507,7 @@ describe("vínculos da linha do catálogo", () => {
     const [assinatura] = await db.select().from(e.assinatura_instrutor);
     await db.update(e.assinatura_instrutor).set({ ativo: false }).where(eq(e.assinatura_instrutor.id, assinatura!.id));
     const resposta = await _editar_treinamento(alvo, { instrutor_padrao_id: String(assinatura!.id) });
-    expect((await cliente.get(resposta.location!)).text).toContain("inativa");
+    expect(resposta.text).toContain("inativa");
     expect((await _treinamento(alvo)).instrutor_padrao_id).toBeNull();
   });
 });
@@ -612,6 +616,75 @@ describe("assinatura de instrutor", () => {
       vigencia_fim: "2026-01-01",
     });
     expect(resposta.text).toContain("não pode ser anterior ao início");
+  });
+});
+
+// =====================================================================
+// Editar num popup: a lista é só leitura, e a recusa reabre o popup da linha
+// =====================================================================
+describe("editar num popup", () => {
+  it("catálogo: a lista não tem campo, e a recusa reabre o popup da linha com o digitado", async () => {
+    await coord();
+    await _criar();
+    const alvo = await _id_do_treinamento();
+    const lista = (await cliente.get("/treinamentos/catalogo")).text;
+    expect(lista).toContain(`href="#editar-trein-${alvo}"`);
+    expect(lista).not.toContain(`form="f-trein-`);
+    expect(lista).toMatch(new RegExp(`<dialog class="popup" id="editar-trein-${alvo}"`));
+    const r = await _editar_treinamento(alvo, { nome: "Altura revisada", carga_horaria_horas: "zero" });
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`<dialog class="popup" id="editar-trein-${alvo}"[^>]* open>`));
+    expect(r.text).toContain("Carga horária inválida");
+    expect(r.text).toContain('value="Altura revisada"');
+    // o cadastro não abre junto
+    expect(r.text).not.toMatch(/<dialog class="popup" id="novo-treinamento"[^>]* open>/);
+    expect((await _treinamento(alvo)).nome).toBe("Trabalho em Altura — NR-35");
+  });
+
+  it("instrutores: a lista não tem campo, e a recusa reabre o popup da linha sem o CPF", async () => {
+    await coord();
+    await cliente.post("/treinamentos/assinaturas", { nome: "Joana Ribeiro", externo: "1", vigencia_inicio: "2026-01-01" });
+    const alvo = (await _assinatura_unica()).id;
+    const lista = (await cliente.get("/treinamentos/assinaturas")).text;
+    expect(lista).toContain(`href="#editar-assin-${alvo}"`);
+    expect(lista).not.toContain(`form="f-assin-`);
+    const r = await cliente.post(`/treinamentos/assinaturas/${alvo}`, {
+      nome: "Joana Ribeiro Nunes",
+      externo: "1",
+      titulo: "Bombeira civil",
+      vigencia_inicio: "2026-06-01",
+      vigencia_fim: "2026-01-01",
+      cpf_certificado: "111.444.777-35",
+      ativo: "1",
+    });
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`<dialog class="popup" id="editar-assin-${alvo}"[^>]* open>`));
+    expect(r.text).toContain("não pode ser anterior ao início");
+    expect(r.text).toContain('value="Joana Ribeiro Nunes"');
+    expect(r.text).toContain('value="Bombeira civil"');
+    expect(r.text).not.toContain("777-35");
+    expect(r.text).not.toMatch(/<dialog class="popup" id="nova-assinatura"[^>]* open>/);
+    expect((await _assinatura_unica()).nome).toBe("Joana Ribeiro");
+  });
+
+  it("mapa de marcadores: a recusa da linha reabre o popup dela", async () => {
+    await coord();
+    const modelo_id = _id_do_modelo(await _criar_modelo());
+    await cliente.post(`/treinamentos/modelos/${modelo_id}/tags`, { marcador: "curso", campo: "treinamento_nome", ordem: "1" });
+    const [tag] = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, modelo_id));
+    const ficha = (await cliente.get(`/treinamentos/modelos/${modelo_id}`)).text;
+    expect(ficha).not.toContain(`form="f-tag-`);
+    const r = await cliente.post(`/treinamentos/modelos/${modelo_id}/tags/${tag!.id}`, {
+      tipo: "TEXTO_FIXO",
+      detalhe: "",
+      ordem: "7",
+    });
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`<dialog class="popup" id="editar-tag-${tag!.id}"[^>]* open>`));
+    expect(r.text).toContain("Digite o texto fixo");
+    expect(r.text).toMatch(new RegExp(`id="ed-tag-${tag!.id}-ordem" name="ordem" value="7"`));
+    const [depois] = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.id, tag!.id));
+    expect(depois!.campo).toBe("treinamento_nome");
   });
 });
 
@@ -743,6 +816,7 @@ describe("o módulo no menu e no mapa", () => {
       ["/certificados/vencimentos", "certificado.ver"],
       ["/treinamentos/indicadores", "indicador.ver"],
       ["/treinamentos/catalogo", "treinamento.ver"],
+      ["/treinamentos/setores-promotores", "treinamento.ver"],
       ["/treinamentos/modelos", "treinamento.gerenciar"],
       ["/treinamentos/assinaturas", "assinatura.gerenciar"],
       ["/treinamentos/participantes", "participante.mesclar"],

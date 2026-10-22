@@ -40,7 +40,9 @@ type Digitado = Record<string, string | number>;
 /**
  * A tela, com os três popups de cadastro em branco ou com o digitado.
  * `digitado` traz uma FORMA (`conta`, `perfil`, `habilitacao`) porque a recusa
- * precisa dizer qual deles reabrir. Não entra na URL.
+ * precisa dizer qual deles reabrir. Não entra na URL. A forma `conta-hab` é a
+ * edição da conta ligada a um profissional habilitado: um popup por linha, e
+ * `usuario_alvo` diz qual.
  */
 async function _tela_lista(
   c: Ctx,
@@ -651,14 +653,23 @@ rotas.post("/habilitacoes/:id{[0-9]+}/conta", async (c) => {
   const [habilitado] = await tx.select().from(profissional_habilitado).where(eq(profissional_habilitado.id, id));
   if (!habilitado) return redirecionar(c, "/usuarios");
   const bruto = f.texto("usuario_id").trim();
-  const conta_id = /^\d+$/.test(bruto) ? Number(bruto) : null;
+  // Vazio desliga a conta; qualquer outra coisa que não seja número é recusada
+  // como conta inexistente, e não lida como "desligar".
+  const conta_id = bruto === "" ? null : /^\d+$/.test(bruto) ? Number(bruto) : 0;
   let conta: { id: number; nome: string } | undefined;
   if (conta_id !== null) {
     [conta] = await tx
       .select({ id: tabela_usuario.id, nome: tabela_usuario.nome })
       .from(tabela_usuario)
       .where(eq(tabela_usuario.id, conta_id));
-    if (!conta) return redirecionar(c, comMensagem("/usuarios", "Conta não encontrada.", "erro"));
+    // Volta com o popup DESTA linha aberto e a conta que se escolheu, e não
+    // com a faixa no topo da lista: a recusa é do formulário de edição.
+    if (!conta) {
+      return _tela_lista(c, usuario, {
+        erro: "Conta não encontrada.",
+        digitado: { forma: "conta-hab", usuario_alvo: id, usuario_id: bruto },
+      });
+    }
   }
   if (habilitado.usuario_id === (conta?.id ?? null)) return redirecionar(c, "/usuarios");
   await tx

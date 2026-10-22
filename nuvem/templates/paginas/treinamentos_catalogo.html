@@ -6,11 +6,13 @@
    em `partes/macros.html`. #}
 {% set CADASTRAR = 'Cadastrar treinamento' %}
 
-{# O que foi digitado, devolvido pela rota quando a gravação é recusada. Vazio na
-   abertura da tela — e é a presença dele que reabre o popup. #}
+{# O que foi digitado, devolvido pela rota quando a gravação é recusada, e de
+   QUAL popup veio (`editando_id`: vazio é o cadastro). Vazio na abertura da
+   tela — e é a presença dele que reabre o popup. `digitado`, e não `d`, no
+   teste: `{}` é verdadeiro no JavaScript. #}
 {% set d = digitado or {} %}
-{% set recusado = true if (erro and d) else false %}
-{% set erro_cadastro = erro if recusado else none %}
+{% set recusado = true if (erro and digitado) else false %}
+{% set erro_popup = erro if recusado else none %}
 {% set erro = none if recusado else erro %}
 
 {% block acoes_cabecalho %}
@@ -73,8 +75,8 @@
   {# Uma linha de leitura por treinamento, para todos: o nome inteiro (é o nome
      oficial que vai no certificado, e numa caixa de texto da largura da coluna
      ele se lia "Segurai"), a carga como número brasileiro e a reciclagem por
-     extenso. Quem edita abre a ficha da linha (`popup_gaveta`), com cada campo
-     na largura dele. #}
+     extenso. Quem edita abre o popup da linha ("Editar", o mesmo padrão do
+     catálogo de EPI), com cada campo na largura dele. #}
   <div class="tabela-cartao lista sem-altura">
   <table class="empilhavel">
     <thead>
@@ -88,7 +90,6 @@
       </tr>
     </thead>
     {% for t in itens %}
-    {% set id = 'f-trein-' ~ t.id %}
     <tr>
       <td><span class="mono">{{ t.codigo }}</span>
         {% if t.norma_referencia and t.norma_referencia != t.codigo %}<span class="quebra discreto">{{ t.norma_referencia }}</span>{% endif %}</td>
@@ -113,53 +114,7 @@
       </td>
       {% if editavel %}
       <td class="acao-linha">
-        {% call ui.popup_gaveta('editar-trein-' ~ t.id, 'editar', 'Editar · ' ~ t.codigo,
-                                nota='o certificado já emitido guarda o que valia no dia') %}
-          <form method="post" action="/treinamentos/catalogo/{{ t.id }}" id="{{ id }}">
-            <div class="campo"><label>Nome (sai no certificado)
-              <input form="{{ id }}" name="nome" value="{{ t.nome }}" required></label></div>
-            <div class="linha-campos">
-              <div class="campo"><label>Carga horária (horas)
-                <input form="{{ id }}" name="carga_horaria_horas" value="{{ t.carga_horaria_horas|num }}"
-                       required inputmode="decimal"></label></div>
-              <div class="campo"><label>Reciclagem (meses, 0 = não vence)
-                <input form="{{ id }}" name="validade_meses" value="{{ t.validade_meses }}"
-                       required inputmode="numeric"></label></div>
-              <div class="campo"><label>Norma de referência
-                <input form="{{ id }}" name="norma_referencia" value="{{ t.norma_referencia or '' }}"></label></div>
-            </div>
-            <div class="linha-campos">
-              {# o modelo cadastrado para outro treinamento não entra na lista: o
-                 treinamento_id do modelo diz a que curso o layout serve, e NULL serve a
-                 qualquer um. O que a linha já aponta continua na lista mesmo superado ou
-                 inativo — fora dela, o navegador selecionaria "—" e salvar a linha
-                 apagaria o vínculo sem ninguém pedir. #}
-              <div class="campo"><label>Modelo do certificado
-                <select form="{{ id }}" name="modelo_vigente_id"><option value="">— o genérico vigente</option>
-                  {% for m in modelos %}{% if (m.treinamento_id is none or m.treinamento_id == t.id)
-                                         and (m.vigente or m.id == t.modelo_vigente_id) %}
-                  <option value="{{ m.id }}" {% if t.modelo_vigente_id == m.id %}selected{% endif %}>{{ m.rotulo }}{% if not m.vigente %} (superada){% endif %}</option>
-                  {% endif %}{% endfor %}</select></label>
-                {%- if t.modelo_vigente and not t.modelo_vigente.vigente %}
-                {{ ui.pilula_versao(false) }}{% endif %}</div>
-              <div class="campo"><label>Instrutor padrão
-                <select form="{{ id }}" name="instrutor_padrao_id"><option value="">—</option>
-                  {% for i in instrutores %}{% if i.ativo or i.id == t.instrutor_padrao_id %}
-                  <option value="{{ i.id }}" {% if t.instrutor_padrao_id == i.id %}selected{% endif %}>{{ i.nome_exibicao }}{% if not i.ativo %} (inativa){% endif %}</option>
-                  {% endif %}{% endfor %}</select></label></div>
-            </div>
-            <div class="campo"><label>Conteúdo programático (um tópico por linha)
-              <textarea form="{{ id }}" name="conteudo_programatico" rows="4"
-                        placeholder="um tópico por linha">{{ t.conteudo_programatico or '' }}</textarea></label></div>
-            <div class="campo">
-              <label class="discreto"><input form="{{ id }}" type="checkbox" name="obrigatorio" value="1"
-                  {% if t.obrigatorio %}checked{% endif %}> exigido por norma</label>
-              <label class="discreto"><input form="{{ id }}" type="checkbox" name="ativo" value="1"
-                  {% if t.ativo %}checked{% endif %}> ativo</label>
-            </div>
-            <div class="acoes"><button form="{{ id }}" type="submit">Salvar {{ t.codigo }}</button></div>
-          </form>
-        {% endcall %}
+        {{ ui.botao_cadastro('editar-trein-' ~ t.id, 'Editar', 'secundario compacto') }}
         {# só o que nunca teve turma se apaga; o resto se desativa (o serviço recusa e diz) #}
         {% call ui.popup_gaveta('excluir-trein-' ~ t.id, 'excluir', 'Excluir · ' ~ t.codigo, largo=false) %}
           <form method="post" action="/treinamentos/catalogo/{{ t.id }}/excluir">
@@ -185,47 +140,108 @@
 </div>
 
 {% if editavel %}
-{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. A edição em linha da
-   tabela acima continua em linha — lá o formulário aberto É o treinamento que se
-   veio conferir. #}
+{# Fora de `.tela`: o diálogo é camada, não bloco da coluna. O cadastro só
+   volta aberto na recusa DO CADASTRO; a recusa de uma edição reabre o popup
+   daquela linha, mais abaixo. #}
+{% set do_cadastro = recusado and not editando_id %}
+{% set dn = d if do_cadastro else {} %}
 {% call ui.popup_cadastro('novo-treinamento', CADASTRAR, '/treinamentos/catalogo',
-                          CADASTRAR, aberto=recusado, erro=erro_cadastro,
+                          CADASTRAR, aberto=do_cadastro, erro=(erro_popup if do_cadastro else none),
                           nota='nome e carga horária bastam') %}
   {# O nome vem primeiro: é o que a pessoa sabe. O código é opcional — em branco,
      sai do nome — e é o único campo que não muda depois. #}
-  <div class="campo {{ 'com-erro' if recusado }}"><label for="novo-nome">Nome (sai no certificado)</label>
+  <div class="campo {{ 'com-erro' if do_cadastro }}"><label for="novo-nome">Nome (sai no certificado)</label>
     <input id="novo-nome" name="nome" required placeholder="Trabalho em Altura — NR-35"
-           value="{{ d['nome'] or '' }}"
-           aria-describedby="dica-nome"{{ ' autofocus' if recusado }}>
+           value="{{ dn['nome'] or '' }}"
+           aria-describedby="dica-nome"{{ ' autofocus' if do_cadastro }}>
     <span class="dica" id="dica-nome">Pode ser corrigido depois: o certificado guarda o
       nome do dia em que foi emitido.</span></div>
   <div class="linha-campos">
     <div class="campo"><label for="novo-carga">Carga horária (horas)</label>
       <input id="novo-carga" name="carga_horaria_horas" required placeholder="8"
-             value="{{ d['carga_horaria_horas'] or '' }}" inputmode="decimal"></div>
+             value="{{ dn['carga_horaria_horas'] or '' }}" inputmode="decimal"></div>
     <div class="campo"><label for="nova-validade">Validade da reciclagem (meses)</label>
       <input id="nova-validade" name="validade_meses"
-             value="{{ d['validade_meses'] or 0 }}" inputmode="numeric"
+             value="{{ dn['validade_meses'] or 0 }}" inputmode="numeric"
              aria-describedby="dica-validade">
       <span class="dica" id="dica-validade">0 ou vazio = não expira.</span></div>
     <div class="campo codigo"><label for="novo-codigo">Código (opcional)</label>
       <input id="novo-codigo" name="codigo" placeholder="NR-35"
-             value="{{ d['codigo'] or '' }}"
+             value="{{ dn['codigo'] or '' }}"
              aria-describedby="dica-codigo">
       <span class="dica" id="dica-codigo">Em branco, sai do nome. Não muda depois.</span></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-norma">Norma de referência</label>
       <input id="nova-norma" name="norma_referencia" placeholder="NR-35"
-             value="{{ d['norma_referencia'] or '' }}"></div>
+             value="{{ dn['norma_referencia'] or '' }}"></div>
     <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
       <label class="discreto"><input type="checkbox" name="obrigatorio" value="1"
-        {{- ' checked' if d['obrigatorio'] == '1' }}>
+        {{- ' checked' if dn['obrigatorio'] == '1' }}>
         exigido por norma</label></div>
   </div>
   <div class="campo"><label for="novo-conteudo">Conteúdo programático (um tópico por linha)</label>
     <textarea id="novo-conteudo" name="conteudo_programatico" rows="4"
-placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de proteção individual">{{ d['conteudo_programatico'] or '' }}</textarea></div>
+placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de proteção individual">{{ dn['conteudo_programatico'] or '' }}</textarea></div>
 {% endcall %}
+
+{# A edição de cada treinamento, num popup por linha (fora da tabela, como o
+   cadastro). Os valores vêm do treinamento; na recusa, só o popup DESTA linha
+   volta aberto, com o que foi digitado e a mensagem. #}
+{% for t in itens %}
+{% set deste = recusado and editando_id == t.id %}
+{% set p = 'ed-trein-' ~ t.id %}
+{# o treinamento em texto, como o digitado: as duas grafias se comparam igual #}
+{% set v = d if deste else {'nome': t.nome, 'carga_horaria_horas': t.carga_horaria_horas|num,
+            'validade_meses': t.validade_meses, 'norma_referencia': t.norma_referencia,
+            'conteudo_programatico': t.conteudo_programatico,
+            'modelo_vigente_id': t.modelo_vigente_id, 'instrutor_padrao_id': t.instrutor_padrao_id,
+            'obrigatorio': '1' if t.obrigatorio else '', 'ativo': '1' if t.ativo else ''} %}
+{% call ui.popup_cadastro('editar-trein-' ~ t.id, 'Editar · ' ~ t.codigo, '/treinamentos/catalogo/' ~ t.id, 'Salvar',
+                          aberto=deste, erro=(erro_popup if deste else none), largo=true,
+                          nota='o certificado já emitido guarda o que valia no dia') %}
+  <div class="campo{{ ' com-erro' if deste }}"><label for="{{ p }}-nome">Nome (sai no certificado)</label>
+    <input id="{{ p }}-nome" name="nome" value="{{ v.nome or '' }}" required{{ ' autofocus' if deste }}></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="{{ p }}-carga">Carga horária (horas)</label>
+      <input id="{{ p }}-carga" name="carga_horaria_horas" value="{{ v.carga_horaria_horas }}"
+             required inputmode="decimal"></div>
+    <div class="campo"><label for="{{ p }}-validade">Reciclagem (meses, 0 = não vence)</label>
+      <input id="{{ p }}-validade" name="validade_meses" value="{{ v.validade_meses }}"
+             required inputmode="numeric"></div>
+    <div class="campo"><label for="{{ p }}-norma">Norma de referência</label>
+      <input id="{{ p }}-norma" name="norma_referencia" value="{{ v.norma_referencia or '' }}"></div>
+  </div>
+  <div class="linha-campos">
+    {# o modelo cadastrado para outro treinamento não entra na lista: o
+       treinamento_id do modelo diz a que curso o layout serve, e NULL serve a
+       qualquer um. O que a linha já aponta continua na lista mesmo superado ou
+       inativo — fora dela, o navegador selecionaria "—" e salvar a linha
+       apagaria o vínculo sem ninguém pedir. #}
+    <div class="campo"><label for="{{ p }}-modelo">Modelo do certificado</label>
+      <select id="{{ p }}-modelo" name="modelo_vigente_id"><option value="">— o genérico vigente</option>
+        {% for m in modelos %}{% if (m.treinamento_id is none or m.treinamento_id == t.id)
+                               and (m.vigente or m.id == t.modelo_vigente_id) %}
+        <option value="{{ m.id }}"{{ ui.sel(v.modelo_vigente_id, m.id) }}>{{ m.rotulo }}{% if not m.vigente %} (superada){% endif %}</option>
+        {% endif %}{% endfor %}</select>
+      {%- if t.modelo_vigente and not t.modelo_vigente.vigente %}
+      {{ ui.pilula_versao(false) }}{% endif %}</div>
+    <div class="campo"><label for="{{ p }}-instrutor">Instrutor padrão</label>
+      <select id="{{ p }}-instrutor" name="instrutor_padrao_id"><option value="">—</option>
+        {% for i in instrutores %}{% if i.ativo or i.id == t.instrutor_padrao_id %}
+        <option value="{{ i.id }}"{{ ui.sel(v.instrutor_padrao_id, i.id) }}>{{ i.nome_exibicao }}{% if not i.ativo %} (inativa){% endif %}</option>
+        {% endif %}{% endfor %}</select></div>
+  </div>
+  <div class="campo"><label for="{{ p }}-conteudo">Conteúdo programático (um tópico por linha)</label>
+    <textarea id="{{ p }}-conteudo" name="conteudo_programatico" rows="4"
+              placeholder="um tópico por linha">{{ v.conteudo_programatico or '' }}</textarea></div>
+  <div class="campo">
+    <label class="discreto"><input type="checkbox" name="obrigatorio" value="1"
+        {{- ' checked' if v.obrigatorio == '1' }}> exigido por norma</label>
+    <label class="discreto"><input type="checkbox" name="ativo" value="1"
+        {{- ' checked' if v.ativo == '1' }}> ativo</label>
+  </div>
+{% endcall %}
+{% endfor %}
 {% endif %}
 {% endblock %}

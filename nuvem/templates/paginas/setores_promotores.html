@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Setores promotores · CSSO{% endblock %}
+
+{# NUVEM: as unidades que o seletor "Unidade promotora" da turma oferece
+   (`servicos/setor_promotor.ts`). A estrutura da UFVJM inteira continua em
+   Catálogos → Unidades / UORG, para lotação, parecer e EPI; aqui se escolhe
+   quem pode aparecer no ", promovido por …" do certificado. #}
+{% set INCLUIR = 'Incluir setor promotor' %}
+
+{% block acoes_cabecalho %}
+{% if gerencia %}{{ ui.botao_cadastro('incluir-setor', INCLUIR) }}{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Setores promotores</h1>
+      <p class="sub">
+        {%- if promotores %}{{ promotores|length }} setor(es). {% endif -%}
+        Só estes aparecem em “Unidade promotora” ao abrir ou editar uma turma.</p>
+      {% call ui.info('setor-promotor', 'o que muda ao incluir ou retirar') %}
+        <p>A unidade promotora sai no certificado (“, promovido por …”), na lista de
+          turmas, no “Promoção” da inscrição pública, na lista de presença e nos
+          indicadores. Esta lista decide só o que se <strong>escolhe</strong>.</p>
+        <p>Retirar um setor não mexe em turma nenhuma: a que já o tem continua com
+          ele, a edição dela não obriga a trocar, e os certificados emitidos não
+          mudam. Ele só deixa de ser oferecido em turma nova.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  {% if fora_da_lista_com_turma %}
+  <div class="aviso aviso-info">
+    {{ fora_da_lista_com_turma }} unidade(s) fora desta lista já promoveram turma:
+    elas continuam nessas turmas e nos filtros, para o histórico não sumir.
+  </div>
+  {% endif %}
+
+  <div class="tabela-cartao lista">
+  <table>
+    <thead>
+      <tr><th scope="col">Setor</th><th scope="col">Sigla</th><th scope="col">Campus</th>
+          <th scope="col">Turmas</th>{% if gerencia %}<th scope="col"></th>{% endif %}</tr>
+    </thead>
+    {% for u in promotores %}
+    <tr>
+      <td class="nome">{{ u.nome_extenso }}</td>
+      <td>{{ u.sigla or '—' }}</td>
+      <td>{{ u.campus.sigla if u.campus else '—' }}</td>
+      <td>{{ u.turmas }}</td>
+      {% if gerencia %}
+      <td><form method="post" action="/treinamentos/setores-promotores/{{ u.id }}/retirar">
+          <button type="submit" class="secundario marcador"
+                  aria-label="Retirar {{ u.nome_extenso }} da lista de setores promotores">retirar da lista</button>
+        </form></td>
+      {% endif %}
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhum setor promotor cadastrado.',
+         ('Enquanto a lista estiver vazia, a turma nova abre sem unidade promotora. Use “'
+          ~ INCLUIR ~ '”, no canto superior direito.')
+         if gerencia else 'Incluir setor pede a permissão treinamento.gerenciar.',
+         5 if gerencia else 4) }}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+
+{% if gerencia %}
+{% call ui.popup_cadastro('incluir-setor', INCLUIR, '/treinamentos/setores-promotores', 'Incluir',
+                          nota='da estrutura da UFVJM (Catálogos → Unidades / UORG)') %}
+  <div class="campo"><label for="setor-unidade">Unidade</label>
+    <select id="setor-unidade" name="unidade_id" required aria-describedby="dica-setor-unidade">
+      <option value="">—</option>
+      {% for u in candidatas %}
+      <option value="{{ u.id }}">{{ u.nome_extenso }}{% if u.sigla %} ({{ u.sigla }}){% endif %}</option>
+      {% endfor %}
+    </select>
+    <span class="dica" id="dica-setor-unidade">Não está aqui? Cadastre-a antes em Catálogos → Unidades / UORG
+      (unidade inativa também não aparece).</span></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

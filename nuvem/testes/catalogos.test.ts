@@ -1,6 +1,6 @@
 /**
- * Catálogos: cadastro, edição em linha com diff na trilha, e a recusa que
- * reabre o popup. Porte de `test_cargos.py`, das partes de tela de
+ * Catálogos: cadastro, edição pelo popup "Editar" de cada linha com diff na
+ * trilha, e a recusa que reabre o popup de onde veio. Porte de `test_cargos.py`, das partes de tela de
  * `test_catalogos_edicao.py` e dos casos de catálogo de
  * `test_popup_de_cadastro.py`. (Os testes de "parecer emitido reimprime do
  * congelado" são do porte de Processos — dependem de `servicos/parecer`.)
@@ -17,6 +17,11 @@ beforeEach(async () => {
   await contas(amb.db);
   await entrar(amb.cliente, "coordenador_csso");
 });
+/** O <dialog> de um popup, do `<dialog` ao `</dialog>`, para conferir o que há dentro dele. */
+const popup = (corpo: string, id: string) => {
+  const m = new RegExp(`<dialog class="popup" id="${id}"[\\s\\S]*?</dialog>`).exec(corpo);
+  return m ? m[0] : "";
+};
 const abertos = (corpo: string) => [...corpo.matchAll(/<dialog[^>]*id="([^"]+)"[^>]*\sopen>/g)].map((m) => m[1]);
 
 const CATALOGOS = [
@@ -46,6 +51,30 @@ describe("índice e telas", () => {
     expect(r.status).toBe(200);
     expect(r.text).toContain("somente leitura");
     expect(r.text).not.toContain('action="/catalogos/campi/');
+    expect(r.text).not.toContain('id="editar-campus-');
+    expect(r.text).not.toContain(">Editar</a>");
+  });
+
+  // A lista é só leitura: nenhum campo na linha, e o "Editar" de cada uma abre
+  // o popup com os campos que a rota de edição lê.
+  it.each([
+    ["campi", "editar-campus-", "f-campus-"],
+    ["unidades-uorg", "editar-uorg-", "f-uorg-"],
+    ["postos-trabalho", "editar-posto-", "f-posto-"],
+    ["cargos", "editar-cargo-", "cargo-"],
+    ["agentes-nocivos", "editar-agente-", "f-agente-"],
+    ["tipos-risco", "editar-risco-", "f-risco-"],
+    ["fundamentacoes-legais", "editar-fund-", "f-fund-"],
+    ["percentuais", "editar-perc-", "f-perc-"],
+    ["autoridades-destinatarias", "editar-aut-", "f-aut-"],
+    ["setores-emissores", "editar-setor-emissor-", "f-setor-"],
+  ])("%s: lista só de leitura e um popup de editar por linha", async (catalogo, prefixo, antigo) => {
+    const corpo = (await amb.cliente.get(`/catalogos/${catalogo}`)).text;
+    expect(corpo).not.toContain(`form="${antigo}`);
+    expect(corpo).not.toMatch(/<td[^>]*>\s*<(input|select|textarea)\b/);
+    expect(corpo).toContain(`href="#${prefixo}`);
+    expect(corpo).toMatch(new RegExp(`<dialog class="popup" id="${prefixo}\\d+"`));
+    expect(abertos(corpo)).toEqual([]);
   });
 });
 
@@ -128,12 +157,22 @@ describe("cargos", () => {
     expect(evento!.valor_anterior).toBe("TECNICO DE LABORATORIO AREA");
   });
 
-  it("renomear para o nome de outro é recusado na linha (banner vermelho)", async () => {
+  it("renomear para o nome de outro reabre o popup de editar daquele cargo, e não o de cadastro", async () => {
     await amb.cliente.post("/catalogos/cargos", { nome: "OUTRO CARGO" }, { seguir: false });
     const [outro] = await amb.db.select().from(e.cargo).where(eq(e.cargo.nome, "OUTRO CARGO"));
-    const r = await amb.cliente.post("/catalogos/cargos", { cargo_id: String(outro!.id), nome: "TECNICO DE LABORATORIO AREA" });
-    expect(r.text).toContain("Já existe outro cargo");
-    expect(abertos(r.text)).toEqual([]);
+    const r = await amb.cliente.post("/catalogos/cargos", {
+      cargo_id: String(outro!.id),
+      nome: "TECNICO DE LABORATORIO AREA",
+      codigo_siape: "709999",
+    });
+    expect(r.status).toBe(200);
+    expect(abertos(r.text)).toEqual([`editar-cargo-${outro!.id}`]);
+    const caixa = popup(r.text, `editar-cargo-${outro!.id}`);
+    expect(caixa).toContain("Já existe outro cargo");
+    expect(caixa).toContain('value="709999"');
+    expect(caixa).toContain(`name="cargo_id" value="${outro!.id}"`);
+    // o cadastro, fechado, não herda o digitado da edição
+    expect(popup(r.text, "novo")).not.toContain('value="709999"');
   });
 
   it("a lista mostra quantos servidores usam", async () => {
@@ -159,7 +198,7 @@ describe("cargos", () => {
   });
 });
 
-describe("edição em linha", () => {
+describe("edição pelo popup", () => {
   it("editar campus (checkbox ausente = desmarcado)", async () => {
     const [dia] = await amb.db.select().from(e.campus).where(eq(e.campus.sigla, "DIA"));
     const r = await amb.cliente.post(
@@ -184,6 +223,68 @@ describe("edição em linha", () => {
     });
     expect(r.text).toContain("já é de outra unidade");
     expect(famed).toBeDefined();
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`<dialog class="popup" id="editar-uorg-${outra!.id}"[^>]* open>`));
+    expect(popup(r.text, `editar-uorg-${outra!.id}`)).toContain('value="250"');
+    expect(r.text).not.toContain(`form="f-uorg-`);
+  });
+
+  it("campus com nome em branco reabre o popup daquele campus com o digitado", async () => {
+    const [dia] = await amb.db.select().from(e.campus).where(eq(e.campus.sigla, "DIA"));
+    const r = await amb.cliente.post(`/catalogos/campi/${dia!.id}`, { nome: "   ", cidade: "Cidade Digitada", uf: "BA", avancado: "1" });
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`<dialog class="popup" id="editar-campus-${dia!.id}"[^>]* open>`));
+    expect(abertos(r.text)).toEqual([`editar-campus-${dia!.id}`]);
+    const caixa = popup(r.text, `editar-campus-${dia!.id}`);
+    expect(caixa).toContain("Preencha nome");
+    expect(caixa).toContain('value="Cidade Digitada"');
+    expect(caixa).toContain('value="BA"');
+    expect(caixa).toMatch(/name="avancado" value="1" checked/);
+    expect(r.text).not.toContain(`form="f-campus-`);
+    const [depois] = await amb.db.select().from(e.campus).where(eq(e.campus.id, dia!.id));
+    expect(depois!.cidade).toBe(dia!.cidade);
+  });
+
+  it("posto repetido na edição reabre o popup do posto, com a descrição digitada", async () => {
+    const [famed] = await amb.db.select().from(e.unidade_uorg).where(eq(e.unidade_uorg.codigo_uorg, "250"));
+    const [p] = await amb.db
+      .insert(e.posto_trabalho)
+      .values({ unidade_uorg_id: famed!.id, nome: "Sala de teste", descricao: "a descrição" })
+      .returning();
+    const [leac] = await amb.db
+      .select()
+      .from(e.posto_trabalho)
+      .where(and(eq(e.posto_trabalho.unidade_uorg_id, famed!.id), eq(e.posto_trabalho.nome, "Laboratório Escola de análises Clínicas (LEAC)")));
+    // o popup leva a descrição: a linha antiga não a mandava, e salvar a apagava
+    expect(popup((await amb.cliente.get("/catalogos/postos-trabalho")).text, `editar-posto-${p!.id}`)).toContain('value="a descrição"');
+    const r = await amb.cliente.post(`/catalogos/postos-trabalho/${p!.id}`, {
+      nome: leac!.nome,
+      unidade_uorg_id: String(famed!.id),
+      descricao: "digitada",
+      ativo: "1",
+    });
+    expect(r.status).toBe(200);
+    expect(abertos(r.text)).toEqual([`editar-posto-${p!.id}`]);
+    const caixa = popup(r.text, `editar-posto-${p!.id}`);
+    expect(caixa).toContain("Já existe esse posto nesta unidade.");
+    expect(caixa).toContain('value="digitada"');
+  });
+
+  it("setor emissor com sigla e início de outro reabre o popup do setor", async () => {
+    const base = { nome_extenso: "Seção", vigencia_inicio: "2026-11-01" };
+    await amb.cliente.post("/catalogos/setores-emissores", { ...base, sigla_composta: "AAA/TESTE" }, { seguir: false });
+    await amb.cliente.post("/catalogos/setores-emissores", { ...base, sigla_composta: "BBB/TESTE" }, { seguir: false });
+    const [b] = await amb.db.select().from(e.setor_emissor).where(eq(e.setor_emissor.sigla_composta, "BBB/TESTE"));
+    const r = await amb.cliente.post(`/catalogos/setores-emissores/${b!.id}`, {
+      ...base,
+      sigla_composta: "AAA/TESTE",
+      email: "digitado@ufvjm.edu.br",
+    });
+    expect(r.status).toBe(200);
+    expect(abertos(r.text)).toEqual([`editar-setor-emissor-${b!.id}`]);
+    const caixa = popup(r.text, `editar-setor-emissor-${b!.id}`);
+    expect(caixa).toContain("Já existe outro setor");
+    expect(caixa).toContain('value="digitado@ufvjm.edu.br"');
   });
 
   it("fundamentação normaliza aspas e carimba a conferência", async () => {

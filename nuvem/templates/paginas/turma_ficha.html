@@ -1247,11 +1247,13 @@
         {% endfor %}
       </select></div>
     <div class="campo"><label for="r-unidade_promotora_id">Unidade promotora</label>
-      <select id="r-unidade_promotora_id" name="unidade_promotora_id"><option value="">—</option>
+      <select id="r-unidade_promotora_id" name="unidade_promotora_id" aria-describedby="r-dica-unidade"><option value="">—</option>
         {% for u in unidades %}
-        <option value="{{ u.id }}" {% if turma.unidade_promotora_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}</option>
+        <option value="{{ u.id }}" {% if turma.unidade_promotora_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}{% if u.fora_da_lista %} (fora da lista atual){% endif %}</option>
         {% endfor %}
-      </select></div>
+      </select>
+      <span class="dica" id="r-dica-unidade">{{ dica_setor_promotor }}{% if turma.unidade_promotora and turma.unidade_promotora.promove_treinamento == false %}
+        A unidade gravada fica enquanto não for trocada.{% endif %}</span></div>
   </div>
   <div class="campo"><label for="r-data_base_vencimento">Data base do vencimento</label>
     <input id="r-data_base_vencimento" type="date" name="data_base_vencimento"
@@ -1293,11 +1295,13 @@
         {% endfor %}
       </select></div>
     <div class="campo"><label for="unidade_promotora_id">Unidade promotora</label>
-      <select id="unidade_promotora_id" name="unidade_promotora_id"><option value="">—</option>
+      <select id="unidade_promotora_id" name="unidade_promotora_id" aria-describedby="dica-unidade"><option value="">—</option>
         {% for u in unidades %}
-        <option value="{{ u.id }}" {% if turma.unidade_promotora_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}</option>
+        <option value="{{ u.id }}" {% if turma.unidade_promotora_id == u.id %}selected{% endif %}>{{ u.nome_extenso }}{% if u.fora_da_lista %} (fora da lista atual){% endif %}</option>
         {% endfor %}
-      </select></div>
+      </select>
+      <span class="dica" id="dica-unidade">{{ dica_setor_promotor }}{% if turma.unidade_promotora and turma.unidade_promotora.promove_treinamento == false %}
+        A unidade gravada fica enquanto não for trocada.{% endif %}</span></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="vagas">Vagas</label>

@@ -333,6 +333,12 @@ export const MODULOS: readonly Modulo[] = [
         "Treinamentos, carga horária e a validade da reciclagem.",
       ),
       new Item(
+        "Setores promotores",
+        "/treinamentos/setores-promotores",
+        "treinamento.ver",
+        "Os setores que aparecem em “Unidade promotora” da turma.",
+      ),
+      new Item(
         "Modelos",
         "/treinamentos/modelos",
         "treinamento.gerenciar",
@@ -730,6 +736,7 @@ const ICONES: Readonly<Record<string, string>> = {
   "/certificados/vencimentos": "shield-exclamation",
   "/treinamentos/indicadores": "bar-chart",
   "/treinamentos/catalogo": "journal-bookmark",
+  "/treinamentos/setores-promotores": "building",
   "/treinamentos/modelos": "file-earmark-easel",
   "/treinamentos/assinaturas": "pen",
   "/treinamentos/participantes": "people",

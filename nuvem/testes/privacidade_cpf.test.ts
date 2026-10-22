@@ -149,6 +149,9 @@ describe("instrutor (/treinamentos/assinaturas)", () => {
     });
     expect(ruim.text).toContain("CPF inválido");
     expect(ruim.text).not.toContain("247-24");
+    // a recusa reabre o popup da linha, e o campo do CPF volta vazio
+    expect(ruim.text).toMatch(new RegExp(`<dialog class="popup" id="editar-assin-${a!.id}"[^>]* open>`));
+    expect(ruim.text).toContain(`id="ed-assin-${a!.id}-cpf" name="cpf_certificado" value=""`);
     await cliente.post(`/treinamentos/assinaturas/${a!.id}`, {
       nome: "Instrutora Externa",
       externo: "1",

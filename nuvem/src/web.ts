@@ -625,6 +625,7 @@ export async function salvar_com_diff(
     depois,
     usuario,
   });
-  // codificado: `rotulo` chega ao `Location` dentro da mensagem
-  return redirecionar(c, comMensagem(d.volta, `${d.rotulo} atualizado.`));
+  // codificado: `rotulo` chega ao `Location` dentro da mensagem. A frase não
+  // concorda com o rótulo ("Categoria atualizado.") porque não depende dele.
+  return redirecionar(c, comMensagem(d.volta, `${d.rotulo}: alteração gravada.`));
 }

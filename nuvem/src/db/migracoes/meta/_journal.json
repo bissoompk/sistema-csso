@@ -78,6 +78,13 @@
       "when": 1792521024163,
       "tag": "0010_acesso_participante",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792669951581,
+      "tag": "0011_setor_promotor",
+      "breakpoints": true
     }
   ]
 }

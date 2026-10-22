@@ -533,7 +533,7 @@ describe("M37: catálogo", () => {
     expect(tela).not.toContain("16.5");
     expect(tela).toContain("(meses, 0 = não vence)");
     expect(tela).toContain("Segurança em Instalações e Serviços em Eletricidade — NR-10");
-    expect(tela).toMatch(/<dialog class="popup popup-gaveta" id="editar-trein-\d+"/);
+    expect(tela).toMatch(/<dialog class="popup" id="editar-trein-\d+"/);
   });
 });
 
