@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partes/perfil_permissoes.html" as pp %}
 {# Liberação de módulo por módulo (22/10/2026): para cada perfil de equipe, o
    nível de cada módulo — sem acesso, consulta ou operação. "Padrão" é o que o
    perfil sempre teve (as permissões semeadas), e é o que vale enquanto ninguém
@@ -6,6 +7,10 @@
 
    O mapa nível → permissões mora num lugar só (`servicos/niveis_modulo.ts`) e
    é escrito aqui embaixo, para quem decide saber o que cada nível abre.
+
+   A organização é a MESMA de /perfis (23/10/2026): os quatro módulos, "Sempre
+   do perfil" e "Do titular", saindo do mesmo cálculo (`perfis_com_niveis`). A
+   Matriz só lê; aqui se edita.
 
    Base compartilhada, como /perfis: perfil não pertence a módulo nenhum. #}
 {% set trilha_raiz = 'Base compartilhada' %}
@@ -18,21 +23,25 @@
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Acesso por módulo</h1>
-      <p class="sub">O nível de cada módulo em cada perfil. A exceção de uma pessoa
-        (dar ou retirar) fica em <a href="/usuarios">Usuários</a>, no “Gerir” da conta.</p>
+      <p class="sub">O nível de cada módulo em cada perfil, com a mesma organização da
+        <a href="/perfis">Matriz de perfis</a>.
+        {% if pode_ajustar %}A exceção de uma pessoa (dar ou retirar) fica em
+        <a href="/usuarios">Usuários</a>, no “Gerir” da conta, e só vale para quem tem
+        perfil de equipe.{% else %}Quem ajusta é o Administrador do sistema ou o
+        Superintendente.{% endif %}</p>
     </div>
   </div>
 
   {% if not atual %}
   <div class="cartao">
     <div class="vazio">
-      <strong>Nenhum perfil de equipe ativo</strong>
-      <span>Só os perfis de equipe (escopo de unidade ou total) se ajustam por módulo.</span>
+      <strong>Nenhum perfil ativo</strong>
+      <span>Sem perfil ninguém abre nada: o sistema nega por padrão.</span>
     </div>
   </div>
   {% else %}
 
-  {# Um perfil por vez: com os nove de uma vez a tela virava uma lista de 36
+  {# Um perfil por vez: com todos de uma vez a tela virava uma lista de
      linhas de botões iguais. Cada aba é uma página (funciona sem script). #}
   <nav class="abas" aria-label="Perfis">
     {%- for p in perfis %}
@@ -41,83 +50,106 @@
     {%- endfor %}
   </nav>
 
-  <section class="cartao">
+  <section class="cartao" id="perfil-{{ atual.codigo }}">
     <div class="titulo-cartao">
       <h2>{{ atual.nome }}</h2>
       <span class="mono discreto">{{ atual.codigo }}</span>
     </div>
-    {% if pode_ajustar and atual.e_meu %}
+    {% if atual.base_normativa %}<p class="discreto">{{ atual.base_normativa }}</p>{% endif %}
+    <p class="discreto"><strong>Alcance:</strong> {{ atual.escopo_texto }}
+      · <a href="/perfis#perfil-{{ atual.codigo }}">ver na Matriz de perfis</a></p>
+    {% if atual.fixo %}
+    <div class="aviso" role="status">Este perfil está <strong>sempre em Operação</strong> em todos os
+      módulos e não se ajusta: nem o nível do perfil nem a exceção de uma pessoa o rebaixam.</div>
+    {% elif not atual.aceita %}
+    <div class="aviso" role="status">Este perfil <strong>não se ajusta por módulo</strong>: o alcance dele
+      é o do titular ou sem dado de módulo. Abaixo, o que ele tem.</div>
+    {% endif %}
+    {% if pode_ajustar and atual.e_meu and atual.aceita %}
     <div class="aviso aviso-alerta" role="status">Você tem este perfil: aqui você só
       pode <strong>baixar</strong> o nível. Subir elevaria o seu próprio acesso e é ato
       de outra pessoa que administra acesso.</div>
     {% endif %}
 
-    {# O efeito de cada nível, dito antes de escolher (23/10/2026): "Sem acesso"
-       era lido como "só leitura" e o módulo continuava no menu. #}
+    {# O efeito de cada nível, dito antes de escolher: "Sem acesso" era lido
+       como "só leitura" e o módulo continuava no menu. #}
+    {% if atual.aceita %}
     <p class="discreto nota-sem-acesso"><strong>Sem acesso:</strong> o módulo some do menu,
       do mapa de módulos e do início de quem tem este perfil, e as telas dele respondem
-      “acesso negado”. Continua no “Meu espaço” só o que é da própria pessoa (a ficha de
-      EPI, os pedidos, os treinamentos e certificados dela). Quem tem outro perfil que dá
-      o módulo continua com ele: vale a soma dos perfis.</p>
+      “acesso negado”. Continua só o que é do titular (a ficha de EPI, os pedidos, os
+      treinamentos e certificados da própria pessoa). Quem tem outro perfil que dá
+      o módulo continua com ele: vale a soma dos perfis. Servidores, Catálogos e o Painel
+      seguem o módulo que a pessoa usa.</p>
+    {% if atual.teto|length %}
+    <p class="discreto"><strong>Teto do perfil:</strong> o que a matriz tirou deste perfil de
+      propósito nenhum nível devolve. Por isso “Operação” aparece com o que fica de fora, como
+      “Operação (sem anular)”.</p>
+    {% endif %}
+    {% endif %}
 
+    {% if atual.aceita %}
     <form method="post" action="/perfis/{{ atual.id }}/niveis">
-      <div class="tabela-cartao lista sem-altura">
-        <table class="empilhavel tabela-niveis">
-          <thead>
-            <tr><th scope="col">Módulo</th><th scope="col">Nível</th><th scope="col">Vale hoje</th></tr>
-          </thead>
-          {% for l in atual.linhas %}
-          {% set nome_campo = 'nivel_' ~ l.modulo.codigo %}
-          {% set escolhido = l.nivel or 'PADRAO' %}
-          <tr>
-            <td class="nome">{{ l.modulo.nome }}</td>
-            <td data-coluna="Nível">
-              {% if pode_ajustar %}
-              <fieldset class="nivel-escolha">
-                <legend class="oculto">Nível de {{ l.modulo.nome }} no perfil {{ atual.nome }}</legend>
-                <label><input type="radio" name="{{ nome_campo }}" value="PADRAO"{{ ' checked' if escolhido == 'PADRAO' }}>
-                  <span>Padrão <small>({{ rotulo_nivel[l.padrao]|lower }})</small></span></label>
-                <label><input type="radio" name="{{ nome_campo }}" value="SEM_ACESSO"{{ ' checked' if escolhido == 'SEM_ACESSO' }}>
-                  <span>Sem acesso</span></label>
-                <label><input type="radio" name="{{ nome_campo }}" value="CONSULTA"{{ ' checked' if escolhido == 'CONSULTA' }}>
-                  <span>Consulta</span></label>
-                <label><input type="radio" name="{{ nome_campo }}" value="OPERACAO"{{ ' checked' if escolhido == 'OPERACAO' }}>
-                  <span>Operação</span></label>
-              </fieldset>
-              {% else %}
-              {{ rotulo_nivel[l.nivel] if l.nivel else 'Padrão (' ~ (rotulo_nivel[l.padrao]|lower) ~ ')' }}
-              {% endif %}
-            </td>
-            <td data-coluna="Vale hoje">
-              {% set cor = 'ok' if l.efetivo == 'OPERACAO' else ('info' if l.efetivo == 'CONSULTA' else ('alerta' if l.efetivo == 'PARCIAL' else 'sem-ponto')) %}
-              <span class="pilula {{ cor }}">{{ rotulo_nivel[l.efetivo] }}</span>
-              {% if l.permissoes|length %}
-              <span class="discreto lista-permissoes">{% for p in l.permissoes %}{{ textos_permissao[p] or p }}{{ '; ' if not loop.last }}{% endfor %}</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </table>
+    {% endif %}
+      {# um bloco por módulo, como na Matriz: o nível (quando se edita) e o que vale hoje #}
+      {% for l in atual.linhas %}
+      {% set nome_campo = 'nivel_' ~ l.modulo.codigo %}
+      {% set escolhido = l.nivel or 'PADRAO' %}
+      <div class="corpo">
+        <h3>{{ l.modulo.nome }}
+          <span class="pilula {{ pp.cor_do_nivel(l.efetivo) }}">{{ l.rotulo_efetivo }}{{ ' · fixa' if atual.fixo }}</span></h3>
+        {% if atual.aceita %}
+        {% if pode_ajustar %}
+        <fieldset class="nivel-escolha">
+          <legend class="oculto">Nível de {{ l.modulo.nome }} no perfil {{ atual.nome }}</legend>
+          <label><input type="radio" name="{{ nome_campo }}" value="PADRAO"{{ ' checked' if escolhido == 'PADRAO' }}>
+            <span>Padrão do perfil <small>({{ l.rotulo_padrao }})</small></span></label>
+          <label><input type="radio" name="{{ nome_campo }}" value="SEM_ACESSO"{{ ' checked' if escolhido == 'SEM_ACESSO' }}>
+            <span>Sem acesso</span></label>
+          <label><input type="radio" name="{{ nome_campo }}" value="CONSULTA"{{ ' checked' if escolhido == 'CONSULTA' }}>
+            <span>{{ l.rotulo_consulta }}</span></label>
+          {% if l.maximo == 'OPERACAO' %}
+          <label><input type="radio" name="{{ nome_campo }}" value="OPERACAO"{{ ' checked' if escolhido == 'OPERACAO' }}>
+            <span>{{ l.rotulo_operacao }}</span></label>
+          {% else %}
+          <small class="discreto">Operação não existe para este perfil: o máximo é Consulta.</small>
+          {% endif %}
+        </fieldset>
+        {% else %}
+        <p class="discreto">Nível gravado:
+          {% if l.nivel == 'CONSULTA' %}{{ l.rotulo_consulta }}
+          {%- elif l.nivel == 'OPERACAO' %}{{ l.rotulo_operacao }}
+          {%- elif l.nivel %}{{ rotulo_nivel[l.nivel] }}
+          {%- else %}Padrão do perfil ({{ l.rotulo_padrao }}){% endif %}</p>
+        {% endif %}
+        {% endif %}
+        {{ pp.permissoes_do_modulo(l, textos_permissao) }}
       </div>
-      {% if pode_ajustar %}
+      {% endfor %}
+      {% if atual.aceita and pode_ajustar %}
       <div class="acoes"><button type="submit">Gravar níveis de {{ atual.nome }}</button></div>
       {% endif %}
+    {% if atual.aceita %}
     </form>
+    {% endif %}
+
+    {{ pp.sempre_do_perfil(atual, textos_permissao) }}
+    {{ pp.do_titular(titular, textos_permissao) }}
   </section>
   {% endif %}
 
   <section class="cartao liso">
     <h2>O que cada nível abre</h2>
     <p class="discreto">“Consulta” é a leitura do módulo; “Operação” é a leitura e a
-      escrita. O escopo (campus, equipe ou só o próprio) continua sendo o do perfil.</p>
+      escrita, até o teto de cada perfil. O escopo (campus, equipe ou só o próprio) continua
+      sendo o do perfil.</p>
     <div class="tabela-cartao lista sem-altura">
       <table class="empilhavel">
         <thead><tr><th scope="col">Módulo</th><th scope="col">Consulta</th><th scope="col">Operação acrescenta</th></tr></thead>
         {% for m in modulos_nivelados %}
         <tr>
           <td class="nome">{{ m.nome }}</td>
-          <td data-coluna="Consulta">{% for p in m.consulta %}<span class="mono discreto">{{ p }}</span>{{ ', ' if not loop.last }}{% endfor %}</td>
-          <td data-coluna="Operação acrescenta">{% for p in m.escrita %}<span class="mono discreto">{{ p }}</span>{{ ', ' if not loop.last }}{% endfor %}</td>
+          <td data-coluna="Consulta">{% for p in m.consulta %}{{ textos_permissao[p] or p }}{{ '; ' if not loop.last }}{% endfor %}</td>
+          <td data-coluna="Operação acrescenta">{% for p in m.escrita %}{{ textos_permissao[p] or p }}{{ '; ' if not loop.last }}{% endfor %}</td>
         </tr>
         {% endfor %}
       </table>
@@ -126,12 +158,9 @@
     <p class="discreto">Assinatura, habilitação profissional, administração de acesso,
       dado nominal e as transversais seguem o cargo, e por isso não mudam aqui:</p>
     <ul class="discreto">
-      {% for codigo, motivo in so_do_perfil %}<li><span class="mono">{{ codigo }}</span> — {{ motivo }}</li>{% endfor %}
+      {% for codigo, motivo in so_do_perfil %}<li>{{ textos_permissao[codigo] or codigo }}
+        <span class="mono">{{ codigo }}</span> — {{ motivo }}</li>{% endfor %}
     </ul>
-    {% if fora|length %}
-    <p class="discreto">Não se ajustam por módulo (o alcance deles é o do titular, só
-      contagem, ou já é o mais alto em todos os módulos — o Administrador do sistema): {% for p in fora %}{{ p.nome }}{{ ', ' if not loop.last }}{% endfor %}.</p>
-    {% endif %}
   </section>
 
 </div>

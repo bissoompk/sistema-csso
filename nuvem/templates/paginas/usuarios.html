@@ -229,14 +229,20 @@
               {% if u.id == usuario.id %}
               <p class="discreto">O acesso da sua própria conta só outra pessoa que
                 administra acesso altera.</p>
+              {% elif not tem_perfil_de_equipe[u.id] %}
+              {# D9 (23/10/2026): o nível de um módulo vale sobre o alcance de um perfil de
+                 equipe; sem ele, Consulta e Operação são recusadas e "Sem acesso" não muda
+                 nada. O formulário só aparece para quem tem o que ajustar. #}
+              <p class="discreto">Esta conta não tem perfil de equipe, e por isso não há módulo
+                a ajustar: o que ela tem é o do titular (os próprios dados). Conceda um perfil
+                de equipe antes.</p>
               {% else %}
               {% set dela = excecoes[u.id] or {} %}
               <form method="post" action="/usuarios/{{ u.id }}/niveis">
-                <p class="discreto">“Seguir o perfil” é o padrão. Os outros níveis dão ou
+                <p class="discreto">“Padrão do perfil” é o que vale sem exceção. Os outros níveis dão ou
                   retiram o módulo só para esta conta; o escopo (campus, equipe), a
                   assinatura e a habilitação continuam vindo do perfil.
-                  {%- if not tem_perfil_de_equipe[u.id] %} <strong>Esta conta não tem
-                  perfil de equipe:</strong> dar um módulo exige um perfil antes.{% endif %}</p>
+                  O que é do titular (os próprios dados) o nível não retira.</p>
                 <p class="discreto"><strong>Sem acesso</strong> aqui vale para todos os perfis
                   desta conta: o módulo some do menu e do mapa dela, e as telas dele respondem
                   “acesso negado”; fica só o que é dela no “Meu espaço”.</p>
@@ -245,7 +251,7 @@
                 <fieldset class="nivel-escolha campo">
                   <legend>{{ m.nome }}</legend>
                   <label><input type="radio" name="nivel_{{ m.codigo }}" value="PADRAO"{{ ' checked' if escolhido == 'PADRAO' }}>
-                    <span>Seguir o perfil</span></label>
+                    <span>Padrão do perfil</span></label>
                   <label><input type="radio" name="nivel_{{ m.codigo }}" value="SEM_ACESSO"{{ ' checked' if escolhido == 'SEM_ACESSO' }}>
                     <span>Sem acesso</span></label>
                   <label><input type="radio" name="nivel_{{ m.codigo }}" value="CONSULTA"{{ ' checked' if escolhido == 'CONSULTA' }}>

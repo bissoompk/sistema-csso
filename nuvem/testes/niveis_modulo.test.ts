@@ -24,6 +24,7 @@ import {
   nivel_lido,
   permissoes_com_niveis,
   permissoes_do_modulo,
+  teto_do_perfil,
 } from "../src/servicos/niveis_modulo.js";
 import { semear_rbac } from "../src/servicos/sementes.js";
 import { navegacao } from "../src/modulos.js";
@@ -92,7 +93,9 @@ describe("o mapa", () => {
     const cert = modulo_nivelado("certificados")!;
     expect(nivel_lido(MATRIZ_PERFIS.consulta_progep!.permissoes, cert)).toBe(CONSULTA);
     expect(nivel_lido(MATRIZ_PERFIS.coordenador_csso!.permissoes, cert)).toBe(OPERACAO);
+    // sem o teto o técnico é um pedaço do módulo; com o teto do perfil (23/10/2026), "emite e não anula" é Operação
     expect(nivel_lido(MATRIZ_PERFIS.tecnico_seguranca!.permissoes, cert)).toBe(PARCIAL);
+    expect(nivel_lido(MATRIZ_PERFIS.tecnico_seguranca!.permissoes, cert, teto_do_perfil("tecnico_seguranca"))).toBe(OPERACAO);
     expect(nivel_lido(MATRIZ_PERFIS.almoxarife_sesmt!.permissoes, cert)).toBe(SEM_ACESSO);
   });
 

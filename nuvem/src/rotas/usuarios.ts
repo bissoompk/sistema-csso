@@ -15,7 +15,6 @@ import {
   historico_evento,
   perfil as tabela_perfil,
   perfil_nivel_modulo,
-  permissao as tabela_permissao,
   profissional_habilitado,
   usuario_nivel_modulo,
   servidor as tabela_servidor,
@@ -35,8 +34,7 @@ import {
   ESCOPO_PROPRIO,
   ESCOPO_TOTAL,
   ESCOPO_UNIDADE,
-  GRUPOS_PERMISSAO_TELA,
-  MATRIZ_PERFIS,
+  TEXTO_PERMISSAO,
   PERFIL_ADMINISTRADOR_SISTEMA,
   PERMISSAO_DA_BASE,
   PERMISSOES_DO_TITULAR,
@@ -64,7 +62,7 @@ type Digitado = Record<string, string | number>;
 export const ESCOPO_TELA: Readonly<Record<string, string>> = {
   [ESCOPO_TOTAL]: "total — todos os registros, de todos os campi",
   [ESCOPO_UNIDADE]: "unidade — a coordenadoria, no campus da concessão (ou em todos)",
-  [ESCOPO_AGREGADO]: "agregado — só contagens; nenhuma linha",
+  [ESCOPO_AGREGADO]: "sem dado — só a administração técnica (conta, senha, auditoria, backup)",
   [ESCOPO_PROPRIO]: "próprio — só o que é do titular",
 };
 
@@ -1485,27 +1483,28 @@ rotas.post("/habilitacoes", async (c) => {
 });
 
 /**
- * As permissões do perfil nos grupos de tela (M75), cada uma com o texto em
- * português e o código ao lado. Permissão que o banco tem e o código não
- * conhece (semeada por versão futura, ou à mão) vai para "Outras", com a
- * descrição gravada — some da tela, nunca.
+ * A matriz abre para quem opera (`processo.ver`) e para quem governa acesso
+ * (D24): o `admin_ti` cria conta, e a matriz é o que diz o que a conta vai
+ * abrir — o link estava em /usuarios e dava 403 justamente para ele.
  */
-function _grupos_de(permissoes: { codigo: string; descricao: string | null }[]) {
-  const codigos = new Set(permissoes.map((p) => p.codigo));
-  const grupos: { rotulo: string; itens: { codigo: string; texto: string }[] }[] = [];
-  const conhecidas = new Set<string>();
-  for (const [rotulo, textos] of GRUPOS_PERMISSAO_TELA) {
-    const itens = Object.entries(textos)
-      .filter(([codigo]) => codigos.has(codigo))
-      .map(([codigo, texto]) => ({ codigo, texto }));
-    for (const codigo of Object.keys(textos)) conhecidas.add(codigo);
-    if (itens.length) grupos.push({ rotulo, itens });
-  }
-  const outras = permissoes
-    .filter((p) => !conhecidas.has(p.codigo))
-    .map((p) => ({ codigo: p.codigo, texto: p.descricao || p.codigo }));
-  if (outras.length) grupos.push({ rotulo: "Outras", itens: outras });
-  return grupos;
+/**
+ * O contexto COMUM das duas telas de perfil (23/10/2026): o cálculo é o de
+ * `liberacao.perfis_com_niveis`, o texto de cada permissão é o mesmo
+ * dicionário e o "Do titular" é o mesmo conjunto. A Matriz só lê; o Acesso
+ * por módulo edita. `testes/matriz_harmonia.test.ts` compara as duas.
+ */
+async function _contexto_dos_perfis(tx: Executor, usuario: UsuarioAtual) {
+  const perfis = (await liberacao.perfis_com_niveis(tx, usuario)).map((p) => ({
+    ...p,
+    escopo_texto: _escopo_do_perfil(p.codigo),
+  }));
+  return {
+    perfis,
+    pode_ajustar: usuario.pode("perfil.conceder"),
+    rotulo_nivel: niveis_modulo.ROTULO_NIVEL,
+    textos_permissao: TEXTO_PERMISSAO,
+    titular: [...PERMISSOES_DO_TITULAR].sort(),
+  };
 }
 
 /**
@@ -1517,34 +1516,7 @@ rotas.get("/perfis", async (c) => {
   const usuario = await usuarioLogado(c);
   // `processo.ver` de EQUIPE: a do titular (D16) não abre a matriz de perfis
   if (!(usuario.pode("usuario.criar_conta") || usuario.pode("perfil.conceder"))) usuario.exigir_na_equipe("processo.ver");
-  const tx = c.get("tx");
-  const perfis = await tx.query.perfil.findMany({
-    orderBy: [asc(tabela_perfil.codigo)],
-    with: { perfil_permissoes: { with: { permissao: true } }, niveis_modulo: true },
-  });
-  const todas = new Map((await tx.select().from(tabela_permissao)).map((p) => [p.codigo, p]));
-  return pagina(c, "paginas/perfis.html", usuario, {
-    // a `secondary=` do Python: as permissões do perfil, já ordenadas por código.
-    // Desde a liberação por módulo (22/10/2026), as que VALEM: as do perfil com
-    // o nível de cada módulo que a coordenação escolheu em /perfis/niveis.
-    perfis: perfis.map((p) => {
-      const cruas = p.perfil_permissoes.map((pp) => pp.permissao.codigo);
-      const niveis = niveis_modulo.niveis_de(p.niveis_modulo);
-      const codigos = aceita_nivel_modulo(p.codigo) ? niveis_modulo.permissoes_com_niveis(cruas, niveis) : cruas;
-      const permissoes = codigos
-        .map((codigo) => todas.get(codigo) ?? { codigo, descricao: codigo })
-        .sort((a, b) => (a.codigo < b.codigo ? -1 : 1));
-      return {
-        ...p,
-        permissoes,
-        grupos: _grupos_de(permissoes),
-        escopo: _escopo_do_perfil(p.codigo),
-        ajustado: Object.keys(niveis).length > 0,
-      };
-    }),
-    matriz: MATRIZ_PERFIS,
-    pode_ajustar: usuario.pode("perfil.conceder"),
-  });
+  return pagina(c, "paginas/perfis.html", usuario, await _contexto_dos_perfis(c.get("tx"), usuario));
 });
 
 // =====================================================================
@@ -1568,17 +1540,16 @@ async function _tela_niveis(
   recado: { mensagem?: string | null; erro?: string | null; perfil?: string | null } = {},
 ) {
   const tx = c.get("tx");
-  const perfis = await liberacao.perfis_com_niveis(tx, usuario);
-  const ajustaveis = perfis.filter((p) => p.aceita && p.ativo);
+  const contexto = await _contexto_dos_perfis(tx, usuario);
+  // as abas são os perfis ATIVOS, na ordem da Matriz; o que não se ajusta
+  // aparece também (só leitura, com a nota): as duas telas listam o mesmo
+  const ativos = contexto.perfis.filter((p) => p.ativo);
   const pedido = recado.perfil ?? c.req.query("perfil") ?? "";
-  const atual = ajustaveis.find((p) => p.codigo === pedido) ?? ajustaveis[0] ?? null;
+  const atual = ativos.find((p) => p.codigo === pedido) ?? ativos.find((p) => p.aceita) ?? ativos[0] ?? null;
   return pagina(c, "paginas/perfis_niveis.html", usuario, {
-    perfis: ajustaveis,
-    fora: perfis.filter((p) => !p.aceita && p.ativo),
+    ...contexto,
+    perfis: ativos,
     atual,
-    pode_ajustar: usuario.pode("perfil.conceder"),
-    rotulo_nivel: niveis_modulo.ROTULO_NIVEL,
-    textos_permissao: Object.fromEntries(GRUPOS_PERMISSAO_TELA.flatMap(([, textos]) => Object.entries(textos))),
     so_do_perfil: niveis_modulo.PERMISSOES_SO_DO_PERFIL,
     // não `modulos`: é o nome da navegação da casca
     modulos_nivelados: niveis_modulo.MODULOS_NIVELADOS,

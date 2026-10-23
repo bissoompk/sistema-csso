@@ -30,20 +30,26 @@ import {
 import { hoje_iso } from "../dominio/datas.js";
 import * as auditoria from "./auditoria.js";
 import {
+  CONSULTA,
   MODULOS_NIVELADOS,
+  OPERACAO,
   PARCIAL,
   ROTULO_NIVEL,
   PERFIS_NO_NIVEL_MAIS_ALTO,
   do_modulo,
+  modulo_de_permissao,
   modulo_nivelado,
   niveis_de,
   nivel_lido,
+  nivel_maximo,
   permissoes_com_niveis,
+  rotulo_do_nivel,
+  teto_do_perfil,
   type ModuloNivelado,
   type Nivel,
   type NiveisPorModulo,
 } from "./niveis_modulo.js";
-import { aceita_nivel_modulo, alcance_da_concessao, cobre_inteiro, type UsuarioAtual } from "./rbac.js";
+import { ESCOPO_POR_PERFIL, aceita_nivel_modulo, alcance_da_concessao, cobre_inteiro, type UsuarioAtual } from "./rbac.js";
 
 /** O valor que a trilha grava para "linha ausente". */
 export const PADRAO = "PADRAO";
@@ -77,10 +83,18 @@ export interface LinhaNivelPerfil {
   modulo: ModuloNivelado;
   /** o nível gravado, ou `null` = padrão */
   nivel: Nivel | null;
-  /** como o padrão do perfil se lê (para o rótulo da opção "Padrão") */
+  /** como o padrão do perfil se lê (para o rótulo da opção "Padrão"), já descontado o teto */
   padrao: Nivel | typeof PARCIAL;
   /** o que vale hoje, lido */
   efetivo: Nivel | typeof PARCIAL;
+  /** o rótulo único das duas telas (D10): "Operação (sem anular certificado)", "Consulta"… */
+  rotulo_padrao: string;
+  rotulo_efetivo: string;
+  /** o que cada nível dá a ESTE perfil, com o teto dito: as opções da tela de edição */
+  rotulo_consulta: string;
+  rotulo_operacao: string;
+  /** o nível mais alto que o perfil alcança no módulo (Consulta para PROGEP e auditor) */
+  maximo: Nivel;
   /** as permissões do módulo que valem hoje */
   permissoes: string[];
 }
@@ -90,13 +104,30 @@ export interface PerfilComNiveis {
   codigo: string;
   nome: string;
   ativo: boolean;
+  base_normativa: string | null;
+  /** a letra do escopo (`ESCOPO_POR_PERFIL`), ou `null` se não declarado */
+  escopo: string | null;
   aceita: boolean;
+  /** sempre em Operação, sem ajuste (o Administrador do sistema) */
+  fixo: boolean;
+  /** há nível gravado no perfil */
+  ajustado: boolean;
   /** a conta que olha tem este perfil (vigente ou futuro): não o eleva */
   e_meu: boolean;
   linhas: LinhaNivelPerfil[];
+  /** as permissões que valem e não são de módulo: vêm só do perfil */
+  sempre_do_perfil: string[];
+  /** o que nenhum nível devolve a este perfil (`NUNCA_POR_NIVEL`) */
+  teto: readonly string[];
+  /** TODAS as permissões que valem (módulos + sempre do perfil), em ordem de código */
+  efetivas: string[];
 }
 
-/** Todos os perfis, com o nível de cada módulo — a tabela de /perfis/niveis. */
+/**
+ * Todos os perfis, com o nível de cada módulo — o cálculo ÚNICO das duas telas
+ * de perfil (23/10/2026, D5/D6): a Matriz (`/perfis`) só lê, o Acesso por
+ * módulo (`/perfis/niveis`) edita, e as duas saem daqui. Ordem: por nome.
+ */
 export async function perfis_com_niveis(tx: Executor, usuario: UsuarioAtual): Promise<PerfilComNiveis[]> {
   const perfis = await tx.query.perfil.findMany({
     orderBy: [asc(tabela_perfil.nome)],
@@ -113,21 +144,40 @@ export async function perfis_com_niveis(tx: Executor, usuario: UsuarioAtual): Pr
   return perfis.map((pf) => {
     const cruas = pf.perfil_permissoes.map((pp) => pp.permissao.codigo);
     const niveis = niveis_de(pf.niveis_modulo);
-    const efetivas = permissoes_com_niveis(cruas, niveis);
+    const aceita = aceita_nivel_modulo(pf.codigo);
+    const efetivas = aceita ? permissoes_com_niveis(cruas, niveis, {}, pf.codigo) : cruas;
+    const teto = teto_do_perfil(pf.codigo);
+    const fixo = Object.hasOwn(PERFIS_NO_NIVEL_MAIS_ALTO, pf.codigo);
     return {
       id: pf.id,
       codigo: pf.codigo,
       nome: pf.nome,
       ativo: pf.ativo,
-      aceita: aceita_nivel_modulo(pf.codigo),
+      base_normativa: pf.base_normativa ?? null,
+      escopo: Object.hasOwn(ESCOPO_POR_PERFIL, pf.codigo) ? ESCOPO_POR_PERFIL[pf.codigo]! : null,
+      aceita,
+      fixo,
+      ajustado: Object.keys(niveis).length > 0,
       e_meu: meus.has(pf.id),
-      linhas: MODULOS_NIVELADOS.map((m) => ({
-        modulo: m,
-        nivel: niveis[m.codigo] ?? null,
-        padrao: nivel_lido(cruas, m),
-        efetivo: nivel_lido(efetivas, m),
-        permissoes: do_modulo(efetivas, m),
-      })),
+      teto,
+      linhas: MODULOS_NIVELADOS.map((m) => {
+        const padrao = nivel_lido(cruas, m, teto);
+        const efetivo = nivel_lido(efetivas, m, teto);
+        return {
+          modulo: m,
+          nivel: niveis[m.codigo] ?? null,
+          padrao,
+          efetivo,
+          rotulo_padrao: rotulo_do_nivel(padrao, m, pf.codigo),
+          rotulo_efetivo: rotulo_do_nivel(efetivo, m, pf.codigo),
+          rotulo_consulta: rotulo_do_nivel(CONSULTA, m, pf.codigo),
+          rotulo_operacao: rotulo_do_nivel(OPERACAO, m, pf.codigo),
+          maximo: nivel_maximo(m, teto),
+          permissoes: do_modulo(efetivas, m),
+        };
+      }),
+      sempre_do_perfil: efetivas.filter((p) => modulo_de_permissao(p) === null).sort(),
+      efetivas: [...efetivas].sort(),
     };
   });
 }
@@ -187,17 +237,21 @@ export async function alterar_nivel_perfil(
     return `O perfil ${pf.nome} está sempre no nível mais alto (Operação) em todos os módulos e não se ajusta.`;
   }
   if (!aceita_nivel_modulo(pf.codigo)) {
-    return `O perfil ${pf.nome} não se ajusta por módulo: o alcance dele é o do titular ou só agregado.`;
+    return `O perfil ${pf.nome} não se ajusta por módulo: o alcance dele é o do titular ou sem dado de módulo.`;
   }
   const cruas = pf.perfil_permissoes.map((pp) => pp.permissao.codigo);
   const niveis = niveis_de(pf.niveis_modulo);
   const anterior = niveis[m.codigo] ?? null;
   if (anterior === nivel) return null;
-  const antes = new Set(do_modulo(permissoes_com_niveis(cruas, niveis), m));
+  // o teto do perfil (D1/D2): PROGEP e auditor vão no máximo até Consulta
+  if (nivel === OPERACAO && nivel_maximo(m, teto_do_perfil(pf.codigo)) === CONSULTA) {
+    return `O perfil ${pf.nome} vai, no máximo, até Consulta em ${m.nome}: não escreve em módulo nenhum, nem por liberação.`;
+  }
+  const antes = new Set(do_modulo(permissoes_com_niveis(cruas, niveis, {}, pf.codigo), m));
   const novos: Record<string, Nivel> = { ...niveis };
   if (nivel === null) delete novos[m.codigo];
   else novos[m.codigo] = nivel;
-  const depois = do_modulo(permissoes_com_niveis(cruas, novos), m);
+  const depois = do_modulo(permissoes_com_niveis(cruas, novos, {}, pf.codigo), m);
   const acrescenta = depois.filter((p) => !antes.has(p));
 
   if (acrescenta.length) {
@@ -230,7 +284,7 @@ export async function alterar_nivel_perfil(
         set: { nivel, alterado_por: usuario.id, alterado_em: agora_utc() },
       });
   }
-  const padrao = nivel_lido(cruas, m);
+  const padrao = nivel_lido(cruas, m, teto_do_perfil(pf.codigo));
   await auditoria.registrar(tx, {
     entidade: "perfil",
     entidade_id: pf.id,
@@ -288,6 +342,11 @@ export async function alterar_nivel_pessoa(
       "(campus, equipe), e sem ele não daria nada. Conceda um perfil antes."
     );
   }
+  // o teto de cada perfil vale também sobre a exceção da pessoa: Operação só
+  // tem efeito se algum perfil da conta alcança Operação neste módulo
+  if (nivel === OPERACAO && concessoes.every((a) => nivel_maximo(m, teto_do_perfil(a.perfil.codigo)) === CONSULTA)) {
+    return `Os perfis desta conta vão, no máximo, até Consulta em ${m.nome}: Operação não teria efeito.`;
+  }
   const novos: Record<string, Nivel> = { ...da_pessoa };
   if (nivel === null) delete novos[m.codigo];
   else novos[m.codigo] = nivel;
@@ -295,8 +354,8 @@ export async function alterar_nivel_pessoa(
   for (const a of concessoes) {
     const cruas = a.perfil.perfil_permissoes.map((pp) => pp.permissao.codigo);
     const do_perfil = niveis_de(a.perfil.niveis_modulo);
-    const antes = new Set(do_modulo(permissoes_com_niveis(cruas, do_perfil, da_pessoa), m));
-    const depois = do_modulo(permissoes_com_niveis(cruas, do_perfil, novos), m);
+    const antes = new Set(do_modulo(permissoes_com_niveis(cruas, do_perfil, da_pessoa, a.perfil.codigo), m));
+    const depois = do_modulo(permissoes_com_niveis(cruas, do_perfil, novos, a.perfil.codigo), m);
     for (const p of _alem_do_que_tem(usuario, depois.filter((p) => !antes.has(p)), a.perfil.codigo, a.campus_id ?? null)) {
       alem.add(p);
     }
@@ -316,7 +375,7 @@ export async function alterar_nivel_pessoa(
         set: { nivel, alterado_por: usuario.id, alterado_em: agora_utc() },
       });
   }
-  const seguir = (n: string | null) => (n === null ? "Seguir o perfil" : (ROTULO_NIVEL[n] ?? n));
+  const seguir = (n: string | null) => (n === null ? "Padrão do perfil" : (ROTULO_NIVEL[n] ?? n));
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: alvo.id,

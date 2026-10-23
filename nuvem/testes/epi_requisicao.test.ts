@@ -790,7 +790,7 @@ describe("permissões", () => {
   it("as duas permissões novas existem e estão no módulo EPI", () => {
     for (const codigo of ["epi.requisitar", "epi.analisar"]) {
       expect(PERMISSOES[codigo]).toBeTruthy();
-      expect(modulo_da_permissao(codigo)).toBe("EPI");
+      expect(modulo_da_permissao(codigo)).toBe("epis");
     }
   });
 

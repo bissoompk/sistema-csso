@@ -1,0 +1,60 @@
+{# As permissões de UM perfil, na organização ÚNICA das duas telas de perfil
+   (23/10/2026): a Matriz (/perfis, só leitura) e o Acesso por módulo
+   (/perfis/niveis, edita). Os quatro módulos, depois "Sempre do perfil" e "Do
+   titular". Tudo sai de `liberacao.perfis_com_niveis` — o mesmo cálculo —, e
+   cada permissão traz `data-perm` e o bloco `data-bloco`: um teste compara as
+   duas telas por esses atributos. #}
+
+{% macro cor_do_nivel(nivel) -%}
+{{ 'ok' if nivel == 'OPERACAO' else ('info' if nivel == 'CONSULTA' else ('alerta' if nivel == 'PARCIAL' else 'sem-ponto')) }}
+{%- endmacro %}
+
+{# `parecer.assinar` sai em alerta porque é a única permissão do sistema que
+   não basta sozinha: sem habilitação técnica vigente ela não assina nada. #}
+{% macro pilula(codigo, textos) -%}
+<span class="pilula perm-pilula sem-ponto {{ 'alerta' if codigo == 'parecer.assinar' }}" data-perm="{{ codigo }}"
+      title="{{ codigo }}">{{ textos[codigo] or codigo }}
+  <span class="mono discreto">{{ codigo }}</span></span>
+{%- endmacro %}
+
+{# as permissões do módulo que valem, dentro do bloco do módulo #}
+{% macro permissoes_do_modulo(l, textos) -%}
+<div class="fileira" data-bloco="{{ l.modulo.codigo }}">
+  {% for codigo in l.permissoes %}{{ pilula(codigo, textos) }}{% else %}
+  <span class="discreto">Nenhuma permissão neste módulo.</span>{% endfor %}
+</div>
+{%- endmacro %}
+
+{# os quatro módulos de um perfil, para a tela só de leitura #}
+{% macro modulos(p, textos) -%}
+{% for l in p.linhas %}
+<div class="corpo">
+  <h3>{{ l.modulo.nome }}
+    <span class="pilula {{ cor_do_nivel(l.efetivo) }}">{{ l.rotulo_efetivo }}{{ ' · fixa' if p.fixo }}</span></h3>
+  {{ permissoes_do_modulo(l, textos) }}
+</div>
+{% endfor %}
+{%- endmacro %}
+
+{% macro sempre_do_perfil(p, textos) -%}
+<div class="corpo">
+  <h3>Sempre do perfil</h3>
+  <p class="discreto">Assinatura, habilitação, administração de acesso, dado nominal e as
+    transversais seguem o cargo, e não mudam por módulo.</p>
+  <div class="fileira" data-bloco="sempre">
+    {% for codigo in p.sempre_do_perfil %}{{ pilula(codigo, textos) }}{% else %}
+    <span class="discreto">Nenhuma.</span>{% endfor %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro do_titular(titular, textos) -%}
+<div class="corpo">
+  <h3>Do titular</h3>
+  <p class="discreto">Toda conta ligada a servidor recebe isto, só sobre o que é dela, seja qual
+    for o perfil. O nível de um módulo não retira o que é do titular.</p>
+  <div class="fileira" data-bloco="titular">
+    {% for codigo in titular %}{{ pilula(codigo, textos) }}{% endfor %}
+  </div>
+</div>
+{%- endmacro %}

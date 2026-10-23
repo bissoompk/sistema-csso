@@ -42,15 +42,6 @@ describe("textos sem código de RN — templates", () => {
 const { db, cliente } = await bancoLimpo();
 await contas(db);
 
-/**
- * Exceção conhecida: a `base_normativa` do perfil "Secretaria da CSSO" vem do
- * BANCO (semeada de `MATRIZ_PERFIS` em `rbac.ts`, gravada só na criação do
- * perfil) e ainda diz "dado mascarado - RN-19". Corrigi-la pede mexer em
- * `rbac.ts` e atualizar a linha já gravada — fica para depois do módulo de
- * acidentes, que está mexendo no RBAC. Remova daqui quando for feito.
- */
-const EXCECOES: readonly string[] = ["Sem acesso a exposicao (dado mascarado - RN-19)."];
-
 const PAGINAS: Record<string, readonly string[]> = {
   coordenador_csso: [
     "/inicio",
@@ -78,6 +69,13 @@ const PAGINAS: Record<string, readonly string[]> = {
     "/epis/requisicoes",
     "/epis/relatorios",
     "/minha-atividade",
+    // as duas telas de perfil (23/10/2026): a base normativa vem do banco e a semente a atualiza
+    "/perfis",
+    "/perfis/niveis",
+    "/perfis/niveis?perfil=secretaria_csso",
+    "/perfis/niveis?perfil=consulta_progep",
+    "/perfis/niveis?perfil=administrador_sistema",
+    "/usuarios",
   ],
   almoxarife_sesmt: [
     "/epis",
@@ -113,8 +111,7 @@ describe("textos sem código de RN — páginas renderizadas", () => {
         const r = await cliente.get(caminho);
         expect(r.status, caminho).toBeLessThan(500);
         if (r.status === 200) renderizadas++;
-        let html = r.text;
-        for (const ex of EXCECOES) html = html.split(ex).join("");
+        const html = r.text;
         for (const l of linhas_com_rn(html, /<!--[\s\S]*?-->/g)) achados.push(`${caminho} ${l}`);
       }
       expect(achados).toEqual([]);

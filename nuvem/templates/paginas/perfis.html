@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partes/perfil_permissoes.html" as pp %}
 {# A matriz é de TODOS os módulos: perfil e permissão não pertencem ao adicional
    ocupacional, o adicional só os usa — que é a definição da base. Por isso o
    primeiro nível é declarado aqui, como `/modulos` faz com o dele: sem isto a
@@ -22,7 +23,8 @@
       <p class="sub">Negado por padrão. A checagem acontece em três camadas: rota,
         serviço e repositório — nenhuma delas confia nas outras. As permissões abaixo
         já contam o nível de cada módulo escolhido em
-        <a href="/perfis/niveis">Acesso por módulo</a>.</p>
+        <a href="/perfis/niveis">Acesso por módulo</a>, que mostra os mesmos
+        módulos e é onde o nível se ajusta.</p>
     </div>
     <div class="ao-lado">
       <span class="contador">{{ perfis|length }} perfis</span>
@@ -30,7 +32,7 @@
   </div>
 
   {# Cada perfil é um cartão recolhido (`details.cartao.perfil`): abertos, os
-     doze perfis davam 14.650px de altura no celular, e quem chega aqui vem
+     os perfis davam 14.650px de altura no celular, e quem chega aqui vem
      ver UM perfil. O resumo diz nome, código e quantas permissões; o índice
      leva direto ao cartão. #}
   {% if perfis %}
@@ -46,39 +48,28 @@
     <summary>
       <h2>{{ p.nome }}</h2>
       <span class="mono discreto">{{ p.codigo }}</span>
-      <span class="nota a-direita">{{ p.permissoes|length }} permissões</span>
+      {% if not p.ativo %}<span class="pilula sem-ponto">inativo</span>{% endif %}
+      <span class="nota a-direita">{{ p.efetivas|length }} permissões</span>
     </summary>
-    {% if p.ajustado %}<p class="discreto"><span class="pilula info sem-ponto">ajustado por módulo</span>
-      <a href="/perfis/niveis?perfil={{ p.codigo }}">ver os níveis</a></p>{% endif %}
+    {% if p.fixo %}<p class="discreto"><span class="pilula ok sem-ponto">sempre em Operação</span>
+      Este perfil não se ajusta por módulo: está no nível mais alto em todos.</p>
+    {% elif not p.aceita %}<p class="discreto"><span class="pilula sem-ponto">não se ajusta por módulo</span>
+      O alcance deste perfil é o do titular ou sem dado de módulo.</p>
+    {% elif p.ajustado %}<p class="discreto"><span class="pilula info sem-ponto">ajustado por módulo</span></p>{% endif %}
+    {% if p.aceita and pode_ajustar %}<p class="discreto"><a href="/perfis/niveis?perfil={{ p.codigo }}">Ajustar o acesso por módulo</a></p>
+    {% elif p.aceita %}<p class="discreto"><a href="/perfis/niveis?perfil={{ p.codigo }}">Ver o acesso por módulo</a></p>{% endif %}
     {% if p.base_normativa %}<p class="discreto">{{ p.base_normativa }}</p>{% endif %}
     {# O alcance do perfil (D24): as mesmas permissões leem coisas muito
        diferentes conforme o escopo, e quem concede precisa saber qual. #}
-    <p class="discreto"><strong>Alcance:</strong> {{ p.escopo }}</p>
-    {# Agrupadas como quem concede perfil pensa, e escritas em português (M75):
-       a matriz é lida por gestor, e "epi.requisitar" não diz nada a quem não
-       escreveu o código. O código continua ao lado, em mono discreto — é o que
-       aparece na mensagem de 403 e na conversa com a TI. No celular a pílula
-       (`perm-pilula`) empilha o texto sobre o código. #}
-    {% for g in p.grupos %}
-    <div class="corpo">
-      <h3>{{ g.rotulo }}</h3>
-      <div class="fileira">
-        {% for perm in g.itens %}
-        {# `parecer.assinar` sai em alerta porque é a única permissão do sistema
-           que não basta sozinha: sem habilitação técnica vigente ela não assina
-           nada, e quem concede o perfil precisa ver isso aqui. #}
-        <span class="pilula perm-pilula sem-ponto {{ 'alerta' if perm.codigo == 'parecer.assinar' }}"
-              title="{{ perm.codigo }}">{{ perm.texto }}
-          <span class="mono discreto">{{ perm.codigo }}</span></span>
-        {% endfor %}
-      </div>
-    </div>
-    {% else %}
-    <div class="fileira">
-      <span class="discreto">Nenhuma permissão — o perfil existe e não abre nada.</span>
-    </div>
-    {% endfor %}
-    {% if 'parecer.assinar' in p.permissoes|map(attribute='codigo')|list %}
+    <p class="discreto"><strong>Alcance:</strong> {{ p.escopo_texto }}</p>
+    {# A MESMA organização de /perfis/niveis (23/10/2026): os quatro módulos
+       com o nível em vigor, o que vem só do perfil e o que é do titular. O
+       código continua ao lado de cada texto, em mono discreto — é o que
+       aparece na mensagem de 403 e na conversa com a TI. #}
+    {{ pp.modulos(p, textos_permissao) }}
+    {{ pp.sempre_do_perfil(p, textos_permissao) }}
+    {{ pp.do_titular(titular, textos_permissao) }}
+    {% if 'parecer.assinar' in p.efetivas %}
     <p class="discreto rodape-cartao sem-margem">
       <code>parecer.assinar</code> só funciona somada a habilitação técnica vigente
       (IN 15/2022, art. 10, §2º, I) — a permissão sozinha não basta, e o banco

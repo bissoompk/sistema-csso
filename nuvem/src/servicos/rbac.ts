@@ -19,10 +19,12 @@ import { hoje_iso } from "../dominio/datas.js";
 import { PermissaoNegada } from "../nucleo/erros.js";
 import {
   MODULOS_NIVELADOS,
+  NUNCA_POR_NIVEL,
   PERFIS_NO_NIVEL_MAIS_ALTO,
   PERMISSAO_DA_BASE,
   PERMISSOES_SO_DO_PERFIL,
   concessao_da_a_base,
+  modulo_de_permissao,
   niveis_de,
   permissoes_com_niveis,
   permissoes_do_modulo,
@@ -178,7 +180,7 @@ export const PERMISSOES: Record<string, string> = {
   // (`equipe_setor_promotor`); quem tem esta ve todas — a coordenacao da Sisa
   // e quem le o modulo inteiro por ofício (auditoria, PROGEP). Nao se libera
   // por modulo (`niveis_modulo.PERMISSOES_SO_DO_PERFIL`).
-  "turma.todos_os_setores": "Ver e gerir as turmas de todos os setores promotores",
+  "turma.todos_os_setores": "Alcançar as turmas de todos os setores promotores (gerir exige as permissões de turma)",
 };
 
 /**
@@ -232,7 +234,7 @@ export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<
       "certificado.anular": "Anular certificado emitido",
       "certificado.ver": "Ver certificado nominal e dados do participante",
       "participante.mesclar": "Juntar cadastros duplicados do mesmo participante",
-      "turma.todos_os_setores": "Ver e gerir as turmas de todos os setores promotores",
+      "turma.todos_os_setores": "Alcançar as turmas de todos os setores (gerir exige as permissões de turma)",
     },
   ],
   [
@@ -274,6 +276,16 @@ export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<
     },
   ],
 ];
+
+/**
+ * O texto de tela de cada permissão (um dicionário só, achatado de
+ * `GRUPOS_PERMISSAO_TELA`): as duas telas de perfil (`/perfis` e
+ * `/perfis/niveis`) e o "você não tem" dos templates leem daqui. O AGRUPAMENTO
+ * das telas é o dos módulos (`MODULOS_NIVELADOS`), e não o dos grupos acima.
+ */
+export const TEXTO_PERMISSAO: Readonly<Record<string, string>> = Object.freeze(
+  Object.assign({}, ...GRUPOS_PERMISSAO_TELA.map(([, textos]) => textos)) as Record<string, string>,
+);
 
 /** A lista do coordenador — o superintendente parte dela (ver abaixo). */
 const PERMISSOES_COORDENADOR: string[] = [
@@ -365,7 +377,9 @@ export function permissoes_do_administrador_sistema(): string[] {
 export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   admin_ti: {
     nome: "Administrador de TI",
-    base_normativa: "Sem acesso ao conteudo tecnico. So conta, senha, auditoria e backup.",
+    base_normativa:
+      "Governa a conta e não lê o trabalho do setor: cria conta, redefine senha, vê a trilha de auditoria e faz backup. " +
+      "Nenhum dado de processo, certificado, EPI ou indicador.",
     permissoes: [
       "usuario.criar_conta",
       "usuario.resetar_senha",
@@ -380,7 +394,9 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   },
   superintendente: {
     nome: "Superintendente da Sisa",
-    base_normativa: "Resolucao Consu UFVJM 11/2026, art. 11, IX",
+    base_normativa:
+      "Resolução Consu UFVJM 11/2026, art. 11, IX. Opera como a coordenação e, com o Administrador do sistema, " +
+      "é quem concede perfil e ajusta o acesso por módulo.",
     // Operacional (19/10/2026). Era "ve tudo e opera nada": no banco recem
     // implantado a unica conta e a do superintendente, e ela nao criava conta,
     // servidor, catalogo, turma, demanda nem processo — o sistema nascia
@@ -400,7 +416,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   },
   coordenador_csso: {
     nome: "Coordenador da CSSO",
-    base_normativa: "Resolucao Consu UFVJM 11/2026, art. 20, VII",
+    base_normativa: "Resolução Consu UFVJM 11/2026, art. 20, VII",
     permissoes: PERMISSOES_COORDENADOR,
   },
   engenheiro_seguranca: {
@@ -548,8 +564,8 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   almoxarife_sesmt: {
     nome: "Almoxarife do SESMT",
     base_normativa:
-      "Opera o estoque e a entrega do EPI. Nao decide o direito ao item, " +
-      "nao le parecer, nao ve exposicao.",
+      "Opera o estoque e a entrega do EPI. Não decide o direito ao item, não lê parecer e não vê exposição, " +
+      "nem por liberação de módulo.",
     // O perfil nasce na fatia 3, e nao antes, porque o nucleo dele e
     // `epi.estoque` — que so passou a existir agora. `semear_rbac` nunca
     // REMOVE permissao de perfil: um perfil semeado pela metade concede
@@ -580,7 +596,9 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   },
   secretaria_csso: {
     nome: "Secretaria da CSSO",
-    base_normativa: "Sem acesso a exposicao (dado mascarado - RN-19).",
+    base_normativa:
+      "Sem acesso à exposição (dado mascarado). Decidir é ato técnico: não analisa pedido de EPI, não cria nem emite " +
+      "parecer e não anula certificado, nem por liberação de módulo.",
     permissoes: [
       "processo.ver",
       "processo.criar",
@@ -621,7 +639,9 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   },
   consulta_progep: {
     nome: "Consulta PROGEP",
-    base_normativa: "Le apenas parecer assinado.",
+    base_normativa:
+      "Consulta de processo, parecer, laudo, exposição, certificado e ficha de EPI; vê indicadores e exporta. " +
+      "Não escreve em módulo nenhum: no máximo Consulta, nem por liberação de módulo.",
     permissoes: [
       "processo.ver",
       "parecer.ver",
@@ -642,7 +662,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     ],
   },
   servidor_consulta: {
-    nome: "Servidor (consulta do próprio processo)",
+    nome: "Servidor (os próprios dados)",
     base_normativa: "LGPD art. 18, II - acesso do titular.",
     // `epi.ver` abre o catalogo, que nao e nominal: e a lista do que o setor
     // fornece. `epi.ficha` fica DE FORA de proposito: ela e a permissao de
@@ -704,7 +724,8 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   },
   auditor_interno: {
     nome: "Auditor interno",
-    base_normativa: "Leitura ampla, escrita nenhuma.",
+    base_normativa:
+      "Leitura ampla, escrita nenhuma: no máximo Consulta em cada módulo, nem por liberação de módulo.",
     permissoes: [
       "processo.ver",
       "parecer.ver",
@@ -730,7 +751,8 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     nome: "Administrador do sistema",
     base_normativa:
       "Todas as permissões de todos os módulos e setores, em escopo total, menos assinar parecer e " +
-      "registrar laudo (IN SGP/SEDGG/ME 15/2022, art. 10, §2º, I). Só outro Administrador do sistema o concede.",
+      "registrar laudo (IN SGP/SEDGG/ME 15/2022, art. 10, §2º, I). Só outro Administrador do sistema o concede. " +
+      "Não se ajusta por módulo: está sempre em Operação.",
     permissoes: permissoes_do_administrador_sistema(),
   },
 };
@@ -776,40 +798,15 @@ export function _conferir_retiradas(): void {
 
 _conferir_retiradas();
 
-// `permissao.modulo` existe desde o esquema inicial com default 'ADICIONAL', mas
-// ninguém a preenchia. NADA lê esta coluna hoje — /perfis renderiza a partir de
-// MATRIZ_PERFIS, que é código. O mapa serve para a coluna ter valor correto desde
-// já, para quando existir a tela de permissões por módulo.
-export const MODULO_PADRAO = "ADICIONAL";
-export const MODULO_POR_PERMISSAO: Record<string, string> = {
-  "treinamento.ver": "TREINAMENTOS",
-  "treinamento.gerenciar": "TREINAMENTOS",
-  "assinatura.gerenciar": "TREINAMENTOS",
-  "turma.criar": "TREINAMENTOS",
-  "turma.inscrever": "TREINAMENTOS",
-  "turma.inscrever_se": "TREINAMENTOS",
-  "turma.concluir": "TREINAMENTOS",
-  "turma.avaliar": "TREINAMENTOS",
-  "certificado.emitir": "TREINAMENTOS",
-  "certificado.anular": "TREINAMENTOS",
-  "participante.mesclar": "TREINAMENTOS",
-  "certificado.ver": "TREINAMENTOS",
-  "turma.todos_os_setores": "TREINAMENTOS",
-  "epi.ver": "EPI",
-  "epi.catalogo": "EPI",
-  "epi.entregar": "EPI",
-  "epi.ficha": "EPI",
-  "epi.estoque": "EPI",
-  "epi.requisitar": "EPI",
-  "epi.analisar": "EPI",
-  // "BASE": demanda não pertence a módulo nenhum — mora na base compartilhada
-  // de `modulos.ts`. Carimbá-la de 'ADICIONAL' (o default) seria mentir na coluna.
-  "demanda.ver": "BASE",
-  "demanda.registrar": "BASE",
-};
+// `permissao.modulo` (D7, 23/10/2026): DERIVADA dos módulos de `niveis_modulo.ts`,
+// o mapa permissão → módulo que existe — o código do módulo nivelado
+// ("processos-sei", "epis", "certificados", "demandas"), ou "PERFIL" para a
+// permissão que não é de módulo nenhum (só do perfil). `semear_rbac` regrava a
+// coluna a cada deploy; nada mais a lê hoje.
+export const MODULO_SO_DO_PERFIL = "PERFIL";
 
 export function modulo_da_permissao(codigo: string): string {
-  return MODULO_POR_PERMISSAO[codigo] ?? MODULO_PADRAO;
+  return modulo_de_permissao(codigo)?.codigo ?? MODULO_SO_DO_PERFIL;
 }
 
 // Escopos: S=sim, E=escopo (coordenadoria+campus), P=próprios, A=agregado
@@ -957,10 +954,30 @@ export function _conferir_niveis(): void {
   for (const p of Object.keys(PERMISSOES)) {
     if (!vistas.has(p) && !Object.hasOwn(PERMISSOES_SO_DO_PERFIL, p)) problemas.push(`${p} sem módulo nem decisão`);
   }
+  // o TETO de cada perfil (D1): todo perfil que aceita nível declara o dele; o teto só tem permissão
+  // de módulo, não cobre o que o perfil já tem (seria contradição) e PROGEP e auditor têm TODA a escrita
+  for (const perfil of Object.keys(NUNCA_POR_NIVEL)) {
+    if (!Object.hasOwn(MATRIZ_PERFIS, perfil)) problemas.push(`teto de perfil inexistente: ${perfil}`);
+    else if (!aceita_nivel_modulo(perfil)) problemas.push(`teto de ${perfil}, que não aceita nível`);
+  }
+  for (const perfil of Object.keys(MATRIZ_PERFIS)) {
+    if (!aceita_nivel_modulo(perfil)) continue;
+    if (!Object.hasOwn(NUNCA_POR_NIVEL, perfil)) {
+      problemas.push(`${perfil} aceita nível e não declara o teto (NUNCA_POR_NIVEL)`);
+      continue;
+    }
+    for (const p of NUNCA_POR_NIVEL[perfil]!) {
+      if (!vistas.has(p)) problemas.push(`teto de ${perfil}: ${p} não é de módulo`);
+      if (MATRIZ_PERFIS[perfil]!.permissoes.includes(p)) problemas.push(`teto de ${perfil}: ${p} é permissão que o perfil tem`);
+    }
+  }
+  for (const perfil of ["consulta_progep", "auditor_interno"]) {
+    const teto = NUNCA_POR_NIVEL[perfil] ?? [];
+    const solta = MODULOS_NIVELADOS.flatMap((m) => m.escrita).filter((p) => !teto.includes(p));
+    if (solta.length) problemas.push(`${perfil} só vai até Consulta e o teto deixa a escrita: ${solta.join(", ")}`);
+  }
   if (problemas.length) throw new Error("Liberação por módulo mal declarada — " + problemas.join("; "));
 }
-
-_conferir_niveis();
 
 /**
  * O perfil recebe nível por módulo? Só os de equipe (escopo total ou de
@@ -976,6 +993,8 @@ export function aceita_nivel_modulo(perfil: string): boolean {
   const nivel = Object.hasOwn(ESCOPO_POR_PERFIL, perfil) ? ESCOPO_POR_PERFIL[perfil] : undefined;
   return nivel === ESCOPO_TOTAL || nivel === ESCOPO_UNIDADE;
 }
+
+_conferir_niveis();
 
 /** A unidade CSSO, pelo nome oficial (a sigla se repete ao longo do tempo). */
 export const NOME_OFICIAL_CSSO = "COORDENADORIA DE SEGURANCA E SAUDE OCUPACIONAL";
@@ -1544,7 +1563,7 @@ export async function perfis_vigentes(
     // perfil → nível do módulo → exceção da pessoa (`niveis_modulo.ts`); só
     // nos perfis de equipe — o do titular e o agregado ficam como estão
     const dela = aceita_nivel_modulo(perfil.codigo)
-      ? permissoes_com_niveis(cruas, niveis_de(perfil.niveis_modulo), niveis_de(a.usuario?.niveis_modulo ?? []))
+      ? permissoes_com_niveis(cruas, niveis_de(perfil.niveis_modulo), niveis_de(a.usuario?.niveis_modulo ?? []), perfil.codigo)
       : cruas;
     for (const p of dela) permissoes.add(p);
     if (a.campus_id) campi.add(a.campus_id);
