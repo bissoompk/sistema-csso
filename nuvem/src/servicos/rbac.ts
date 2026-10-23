@@ -19,6 +19,7 @@ import { hoje_iso } from "../dominio/datas.js";
 import { PermissaoNegada } from "../nucleo/erros.js";
 import {
   MODULOS_NIVELADOS,
+  PERFIS_NO_NIVEL_MAIS_ALTO,
   PERMISSOES_SO_DO_PERFIL,
   niveis_de,
   permissoes_com_niveis,
@@ -320,6 +321,42 @@ const PERMISSOES_COORDENADOR: string[] = [
  * habilitacao vigente (`pode_subscrever`). Nao entra em perfil de gestao.
  */
 export const SO_DO_TECNICO_HABILITADO: ReadonlySet<string> = new Set(["parecer.assinar", "laudo.criar"]);
+
+/**
+ * O perfil acima de todos (23/10/2026, pedido do dono do sistema): o
+ * Administrador do sistema tem TODA permissão de todo módulo e de todo setor,
+ * em escopo total, menos o ato técnico que a IN 15/2022 reserva a quem tem
+ * habilitação (`SO_DO_TECNICO_HABILITADO`: assinar parecer, registrar laudo).
+ * Para isso ele precisa, como qualquer um, de perfil técnico E habilitação.
+ *
+ * Só quem tem este perfil o concede (nem o superintendente, nem a si mesmo), e
+ * a conta que o tem só é alterada, redefinida, inativada ou tem o perfil
+ * encerrado por outro Administrador do sistema (`rotas/usuarios.ts`). A
+ * primeira concessão é pela linha de comando (`ferramentas/conceder-administrador.ts`).
+ *
+ * Na hierarquia de dono (de turmas e treinamentos), é o TOPO, acima do
+ * superintendente: `TOPO_DA_HIERARQUIA`, abaixo.
+ */
+export const PERFIL_ADMINISTRADOR_SISTEMA = "administrador_sistema";
+
+/**
+ * O topo da hierarquia de perfis — "Administrador do sistema > Superintendente
+ * > Coordenador > demais". A regra de dono de turma/treinamento (branch
+ * feat/sisa-dono-treinamento) deve pôr este código ACIMA do superintendente
+ * ao juntar (ver DESVIOS.md).
+ */
+export const TOPO_DA_HIERARQUIA: readonly string[] = Object.freeze([PERFIL_ADMINISTRADOR_SISTEMA, "superintendente"]);
+
+/**
+ * As permissões do Administrador do sistema: DERIVADAS, nunca copiadas à mão —
+ * toda chave de `PERMISSOES` (o que inclui a união de todos os perfis da
+ * matriz) menos as do ato técnico. Permissão nova que entra em `PERMISSOES`
+ * entra aqui sozinha, e `semear_rbac` a acrescenta ao perfil já gravado no
+ * próximo deploy. `perfil_admin_sistema.test.ts` confere.
+ */
+export function permissoes_do_administrador_sistema(): string[] {
+  return Object.keys(PERMISSOES).filter((p) => !SO_DO_TECNICO_HABILITADO.has(p));
+}
 
 export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   admin_ti: {
@@ -683,6 +720,15 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "demanda.ver",
     ],
   },
+  // por último de propósito: perfil novo entra no fim da semeadura, e os ids
+  // dos perfis já gravados (e os testes que pegam "o primeiro perfil") não mudam
+  [PERFIL_ADMINISTRADOR_SISTEMA]: {
+    nome: "Administrador do sistema",
+    base_normativa:
+      "Todas as permissões de todos os módulos e setores, em escopo total, menos assinar parecer e " +
+      "registrar laudo (IN SGP/SEDGG/ME 15/2022, art. 10, §2º, I). Só outro Administrador do sistema o concede.",
+    permissoes: permissoes_do_administrador_sistema(),
+  },
 };
 
 /**
@@ -772,6 +818,8 @@ export const ESCOPO_AGREGADO = "A";
 // perfil de MATRIZ_PERFIS — `_conferir_escopos()`, logo abaixo, recusa o
 // contrário e derruba a importação do módulo.
 export const ESCOPO_POR_PERFIL: Record<string, string> = {
+  // o mais amplo que existe: todos os registros, de todos os campi
+  [PERFIL_ADMINISTRADOR_SISTEMA]: ESCOPO_TOTAL,
   admin_ti: ESCOPO_AGREGADO,
   superintendente: ESCOPO_UNIDADE,
   coordenador_csso: ESCOPO_UNIDADE,
@@ -852,6 +900,10 @@ _conferir_niveis();
  * não lê linha nenhuma (o `admin_ti` governa a conta, não o trabalho do setor).
  */
 export function aceita_nivel_modulo(perfil: string): boolean {
+  // o Administrador do sistema está sempre no nível mais alto de cada módulo
+  // (`niveis_modulo.PERFIS_NO_NIVEL_MAIS_ALTO`): nem o perfil nem a exceção da
+  // pessoa o rebaixam
+  if (Object.hasOwn(PERFIS_NO_NIVEL_MAIS_ALTO, perfil)) return false;
   const nivel = Object.hasOwn(ESCOPO_POR_PERFIL, perfil) ? ESCOPO_POR_PERFIL[perfil] : undefined;
   return nivel === ESCOPO_TOTAL || nivel === ESCOPO_UNIDADE;
 }
@@ -1341,6 +1393,25 @@ export const PERMISSOES_DE_GOVERNO: ReadonlySet<string> = new Set([
   "usuario.resetar_senha",
   "backup.executar",
 ]);
+
+/** A conta tem (nas concessões dadas) o perfil Administrador do sistema? */
+export function tem_administrador_sistema(perfis: Iterable<string>): boolean {
+  for (const p of perfis) if (p === PERFIL_ADMINISTRADOR_SISTEMA) return true;
+  return false;
+}
+
+/**
+ * A trava do perfil do topo: conceder o Administrador do sistema, ou mexer na
+ * conta que o tem (vigente ou futuro), é ato só de quem também o tem. Devolve o
+ * motivo da recusa, ou `null`. `perfis_do_alvo` são os perfis da conta-alvo.
+ */
+export function recusa_do_administrador_sistema(
+  usuario: Pick<UsuarioAtual, "perfis">,
+  perfis_do_alvo: Iterable<string>,
+): string | null {
+  if (!tem_administrador_sistema(perfis_do_alvo) || tem_administrador_sistema(usuario.perfis)) return null;
+  return "é conta de Administrador do sistema; só outro Administrador do sistema concede esse perfil ou altera essa conta.";
+}
 
 export function eh_conta_de_governo(permissoes: Iterable<string>): boolean {
   for (const p of permissoes) if (PERMISSOES_DE_GOVERNO.has(p)) return true;

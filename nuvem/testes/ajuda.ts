@@ -383,6 +383,7 @@ export const PERFIS_DE_TESTE: readonly (readonly [string, string])[] = [
   ["engenheiro_seguranca", "Engenheiro de Teste"],
   ["medico_trabalho", "Médico de Teste"],
   ["almoxarife_sesmt", "Almoxarife de Teste"],
+  ["administrador_sistema", "Administrador do Sistema de Teste"],
 ];
 
 /**

@@ -164,6 +164,24 @@ pode ser apagado depois.
    servidor já no cadastro). O superintendente opera o sistema inteiro, menos
    assinar parecer e laudo — isso exige perfil técnico e habilitação atestada.
    Os servidores entram por planilha em `/servidores` > Importar.
+   **Administrador do sistema** — o perfil acima de todos (tudo, em todos os
+   módulos e setores, menos assinar parecer e registrar laudo). Só quem o tem
+   o concede (o superintendente não), e a conta dele só é alterada,
+   redefinida ou inativada por outro Administrador do sistema. A primeira
+   concessão é pela linha de comando, com a `DATABASE_URL` de produção no
+   ambiente (registre em ata):
+
+   ```
+   npm run conceder-administrador -- --email <seu e-mail> [--nome "Nome completo"]
+   ```
+
+   A ferramenta mostra a identidade do banco e pede que você a digite antes
+   de gravar. Conta que já existe (achada pelo e-mail; `--login` vale para
+   conta antiga) só recebe o perfil, em todos os campi e sem termo, sem mudar
+   a senha. Conta que não existe é criada se vier `--nome`, com login = e-mail,
+   senha provisória forte mostrada **uma vez** e troca obrigatória no primeiro
+   login. A trilha registra `PERFIL_CONCEDIDO` (e `USUARIO_CRIADO`) com o ator
+   "linha de comando"; corrija o ato depois em Gerir.
 5. `GET /saude/db` (logado como superintendente/admin_ti/auditor) deve mostrar
    `"producao": true`.
 6. **Depois de carregar os dados reais** (importação da planilha/Trello), rode

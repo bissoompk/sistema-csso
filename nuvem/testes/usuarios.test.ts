@@ -276,6 +276,10 @@ describe("encerrar concessão e corrigir o ato", () => {
   });
 
   it("não encerra a última concessão de quem concede perfil", async () => {
+    // a conta de teste do Administrador do sistema também concede: sem ela, a
+    // do superintendente é a última
+    const [adm] = await amb.db.select().from(e.perfil).where(eq(e.perfil.codigo, "administrador_sistema"));
+    await amb.db.delete(e.atribuicao).where(eq(e.atribuicao.perfil_id, adm!.id));
     await entrar(amb.cliente, "superintendente");
     const a = await atribuicaoDe("superintendente", "superintendente");
     const r = await amb.cliente.post(`/usuarios/atribuicoes/${a.id}/encerrar`);
