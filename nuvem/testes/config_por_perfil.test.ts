@@ -40,6 +40,7 @@ const ESPERADO: Record<string, Bloco[] | null> = {
   secretaria_csso: [...PROCESSOS],
   auditor_interno: null,
   superintendente: [...PROCESSOS, "editar_sla", "retirada_epi", "secao_sistema", "onde_mora", "backup", "exportar_tudo"],
+  administrador_sistema: [...PROCESSOS, "editar_sla", "retirada_epi", "secao_sistema", "onde_mora", "backup", "exportar_tudo"],
   admin_ti: ["secao_sistema", "onde_mora", "backup"],
   consulta_progep: null,
   servidor_consulta: null,

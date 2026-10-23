@@ -16,6 +16,7 @@
  * banco e os caminhos de disco da instalação. Continua fora: ler o setor exige,
  * além do módulo, quem instrui processo ou gere catálogo.
  */
+import { tem_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { Hono } from "hono";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
@@ -44,20 +45,6 @@ function _na_equipe(usuario: UsuarioAtual, permissao: string): boolean {
     if (erro instanceof EscopoNaoDeclarado) return true;
     throw erro;
   }
-}
-
-/**
- * O módulo está liberado para a conta: alguma permissão dele, já com o nível
- * por módulo aplicado ("Sem acesso" tira todas — `niveis_modulo.ts`), e no
- * trabalho da equipe, não só sobre o que é do titular.
- *
- * PONTO DE TROCA: quando existir a função única `tem_acesso_ao_modulo`
- * (liberação "Sem acesso esconde o módulo"), este corpo vira a chamada dela.
- */
-export function tem_acesso_ao_modulo(usuario: UsuarioAtual, codigo: string): boolean {
-  const m = modulo_nivelado(codigo);
-  if (!m) return false;
-  return permissoes_do_modulo(m).some((p) => usuario.pode(p) && _na_equipe(usuario, p));
 }
 
 /** As permissões de quem GERE EPI (o "Retirada de EPI" é de quem atende o pedido). */
