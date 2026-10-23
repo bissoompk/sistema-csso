@@ -195,6 +195,36 @@
   </section>
   {% endif %}
 
+  {% if blocos.envio_email and envio %}
+  <section class="cartao liso" id="envio-email">
+    <div class="cabecalho-cartao">
+      <h2>Envio de e-mail</h2>
+      <span class="nota">sem valores: só se está ligado e o que está parado</span>
+    </div>
+    <dl class="tabela-dados">
+      <dt>Envio de e-mail</dt>
+      <dd>{% if envio.configurado %}<span class="pilula ok">configurado</span>
+        {% else %}<span class="pilula alerta">não configurado</span>{% endif %}</dd>
+      {% if not envio.configurado %}
+      <dt>Faltam no Netlify</dt><dd class="mono">{{ envio.faltam|join(', ') }}</dd>
+      {% endif %}
+      <dt>Na fila (pendentes)</dt><dd>{{ envio.pendentes }}</dd>
+      <dt>Falharam</dt><dd>{{ envio.falhos }}</dd>
+      <dt>Servidores ativos sem e-mail</dt><dd>{{ envio.ativos_sem_email }}</dd>
+    </dl>
+    {% if not envio.configurado %}
+    <p class="discreto">Sem o envio ligado, os e-mails ficam parados na fila e saem quando ele for
+      configurado; os pedidos de «Ativar meu acesso» continuam sendo recebidos, mas nenhum link chega.
+      O passo a passo está em PRODUCAO.md, «Configurar o envio de e-mail».</p>
+    {% endif %}
+    {% if envio.pediram|length %}
+    <p class="discreto">SIAPE de quem pediu «Ativar meu acesso» e não tem e-mail no cadastro (a equipe
+      completa o cadastro): <span class="mono">{{ envio.pediram|join(', ') }}</span></p>
+    {% endif %}
+    <p class="discreto">A caixa de saída completa (motivo de cada falha) fica em Certificados, «E-mails».</p>
+  </section>
+  {% endif %}
+
   {% if blocos.backup or blocos.exportar_tudo %}
   <section class="cartao">
     <div class="titulo-cartao">

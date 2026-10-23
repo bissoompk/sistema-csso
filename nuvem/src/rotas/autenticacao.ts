@@ -67,6 +67,9 @@ export const MOTIVOS: Record<string, string> = {
     "preenchido não foi salvo. Entre de novo e refaça — a tela de origem é " +
     "reaberta depois.",
   inatividade: "Sua sessão foi encerrada por inatividade.",
+  ativada: "Acesso ativado. Entre com o seu e-mail institucional e a senha que você acabou de definir.",
+  redefinida:
+    "Senha redefinida. As sessões que estavam abertas foram encerradas. Entre com o e-mail da sua conta e a nova senha.",
 };
 
 /**

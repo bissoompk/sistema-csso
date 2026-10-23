@@ -127,3 +127,33 @@ export const acesso_participante = pgTable(
   },
   (t) => [index('ix_acesso_participante_email').on(t.email_normalizado, t.criado_em)],
 );
+
+/**
+ * "Ativar meu acesso / Esqueci minha senha" (23/10/2026,
+ * `servicos/ativar_acesso.ts`). Cada pedido que passou pelo teto por endereço
+ * de rede deixa UMA linha (o contador do teto mora no banco, não na memória da
+ * instância); só a que gerou link guarda o SHA-256 do token e o servidor (sem chave estrangeira: é registro de pedido, apagado em 7 dias). O
+ * token vale uma vez e pouco tempo. Sem e-mail digitado, sem SIAPE, sem nome:
+ * a linha não diz de quem foi o pedido que não casou. A rotina de privacidade
+ * apaga em 7 dias.
+ */
+export const ativacao_acesso = pgTable(
+  'ativacao_acesso',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    token_hash: varchar('token_hash', { length: 64 }).unique('uq_ativacao_acesso_token'),
+    servidor_id: integer('servidor_id'),
+    // o que o pedido virou: LINK (e-mail com link na fila), NEUTRO (e-mail "procure a
+    // equipe"), SEM_EMAIL (SIAPE e e-mail batem, mas o cadastro não tem e-mail — a
+    // equipe vê), NADA (não casou, ou passou do teto por destinatário)
+    resultado: varchar('resultado', { length: 10 }).notNull().default('NADA'),
+    expira_em: MomentoUTC('expira_em'),
+    usado_em: MomentoUTC('usado_em'),
+    ip: text('ip'),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    index('ix_ativacao_acesso_ip').on(t.ip, t.criado_em),
+    index('ix_ativacao_acesso_servidor').on(t.servidor_id, t.criado_em),
+  ],
+);

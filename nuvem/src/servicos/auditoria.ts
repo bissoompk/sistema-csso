@@ -102,6 +102,11 @@ export const ROTULO_EVENTO: Record<string, string> = {
   CONTA_DADOS_ALTERADOS_PELO_TITULAR: "Dados da conta alterados pelo próprio titular",
   EMAIL_ALTERADO_PELO_TITULAR: "E-mail da conta alterado pelo próprio titular",
   LOGIN_CONVERTIDO_PARA_EMAIL: "Login convertido para o e-mail",
+  // Ativar meu acesso / Esqueci minha senha (23/10/2026, `ativar_acesso.ts`): o
+  // ator é "o próprio titular" e a descrição nunca leva nome, SIAPE nem e-mail.
+  ACESSO_ATIVADO: "Conta criada pelo próprio titular (Ativar meu acesso)",
+  SENHA_REDEFINIDA_POR_LINK: "Senha redefinida pelo próprio titular, por link no e-mail",
+  PEDIDO_DE_ACESSO_RECUSADO: "Pedido de ativação de acesso não atendido por esta via",
   CONTA_BLOQUEADA: "Conta bloqueada por tentativas",
   PERMISSAO_ACRESCENTADA_AO_PERFIL: "Permissão acrescentada ao perfil",
   PERMISSAO_RETIRADA_DO_PERFIL: "Permissão retirada do perfil",

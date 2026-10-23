@@ -45,6 +45,64 @@ export function configurado(): boolean {
   return Boolean((process.env.CSSO_SMTP_URL || "").trim() && (process.env.CSSO_EMAIL_REMETENTE || "").trim());
 }
 
+/**
+ * O que falta para o envio ligar, SÓ pelos nomes das variáveis (nunca valor):
+ * a tela /config e a ferramenta `testar-email` dizem "faltam tais variáveis"
+ * sem tocar no segredo.
+ */
+export function variaveis_faltando(): string[] {
+  const falta: string[] = [];
+  if (!(process.env.CSSO_SMTP_URL || "").trim()) falta.push("CSSO_SMTP_URL");
+  if (!(process.env.CSSO_EMAIL_REMETENTE || "").trim()) falta.push("CSSO_EMAIL_REMETENTE");
+  return falta;
+}
+
+export interface DescricaoSmtp {
+  /** a URL é válida e dá para saber servidor e porta */
+  valida: boolean;
+  servidor: string;
+  porta: number | null;
+  /** `smtps://` (TLS já na conexão, porta 465) ou `smtp://` (sobe para TLS, porta 587) */
+  protocolo: string;
+  /** o SMTP pede usuário e senha (só diz que há; nunca o valor) */
+  com_login: boolean;
+}
+
+/** Servidor, porta e protocolo da `CSSO_SMTP_URL`, SEM usuário nem senha. */
+export function descrever_smtp(): DescricaoSmtp | null {
+  const bruto = (process.env.CSSO_SMTP_URL || "").trim();
+  if (!bruto) return null;
+  try {
+    const u = new URL(bruto);
+    const protocolo = u.protocol.replace(/:$/, "");
+    const padrao = protocolo === "smtps" ? 465 : 587;
+    return {
+      valida: protocolo === "smtp" || protocolo === "smtps",
+      servidor: u.hostname,
+      porta: u.port ? Number(u.port) : padrao,
+      protocolo,
+      com_login: Boolean(u.username),
+    };
+  } catch {
+    return { valida: false, servidor: "", porta: null, protocolo: "", com_login: false };
+  }
+}
+
+/** Tira do texto a URL do SMTP, o usuário e a senha, se aparecerem numa mensagem de erro. */
+export function sem_segredos(texto: string): string {
+  let saida = texto;
+  const bruto = (process.env.CSSO_SMTP_URL || "").trim();
+  const segredos = [bruto];
+  try {
+    const u = new URL(bruto);
+    segredos.push(u.password, decodeURIComponent(u.password), u.username, decodeURIComponent(u.username));
+  } catch {
+    /* URL inválida: só a inteira */
+  }
+  for (const segredo of segredos) if (segredo && segredo.length >= 3) saida = saida.split(segredo).join("***");
+  return saida;
+}
+
 // as telas dizem "o envio está desligado" sem perguntar à rota
 global("email_configurado", configurado);
 
@@ -82,6 +140,33 @@ function _smtp(): Transporte {
       attachments: m.anexos.map((a) => ({ filename: a.nome, contentType: a.tipo, content: Buffer.from(a.bytes) })),
     });
   };
+}
+
+/**
+ * Confere a conexão e o login com o SMTP, sem enviar nada. Devolve `null` se
+ * está tudo certo, ou o motivo (já sem segredo). Usada pela ferramenta
+ * `testar-email`.
+ */
+export async function verificar_smtp(): Promise<string | null> {
+  if (!configurado()) return "envio não configurado";
+  try {
+    const t = nodemailer.createTransport(process.env.CSSO_SMTP_URL!.trim(), {
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
+    } as never);
+    await t.verify();
+    return null;
+  } catch (erro) {
+    return sem_segredos(erro instanceof Error ? erro.message : String(erro));
+  }
+}
+
+/** Envia UMA mensagem agora, sem passar pela fila (a ferramenta `testar-email`). */
+export async function enviar_agora(m: Mensagem): Promise<void> {
+  const t = _transporte();
+  if (!t) throw new Error("envio não configurado");
+  await t(m);
 }
 
 let _transporte_de_teste: Transporte | null = null;
@@ -257,11 +342,11 @@ export async function processar_fila(
         .update(tabela)
         .set({
           situacao: desistiu ? "FALHOU" : "PENDENTE",
-          ultimo_erro: mensagem_sem_dados(erro).slice(0, 500),
+          ultimo_erro: sem_segredos(mensagem_sem_dados(erro)).slice(0, 500),
           proxima_tentativa_em: new Date(relogio().getTime() + _espera_ms(email.tentativas)),
         })
         .where(eq(tabela.id, email.id));
-      console.error(`[email ${email.id}] tentativa ${email.tentativas}: ${mensagem_sem_dados(erro)}`);
+      console.error(`[email ${email.id}] tentativa ${email.tentativas}: ${sem_segredos(mensagem_sem_dados(erro))}`);
     }
   }
   return resultado;
