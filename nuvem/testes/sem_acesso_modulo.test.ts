@@ -298,7 +298,7 @@ describe("a base compartilhada não depende de Processos SEI", () => {
     await entrar(alm, "alm");
     expect((await alm.get("/catalogos")).status).toBe(403);
     expect((await alm.get("/servidores")).status).toBe(403);
-    for (const modulo of ["processos-sei", "epis", "certificados"]) await na_pessoa("tec", modulo, SEM_ACESSO);
+    for (const modulo of ["processos-sei", "epis", "certificados", "acidentes"]) await na_pessoa("tec", modulo, SEM_ACESSO);
     const tec = amb.novoCliente();
     await entrar(tec, "tec");
     expect(base_de(await usuarioAtual(amb.db, "tec")).map((i) => i.caminho)).not.toContain("/servidores");

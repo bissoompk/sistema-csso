@@ -28,6 +28,31 @@
 
 import { relations } from 'drizzle-orm';
 
+import {
+  acidentado,
+  acidente_acao,
+  acidente_agente_causador,
+  acidente_agente_doenca,
+  acidente_barreira,
+  acidente_cat_sp,
+  acidente_checklist_item,
+  acidente_comunicante,
+  acidente_decisao_pericial,
+  acidente_encaminhamento,
+  acidente_entrevista,
+  acidente_evento_linha,
+  acidente_evidencia,
+  acidente_investigacao,
+  acidente_natureza_lesao,
+  acidente_ocorrencia,
+  acidente_parte_corpo,
+  acidente_relatorio,
+  acidente_saude,
+  acidente_saude_parte,
+  acidente_situacao_geradora,
+  acidente_testemunha,
+  acidente_unidade_exposicao,
+} from './acidente';
 import { checklist, checklist_item, pendencia } from './auditoria';
 import { demanda, demanda_encaminhamento } from './demanda';
 import {
@@ -625,5 +650,206 @@ export const certificado_relacoes = relations(certificado, ({ one }) => ({
   modelo: one(certificado_modelo, {
     fields: [certificado.modelo_id],
     references: [certificado_modelo.id],
+  }),
+}));
+
+// ---------------------------------------------------------------------
+// acidente.ts (módulo de acidentes, 23/10/2026)
+// ---------------------------------------------------------------------
+// Os filhos NÃO têm ordem na relação: quem carrega pede a ordem no `with`
+// (acidentado.ordem, cat_sp.versao, acao.numero, relatorio.versao).
+export const acidente_ocorrencia_relacoes = relations(acidente_ocorrencia, ({ one, many }) => ({
+  campus: one(campus, { fields: [acidente_ocorrencia.campus_id], references: [campus.id] }),
+  local_unidade: one(unidade_uorg, {
+    fields: [acidente_ocorrencia.local_unidade_uorg_id],
+    references: [unidade_uorg.id],
+  }),
+  servidor: one(servidor, { fields: [acidente_ocorrencia.servidor_id], references: [servidor.id] }),
+  responsavel: one(usuario, { fields: [acidente_ocorrencia.responsavel_id], references: [usuario.id] }),
+  agente_causador: one(acidente_agente_causador, {
+    fields: [acidente_ocorrencia.agente_causador_id],
+    references: [acidente_agente_causador.id],
+  }),
+  agente_doenca: one(acidente_agente_doenca, {
+    fields: [acidente_ocorrencia.agente_doenca_id],
+    references: [acidente_agente_doenca.id],
+  }),
+  situacao_geradora: one(acidente_situacao_geradora, {
+    fields: [acidente_ocorrencia.situacao_geradora_id],
+    references: [acidente_situacao_geradora.id],
+  }),
+  acidentados: many(acidentado, { relationName: 'ocorrencia_acidentados' }),
+  testemunhas: many(acidente_testemunha, { relationName: 'ocorrencia_testemunhas' }),
+  cat_sps: many(acidente_cat_sp, { relationName: 'ocorrencia_cat_sps' }),
+  comunicante: one(acidente_comunicante),
+  investigacao: one(acidente_investigacao),
+  linha_do_tempo: many(acidente_evento_linha, { relationName: 'ocorrencia_linha' }),
+  barreiras: many(acidente_barreira, { relationName: 'ocorrencia_barreiras' }),
+  checklist: many(acidente_checklist_item, { relationName: 'ocorrencia_checklist' }),
+  entrevistas: many(acidente_entrevista, { relationName: 'ocorrencia_entrevistas' }),
+  evidencias: many(acidente_evidencia, { relationName: 'ocorrencia_evidencias' }),
+  exposicoes: many(acidente_unidade_exposicao, { relationName: 'ocorrencia_exposicoes' }),
+  acoes: many(acidente_acao, { relationName: 'ocorrencia_acoes' }),
+  relatorios: many(acidente_relatorio, { relationName: 'ocorrencia_relatorios' }),
+  encaminhamentos: many(acidente_encaminhamento, { relationName: 'ocorrencia_encaminhamentos' }),
+  decisoes: many(acidente_decisao_pericial, { relationName: 'ocorrencia_decisoes' }),
+}));
+
+export const acidente_cat_sp_relacoes = relations(acidente_cat_sp, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_cat_sp.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_cat_sps',
+  }),
+}));
+
+export const acidentado_relacoes = relations(acidentado, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidentado.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_acidentados',
+  }),
+  servidor: one(servidor, { fields: [acidentado.servidor_id], references: [servidor.id], relationName: 'acidentado_servidor' }),
+  participante: one(participante, { fields: [acidentado.participante_id], references: [participante.id] }),
+  cargo: one(cargo, { fields: [acidentado.cargo_id], references: [cargo.id] }),
+  unidade: one(unidade_uorg, { fields: [acidentado.unidade_uorg_id], references: [unidade_uorg.id] }),
+  campus: one(campus, { fields: [acidentado.campus_id], references: [campus.id] }),
+  saude: one(acidente_saude),
+}));
+
+export const acidente_testemunha_relacoes = relations(acidente_testemunha, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_testemunha.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_testemunhas',
+  }),
+}));
+
+export const acidente_comunicante_relacoes = relations(acidente_comunicante, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_comunicante.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+  }),
+  usuario: one(usuario, { fields: [acidente_comunicante.usuario_id], references: [usuario.id] }),
+}));
+
+export const acidente_saude_relacoes = relations(acidente_saude, ({ one, many }) => ({
+  acidentado: one(acidentado, { fields: [acidente_saude.acidentado_id], references: [acidentado.id] }),
+  natureza_lesao: one(acidente_natureza_lesao, {
+    fields: [acidente_saude.natureza_lesao_id],
+    references: [acidente_natureza_lesao.id],
+  }),
+  partes: many(acidente_saude_parte, { relationName: 'saude_partes' }),
+}));
+
+export const acidente_saude_parte_relacoes = relations(acidente_saude_parte, ({ one }) => ({
+  saude: one(acidente_saude, {
+    fields: [acidente_saude_parte.saude_id],
+    references: [acidente_saude.id],
+    relationName: 'saude_partes',
+  }),
+  parte_corpo: one(acidente_parte_corpo, {
+    fields: [acidente_saude_parte.parte_corpo_id],
+    references: [acidente_parte_corpo.id],
+  }),
+}));
+
+export const acidente_investigacao_relacoes = relations(acidente_investigacao, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_investigacao.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+  }),
+}));
+
+export const acidente_evento_linha_relacoes = relations(acidente_evento_linha, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_evento_linha.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_linha',
+  }),
+}));
+
+export const acidente_barreira_relacoes = relations(acidente_barreira, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_barreira.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_barreiras',
+  }),
+}));
+
+export const acidente_checklist_item_relacoes = relations(acidente_checklist_item, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_checklist_item.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_checklist',
+  }),
+}));
+
+export const acidente_entrevista_relacoes = relations(acidente_entrevista, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_entrevista.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_entrevistas',
+  }),
+}));
+
+export const acidente_evidencia_relacoes = relations(acidente_evidencia, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_evidencia.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_evidencias',
+  }),
+}));
+
+export const acidente_unidade_exposicao_relacoes = relations(acidente_unidade_exposicao, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_unidade_exposicao.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_exposicoes',
+  }),
+  unidade: one(unidade_uorg, {
+    fields: [acidente_unidade_exposicao.unidade_uorg_id],
+    references: [unidade_uorg.id],
+  }),
+}));
+
+export const acidente_acao_relacoes = relations(acidente_acao, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_acao.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_acoes',
+  }),
+  responsavel: one(usuario, { fields: [acidente_acao.responsavel_usuario_id], references: [usuario.id] }),
+  unidade_responsavel: one(unidade_uorg, {
+    fields: [acidente_acao.responsavel_unidade_uorg_id],
+    references: [unidade_uorg.id],
+  }),
+}));
+
+export const acidente_relatorio_relacoes = relations(acidente_relatorio, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_relatorio.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_relatorios',
+  }),
+}));
+
+export const acidente_encaminhamento_relacoes = relations(acidente_encaminhamento, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_encaminhamento.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_encaminhamentos',
+  }),
+  relatorio: one(acidente_relatorio, {
+    fields: [acidente_encaminhamento.relatorio_id],
+    references: [acidente_relatorio.id],
+  }),
+}));
+
+export const acidente_decisao_pericial_relacoes = relations(acidente_decisao_pericial, ({ one }) => ({
+  ocorrencia: one(acidente_ocorrencia, {
+    fields: [acidente_decisao_pericial.ocorrencia_id],
+    references: [acidente_ocorrencia.id],
+    relationName: 'ocorrencia_decisoes',
   }),
 }));

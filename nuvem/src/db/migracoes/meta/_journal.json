@@ -148,6 +148,13 @@
       "when": 1792769053130,
       "tag": "0020_ativacao_acesso",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792773408664,
+      "tag": "0021_acidentes",
+      "breakpoints": true
     }
   ]
 }

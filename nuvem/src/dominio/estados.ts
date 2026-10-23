@@ -9,9 +9,11 @@
  * F) INSCRICAO      - a pessoa dentro da turma (Certificados, fatias 2 e 3).
  * H) DEMANDA        - o pedido que chegou por e-mail ou no balcao (base).
  *
- * G continua reservada para ocorrencia de acidente, e por isso a demanda pegou o
- * H mesmo entrando antes: a numeracao vem do plano consolidado (SS1.9) e existe
- * para que dois modulos nao chamem de "maquina C" duas coisas diferentes.
+ * G) ACIDENTE      - a ocorrencia de acidente de trabalho (CAT/SP, 23/10/2026).
+ *
+ * A letra G ficou reservada para a ocorrencia de acidente, e por isso a demanda
+ * pegou o H mesmo entrando antes: a numeracao vem do plano consolidado (SS1.9) e
+ * existe para que dois modulos nao chamem de "maquina C" duas coisas diferentes.
  *
  * A coluna do kanban e visao; o estado e verdade.
  *
@@ -640,6 +642,66 @@ export class TransicaoInvalida extends Error {
 }
 
 // ---------------------------------------------------------------------
+// G) Maquina da OCORRENCIA DE ACIDENTE (CAT/SP) — 23/10/2026
+// ---------------------------------------------------------------------
+// O legado aceitava qualquer status vindo de qualquer status (de Cancelada de
+// volta para Recebida) e a analise, a gravacao e o relatorio mudavam o estado
+// por conta propria, regredindo o caso. Aqui o que nao esta declarado e
+// proibido.
+//
+// - O primeiro relatorio emitido faz EM_INVESTIGACAO -> RELATORIO_EMITIDO; a
+//   RETIFICACAO do relatorio (ou da CAT/SP) MANTEM o estado, e por isso nao ha
+//   aresta de volta.
+// - Reabrir nao volta o estado: cria uma ocorrencia nova (`tipo_cat =
+//   REABERTURA`, `reabre_id`), como o TIPO_CAT do legado.
+// - RELATORIO_EMITIDO -> CONCLUIDA e para o caso que nao requer CAT/SP no SIASS,
+//   e exige motivo; ENCAMINHADA_SIASS -> CONCLUIDA exige a decisao pericial OU o
+//   motivo de conclusao sem decisao. Essas exigencias moram no servico.
+export const ESTADOS_ACIDENTE = [
+  'RECEBIDA',
+  'EM_TRIAGEM',
+  'AGUARDANDO_COMPLEMENTACAO',
+  'EM_INVESTIGACAO',
+  'RELATORIO_EMITIDO',
+  'ENCAMINHADA_SIASS',
+  'CONCLUIDA',
+  'CANCELADA',
+] as const;
+
+export const TRANSICOES_ACIDENTE: Transicoes = {
+  RECEBIDA: conjunto('EM_TRIAGEM', 'CANCELADA'),
+  EM_TRIAGEM: conjunto('AGUARDANDO_COMPLEMENTACAO', 'EM_INVESTIGACAO', 'CANCELADA'),
+  // a resposta recebida, ou a triagem que retoma por conta propria
+  AGUARDANDO_COMPLEMENTACAO: conjunto('EM_TRIAGEM', 'CANCELADA'),
+  EM_INVESTIGACAO: conjunto('RELATORIO_EMITIDO'),
+  RELATORIO_EMITIDO: conjunto('ENCAMINHADA_SIASS', 'CONCLUIDA'),
+  ENCAMINHADA_SIASS: conjunto('CONCLUIDA'),
+  CONCLUIDA: conjunto(),
+  CANCELADA: conjunto(),
+};
+
+export const ROTULO_ACIDENTE: Rotulos = {
+  RECEBIDA: 'Recebida',
+  EM_TRIAGEM: 'Em triagem',
+  AGUARDANDO_COMPLEMENTACAO: 'Aguardando complementação',
+  EM_INVESTIGACAO: 'Em investigação',
+  RELATORIO_EMITIDO: 'Relatório emitido',
+  ENCAMINHADA_SIASS: 'Encaminhada ao SIASS',
+  CONCLUIDA: 'Concluída',
+  CANCELADA: 'Cancelada',
+};
+
+// Os terminais: fila, pendencia e indicador leem daqui em vez de repetir a lista.
+export const ACIDENTE_ENCERRADO: ReadonlySet<string> = conjunto('CONCLUIDA', 'CANCELADA');
+
+// Onde ainda cabe cancelar (com motivo): antes de a investigacao comecar.
+export const ACIDENTE_CANCELAVEL: ReadonlySet<string> = conjunto(
+  'RECEBIDA',
+  'EM_TRIAGEM',
+  'AGUARDANDO_COMPLEMENTACAO',
+);
+
+// ---------------------------------------------------------------------
 // O conferidor, um so para todas as maquinas
 // ---------------------------------------------------------------------
 /** Origem desconhecida nao vira porta aberta: cai no conjunto vazio. */
@@ -808,6 +870,10 @@ export function exigir_transicao_inscricao(origem: string, destino: string): voi
 
 export function exigir_transicao_demanda(origem: string, destino: string): void {
   exigir(TRANSICOES_DEMANDA, origem, destino, ROTULO_DEMANDA);
+}
+
+export function exigir_transicao_acidente(origem: string, destino: string): void {
+  exigir(TRANSICOES_ACIDENTE, origem, destino, ROTULO_ACIDENTE);
 }
 
 /**

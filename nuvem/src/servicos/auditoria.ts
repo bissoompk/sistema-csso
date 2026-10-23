@@ -86,6 +86,45 @@ export const DADOS_DE_TREINAMENTO_APAGADOS = "DADOS_DE_TREINAMENTO_APAGADOS";
 export const MENCAO_SAUDE_CONFIRMADA = "MENCAO_SAUDE_CONFIRMADA";
 
 // ---------------------------------------------------------------------
+// Módulo de acidentes (CAT/SP, 23/10/2026). Entidade `acidente_ocorrencia`, salvo
+// indicação; a descrição nunca leva nome, descrição do fato nem dado de saúde, e
+// a trilha de saúde guarda só os NOMES dos campos e o nível, nunca os valores.
+// ---------------------------------------------------------------------
+export const ACIDENTE_COMUNICADO = "ACIDENTE_COMUNICADO";
+export const ACIDENTE_COMUNICACAO_PUBLICA = "ACIDENTE_COMUNICACAO_PUBLICA";
+export const ACIDENTE_ACIDENTADO_VINCULADO = "ACIDENTE_ACIDENTADO_VINCULADO";
+export const ACIDENTE_PUBLICO_HONEYPOT = "ACIDENTE_PUBLICO_HONEYPOT";
+export const ACIDENTE_ASSUMIDO = "ACIDENTE_ASSUMIDO";
+export const ACIDENTE_ESTADO_ALTERADO = "ACIDENTE_ESTADO_ALTERADO";
+export const ACIDENTE_COMPLEMENTACAO_PEDIDA = "ACIDENTE_COMPLEMENTACAO_PEDIDA";
+export const ACIDENTE_COMPLEMENTACAO_RESPONDIDA = "ACIDENTE_COMPLEMENTACAO_RESPONDIDA";
+export const ACIDENTE_CANCELADO = "ACIDENTE_CANCELADO";
+export const ACIDENTE_CAT_SP_RETIFICADA = "ACIDENTE_CAT_SP_RETIFICADA";
+export const ACIDENTE_PRAZO_PRORROGADO = "ACIDENTE_PRAZO_PRORROGADO";
+export const ACIDENTE_SAUDE_REGISTRADA = "ACIDENTE_SAUDE_REGISTRADA";
+export const ACIDENTE_SAUDE_ALTERADA = "ACIDENTE_SAUDE_ALTERADA";
+export const ACIDENTE_SAUDE_EXPURGO_PARCIAL = "ACIDENTE_SAUDE_EXPURGO_PARCIAL";
+export const ACIDENTE_SAUDE_FORA_RESPONSAVEL = "ACIDENTE_SAUDE_FORA_RESPONSAVEL";
+export const ACIDENTE_INVESTIGACAO_SALVA = "ACIDENTE_INVESTIGACAO_SALVA";
+export const ACIDENTE_CHECKLIST_SALVO = "ACIDENTE_CHECKLIST_SALVO";
+export const ACIDENTE_ENTREVISTA_REGISTRADA = "ACIDENTE_ENTREVISTA_REGISTRADA";
+export const ACIDENTE_GRAVACAO_ANEXADA = "ACIDENTE_GRAVACAO_ANEXADA";
+export const ACIDENTE_EVIDENCIA_ANEXADA = "ACIDENTE_EVIDENCIA_ANEXADA";
+export const ACIDENTE_ACAO_CRIADA = "ACIDENTE_ACAO_CRIADA";
+export const ACIDENTE_ACAO_ALTERADA = "ACIDENTE_ACAO_ALTERADA";
+export const ACIDENTE_ACAO_CONCLUIDA = "ACIDENTE_ACAO_CONCLUIDA";
+export const ACIDENTE_ACAO_CANCELADA = "ACIDENTE_ACAO_CANCELADA";
+export const ACIDENTE_RELATORIO_EMITIDO = "ACIDENTE_RELATORIO_EMITIDO";
+export const ACIDENTE_RELATORIO_RETIFICADO = "ACIDENTE_RELATORIO_RETIFICADO";
+export const ACIDENTE_ENCAMINHADO_SIASS = "ACIDENTE_ENCAMINHADO_SIASS";
+export const ACIDENTE_DECISAO_PERICIAL = "ACIDENTE_DECISAO_PERICIAL";
+export const ACIDENTE_CONCLUIDO = "ACIDENTE_CONCLUIDO";
+export const ACIDENTE_EMAIL_ENFILEIRADO = "ACIDENTE_EMAIL_ENFILEIRADO";
+export const ACIDENTE_LINK_GERADO = "ACIDENTE_LINK_GERADO";
+export const ACIDENTE_LINK_DESLIGADO = "ACIDENTE_LINK_DESLIGADO";
+export const ACIDENTE_IMPORTADO = "ACIDENTE_IMPORTADO";
+
+// ---------------------------------------------------------------------
 // O nome do evento na tela
 // ---------------------------------------------------------------------
 // `tipo_evento` é chave: entra no digest da cadeia e o filtro de /auditoria
@@ -314,6 +353,40 @@ export const ROTULO_EVENTO: Record<string, string> = {
   EPI_SEM_TREINAMENTO_CONFIRMADO: "Entrega sem treinamento em vigor confirmada",
   // F: e-mail do pedido (enfileirado na caixa de saída)
   EPI_EMAIL_ENFILEIRADO: "E-mail do pedido de EPI posto na fila",
+  // --- Acidentes (CAT/SP, 23/10/2026) ---
+  ACIDENTE_COMUNICADO: "Acidente comunicado",
+  ACIDENTE_COMUNICACAO_PUBLICA: "Acidente comunicado pelo formulário por link",
+  ACIDENTE_ACIDENTADO_VINCULADO: "Acidentado vinculado ao cadastro de servidores",
+  ACIDENTE_PUBLICO_HONEYPOT: "Envio do formulário por link barrado (campo isca)",
+  ACIDENTE_ASSUMIDO: "Ocorrência de acidente assumida",
+  ACIDENTE_ESTADO_ALTERADO: "Situação da ocorrência de acidente alterada",
+  ACIDENTE_COMPLEMENTACAO_PEDIDA: "Complementação da comunicação pedida",
+  ACIDENTE_COMPLEMENTACAO_RESPONDIDA: "Complementação da comunicação respondida",
+  ACIDENTE_CANCELADO: "Ocorrência de acidente cancelada",
+  ACIDENTE_CAT_SP_RETIFICADA: "CAT/SP retificada (versão nova)",
+  ACIDENTE_PRAZO_PRORROGADO: "Prazo de comunicação do acidente prorrogado",
+  ACIDENTE_SAUDE_REGISTRADA: "Saúde do acidentado registrada",
+  ACIDENTE_SAUDE_ALTERADA: "Saúde do acidentado alterada",
+  ACIDENTE_SAUDE_EXPURGO_PARCIAL: "Detalhe de saúde do acidentado expurgado",
+  ACIDENTE_SAUDE_FORA_RESPONSAVEL: "Saúde do acidentado aberta por quem não conduz o caso",
+  ACIDENTE_INVESTIGACAO_SALVA: "Investigação do acidente salva",
+  ACIDENTE_CHECKLIST_SALVO: "Checklist de campo salvo",
+  ACIDENTE_ENTREVISTA_REGISTRADA: "Entrevista de campo registrada",
+  ACIDENTE_GRAVACAO_ANEXADA: "Gravação de entrevista anexada",
+  ACIDENTE_EVIDENCIA_ANEXADA: "Evidência do acidente anexada",
+  ACIDENTE_ACAO_CRIADA: "Ação do plano criada",
+  ACIDENTE_ACAO_ALTERADA: "Ação do plano alterada",
+  ACIDENTE_ACAO_CONCLUIDA: "Ação do plano concluída",
+  ACIDENTE_ACAO_CANCELADA: "Ação do plano cancelada",
+  ACIDENTE_RELATORIO_EMITIDO: "Relatório do acidente emitido",
+  ACIDENTE_RELATORIO_RETIFICADO: "Relatório do acidente retificado",
+  ACIDENTE_ENCAMINHADO_SIASS: "Ocorrência encaminhada ao SIASS",
+  ACIDENTE_DECISAO_PERICIAL: "Decisão da perícia registrada",
+  ACIDENTE_CONCLUIDO: "Ocorrência de acidente concluída",
+  ACIDENTE_EMAIL_ENFILEIRADO: "E-mail do acidente posto na fila",
+  ACIDENTE_LINK_GERADO: "Link do formulário de acidente gerado",
+  ACIDENTE_LINK_DESLIGADO: "Link do formulário de acidente desligado",
+  ACIDENTE_IMPORTADO: "Ocorrência migrada da planilha antiga",
 };
 
 /** `str.capitalize()` do Python: primeira maiúscula, o resto minúsculo. */
@@ -859,7 +932,15 @@ export async function registrar_acesso_sensivel(
   tx: Executor,
   usuario: UsuarioAtual,
   campo: string,
-  opcoes: { servidor_id?: number | null; processo_id?: number | null; finalidade?: string | null } = {},
+  opcoes: {
+    servidor_id?: number | null;
+    processo_id?: number | null;
+    /** a ocorrência de acidente a que a leitura pertence */
+    acidente_id?: number | null;
+    /** o "sobre quem" quando o acidentado não é servidor (ROPA §9.6) */
+    acidentado_id?: number | null;
+    finalidade?: string | null;
+  } = {},
 ): Promise<AcessoDadoSensivel> {
   const [registro] = await tx
     .insert(acesso_dado_sensivel)
@@ -867,6 +948,8 @@ export async function registrar_acesso_sensivel(
       usuario_id: usuario.id,
       servidor_id: opcoes.servidor_id ?? null,
       processo_id: opcoes.processo_id ?? null,
+      acidente_id: opcoes.acidente_id ?? null,
+      acidentado_id: opcoes.acidentado_id ?? null,
       campo,
       finalidade: opcoes.finalidade || "consulta operacional do modulo Adicional Ocupacional",
     })
@@ -892,12 +975,26 @@ export async function registrar_leitura_nominal(
   tx: Executor,
   usuario: UsuarioAtual,
   campo: string,
-  opcoes: { servidor_id: number | null | undefined; processo_id?: number | null; finalidade?: string | null },
+  opcoes: {
+    servidor_id: number | null | undefined;
+    processo_id?: number | null;
+    acidente_id?: number | null;
+    acidentado_id?: number | null;
+    finalidade?: string | null;
+  },
 ): Promise<AcessoDadoSensivel | null> {
-  if (!leitura_de_terceiro(usuario, opcoes.servidor_id)) return null;
+  // O acidentado que não é servidor não tem `servidor_id`, e "não há sobre quem"
+  // não vale para ele: o dado é de uma pessoa, identificada por `acidentado_id`
+  // (ou, no mínimo, pela ocorrência). Ler sempre é leitura de terceiro.
+  const sem_servidor_com_acidente =
+    (opcoes.servidor_id === null || opcoes.servidor_id === undefined) &&
+    ((opcoes.acidente_id ?? null) !== null || (opcoes.acidentado_id ?? null) !== null);
+  if (!sem_servidor_com_acidente && !leitura_de_terceiro(usuario, opcoes.servidor_id)) return null;
   return registrar_acesso_sensivel(tx, usuario, campo, {
     servidor_id: opcoes.servidor_id ?? null,
     processo_id: opcoes.processo_id ?? null,
+    acidente_id: opcoes.acidente_id ?? null,
+    acidentado_id: opcoes.acidentado_id ?? null,
     finalidade: opcoes.finalidade ?? null,
   });
 }

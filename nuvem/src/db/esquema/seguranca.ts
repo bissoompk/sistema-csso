@@ -18,6 +18,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { acidentado, acidente_ocorrencia } from './acidente';
 import { DataPura, Inet, MomentoUTC, agora_utc } from './base';
 import { campus, servidor, unidade_uorg } from './organizacao';
 import { processo } from './processo';
@@ -204,6 +205,11 @@ export const acesso_dado_sensivel = pgTable('acesso_dado_sensivel', {
     .references(() => usuario.id),
   servidor_id: integer('servidor_id').references((): AnyPgColumn => servidor.id),
   processo_id: integer('processo_id').references((): AnyPgColumn => processo.id),
+  // Módulo de acidentes (23/10/2026, ROPA §9.6): o "sobre quem" quando o
+  // acidentado não é servidor (`servidor_id` fica nulo e `acidentado_id` diz
+  // quem foi lido), e a ocorrência a que a leitura pertence.
+  acidente_id: integer('acidente_id').references((): AnyPgColumn => acidente_ocorrencia.id),
+  acidentado_id: integer('acidentado_id').references((): AnyPgColumn => acidentado.id),
   campo: varchar('campo', { length: 60 }).notNull(),
   finalidade: text('finalidade'),
   ocorrido_em: MomentoUTC('ocorrido_em').notNull().$defaultFn(agora_utc),

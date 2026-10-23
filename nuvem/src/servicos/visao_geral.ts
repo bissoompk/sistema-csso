@@ -80,6 +80,7 @@ export interface VisaoGeral {
 const FRASES: Readonly<Record<string, string>> = {
   [PROCESSOS_SEI]: "Do requerimento ao parecer assinado: processos de adicional ocupacional, laudos e o direito concedido.",
   epis: "Catálogo, estoque, pedidos analisados item a item e a entrega registrada na ficha.",
+  acidentes: "Comunicação do acidente em serviço, investigação técnica e plano de ação.",
   certificados: "Turmas, inscrições, presença, emissão do certificado e o controle da reciclagem.",
 };
 

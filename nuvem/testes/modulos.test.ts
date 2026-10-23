@@ -90,7 +90,7 @@ describe("declaração dos módulos", () => {
 
   it("módulos previstos estão declarados e marcados", () => {
     const previstos = modulos.MODULOS.filter((m) => !m.disponivel);
-    expect(new Set(previstos.map((m) => m.nome))).toEqual(new Set(["Análise de Acidentes", "CISSP", "PGR"]));
+    expect(new Set(previstos.map((m) => m.nome))).toEqual(new Set(["CISSP", "PGR"]));
     for (const m of previstos) {
       expect(m.itens).toEqual([]);
       expect(m.itens_previstos.length, m.nome).toBeGreaterThan(0);
@@ -243,7 +243,8 @@ describe("telas", async () => {
     expect(corpo).toContain('class="modulos-lateral"');
     const lateral = corpo.slice(corpo.indexOf('<aside class="lateral">'), corpo.indexOf("</aside>"));
     expect(lateral).toContain("Certificados e Treinamentos");
-    expect(lateral).not.toContain("Análise de Acidentes");
+    // Análise de Acidentes é módulo disponível desde a F0 (23/10/2026): está na lateral
+    expect(lateral).toContain("Análise de Acidentes");
     // o link do módulo aponta para a porta de entrada, não para o mapa
     expect(corpo).toContain('href="/epis"');
     // a trilha da tela acima dos módulos diz "Módulos"
@@ -507,6 +508,7 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
       "Comprovante de treinamentos",
       "Minha ficha de EPI",
       "Pedir EPI",
+      "Minhas comunicações",
       "Meu adicional",
       "Meus processos",
       "Minha atividade",
@@ -542,6 +544,7 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
       "Meus certificados",
       "Comprovante de treinamentos",
       "Minha ficha de EPI",
+      "Minhas comunicações",
       "Minha atividade",
       "Meu perfil",
     ]);
