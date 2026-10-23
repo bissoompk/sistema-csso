@@ -1,0 +1,112 @@
+{% import "partes/macros.html" as ui with context %}
+{# Um envolvido do formulário de comunicação, de índice `i`. Os campos se chamam
+   `env_<i>_<campo>`, e `env_indice` diz ao servidor quais vieram — o cartão
+   acrescentado por HTMX entra na conta sem o servidor guardar estado.
+
+   Servidor entra pelo SIAPE (o cadastro dá cargo, lotação e campus); quem não é
+   servidor, pelo nome e, se houver, matrícula ou crachá — NUNCA CPF (D14c). A
+   saúde declarada (D4) é só a lista fechada: parte do corpo e sim/não/não sei. #}
+{% set p = 'env_' ~ i ~ '_' %}
+<fieldset class="cartao envolvido" id="envolvido-{{ i }}">
+  <legend>Envolvido {{ i }}</legend>
+  <input type="hidden" name="env_indice" value="{{ i }}">
+  {% if i == 1 and tem_servidor %}
+  <div class="campo">
+    <label><input type="checkbox" name="{{ p }}sou_eu" value="1"{{ ' checked' if d[p ~ 'sou_eu'] == '1' or (not d|length) }}>
+      Sou eu o envolvido</label>
+    <span class="dica">Marcado, o sistema usa o seu cadastro de servidor; não precisa do SIAPE.</span>
+  </div>
+  {% endif %}
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="{{ p }}vinculo">Vínculo</label>
+      <select id="{{ p }}vinculo" name="{{ p }}vinculo" required>
+        {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'vinculo'] or 'SERVIDOR', v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="{{ p }}condicao">Condição no acidente</label>
+      <select id="{{ p }}condicao" name="{{ p }}condicao" required>
+        {% for v in CONDICOES_ENVOLVIDO %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'condicao'] or 'ACIDENTADO', v) }}>{{ ROTULO_CONDICAO_ENVOLVIDO[v] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="{{ p }}lesao">Houve lesão?</label>
+      <select id="{{ p }}lesao" name="{{ p }}houve_lesao">
+        <option value="">—</option>
+        {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'houve_lesao'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="campo" data-mostra-quando="{{ p }}vinculo=SERVIDOR">
+    <label for="{{ p }}siape">SIAPE</label>
+    <input id="{{ p }}siape" name="{{ p }}siape" inputmode="numeric" maxlength="7" class="mono" value="{{ d[p ~ 'siape'] or '' }}">
+  </div>
+  <div data-mostra-quando="{{ p }}vinculo=TERCEIRIZADO|ESTUDANTE|BOLSISTA|RESIDENTE|VISITANTE|OUTRO">
+    <div class="linha-campos">
+      <div class="campo">
+        <label for="{{ p }}nome">Nome</label>
+        <input id="{{ p }}nome" name="{{ p }}nome_externo" maxlength="160" value="{{ d[p ~ 'nome_externo'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}ident">Matrícula ou crachá (opcional, nunca CPF)</label>
+        <input id="{{ p }}ident" name="{{ p }}identificacao_externa" maxlength="40" value="{{ d[p ~ 'identificacao_externa'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}empresa">Empresa contratada (opcional)</label>
+        <input id="{{ p }}empresa" name="{{ p }}empresa_contratada" maxlength="160" value="{{ d[p ~ 'empresa_contratada'] or '' }}">
+      </div>
+    </div>
+    <div class="campo">
+      <label><input type="checkbox" name="{{ p }}menor_de_idade" value="1"{{ ' checked' if d[p ~ 'menor_de_idade'] == '1' }}>
+        Menor de idade</label>
+      <span class="dica">A ocorrência fica restrita à equipe de segurança do trabalho, e o responsável legal é avisado.</span>
+    </div>
+  </div>
+  <div class="campo">
+    <label for="{{ p }}contato">Contato para a investigação (opcional)</label>
+    <input id="{{ p }}contato" name="{{ p }}contato_investigacao" maxlength="160" value="{{ d[p ~ 'contato_investigacao'] or '' }}"
+           placeholder="e-mail institucional ou ramal">
+  </div>
+  <details class="recolhido">
+    <summary>O que você sabe sobre a lesão (opcional)</summary>
+    <p class="dica">Só o que está na lista: o médico do trabalho confirma depois. Não escreva diagnóstico.</p>
+    <div class="linha-campos">
+      <div class="campo">
+        <label for="{{ p }}houve_atendimento">Atendimento</label>
+        <select id="{{ p }}houve_atendimento" name="{{ p }}houve_atendimento">
+          <option value="">—</option>
+          {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'houve_atendimento'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="{{ p }}houve_afastamento">Afastamento</label>
+        <select id="{{ p }}houve_afastamento" name="{{ p }}houve_afastamento">
+          <option value="">—</option>
+          {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'houve_afastamento'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="{{ p }}houve_internacao">Internação</label>
+        <select id="{{ p }}houve_internacao" name="{{ p }}houve_internacao">
+          <option value="">—</option>
+          {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'houve_internacao'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="{{ p }}houve_obito">Óbito</label>
+        <select id="{{ p }}houve_obito" name="{{ p }}houve_obito">
+          <option value="">—</option>
+          {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'houve_obito'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <fieldset class="partes-corpo">
+      <legend>Parte do corpo atingida</legend>
+      {% set marcadas = d[p ~ 'partes'] or [] %}
+      {% for pc in partes_corpo %}
+      <label><input type="checkbox" name="{{ p }}partes" value="{{ pc.id }}"{{ ' checked' if (pc.id|string) in marcadas or (pc.id|string) == marcadas }}> {{ pc.rotulo }}</label>
+      {% endfor %}
+    </fieldset>
+  </details>
+</fieldset>

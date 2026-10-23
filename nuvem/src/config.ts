@@ -32,6 +32,13 @@ export interface Config {
   epiEmailLigado: boolean;
   /** Endereço do SETOR avisado quando chega pedido (`CSSO_EPI_EMAIL_SETOR`). Vazio: não avisa o setor. */
   epiEmailSetor: string;
+  /**
+   * E-mail do módulo de acidentes (D6, 23/10/2026): DESLIGADO por padrão, só
+   * com `CSSO_ACIDENTE_EMAIL=sim`; o corpo leva só protocolo, o que aconteceu e
+   * o link. `CSSO_ACIDENTE_EMAIL_SETOR` é o endereço avisado da comunicação nova.
+   */
+  acidenteEmailLigado: boolean;
+  acidenteEmailSetor: string;
   supabaseUrl: string;
   supabaseChaveServico: string;
   bucketArquivos: string;
@@ -149,6 +156,8 @@ export function obterConfig(): Config {
     epiLocalRetirada: env.CSSO_EPI_LOCAL_RETIRADA ?? "",
     epiEmailLigado: (env.CSSO_EPI_EMAIL ?? "").trim().toLowerCase() === "sim",
     epiEmailSetor: (env.CSSO_EPI_EMAIL_SETOR ?? "").trim(),
+    acidenteEmailLigado: (env.CSSO_ACIDENTE_EMAIL ?? "").trim().toLowerCase() === "sim",
+    acidenteEmailSetor: (env.CSSO_ACIDENTE_EMAIL_SETOR ?? "").trim(),
     supabaseUrl: env.SUPABASE_URL ?? "",
     supabaseChaveServico: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
     bucketArquivos: env.CSSO_BUCKET ?? "csso",

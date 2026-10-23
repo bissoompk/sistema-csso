@@ -2,27 +2,96 @@
 {% import "partes/macros.html" as ui with context %}
 {% block titulo %}Análise de Acidentes · SISA{% endblock %}
 
-{% block acoes_cabecalho %}
-{% if pode_comunicar %}<a class="botao" href="/acidentes/comunicar">Comunicar acidente</a>{% endif %}
-{% endblock %}
+{# O hub do módulo. Para a equipe, os atalhos do trabalho e os cartões que
+   pedem a pessoa (prazo, complementação, perícia), cada um com o link para a
+   fila já filtrada; só número, nunca nome (RN-19). Para quem só alcança o que é
+   dele (escopo próprio), a versão pessoal: comunicar e as próprias. #}
 
 {% block conteudo %}
 <div class="tela">
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Análise de Acidentes</h1>
-      <p class="sub">As ocorrências ao seu alcance, por situação. A comunicação do
-        acidente em serviço tem prazo de 10 dias (Lei 8.112, art. 214).</p>
+      <p class="sub">{% if pessoal %}Comunique um acidente em serviço e acompanhe as suas comunicações.
+        {% else %}A comunicação do acidente em serviço tem prazo de 10 dias da data do acidente
+        (Lei 8.112, art. 214).{% endif %}</p>
     </div>
   </div>
+
+  <div class="acoes-hub">
+    {% if pode_comunicar %}
+    <a class="acao-hub azul" href="/acidentes/comunicar">
+      {{ ui.icone('plus-circle') }}
+      <strong>Comunicar acidente</strong>
+      <span>Registrar o que aconteceu, com quem e onde</span>
+    </a>
+    {% endif %}
+    {% if pessoal %}
+    <a class="acao-hub escuro" href="/acidentes/minhas">
+      {{ ui.icone('list-check') }}
+      <strong>Minhas comunicações</strong>
+      <span>{{ minhas }} {{ 'ocorrência' if minhas == 1 else 'ocorrências' }}</span>
+    </a>
+    {% else %}
+    {% if usuario.pode('acidente.triar') %}
+    <a class="acao-hub amarelo" href="/acidentes/fila?estado=RECEBIDA">
+      {{ ui.icone('inboxes') }}
+      <strong>Triagem</strong>
+      <span>Assumir, pedir complementação ou cancelar</span>
+      {% if contagem['RECEBIDA'] %}<span class="contagem urgente">{{ ui.icone('bell-fill') }}{{ contagem['RECEBIDA'] }} {{ 'nova' if contagem['RECEBIDA'] == 1 else 'novas' }}</span>{% endif %}
+    </a>
+    {% endif %}
+    <a class="acao-hub roxo" href="/acidentes/fila?estado=EM_INVESTIGACAO">
+      {{ ui.icone('search') }}
+      <strong>Em investigação</strong>
+      <span>{{ contagem['EM_INVESTIGACAO'] or 0 }} em andamento</span>
+    </a>
+    <a class="acao-hub escuro" href="/acidentes/fila">
+      {{ ui.icone('list-check') }}
+      <strong>Fila de ocorrências</strong>
+      <span>Todas ao seu alcance, com filtros</span>
+    </a>
+    {% if usuario.pode('acidente.siass') %}
+    <a class="acao-hub teal" href="/acidentes/fila?estado=VENCENDO">
+      {{ ui.icone('send') }}
+      <strong>Encaminhar ao SIASS</strong>
+      <span>{{ vencendo }} no prazo dos próximos {{ dias_vencendo }} dias</span>
+    </a>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  {% if not pessoal %}
+  <div class="grade-resumo">
+    <div class="cartao-resumo{{ ' atencao' if vencendo }}">
+      <span class="rotulo">Prazo do art. 214 vencendo</span>
+      <span class="valor">{{ vencendo }}</span>
+      <span class="detalhe">Ocorrências ainda não encaminhadas com o prazo nos próximos {{ dias_vencendo }} dias, ou já vencido.</span>
+      <a class="acao" href="/acidentes/fila?estado=VENCENDO">Ver a lista</a>
+    </div>
+    <div class="cartao-resumo">
+      <span class="rotulo">Aguardando complementação</span>
+      <span class="valor">{{ contagem['AGUARDANDO_COMPLEMENTACAO'] or 0 }}</span>
+      <span class="detalhe">Quem comunicou tem 5 dias para responder.</span>
+      <a class="acao" href="/acidentes/fila?estado=AGUARDANDO_COMPLEMENTACAO">Ver a lista</a>
+    </div>
+    <div class="cartao-resumo">
+      <span class="rotulo">Aguardando perícia</span>
+      <span class="valor">{{ contagem['ENCAMINHADA_SIASS'] or 0 }}</span>
+      <span class="detalhe">Encaminhadas ao SIASS, à espera da decisão pericial.</span>
+      <a class="acao" href="/acidentes/fila?estado=ENCAMINHADA_SIASS">Ver a lista</a>
+    </div>
+  </div>
+
   <div class="cartoes-status">
     {% for c in cartoes %}
     <div class="cartao-status">
       <p class="cartao-status-rotulo">{{ c.rotulo }}</p>
       <span class="cartao-status-valor">{{ c.n }}</span>
-      <a href="/acidentes/fila">Ver a fila</a>
+      <a href="/acidentes/fila?estado={{ c.estado }}">Ver a fila</a>
     </div>
     {% endfor %}
   </div>
+  {% endif %}
 </div>
 {% endblock %}

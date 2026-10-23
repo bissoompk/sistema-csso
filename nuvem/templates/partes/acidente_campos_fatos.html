@@ -1,0 +1,138 @@
+{% import "partes/macros.html" as ui with context %}
+{# Os fatos do evento e o relato: o mesmo bloco no comunicar e na retificação
+   da CAT/SP. Lê `d` (o digitado, ou os valores vigentes na retificação), os
+   catálogos e `pre` (prefixo dos ids, para o popup não colidir com a página).
+
+   O que NÃO está aqui, de propósito: CPF, endereço, telefone pessoal, CID,
+   diagnóstico. A descrição fala do EVENTO; a parte do corpo se marca na lista
+   do envolvido, e a saúde é do médico do trabalho. #}
+{% set pre = pre or 'c' %}
+<div class="linha-campos">
+  <div class="campo">
+    <label for="{{ pre }}-especie">Espécie</label>
+    <select id="{{ pre }}-especie" name="especie" required>
+      <option value="">Escolha…</option>
+      {% for e in ESPECIES %}<option value="{{ e }}"{{ ui.sel(d['especie'], e) }}>{{ ROTULO_ESPECIE[e] }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-data">Data do acidente</label>
+    <input id="{{ pre }}-data" type="date" name="data_evento" required max="{{ hoje }}" value="{{ d['data_evento'] or '' }}"
+           aria-describedby="{{ pre }}-dica-data">
+    <span class="dica" id="{{ pre }}-dica-data">O prazo legal de 10 dias conta desta data.</span>
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-hora">Hora (opcional)</label>
+    <input id="{{ pre }}-hora" type="time" name="hora_evento" value="{{ d['hora_evento'] or '' }}">
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-jornada">Tempo de jornada (opcional)</label>
+    <input id="{{ pre }}-jornada" name="jornada" inputmode="numeric" pattern="\d{1,2}:[0-5]\d" placeholder="02:30"
+           value="{{ d['jornada'] or '' }}" aria-describedby="{{ pre }}-dica-jornada">
+    <span class="dica" id="{{ pre }}-dica-jornada">Horas e minutos desde o início do trabalho naquele dia.</span>
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-ultimo">Último dia trabalhado (opcional)</label>
+    <input id="{{ pre }}-ultimo" type="date" name="ultimo_dia_trabalho" max="{{ hoje }}" value="{{ d['ultimo_dia_trabalho'] or '' }}">
+  </div>
+</div>
+
+<div class="linha-campos">
+  <div class="campo">
+    <label for="{{ pre }}-local-tipo">Tipo de local</label>
+    <select id="{{ pre }}-local-tipo" name="local_tipo" required>
+      <option value="">Escolha…</option>
+      {% for l in LOCAIS_TIPO %}<option value="{{ l }}"{{ ui.sel(d['local_tipo'], l) }}>{{ ROTULO_LOCAL_TIPO[l] }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-campus">Campus (opcional)</label>
+    <select id="{{ pre }}-campus" name="campus_id" aria-describedby="{{ pre }}-dica-campus">
+      <option value="">Fora de campus / não sei</option>
+      {% for cp in campi %}<option value="{{ cp.id }}"{{ ui.sel(d['campus_id'], cp.id) }}>{{ cp.sigla }} — {{ cp.nome }}</option>{% endfor %}
+    </select>
+    <span class="dica" id="{{ pre }}-dica-campus">Em branco, vale o campus de lotação do acidentado.</span>
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-municipio">Município (opcional)</label>
+    <input id="{{ pre }}-municipio" name="local_municipio" maxlength="80" value="{{ d['local_municipio'] or '' }}">
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-uf">UF</label>
+    <input id="{{ pre }}-uf" name="local_uf" maxlength="2" value="{{ d['local_uf'] or 'MG' }}" class="mono">
+  </div>
+</div>
+<div class="campo">
+  <label for="{{ pre }}-onde">Onde foi</label>
+  <input id="{{ pre }}-onde" name="local_especificacao" required maxlength="400" value="{{ d['local_especificacao'] or '' }}"
+         placeholder="Prédio, sala, trecho da via">
+</div>
+<div class="campo">
+  <label for="{{ pre }}-cnpj">CNPJ da empresa contratada (só se o local for dela)</label>
+  <input id="{{ pre }}-cnpj" name="local_cnpj_contratada" maxlength="18" placeholder="00.000.000/0000-00" class="mono"
+         value="{{ d['local_cnpj_contratada'] or '' }}">
+</div>
+
+<div data-mostra-quando="local_tipo={{ LOCAIS_DE_TRANSITO|join('|') }}">
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="{{ pre }}-bo">Houve registro policial?</label>
+      <select id="{{ pre }}-bo" name="transito_registro_policial">
+        <option value="">—</option>
+        {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d['transito_registro_policial'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="{{ pre }}-bo-num">Número do boletim</label>
+      <input id="{{ pre }}-bo-num" name="transito_numero_bo" maxlength="40" value="{{ d['transito_numero_bo'] or '' }}">
+    </div>
+    <div class="campo">
+      <label for="{{ pre }}-terceiros">Vítima de terceiros?</label>
+      <select id="{{ pre }}-terceiros" name="transito_vitima_terceiros">
+        <option value="">—</option>
+        {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d['transito_vitima_terceiros'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="linha-campos">
+  <div class="campo">
+    <label for="{{ pre }}-agente">Agente causador (opcional)</label>
+    <select id="{{ pre }}-agente" name="agente_causador_id">
+      <option value="">Não sei / escolher depois</option>
+      {% for g in agentes_por_grupo %}
+      <optgroup label="{{ g.grupo }}">
+        {% for a in g.itens %}<option value="{{ a.id }}"{{ ui.sel(d['agente_causador_id'], a.id) }}>{{ a.rotulo }}</option>{% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="{{ pre }}-situacao">Situação geradora (opcional)</label>
+    <select id="{{ pre }}-situacao" name="situacao_geradora_id">
+      <option value="">Não sei / escolher depois</option>
+      {% for s in situacoes %}<option value="{{ s.id }}"{{ ui.sel(d['situacao_geradora_id'], s.id) }}>{{ s.rotulo }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="campo" data-mostra-quando="especie=DOENCA_TRABALHO">
+    <label for="{{ pre }}-doenca">Agente da doença (opcional)</label>
+    <select id="{{ pre }}-doenca" name="agente_doenca_id">
+      <option value="">Não sei / escolher depois</option>
+      {% for s in doencas %}<option value="{{ s.id }}"{{ ui.sel(d['agente_doenca_id'], s.id) }}>{{ s.rotulo }}</option>{% endfor %}
+    </select>
+  </div>
+</div>
+
+<div class="campo">
+  <label for="{{ pre }}-atividade">Atividade no momento (opcional)</label>
+  <input id="{{ pre }}-atividade" name="atividade_no_momento" maxlength="400" value="{{ d['atividade_no_momento'] or '' }}"
+         placeholder="Transporte de caixas do almoxarifado">
+</div>
+<div class="campo">
+  <label for="{{ pre }}-descricao">O que aconteceu</label>
+  <textarea id="{{ pre }}-descricao" name="descricao" required maxlength="4000" rows="5"
+            aria-describedby="{{ pre }}-dica-descricao">{{ d['descricao'] or '' }}</textarea>
+  <span class="dica" id="{{ pre }}-dica-descricao">Descreva o evento — o que a pessoa fazia, o que deu errado, com que
+    equipamento —, e não o corpo nem o diagnóstico. Sem CPF.</span>
+</div>
