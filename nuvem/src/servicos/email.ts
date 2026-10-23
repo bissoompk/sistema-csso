@@ -21,7 +21,7 @@
  * O anexo (o certificado) não fica na caixa: é montado na hora do envio por
  * quem o tipo registrou (`registrar_anexador`) — ver `envio_certificado.ts`.
  */
-import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import type { Executor } from "../db/cliente.js";
 import { agora_utc, email_saida as tabela } from "../db/esquema/index.js";
@@ -117,6 +117,8 @@ export interface Pedido {
   certificado_id?: number | null;
   inscricao_id?: number | null;
   criado_por?: number | null;
+  /** depois disto a mensagem não sai mais (vira CANCELADO): o aviso que só vale na hora */
+  expira_em?: Date | null;
 }
 
 export async function enfileirar(tx: Executor, p: Pedido): Promise<EmailRegistro> {
@@ -132,9 +134,20 @@ export async function enfileirar(tx: Executor, p: Pedido): Promise<EmailRegistro
       certificado_id: p.certificado_id ?? null,
       inscricao_id: p.inscricao_id ?? null,
       criado_por: p.criado_por ?? null,
+      expira_em: p.expira_em ?? null,
     })
     .returning();
   return linha!;
+}
+
+/** O que venceu na fila sem sair vira CANCELADO, com o motivo. Devolve quantos. */
+export async function vencer(db: Executor, agora: Date = new Date()): Promise<number> {
+  const r = await db
+    .update(tabela)
+    .set({ situacao: "CANCELADO", ultimo_erro: "Venceu antes do envio." })
+    .where(and(eq(tabela.situacao, "PENDENTE"), lte(tabela.expira_em, agora)))
+    .returning({ id: tabela.id });
+  return r.length;
 }
 
 /** Devolve à fila o que falhou de vez (a tela "tentar de novo"). */
@@ -173,7 +186,13 @@ async function _pegar(db: Executor, agora: Date): Promise<EmailRegistro | null> 
     const [livre] = await tx
       .select({ id: tabela.id })
       .from(tabela)
-      .where(and(eq(tabela.situacao, "PENDENTE"), lte(tabela.proxima_tentativa_em, agora)))
+      .where(
+        and(
+          eq(tabela.situacao, "PENDENTE"),
+          lte(tabela.proxima_tentativa_em, agora),
+          or(isNull(tabela.expira_em), gt(tabela.expira_em, agora)),
+        ),
+      )
       .orderBy(asc(tabela.proxima_tentativa_em), asc(tabela.id))
       .limit(1)
       .for("update", { skipLocked: true });
@@ -209,9 +228,12 @@ export async function processar_fila(
   opcoes: { prazo_ms?: number; limite?: number; agora?: () => Date } = {},
 ): Promise<ResultadoFila> {
   const resultado: ResultadoFila = { enviados: 0, falhas: 0, desligado: false };
+  const relogio = opcoes.agora ?? (() => new Date());
+  // o vencido sai da fila mesmo com o envio desligado: ligado dias depois, o
+  // aviso de "agora" chegaria fora de hora
+  await vencer(db, relogio());
   const transporte = _transporte();
   if (!transporte) return { ...resultado, desligado: true };
-  const relogio = opcoes.agora ?? (() => new Date());
   const fim = Date.now() + (opcoes.prazo_ms ?? 20_000);
   const limite = opcoes.limite ?? 50;
   while (Date.now() < fim && resultado.enviados + resultado.falhas < limite) {

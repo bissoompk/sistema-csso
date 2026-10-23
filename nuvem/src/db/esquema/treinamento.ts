@@ -295,9 +295,13 @@ export const assinatura_instrutor = pgTable(
  * morando la, e por isso nao divergem. Para externo, e o unico lugar onde o nome
  * existe.
  *
- * NAO HA COLUNA DE CPF, e nao deve haver (decisao 1 do coordenador). O
- * identificador do externo e o e-mail confirmado, que e mutavel — por isso a
- * chave e o `id` e a identidade publica e o `identificador_publico`.
+ * CPF NAO e chave de identificacao (decisao 1 do coordenador, reafirmada em
+ * 23/10/2026). Desde 19/10/2026 existe a coluna `cpf`, opcional, SO para o
+ * certificado cuja norma exige o numero (brigadista, CBMMG): nada busca,
+ * casa ou compara pessoas por ela, exceto a mesclagem, que RECUSA juntar dois
+ * cadastros com CPFs diferentes. O identificador do externo e o e-mail
+ * confirmado, que e mutavel — por isso a chave e o `id` e a identidade
+ * publica e o `identificador_publico`.
  *
  * Esta tabela nao e so de Certificados: `acidentado.participante_id` vai apontar
  * para ela quando o modulo de Acidentes chegar. Mexer aqui mexe em dois modulos.
@@ -330,6 +334,11 @@ export const participante = pgTable(
     expurgado_em: MomentoUTC('expurgado_em'),
     ativo: boolean('ativo').notNull().default(true),
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+    // NUVEM (23/10/2026): o externo criado por quem nao le nomes (RN-19)
+    // quando ja havia cadastro parecido — a pergunta "e a mesma pessoa?" nao
+    // pode ser feita a ele, e o cadastro nasce marcado para quem le nomes
+    // conferir (`servicos/duplicados.ts`). Some quando a duvida se resolve.
+    suspeita_duplicado_em: MomentoUTC('suspeita_duplicado_em'),
   },
   (t) => [
     foreignKey({
@@ -411,6 +420,76 @@ export const participante_email = pgTable(
     uniqueIndex('uq_email_confirmado')
       .on(t.email_normalizado)
       .where(sql.raw(`confirmado_em IS NOT NULL`)),
+  ],
+);
+
+/**
+ * NUVEM (23/10/2026): dois cadastros que alguém conferiu e disse "não são a
+ * mesma pessoa" (o homônimo, o e-mail do setor dividido por duas pessoas). O
+ * par não volta como "parece com" em porta nenhuma nem no contador de
+ * possíveis duplicados (`servicos/duplicados.ts`). Sempre `a < b`: o par é
+ * um só, seja qual for a ordem em que foi marcado.
+ */
+export const participante_par_distinto = pgTable(
+  'participante_par_distinto',
+  {
+    participante_a_id: integer('participante_a_id').notNull(),
+    participante_b_id: integer('participante_b_id').notNull(),
+    // onde a decisão foi tomada (conferência do link, ficha da turma, lote, junção)
+    origem: varchar('origem', { length: 20 }).notNull(),
+    decidido_por: integer('decidido_por'),
+    decidido_em: MomentoUTC('decidido_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_participante_par_distinto', columns: [t.participante_a_id, t.participante_b_id] }),
+    foreignKey({ name: 'fk_par_distinto_a', columns: [t.participante_a_id], foreignColumns: [participante.id] }).onDelete(
+      'cascade',
+    ),
+    foreignKey({ name: 'fk_par_distinto_b', columns: [t.participante_b_id], foreignColumns: [participante.id] }).onDelete(
+      'cascade',
+    ),
+    foreignKey({ name: 'fk_par_distinto_usuario', columns: [t.decidido_por], foreignColumns: [usuario.id] }),
+    check('ck_par_distinto_ordem', sql.raw(`participante_a_id < participante_b_id`)),
+    check(
+      'ck_par_distinto_origem',
+      sql.raw(`origem IN ('CONFERENCIA','FICHA_TURMA','LOTE','JUNCAO')`),
+    ),
+    index('ix_par_distinto_b').on(t.participante_b_id),
+  ],
+);
+
+/**
+ * NUVEM (23/10/2026): o que cada junção de cadastros moveu
+ * (`mesclagem.mesclar`) — os ids das inscrições, dos certificados e dos
+ * e-mails que passaram ao mantido, os e-mails repetidos que saíram e os
+ * campos que o mantido herdou. É o que torna possível desfazer a junção
+ * depois; o botão de desfazer ainda não existe. Sem dado pessoal: só ids e
+ * nomes de campo (o CPF herdado aparece como `"cpf"`, nunca o número).
+ */
+export const participante_mesclagem = pgTable(
+  'participante_mesclagem',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    mantido_id: integer('mantido_id').notNull(),
+    absorvido_id: integer('absorvido_id').notNull(),
+    movido: JSONTexto<{
+      inscricoes: number[];
+      certificados: { id: number; servidor_id_antes: number | null }[];
+      emails_movidos: number[];
+      emails_repetidos: { id: number; origem: string; confirmado_em: string | null; igual_a: number | null }[];
+      principal_herdado: number | null;
+      campos_herdados: string[];
+      absorvido_tinha_cpf: boolean;
+    }>('movido').notNull(),
+    feito_por: integer('feito_por'),
+    feito_em: MomentoUTC('feito_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    foreignKey({ name: 'fk_mesclagem_mantido', columns: [t.mantido_id], foreignColumns: [participante.id] }),
+    foreignKey({ name: 'fk_mesclagem_absorvido', columns: [t.absorvido_id], foreignColumns: [participante.id] }),
+    foreignKey({ name: 'fk_mesclagem_usuario', columns: [t.feito_por], foreignColumns: [usuario.id] }),
+    index('ix_mesclagem_absorvido').on(t.absorvido_id),
+    index('ix_mesclagem_mantido').on(t.mantido_id),
   ],
 );
 

@@ -22,11 +22,14 @@ import {
   campus as tabela_campus,
   certificado as tabela_certificado,
   inscricao as tabela_inscricao,
+  participante as e_participante,
   servidor as tabela_servidor,
   treinamento as tabela_treinamento,
   turma as tabela_turma,
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
+import * as duplicados from "../servicos/duplicados.js";
+import * as mesclagem from "../servicos/mesclagem.js";
 import {
   ESTADOS_TURMA,
   ROTULO_INSCRICAO,
@@ -1282,6 +1285,32 @@ async function _resolver_participante(
   });
 }
 
+/**
+ * Depois de criar o externo novo (23/10/2026): o "não é: cadastrar como pessoa
+ * nova" grava o par com cada parecido que a tela mostrou; e o parecido que
+ * quem cadastrou NÃO pôde ver (RN-19 — a pergunta não foi feita) deixa o
+ * cadastro marcado como suspeito, para quem lê nomes conferir.
+ */
+async function _conferencia_do_externo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  pessoa: servico_participante.ParticipanteCarregado,
+  mostrados: string[],
+  confirmou_novo: boolean,
+): Promise<void> {
+  const achados = await duplicados.procurar(tx, duplicados.alvo_do_cadastro(pessoa), { limite: 50 });
+  if (!achados.length) return;
+  const ids = new Set(mostrados.map((v) => id_opcional(v)).filter((v): v is number => v !== null));
+  if (confirmou_novo) {
+    for (const p of duplicados.visiveis(achados, usuario)) {
+      if (ids.has(p.pessoa.id)) await duplicados.marcar_distintos(tx, usuario, pessoa.id, p.pessoa.id, "FICHA_TURMA");
+    }
+  }
+  if (achados.some((p) => !servico_participante.pode_identificar(usuario, p.pessoa))) {
+    await duplicados.marcar_suspeito(tx, pessoa, usuario);
+  }
+}
+
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.inscrever");
@@ -1302,6 +1331,52 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
   // `confirmar_novo` é a resposta "não, é outra pessoa"; "sim" volta com o
   // `participante_id` do cadastro que já existe.
   const externo_novo = id_opcional(d.participante_id) === null && id_opcional(d.servidor_id) === null && d.nome!.trim();
+  // Servidor da base escolhido (23/10/2026): se ele já tem cadastro de EXTERNO
+  // parecido (fez curso antes de estar no SIAPE), a pergunta vem antes de criar
+  // o ponteiro — era assim que nascia o par externo + servidor. Só para quem
+  // lê os nomes (RN-19); "juntar" pede `participante.mesclar`.
+  const servidor_escolhido = id_opcional(d.participante_id) === null ? id_opcional(d.servidor_id) : null;
+  let juntar_externo: number | null = null;
+  let distintos_do_servidor: number[] = [];
+  if (servidor_escolhido !== null) {
+    const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, servidor_escolhido));
+    if (servidor) {
+      const [ja] = await tx
+        .select({ id: e_participante.id })
+        .from(e_participante)
+        .where(eq(e_participante.servidor_id, servidor.id));
+      const externos = duplicados.visiveis(
+        await duplicados.procurar(
+          tx,
+          { nome: servidor.nome, emails: [servidor.email], participante_id: ja?.id ?? null, e_servidor: true },
+          { so_externos: true },
+        ),
+        usuario,
+      );
+      const ids_mostrados = new Set(externos.map((p) => p.pessoa.id));
+      const pedido_juntar = id_opcional(f.texto("juntar_externo_id"));
+      if (pedido_juntar !== null && ids_mostrados.has(pedido_juntar) && usuario.pode("participante.mesclar")) {
+        juntar_externo = pedido_juntar;
+      } else if (f.texto("confirmar_servidor") === "depois") {
+        // inscrever o servidor sem decidir: o par fica nos possíveis duplicados
+      } else if (f.texto("confirmar_servidor") === "1") {
+        distintos_do_servidor = f
+          .todos("parecido_id")
+          .map((v) => id_opcional(v))
+          .filter((v): v is number => v !== null && ids_mostrados.has(v));
+      } else if (externos.length) {
+        return _tela_ficha(c, usuario, turma, {
+          aba: "inscricoes",
+          busca,
+          extras: {
+            servidor_parecidos: duplicados.na_tela(externos, usuario),
+            servidor_escolhido: { id: servidor.id, nome: servidor.nome, siape: servidor.siape },
+            pode_juntar: usuario.pode("participante.mesclar"),
+          },
+        });
+      }
+    }
+  }
   if (externo_novo && f.texto("confirmar_novo") !== "1") {
     const parecidos = await servico_participante.parecidos(tx, { nome: d.nome!, email: d.email }, usuario);
     if (parecidos.length) {
@@ -1325,6 +1400,20 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
     // gravado antes de a inscrição ser recusada
     pessoa = await _no_savepoint(c, async (sp) => {
       const p = await _resolver_participante(sp, usuario, d);
+      if (juntar_externo !== null) {
+        // "é a mesma pessoa": o externo se junta ao servidor ANTES de inscrever
+        await mesclagem.mesclar(
+          sp,
+          usuario,
+          p.id,
+          juntar_externo,
+          `Mesma pessoa: servidor escolhido da base na ficha de ${turma.codigo}`,
+        );
+      }
+      for (const outro of distintos_do_servidor) {
+        await duplicados.marcar_distintos(sp, usuario, p.id, outro, "FICHA_TURMA");
+      }
+      if (externo_novo) await _conferencia_do_externo(sp, usuario, p, f.todos("parecido_id"), f.texto("confirmar_novo") === "1");
       await servico_turma.inscrever(sp, usuario, turma, p, { observacao: texto_ou_nulo(d.observacao) });
       if (cpf) await cpf_certificado.definir_do_participante(sp, usuario, p, cpf);
       return p;
@@ -1334,6 +1423,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
       erro instanceof CampoInvalido ||
       erro instanceof DadosDoParticipante ||
       erro instanceof RegraDaTurma ||
+      erro instanceof mesclagem.MesclagemRecusada ||
       erro instanceof cpf_certificado.CpfInvalido
     ) {
       return _erro(c, volta, erro.message);
@@ -1360,7 +1450,7 @@ async function _tela_lote(
   } = {},
 ) {
   const desfechos = d.desfechos ?? null;
-  const contagem = { INSCRITA: 0, JA_INSCRITA: 0, RECUSADA: 0 };
+  const contagem = { INSCRITA: 0, JA_INSCRITA: 0, RECUSADA: 0, A_DECIDIR: 0 };
   for (const x of desfechos ?? []) contagem[x.resultado] += 1;
   return pagina(c, "paginas/turma_lote.html", usuario, {
     turma: vista_turma(turma),
@@ -1396,16 +1486,27 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
   const f = await formulario(c);
   const d = { texto: f.texto("lista"), vinculo: f.texto("vinculo"), organizacao: f.texto("organizacao").trim() };
   const gravar = f.texto("acao") === "inscrever";
+  // "parece com …": a escolha de cada linha (`escolha_<chave da linha>`), "novo" ou o id
+  const escolhas = new Map<string, inscricao_lote.Escolha>();
+  for (const [campo, valor] of f.dados.entries()) {
+    const m = /^escolha_([0-9a-f]{12})$/.exec(campo);
+    if (!m || typeof valor !== "string") continue;
+    if (valor === "novo") escolhas.set(m[1]!, "novo");
+    else if (/^\d+$/.test(valor)) escolhas.set(m[1]!, Number(valor));
+  }
   let desfechos: inscricao_lote.Desfecho[];
   try {
-    desfechos = await inscricao_lote.processar(tx, usuario, turma, d.texto, d, !gravar);
+    desfechos = await inscricao_lote.processar(tx, usuario, turma, d.texto, d, !gravar, escolhas);
   } catch (erro) {
     if (erro instanceof RegraDaTurma) return _tela_lote(c, usuario, turma, { ...d, erro: erro.message });
     throw erro;
   }
   if (!gravar) return _tela_lote(c, usuario, turma, { ...d, desfechos });
-  // gravado: na caixa ficam só as recusadas, para corrigir e mandar de novo
-  const recusadas = desfechos.filter((x) => x.resultado === "RECUSADA").map((x) => x.texto);
+  // gravado: na caixa ficam só as recusadas e as que esperam a escolha, para
+  // corrigir (ou decidir) e mandar de novo
+  const recusadas = desfechos
+    .filter((x) => x.resultado === "RECUSADA" || x.resultado === "A_DECIDIR")
+    .map((x) => x.texto);
   return _tela_lote(c, usuario, turma, { ...d, texto: recusadas.join("\n"), desfechos, gravado: true });
 });
 

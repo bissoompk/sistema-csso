@@ -49,6 +49,25 @@
     UORG(s) {{ 'criados' if aplicado else 'serão criados' }} junto.</p>
   {% endif %}
 
+  {% if resultado.parecidos|length %}
+  {# Servidor novo × externo que já existe: só sugestão (`duplicados`). Nada é
+     ligado sozinho; quem junta é a tela de possíveis duplicados. #}
+  <section class="cartao" id="parecidos-importacao">
+    <h2>{{ resultado.parecidos|length }} servidor(es) {{ 'novo(s)' if aplicado else 'a criar' }} parece(m) participante externo já cadastrado</h2>
+    <p class="discreto">Pode ser quem fez curso antes de estar no cadastro de servidores. Nada foi
+      ligado: {% if usuario.pode('participante.mesclar') %}confira e junte em
+      <a href="/treinamentos/participantes">possíveis duplicados</a>{% else %}quem pode juntar
+      cadastros duplicados confere depois{% endif %}.</p>
+    <ul class="motivos">
+      {% for p in resultado.parecidos %}
+      <li>Linha {{ p.linha }} · SIAPE <span class="mono">{{ p.siape }}</span> parece com
+        {% for x in p.externos %}<span class="mono">{{ x.identificador }}</span>{% if x.nome %} {{ x.nome }}{% endif %}
+          <span class="discreto">({{ x.rotulo_motivo }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if not aplicado %}
   <form class="cartao destaque" method="post" action="/servidores/importar/confirmar">
     <input type="hidden" name="linhas" value="{{ linhas_json }}">

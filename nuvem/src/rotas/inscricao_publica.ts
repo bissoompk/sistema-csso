@@ -20,6 +20,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario } from "../dependencias.js";
 import { ROTULO_VINCULO } from "../dominio/treinamento.js";
+import * as email from "../servicos/email.js";
 import * as servico from "../servicos/inscricao_publica.js";
 import { RegraDaTurma } from "../servicos/turma.js";
 import { pagina, redirecionar } from "../web.js";
@@ -86,6 +87,7 @@ async function _tela(
       recebido: d.recebido ?? null,
       excedeu: d.excedeu ?? false,
       resposta_padrao: servico.RESPOSTA_PADRAO,
+      linha_neutra: servico.LINHA_NEUTRA,
       // os vínculos da UFVJM sempre; "Comunidade externa" só na turma marcada
       vinculos: servico.VINCULOS_DA_UFVJM,
       vinculos_externos: d.link?.turma.aceita_comunidade_externa ? servico.VINCULOS_COMUNIDADE_EXTERNA : [],
@@ -111,6 +113,9 @@ rotas.get(`${servico.CAMINHO}/:token`, async (c) => {
 });
 
 rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
+  // o relógio começa antes de qualquer consulta: o tempo da resposta não pode
+  // dizer se a pessoa já estava inscrita (`servico.esperar_o_piso`)
+  const inicio = performance.now();
   const tx = c.get("tx");
   const ip = ipDoCliente(c);
   const f = await formulario(c);
@@ -123,7 +128,7 @@ rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
     consentimento: f.texto("consentimento") === "sim",
   };
   // o limite vem antes de olhar o token: senão ele vira o oráculo do token
-  if (!servico.dentro_do_limite(ip)) {
+  if (!(await servico.dentro_do_limite(tx, ip))) {
     return _tela(c, { link: null, pedido, excedeu: true, status: 429 });
   }
   const link = await servico.turma_do_token(tx, c.req.param("token"));
@@ -139,6 +144,10 @@ rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
       throw erro;
     }
   }
+  // o aviso ao e-mail do cadastro, se houve, está na fila: acordar o envio
+  // SEMPRE (e sem esperar), para o tempo não separar quem casou de quem não
+  void email.acordar_envio();
+  await servico.esperar_o_piso(inicio);
   // sem oráculo: a pessoa nova, a repetida e o robô recebem a mesma resposta,
   // que só devolve o que ela mesma digitou
   const recebido: Recebido = { nome: pedido.nome.trim().replace(/\s+/g, " "), email: pedido.email.trim() };

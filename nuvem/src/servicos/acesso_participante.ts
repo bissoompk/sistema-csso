@@ -24,14 +24,16 @@
  * qual das pessoas a abriu — e a página orienta a procurar a equipe responsável.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { and, asc, count, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, lt } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   acesso_participante as tabela,
   agora_utc,
   certificado as tabela_certificado,
+  participante as tabela_participante,
   participante_email as tabela_email,
 } from "../db/esquema/index.js";
+import * as auditoria from "./auditoria.js";
 import { Certificado as C, Treinamento, normalizar_email } from "../dominio/treinamento.js";
 import * as certificados_titular from "./certificados_titular.js";
 import type { CartaoCertificado } from "./certificados_titular.js";
@@ -169,6 +171,41 @@ export interface LinkAberto {
   expira_em: Date;
 }
 
+/**
+ * Quem abriu o link provou ter a caixa: o e-mail passa a CONFIRMADO no
+ * cadastro (`participante_email.confirmado_em`, 23/10/2026). Só o endereço
+ * que já era do cadastro — é para ele que o link foi —, e só quando ele leva
+ * a um cadastro só: no e-mail de mais de um cadastro a caixa não diz de qual
+ * das pessoas ela é, e a duplicata fica para a equipe juntar. Daqui em diante
+ * o endereço é desse participante (`uq_email_confirmado`).
+ */
+async function _confirmar_email(tx: Executor, participante_id: number, email_normalizado: string, agora: Date): Promise<void> {
+  const confirmados = await tx
+    .update(tabela_email)
+    .set({ confirmado_em: agora })
+    .where(
+      and(
+        eq(tabela_email.participante_id, participante_id),
+        eq(tabela_email.email_normalizado, email_normalizado),
+        isNull(tabela_email.confirmado_em),
+      ),
+    )
+    .returning({ id: tabela_email.id });
+  if (!confirmados.length) return;
+  const [dono] = await tx
+    .select({ identificador: tabela_participante.identificador_publico })
+    .from(tabela_participante)
+    .where(eq(tabela_participante.id, participante_id));
+  await auditoria.registrar(tx, {
+    entidade: "participante",
+    entidade_id: participante_id,
+    tipo_evento: "EMAIL_CONFIRMADO_PELO_LINK",
+    // o fato, sem o endereço
+    descricao: `${dono?.identificador ?? `participante #${participante_id}`}: e-mail confirmado pelo link de acesso aos certificados`,
+    usuario: null,
+  });
+}
+
 /** O que o link abre, ou `null` para token desconhecido ou vencido. */
 export async function abrir(tx: Executor, token: string, agora: Date = new Date()): Promise<LinkAberto | null> {
   if (!token || token.length > 64) return null;
@@ -176,6 +213,9 @@ export async function abrir(tx: Executor, token: string, agora: Date = new Date(
   if (!linha || linha.expira_em <= agora) return null;
   if (linha.usado_em === null) await tx.update(tabela).set({ usado_em: agora_utc() }).where(eq(tabela.id, linha.id));
   const donos = await _donos(tx, linha.email_normalizado);
+  if (!donos.ambiguo && donos.participante_ids.length === 1) {
+    await _confirmar_email(tx, donos.participante_ids[0]!, linha.email_normalizado, agora);
+  }
   const certificados = donos.ambiguo ? [] : await _certificados_de(tx, donos.participante_ids);
   const ultimo = certificados[certificados.length - 1];
   return {

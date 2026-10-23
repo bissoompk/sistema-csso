@@ -7,7 +7,12 @@ e não cria finalidade nem categoria nova. O que muda — e é o que esta emenda
 registra — é **onde o dado está, quem o processa em nome da UFVJM e por qual
 caminho ele passa**.
 
-**Versão:** 1.6, de 20/10/2026 — acrescenta a correção de dados do
+**Versão:** 1.7, de 23/10/2026 — prevenção de cadastros duplicados: o aviso
+de cadastro existente ao e-mail do próprio cadastro, o limite por IP no
+banco e o tempo de resposta constante do link público (§5.8), o aviso que
+vence em 24 h e a confirmação do e-mail pelo link de acesso (§5.9 e §5.10),
+e o registro do que cada junção move (§5.11). Sem finalidade nova.
+Versão 1.6, de 20/10/2026 — acrescenta a correção de dados do
 participante, com reemissão do certificado, e a junção de cadastros duplicados
 (§5.11). Versão 1.5, de 20/10/2026: acrescenta ao §5.9 o aviso de reciclagem
 por e-mail ao participante (manual, ou automático quando a CSSO o liga).
@@ -242,17 +247,19 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Titulares | Servidores, terceirizados, discentes e visitantes que pedem vaga em treinamento — as mesmas categorias da inscrição interna |
 | O que se coleta | Nome, vínculo, SIAPE (só servidor), organização e, opcional, e-mail; o **IP** de onde o pedido saiu. **Sem CPF**: o formulário não tem o campo e recusa o número digitado em outro |
 | Finalidade e base legal | As da inscrição em treinamento (ROPA §2: execução de política pública e obrigação legal da NR — LGPD art. 7º, II e III, e art. 23). O IP serve só para apurar abuso do link (art. 7º, IX, legítimo interesse do controlador na segurança do canal). A página diz isso a quem pede, antes do envio, e exige a marcação de ciência |
-| Trava contra pedido em nome alheio | O pedido nasce "a conferir" e **não ocupa vaga**; abre pendência do setor; só vira inscrição quando alguém com `turma.inscrever` o aceita (`conferida_por`, `conferida_em`). O SIAPE ou o e-mail digitados só ligam o pedido a um cadastro existente se o nome conferir; senão nasce um participante novo, para a CSSO mesclar se for o caso |
-| Sem oráculo | A resposta pública é sempre a mesma frase: de fora não se sabe se a pessoa já estava inscrita nem se o SIAPE existe |
+| Trava contra pedido em nome alheio | O pedido nasce "a conferir" e **não ocupa vaga**; abre pendência do setor; só vira inscrição quando alguém com `turma.inscrever` o aceita (`conferida_por`, `conferida_em`). O SIAPE ou o e-mail digitados só ligam o pedido a um cadastro existente se o nome parecer o do cadastro (critério único de `servicos/duplicados.ts`, 23/10/2026); senão nasce um participante novo, e a conferência mostra à CSSO com quem ele parece ("parece com PTC-…", com o nome só para quem pode lê-lo — RN-19) |
+| Sem oráculo | A resposta pública é sempre a mesma frase, mais uma linha igual para todos ("se você já tem cadastro, pode chegar uma mensagem no e-mail que usou antes"): de fora não se sabe se a pessoa já estava inscrita, se tem cadastro nem se o SIAPE existe. O tempo da resposta também não diz (piso de tempo constante, 23/10/2026). A recusa de dado é genérica e nunca repete dado do cadastro |
+| Aviso de cadastro existente (23/10/2026) | Modelo "esqueci a senha": quando o pedido casa com um cadastro pelo e-mail + nome ou pelo SIAPE + nome, um aviso informativo vai **só ao e-mail que já está no cadastro** (nunca ao digitado), pela caixa de saída (§5.9), sem nome, SIAPE, IP, dado digitado nem turma; quem já estava na turma recebe "não precisa pedir de novo". Teto: 1 por destinatário em 24 h no caso do SIAPE (dado público), 3 no do e-mail; não sai quando o casamento é só pelo nome nem quando o e-mail está em mais de um cadastro sem confirmação. É medida de segurança e de transparência ao titular (LGPD art. 6º, III, IV e VI, e art. 46): avisa o dono do dado de que alguém o usou, **sem finalidade nova** |
 | O link | Token de 192 bits mostrado uma vez; o banco guarda só o SHA-256. Para de funcionar no fim do dia de "inscrições até", quando a turma sai de "inscrições abertas", ou quando a CSSO o troca ou desliga. Página com `noindex`, `no-store` e `no-referrer` |
-| Abuso | Limite de envios por IP (na memória da instância, como em `/validar`; ver `DESVIOS.md`) e teto de 200 pedidos em espera por turma; campo-armadilha para robô |
+| Abuso | Limite de envios por IP **no banco** desde 23/10/2026 (`limite_login_ip`, chave `inscricao:<ip>`, apagada pela rotina noturna um dia depois — o IP é dado pessoal); limite de avisos por destinatário (contado na caixa de saída); teto de 200 pedidos em espera por turma; campo-armadilha para robô. Sem captcha, a menos que a trilha mostre abuso |
 
 ### 5.9 Envio de e-mail (20/10/2026)
 
 | Item | Registro |
 |---|---|
-| O que sai | (a) O certificado, com o PDF (ou o Word) anexado, ao e-mail do próprio participante — pedido por quem tem `certificado.emitir`, um a um (ficha) ou os da turma (aba Emissão); (b) o aviso de "inscrição confirmada" ou "pedido não aceito" a quem pediu vaga pelo link público (§5.8) e deixou e-mail; (c) o aviso de reciclagem — certificado a vencer ou vencido —, um por certificado, marcado no monitor de reciclagem por quem tem `certificado.emitir` ou, se alguém com `treinamento.gerenciar` ligar o **aviso automático** (desligado de saída; a mudança fica na trilha), mandado pela varredura noturna no dia em que o certificado entra na janela de 30 dias. Nada sai sem um ato de alguém da CSSO: no automático, o ato é ligá-lo |
+| O que sai | (a) O certificado, com o PDF (ou o Word) anexado, ao e-mail do próprio participante — pedido por quem tem `certificado.emitir`, um a um (ficha) ou os da turma (aba Emissão); (b) o aviso de "inscrição confirmada" ou "pedido não aceito" a quem pediu vaga pelo link público (§5.8) e deixou e-mail; (c) o aviso de reciclagem — certificado a vencer ou vencido —, um por certificado, marcado no monitor de reciclagem por quem tem `certificado.emitir` ou, se alguém com `treinamento.gerenciar` ligar o **aviso automático** (desligado de saída; a mudança fica na trilha), mandado pela varredura noturna no dia em que o certificado entra na janela de 30 dias. Nada sai sem um ato de alguém da CSSO: no automático, o ato é ligá-lo; (d) desde 23/10/2026, o aviso de cadastro existente do link público (§5.8), ao e-mail do cadastro, disparado pelo pedido de vaga |
 | Para quem | Só o titular do dado, no endereço que ele ou a CSSO cadastrou. Sem cópia a terceiros |
+| Validade (23/10/2026) | O aviso de cadastro existente vence em 24 h (`email_saida.expira_em`): com o envio desligado ou atrasado, ele sai da fila como cancelado, sem envio, em vez de chegar dias depois |
 | O que leva | Nome, treinamento, turma, período, número e chave do certificado; no anexo, o certificado inteiro (com CPF, quando o modelo o exige — §5.5.1). O aviso de recusa **não** leva o motivo escrito na trilha |
 | Base legal | A do certificado e da inscrição (ROPA §2): o e-mail é meio de entregar o documento ao titular, não finalidade nova |
 | Onde fica | A caixa de saída (`email_saida`, Supabase, São Paulo): destinatário, assunto, texto, situação e o erro (sem dado pessoal). O anexo não fica: é montado na hora do envio |
@@ -269,6 +276,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Abuso | Até 3 links por hora por endereço; limite de pedidos por IP; o banco guarda só o SHA-256 do token |
 | O que se guarda | E-mail normalizado, IP e horários do pedido do link, por 7 dias; a segunda via baixada entra na trilha do certificado como "pelo link de acesso do participante" (sem usuário) |
 | Base legal | A do certificado (ROPA §2): é o titular recebendo o próprio documento (LGPD art. 18, II) |
+| E-mail confirmado (23/10/2026) | Abrir o link prova a posse da caixa: o endereço do cadastro (o mesmo que recebeu o link) passa a confirmado (`participante_email.confirmado_em`), só quando leva a um cadastro só. Nenhum dado novo: só a data |
 | Limite conhecido | Um e-mail ainda não confirmado pode estar em mais de um participante (duplicata a mesclar); o link mostra os certificados de todos eles. Quem recebe é sempre o dono da caixa — o risco é ver o certificado de um homônimo cadastrado por engano com o e-mail dele, e a correção é a mesclagem/limpeza do cadastro |
 | Depende de | O envio de e-mail ligado (§5.9). Desligado, a página diz que o acesso está indisponível |
 
@@ -280,6 +288,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | O que fica do dado antigo | O certificado anulado guarda o nome com que saiu (é o papel que circulou, e a validação pública passa a dizer "anulado, substituído por N/AAAA"). A trilha registra **que** o nome foi corrigido, nunca qual era (RN-19) |
 | Junção de cadastros | `participante.mesclar`: inscrições, certificados e e-mails do cadastro duplicado passam para o que fica; o duplicado sai das listas, aponta para o que ficou e **perde o CPF** (minimização). Nada se apaga |
 | Travas | Não se juntam dois servidores, cadastros com CPFs diferentes, nem dois inscritos na mesma turma |
+| Registro da junção (23/10/2026) | Cada junção guarda o que moveu (`participante_mesclagem`: ids de inscrições, certificados e e-mails, campos herdados e se havia CPF — o booleano, nunca o número), para poder ser desfeita. "Não é a mesma pessoa" fica gravado como par (`participante_par_distinto`), só com os ids, quem decidiu e quando |
 | Efeito no §5.10 | A junção resolve o limite conhecido do acesso por link: depois dela, o e-mail aponta para uma pessoa só |
 
 ## 6. Retenção — o que a nuvem acrescenta à política

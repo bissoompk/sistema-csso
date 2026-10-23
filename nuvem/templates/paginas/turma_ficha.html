@@ -574,6 +574,12 @@
             <div class="acoes"><button type="submit" class="perigo compacto">
               {{ 'Recusar' if i.situacao == 'AGUARDANDO_EMAIL' else 'Cancelar inscrição' }}</button></div>
           </form>
+          {# o atalho da junção (23/10/2026): a tela saiu do menu #}
+          {% if nominal and usuario.pode('participante.mesclar') %}
+          <h3>Cadastro repetido?</h3>
+          <p class="sem-margem"><a href="/treinamentos/participantes?de={{ i.participante.id }}">Juntar
+            {{ i.participante.identificador_publico }} com outro cadastro</a></p>
+          {% endif %}
         {% endcall %}
         {% endif -%}
         {#- Corrigir o cadastro do externo: nome, vínculo, organização. O de
@@ -641,6 +647,45 @@
 </section>
 
 {% if pode_inscrever and turma.aceita_inscricao %}
+  {% if servidor_parecidos and servidor_parecidos|length %}
+  {# O servidor escolhido da base já tem cadastro de EXTERNO parecido (fez curso
+     antes de estar no SIAPE): a pergunta antes de criar o ponteiro. Só chega
+     aqui quem lê os nomes listados (`duplicados.visiveis`). #}
+  <section class="cartao" id="servidor-parecido">
+    <div class="aviso aviso-alerta" role="alert">
+      <p><strong>{{ servidor_escolhido.nome }} (SIAPE {{ servidor_escolhido.siape }}) parece já ter cadastro
+        de participante externo. É a mesma pessoa?</strong></p>
+      <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
+        <input type="hidden" name="servidor_id" value="{{ servidor_escolhido.id }}">
+        <input type="hidden" name="busca" value="{{ busca }}">
+        <ul class="motivos">
+          {% for p in servidor_parecidos %}
+          <li><span class="mono">{{ p.identificador }}</span>{% if p.nome %} {{ p.nome }}{% endif %}
+            <span class="discreto">· {{ p.rotulo_motivo }}</span>
+            {% if pode_juntar %}
+            <button type="submit" name="juntar_externo_id" value="{{ p.id }}" class="secundario compacto">
+              Sim: juntar {{ p.identificador }} ao servidor e inscrever</button>
+            {% endif %}
+            <input type="hidden" name="parecido_id" value="{{ p.id }}"></li>
+          {% endfor %}
+        </ul>
+        {% if not pode_juntar %}
+        <p class="discreto">Juntar os dois cadastros é com quem pode juntar cadastros duplicados:
+          inscrevendo o servidor, o par aparece nos possíveis duplicados.</p>
+        {% endif %}
+        <div class="acoes">
+          <button type="submit" name="confirmar_servidor" value="1" class="secundario">
+            Não é a mesma pessoa: inscrever o servidor</button>
+          {% if not pode_juntar %}
+          <button type="submit" name="confirmar_servidor" value="depois" class="secundario">
+            Inscrever o servidor e deixar a junção para depois</button>
+          {% endif %}
+          <a class="botao secundario" href="/turmas/{{ turma.id }}?aba=inscricoes">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
   <section class="cartao">
     <div class="titulo-cartao"><h2>Inscrever participante</h2>
       <span class="nota">procure primeiro; cadastre só quem não estiver aqui</span>
@@ -1590,6 +1635,8 @@
     {% if ed.tinha_cpf %}<p class="discreto">O CPF digitado não volta na tela: digite-o de novo, se for o caso.</p>{% endif %}
   </div>
   <input type="hidden" name="confirmar_novo" value="1">
+  {# "não é" grava o par com cada cadastro mostrado, e o aviso não volta #}
+  {% for p in parecidos %}<input type="hidden" name="parecido_id" value="{{ p.id }}">{% endfor %}
   {% endif %}
   <input type="hidden" name="busca" value="{{ busca }}">
   {# FICA dentro do popup: é lido no instante da digitação, que é onde o lugar

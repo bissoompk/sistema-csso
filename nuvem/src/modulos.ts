@@ -497,13 +497,11 @@ export const MODULOS: readonly Modulo[] = [
             "treinamento.ver",
             "Os setores que aparecem em “Unidade promotora” da turma.",
           ),
-          // Era "Participantes", mas a tela só junta cadastros duplicados.
-          new Item(
-            "Juntar duplicados",
-            "/treinamentos/participantes",
-            "participante.mesclar",
-            "Cadastros que parecem a mesma pessoa, para juntar num só.",
-          ),
+          // "Juntar duplicados" (/treinamentos/participantes) saiu do menu em
+          // 23/10/2026: juntar é exceção, e a tela abre pelo contador
+          // "possíveis duplicados" do Início de Treinamentos
+          // (`hub_treinamentos.ts`) e pelo atalho "juntar com outro cadastro"
+          // da ficha. A rota continua.
         ],
       },
       {
@@ -1128,7 +1126,6 @@ const ICONES: Readonly<Record<string, string>> = {
   "/treinamentos/setores-promotores": "building",
   "/treinamentos/modelos": "file-earmark-easel",
   "/treinamentos/assinaturas": "pen",
-  "/treinamentos/participantes": "people",
   "/pendencias": "bell",
   "/demandas": "list-check",
   "/servidores": "person-badge",

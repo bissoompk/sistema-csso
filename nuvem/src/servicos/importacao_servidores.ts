@@ -34,6 +34,7 @@ import {
 import { hoje_iso } from "../dominio/datas.js";
 import { ArquivoZipRecusado, conferir_zip } from "./arquivo_zip.js";
 import * as auditoria from "./auditoria.js";
+import * as duplicados from "./duplicados.js";
 import { MAXIMO_LINHAS_PLANILHA, valor_da_celula } from "./importacao_planilha.js";
 import * as servico_servidores from "./servidores.js";
 import * as textos from "./textos.js";
@@ -73,6 +74,8 @@ export interface Resultado {
   recusados: number;
   cargos_criados: number;
   unidades_criadas: number;
+  /** servidores novos que parecem externos já cadastrados — só sugestão, nada é ligado */
+  parecidos: { linha: number; siape: string; externos: duplicados.ParecidoNaTela[] }[];
 }
 
 /** Arquivo que não se lê — a rota devolve a mensagem para a pessoa. */
@@ -291,8 +294,10 @@ export async function importar(tx: Executor, usuario: UsuarioAtual, linhas: Linh
     recusados: 0,
     cargos_criados: 0,
     unidades_criadas: 0,
+    parecidos: [],
   };
   const vistos = new Map<string, number>();
+  const criados: { chave: string; nome: string; email: string | null; linha: number }[] = [];
 
   const achar_campus = (bruto: string): Campus | null => {
     if (!bruto) return campi.length === 1 ? campi[0]! : null;
@@ -409,6 +414,7 @@ export async function importar(tx: Executor, usuario: UsuarioAtual, linhas: Linh
           servidores.set(siape, novo);
           saida.acao = "CRIAR";
           r.criados++;
+          criados.push({ chave: siape, nome: novo.nome, email: novo.email, linha: l.linha });
           return;
         }
 
@@ -481,6 +487,22 @@ export async function importar(tx: Executor, usuario: UsuarioAtual, linhas: Linh
       saida.detalhes = [erro.message];
       r.recusados++;
     }
+  }
+
+  // Servidor novo × externo que já existe (23/10/2026): quem fez curso antes de
+  // estar no SIAPE. Só SUGERE — o relatório e o contador de possíveis
+  // duplicados; ligar sozinho pelo nome juntaria homônimos (decisão do dono).
+  const sugestoes = await duplicados.externos_parecidos_em_lote(tx, criados);
+  for (const c of criados) {
+    const achados = sugestoes.get(c.chave);
+    if (!achados?.length) continue;
+    r.parecidos.push({
+      linha: c.linha,
+      siape: c.chave,
+      // o nome do servidor sai como o da tabela de linhas (que já o mostra);
+      // o do externo, só para quem pode lê-lo
+      externos: duplicados.na_tela(achados, usuario),
+    });
   }
 
   await auditoria.registrar(tx, {

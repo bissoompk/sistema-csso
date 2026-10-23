@@ -64,6 +64,9 @@
     <p>Recebemos o pedido de <strong>{{ recebido.nome }}</strong>
       {%- if recebido.email %}, com o e-mail <strong>{{ recebido.email }}</strong>{% endif %}.
       O pedido ainda não é a vaga: ela só fica garantida quando a equipe{{ equipe_de }} confirmar.</p>
+    {# a mesma linha para todos: nunca diz "você já tem cadastro"
+       (`aviso_cadastro_existente.ts`) #}
+    <p>{{ linha_neutra }}</p>
   </div>
   {% if not fechada %}<p class="sem-margem"><a href="{{ acao }}?novo=1">Pedir a vaga para outra pessoa</a></p>{% endif %}
 </div>
@@ -78,6 +81,8 @@
 {% elif not recebido %}
 <div class="cartao">
   <h2>Pedir a vaga</h2>
+  <p class="discreto">Já fez curso com a gente? Use o mesmo nome e o mesmo e-mail da outra
+    vez: assim os certificados ficam juntos.</p>
   {% if erro_formulario %}<div class="aviso aviso-erro" role="alert">{{ erro_formulario }}</div>{% endif %}
   <form method="post" action="{{ acao }}">
     <div class="campo"><label for="p-nome">Nome completo</label>
@@ -106,7 +111,8 @@
     <div class="campo" data-mostra-quando="vinculo=SERVIDOR"><label for="p-siape">SIAPE</label>
       <input id="p-siape" name="siape" value="{{ pedido.siape }}" inputmode="numeric"
              maxlength="9" autocomplete="off" aria-describedby="dica-siape">
-      <span class="dica" id="dica-siape">Só para servidor da UFVJM: 6 ou 7 dígitos.</span></div>
+      <span class="dica" id="dica-siape">Só para servidor da UFVJM: 6 ou 7 dígitos. É por ele
+        que achamos o seu cadastro, mesmo que o e-mail tenha mudado.</span></div>
     <div class="campo"><label for="p-email">E-mail</label>
       <input id="p-email" name="email" type="email" value="{{ pedido.email }}" maxlength="160"
              autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"

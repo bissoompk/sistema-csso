@@ -14,6 +14,7 @@ import {
   treinamento as tabela_treinamento,
   turma as tabela_turma,
 } from "../db/esquema/index.js";
+import * as duplicados from "./duplicados.js";
 import * as envio_certificado from "./envio_certificado.js";
 import * as fila_emissao from "./fila_emissao.js";
 import type { UsuarioAtual } from "./rbac.js";
@@ -39,6 +40,8 @@ export interface ResumoHub {
   fila: Record<fila_emissao.Etapa, number>;
   reciclagem: Record<string, number>;
   emails: Record<string, number> | null;
+  /** grupos de "possíveis duplicados" (só com `participante.mesclar`; `null` sem ela) */
+  duplicados: number | null;
   proximas: ProximaTurma[];
 }
 
@@ -91,6 +94,9 @@ export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string):
     reciclagem: recicl,
     // NUVEM: a caixa do setor de quem lê, como a tela de envios
     emails: usuario.pode("certificado.emitir") ? await envio_certificado.contagem_do_setor(tx, usuario) : null,
+    // a contagem é a da tela de juntar (`duplicados.grupos`), para o número do
+    // cartão e o da tela nunca discordarem
+    duplicados: usuario.pode("participante.mesclar") ? await duplicados.contar(tx) : null,
     proximas,
   };
 }
@@ -217,6 +223,18 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
       classe: r.reciclagem.VENCIDO ? "urgente" : "",
     },
   });
+  // "Juntar cadastros duplicados" saiu do menu (23/10/2026): a tela abre por
+  // aqui, e o cartão só aparece quando há o que conferir
+  if (r.duplicados) {
+    lista.push({
+      href: "/treinamentos/participantes",
+      icone: "people",
+      cor: "laranja",
+      titulo: "Possíveis duplicados",
+      descricao: "Cadastros que parecem a mesma pessoa: juntar num só, ou marcar que são pessoas diferentes.",
+      contagem: { texto: `${r.duplicados} possíveis duplicados`, classe: "atencao" },
+    });
+  }
   if (usuario.pode("indicador.ver")) {
     lista.push({
       href: "/treinamentos/indicadores",

@@ -17,6 +17,11 @@
           mais pedidos do que ela tem de vaga livre não aceita nenhum deles: quem escolhe
           quem fica de fora é você, e não a ordem da lista. Recusar pede o motivo, que
           fica registrado na inscrição.</p>
+        <p>“Parece com PTC-…” é um cadastro que já existe com o mesmo SIAPE, o mesmo
+          e-mail ou um nome parecido. <strong>Usar este</strong> junta o cadastro do pedido
+          ao que já existia (o pedido continua a conferir); <strong>não é a mesma
+          pessoa</strong> grava a decisão, e o aviso não volta. Quem pediu pelo link não
+          vê nada disto.</p>
       {% endcall %}
     </div>
   </div>
@@ -71,7 +76,26 @@
         <td>{% if t.pode_decidir %}<input type="checkbox" class="marcar" name="inscricao_id" value="{{ p.inscricao_id }}"
                    data-grupo="turma-{{ t.id }}" aria-label="Decidir o pedido de {{ p.nome }}">{% endif %}</td>
         <td class="nome">{{ p.nome }}
-          {% if p.observacao %}<span class="quebra discreto">{{ p.observacao }}</span>{% endif %}</td>
+          {% if p.observacao %}<span class="quebra discreto">{{ p.observacao }}</span>{% endif %}
+          {# "parece com PTC-…" (`duplicados.procurar`): o nome do outro cadastro
+             só para quem pode lê-lo. Os botões são do formulário da tabela, com
+             `formaction` próprio; o visitante nunca vê nada disto. #}
+          {% for x in p.parecidos %}
+          <span class="parece-com">
+            <span class="pilula alerta sem-ponto">parece com <span class="mono">{{ x.identificador }}</span></span>
+            {%- if x.nome %} {{ x.nome }}{% endif %}
+            <span class="discreto">· {{ x.rotulo_motivo }}{% if x.servidor %} · servidor{% endif %}</span>
+            <span class="acoes-parece">
+              <button type="submit" class="secundario compacto" formaction="/turmas/pedidos/usar-cadastro"
+                      formnovalidate name="par" value="{{ p.inscricao_id }}:{{ x.id }}"
+                      title="Junta o cadastro deste pedido a {{ x.identificador }}; o pedido continua a conferir">
+                usar este</button>
+              <button type="submit" class="secundario compacto" formaction="/turmas/pedidos/nao-e-a-mesma"
+                      formnovalidate name="par" value="{{ p.inscricao_id }}:{{ x.id }}">
+                não é a mesma pessoa</button>
+            </span>
+          </span>
+          {% endfor %}</td>
         <td>{{ rotulo_vinculo[p.vinculo] or p.vinculo }}
           {% if p.organizacao %}<span class="quebra discreto">{{ p.organizacao }}</span>{% endif %}</td>
         <td><span class="recorte" title="{{ p.email }}">{{ p.email or '—' }}</span></td>

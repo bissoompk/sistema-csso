@@ -127,6 +127,13 @@
       "when": 1792752069269,
       "tag": "0017_dono_treinamento",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792765807128,
+      "tag": "0018_prevencao_duplicados",
+      "breakpoints": true
     }
   ]
 }
