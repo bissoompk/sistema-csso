@@ -349,7 +349,7 @@ resta, na ordem em que rende:
   (A rota `/validar/{chave}` impressa no certificado **existe** nas duas
   versões — `app/rotas/validacao.py` e `nuvem/src/rotas/validacao.ts` —,
   conferido em 18/10/2026; a frase que dizia o contrário estava velha.)
-- **A auto-inscrição em treinamento.** Hoje `/turmas` responde 200 e vem
+- **Fechado na nuvem (D16, 22/10/2026): a auto-inscrição em treinamento** (`/turmas/{id}/inscrever-me`, «Meus treinamentos»); o texto abaixo é o registro do que faltava. Hoje `/turmas` responde 200 e vem
   **sempre vazia** para ele: o escopo procura `servidor_id` em `Turma`, não acha,
   e devolve nada — e o docstring de `turmas.py:182-187` afirma que `campus_id`
   previne isso, o que é falso (`campus_id` é do escopo de unidade). A saída

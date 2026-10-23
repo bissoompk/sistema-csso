@@ -89,6 +89,25 @@ describe("garantir_acesso", () => {
   });
 });
 
+describe("o e-mail do cadastro muda antes da ativação", () => {
+  it("a conta sem senha acompanha (e-mail e login); a com senha não é tocada", async () => {
+    const s = await servidor();
+    await servico.garantir_acesso(db, s, ORIGEM);
+    const novo = "ana.nova@ufvjm.edu.br";
+    const [s2] = await db.update(e.servidor).set({ email: novo }).where(eq(e.servidor.id, s.id)).returning();
+    expect(await servico.garantir_acesso(db, s2!, ORIGEM)).toBe("ja_tem_conta");
+    const [conta] = await contas_de(novo);
+    expect(conta!.login).toBe(novo);
+    expect(await contas_de(EMAIL)).toHaveLength(0);
+    // com senha: fica como está
+    await db.update(e.usuario).set({ senha_hash: await (await import("../src/servicos/autenticacao.js")).gerar_hash("frase-longa-2026") }).where(eq(e.usuario.id, conta!.id));
+    const [s3] = await db.update(e.servidor).set({ email: "terceiro@ufvjm.edu.br" }).where(eq(e.servidor.id, s.id)).returning();
+    await servico.garantir_acesso(db, s3!, ORIGEM);
+    expect(await contas_de(novo)).toHaveLength(1);
+    expect(await contas_de("terceiro@ufvjm.edu.br")).toHaveLength(0);
+  });
+});
+
 describe("ativação pelo titular", () => {
   it("o link define a primeira senha na conta que já existe, sem criar outra", async () => {
     const s = await servidor();

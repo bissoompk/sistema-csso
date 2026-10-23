@@ -75,6 +75,7 @@ const SITUACOES_FORA = ["APOSENTADO", "EXONERADO"];
  */
 export const SEM_SENHA = "!sem-senha";
 export const ACESSO_CRIADO_NO_CADASTRO = "ACESSO_CRIADO_NO_CADASTRO";
+export const ACESSO_EMAIL_ACOMPANHOU_CADASTRO = "ACESSO_EMAIL_ACOMPANHOU_CADASTRO";
 
 export const PEDIDO_DE_ACESSO_RECUSADO = "PEDIDO_DE_ACESSO_RECUSADO";
 export const ACESSO_ATIVADO = "ACESSO_ATIVADO";
@@ -264,6 +265,34 @@ async function _perfil_do_titular(tx: Executor) {
 }
 
 /**
+ * O e-mail do cadastro foi corrigido antes de o titular ativar o acesso: a conta
+ * (ainda sem senha) acompanha, e o login continua sendo o e-mail. Conta com
+ * senha NÃO é tocada (o titular já entra com o login que tem; quem muda é ele,
+ * em «Meus dados»), nem a que colidiria com outra conta.
+ */
+async function _acompanhar_email(tx: Executor, conta: Conta, cadastrado: string, origem: Origem): Promise<void> {
+  if (conta.senha_hash !== SEM_SENHA || normalizar_email(conta.email ?? "") === normalizar_email(cadastrado)) return;
+  const alvo = normalizar_email(cadastrado);
+  const [outra] = await tx
+    .select({ id: tabela_usuario.id })
+    .from(tabela_usuario)
+    .where(sql`${tabela_usuario.id} <> ${conta.id} AND (lower(${tabela_usuario.email}) = ${alvo} OR lower(${tabela_usuario.login}) = ${alvo})`)
+    .limit(1);
+  if (outra) return;
+  await tx
+    .update(tabela_usuario)
+    .set({ email: cadastrado, login: autenticacao.login_do_email(cadastrado) })
+    .where(eq(tabela_usuario.id, conta.id));
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: ACESSO_EMAIL_ACOMPANHOU_CADASTRO,
+    descricao: "E-mail e login da conta, ainda sem senha, acompanharam a correção do e-mail no cadastro do servidor.",
+    ...origem,
+  });
+}
+
+/**
  * O servidor ativo com e-mail institucional passa a ter conta (22/10/2026: não
  * há separação entre servidor e conta). A conta nasce SEM senha utilizável
  * (`SEM_SENHA`); o titular a define por "Ativar meu acesso" ou "Esqueci minha
@@ -275,7 +304,10 @@ export async function garantir_acesso(tx: Executor, servidor: Servidor, origem: 
   if (!cadastrado || !email.email_valido(cadastrado)) return "sem_email";
   if (servidor.situacao !== "ATIVO") return "fora_do_quadro";
   const decisao = await decidir(tx, servidor);
-  if (decisao.tipo === "redefinir") return "ja_tem_conta";
+  if (decisao.tipo === "redefinir") {
+    await _acompanhar_email(tx, decisao.conta, cadastrado, origem);
+    return "ja_tem_conta";
+  }
   if (decisao.tipo === "recusar") return decisao.conta ? "ja_tem_conta" : "recusada";
   const perfil = await _perfil_do_titular(tx);
   const [conta] = await tx
