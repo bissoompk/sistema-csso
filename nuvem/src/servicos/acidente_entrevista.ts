@@ -74,7 +74,7 @@ function _relato(valor: string | null | undefined): string | null {
     throw new ComunicacaoRecusada("O relato tem um número com formato de CPF. CPF não entra na investigação.", "o relato");
   }
   try {
-    textos.exigir_texto_limpo(v, "relato", textos.CONTEXTO_NEXO_OCUPACIONAL);
+    textos.exigir_texto_limpo(v, "o relato", textos.CONTEXTO_NEXO_OCUPACIONAL);
   } catch (erro) {
     if (!(erro instanceof textos.TextoProibido)) throw erro;
     throw new ComunicacaoRecusada(
