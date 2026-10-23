@@ -19,6 +19,7 @@
     "redefinir-senha": "tsx ferramentas/redefinir-senha.ts",
     "testar-email": "tsx ferramentas/testar-email.ts",
     "conceder-administrador": "tsx ferramentas/conceder-administrador.ts",
+    "limpar-treinamentos": "tsx ferramentas/limpar-treinamentos.ts",
     "tipos": "tsc --noEmit",
     "test": "vitest run"
   },

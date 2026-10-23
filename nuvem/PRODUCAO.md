@@ -383,3 +383,36 @@ antigo, que a tela continua aceitando. As sessões abertas não caem.
   decisão registrada): no editor SQL do Supabase,
   `ALTER TABLE instalacao DISABLE TRIGGER USER; DELETE FROM instalacao; ALTER TABLE instalacao ENABLE TRIGGER USER;`.
   Nenhuma ferramenta faz isso por você, de propósito.
+
+## 9. Recomeçar o cadastro de treinamentos (limpeza)
+
+`npm run limpar-treinamentos` apaga os dados do módulo Certificados e
+Treinamentos (treinamentos, turmas, inscrições, presenças, certificados
+emitidos e seus arquivos, participantes e e-mails, instrutores/assinaturas,
+duplicados, acessos de participante e os avisos de e-mail e pendências ligados
+a isso). **Mantém** os modelos de certificado, a numeração (número usado não se
+reaproveita), servidores, usuários, perfis, setores promotores, catálogos, EPI,
+processos e a trilha, que ganha um evento `DADOS_DE_TREINAMENTO_APAGADOS` (só
+contagens). Os modelos continuam, mas deixam de apontar para um treinamento.
+
+```
+# 1. simular: tudo numa transação, com rollback; imprime as contagens
+npm run limpar-treinamentos -- --copia ~/copias-sisa --simular
+
+# 2. executar (pede para digitar a identidade do banco mostrada na tela)
+npm run limpar-treinamentos -- --copia ~/copias-sisa
+```
+
+- Lê o `DATABASE_URL` do ambiente (ou de `nuvem/.env`) e mostra a identidade do
+  banco, nunca a URL. `--confirmar <identidade>` faz a confirmação sem teclado.
+- `--copia <pasta>` é obrigatório e **fora do repositório**: grava um JSON
+  (permissão 600) com todas as linhas apagadas. **Tem dados pessoais** (nome,
+  CPF, e-mail): guarde em lugar seguro e apague quando não precisar mais. Não
+  inclui os arquivos (PDF/DOCX), só as linhas.
+- Faça `npm run rotinas -- backup` antes. A limpeza apaga no banco numa só
+  transação (DELETE por tabela, nunca TRUNCATE; as travas da trilha ficam
+  ligadas) e, **depois do commit**, apaga do armazenamento os arquivos que
+  ficaram órfãos. Falha no armazenamento não desfaz o banco: vem relatada e o
+  código de saída é 5.
+- Aborta sem gravar se alguma tabela fora da lista referencia as apagadas, ou
+  se houver gatilho de DELETE nelas. Rodar de novo com tudo vazio não faz nada.

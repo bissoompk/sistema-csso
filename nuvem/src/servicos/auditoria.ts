@@ -78,6 +78,10 @@ export const SETOR_PROMOTOR_DESVINCULADO = "SETOR_PROMOTOR_DESVINCULADO";
 // é falso) e a falha "indisponível" não suja a trilha; o evento continua
 // declarado porque é chave de banco e os eventos importados o trazem.
 export const PDF_NAO_GERADO = "PDF_NAO_GERADO";
+// Limpeza do módulo Certificados e Treinamentos pela linha de comando
+// (23/10/2026, `ferramentas/limpar-treinamentos.ts`): um evento só, com as
+// contagens por tabela e sem dado pessoal.
+export const DADOS_DE_TREINAMENTO_APAGADOS = "DADOS_DE_TREINAMENTO_APAGADOS";
 // RN-21 em aviso: o termo de saúde ficou no texto porque quem escreveu confirmou
 export const MENCAO_SAUDE_CONFIRMADA = "MENCAO_SAUDE_CONFIRMADA";
 
@@ -302,6 +306,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // C: foto e PDF de orientação do catálogo
   EPI_ITEM_IMAGEM_ENVIADA: "Foto do EPI enviada ao catálogo",
   EPI_ITEM_ORIENTACAO_ENVIADA: "Orientação (PDF) do EPI enviada ao catálogo",
+  DADOS_DE_TREINAMENTO_APAGADOS: "Dados de treinamento apagados (limpeza pela linha de comando)",
   // E: treinamento exigido pelo EPI (avisa, não bloqueia — Decisão 2)
   EPI_ITEM_TREINAMENTO_VINCULADO: "Treinamento exigido vinculado ao EPI",
   EPI_ITEM_TREINAMENTO_DESVINCULADO: "Treinamento exigido desvinculado do EPI",
