@@ -92,8 +92,8 @@ function saidaMuda(respostas: string[] = []) {
   };
 }
 
+// sem `--login`: o login é o e-mail (23/10/2026)
 const ARGS = [
-  "--login", "fabricio",
   "--nome", "Fabrício de Produção",
   "--email", "fabricio@ufvjm.edu.br",
   "--url-publica", "https://csso.exemplo.ufvjm.edu.br/",
@@ -220,7 +220,7 @@ describe("producao-iniciar", () => {
       expect(parametro!.valor).toBe("https://csso.exemplo.ufvjm.edu.br");
       const usuarios = await db.select().from(e.usuario);
       expect(usuarios).toHaveLength(1);
-      expect(usuarios[0]!.login).toBe("fabricio");
+      expect(usuarios[0]!.login).toBe("fabricio@ufvjm.edu.br");
       expect(usuarios[0]!.precisa_trocar_senha).toBe(true);
       expect(await autenticacao.conferir_senha(usuarios[0]!.senha_hash, senha)).toBe(true);
       const [perfis] = await db.select({ n: count() }).from(e.perfil);
@@ -238,7 +238,7 @@ describe("producao-iniciar", () => {
       redefinirConfig();
       try {
         const cliente = new Cliente(obterApp());
-        const r = await cliente.post("/login", { login: "fabricio", senha }, { seguir: false });
+        const r = await cliente.post("/login", { login: "fabricio@ufvjm.edu.br", senha }, { seguir: false });
         expect(r.status).toBe(303);
         expect(r.location).toBe("/trocar-senha");
       } finally {
@@ -254,7 +254,7 @@ describe("producao-iniciar", () => {
     expect(await comAmbiente({ DATABASE_URL: url }, () => ambienteTeste.principal(["--permitir-remoto"]))).toBe(3);
     const depois = abrirBancoAvulso(url);
     try {
-      expect(await depois.db.select({ login: e.usuario.login }).from(e.usuario)).toEqual([{ login: "fabricio" }]);
+      expect(await depois.db.select({ login: e.usuario.login }).from(e.usuario)).toEqual([{ login: "fabricio@ufvjm.edu.br" }]);
     } finally {
       await depois.fechar();
     }

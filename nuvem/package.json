@@ -11,6 +11,7 @@
     "db:gerar": "drizzle-kit generate",
     "db:migrar": "tsx ferramentas/migrar.ts",
     "db:semear": "tsx ferramentas/semear.ts",
+    "db:converter-logins": "tsx ferramentas/converter-logins.ts",
     "ambiente-teste": "tsx ferramentas/ambiente-teste.ts",
     "producao-iniciar": "tsx ferramentas/producao-iniciar.ts",
     "rotinas": "tsx ferramentas/rotinas.ts",

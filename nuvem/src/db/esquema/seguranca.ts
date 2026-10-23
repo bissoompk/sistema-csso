@@ -26,7 +26,7 @@ export const usuario = pgTable(
   'usuario',
   {
     id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
-    login: varchar('login', { length: 64 }).notNull().unique(),
+    login: varchar('login', { length: 160 }).notNull().unique(),
     nome: varchar('nome', { length: 160 }).notNull(),
     email: varchar('email', { length: 160 }).notNull().unique(),
     senha_hash: varchar('senha_hash', { length: 255 }).notNull(),

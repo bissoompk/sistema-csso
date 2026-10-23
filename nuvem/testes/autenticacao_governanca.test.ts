@@ -314,7 +314,6 @@ describe("D28: primeiro acesso", () => {
     const { db: virgem } = await bancoLimpo();
     const conta = await autenticacao.criar_primeiro_superintendente(
       virgem,
-      "cli",
       "Pela linha de comando",
       "cli@ufvjm.edu.br",
       "gerada-pela-cli-26",

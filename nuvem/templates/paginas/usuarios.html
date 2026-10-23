@@ -71,15 +71,19 @@
   <div class="tabela-cartao lista">
     <table class="empilhavel">
       <thead>
-        <tr><th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfis vigentes</th><th scope="col">Situação</th>
+        <tr><th scope="col">Nome</th><th scope="col">E-mail (login)</th><th scope="col">Perfis vigentes</th><th scope="col">Situação</th>
             <th scope="col">Último acesso</th>{% if pode_gerir %}<th scope="col">Ações</th>{% endif %}</tr>
       </thead>
       {% for u in usuarios %}
       <tr>
         <td class="nome">{{ u.nome }}</td>
-        {# O login no `<span class="mono">` sozinho na célula, que não quebra:
-           "teste-ba-comum" partido no hífen lia-se como dois logins. #}
-        <td data-coluna="Login"><span class="mono">{{ u.login }}</span></td>
+        {# Login e e-mail numa coluna só (23/10/2026): o login É o e-mail. A
+           conta que ainda entra por um nome de usuário antigo (as de teste, ou
+           a que a conversão pulou por conflito) mostra-o embaixo, discreto.
+           Mono e sozinho no `<span>`: "teste-ba-comum" partido no hífen lia-se
+           como dois logins. #}
+        <td data-coluna="E-mail (login)"><span class="mono">{{ u.email }}</span>
+          {%- if u.login != (u.email | lower) %}<br><span class="discreto">login antigo: <span class="mono">{{ u.login }}</span></span>{% endif %}</td>
         <td data-coluna="Perfis vigentes">
           {# `vigente_em` é método, e não atributo: não dá para filtrar com
              `selectattr`. A lista se monta aqui para a linha poder dizer
@@ -126,8 +130,8 @@
                                   nota=u.login) %}
               {% set governo = u.id in contas_de_governo %}
               {% if usuario.pode('usuario.criar_conta') %}
-              {# Nome, login e e-mail se corrigem num popup (D11); a rota recusa
-                 a conta de administração para quem não concede perfil. #}
+              {# Nome e e-mail (que é o login) se corrigem num popup (D11); a rota
+                 recusa a conta de administração para quem não concede perfil. #}
               <h3>Dados da conta</h3>
               <p class="discreto">{{ u.email }}</p>
               <div class="acoes">{{ ui.botao_cadastro('editar-conta-' ~ u.id, 'Editar dados…', 'secundario compacto') }}</div>
@@ -354,17 +358,18 @@
           {% set desta = forma == 'dados' and d['usuario_alvo'] == u.id %}
           {% call ui.popup_cadastro('editar-conta-' ~ u.id, 'Dados da conta de ' ~ u.nome, '/usuarios/' ~ u.id ~ '/dados',
                                     'Salvar', aberto=desta, erro=(erro_linha if desta else none),
-                                    nota='login e e-mail são a credencial de entrada') %}
+                                    nota='o e-mail é o login da conta') %}
             <div class="campo"><label for="ed-conta-{{ u.id }}-nome">Nome</label>
               <input id="ed-conta-{{ u.id }}-nome" name="nome" required
                      value="{{ d['nome'] if desta else u.nome }}"></div>
-            <div class="campo{{ ' com-erro' if desta }}"><label for="ed-conta-{{ u.id }}-login">Login</label>
-              <input id="ed-conta-{{ u.id }}-login" name="login" required
+            {# Sem campo de login (23/10/2026): mudou o e-mail, o login acompanha. #}
+            <div class="campo{{ ' com-erro' if desta }}"><label for="ed-conta-{{ u.id }}-email">E-mail (login)</label>
+              <input id="ed-conta-{{ u.id }}-email" name="email" type="email" required maxlength="160"
                      autocapitalize="none" autocorrect="off" spellcheck="false"
-                     value="{{ d['login'] if desta else u.login }}"{{ ' autofocus' if desta }}></div>
-            <div class="campo{{ ' com-erro' if desta }}"><label for="ed-conta-{{ u.id }}-email">E-mail</label>
-              <input id="ed-conta-{{ u.id }}-email" name="email" type="email" required
-                     value="{{ d['email'] if desta else u.email }}"></div>
+                     aria-describedby="dica-ed-conta-{{ u.id }}-email"
+                     value="{{ d['email'] if desta else u.email }}"{{ ' autofocus' if desta }}>
+              <span class="dica" id="dica-ed-conta-{{ u.id }}-email">É com ele que a pessoa entra: trocar o
+                e-mail troca o login.</span></div>
           {% endcall %}
           {% endif %}
         </td>
@@ -479,17 +484,16 @@
                                 else 'a conta nasce sem perfil nenhum')) %}
   <div class="campo"><label for="conta-nome">Nome</label>
     <input id="conta-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
-  {# Login e e-mail são únicos no banco, e são os dois que a rota recusa; o foco
-     cai no login, que é o que a recusa cita primeiro. #}
+  {# Sem campo de login (23/10/2026): o login é o e-mail cadastrado, em
+     minúsculas. O e-mail é único no banco e é o que a rota recusa; o foco cai
+     nele quando a recusa volta. #}
   <div class="campo {{ 'com-erro' if forma == 'conta' }}">
-    <label for="conta-login">Login</label>
-    <input id="conta-login" name="login" required value="{{ d['login'] or '' }}"
+    <label for="conta-email">E-mail (login)</label>
+    <input id="conta-email" name="email" type="email" required maxlength="160"
            autocapitalize="none" autocorrect="off" spellcheck="false"
-           {{- ' autofocus' if forma == 'conta' }}></div>
-  <div class="campo {{ 'com-erro' if forma == 'conta' }}">
-    <label for="conta-email">E-mail</label>
-    <input id="conta-email" name="email" type="email" required
-           value="{{ d['email'] or '' }}"></div>
+           aria-describedby="dica-conta-email" placeholder="nome@ufvjm.edu.br"
+           value="{{ d['email'] or '' }}"{{ ' autofocus' if forma == 'conta' }}>
+    <span class="dica" id="dica-conta-email">É com ele que a pessoa entra no sistema.</span></div>
   {% if usuario.pode('perfil.conceder') %}
   {# Opcionais, e no MESMO envio: a conta já nasce abrindo o que precisa. O
      ato em branco entra como "pendente", como em Conceder perfil. #}

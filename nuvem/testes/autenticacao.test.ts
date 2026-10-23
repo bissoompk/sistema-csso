@@ -208,12 +208,13 @@ describe("login", () => {
     await db.update(e.usuario).set({ tentativas_falhas: 0 }).where(eq(e.usuario.login, "coordenador_csso"));
   });
 
-  it("usuário derivado do e-mail", () => {
-    const d = autenticacao.usuario_a_partir_do_email;
-    expect(d("Fabricio.Andrade@ufvjm.edu.br")).toBe("fabricio.andrade");
-    expect(d("nome+marca@dominio.br")).toBe("nomemarca");
-    expect(d("")).toBe("usuario");
-    expect(d("@só.acento")).toBe("usuario");
+  // era `usuario_a_partir_do_email` (só a parte local); desde 23/10/2026 o
+  // login é o e-mail inteiro, aparado e em minúsculas
+  it("o login é o e-mail, aparado e em minúsculas", () => {
+    const d = autenticacao.login_do_email;
+    expect(d("Fabricio.Andrade@ufvjm.edu.br")).toBe("fabricio.andrade@ufvjm.edu.br");
+    expect(d("  nome+marca@Dominio.br ")).toBe("nome+marca@dominio.br");
+    expect(d("")).toBe("");
   });
 
   it("login leva ao despachante /inicio, e não ao painel", async () => {

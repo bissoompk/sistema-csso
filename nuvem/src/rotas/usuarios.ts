@@ -354,6 +354,16 @@ async function _resolver_servidor(
  * `lower(login)`/`lower(email)` (migração 0012) segura a corrida; esta
  * conferência é a que devolve o popup com o digitado.
  */
+/**
+ * O e-mail é o login (23/10/2026): tem de ser um e-mail, e caber na coluna.
+ * Devolve o motivo da recusa, ou `null`.
+ */
+export function recusa_de_email(email: string): string | null {
+  if (email.length > 160) return "o e-mail tem mais de 160 caracteres.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "isto não parece um e-mail (nome@ufvjm.edu.br).";
+  return null;
+}
+
 export async function _duplicada(
   tx: Executor,
   d: { login: string; email: string },
@@ -656,9 +666,12 @@ rotas.post("/usuarios", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("usuario.criar_conta");
   const f = await formulario(c);
-  exigidos(f, "login", "nome", "email");
+  exigidos(f, "nome", "email");
   const tx = c.get("tx");
-  const limpos = { login: f.texto("login").trim(), nome: f.texto("nome").trim(), email: f.texto("email").trim() };
+  // O login é o e-mail cadastrado, aparado e em minúsculas (23/10/2026): o
+  // formulário não tem mais o campo, e um `login` que ainda venha é ignorado.
+  const email = f.texto("email").trim();
+  const limpos = { login: autenticacao.login_do_email(email), nome: f.texto("nome").trim(), email };
   // Perfil e servidor são opcionais e entram na MESMA transação: conta criada
   // num passo e perfil concedido noutro era conta que nascia sem abrir nada.
   const perfil_id = f.inteiro("perfil_id");
@@ -668,13 +681,20 @@ rotas.post("/usuarios", async (c) => {
     servidor: f.texto("servidor").trim(),
   };
   const digitado: Digitado = { forma: "conta", ...limpos, ...extras, perfil_id: perfil_id ?? "" };
-  if (!limpos.login || !limpos.nome || !limpos.email) {
-    return _tela_lista(c, usuario, { erro: "Nome, login e e-mail não ficam em branco.", digitado });
+  if (!limpos.nome || !limpos.email) {
+    return _tela_lista(c, usuario, { erro: "Nome e e-mail não ficam em branco.", digitado });
   }
+  const invalido = recusa_de_email(limpos.email);
+  if (invalido) return _tela_lista(c, usuario, { erro: `Conta não criada: ${invalido}`, digitado });
   // Login e e-mail são UNIQUE no banco (sem caixa, D12): sem esta conferência
   // a duplicata subia como erro de integridade e levava junto o que foi digitado.
   const ja = await _duplicada(tx, limpos);
-  if (ja) return _tela_lista(c, usuario, { erro: `Já existe conta com este ${ja.qual}: ${ja.conta.nome}.`, digitado });
+  if (ja) {
+    return _tela_lista(c, usuario, {
+      erro: `Conta não criada: o e-mail ${limpos.email} já é o login da conta de ${ja.conta.nome}. Cada conta entra com um e-mail próprio.`,
+      digitado,
+    });
+  }
   // conceder perfil e vincular a servidor são atos de governo, como em Gerir
   const governa = usuario.pode("perfil.conceder");
   if (!governa && (perfil_id !== null || extras.servidor)) {
@@ -763,14 +783,17 @@ rotas.post("/usuarios", async (c) => {
   return _senha_na_tela(
     c,
     usuario,
-    `Conta criada${detalhes.length ? ` (${detalhes.join("; ")})` : ""}.${sem_perfil} Senha provisória: ${provisoria}`,
+    `Conta criada${detalhes.length ? ` (${detalhes.join("; ")})` : ""}.${sem_perfil} ` +
+      `A pessoa entra com o e-mail ${novo!.email}. Senha provisória: ${provisoria}`,
   );
 });
 
 /**
- * Corrige nome, login e e-mail da conta (D11). O e-mail é a credencial de
- * entrada e a base do vínculo automático com o servidor; o login também é
- * credencial. Por isso:
+ * Corrige nome e e-mail da conta (D11). O e-mail é a credencial de entrada e a
+ * base do vínculo automático com o servidor; o login É o e-mail (23/10/2026):
+ * mudou o e-mail, o login acompanha, e o formulário não tem mais o campo. Se o
+ * e-mail não muda, o login fica como está (a conta de teste segue com o nome de
+ * usuário antigo). Por isso:
  *
  * - conta de administração (vigente ou futura) só por quem concede perfil;
  * - login e e-mail de OUTRA conta só por quem poderia redefinir a senha dela
@@ -786,12 +809,18 @@ rotas.post("/usuarios/:id{[0-9]+}/dados", async (c) => {
   const tx = c.get("tx");
   const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
   if (!alvo) return redirecionar(c, "/usuarios");
-  const novos = { nome: f.texto("nome").trim(), login: f.texto("login").trim(), email: f.texto("email").trim() };
+  const email = f.texto("email").trim();
+  const novos = {
+    nome: f.texto("nome").trim(),
+    login: email === alvo.email ? alvo.login : autenticacao.login_do_email(email),
+    email,
+  };
   const digitado: Digitado = { forma: "dados", usuario_alvo: alvo.id, ...novos };
   const recusar = (motivo: string) =>
     _tela_lista(c, usuario, { erro: `Os dados de ${alvo.nome} não foram alterados: ${motivo}`, digitado });
-  if (!novos.nome || !novos.login || !novos.email) return recusar("nome, login e e-mail não ficam em branco.");
-  if (!/^[^\s@]+@[^\s@]+$/.test(novos.email)) return recusar("o e-mail não parece um e-mail.");
+  if (!novos.nome || !novos.email) return recusar("nome e e-mail não ficam em branco.");
+  const invalido = recusa_de_email(novos.email);
+  if (invalido) return recusar(invalido);
   const proprio = alvo.id === usuario.id;
   const do_topo = proprio ? null : await _recusa_sobre_administrador(tx, usuario, alvo.id);
   if (do_topo) return recusar(do_topo);
@@ -804,10 +833,10 @@ rotas.post("/usuarios/:id{[0-9]+}/dados", async (c) => {
   const credencial = novos.login !== alvo.login || novos.email.toLowerCase() !== alvo.email.toLowerCase();
   if (credencial && !proprio) {
     const recusa = await _recusa_de_redefinicao(tx, usuario, alvo.id);
-    if (recusa) return recusar(`login e e-mail são credenciais, e ${recusa}`);
+    if (recusa) return recusar(`o e-mail é o login da conta, e ${recusa}`);
   }
   const ja = await _duplicada(tx, novos, alvo.id);
-  if (ja) return recusar(`já existe conta com este ${ja.qual}: ${ja.conta.nome}.`);
+  if (ja) return recusar(`o e-mail ${novos.email} já é o login da conta de ${ja.conta.nome}. Cada conta entra com um e-mail próprio.`);
   const mudou = (["nome", "login", "email"] as const).filter((campo) => novos[campo] !== alvo[campo]);
   if (!mudou.length) return redirecionar(c, comMensagem("/usuarios", "Nada mudou."));
   await tx.update(tabela_usuario).set(novos).where(eq(tabela_usuario.id, alvo.id));
@@ -902,7 +931,7 @@ rotas.post("/usuarios/:id{[0-9]+}/senha", async (c) => {
     descricao: `Senha de '${alvo.login}' redefinida e sessões revogadas.`,
     usuario,
   });
-  return _senha_na_tela(c, usuario, `Nova senha provisória de ${alvo.login}: ${provisoria}`);
+  return _senha_na_tela(c, usuario, `Nova senha provisória de ${alvo.login}: ${provisoria}. A pessoa entra com o e-mail ${alvo.email}.`);
 });
 
 /**

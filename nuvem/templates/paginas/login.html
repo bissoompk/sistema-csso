@@ -18,11 +18,13 @@
   <form method="post" action="/login">
     <input type="hidden" name="proximo" value="{{ proximo }}">
     <div class="campo">
-      {# "E-mail ou usuário" (M77): o login antigo continua valendo, e o rótulo
-         "E-mail" com um nome de usuário dentro fazia a pessoa achar que errou #}
-      <label for="login">E-mail ou usuário</label>
-      {# não é type="email": o servidor ainda aceita o nome de usuário antigo, e
-         o navegador barraria quem digita por hábito antes de a troca assentar #}
+      {# "E-mail" (23/10/2026): o login é o e-mail cadastrado, e as contas de
+         produção foram convertidas na publicação. Era "E-mail ou usuário"
+         (M77) enquanto o nome de usuário era a outra credencial. #}
+      <label for="login">E-mail</label>
+      {# não é type="email": o servidor ainda aceita o nome de usuário antigo
+         (as contas de teste e a conta que a conversão pulou por conflito), e o
+         navegador barraria quem o digita #}
       {# o que foi digitado volta; a senha, logo abaixo, nunca — ver o comentário
          da rota. Sem isto, todo erro de senha cobrava o e-mail institucional
          inteiro de novo. #}
@@ -30,8 +32,8 @@
              autocomplete="username email" autocapitalize="none" autocorrect="off" spellcheck="false"
              inputmode="email" placeholder="nome@ufvjm.edu.br" autofocus required
              aria-describedby="dica-login">
-      <span class="dica" id="dica-login">O e-mail institucional é a credencial de
-        entrada. O nome de usuário antigo continua valendo.</span>
+      <span class="dica" id="dica-login">Entre com o e-mail cadastrado na sua
+        conta: ele é o seu login.</span>
     </div>
     <div class="campo">
       <label for="senha">Senha</label>

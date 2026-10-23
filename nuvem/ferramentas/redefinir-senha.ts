@@ -3,7 +3,11 @@
  * superintendente esquece a dele e não sobra ninguém na tela que possa
  * redefinir (a própria senha não se redefine por /usuarios).
  *
- *     npm run redefinir-senha -- --login fabricio [--reativar] [--conceder-superintendente [--manter-senha]]
+ *     npm run redefinir-senha -- --email fabricio@ufvjm.edu.br [--reativar] [--conceder-superintendente [--manter-senha]]
+ *
+ * O login é o e-mail (23/10/2026): `--email` e `--login` são a mesma coisa, e
+ * a conta se acha pelo e-mail OU pelo login antigo, sem caixa — como na tela
+ * de entrada (`buscar_por_login`). `--login <nome antigo>` continua valendo.
  *
  * Gera uma senha provisória (`senha_provisoria()`), obriga a troca no próximo
  * login, desbloqueia a conta, derruba as sessões abertas e grava
@@ -42,11 +46,11 @@ export async function redefinir(
   tx: Executor,
   login: string,
   reativar = false,
-): Promise<{ senha: string; nome: string; ativo: boolean } | null> {
+): Promise<{ senha: string; nome: string; email: string; ativo: boolean } | null> {
   const { usuario } = await import("../src/db/esquema/index.js");
   const autenticacao = await import("../src/servicos/autenticacao.js");
   const auditoria = await import("../src/servicos/auditoria.js");
-  const [alvo] = await tx.select().from(usuario).where(eq(usuario.login, login));
+  const alvo = await autenticacao.buscar_por_login(tx, login);
   if (!alvo) return null;
   const senha = autenticacao.senha_provisoria();
   await tx
@@ -76,7 +80,7 @@ export async function redefinir(
       usuario_nome: ATOR,
     });
   }
-  return { senha, nome: alvo.nome, ativo: alvo.ativo || reativar };
+  return { senha, nome: alvo.nome, email: alvo.email, ativo: alvo.ativo || reativar };
 }
 
 /**
@@ -88,14 +92,15 @@ export async function conceder_superintendente(
   tx: Executor,
   login: string,
 ): Promise<"concedido" | "ja_tinha" | null> {
-  const { usuario, perfil, atribuicao } = await import("../src/db/esquema/index.js");
+  const { perfil, atribuicao } = await import("../src/db/esquema/index.js");
   const auditoria = await import("../src/servicos/auditoria.js");
   const governanca = await import("../src/servicos/governanca.js");
   const { hoje_iso } = await import("../src/dominio/datas.js");
   const { vigente_em } = await import("../src/dominio/organizacao.js");
   const datas_br = await import("../src/servicos/datas_br.js");
+  const { buscar_por_login } = await import("../src/servicos/autenticacao.js");
   await governanca.travar(tx);
-  const [alvo] = await tx.select().from(usuario).where(eq(usuario.login, login));
+  const alvo = await buscar_por_login(tx, login);
   if (!alvo) return null;
   const [sup] = await tx.select().from(perfil).where(eq(perfil.codigo, "superintendente"));
   if (!sup) throw new Error("o perfil superintendente não existe: rode a semente (ferramentas/semear.ts) antes.");
@@ -136,10 +141,10 @@ export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Pr
     saida.erro("DATABASE_URL ausente.");
     return 1;
   }
-  const login = (valor(argv, "--login") ?? "").trim();
+  const login = (valor(argv, "--email") ?? valor(argv, "--login") ?? "").trim();
   if (!login) {
     saida.erro(
-      "uso: npm run redefinir-senha -- --login <login> [--reativar] [--conceder-superintendente [--manter-senha]]",
+      "uso: npm run redefinir-senha -- --email <e-mail> [--reativar] [--conceder-superintendente [--manter-senha]]",
     );
     return 1;
   }
@@ -160,17 +165,17 @@ export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Pr
     await banco.fechar();
   }
   if (conceder && concessao === null) {
-    saida.erro(`ERRO: não existe conta com o login '${login}'. Nada foi alterado.`);
+    saida.erro(`ERRO: não existe conta com o e-mail (ou login) '${login}'. Nada foi alterado.`);
     return 2;
   }
   if (concessao === "concedido") saida.log(`Perfil superintendente concedido a ${login}, sem termo. Corrija o ato em Gerir.`);
   if (concessao === "ja_tinha") saida.log(`${login} já tem superintendente vigente e sem termo: nada concedido.`);
   if (so_conceder) return 0;
   if (!feito) {
-    saida.erro(`ERRO: não existe conta com o login '${login}'. Nada foi alterado.`);
+    saida.erro(`ERRO: não existe conta com o e-mail (ou login) '${login}'. Nada foi alterado.`);
     return 2;
   }
-  saida.log(`Conta:             ${login} (${feito.nome})`);
+  saida.log(`Conta:             ${feito.nome} — entra com o e-mail ${feito.email}`);
   saida.log(`Senha provisória:  ${feito.senha}`);
   saida.log("Aparece só agora. O sistema exige a troca no próximo login; as sessões abertas caíram.");
   if (!feito.ativo) saida.log("ATENÇÃO: a conta está INATIVA — rode de novo com --reativar para poder entrar.");
