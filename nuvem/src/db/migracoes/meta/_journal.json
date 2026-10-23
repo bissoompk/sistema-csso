@@ -141,6 +141,13 @@
       "when": 1792765960108,
       "tag": "0019_usuario_login_email",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792769053130,
+      "tag": "0020_ativacao_acesso",
+      "breakpoints": true
     }
   ]
 }

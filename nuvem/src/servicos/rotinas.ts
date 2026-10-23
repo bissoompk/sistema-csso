@@ -38,6 +38,7 @@ import { TAMANHO_MINIMO_SENHA_BACKUP } from "../config.js";
 import { expurgos_de_privacidade, mensagem_sem_dados } from "./privacidade.js";
 import { expurgar_corpos } from "./email.js";
 import * as acesso_participante from "./acesso_participante.js";
+import * as ativar_acesso from "./ativar_acesso.js";
 
 export const ROTINA_BACKUP = "BACKUP";
 export const ROTINA_RETENCAO = "RETENCAO_BACKUP";
@@ -224,7 +225,7 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
     async (tx) => ({
       ...(await expurgos_de_privacidade(tx)),
       corpos: await expurgar_corpos(tx),
-      links: await acesso_participante.expurgar(tx),
+      links: (await acesso_participante.expurgar(tx)) + (await ativar_acesso.expurgar(tx)),
     }),
     (r) => [
       true,

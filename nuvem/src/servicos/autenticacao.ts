@@ -390,7 +390,7 @@ function _mensagem_de_bloqueio(ate: Date): string {
     `Conta bloqueada até ${local_formatado(ate)} por ` +
     `${obterConfig().maxTentativas} tentativas malsucedidas seguidas. Espere e tente ` +
     "de novo; se a senha se perdeu, quem administra o sistema redefine — " +
-    "não há redefinição por e-mail."
+    "servidor também pode usar «Esqueci minha senha» na tela de entrada."
   );
 }
 
@@ -686,7 +686,7 @@ export async function conferir_senha_atual(
       mensagem:
         `Senha atual incorreta pela ${cfg.maxTentativas}ª vez seguida. Por segurança a conta ficou bloqueada até ` +
         `${local_formatado(bloqueado_ate)} e as sessões abertas foram encerradas. Se a senha se perdeu, quem ` +
-        "administra o sistema redefine — não há redefinição por e-mail.",
+        "administra o sistema redefine — ou use «Esqueci minha senha» na tela de entrada.",
       bloqueada: true,
     };
   }

@@ -36,6 +36,7 @@ export const SEM_PERMISSAO_DE_RBAC: readonly (readonly [string, string])[] = [
   ["/validar", "validação pública do certificado"],
   ["/acesso-participante", "acesso do participante externo pelo link do e-mail"],
   ["/participante", "acesso do participante externo pelo link do e-mail"],
+  ["/ativar-acesso", "o servidor ativa o acesso ou redefine a senha pelo link do e-mail do cadastro, sem conta"],
   ["/certificados/acesso", "o participante externo pede o link de acesso pelo e-mail, sem conta"],
 ];
 

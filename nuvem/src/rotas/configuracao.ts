@@ -18,6 +18,7 @@
  */
 import { tem_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { Hono } from "hono";
+import type { Executor } from "../db/cliente.js";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import { obterConfig, VERSAO } from "../config.js";
@@ -26,6 +27,8 @@ import { EscopoNaoDeclarado, PermissaoNegada, type UsuarioAtual } from "../servi
 import { modulo_nivelado, permissoes_do_modulo } from "../servicos/niveis_modulo.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as servico_backup from "../servicos/backup.js";
+import * as ativar_acesso from "../servicos/ativar_acesso.js";
+import * as servico_email from "../servicos/email.js";
 import { RotinaFalhou, conferir_senha_do_backup } from "../servicos/rotinas.js";
 import * as sei from "../servicos/sei.js";
 import { SLA_PADRAO, gravar_sla, sla_vigente } from "../servicos/processo.js";
@@ -66,6 +69,8 @@ export interface BlocosConfig {
   retirada_epi: boolean;
   /** Onde o dado mora (host do banco, caminhos) */
   onde_mora: boolean;
+  /** Envio de e-mail: configurado ou não, e a fila (sem valor nenhum) */
+  envio_email: boolean;
   /** o botão e o POST do backup cifrado */
   backup: boolean;
   /** o botão e o POST da exportação completa */
@@ -93,9 +98,10 @@ export function blocos_config(usuario: UsuarioAtual): BlocosConfig {
     PERMISSOES_GESTAO_EPI.some((p) => usuario.pode(p) && _na_equipe(usuario, p));
   const onde_mora = usuario.pode("backup.executar");
   const backup = usuario.pode("backup.executar");
+  const envio_email = usuario.pode("backup.executar");
   const exportar_tudo = pode_exportar_tudo(usuario) && usuario.pode("exposicao.ver");
   const secao_setor = do_setor || retirada_epi;
-  const secao_sistema = onde_mora || backup || exportar_tudo;
+  const secao_sistema = onde_mora || backup || exportar_tudo || envio_email;
   return {
     setor_emissor: do_setor,
     sla: do_setor,
@@ -104,6 +110,7 @@ export function blocos_config(usuario: UsuarioAtual): BlocosConfig {
     integracao_sei: do_setor,
     retirada_epi,
     onde_mora,
+    envio_email,
     backup,
     exportar_tudo,
     secao_setor,
@@ -160,6 +167,25 @@ function _onde_mora() {
   };
 }
 
+/**
+ * O envio de e-mail para quem opera a máquina: só "configurado ou não" (e os
+ * NOMES das variáveis que faltam), a fila e os servidores sem e-mail. Nenhum
+ * valor — nem servidor, nem usuário, nem senha — chega à tela.
+ */
+async function _envio_de_email(tx: Executor, usuario: UsuarioAtual) {
+  const fila = await servico_email.contagem(tx);
+  const sem = await ativar_acesso.sem_email(tx);
+  return {
+    configurado: servico_email.configurado(),
+    faltam: servico_email.variaveis_faltando(),
+    pendentes: fila.PENDENTE ?? 0,
+    falhos: fila.FALHOU ?? 0,
+    // os SIAPE (sem nome) de quem pediu e não tem e-mail: só a quem lê dado nominal
+    ativos_sem_email: sem.ativos_sem_email,
+    pediram: usuario.ve_dado_nominal ? sem.pediram : [],
+  };
+}
+
 async function _tela(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: string | null; erro?: string | null } = {}) {
   const blocos = _exigir_config(usuario);
   const tx = c.get("tx");
@@ -171,6 +197,7 @@ async function _tela(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: string 
     blocos,
     pode_exportar_tudo: blocos.exportar_tudo,
     onde: blocos.onde_mora ? _onde_mora() : null,
+    envio: blocos.envio_email ? await _envio_de_email(tx, usuario) : null,
     versao: VERSAO,
     // o código da coluna é chave do parâmetro; a tela mostra o rótulo do quadro
     rotulo_coluna: Object.fromEntries(COLUNAS_KANBAN),
