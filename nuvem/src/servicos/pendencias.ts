@@ -9,6 +9,7 @@
 import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
+  acidente_ocorrencia,
   agora_utc,
   certificado,
   demanda,
@@ -72,6 +73,22 @@ export const TIPOS: Record<string, readonly [string, number]> = {
   // ficaria para conceder perfil; o prazo real é o último dia coberto
   // (`governanca.sincronizar_aviso_de_cobertura`)
   COBERTURA_DE_CONCESSAO_A_VENCER: ["Garantir quem conceda perfil depois do vencimento", 30],
+  // --- Acidentes (CAT/SP, 23/10/2026). A âncora é `acidente_ocorrencia`; a
+  // descrição de cada uma leva só o protocolo, nunca o nome nem o que aconteceu.
+  // Prazos da decisão D13: triagem 2, complementação 5, investigação 30, perícia 60.
+  // nasce SEM responsável (é da fila da CSSO) e depois fica com quem assumiu
+  ACIDENTE_TRIAR: ["Triar a comunicação de acidente", 2],
+  // o prazo real é a data do acidente + 10 dias (art. 214 da Lei 8.112); a
+  // prorrogação registrada o move. Varrida pela rotina noturna
+  ACIDENTE_PRAZO_COMUNICACAO: ["Encaminhar a comunicação de acidente dentro do prazo legal", 10],
+  // o responsável é o comunicante logado; o vencimento avisa a equipe
+  ACIDENTE_COMPLEMENTACAO: ["Complementar a comunicação de acidente", 5],
+  // nasce SEM responsável (fila do médico do trabalho)
+  ACIDENTE_SAUDE_REGISTRAR: ["Confirmar e registrar a saúde declarada na comunicação de acidente", 5],
+  ACIDENTE_INVESTIGAR: ["Investigar o acidente e emitir o relatório", 30],
+  // o prazo real é o da própria ação do plano
+  ACIDENTE_ACAO_PRAZO: ["Cumprir a ação do plano de um acidente", 30],
+  ACIDENTE_AGUARDA_PERICIA: ["Acompanhar a decisão da perícia do SIASS", 60],
 };
 
 // ---------------------------------------------------------------------
@@ -82,7 +99,7 @@ export const TIPOS: Record<string, readonly [string, number]> = {
 // `backup.executar` (e tinha `indicador.ver` até 22/10/2026) e, por decisão de
 // projeto, não vê conteúdo técnico. Módulo novo acrescenta a sua aqui.
 // (A história completa de cada entrada está no Python.)
-export const PERMISSOES_VER: readonly string[] = ["processo.ver", "treinamento.ver", "epi.ver", "demanda.ver"];
+export const PERMISSOES_VER: readonly string[] = ["processo.ver", "treinamento.ver", "epi.ver", "demanda.ver", "acidente.ver"];
 
 // Fechar pendência dos outros é ato de quem opera o MÓDULO DELA: a permissão
 // é a de escrita do módulo onde a tarefa se cumpre, tipo a tipo. Era uma lista
@@ -119,6 +136,14 @@ export const PERMISSAO_CONCLUIR_POR_TIPO: Readonly<Record<string, string>> = Obj
   TURMA_INSCRICAO_A_CONFIRMAR: "turma.inscrever",
   CERTIFICADO_A_VENCER: "treinamento.gerenciar",
   COBERTURA_DE_CONCESSAO_A_VENCER: "perfil.conceder",
+  // acidentes: quem fecha a tarefa dos outros é quem escreve naquela etapa
+  ACIDENTE_TRIAR: "acidente.triar",
+  ACIDENTE_PRAZO_COMUNICACAO: "acidente.siass",
+  ACIDENTE_COMPLEMENTACAO: "acidente.triar",
+  ACIDENTE_SAUDE_REGISTRAR: "acidente.saude_registrar",
+  ACIDENTE_INVESTIGAR: "acidente.investigar",
+  ACIDENTE_ACAO_PRAZO: "acidente.investigar",
+  ACIDENTE_AGUARDA_PERICIA: "acidente.siass",
 });
 
 export function pode_ver(usuario: UsuarioAtual | null | undefined): boolean {
@@ -353,6 +378,7 @@ const _TITULAR_POR_ENTIDADE: readonly string[] = [
   "epi_ficha_registro",
   "epi_comunicacao_titular",
   "demanda",
+  "acidente_ocorrencia",
 ];
 
 /**
@@ -393,6 +419,12 @@ export async function titular_de(tx: Executor, itens: Pendencia[]): Promise<Map<
         .select({ id: epi_comunicacao_titular.id, servidor_id: epi_comunicacao_titular.servidor_id })
         .from(epi_comunicacao_titular)
         .where(inArray(epi_comunicacao_titular.id, ids));
+    } else if (entidade === "acidente_ocorrencia") {
+      // o titular da ocorrência é o acidentado principal (quando é servidor)
+      linhas = await tx
+        .select({ id: acidente_ocorrencia.id, servidor_id: acidente_ocorrencia.servidor_id })
+        .from(acidente_ocorrencia)
+        .where(inArray(acidente_ocorrencia.id, ids));
     } else if (entidade === "epi_requisicao") {
       linhas = await tx
         .select({ id: epi_requisicao.id, servidor_id: epi_requisicao.servidor_id })
@@ -444,6 +476,8 @@ const _LUGAR_DA_ENTIDADE: Readonly<Record<string, readonly [string, string, stri
   // tela própria, e o botão de confirmar mora na aba de inscrições
   turma: ["Inscrições da turma", "/turmas/", "?aba=inscricoes", "turma.inscrever"],
   certificado: ["Certificado", "/certificados/", "", "certificado.ver"],
+  // o número que se mostra é o protocolo (`CAT-2026-0001`); o texto não leva nome
+  acidente_ocorrencia: ["Ocorrência de acidente", "/acidentes/", "", "acidente.ver"],
 };
 
 async function _mapa<T extends { id: number }>(
@@ -508,6 +542,13 @@ export async function leitura(tx: Executor, usuario: UsuarioAtual, itens: Penden
       .where(inArray(certificado.id, l)),
   );
 
+  const ocorrencias = await _mapa(ids((p) => p.entidade_id, "acidente_ocorrencia"), (l) =>
+    tx
+      .select({ id: acidente_ocorrencia.id, protocolo: acidente_ocorrencia.protocolo })
+      .from(acidente_ocorrencia)
+      .where(inArray(acidente_ocorrencia.id, l)),
+  );
+
   const resultado = new Map<number, Leitura>();
   for (const p of itens) {
     const onde: Ancora[] = [];
@@ -537,6 +578,7 @@ export async function leitura(tx: Executor, usuario: UsuarioAtual, itens: Penden
       if (lugar) {
         let numero = String(p.entidade_id);
         if (p.entidade === "turma") numero = turmas.get(p.entidade_id)?.codigo ?? numero;
+        if (p.entidade === "acidente_ocorrencia") numero = ocorrencias.get(p.entidade_id)?.protocolo ?? numero;
         if (p.entidade === "certificado") {
           const ce = certificados.get(p.entidade_id);
           if (ce) numero = `nº ${ce.numero_impresso || `${ce.numero}/${ce.ano}`}`;

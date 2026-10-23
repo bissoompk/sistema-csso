@@ -574,12 +574,35 @@ export const MODULOS: readonly Modulo[] = [
       "10 dias, investigação técnica que instrui a perícia do SIASS, e a " +
       "memória que hoje não existe — série histórica, taxa de frequência " +
       "e de gravidade.",
-    disponivel: false,
+    itens: [
+      new Item(
+        "Painel",
+        "/acidentes",
+        "acidente.ver",
+        "Comunicações a triar, prazos de 10 dias, investigações e ações em aberto.",
+      ),
+      new Item(
+        "Comunicar acidente",
+        "/acidentes/comunicar",
+        "acidente.comunicar",
+        "Registrar a ocorrência: quem, quando, onde e o que aconteceu.",
+      ),
+      new Item("Fila de ocorrências", "/acidentes/fila", "acidente.ver", "Todas as ocorrências, com situação e prazo."),
+      new Item("Plano de ação", "/acidentes/acoes", "acidente.ver", "As ações corretivas e preventivas e os seus prazos."),
+      new Item(
+        "Indicadores",
+        "/acidentes/indicadores",
+        "indicador.ver",
+        "Série histórica, taxa de frequência e de gravidade.",
+        false,
+        ["acidente.ver"],
+      ),
+    ],
+    // entregue por fatias: a investigação, a saúde e o SIASS vêm depois da
+    // fundação, e o que ainda falta continua declarado
     itens_previstos: [
-      "Registro da ocorrência com espécie: típico, trajeto ou doença do trabalho",
       "Investigação técnica com medições e evidências",
-      "Revisão adversarial antes do laudo: a conclusão tem de sobreviver à objeção",
-      "CAT/SP instruída — o nexo causal quem estabelece é a perícia oficial",
+      "Relatório e encaminhamento ao SIASS, com a decisão da perícia",
       "Indicadores por unidade, posto e fator; cruzamento com a ficha de EPI",
     ],
   }),
@@ -712,6 +735,18 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
       new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true),
       new Item("Meus pedidos de EPI", "/epis/requisicoes", "epi.ver", "Os seus pedidos e em que pé estão.", true),
       new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true),
+    ],
+  },
+  {
+    titulo: "Acidentes",
+    itens: [
+      new Item(
+        "Minhas comunicações",
+        "/acidentes/minhas",
+        "acidente.ver",
+        "Os acidentes que você comunicou ou em que foi o acidentado, e em que pé estão.",
+        true,
+      ),
     ],
   },
   {
@@ -1112,6 +1147,12 @@ const ICONES: Readonly<Record<string, string>> = {
   "/epis/estoque": "boxes",
   "/epis/catalogo": "tags",
   "/epis/relatorios": "bar-chart",
+  "/acidentes": "grid-1x2",
+  "/acidentes/comunicar": "journal-plus",
+  "/acidentes/fila": "inbox",
+  "/acidentes/acoes": "list-check",
+  "/acidentes/indicadores": "bar-chart",
+  "/acidentes/minhas": "exclamation-triangle",
   "/treinamentos": "grid-1x2",
   "/turmas": "collection",
   "/turmas/minhas": "mortarboard",

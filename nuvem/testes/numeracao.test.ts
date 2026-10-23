@@ -90,6 +90,23 @@ describe("numeracao", () => {
     expect(r).toEqual([1, 3]);
   });
 
+  it("CAT/SP: sequencial por ano e pula o número já ocupado (o migrado da planilha)", async () => {
+    await naTransacao(async (tx) => {
+      // só o número importa: FKs e travas desligadas nesta transação de teste
+      await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+      await tx.execute(
+        sql`INSERT INTO acidente_ocorrencia (protocolo, ano, numero, especie, origem, data_evento, local_tipo, local_especificacao, prazo_comunicacao, criado_em)
+            VALUES ('CAT-2065-0002', 2065, 2, 'TIPICO', 'MIGRACAO', '2065-01-01', 'OUTRO', 'x', '2065-01-11', now())`,
+      );
+    });
+    const r = await naTransacao(async (tx) => [
+      await numeracao.proximo_numero_cat_sp(tx, 2065),
+      await numeracao.proximo_numero_cat_sp(tx, 2065),
+      await numeracao.proximo_numero_cat_sp(tx, 2066),
+    ]);
+    expect(r).toEqual([1, 3, 1]);
+  });
+
   it("recontar e lacunas", async () => {
     await naTransacao(async (tx) => {
       await tx.execute(sql`INSERT INTO parecer_sequencia (ano, ultimo_numero) VALUES (2070, 0)`);

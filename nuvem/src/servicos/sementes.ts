@@ -12,11 +12,23 @@
  * serviço recebe o executor e não fecha transação (PORTE.md §2); quem chama
  * (`ferramentas/semear.ts`, o `globalSetup` dos testes) abre e fecha.
  */
+import {
+  AGENTES_CAUSADORES,
+  AGENTES_DA_DOENCA,
+  NATUREZAS_DA_LESAO,
+  PARTES_DO_CORPO,
+  SITUACOES_GERADORAS,
+} from "../dominio/acidente_catalogos.js";
 import { APARENCIA_SETOR_INICIAL } from "../dominio/organizacao.js";
 import { and, eq, isNull, type SQL } from "drizzle-orm";
 import type { PgTable, PgColumn } from "drizzle-orm/pg-core";
 import type { Executor } from "../db/cliente.js";
 import {
+  acidente_agente_causador,
+  acidente_agente_doenca,
+  acidente_natureza_lesao,
+  acidente_parte_corpo,
+  acidente_situacao_geradora,
   agente_nocivo,
   autoridade_destinataria,
   campus,
@@ -813,6 +825,32 @@ export async function semear_modelo_certificado(tx: Executor): Promise<void> {
 }
 
 /** Tudo, na ordem do Python. Quem chama dá o COMMIT (ver o cabeçalho). */
+/**
+ * Catálogos do módulo de acidentes (CAT/SP): partes do corpo, agentes
+ * causadores, agentes da doença, situações geradoras e natureza da lesão.
+ * Idempotente: a chave é o `rotulo_legado` (a da migração da planilha) e, onde
+ * ele não existe, a `ordem`. Quem já existe não é reescrito (o rótulo pode ter
+ * sido ajustado depois). A natureza da lesão está vazia até a lista oficial
+ * chegar (ver `acidente_catalogos.ts`).
+ */
+export async function semear_acidentes(tx: Executor): Promise<void> {
+  for (const [ordem, rotulo, legado] of PARTES_DO_CORPO) {
+    await _obter_ou_criar(tx, acidente_parte_corpo, { ordem }, { rotulo, rotulo_legado: legado });
+  }
+  for (const [ordem, rotulo, grupo, legado] of AGENTES_CAUSADORES) {
+    await _obter_ou_criar(tx, acidente_agente_causador, { ordem }, { rotulo, grupo, rotulo_legado: legado });
+  }
+  for (const [ordem, rotulo, legado] of AGENTES_DA_DOENCA) {
+    await _obter_ou_criar(tx, acidente_agente_doenca, { ordem }, { rotulo, rotulo_legado: legado });
+  }
+  for (const [ordem, rotulo, legado] of SITUACOES_GERADORAS) {
+    await _obter_ou_criar(tx, acidente_situacao_geradora, { ordem }, { rotulo, rotulo_legado: legado });
+  }
+  for (const [ordem, rotulo, codigo_oficial, legado] of NATUREZAS_DA_LESAO) {
+    await _obter_ou_criar(tx, acidente_natureza_lesao, { ordem }, { rotulo, codigo_oficial, rotulo_legado: legado });
+  }
+}
+
 export async function semear(tx: Executor): Promise<void> {
   await semear_rbac(tx);
   await semear_organizacao(tx);
@@ -821,4 +859,5 @@ export async function semear(tx: Executor): Promise<void> {
   await semear_emissores(tx);
   await semear_epi(tx);
   await semear_modelo_certificado(tx);
+  await semear_acidentes(tx);
 }

@@ -31,6 +31,7 @@ export const SEQUENCIAS: Readonly<Record<string, string>> = Object.freeze({
   turma_sequencia: "turma",
   certificado_sequencia: "certificado",
   epi_requisicao_sequencia: "epi_requisicao",
+  acidente_cat_sp_sequencia: "acidente_ocorrencia",
 });
 
 export const COLUNAS_ADMITIDAS: ReadonlySet<string> = new Set(["numero"]);
@@ -108,6 +109,15 @@ export function proximo_numero_certificado(tx: Executor, ano: number): Promise<n
  */
 export function proximo_numero_requisicao_epi(tx: Executor, ano: number): Promise<number> {
   return proximo_numero(tx, ano, { tabela_sequencia: "epi_requisicao_sequencia", tabela_alvo: "epi_requisicao" });
+}
+
+/**
+ * O número do protocolo `CAT-AAAA-NNNN` da ocorrência de acidente (D7),
+ * consumido no ENVIO da comunicação. Cancelar não devolve o número, e os já
+ * ocupados (os migrados da planilha antiga) são pulados.
+ */
+export function proximo_numero_cat_sp(tx: Executor, ano: number): Promise<number> {
+  return proximo_numero(tx, ano, { tabela_sequencia: "acidente_cat_sp_sequencia", tabela_alvo: "acidente_ocorrencia" });
 }
 
 /** Após a importação: ultimo_numero = max(numero) por ano. */

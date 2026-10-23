@@ -53,8 +53,8 @@ function _previstos(html: string): string {
 
 describe("Visão geral: quem vê qual cartão", () => {
   it.each([
-    ["coordenador_csso", ["processos-sei", "epis", "certificados", "demandas"]],
-    ["superintendente", ["processos-sei", "epis", "certificados", "demandas", "administracao"]],
+    ["coordenador_csso", ["processos-sei", "epis", "certificados", "acidentes", "demandas"]],
+    ["superintendente", ["processos-sei", "epis", "certificados", "acidentes", "demandas", "administracao"]],
     ["almoxarife_sesmt", ["epis", "demandas"]],
     ["consulta_progep", ["processos-sei", "epis", "certificados"]],
     ["admin_ti", ["administracao"]],
@@ -89,7 +89,7 @@ describe("Visão geral: quem vê qual cartão", () => {
     expect(_cartoes(await _visao("coord_sem_epi"))).toContain("epis");
     await db.insert(e.usuario_nivel_modulo).values({ usuario_id: conta.id, modulo: "epis", nivel: "SEM_ACESSO" });
     const html = await _visao("coord_sem_epi");
-    expect(_cartoes(html)).toEqual(["processos-sei", "certificados", "demandas"]);
+    expect(_cartoes(html)).toEqual(["processos-sei", "certificados", "acidentes", "demandas"]);
     expect(_conteudo(html)).not.toContain('href="/epis');
   });
 
@@ -111,7 +111,7 @@ describe("Visão geral: quem vê qual cartão", () => {
     expect(usuario.pode("processo.ver")).toBe(false);
     const html = await _visao("coord_sem_sei");
     expect(_cartoes(html)).not.toContain("processos-sei");
-    expect(_cartoes(html)).toEqual(["epis", "certificados", "demandas"]);
+    expect(_cartoes(html)).toEqual(["epis", "certificados", "acidentes", "demandas"]);
   });
 
   it("a saudação usa o primeiro nome, e a tela leva ao mapa das telas", async () => {
@@ -153,7 +153,8 @@ describe("Visão geral: os módulos previstos", () => {
     for (const m of modulos.MODULOS.filter((x) => !x.disponivel)) {
       expect(previstos, m.codigo).toContain(`<h3>${m.nome}</h3>`);
     }
-    expect(previstos).toContain("Análise de Acidentes");
+    // Análise de Acidentes saiu da lista: já é módulo disponível (F0, 23/10/2026)
+    expect(previstos).not.toContain("Análise de Acidentes");
     expect(previstos).toContain("CISSP");
     expect(previstos).toContain("PGR");
     expect(previstos).not.toContain("<a ");

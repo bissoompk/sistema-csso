@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Análise de Acidentes · SISA{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if pode_comunicar %}<a class="botao" href="/acidentes/comunicar">Comunicar acidente</a>{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Análise de Acidentes</h1>
+      <p class="sub">As ocorrências ao seu alcance, por situação. A comunicação do
+        acidente em serviço tem prazo de 10 dias (Lei 8.112, art. 214).</p>
+    </div>
+  </div>
+  <div class="cartoes-status">
+    {% for c in cartoes %}
+    <div class="cartao-status">
+      <p class="cartao-status-rotulo">{{ c.rotulo }}</p>
+      <span class="cartao-status-valor">{{ c.n }}</span>
+      <a href="/acidentes/fila">Ver a fila</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

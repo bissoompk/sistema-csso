@@ -18,12 +18,13 @@
  * `DonoNaoDeclarado` — o mesmo lado seguro do Python para entidade sem regra.
  * Isso também quebra o ciclo de import (o dono importa auditoria/anexos).
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { epi_ficha_registro } from "../db/esquema/index.js";
+import { acidente_ocorrencia, acidente_relatorio, epi_ficha_registro } from "../db/esquema/index.js";
 import * as auditoria from "./auditoria.js";
 import type { Anexo } from "./anexos.js";
-import { PermissaoNegada, type UsuarioAtual } from "./rbac.js";
+import { pode_ver_restrita_sst } from "./acidente_acesso.js";
+import { PermissaoNegada, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 
 export const ANEXO_BAIXADO = "ANEXO_BAIXADO";
 
@@ -56,6 +57,8 @@ export interface Dono {
   servidor_id: number | null;
   processo_id: number | null;
   finalidade: string;
+  /** a ocorrência de acidente (o "sobre quem" do acidentado que não é servidor) */
+  acidente_id?: number | null;
 }
 
 type ComServidor = { id: number; servidor_id: number | null; processo_id?: number | null };
@@ -147,6 +150,50 @@ async function dono_certificado(tx: Executor, usuario: UsuarioAtual, anexo: Anex
   };
 }
 
+/**
+ * Anexo da ocorrência de acidente (CAT/SP, 23/10/2026): a CAT/SP, o relatório
+ * (PDF), a evidência e a gravação da entrevista, todos RESTRITOS.
+ *
+ * Herda a porta da ficha: `acidente.ver` mais o escopo da ocorrência (campus, e
+ * o próprio no escopo P). Duas regras a mais, porque o arquivo pode ter mais do
+ * que a ficha mostra:
+ *
+ * - ocorrência restrita (acidentado menor de idade, D14a): só a equipe de SST;
+ * - relatório na variante COMPLETA tem dado de saúde: exige `acidente.saude_ver`.
+ *   A variante SEM_SAUDE (contratada e fiscal) abre com `acidente.ver`.
+ *
+ * Fica sem `servidor_id` quando o acidentado não é servidor; a leitura entra em
+ * `acesso_dado_sensivel` pela ocorrência (`acidente_id`), e não se perde.
+ */
+async function dono_acidente(tx: Executor, usuario: UsuarioAtual, anexo: Anexo): Promise<Dono> {
+  usuario.exigir("acidente.ver");
+  const [ocorrencia] = await tx
+    .select({
+      id: acidente_ocorrencia.id,
+      servidor_id: acidente_ocorrencia.servidor_id,
+      restrita_sst: acidente_ocorrencia.restrita_sst,
+    })
+    .from(acidente_ocorrencia)
+    .where(and(eq(acidente_ocorrencia.id, anexo.entidade_id), aplicar_escopo(usuario, acidente_ocorrencia, "acidente.ver")));
+  if (!ocorrencia) throw new AnexoForaDeAlcance();
+  if (ocorrencia.restrita_sst && !pode_ver_restrita_sst(usuario)) throw new AnexoForaDeAlcance();
+  const [relatorio] = await tx
+    .select({ variante: acidente_relatorio.variante })
+    .from(acidente_relatorio)
+    .where(eq(acidente_relatorio.anexo_id, anexo.id))
+    .limit(1);
+  if (relatorio?.variante === "COMPLETA" && !usuario.pode("acidente.saude_ver")) {
+    throw new AnexoForaDeAlcance();
+  }
+  return {
+    entidade: "acidente_ocorrencia",
+    servidor_id: ocorrencia.servidor_id,
+    processo_id: null,
+    acidente_id: ocorrencia.id,
+    finalidade: "leitura de documento anexado a ocorrência de acidente de trabalho",
+  };
+}
+
 // A lista fechada. O que não está aqui não desce.
 export const RESOLVEDORES: Readonly<Record<string, (tx: Executor, usuario: UsuarioAtual, anexo: Anexo) => Promise<Dono>>> =
   Object.freeze({
@@ -154,6 +201,7 @@ export const RESOLVEDORES: Readonly<Record<string, (tx: Executor, usuario: Usuar
     parecer_tecnico: dono_parecer,
     epi_ficha_registro: dono_ficha_epi,
     certificado: dono_certificado,
+    acidente_ocorrencia: dono_acidente,
   });
 
 /** Devolve o dono, ou levanta. Não escreve nada. */
@@ -173,6 +221,7 @@ export async function registrar_leitura(tx: Executor, usuario: UsuarioAtual, ane
   await auditoria.registrar_leitura_nominal(tx, usuario, `anexo.${anexo.categoria}`, {
     servidor_id: dono.servidor_id,
     processo_id: dono.processo_id,
+    acidente_id: dono.acidente_id ?? null,
     finalidade: dono.finalidade,
   });
   await auditoria.registrar(tx, {

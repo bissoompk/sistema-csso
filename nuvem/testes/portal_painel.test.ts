@@ -193,11 +193,12 @@ describe("menu do Meu espaço", () => {
   it("grupos com subtítulo, itens novos, Meu perfil e nada de Meus dados", async () => {
     const u = await usuarioAtual(db, "titular_mariana");
     const nav = modulos.navegacao("/", u);
-    expect(nav.grupos_meu_espaco.map((g) => g.titulo)).toEqual([null, "Treinamentos", "EPI", "Adicional", "Eu"]);
+    expect(nav.grupos_meu_espaco.map((g) => g.titulo)).toEqual([null, "Treinamentos", "EPI", "Acidentes", "Adicional", "Eu"]);
     expect(nav.grupos_meu_espaco.map((g) => g.itens.map((i) => i.rotulo))).toEqual([
       ["Início"],
       ["Meus treinamentos", "Meus certificados", "Comprovante de treinamentos"],
       ["Minha ficha de EPI", "Meus pedidos de EPI", "Pedir EPI"],
+      ["Minhas comunicações"],
       ["Meu adicional", "Meus processos"],
       ["Minha atividade", "Meu perfil"],
     ]);

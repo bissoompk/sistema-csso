@@ -3861,6 +3861,7 @@ details.ajuste-horas input { margin-top: 4px; }
   --mod-processos-de: #0058a3;  --mod-processos-ate: #00316b;
   --mod-epis-de: #0f766e;       --mod-epis-ate: #115e59;
   --mod-cert-de: #6b21a8;       --mod-cert-ate: #7c3aed;
+  --mod-acid-de: #b42318;       --mod-acid-ate: #7a271a;
   --mod-demandas-de: #9a3412;   --mod-demandas-ate: #c2410c;
   --mod-meu-de: #2f6b17;        --mod-meu-ate: #1f4d0f;
   --mod-admin-de: #334155;      --mod-admin-ate: #475569;
@@ -3873,6 +3874,7 @@ details.ajuste-horas input { margin-top: 4px; }
 .cartao-mod.mod-processos-sei { --mod-de: var(--mod-processos-de); --mod-ate: var(--mod-processos-ate); }
 .cartao-mod.mod-epis { --mod-de: var(--mod-epis-de); --mod-ate: var(--mod-epis-ate); }
 .cartao-mod.mod-certificados { --mod-de: var(--mod-cert-de); --mod-ate: var(--mod-cert-ate); }
+.cartao-mod.mod-acidentes { --mod-de: var(--mod-acid-de); --mod-ate: var(--mod-acid-ate); }
 .cartao-mod.mod-demandas { --mod-de: var(--mod-demandas-de); --mod-ate: var(--mod-demandas-ate); }
 .cartao-mod.mod-meu-espaco { --mod-de: var(--mod-meu-de); --mod-ate: var(--mod-meu-ate); }
 .cartao-mod.mod-administracao { --mod-de: var(--mod-admin-de); --mod-ate: var(--mod-admin-ate); }

@@ -70,6 +70,91 @@ export const TABELAS_APPEND_ONLY = [
   'epi_ficha_registro',
   'epi_movimento_estoque',
   'demanda_encaminhamento',
+  // 0021 (modulo de acidentes): a CAT/SP versionada, o relatorio emitido, o
+  // encaminhamento ao SIASS e a decisao pericial
+  'acidente_cat_sp',
+  'acidente_relatorio',
+  'acidente_encaminhamento',
+  'acidente_decisao_pericial',
+] as const;
+
+/**
+ * As tabelas do modulo de acidentes que NAO se apagam (sem DELETE nem TRUNCATE)
+ * mas se atualizam: o tramite da ocorrencia, a resposta da complementacao, o
+ * expurgo parcial do nivel 2 de saude, a acao do plano. Guarda permanente
+ * (POLITICA_RETENCAO §2.4).
+ */
+export const TABELAS_SEM_DELETE_ACIDENTE = [
+  'acidente_ocorrencia',
+  'acidentado',
+  'acidente_testemunha',
+  'acidente_investigacao',
+  'acidente_acao',
+  'acidente_entrevista',
+  'acidente_complementacao',
+  'acidente_saude',
+] as const;
+
+/**
+ * `acidente_ocorrencia`, as tres familias de coluna (0021). Juntas, sao TODAS as
+ * colunas da tabela (um teste confere), e cada uma aparece na funcao de
+ * `travas.sql` quando e vigiada:
+ *
+ * - IDENTIDADE: nunca muda (protocolo, tipo, reabertura, origem, autor);
+ * - FATOS: so mudam junto com uma versao NOVA da CAT/SP (`cat_sp_versao` sobe
+ *   para uma versao que existe) — a retificacao;
+ * - TRAMITE: mudam no dia a dia, sem trava de coluna (o servico confere a
+ *   maquina de estados).
+ */
+export const OCORRENCIA_IDENTIDADE = [
+  'id',
+  'protocolo',
+  'ano',
+  'numero',
+  'tipo_cat',
+  'reabre_id',
+  'origem',
+  'criado_por',
+  'criado_em',
+] as const;
+
+export const OCORRENCIA_FATOS = [
+  'especie',
+  'data_evento',
+  'hora_evento',
+  'minutos_apos_inicio_jornada',
+  'ultimo_dia_trabalho',
+  'local_tipo',
+  'local_especificacao',
+  'campus_id',
+  'local_unidade_uorg_id',
+  'local_municipio',
+  'local_uf',
+  'local_cnpj_contratada',
+  'transito_registro_policial',
+  'transito_numero_bo',
+  'transito_vitima_terceiros',
+  'agente_causador_id',
+  'agente_doenca_id',
+  'situacao_geradora_id',
+  'servidor_id',
+  'prazo_comunicacao',
+  'restrita_sst',
+] as const;
+
+export const OCORRENCIA_TRAMITE = [
+  'estado',
+  'responsavel_id',
+  'prazo_prorrogado_ate',
+  'prorrogacao_motivo',
+  'prorrogado_por',
+  'prorrogado_em',
+  'cancelamento_motivo',
+  'cancelamento_texto',
+  'conclusao_motivo',
+  'concluida_em',
+  'cat_sp_versao',
+  'versao',
 ] as const;
 
 /**
@@ -107,4 +192,36 @@ export const TRIGGERS = [
   // 0017: o dono (criado_por) do treinamento e da turma não se troca
   'trg_treinamento_dono_imutavel',
   'trg_turma_dono_imutavel',
+  // 0021: modulo de acidentes
+  'trg_acidente_cat_sp_sem_update',
+  'trg_acidente_cat_sp_sem_delete',
+  'trg_acidente_cat_sp_sem_truncate',
+  'trg_acidente_relatorio_sem_update',
+  'trg_acidente_relatorio_sem_delete',
+  'trg_acidente_relatorio_sem_truncate',
+  'trg_acidente_encaminhamento_sem_update',
+  'trg_acidente_encaminhamento_sem_delete',
+  'trg_acidente_encaminhamento_sem_truncate',
+  'trg_acidente_decisao_sem_update',
+  'trg_acidente_decisao_sem_delete',
+  'trg_acidente_decisao_sem_truncate',
+  'trg_acidente_ocorrencia_congelada',
+  'trg_acidente_ocorrencia_sem_delete',
+  'trg_acidente_ocorrencia_sem_truncate',
+  'trg_acidentado_sem_delete',
+  'trg_acidentado_sem_truncate',
+  'trg_acidente_testemunha_sem_delete',
+  'trg_acidente_testemunha_sem_truncate',
+  'trg_acidente_investigacao_sem_delete',
+  'trg_acidente_investigacao_sem_truncate',
+  'trg_acidente_acao_sem_delete',
+  'trg_acidente_acao_sem_truncate',
+  'trg_acidente_entrevista_sem_delete',
+  'trg_acidente_entrevista_sem_truncate',
+  'trg_acidente_complementacao_sem_delete',
+  'trg_acidente_complementacao_sem_truncate',
+  'trg_acidente_complementacao_resposta',
+  'trg_acidente_saude_expurgo',
+  'trg_acidente_saude_sem_delete',
+  'trg_acidente_saude_sem_truncate',
 ] as const;

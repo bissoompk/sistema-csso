@@ -41,6 +41,11 @@ async function contagens() {
     epi_motivo_recusa: e.epi_motivo_recusa,
     certificado_modelo: e.certificado_modelo,
     certificado_modelo_tag: e.certificado_modelo_tag,
+    acidente_parte_corpo: e.acidente_parte_corpo,
+    acidente_agente_causador: e.acidente_agente_causador,
+    acidente_agente_doenca: e.acidente_agente_doenca,
+    acidente_situacao_geradora: e.acidente_situacao_geradora,
+    acidente_natureza_lesao: e.acidente_natureza_lesao,
   };
   const r: Record<string, number> = {};
   for (const [nome, t] of Object.entries(tabelas)) {
@@ -79,6 +84,12 @@ describe("sementes", () => {
       // para as segundas vias) e a v2 vigente (22, as frases inteiras)
       certificado_modelo: 2,
       certificado_modelo_tag: 45,
+      // Acidentes: os catálogos da CAT/SP (natureza da lesão: lista oficial pendente)
+      acidente_parte_corpo: 44,
+      acidente_agente_causador: 199,
+      acidente_agente_doenca: 30,
+      acidente_situacao_geradora: 30,
+      acidente_natureza_lesao: 0,
     });
   });
 

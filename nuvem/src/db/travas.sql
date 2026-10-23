@@ -419,6 +419,306 @@ CREATE TRIGGER trg_turma_dono_imutavel
   FOR EACH ROW EXECUTE FUNCTION csso_dono_imutavel();
 
 -- =====================================================================
+-- 0021 (Modulo de acidentes, 23/10/2026): a CAT/SP e a prova, e prova nao se
+-- reescreve. Tres familias de trava:
+--
+-- 1. APPEND-ONLY (sem UPDATE, DELETE nem TRUNCATE): a CAT/SP versionada, o
+--    relatorio emitido, o encaminhamento ao SIASS e a decisao pericial. Correcao
+--    e linha nova, que aponta a anterior (`substitui_id`).
+-- 2. SEM DELETE nem TRUNCATE (a linha e permanente — POLITICA_RETENCAO §2.4 —,
+--    mas o tramite a atualiza): a ocorrencia, o acidentado, a testemunha, o nucleo
+--    de saude, a acao do plano, a entrevista, a investigacao e a complementacao.
+-- 3. COLUNAS CONGELADAS na ocorrencia: a identidade (protocolo, ano, numero,
+--    tipo, reabertura, origem, autor) nunca muda; os fatos do evento so mudam
+--    junto com uma versao NOVA da CAT/SP (`cat_sp_versao` sobe para uma versao
+--    que existe); o resto e tramite. As listas estao em `travas.ts`, e um teste
+--    as confere contra o esquema e contra esta funcao.
+-- =====================================================================
+DROP TRIGGER IF EXISTS trg_acidente_cat_sp_sem_update ON acidente_cat_sp;
+CREATE TRIGGER trg_acidente_cat_sp_sem_update
+  BEFORE UPDATE ON acidente_cat_sp
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_cat_sp e append-only: UPDATE proibido. Correcao e a versao seguinte, com motivo e `substitui_id`.');
+
+DROP TRIGGER IF EXISTS trg_acidente_cat_sp_sem_delete ON acidente_cat_sp;
+CREATE TRIGGER trg_acidente_cat_sp_sem_delete
+  BEFORE DELETE ON acidente_cat_sp
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_cat_sp e append-only: DELETE proibido.');
+
+DROP TRIGGER IF EXISTS trg_acidente_cat_sp_sem_truncate ON acidente_cat_sp;
+CREATE TRIGGER trg_acidente_cat_sp_sem_truncate
+  BEFORE TRUNCATE ON acidente_cat_sp
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_cat_sp e append-only: TRUNCATE proibido.');
+
+DROP TRIGGER IF EXISTS trg_acidente_relatorio_sem_update ON acidente_relatorio;
+CREATE TRIGGER trg_acidente_relatorio_sem_update
+  BEFORE UPDATE ON acidente_relatorio
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_relatorio e append-only: UPDATE proibido. Retificar e emitir a versao seguinte, com motivo.');
+
+DROP TRIGGER IF EXISTS trg_acidente_relatorio_sem_delete ON acidente_relatorio;
+CREATE TRIGGER trg_acidente_relatorio_sem_delete
+  BEFORE DELETE ON acidente_relatorio
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_relatorio e append-only: DELETE proibido.');
+
+DROP TRIGGER IF EXISTS trg_acidente_relatorio_sem_truncate ON acidente_relatorio;
+CREATE TRIGGER trg_acidente_relatorio_sem_truncate
+  BEFORE TRUNCATE ON acidente_relatorio
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_relatorio e append-only: TRUNCATE proibido.');
+
+DROP TRIGGER IF EXISTS trg_acidente_encaminhamento_sem_update ON acidente_encaminhamento;
+CREATE TRIGGER trg_acidente_encaminhamento_sem_update
+  BEFORE UPDATE ON acidente_encaminhamento
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_encaminhamento e append-only: UPDATE proibido. Correcao e encaminhamento novo, dizendo o que mudou.');
+
+DROP TRIGGER IF EXISTS trg_acidente_encaminhamento_sem_delete ON acidente_encaminhamento;
+CREATE TRIGGER trg_acidente_encaminhamento_sem_delete
+  BEFORE DELETE ON acidente_encaminhamento
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_encaminhamento e append-only: DELETE proibido.');
+
+DROP TRIGGER IF EXISTS trg_acidente_encaminhamento_sem_truncate ON acidente_encaminhamento;
+CREATE TRIGGER trg_acidente_encaminhamento_sem_truncate
+  BEFORE TRUNCATE ON acidente_encaminhamento
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_encaminhamento e append-only: TRUNCATE proibido.');
+
+DROP TRIGGER IF EXISTS trg_acidente_decisao_sem_update ON acidente_decisao_pericial;
+CREATE TRIGGER trg_acidente_decisao_sem_update
+  BEFORE UPDATE ON acidente_decisao_pericial
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_decisao_pericial e append-only: UPDATE proibido. Correcao e decisao nova, que substitui a anterior.');
+
+DROP TRIGGER IF EXISTS trg_acidente_decisao_sem_delete ON acidente_decisao_pericial;
+CREATE TRIGGER trg_acidente_decisao_sem_delete
+  BEFORE DELETE ON acidente_decisao_pericial
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_decisao_pericial e append-only: DELETE proibido.');
+
+DROP TRIGGER IF EXISTS trg_acidente_decisao_sem_truncate ON acidente_decisao_pericial;
+CREATE TRIGGER trg_acidente_decisao_sem_truncate
+  BEFORE TRUNCATE ON acidente_decisao_pericial
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_decisao_pericial e append-only: TRUNCATE proibido.');
+
+CREATE OR REPLACE FUNCTION csso_acidente_ocorrencia_congelada() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  -- a identidade da ocorrencia nao muda nunca
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.protocolo IS DISTINCT FROM OLD.protocolo
+     OR NEW.ano IS DISTINCT FROM OLD.ano
+     OR NEW.numero IS DISTINCT FROM OLD.numero
+     OR NEW.tipo_cat IS DISTINCT FROM OLD.tipo_cat
+     OR NEW.reabre_id IS DISTINCT FROM OLD.reabre_id
+     OR NEW.origem IS DISTINCT FROM OLD.origem
+     OR NEW.criado_por IS DISTINCT FROM OLD.criado_por
+     OR NEW.criado_em IS DISTINCT FROM OLD.criado_em
+  THEN
+    RAISE EXCEPTION 'acidente_ocorrencia: protocolo, tipo, origem e autor nao mudam depois de gravados'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+
+  -- encerrada e encerrada: o estado final nao sai do lugar
+  IF OLD.estado IN ('CONCLUIDA', 'CANCELADA') AND NEW.estado IS DISTINCT FROM OLD.estado THEN
+    RAISE EXCEPTION 'acidente_ocorrencia: ocorrencia % nao sai do estado final (reabrir e abrir ocorrencia nova)', OLD.estado
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+
+  -- a versao da CAT/SP que as colunas espelham so sobe, e para uma versao que existe
+  IF NEW.cat_sp_versao < OLD.cat_sp_versao THEN
+    RAISE EXCEPTION 'acidente_ocorrencia: a versao da CAT/SP nao volta'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF NEW.cat_sp_versao > OLD.cat_sp_versao AND NOT EXISTS (
+       SELECT 1 FROM acidente_cat_sp WHERE ocorrencia_id = OLD.id AND versao = NEW.cat_sp_versao) THEN
+    RAISE EXCEPTION 'acidente_ocorrencia: a versao % da CAT/SP nao existe', NEW.cat_sp_versao
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+
+  -- os fatos do evento so mudam por retificacao: junto de uma versao nova da CAT/SP
+  IF NEW.especie IS DISTINCT FROM OLD.especie
+     OR NEW.data_evento IS DISTINCT FROM OLD.data_evento
+     OR NEW.hora_evento IS DISTINCT FROM OLD.hora_evento
+     OR NEW.minutos_apos_inicio_jornada IS DISTINCT FROM OLD.minutos_apos_inicio_jornada
+     OR NEW.ultimo_dia_trabalho IS DISTINCT FROM OLD.ultimo_dia_trabalho
+     OR NEW.local_tipo IS DISTINCT FROM OLD.local_tipo
+     OR NEW.local_especificacao IS DISTINCT FROM OLD.local_especificacao
+     OR NEW.campus_id IS DISTINCT FROM OLD.campus_id
+     OR NEW.local_unidade_uorg_id IS DISTINCT FROM OLD.local_unidade_uorg_id
+     OR NEW.local_municipio IS DISTINCT FROM OLD.local_municipio
+     OR NEW.local_uf IS DISTINCT FROM OLD.local_uf
+     OR NEW.local_cnpj_contratada IS DISTINCT FROM OLD.local_cnpj_contratada
+     OR NEW.transito_registro_policial IS DISTINCT FROM OLD.transito_registro_policial
+     OR NEW.transito_numero_bo IS DISTINCT FROM OLD.transito_numero_bo
+     OR NEW.transito_vitima_terceiros IS DISTINCT FROM OLD.transito_vitima_terceiros
+     OR NEW.agente_causador_id IS DISTINCT FROM OLD.agente_causador_id
+     OR NEW.agente_doenca_id IS DISTINCT FROM OLD.agente_doenca_id
+     OR NEW.situacao_geradora_id IS DISTINCT FROM OLD.situacao_geradora_id
+     OR NEW.servidor_id IS DISTINCT FROM OLD.servidor_id
+     OR NEW.prazo_comunicacao IS DISTINCT FROM OLD.prazo_comunicacao
+     OR NEW.restrita_sst IS DISTINCT FROM OLD.restrita_sst
+  THEN
+    IF NEW.cat_sp_versao <= OLD.cat_sp_versao THEN
+      RAISE EXCEPTION 'acidente_ocorrencia: os fatos do evento so mudam por retificacao, com uma versao nova da CAT/SP'
+        USING ERRCODE = 'integrity_constraint_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_acidente_ocorrencia_congelada ON acidente_ocorrencia;
+CREATE TRIGGER trg_acidente_ocorrencia_congelada
+  BEFORE UPDATE ON acidente_ocorrencia
+  FOR EACH ROW EXECUTE FUNCTION csso_acidente_ocorrencia_congelada();
+
+DROP TRIGGER IF EXISTS trg_acidente_ocorrencia_sem_delete ON acidente_ocorrencia;
+CREATE TRIGGER trg_acidente_ocorrencia_sem_delete
+  BEFORE DELETE ON acidente_ocorrencia
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_ocorrencia: a ocorrencia e guardada para sempre. Cancele (com motivo) em vez de apagar.');
+
+DROP TRIGGER IF EXISTS trg_acidente_ocorrencia_sem_truncate ON acidente_ocorrencia;
+CREATE TRIGGER trg_acidente_ocorrencia_sem_truncate
+  BEFORE TRUNCATE ON acidente_ocorrencia
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_ocorrencia: a ocorrencia e guardada para sempre. Cancele (com motivo) em vez de apagar.');
+
+DROP TRIGGER IF EXISTS trg_acidentado_sem_delete ON acidentado;
+CREATE TRIGGER trg_acidentado_sem_delete
+  BEFORE DELETE ON acidentado
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidentado: o envolvido e guardado para sempre. Correcao e retificacao da CAT/SP.');
+
+DROP TRIGGER IF EXISTS trg_acidentado_sem_truncate ON acidentado;
+CREATE TRIGGER trg_acidentado_sem_truncate
+  BEFORE TRUNCATE ON acidentado
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidentado: o envolvido e guardado para sempre. Correcao e retificacao da CAT/SP.');
+
+DROP TRIGGER IF EXISTS trg_acidente_testemunha_sem_delete ON acidente_testemunha;
+CREATE TRIGGER trg_acidente_testemunha_sem_delete
+  BEFORE DELETE ON acidente_testemunha
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_testemunha: a testemunha nao se apaga. Correcao e retificacao da CAT/SP.');
+
+DROP TRIGGER IF EXISTS trg_acidente_testemunha_sem_truncate ON acidente_testemunha;
+CREATE TRIGGER trg_acidente_testemunha_sem_truncate
+  BEFORE TRUNCATE ON acidente_testemunha
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_testemunha: a testemunha nao se apaga. Correcao e retificacao da CAT/SP.');
+
+DROP TRIGGER IF EXISTS trg_acidente_investigacao_sem_delete ON acidente_investigacao;
+CREATE TRIGGER trg_acidente_investigacao_sem_delete
+  BEFORE DELETE ON acidente_investigacao
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_investigacao: a investigacao e guardada para sempre.');
+
+DROP TRIGGER IF EXISTS trg_acidente_investigacao_sem_truncate ON acidente_investigacao;
+CREATE TRIGGER trg_acidente_investigacao_sem_truncate
+  BEFORE TRUNCATE ON acidente_investigacao
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_investigacao: a investigacao e guardada para sempre.');
+
+DROP TRIGGER IF EXISTS trg_acidente_acao_sem_delete ON acidente_acao;
+CREATE TRIGGER trg_acidente_acao_sem_delete
+  BEFORE DELETE ON acidente_acao
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_acao: a acao do plano nao se apaga. Cancele (com motivo) em vez de apagar.');
+
+DROP TRIGGER IF EXISTS trg_acidente_acao_sem_truncate ON acidente_acao;
+CREATE TRIGGER trg_acidente_acao_sem_truncate
+  BEFORE TRUNCATE ON acidente_acao
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_acao: a acao do plano nao se apaga. Cancele (com motivo) em vez de apagar.');
+
+DROP TRIGGER IF EXISTS trg_acidente_entrevista_sem_delete ON acidente_entrevista;
+CREATE TRIGGER trg_acidente_entrevista_sem_delete
+  BEFORE DELETE ON acidente_entrevista
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_entrevista: a entrevista e dado de terceiro de guarda permanente e nao se apaga.');
+
+DROP TRIGGER IF EXISTS trg_acidente_entrevista_sem_truncate ON acidente_entrevista;
+CREATE TRIGGER trg_acidente_entrevista_sem_truncate
+  BEFORE TRUNCATE ON acidente_entrevista
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_entrevista: a entrevista e dado de terceiro de guarda permanente e nao se apaga.');
+
+DROP TRIGGER IF EXISTS trg_acidente_complementacao_sem_delete ON acidente_complementacao;
+CREATE TRIGGER trg_acidente_complementacao_sem_delete
+  BEFORE DELETE ON acidente_complementacao
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_complementacao: o pedido de complementacao e guardado para sempre.');
+
+DROP TRIGGER IF EXISTS trg_acidente_complementacao_sem_truncate ON acidente_complementacao;
+CREATE TRIGGER trg_acidente_complementacao_sem_truncate
+  BEFORE TRUNCATE ON acidente_complementacao
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_complementacao: o pedido de complementacao e guardado para sempre.');
+
+-- O pedido de complementacao nao se reescreve; so a resposta se preenche, UMA vez.
+CREATE OR REPLACE FUNCTION csso_acidente_complementacao_resposta() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.ocorrencia_id IS DISTINCT FROM OLD.ocorrencia_id
+     OR NEW.pedido_texto IS DISTINCT FROM OLD.pedido_texto
+     OR NEW.pedido_por IS DISTINCT FROM OLD.pedido_por
+     OR NEW.pedido_em IS DISTINCT FROM OLD.pedido_em
+     OR (OLD.resposta_cat_sp_id IS NOT NULL AND NEW.resposta_cat_sp_id IS DISTINCT FROM OLD.resposta_cat_sp_id)
+     OR (OLD.respondida_por IS NOT NULL AND NEW.respondida_por IS DISTINCT FROM OLD.respondida_por)
+     OR (OLD.respondida_em IS NOT NULL AND NEW.respondida_em IS DISTINCT FROM OLD.respondida_em)
+  THEN
+    RAISE EXCEPTION 'acidente_complementacao: o pedido nao se altera, e a resposta se preenche uma unica vez'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_acidente_complementacao_resposta ON acidente_complementacao;
+CREATE TRIGGER trg_acidente_complementacao_resposta
+  BEFORE UPDATE ON acidente_complementacao
+  FOR EACH ROW EXECUTE FUNCTION csso_acidente_complementacao_resposta();
+
+-- O nucleo de saude: o nivel 2 (dias, datas, primeiro socorro) so vai a NULL
+-- junto do carimbo `detalhe_expurgado_em`, e depois do expurgo nao se preenche
+-- de novo. O expurgo parcial e ato manual, com simulacao (POLITICA §2.4).
+CREATE OR REPLACE FUNCTION csso_acidente_saude_expurgo() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.acidentado_id IS DISTINCT FROM OLD.acidentado_id THEN
+    RAISE EXCEPTION 'acidente_saude: o nucleo de saude nao muda de acidentado'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF OLD.detalhe_expurgado_em IS NOT NULL AND NEW.detalhe_expurgado_em IS DISTINCT FROM OLD.detalhe_expurgado_em THEN
+    RAISE EXCEPTION 'acidente_saude: o carimbo de expurgo nao se altera'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF ((OLD.dias_afastamento IS NOT NULL AND NEW.dias_afastamento IS NULL)
+       OR (OLD.afastamento_inicio IS NOT NULL AND NEW.afastamento_inicio IS NULL)
+       OR (OLD.afastamento_retorno IS NOT NULL AND NEW.afastamento_retorno IS NULL)
+       OR (OLD.dias_internacao IS NOT NULL AND NEW.dias_internacao IS NULL)
+       OR (OLD.data_obito IS NOT NULL AND NEW.data_obito IS NULL)
+       OR (OLD.dias_debitados IS NOT NULL AND NEW.dias_debitados IS NULL)
+       OR (OLD.primeiro_socorro_por IS NOT NULL AND NEW.primeiro_socorro_por IS NULL)
+       OR (OLD.primeiro_socorro_unidade IS NOT NULL AND NEW.primeiro_socorro_unidade IS NULL)
+       OR (OLD.atendimento_em IS NOT NULL AND NEW.atendimento_em IS NULL))
+     AND NEW.detalhe_expurgado_em IS NULL THEN
+    RAISE EXCEPTION 'acidente_saude: o nivel 2 so vai a NULL junto do carimbo de expurgo (detalhe_expurgado_em)'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF OLD.detalhe_expurgado_em IS NOT NULL AND (NEW.dias_afastamento IS NOT NULL
+       OR NEW.afastamento_inicio IS NOT NULL
+       OR NEW.afastamento_retorno IS NOT NULL
+       OR NEW.dias_internacao IS NOT NULL
+       OR NEW.data_obito IS NOT NULL
+       OR NEW.dias_debitados IS NOT NULL
+       OR NEW.primeiro_socorro_por IS NOT NULL
+       OR NEW.primeiro_socorro_unidade IS NOT NULL
+       OR NEW.atendimento_em IS NOT NULL) THEN
+    RAISE EXCEPTION 'acidente_saude: o nivel 2 expurgado nao se preenche de novo'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_acidente_saude_expurgo ON acidente_saude;
+CREATE TRIGGER trg_acidente_saude_expurgo
+  BEFORE UPDATE ON acidente_saude
+  FOR EACH ROW EXECUTE FUNCTION csso_acidente_saude_expurgo();
+
+DROP TRIGGER IF EXISTS trg_acidente_saude_sem_delete ON acidente_saude;
+CREATE TRIGGER trg_acidente_saude_sem_delete
+  BEFORE DELETE ON acidente_saude
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('acidente_saude: o nucleo de saude e guardado para sempre. So o nivel 2 se expurga, por ato manual.');
+
+DROP TRIGGER IF EXISTS trg_acidente_saude_sem_truncate ON acidente_saude;
+CREATE TRIGGER trg_acidente_saude_sem_truncate
+  BEFORE TRUNCATE ON acidente_saude
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('acidente_saude: o nucleo de saude e guardado para sempre. So o nivel 2 se expurga, por ato manual.');
+
+-- =====================================================================
 -- A API de dados do Supabase fica FORA do sistema.
 --
 -- O Supabase publica toda tabela de `public` numa API REST (PostgREST) para

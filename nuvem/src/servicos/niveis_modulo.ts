@@ -66,8 +66,8 @@ export interface ModuloNivelado {
 /**
  * O MAPEAMENTO módulo → permissões. Os conjuntos são disjuntos entre módulos
  * (conferido em `rbac._conferir_niveis`): uma permissão pertence a um módulo só.
- * Os três módulos ainda não disponíveis (Acidentes, CISSP, PGR) não têm
- * permissão nenhuma e por isso não aparecem.
+ * Os dois módulos ainda não disponíveis (CISSP, PGR) não têm permissão nenhuma
+ * e por isso não aparecem. Acidentes entrou em 23/10/2026.
  */
 export const MODULOS_NIVELADOS: readonly ModuloNivelado[] = Object.freeze([
   {
@@ -115,6 +115,16 @@ export const MODULOS_NIVELADOS: readonly ModuloNivelado[] = Object.freeze([
     consulta: ["demanda.ver"],
     escrita: ["demanda.registrar"],
   },
+  {
+    // Acidentes (CAT/SP, 23/10/2026). A saúde, o relatório técnico e o dado
+    // nominal NÃO entram aqui: ficam só do perfil (`PERMISSOES_SO_DO_PERFIL`).
+    // `comunicar` é escrita, mas também vem com o vínculo a servidor
+    // (`rbac.PERMISSOES_DO_TITULAR`), em escopo próprio.
+    codigo: "acidentes",
+    nome: "Análise de Acidentes",
+    consulta: ["acidente.ver"],
+    escrita: ["acidente.comunicar", "acidente.triar", "acidente.investigar", "acidente.siass"],
+  },
 ]);
 
 /**
@@ -138,6 +148,10 @@ export const PERMISSOES_SO_DO_PERFIL: Readonly<Record<string, string>> = Object.
   "catalogo.gerenciar": "configuração do setor e catálogos da base",
   "turma.inscrever_se": "do titular — inscrever a si mesmo",
   "turma.todos_os_setores": "alcance de setor — ver as turmas de todos os setores promotores",
+  "acidente.relatorio_emitir": "ato técnico assinado — emitir o relatório do acidente segue o cargo, como a assinatura",
+  "acidente.saude_ver": "dado de saúde, nível 1 (LGPD art. 5º, II; ROPA §4.4) — segue o cargo, não o módulo",
+  "acidente.saude_detalhe_ver": "dado de saúde, nível 2 (LGPD art. 5º, II; ROPA §4.4) — segue o cargo, não o módulo",
+  "acidente.saude_registrar": "dado de saúde (LGPD art. 5º, II; ROPA §4.4) — só quem registra saúde, por cargo",
 });
 
 /**
@@ -180,7 +194,8 @@ export const NUNCA_POR_NIVEL: Readonly<Record<string, readonly string[]>> = Obje
   superintendente: Object.freeze([] as string[]),
   coordenador_csso: Object.freeze([] as string[]),
   engenheiro_seguranca: Object.freeze(["epi.entregar", "epi.estoque"]),
-  medico_trabalho: Object.freeze(["epi.catalogo", "epi.entregar", "epi.estoque"]),
+  // o médico não tria nem investiga o acidente (D10): é a engenharia e a segurança
+  medico_trabalho: Object.freeze(["epi.catalogo", "epi.entregar", "epi.estoque", "acidente.triar", "acidente.investigar"]),
   tecnico_seguranca: Object.freeze(["processo.atribuir", "parecer.anular", "certificado.anular", "participante.mesclar"]),
   secretaria_csso: Object.freeze([
     "processo.atribuir",
@@ -196,6 +211,9 @@ export const NUNCA_POR_NIVEL: Readonly<Record<string, readonly string[]>> = Obje
     "epi.entregar",
     "epi.estoque",
     "epi.analisar",
+    // a secretaria tria a comunicação, e investigar e encaminhar ao SIASS são atos técnicos (D10)
+    "acidente.investigar",
+    "acidente.siass",
   ]),
   almoxarife_sesmt: Object.freeze([
     "parecer.ver",
@@ -206,6 +224,10 @@ export const NUNCA_POR_NIVEL: Readonly<Record<string, readonly string[]>> = Obje
     "epi.catalogo",
     "epi.requisitar",
     "epi.analisar",
+    // o almoxarife só comunica o acidente (D10); triar, investigar e encaminhar não
+    "acidente.triar",
+    "acidente.investigar",
+    "acidente.siass",
   ]),
   consulta_progep: Object.freeze([..._TODA_A_ESCRITA]),
   auditor_interno: Object.freeze([..._TODA_A_ESCRITA]),
@@ -316,6 +338,9 @@ const RESUMO_DO_TETO: Readonly<Record<string, string>> = Object.freeze({
   "epi.estoque": "estoque",
   "epi.requisitar": "pedir EPI",
   "epi.analisar": "analisar pedido",
+  "acidente.triar": "triar",
+  "acidente.investigar": "investigar",
+  "acidente.siass": "encaminhar ao SIASS",
 });
 
 /**
@@ -375,7 +400,8 @@ export function niveis_de(linhas: readonly { modulo: string; nivel: string }[]):
 export const PERMISSAO_DA_BASE = "@base";
 
 /** Os módulos cujo acesso sustenta a base (Demandas é base, e não sustenta). */
-const MODULOS_QUE_SUSTENTAM_A_BASE: ReadonlySet<string> = new Set(["processos-sei", "epis", "certificados"]);
+// Acidentes entrou em 23/10/2026: o formulário acha o acidentado pelo cadastro de servidores
+const MODULOS_QUE_SUSTENTAM_A_BASE: ReadonlySet<string> = new Set(["processos-sei", "epis", "certificados", "acidentes"]);
 
 /** A concessão dá a base? `cruas` = as do perfil; `efetivas` = depois dos níveis. */
 export function concessao_da_a_base(cruas: Iterable<string>, efetivas: Iterable<string>): boolean {
