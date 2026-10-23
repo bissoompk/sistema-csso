@@ -182,7 +182,7 @@
         <div class="aviso aviso-alerta">
           <p>Este laudo foi superado{% if laudo.motivo_ultima_conferencia %}
              ({{ laudo.motivo_ultima_conferencia }}){% endif %} e os pareceres que dependiam
-             dele foram para reavaliação (RN-11). O sistema não impede apontar um parecer
+             dele foram para reavaliação. O sistema não impede apontar um parecer
              novo para ele — quem escolhe o laudo é que precisa saber disto.</p>
         </div>
       </section>
@@ -266,7 +266,7 @@
   <div class="aviso aviso-erro">
     {% if derivados %}
     <p><strong>Superar este laudo coloca {{ derivados|length }} parecer(es) derivado(s)
-       em reavaliação (RN-11)</strong>, abre uma pendência para cada um e devolve à
+       em reavaliação</strong>, abre uma pendência para cada um e devolve à
        reavaliação o adicional vigente que dependa deles.</p>
     {% else %}
     <p><strong>Nenhum parecer depende deste laudo hoje</strong>, então nada entra em

@@ -35,7 +35,7 @@
       <h1 class="{{ 'mono' if not quem.nominal }}">{{ quem.nome }}</h1>
       <p class="identificacao">
         {% if quem.nominal %}<span class="mono">SIAPE {{ quem.siape }}</span>
-        {% else %}<span class="discreto">identificação suprimida (RN-19)</span>{% endif %}
+        {% else %}<span class="discreto">identificação suprimida</span>{% endif %}
         <span class="ponto">·</span>
         <span>{{ servidor.cargo.nome if servidor.cargo else 'cargo não informado' }}</span>
         <span class="ponto">·</span>

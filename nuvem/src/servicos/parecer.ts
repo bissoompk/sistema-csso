@@ -799,7 +799,7 @@ export async function emitir(
   usuario.exigir("parecer.emitir");
 
   if (parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
-    throw new EmissaoBloqueada(["parecer já emitido — RN-14: crie uma nova versão"]);
+    throw new EmissaoBloqueada(["parecer já emitido: crie uma nova versão"]);
   }
 
   const hoje = opcoes.data_emissao ?? datas_br.hoje();

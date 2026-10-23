@@ -384,7 +384,7 @@
 {% elif nome == 'portarias' %}
 <div class="aviso aviso-alerta">
   Mudar a data de publicação aqui pode brigar com o marco inicial de um parecer
-  em rascunho (RN-05): confira a validação do parecer depois de corrigir.
+  em rascunho: confira a validação do parecer depois de corrigir.
 </div>
 {% endif %}
 
@@ -662,7 +662,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
       <label class="discreto" for="ag-quant">
         <input id="ag-quant" type="checkbox" name="exige_quantitativa" value="1"
           {{- ' checked' if dn['exige_quantitativa'] == '1' }}>
-        exige avaliação quantitativa (RN-06)</label></div>
+        exige avaliação quantitativa</label></div>
   {% endcall %}
   {% endif %}
 
@@ -824,7 +824,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
         <label class="discreto" for="ed-agente-{{ a.id }}-quant">
           <input id="ed-agente-{{ a.id }}-quant" type="checkbox" name="exige_quantitativa" value="1"
             {{- ' checked' if ((d.exige_quantitativa == '1') if deste else a.exige_reavaliacao_quantitativa) }}>
-          exige avaliação quantitativa (RN-06)</label></div>
+          exige avaliação quantitativa</label></div>
       <div class="campo">
         <label class="discreto" for="ed-agente-{{ a.id }}-ativo">
           <input id="ed-agente-{{ a.id }}-ativo" type="checkbox" name="ativo" value="1"
@@ -928,7 +928,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
         <input id="ed-port-{{ p.id }}-data" name="data_publicacao" type="date" required value="{{ v.data_publicacao or '' }}"></div>
     </div>
     <p class="discreto rodape-cartao sem-margem">Mudar a data de publicação pode brigar com o
-      marco inicial de um parecer em rascunho (RN-05): confira a validação do parecer
+      marco inicial de um parecer em rascunho: confira a validação do parecer
       depois de corrigir.</p>
   {% endcall %}
   {% endfor %}

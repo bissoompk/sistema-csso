@@ -79,7 +79,7 @@
    do cursor de quem acabou de lançar a presença daquela pessoa. #}
 {% set pode_nominal = pode_nominal | default(pode_lancar) %}
 {% set quem = identificar(linha.inscricao.participante.servidor,
-                          vazio='identificação suprimida (RN-19)') %}
+                          vazio='identificação suprimida') %}
 {% set nominal = pode_nominal or quem.nominal %}
 {% set rotulo_pessoa = linha.inscricao.participante.identificador_publico if nominal else quem.nome %}
 <tr>

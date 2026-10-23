@@ -169,7 +169,7 @@ describe("M62/M63 — a linha legível para quem não lê nome", () => {
     expect(tela).toContain('<span class="discreto quebra">Ficha de EPI — entrega nº 7</span>');
     expect(tela).not.toContain("epi_ficha_registro #");
     expect(tela).not.toContain("Fulano de Tal");
-    expect(tela).not.toContain("conteúdo suprimido (RN-19)");
+    expect(tela).not.toContain("conteúdo suprimido");
     // quem lê nome lê a descrição gravada
     const coord = (await (await cliente("coordenador_csso")).get("/pendencias", HTML)).text;
     expect(coord).toContain("Responder Fulano de Tal sobre as luvas");

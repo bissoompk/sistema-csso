@@ -119,7 +119,7 @@ export function Balcao() {
               aria-describedby="busca-dica"
             />
             <span className="dica" id="busca-dica">
-              O SIAPE acha sempre; o nome, só para quem pode ler nomes (RN-19).
+              O SIAPE acha sempre; o nome, só para quem pode ler nomes.
             </span>
             <ul className="lista-toque" aria-live="polite">
               {busca.trim().length >= 2 && servidores.length === 0 && (
@@ -131,7 +131,7 @@ export function Balcao() {
                     type="button"
                     className="toque"
                     onClick={() => escolherServidor(sv)}
-                    title={sv.nominal ? undefined : 'identificação suprimida (RN-19)'}
+                    title={sv.nominal ? undefined : 'identificação suprimida'}
                   >
                     {sv.rotulo}
                   </button>

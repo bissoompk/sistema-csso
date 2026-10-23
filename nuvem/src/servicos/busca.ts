@@ -50,7 +50,7 @@ export const LIMITE_POR_BLOCO = 8;
 
 export const RECADO_CPF =
   "A busca não aceita CPF: o sistema não armazena CPF em campo nenhum " +
-  "(RN-21) — servidor se identifica por SIAPE. Procure pelo nome, pelo SIAPE, " +
+  "— servidor se identifica por SIAPE. Procure pelo nome, pelo SIAPE, " +
   "pelo NUP, pelo número do laudo, pelo protocolo do pedido de EPI, pelo " +
   "código da turma ou pela chave do certificado.";
 

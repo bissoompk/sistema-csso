@@ -32,13 +32,12 @@
       {% call ui.info('alcance-da-busca', 'o que a busca alcança, e o que não') %}
         <p><strong>A busca não é uma janela a mais.</strong> Ela procura só nos
           cadastros que a sua conta já abre, e o nome de um servidor só casa quando
-          você pode ler aquele nome (RN-19) — do contrário, receber uma única linha
+          você pode ler aquele nome — do contrário, receber uma única linha
           amarraria o nome ao código <code>SRV-xxxx</code> da sua sessão, que é
           exatamente a ligação que a supressão existe para impedir.</p>
         <p>O SIAPE e as chaves de documento (NUP, laudo, protocolo, turma,
           certificado) valem para quem abre a tela correspondente.</p>
-        <p><strong>CPF não.</strong> O sistema não armazena CPF em campo nenhum
-          (RN-21) — servidor se identifica por SIAPE.</p>
+        <p><strong>CPF não.</strong> O sistema não armazena CPF em campo nenhum — servidor se identifica por SIAPE.</p>
       {% endcall %}
       {% else %}
       <p class="sub">Sua conta não abre nenhum dos cadastros que a busca cobre.</p>

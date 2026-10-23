@@ -231,7 +231,8 @@ describe("RN-28", () => {
       expect(erro.message).toContain("outra pessoa");
       expect(erro.message).toContain("balcão");
       expect(erro.message).toContain("/epis/entregas/nova");
-      expect(erro.message).toContain("RN-28");
+      expect(erro.message).toContain("Quem analisa não é quem requisita");
+      expect(erro.message).not.toMatch(/\bRN-\d+/);
       // é PermissaoNegada: a rota devolve 403, e não 500
       expect(erro).toBeInstanceOf(PermissaoNegada);
       expect(erro.codigo).toBe("epi.analisar");

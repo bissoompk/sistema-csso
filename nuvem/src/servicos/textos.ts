@@ -310,7 +310,7 @@ export function exigir_texto_limpo<T extends string | null | undefined>(
     throw new TextoProibido(
       `O campo ${campo} contém termo proibido (${achados.join(", ")}). ` +
         "Estado de saúde, gestação, CID e diagnóstico não podem ser " +
-        "registrados (RN-21; LGPD art. 11). Descreva o agente nocivo e o " +
+        "registrados (LGPD art. 11). Descreva o agente nocivo e o " +
         "ambiente de trabalho, não a pessoa — é isso que fundamenta o " +
         "adicional, e o texto sem o termo vale igual.",
     );

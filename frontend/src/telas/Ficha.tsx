@@ -23,7 +23,7 @@ export function Ficha({ servidorId }: { servidorId: number }) {
         <>
           <p className="sub">
             {ficha.servidor}
-            {!ficha.nominal && <span className="discreto"> · identificação suprimida (RN-19)</span>}
+            {!ficha.nominal && <span className="discreto"> · identificação suprimida</span>}
           </p>
           {ficha.linhas.length === 0 ? (
             <Vazio

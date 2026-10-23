@@ -473,10 +473,10 @@ describe("emissão pela tela", () => {
     expect(corpo).toContain('<fieldset class="campos" disabled>');
     expect(corpo).not.toContain("Salvar rascunho");
     if (situacao === "ANULADO") expect(corpo).toContain("Parecer anulado.");
-    else expect(corpo).toContain("Conteúdo congelado na emissão (RN-14)");
+    else expect(corpo).toContain("Conteúdo congelado na emissão.");
     // e a rota recusa salvar por cima do emitido
     if (situacao !== "ANULADO") {
-      expect((await cliente.post(`/pareceres/${parecer_id}`, { ano: "2025" })).text).toContain("imutável (RN-14)");
+      expect((await cliente.post(`/pareceres/${parecer_id}`, { ano: "2025" })).text).toContain("Parecer emitido é imutável. Crie uma nova versão.");
     }
   });
 
@@ -775,7 +775,7 @@ describe("o painel de EPI do editor", () => {
       "31/12/2024",
       "Não sustenta neutralização porque",
       "não sustenta</strong> alegação de neutralização",
-      "RN-32",
+      "ou com troca vencida, <strong>não sustenta</strong>",
       'value="NEUTRALIZA"',
       'value="NEUTRALIZA_PARCIAL"',
     ]) {

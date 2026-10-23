@@ -74,7 +74,7 @@
           o atrito que faz a demanda voltar para o post-it.</p>
         <p>O <strong>vínculo com o servidor</strong> é opcional e vale ouro quando
           existe: é ele que liga a demanda à ficha da pessoa e à unidade — e é por ele
-          que a supressão de identificação da RN-19 sabe o que esconder de quem não
+          que a supressão de identificação sabe o que esconder de quem não
           tem <code>exposicao.ver</code>. Havendo vínculo, é ele que a tela escreve.</p>
       {% endcall %}
     </div>
@@ -124,7 +124,7 @@
     <div class="cabecalho-cartao">
       <h2>Encaminhamentos</h2>
       <span class="contador">{{ demanda.encaminhamentos|length }}</span>
-      <span class="nota">nada se apaga: correção é linha nova (RN-31)</span>
+      <span class="nota">nada se apaga: correção é linha nova</span>
     </div>
     <table>
       <thead>
@@ -208,7 +208,7 @@
               aria-describedby="dica-pedido">{{ dt['pedido'] or '' }}</textarea>
     <span class="dica" id="dica-pedido">Obrigatório. Sem isso o encaminhamento é um
       carimbo de data — seis meses depois ninguém sabe o que se esperava de volta.
-      Descreva o pedido, nunca a condição de saúde de ninguém (RN-21).</span>
+      Descreva o pedido, nunca a condição de saúde de ninguém.</span>
   </div>
   {{ ui.confirmar_mencao_saude(aviso_saude and forma == 'encaminhar', 'encaminhar-confirmo-saude') }}
 {% endcall %}
@@ -228,7 +228,7 @@
   <div class="aviso aviso-info">
     <p><strong>Quem demandou tem conta no sistema e recebe este desfecho no sino</strong>,
       com o texto do relato e o setor ou processo de destino. Escreva para ele ler:
-      sem nome de terceiros e sem condição de saúde de ninguém (RN-21).</p>
+      sem nome de terceiros e sem condição de saúde de ninguém.</p>
   </div>
   {% endif %}
   <div class="campo">

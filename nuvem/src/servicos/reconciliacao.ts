@@ -68,7 +68,7 @@ export class Reconciliacao {
       ["NUPs com dígito verificador inválido", "entraram com a flag de dispensa; confirmar no SEI", this.nups_dv_invalido],
       [
         "Divergência de marco inicial",
-        "a data do marco não bate com a publicação da portaria (RN-05)",
+        "a data do marco não bate com a publicação da portaria",
         this.divergencias_marco,
       ],
     ];

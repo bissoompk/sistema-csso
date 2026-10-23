@@ -371,7 +371,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}", async (c) => {
   if (parecer === null) return redirecionar(c, "/processos");
   if (parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
     return _desenhar_editor(c, usuario, parecer_id, {
-      erro: "Parecer emitido é imutável (RN-14). Crie uma nova versão.",
+      erro: "Parecer emitido é imutável. Crie uma nova versão.",
     });
   }
   const dados = (await formulario(c)).dados;
@@ -560,7 +560,7 @@ rotas.post("/pareceres/:parecer_id{[0-9]+}/portaria", async (c) => {
   // ou assinado mudava depois de ele ir para o SEI.
   if (parecer.situacao === "EMITIDO" || parecer.situacao === "ASSINADO") {
     return _desenhar_editor(c, usuario, parecer_id, {
-      erro: "Parecer emitido é imutável (RN-14). Crie uma nova versão.",
+      erro: "Parecer emitido é imutável. Crie uma nova versão.",
     });
   }
 

@@ -49,7 +49,7 @@
   {% if not nominal %}
   <div class="aviso aviso-alerta">
     Célula com menos de {{ limiar }} servidores aparece como <span class="mono">—</span>
-    para quem não tem <code>exposicao.ver</code> (RN-19). Quando só uma célula
+    para quem não tem <code>exposicao.ver</code>. Quando só uma célula
     seria suprimida, a menor sobrevivente é suprimida junto — senão a diferença
     entre o total e a soma devolveria o número escondido.
   </div>
@@ -148,7 +148,7 @@
         </thead>
         {% for laudo, quantidade in vigencias_por_laudo.items() %}
         <tr><td class="mono">{{ laudo }}</td>
-          <td class="numerico">{% if quantidade == '—' %}<span title="menos de {{ limiar }} servidores — célula suprimida (RN-19)">—</span>{% else %}{{ quantidade }}{% endif %}</td></tr>
+          <td class="numerico">{% if quantidade == '—' %}<span title="menos de {{ limiar }} servidores — célula suprimida">—</span>{% else %}{{ quantidade }}{% endif %}</td></tr>
         {% else %}<tr><td colspan="2" class="nada">Nenhum adicional vigente registrado.</td></tr>{% endfor %}
       </table>
     </section>

@@ -28,7 +28,7 @@
           documento dela que sustenta a cessação de um e a proposta do outro.</p>
         <p>A suspensão por afastamento legal (Lei 8.112/90, art. 69, p.ú.) é registrada
           como <code>AFASTAMENTO_LEGAL</code> com a base legal; o motivo pessoal nunca
-          entra no sistema (RN-21).</p>
+          entra no sistema.</p>
       {% endcall %}
     </div>
   </div>
@@ -96,7 +96,7 @@
 
   {% if lacunas %}
   <div class="aviso aviso-erro">
-    <strong>Linha do tempo inconsistente (RN-09):</strong>
+    <strong>Linha do tempo inconsistente:</strong>
     <ul>
       {% for servidor_id, problemas in lacunas.items() %}
         {% for p in problemas %}<li>servidor #{{ servidor_id }}: {{ p }}</li>{% endfor %}
