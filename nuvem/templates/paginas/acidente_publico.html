@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# Sem lateral, como /inscricao: quem abre recebeu o link do setor, não tem conta. #}
+{% set sem_casca = true %}
+{% block titulo %}Comunicar acidente · SISA{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{% block conteudo %}
+
+{% if excedeu %}
+<div class="cartao">
+  <div class="aviso aviso-alerta" role="alert">
+    <p><strong>Envios demais deste endereço.</strong> Espere alguns minutos e tente de novo. Se for urgente,
+      comunique o acidente à sua chefia ou à equipe de segurança do trabalho.</p>
+  </div>
+</div>
+
+{% elif not link %}
+<div class="cartao">
+  <h1>Link inválido</h1>
+  <p>Este endereço não corresponde a nenhum link de comunicação de acidente em uso. Ele pode ter sido
+    trocado ou desligado pela equipe de segurança do trabalho. Confira com quem o enviou.</p>
+</div>
+
+{% elif recebido %}
+<div class="cartao">
+  <h1>Comunicação recebida</h1>
+  {% if recebido != 'OK' %}
+  <p>O protocolo é <strong class="mono">{{ recebido }}</strong>. Anote: é por ele que a equipe de segurança do
+    trabalho identifica a comunicação se você precisar falar com ela.</p>
+  {% else %}
+  <p>A comunicação foi recebida pela equipe de segurança do trabalho.</p>
+  {% endif %}
+  <p>A equipe confere cada comunicação e pode procurar você pelo e-mail informado. Nenhum e-mail automático
+    é enviado por este formulário.</p>
+  <p class="sem-margem"><a href="{{ acao }}?novo=1">Comunicar outro acidente</a></p>
+</div>
+
+{% else %}
+<div class="cartao">
+  <h1>Comunicar acidente</h1>
+  <p class="sub">Acidente em serviço, de trajeto, doença relacionada ao trabalho ou quase acidente na UFVJM.
+    A comunicação vai à equipe de segurança do trabalho, que tem 10 dias da data do acidente para
+    encaminhá-la (Lei 8.112, art. 214). Se você tem conta no sistema, prefira entrar e comunicar por lá.</p>
+
+  {% if erro_formulario %}<div class="aviso aviso-erro" role="alert">{{ erro_formulario }}</div>{% endif %}
+
+  <form method="post" action="{{ acao }}">
+    <details class="recolhido" open>
+      <summary>1. Quem está comunicando</summary>
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="com-nome">Seu nome</label>
+          <input id="com-nome" name="com_nome" required maxlength="160" value="{{ d['com_nome'] or '' }}">
+        </div>
+        <div class="campo">
+          <label for="com-email">Seu e-mail</label>
+          <input id="com-email" name="com_email" type="email" required maxlength="160" value="{{ d['com_email'] or '' }}"
+                 aria-describedby="dica-com-email">
+          <span class="dica" id="dica-com-email">Só para a equipe falar com você; nada é enviado automaticamente.</span>
+        </div>
+        <div class="campo">
+          <label for="com-vinculo">Seu vínculo</label>
+          <select id="com-vinculo" name="com_vinculo" required>
+            <option value="">Escolha…</option>
+            {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}"{{ ui.sel(d['com_vinculo'], v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+    </details>
+
+    <details class="recolhido" open>
+      <summary>2. Quem se envolveu</summary>
+      {% for i in range(1, envolvidos_no_link + 1) %}{% include "partes/acidente_envolvido_publico.html" %}{% endfor %}
+    </details>
+
+    <details class="recolhido" open>
+      <summary>3. O que aconteceu</summary>
+      {% include "partes/acidente_campos_fatos.html" %}
+    </details>
+
+    <details class="recolhido">
+      <summary>4. Testemunhas (opcional)</summary>
+      {% for t in range(1, testemunhas_no_link + 1) %}
+      {% set tp = 'test_' ~ t ~ '_' %}
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="{{ tp }}nome">Testemunha {{ t }}</label>
+          <input id="{{ tp }}nome" name="{{ tp }}nome" maxlength="160" value="{{ d[tp ~ 'nome'] or '' }}">
+        </div>
+        <div class="campo">
+          <label for="{{ tp }}contato">Contato (e-mail ou ramal)</label>
+          <input id="{{ tp }}contato" name="{{ tp }}contato" maxlength="160" value="{{ d[tp ~ 'contato'] or '' }}">
+        </div>
+      </div>
+      {% endfor %}
+    </details>
+
+    {# o campo que gente não vê: robô preenche e recebe a mesma resposta #}
+    <div class="oculto" aria-hidden="true"><label for="p-site">Não preencha</label>
+      <input id="p-site" name="site" tabindex="-1" autocomplete="off"></div>
+
+    <details class="recolhido" open>
+      <summary>5. Privacidade e envio</summary>
+      <p>Seus dados e os de quem se acidentou servem para cumprir a obrigação legal de comunicar e investigar o
+        acidente em serviço (Lei 8.112, arts. 211 a 214; LGPD, art. 7º, II e III).</p>
+      <details>
+        <summary>Saiba mais</summary>
+        <p>Quem vê: a equipe de segurança do trabalho da UFVJM e, na perícia, o SIASS. Não pedimos CPF, endereço,
+          telefone pessoal nem diagnóstico. O endereço de rede de quem envia é guardado por 90 dias, contra abuso,
+          e depois apagado. A comunicação é guardada como documento do acidente.</p>
+      </details>
+      <div class="campo">
+        <label><input type="checkbox" name="consentimento" value="1" required{{ ' checked' if d['consentimento'] == '1' }}>
+          Li o aviso de privacidade.</label>
+      </div>
+      <div class="campo">
+        <label><input type="checkbox" name="declaracao" value="1" required{{ ' checked' if d['declaracao'] == '1' }}>
+          Declaro que as informações são verdadeiras.</label>
+      </div>
+      <div class="acoes"><button type="submit">Enviar comunicação</button></div>
+    </details>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

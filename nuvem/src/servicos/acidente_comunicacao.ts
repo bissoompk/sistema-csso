@@ -140,6 +140,8 @@ export interface DadosComunicacao {
   /** D9: a chefia comunica com a própria conta e marca isto */
   sou_chefia: boolean;
   declarou_veracidade: boolean;
+  /** só no formulário por link (F2), quando não há conta: quem comunica se identifica */
+  comunicante?: { nome: string; email: string; vinculo: string } | null;
 }
 
 // ---------------------------------------------------------------------
@@ -287,6 +289,8 @@ export function conferir_relato(r: Relato): Relato {
 interface EnvolvidoResolvido extends Envolvido {
   servidor: typeof tabela_servidor.$inferSelect | null;
   campus_snapshot: number | null;
+  /** formulário por link: o SIAPE como foi digitado, sem consulta */
+  siape_digitado: string | null;
 }
 
 async function _resolver_envolvidos(
@@ -311,7 +315,15 @@ async function _resolver_envolvidos(
     const vinculo = _da_lista(e.vinculo, VINCULOS_ACIDENTADO, `o vínculo ${rotulo}`, true)!;
     const condicao = _da_lista(e.condicao, CONDICOES_ENVOLVIDO, `a condição ${rotulo}`, true)!;
     let servidor: typeof tabela_servidor.$inferSelect | null = null;
-    if (e.sou_eu) {
+    // sem conta (formulário por link), nada se consulta no cadastro: o SIAPE
+    // digitado é guardado como veio e a equipe vincula depois — consultar daria
+    // ao anônimo o oráculo "este SIAPE existe"
+    const publico = usuario === null;
+    let siape_digitado: string | null = null;
+    if (publico) {
+      const so_digitos = (e.siape ?? "").replace(/\D/g, "");
+      siape_digitado = /^\d{7}$/.test(so_digitos) ? so_digitos : null;
+    } else if (e.sou_eu) {
       if (!usuario || usuario.servidor_id === null) {
         throw new ComunicacaoRecusada(
           "Sua conta não está ligada a um cadastro de servidor: informe o seu SIAPE no envolvido.",
@@ -356,6 +368,7 @@ async function _resolver_envolvidos(
     saida.push({
       ...e,
       vinculo: servidor ? "SERVIDOR" : vinculo,
+      siape_digitado,
       condicao,
       servidor: servidor ?? null,
       nome_externo,
@@ -392,6 +405,18 @@ function _resolver_testemunhas(lista: Testemunha[]): Testemunha[] {
   });
 }
 
+/** Quem comunica sem conta: nome, e-mail e vínculo (D14b), para a equipe poder voltar a ela. */
+function _conferir_comunicante(c: DadosComunicacao["comunicante"]): { nome: string; email: string; vinculo: string } {
+  const nome = _texto(c?.nome, "o seu nome", 160);
+  if (!nome) throw new ComunicacaoRecusada("Informe o seu nome: a equipe precisa saber a quem voltar.", "o seu nome");
+  const email = (c?.email ?? "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 160) {
+    throw new ComunicacaoRecusada("Informe um e-mail válido para contato.", "o seu e-mail");
+  }
+  const vinculo = _da_lista(c?.vinculo, VINCULOS_ACIDENTADO, "o seu vínculo com a UFVJM", true)!;
+  return { nome, email, vinculo };
+}
+
 // ---------------------------------------------------------------------
 // A CAT/SP congelada
 // ---------------------------------------------------------------------
@@ -408,7 +433,7 @@ export interface ContextoCatSp {
   relato: Relato;
   envolvidos: Record<string, unknown>[];
   testemunhas: Testemunha[];
-  comunicante: { usuario_id: number | null; chefia_imediata: boolean };
+  comunicante: { usuario_id: number | null; chefia_imediata: boolean; nome?: string; vinculo?: string };
   /** D4: o que o comunicante declarou; chave separada (a variante sem saúde a corta) */
   saude_declarada: (SaudeDeclarada & { ordem: number; origem: "DECLARADO_COMUNICANTE" })[];
   complementacoes: { pedido: string; resposta: string; respondida_em: string }[];
@@ -483,6 +508,7 @@ export async function comunicar(
       "a declaração",
     );
   }
+  const comunicante_publico = usuario ? null : _conferir_comunicante(bruto.comunicante ?? null);
   const fatos = await conferir_fatos(tx, bruto.fatos);
   const relato = conferir_relato(bruto.relato);
   const envolvidos = await _resolver_envolvidos(tx, usuario, bruto.envolvidos);
@@ -550,7 +576,7 @@ export async function comunicar(
       funcao: e.servidor?.funcao ?? null,
       unidade_uorg_id: e.servidor?.unidade_uorg_id ?? null,
       campus_id: e.campus_snapshot,
-      siape: e.servidor?.siape ?? null,
+      siape: e.servidor?.siape ?? e.siape_digitado,
       contato_investigacao: e.contato_investigacao,
       menor_de_idade: e.menor_de_idade,
     });
@@ -558,7 +584,7 @@ export async function comunicar(
       ordem: i + 1,
       vinculo: e.vinculo,
       servidor_id: e.servidor?.id ?? null,
-      siape: e.servidor?.siape ?? null,
+      siape: e.servidor?.siape ?? e.siape_digitado,
       nome: e.servidor?.nome ?? e.nome_externo,
       identificacao_externa: e.identificacao_externa,
       empresa_contratada: e.empresa_contratada,
@@ -574,6 +600,9 @@ export async function comunicar(
   await tx.insert(acidente_comunicante).values({
     ocorrencia_id: oc.id,
     usuario_id: usuario ? usuario.id : null,
+    nome: comunicante_publico?.nome ?? null,
+    email: comunicante_publico?.email ?? null,
+    vinculo: comunicante_publico?.vinculo ?? null,
     declarou_veracidade_em: new Date(),
     ip: usuario ? null : (pedido.ip ?? null),
   });
@@ -586,7 +615,11 @@ export async function comunicar(
     relato,
     envolvidos: congelados,
     testemunhas,
-    comunicante: { usuario_id: usuario ? usuario.id : null, chefia_imediata: bruto.sou_chefia },
+    comunicante: {
+      usuario_id: usuario ? usuario.id : null,
+      chefia_imediata: bruto.sou_chefia,
+      ...(comunicante_publico ? { nome: comunicante_publico.nome, vinculo: comunicante_publico.vinculo } : {}),
+    },
     saude_declarada: envolvidos.map((e, i) => ({ ordem: i + 1, origem: "DECLARADO_COMUNICANTE" as const, ...e.saude })),
     complementacoes: [],
   };

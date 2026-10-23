@@ -460,17 +460,23 @@ export const PREFIXO_CHAVE_IP = "inscricao:";
 /** Mantida para quem a chamava: o limite agora é do banco, que cada teste já recria. */
 export function limpar_limites(): void {}
 
-function _chave_ip(ip: string | null | undefined): string {
-  return (PREFIXO_CHAVE_IP + (ip || "desconhecido")).slice(0, 64);
+function _chave_ip(ip: string | null | undefined, prefixo: string): string {
+  return (prefixo + (ip || "desconhecido")).slice(0, 64);
 }
 
-/** Conta o envio e diz se ele cabe. Só o POST conta: abrir o cartaz é de graça. */
+/**
+ * Conta o envio e diz se ele cabe. Só o POST conta: abrir o cartaz é de graça.
+ * `prefixo` separa os contadores de cada formulário público (o da comunicação
+ * de acidente usa o seu, `acidente_publico.PREFIXO_CHAVE_IP`).
+ */
 export async function dentro_do_limite(
   tx: Executor,
   ip: string | null | undefined,
   agora: Date = new Date(),
+  prefixo: string = PREFIXO_CHAVE_IP,
+  limite: number = LIMITE_POR_JANELA,
 ): Promise<boolean> {
-  const chave = _chave_ip(ip);
+  const chave = _chave_ip(ip, prefixo);
   const inicio_valido = new Date(agora.getTime() - JANELA_S * 1000);
   // Date solto num `sql` vai como texto ISO (ver `autenticacao.registrar_falha_ip`)
   const vencida = sql`${limite_login_ip.janela_inicio} < ${inicio_valido.toISOString()}::timestamptz`;
@@ -485,5 +491,5 @@ export async function dentro_do_limite(
       },
     })
     .returning({ falhas: limite_login_ip.falhas });
-  return Number(linha?.falhas ?? 1) <= LIMITE_POR_JANELA;
+  return Number(linha?.falhas ?? 1) <= limite;
 }

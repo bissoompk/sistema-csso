@@ -1613,3 +1613,16 @@ Feita sobre `entrada/acidentes_especificacao.md` §3, §4 e §7. O que difere ou
 - **Não feito nesta fatia.** O anexo opcional na comunicação (≤4 MB) e o autocompletar de servidor (o servidor entra pelo SIAPE); a varredura noturna do prazo (`TIPOS_VARRIDOS`) e `EVENTOS_DO_TITULAR` ficam para a costura, que é dona desses arquivos.
 - **Armadilha de template.** `base.html` faz `{% set partes = ... %}` com o nome do usuário; uma variável de contexto `partes` é sobrescrita em toda página logada. O catálogo de partes do corpo se chama `partes_corpo`.
 - **Módulo seguro na produção (decisão do usuário, 23/10/2026).** Até a F6 e a emenda da ROPA (§4 da especificação), `config.acidentesLiberado()`: em produção o módulo só vale com `CSSO_MODULO_ACIDENTES=sim`. Sem ela, o cartão aparece «em desenvolvimento» (`disponivel: false`), o grupo «Acidentes» sai do Meu espaço e toda rota `/acidentes*` responde 404. Fora da produção vale por padrão; `CSSO_MODULO_ACIDENTES=nao` desliga em qualquer ambiente. O menu é decidido ao carregar a função (a variável muda com a publicação); a rota confere a cada pedido.
+
+## Análise de Acidentes — F2: comunicação por link, sem conta (23/10/2026)
+
+D1b. `/acidente/:token` (`servicos/acidente_publico.ts`, `rotas/acidente_publico.ts`) e a tela da equipe `/acidentes/link` (`acidente.triar`).
+
+- **Link.** Geral ou por campus; token de 24 bytes mostrado UMA vez, o banco guarda o SHA-256. Gerar de novo para o mesmo recorte desliga o anterior. Sem validade: dura até ser trocado ou desligado. O link de campus grava a ocorrência com o campus dele.
+- **Anti-abuso, nesta ordem.** Limite por IP (5 envios em 10 min, contador próprio `acidente:` em `limite_login_ip`; `inscricao_publica.dentro_do_limite` ganhou `prefixo` e `limite`) ANTES de olhar o token; campo-isca `site` (mesma resposta 303, só o evento `ACIDENTE_PUBLICO_HONEYPOT`, sem conteúdo); teto de 30 comunicações por link ainda RECEBIDAS (`ajuste.teto_em_espera`) — cheio, 503 com a saída ("comunique à equipe ou à chefia").
+- **Sem oráculo de cadastro.** O formulário não consulta o cadastro: todo envolvido entra pelo nome; um campo "SIAPE, matrícula ou crachá" guarda 7 dígitos em `acidentado.siape` (não conferido, a ficha diz isso) e o resto em `identificacao_externa`. A vinculação ao cadastro (`ACIDENTE_ACIDENTADO_VINCULADO`) fica para depois: até lá, o servidor que se acidentou e foi comunicado pelo link não vê a ocorrência em «Minhas comunicações».
+- **Comunicante** se identifica por nome, e-mail e vínculo (`acidente_comunicante`, D14b); o IP é apagado em 90 dias (`privacidade.expurgar_ip_de_acidente`, na rotina). Consentimento ("li o aviso de privacidade") e declaração obrigatórios. Nenhum e-mail ao comunicante (D6); o setor recebe, como na F1.
+- **Minimização.** Sem anexo e sem saúde declarada no link (a ROPA pede o mínimo para quem não tem conta); quem conduz pergunta à pessoa.
+- **Complementação.** Não se pede a quem comunicou sem conta: o botão some e a aba explica o caminho (e-mail + retificação da CAT/SP).
+- **PRG.** O envio responde 303 para o próprio link; o protocolo viaja num cookie de 30 min preso ao caminho. O robô recebe a mesma tela "recebida", sem protocolo.
+- **Trava.** Segue `acidentesLiberado()`: com o módulo seguro na produção, `/acidente/*` também é 404.

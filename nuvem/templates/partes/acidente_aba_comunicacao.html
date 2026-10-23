@@ -23,13 +23,16 @@
   {% if pode_cancelar %}{{ ui.botao_cadastro('cancelar', 'Cancelar', 'perigo') }}{% endif %}
 </div>
 
+{% if oc.responsavel_id != usuario.id %}
 {% call ui.popup_cadastro('assumir', 'Assumir a ocorrência', '/acidentes/' ~ oc.id ~ '/assumir', 'Assumir',
                           aberto=popup_aberto == 'assumir', erro=erro if popup_aberto == 'assumir' else '') %}
   <input type="hidden" name="versao" value="{{ oc.versao }}">
   <p>Você passa a conduzir {{ oc.protocolo }}{% if oc.estado == 'RECEBIDA' %}, e ela vai para a triagem{% endif %}.
     O prazo legal passa a ser acompanhado por você.</p>
 {% endcall %}
+{% endif %}
 
+{% if destinos|length %}
 {% call ui.popup_cadastro('mudar-estado', 'Mudar a situação', '/acidentes/' ~ oc.id ~ '/estado', 'Mudar',
                           aberto=popup_aberto == 'mudar-estado', erro=erro if popup_aberto == 'mudar-estado' else '') %}
   <input type="hidden" name="versao" value="{{ oc.versao }}">
@@ -41,7 +44,9 @@
     <span class="dica">Pedir complementação e cancelar têm botão próprio.</span>
   </div>
 {% endcall %}
+{% endif %}
 
+{% if pode_complementar %}
 {% call ui.popup_cadastro('pedir-complementacao', 'Pedir complementação', '/acidentes/' ~ oc.id ~ '/complementacao', 'Pedir',
                           aberto=popup_aberto == 'pedir-complementacao', erro=erro if popup_aberto == 'pedir-complementacao' else '',
                           nota='quem comunicou tem 5 dias') %}
@@ -52,6 +57,7 @@
     <span class="dica">Quem comunicou recebe o aviso no sistema; o texto não vai no e-mail.</span>
   </div>
 {% endcall %}
+{% endif %}
 
 {% call ui.popup_cadastro('prorrogar', 'Prorrogar o prazo de comunicação', '/acidentes/' ~ oc.id ~ '/prazo', 'Prorrogar',
                           aberto=popup_aberto == 'prorrogar', erro=erro if popup_aberto == 'prorrogar' else '') %}
@@ -80,6 +86,7 @@
   </div>
 {% endcall %}
 
+{% if pode_cancelar %}
 {% call ui.popup_cadastro('cancelar', 'Cancelar a ocorrência', '/acidentes/' ~ oc.id ~ '/cancelar', 'Cancelar a ocorrência',
                           aberto=popup_aberto == 'cancelar', erro=erro if popup_aberto == 'cancelar' else '', classe_botao='perigo') %}
   <input type="hidden" name="versao" value="{{ oc.versao }}">
@@ -96,6 +103,7 @@
     <textarea id="texto-cancelar" name="texto" maxlength="1000" rows="3"></textarea>
   </div>
 {% endcall %}
+{% endif %}
 {% endif %}
 
 <div class="grade-resumo">
@@ -116,6 +124,13 @@
     <span class="detalhe">{{ campus.sigla ~ ' — ' ~ campus.nome if campus else 'campus não informado' }}</span>
   </div>
 </div>
+
+{% if comunicante_publico and ve_nomes %}
+<div class="aviso">Comunicada pelo formulário por link por <strong>{{ comunicante_publico.nome }}</strong>
+  ({{ ROTULO_VINCULO_ACIDENTADO[comunicante_publico.vinculo] or comunicante_publico.vinculo }}), contato
+  <span class="mono">{{ comunicante_publico.email }}</span>. Sem conta, não responde complementação pelo sistema:
+  fale pelo e-mail e retifique a CAT/SP com a resposta.</div>
+{% endif %}
 
 {% if oc.estado == 'CANCELADA' %}
 <div class="aviso aviso-alerta"><strong>Cancelada:</strong> {{ ROTULO_MOTIVO_CANCELAMENTO[oc.cancelamento_motivo] or oc.cancelamento_motivo }}

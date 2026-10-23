@@ -1,0 +1,49 @@
+{% import "partes/macros.html" as ui with context %}
+{# Um envolvido no formulário por link (F2). Sem conta não há "sou eu" nem
+   consulta ao cadastro: todo envolvido entra pelo nome, e o SIAPE (se for
+   servidor) é guardado como digitado — a equipe vincula depois. Sem saúde
+   declarada aqui: quem conduz o caso pergunta à pessoa. Nunca CPF. #}
+{% set p = 'env_' ~ i ~ '_' %}
+<fieldset class="cartao envolvido" id="envolvido-{{ i }}">
+  <legend>{{ 'Quem se acidentou' if i == 1 else 'Outro envolvido (opcional)' }}</legend>
+  <input type="hidden" name="env_indice" value="{{ i }}">
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="{{ p }}nome">Nome</label>
+      <input id="{{ p }}nome" name="{{ p }}nome_externo" maxlength="160" value="{{ d[p ~ 'nome_externo'] or '' }}"{{ ' required' if i == 1 }}>
+    </div>
+    <div class="campo">
+      <label for="{{ p }}vinculo">Vínculo</label>
+      <select id="{{ p }}vinculo" name="{{ p }}vinculo">
+        {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'vinculo'] or 'SERVIDOR', v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="{{ p }}siape">SIAPE, matrícula ou crachá (opcional)</label>
+      <input id="{{ p }}siape" name="{{ p }}siape" maxlength="20" value="{{ d[p ~ 'siape'] or '' }}" aria-describedby="{{ p }}dica-id">
+      <span class="dica" id="{{ p }}dica-id">Nunca o CPF.</span>
+    </div>
+  </div>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="{{ p }}condicao">Condição no acidente</label>
+      <select id="{{ p }}condicao" name="{{ p }}condicao">
+        {% for v in CONDICOES_ENVOLVIDO %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'condicao'] or 'ACIDENTADO', v) }}>{{ ROTULO_CONDICAO_ENVOLVIDO[v] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="{{ p }}lesao">Houve lesão?</label>
+      <select id="{{ p }}lesao" name="{{ p }}houve_lesao">
+        <option value="">—</option>
+        {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'houve_lesao'], v) }}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="{{ p }}empresa">Empresa contratada (se terceirizado)</label>
+      <input id="{{ p }}empresa" name="{{ p }}empresa_contratada" maxlength="160" value="{{ d[p ~ 'empresa_contratada'] or '' }}">
+    </div>
+  </div>
+  <div class="campo">
+    <label><input type="checkbox" name="{{ p }}menor_de_idade" value="1"{{ ' checked' if d[p ~ 'menor_de_idade'] == '1' }}> Menor de idade</label>
+  </div>
+</fieldset>

@@ -33,6 +33,7 @@ export const SEM_PERMISSAO_DE_RBAC: readonly (readonly [string, string])[] = [
   ["/trocar-senha", "qualquer sessão troca a própria senha"],
   ["/minha-conta", "qualquer sessão cuida da própria conta (contato, e-mail com a senha atual, sessões); nunca de outra"],
   ["/inscricao/", "inscrição pública pelo link da turma"],
+  ["/acidente/", "comunicação de acidente pelo link do setor, sem conta (F2 do módulo de acidentes)"],
   ["/validar", "validação pública do certificado"],
   ["/acesso-participante", "acesso do participante externo pelo link do e-mail"],
   ["/participante", "acesso do participante externo pelo link do e-mail"],
