@@ -630,6 +630,7 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
     ? await tx.select().from(tabela_campus).where(eq(tabela_campus.id, ocorrencia.campus_id))
     : [];
   const envolvidos = await comunicacao.envolvidos_de(tx, ocorrencia.id);
+  const [comunicante] = await tx.select().from(acidente_comunicante).where(eq(acidente_comunicante.ocorrencia_id, ocorrencia.id));
   const conduz = NOMINAIS_ACIDENTE.some((p) => usuario.pode(p)) || ocorrencia.criado_por === usuario.id;
   const contexto = (vigente?.contexto_congelado ?? null) as comunicacao.ContextoCatSp | null;
   const pode_triar = usuario.pode("acidente.triar") && !ACIDENTE_ENCERRADO.has(ocorrencia.estado);
@@ -676,13 +677,17 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       doenca_rotulo: await _rotulo_de(c, acidente_agente_doenca, ocorrencia.agente_doenca_id),
       situacao_rotulo: await _rotulo_de(c, acidente_situacao_geradora, ocorrencia.situacao_geradora_id),
       acidentados: envolvidos.acidentados,
+      // quem comunicou sem conta (formulário por link): nome, e-mail e vínculo, para quem conduz
+      comunicante_publico: comunicante && comunicante.usuario_id === null ? comunicante : null,
       testemunhas: envolvidos.testemunhas,
       // RN-19: o nome de quem não é servidor e das testemunhas segue a mesma família
       ve_nomes: conduz,
       nominais_rn19: NOMINAIS_ACIDENTE,
       pode_triar,
       pode_cancelar: pode_triar && ACIDENTE_CANCELAVEL.has(ocorrencia.estado),
-      pode_complementar: pode_triar && TRANSICOES_ACIDENTE[ocorrencia.estado]?.has("AGUARDANDO_COMPLEMENTACAO"),
+      // só se pede a quem comunicou com uma conta: é ela que responde
+      pode_complementar:
+        pode_triar && !!comunicante?.usuario_id && TRANSICOES_ACIDENTE[ocorrencia.estado]?.has("AGUARDANDO_COMPLEMENTACAO"),
       pode_responder: ocorrencia.estado === "AGUARDANDO_COMPLEMENTACAO" && (await triagem.pode_responder(tx, usuario, ocorrencia)),
       destinos,
       ...(pode_triar ? await _catalogos(c) : {}),
@@ -834,3 +839,14 @@ rotas.post("/acidentes/:id{[0-9]+}/complementar", async (c) => {
     comMensagem(`/acidentes/${oc.id}`, `Resposta enviada. A CAT/SP de ${oc.protocolo} ganhou a versão ${oc.cat_sp_versao}.`),
   );
 });
+
+// o formulário por link (`rotas/acidente_publico.ts`) lê o mesmo formulário
+export {
+  _catalogos as catalogos,
+  CONTEXTO_FORM,
+  _digitado as digitado,
+  _ler_envolvidos as ler_envolvidos,
+  _ler_fatos as ler_fatos,
+  _ler_relato as ler_relato,
+  _ler_testemunhas as ler_testemunhas,
+};

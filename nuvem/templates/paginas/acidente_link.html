@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Link de comunicação · SISA{% endblock %}
+
+{# O link do setor para quem não tem conta comunicar acidente (F2). O endereço
+   aparece UMA vez, logo depois de gerado: o banco guarda só o hash. Gerar de
+   novo para o mesmo recorte desliga o anterior — é assim que se desfaz um
+   cartaz que vazou. #}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Link de comunicação de acidente</h1>
+      <p class="sub">Para terceirizados, estudantes, visitantes e servidores sem conta. Divulgue só
+        internamente (intranet, e-mail institucional, cartaz no setor).</p>
+    </div>
+  </div>
+
+  {% if link_novo %}
+  <div class="aviso aviso-ok" role="status">
+    <p><strong>Link gerado.</strong> Copie agora: ele não aparece de novo.</p>
+    <p class="mono">{{ link_novo }}</p>
+  </div>
+  {% endif %}
+
+  <div class="grade-resumo">
+    <div class="cartao-resumo{{ ' atencao' if em_espera >= teto }}">
+      <span class="rotulo">Comunicações por link a triar</span>
+      <span class="valor">{{ em_espera }} de {{ teto }}</span>
+      <span class="detalhe">Ao chegar a {{ teto }}, o link para de receber até a equipe triar.</span>
+      <a class="acao" href="/acidentes/fila?estado=RECEBIDA">Ver a fila</a>
+    </div>
+  </div>
+
+  <section class="cartao">
+    <h2>Links em uso <span class="contador">{{ links|length }}</span></h2>
+    {% if links|length %}
+    <ul class="linha-tempo">
+      {% for l in links %}
+      <li><strong>{{ ('Campus ' ~ l.campus_sigla) if l.campus_id else 'Geral' }}</strong>
+        — gerado em {{ l.gerado_em|momento }}
+        <form method="post" action="/acidentes/link/{{ l.id }}/desligar" class="em-linha">
+          <button type="submit" class="secundario compacto">Desligar</button>
+        </form></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="discreto">Nenhum link no ar: só quem tem conta comunica.</p>{% endif %}
+  </section>
+
+  <section class="cartao">
+    <h2>Gerar link</h2>
+    <form method="post" action="/acidentes/link">
+      <div class="campo">
+        <label for="campus-link">Para</label>
+        <select id="campus-link" name="campus_id">
+          <option value="">Toda a UFVJM (geral)</option>
+          {% for cp in campi %}<option value="{{ cp.id }}">Campus {{ cp.sigla }} — {{ cp.nome }}</option>{% endfor %}
+        </select>
+        <span class="dica">O link de campus manda a comunicação já com o campus. Gerar de novo troca o link daquele recorte.</span>
+      </div>
+      <div class="acoes"><button type="submit">Gerar</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

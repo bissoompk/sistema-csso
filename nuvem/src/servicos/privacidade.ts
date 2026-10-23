@@ -6,7 +6,7 @@
  */
 import { and, inArray, isNotNull, lt } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { inscricao as tabela_inscricao, usuario as tabela_usuario } from "../db/esquema/index.js";
+import { acidente_comunicante, inscricao as tabela_inscricao, usuario as tabela_usuario } from "../db/esquema/index.js";
 import { pode_ver_nominal } from "./identificacao.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { identificador_opaco } from "./textos.js";
@@ -77,6 +77,23 @@ export async function expurgar_ip_de_inscricao(
   return limpas.length;
 }
 
+/** O IP de quem comunicou acidente pelo link (F2): 90 dias, contra abuso; a comunicação fica. */
+export const DIAS_DO_IP_DO_ACIDENTE = 90;
+
+export async function expurgar_ip_de_acidente(
+  tx: Executor,
+  agora: Date = new Date(),
+  dias: number = DIAS_DO_IP_DO_ACIDENTE,
+): Promise<number> {
+  const limite = new Date(agora.getTime() - dias * 86_400_000);
+  const limpas = await tx
+    .update(acidente_comunicante)
+    .set({ ip: null })
+    .where(and(isNotNull(acidente_comunicante.ip), lt(acidente_comunicante.declarou_veracidade_em, limite)))
+    .returning({ id: acidente_comunicante.ocorrencia_id });
+  return limpas.length;
+}
+
 /** Os expurgos, para a rotina noturna. */
 export async function expurgos_de_privacidade(
   tx: Executor,
@@ -84,7 +101,7 @@ export async function expurgos_de_privacidade(
 ): Promise<{ acessos: number; exportacoes: number; ips: number }> {
   const acessos = await expurgar_registro_acesso(tx);
   const exportacoes = (await expurgar_exportacoes(arm)).length;
-  const ips = await expurgar_ip_de_inscricao(tx);
+  const ips = (await expurgar_ip_de_inscricao(tx)) + (await expurgar_ip_de_acidente(tx));
   return { acessos, exportacoes, ips };
 }
 

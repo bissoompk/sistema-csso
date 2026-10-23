@@ -17,6 +17,7 @@
         <td data-coluna="Quem">
           {%- if a.servidor %}{% set quem = identificar(a.servidor) %}{{ quem.nome }}{% if quem.nominal %} <span class="mono discreto">SIAPE {{ quem.siape }}</span>{% endif %}
           {%- elif ve_nomes %}{{ a.nome_externo }}{% if a.identificacao_externa %} <span class="mono discreto">{{ a.identificacao_externa }}</span>{% endif %}
+          {%- if a.siape %} <span class="mono discreto">SIAPE informado {{ a.siape }} (não conferido)</span>{% endif %}
           {%- else %}<span class="discreto">pessoa externa {{ a.ordem }}</span>{% endif %}
           {%- if a.empresa_contratada and ve_nomes %} <span class="discreto">({{ a.empresa_contratada }})</span>{% endif %}
           {%- if a.menor_de_idade %} <span class="pilula alerta">menor de idade</span>{% endif %}</td>

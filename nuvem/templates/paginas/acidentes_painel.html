@@ -51,6 +51,13 @@
       <strong>Fila de ocorrências</strong>
       <span>Todas ao seu alcance, com filtros</span>
     </a>
+    {% if usuario.pode('acidente.triar') %}
+    <a class="acao-hub verde" href="/acidentes/link">
+      {{ ui.icone('send') }}
+      <strong>Link de comunicação</strong>
+      <span>Para quem não tem conta comunicar</span>
+    </a>
+    {% endif %}
     {% if usuario.pode('acidente.siass') %}
     <a class="acao-hub teal" href="/acidentes/fila?estado=VENCENDO">
       {{ ui.icone('send') }}
