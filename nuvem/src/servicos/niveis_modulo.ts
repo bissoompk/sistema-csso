@@ -226,3 +226,38 @@ export function niveis_de(linhas: readonly { modulo: string; nivel: string }[]):
   for (const l of linhas) if (modulo_nivelado(l.modulo) && eh_nivel(l.nivel)) saida[l.modulo] = l.nivel;
   return saida;
 }
+
+// ---------------------------------------------------------------------
+// A base compartilhada (Servidores, Catálogos) com "Sem acesso" em Processos
+// SEI (23/10/2026)
+// ---------------------------------------------------------------------
+/**
+ * A permissão DERIVADA da base compartilhada. Não é permissão do banco (não se
+ * concede nem aparece na matriz, por isso o `@`, como `@titular`): sai, em
+ * `rbac.perfis_vigentes`, na concessão que lê a base hoje (`processo.ver` do
+ * perfil, antes ou depois do nível) E que ainda dá acesso a algum módulo.
+ *
+ * Por quê: Servidores e Catálogos eram guardados por `processo.ver`, e "Sem
+ * acesso" a Processos SEI os tirava de quem continua trabalhando no EPI ou nos
+ * Certificados — o cadastro é o mesmo para todos os módulos. Com a derivada, o
+ * técnico sem Processos SEI continua vendo a base, com o MESMO alcance que a
+ * concessão dele tinha; e quem nunca leu a base (o almoxarife) continua sem
+ * ela. Fica só na concessão, e não em `UsuarioAtual.permissoes` (a lista que a
+ * API devolve não muda): `UsuarioAtual.pode(PERMISSAO_DA_BASE)` a lê das
+ * concessões.
+ */
+export const PERMISSAO_DA_BASE = "@base";
+
+/** Os módulos cujo acesso sustenta a base (Demandas é base, e não sustenta). */
+const MODULOS_QUE_SUSTENTAM_A_BASE: ReadonlySet<string> = new Set(["processos-sei", "epis", "certificados"]);
+
+/** A concessão dá a base? `cruas` = as do perfil; `efetivas` = depois dos níveis. */
+export function concessao_da_a_base(cruas: Iterable<string>, efetivas: Iterable<string>): boolean {
+  const antes = new Set(cruas);
+  const depois = [...efetivas];
+  if (!antes.has("processo.ver") && !depois.includes("processo.ver")) return false;
+  return depois.some((p) => {
+    const m = _niveladas.get(p);
+    return m !== undefined && MODULOS_QUE_SUSTENTAM_A_BASE.has(m.codigo);
+  });
+}

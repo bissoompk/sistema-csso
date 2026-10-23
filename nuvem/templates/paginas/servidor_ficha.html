@@ -123,6 +123,9 @@
 
   </section>
 
+  {# Processos, pareceres e adicionais são do módulo Processos SEI: com "Sem
+     acesso" a ele, a ficha abre pela base e sem eles (23/10/2026). #}
+  {% if ve_processos %}
   <div class="lado-a-lado igual">
     <section class="cartao liso">
       <div class="cabecalho-cartao">
@@ -234,6 +237,7 @@
     </div>
     {% endif %}
   </section>
+  {% endif %}
 
   {# A ficha de EPI aparece aqui, e não só em /epis/fichas, porque é a mesma
      pessoa: obrigar a trocar de tela para ver o EPI dela é o tipo de

@@ -66,8 +66,9 @@ async function _operador(tx: Executor): Promise<UsuarioAtual> {
 function _leitor(...permissoes: string[]): UsuarioAtual {
   return new UsuarioAtual({ id: 1, login: "leitor", nome: "Leitor", permissoes, perfis: ["auditor_interno"] });
 }
-const NOMINAL = () => _leitor("indicador.ver", "exposicao.ver", "exportar");
-const SEM_NOMINAL = () => _leitor("indicador.ver", "exportar");
+// `epi.ver` também: o CSV é do módulo, e sem acesso a ele dá 403 (23/10/2026)
+const NOMINAL = () => _leitor("indicador.ver", "exposicao.ver", "exportar", "epi.ver");
+const SEM_NOMINAL = () => _leitor("indicador.ver", "exportar", "epi.ver");
 
 async function _item(tx: Executor, nome: string): Promise<Item> {
   const [categoria] = await tx.select().from(e.epi_categoria).where(eq(e.epi_categoria.codigo, "PROT_MEMBROS_SUPERIORES"));

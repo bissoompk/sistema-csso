@@ -30,7 +30,7 @@ import * as importacao_servidores from "../servicos/importacao_servidores.js";
 import { linha_csv } from "../servicos/csv.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import * as textos from "../servicos/textos.js";
-import { aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
+import { PERMISSAO_DA_BASE, aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { comMensagem, marcarDownload, numeroDaPagina, pagina, recortar, redirecionar } from "../web.js";
 
@@ -67,13 +67,25 @@ export async function _servidor_no_escopo(
   // a permissão da tela que lê (ou escreve): o alcance é o dela, e não o da
   // conta (D1/D9) — quem lê o próprio cadastro pela concessão do titular não
   // corrige o dos outros por ter `processo.editar` em outro alcance
-  permissao = "processo.ver",
+  permissao: string | readonly string[] = "processo.ver",
 ) {
   const [sv] = await tx
     .select()
     .from(tabela_servidor)
     .where(and(aplicar_escopo(usuario, tabela_servidor, permissao), eq(tabela_servidor.id, servidor_id)));
   return sv ?? null;
+}
+
+/**
+ * A leitura da base compartilhada: o `processo.ver` (o do titular lê o próprio
+ * cadastro) ou a base derivada (`PERMISSAO_DA_BASE`), que fica com quem está
+ * "Sem acesso" a Processos SEI e trabalha noutro módulo (23/10/2026). O
+ * alcance é a união das duas — o mesmo da concessão que a dava.
+ */
+const LEITURA_DA_BASE: readonly string[] = ["processo.ver", PERMISSAO_DA_BASE];
+
+function _exigir_leitura_da_base(usuario: UsuarioAtual): void {
+  if (!LEITURA_DA_BASE.some((p) => usuario.pode(p))) usuario.exigir("processo.ver");
 }
 
 type Digitado = Record<string, string | number[]>;
@@ -91,7 +103,7 @@ async function _tela_lista(c: Ctx, usuario: UsuarioAtual, q = "", extra: { erro?
   // `ESCOPO_PROPRIO` devolve o titular e mais nada. Supressão de nome não é
   // supressão de pessoa.
   let itens = await tx.query.servidor.findMany({
-    where: aplicar_escopo(usuario, tabela_servidor, "processo.ver"),
+    where: aplicar_escopo(usuario, tabela_servidor, LEITURA_DA_BASE),
     with: { cargo: true, unidade: true, uorg: true },
     orderBy: [asc(tabela_servidor.nome)],
   });
@@ -117,7 +129,7 @@ async function _tela_lista(c: Ctx, usuario: UsuarioAtual, q = "", extra: { erro?
 
 rotas.get("/servidores", async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("processo.ver");
+  _exigir_leitura_da_base(usuario);
   return _tela_lista(c, usuario, c.req.query("q") ?? "");
 });
 
@@ -343,10 +355,10 @@ rotas.post("/servidores/:id{[0-9]+}/lotacao/:lotacao{[0-9]+}", async (c) => {
 });
 
 async function _ficha(c: Ctx, usuario: UsuarioAtual, servidor_id: number, recado: { mensagem?: string | null; erro?: string | null } = {}) {
-  usuario.exigir("processo.ver");
+  _exigir_leitura_da_base(usuario);
   const tx = c.get("tx");
   // Mesma resposta para "não existe" e "fora do seu escopo".
-  const achado = await _servidor_no_escopo(tx, usuario, servidor_id);
+  const achado = await _servidor_no_escopo(tx, usuario, servidor_id, LEITURA_DA_BASE);
   if (!achado) return redirecionar(c, "/servidores");
 
   await auditoria.registrar_leitura_nominal(tx, usuario, "servidor.ficha", { servidor_id: achado.id });
@@ -355,16 +367,27 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, servidor_id: number, recado
     where: eq(tabela_servidor.id, achado.id),
     with: { cargo: true, unidade: true, uorg: true },
   });
-  const processos = await tx.select().from(tabela_processo).where(eq(tabela_processo.servidor_id, achado.id));
-  const pareceres = await tx.query.parecer_tecnico.findMany({
-    where: eq(parecer_tecnico.servidor_id, achado.id),
-    with: { laudo: true },
-    orderBy: [desc(parecer_tecnico.ano), desc(parecer_tecnico.numero)],
-  });
-  const vigencias = await tx.query.adicional_vigencia.findMany({
-    where: eq(adicional_vigencia.servidor_id, achado.id),
-    with: { tipo_adicional: true, percentual: true },
-  });
+  // Processos, pareceres e adicionais são do módulo Processos SEI: quem está
+  // "Sem acesso" a ele abre a ficha pela base e não os vê — salvo os da
+  // própria ficha, que são do titular (23/10/2026).
+  const ve_processos =
+    usuario.pode_na_equipe("processo.ver") || (usuario.servidor_id !== null && usuario.servidor_id === achado.id && usuario.pode("processo.ver"));
+  const processos = ve_processos
+    ? await tx.select().from(tabela_processo).where(eq(tabela_processo.servidor_id, achado.id))
+    : [];
+  const pareceres = ve_processos
+    ? await tx.query.parecer_tecnico.findMany({
+        where: eq(parecer_tecnico.servidor_id, achado.id),
+        with: { laudo: true },
+        orderBy: [desc(parecer_tecnico.ano), desc(parecer_tecnico.numero)],
+      })
+    : [];
+  const vigencias = ve_processos
+    ? await tx.query.adicional_vigencia.findMany({
+        where: eq(adicional_vigencia.servidor_id, achado.id),
+        with: { tipo_adicional: true, percentual: true },
+      })
+    : [];
   // A ficha de EPI entra como seção desta tela (§9 do desenho do módulo). A
   // visibilidade segue a regra da tela do módulo — `epi.ficha`, ou ser o
   // próprio titular —, e não `processo.ver`.
@@ -382,6 +405,7 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, servidor_id: number, recado
     .map((l) => ({ ...l, aberta: l.vigencia_fim === null, uorg: com_uorg_bruto(l.uorg), unidade: com_uorg_bruto(l.unidade) }));
   return pagina(c, "paginas/servidor_ficha.html", usuario, {
     servidor,
+    ve_processos,
     epi_visivel,
     // só as cinco últimas: o resumo aponta para a tela do módulo
     epi_linhas: epi_linhas.slice(0, 5),

@@ -6,6 +6,7 @@
  * secundária; recorte com menos de 5 servidores exige `exposicao.ver`.
  */
 import { Hono } from "hono";
+import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { and, asc, eq, ne } from "drizzle-orm";
 import type { Ambiente } from "../nucleo/contexto.js";
 import { usuarioCom } from "../dependencias.js";
@@ -237,6 +238,9 @@ rotas.get("/relatorios", async (c) => {
 
 rotas.get("/relatorios/exportar-processos", async (c) => {
   const usuario = await usuarioCom(c, "exportar");
+  // a exportação é dos processos: `exportar` é transversal, e "Sem acesso" a
+  // Processos SEI a fecha (23/10/2026)
+  exigir_acesso_ao_modulo(usuario, "processos-sei");
   const tx = c.get("tx");
   const filtro = new repo.Filtro({
     q: c.req.query("q") || null,

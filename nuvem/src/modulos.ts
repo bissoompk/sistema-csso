@@ -17,6 +17,8 @@
  */
 import { EscopoNaoDeclarado, type UsuarioAtual } from "./servicos/rbac.js";
 import { PERMISSOES_VER as PERMISSOES_PENDENCIAS } from "./servicos/pendencias.js";
+import { tem_acesso_ao_modulo } from "./servicos/acesso_modulo.js";
+import { PERMISSAO_DA_BASE } from "./servicos/niveis_modulo.js";
 import { ganchos, global } from "./web.js";
 import { eq } from "drizzle-orm";
 import type { Executor } from "./db/cliente.js";
@@ -27,6 +29,10 @@ import {
 } from "./db/esquema/index.js";
 
 export const PROCESSOS_SEI = "processos-sei";
+
+// A regra única de "tem acesso ao módulo" (`servicos/acesso_modulo.ts`), daqui
+// também: o menu, o mapa, o `/inicio` e a home por módulos perguntam a ela.
+export { tem_acesso_ao_modulo } from "./servicos/acesso_modulo.js";
 
 // Qual módulo a pessoa estava usando quando saiu para a base. Vai em cookie
 // porque a alternativa — `?de=epis` em cada link — obrigaria toda tela da base a
@@ -176,8 +182,31 @@ export class Modulo {
   }
 
   itens_de(usuario: UsuarioAtual | null | undefined): Item[] {
+    const abre = this.#filtro(usuario);
+    return this.itens.filter(abre);
+  }
+
+  /**
+   * O filtro dos itens desta pessoa: a permissão do item (`visivel_para`) e,
+   * para a tela da EQUIPE, o acesso ao módulo (`tem_acesso_ao_modulo`) — é o
+   * que faz "Sem acesso" esconder o módulo inteiro, também quando sobra uma
+   * permissão transversal que abria um item dele ("Instrutores" pela
+   * `assinatura.gerenciar`, "Importar" pela `catalogo.gerenciar`; 23/10/2026).
+   * A tela do titular não pede acesso ao módulo (é dele), e sai daqui quando o
+   * "Meu espaço" está ao lado da lateral.
+   */
+  #filtro(usuario: UsuarioAtual | null | undefined): (item: Item) => boolean {
     const ao_lado = _meu_espaco_ao_lado(usuario);
-    return this.itens.filter((item) => item.visivel_para(usuario) && !(ao_lado && item.do_titular));
+    const acesso = tem_acesso_ao_modulo(usuario, this.codigo);
+    return (item) => {
+      if (!item.visivel_para(usuario)) return false;
+      return item.do_titular ? !ao_lado : acesso;
+    };
+  }
+
+  /** A tela da equipe deste módulo abre para esta pessoa (sem olhar o "Meu espaço"). */
+  abre_na_equipe(item: Item, usuario: UsuarioAtual | null | undefined): boolean {
+    return !item.do_titular && item.visivel_para(usuario) && tem_acesso_ao_modulo(usuario, this.codigo);
   }
 
   /**
@@ -191,11 +220,11 @@ export class Modulo {
     // A tela do titular sai daqui quando o bloco "Meu espaço" está ao lado da
     // lateral: o mesmo "Meus treinamentos" em dois lugares, um deles só quando
     // o módulo de certificados está aberto, não diz onde ele mora.
-    const ao_lado = _meu_espaco_ao_lado(usuario);
+    const abre = this.#filtro(usuario);
     const grupos = this.grupos
       .map((g) => ({
         titulo: g.titulo,
-        itens: g.itens.filter((item) => item.visivel_para(usuario) && !(ao_lado && item.do_titular)),
+        itens: g.itens.filter(abre),
       }))
       .filter((g) => g.itens.length > 0);
     if (grupos.length === 1) grupos[0] = { titulo: null, itens: grupos[0]!.itens };
@@ -610,17 +639,22 @@ export const BASE: readonly Item[] = [
     "demanda.ver",
     "O que chegou por e-mail ou no balcão e ainda não é processo SEI.",
   ),
+  // Servidores e Catálogos pela base derivada (`PERMISSAO_DA_BASE`), e não
+  // mais por `processo.ver`: "Sem acesso" a Processos SEI não tira a base de
+  // quem continua no EPI ou nos Certificados (23/10/2026). Quem lia a base
+  // continua lendo, com o mesmo alcance; quem não lia (almoxarife) continua
+  // sem ela.
   new Item(
     "Servidores",
     "/servidores",
-    "processo.ver",
+    PERMISSAO_DA_BASE,
     "Cadastro e histórico datado de lotação, posto e cargo.",
   ),
   new Item(
     "Catálogos",
     "/catalogos",
     // a rota abre para quem so consulta; editar e que pede catalogo.gerenciar
-    "processo.ver",
+    PERMISSAO_DA_BASE,
     "Campi, unidades, postos, cargos, agentes nocivos e textos padrão.",
   ),
   new Item("Auditoria", "/auditoria", "auditoria.ver", "Trilha append-only encadeada por hash."),
@@ -778,9 +812,10 @@ export function meu_espaco_de(usuario: UsuarioAtual | null | undefined): Item[] 
   const da_equipe = sozinho
     ? new Set<string>()
     : new Set(
-        [...MODULOS.flatMap((m) => m.itens), ...BASE]
-          .filter((item) => !item.do_titular && item.visivel_para(usuario))
-          .map((item) => item.caminho),
+        [
+          ...MODULOS.flatMap((m) => m.itens.filter((item) => m.abre_na_equipe(item, usuario))),
+          ...BASE.filter((item) => item.visivel_para(usuario)),
+        ].map((item) => item.caminho),
       );
   const itens = MEU_ESPACO.filter(
     (item) => item !== MEU_PERFIL && _abre_no_meu_espaco(item, usuario) && !da_equipe.has(item.caminho),
@@ -1012,7 +1047,11 @@ export function navegacao(
   origem: string | null = null,
 ): Navegacao {
   const do_caminho = modulo_ativo(caminho);
-  let ativo = do_caminho !== null && do_caminho.disponivel ? do_caminho : null;
+  // O módulo do caminho só vira o "atual" se abre alguma tela para a pessoa:
+  // com "Sem acesso" (a tela do titular que mora nele, ou o 403 de uma tela
+  // dele), a lateral não pode afirmar um módulo que o seletor esconde.
+  const do_caminho_abre = do_caminho !== null && do_caminho.disponivel && do_caminho.itens_de(usuario).length > 0;
+  let ativo = do_caminho_abre ? do_caminho : null;
   if (ativo === null) {
     const lembrado = origem ? por_codigo(origem) : null;
     if (lembrado !== null && lembrado.disponivel && lembrado.itens_de(usuario).length) {
@@ -1026,7 +1065,7 @@ export function navegacao(
   // vê ("Meus pedidos de EPI", e não "Requisições"); fora dele, o de sempre.
   const do_meu = meu_espaco.length ? _item_do_meu_espaco(caminho, meu_espaco, usuario!) : null;
   const item = do_meu ?? item_ativo(caminho);
-  const no_modulo = do_caminho !== null && do_caminho.disponivel;
+  const no_modulo = do_caminho_abre;
   return {
     modulos: MODULOS,
     modulo_ativo: ativo,
@@ -1123,5 +1162,7 @@ ganchos.cartaoMeuEspaco = (c, usuario) => cartao_meu_espaco_completo(c.get("tx")
 // O seletor da lateral precisa saber por onde se entra em cada módulo; a
 // decisão tem de ser a mesma que `/inicio` toma.
 global("porta_de_entrada", porta_de_entrada);
+// a regra única de acesso ao módulo, para os templates (botões e atalhos)
+global("tem_acesso_ao_modulo", tem_acesso_ao_modulo);
 global("icone_de", icone_de);
 global("iniciais_de", iniciais_de);

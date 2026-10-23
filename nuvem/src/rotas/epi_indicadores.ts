@@ -18,6 +18,7 @@
  * campus é a margem das unidades dele.
  */
 import { Hono } from "hono";
+import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { asc, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
@@ -460,6 +461,9 @@ export async function exportar(
 ): Promise<{ nome: string; corpo: Uint8Array }> {
   usuario.exigir("indicador.ver");
   usuario.exigir("exportar");
+  // o CSV é do relatório do módulo: "Sem acesso" a EPI o fecha, como a tela
+  // (23/10/2026) — `indicador.ver` e `exportar` são transversais
+  exigir_acesso_ao_modulo(usuario, "epis");
   const ctx = await _contexto(tx, usuario, recorte);
   const dados = ctx.dados;
 
@@ -536,6 +540,7 @@ rotas.get(EXPORTAR, async (c) => {
   // de uma data torta
   usuario.exigir("indicador.ver");
   usuario.exigir("exportar");
+  exigir_acesso_ao_modulo(usuario, "epis");
   const periodo = _periodo(c);
   const { nome, corpo } = await exportar(c.get("tx"), usuario, periodo);
   marcarDownload(c);

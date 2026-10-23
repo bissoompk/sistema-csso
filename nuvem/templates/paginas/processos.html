@@ -3,7 +3,8 @@
 {% block titulo %}Processos · SISA{% endblock %}
 
 {% block acoes_cabecalho %}
-{% if usuario.pode('exportar') %}
+{# a exportação pede acesso ao módulo (o titular "Sem acesso" vê a lista dele, sem exportar) #}
+{% if usuario.pode('exportar') and tem_acesso_ao_modulo(usuario, 'processos-sei') %}
 <a class="botao secundario" data-baixar="Exportando…" href="/relatorios/exportar-processos?{{ filtro.como_query_string() }}">Exportar CSV</a>
 {% endif %}
 {% if usuario.pode('processo.criar') %}<a class="botao" href="/processos/novo">Novo processo</a>{% endif %}

@@ -52,6 +52,14 @@
       de outra pessoa que administra acesso.</div>
     {% endif %}
 
+    {# O efeito de cada nível, dito antes de escolher (23/10/2026): "Sem acesso"
+       era lido como "só leitura" e o módulo continuava no menu. #}
+    <p class="discreto nota-sem-acesso"><strong>Sem acesso:</strong> o módulo some do menu,
+      do mapa de módulos e do início de quem tem este perfil, e as telas dele respondem
+      “acesso negado”. Continua no “Meu espaço” só o que é da própria pessoa (a ficha de
+      EPI, os pedidos, os treinamentos e certificados dela). Quem tem outro perfil que dá
+      o módulo continua com ele: vale a soma dos perfis.</p>
+
     <form method="post" action="/perfis/{{ atual.id }}/niveis">
       <div class="tabela-cartao lista sem-altura">
         <table class="empilhavel tabela-niveis">

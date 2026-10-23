@@ -709,7 +709,8 @@ describe("exportação", () => {
       const usuario = await _usuario(tx);
       await _populacao(tx, usuario, { quantos: 3, sigla: "DODO" });
 
-      const { corpo } = await rota.exportar(tx, _leitor("indicador.ver", "exportar"), null);
+      // `epi.ver` também: o CSV é do módulo, e sem acesso a ele dá 403 (23/10/2026)
+      const { corpo } = await rota.exportar(tx, _leitor("indicador.ver", "exportar", "epi.ver"), null);
       expect([...corpo.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
       const texto = new TextDecoder().decode(corpo.slice(3));
       expect(texto).toContain(`Entregue por unidade;DIA;Departamento de Odontologia;${MARCA_SUPRIMIDO}`);

@@ -233,6 +233,9 @@
                   assinatura e a habilitação continuam vindo do perfil.
                   {%- if not tem_perfil_de_equipe[u.id] %} <strong>Esta conta não tem
                   perfil de equipe:</strong> dar um módulo exige um perfil antes.{% endif %}</p>
+                <p class="discreto"><strong>Sem acesso</strong> aqui vale para todos os perfis
+                  desta conta: o módulo some do menu e do mapa dela, e as telas dele respondem
+                  “acesso negado”; fica só o que é dela no “Meu espaço”.</p>
                 {% for m in modulos_nivelados %}
                 {% set escolhido = dela[m.codigo] or 'PADRAO' %}
                 <fieldset class="nivel-escolha campo">

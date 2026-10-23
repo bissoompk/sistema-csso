@@ -10,6 +10,7 @@
  * pasta que se liste a cada abertura. Ver DESVIOS.md.
  */
 import { Hono } from "hono";
+import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { desc, isNotNull } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { desfazer } from "../nucleo/contexto.js";
@@ -56,14 +57,25 @@ async function _tela_importar(
   );
 }
 
-rotas.get("/importar", async (c) => {
+/**
+ * A importação grava PROCESSOS (planilha e Trello): `catalogo.gerenciar` é
+ * transversal e não basta — quem está "Sem acesso" a Processos SEI não a abre
+ * (23/10/2026), como o item "Importar" some do menu.
+ */
+async function _quem_importa(c: Ctx) {
   const usuario = await usuarioCom(c, "catalogo.gerenciar");
+  exigir_acesso_ao_modulo(usuario, "processos-sei");
+  return usuario;
+}
+
+rotas.get("/importar", async (c) => {
+  const usuario = await _quem_importa(c);
   return _tela_importar(c, usuario);
 });
 
 /** Os cinco relatórios da Fase 4 — expõem, nunca resolvem sozinhos. */
 rotas.get("/importar/reconciliacao", async (c) => {
-  const usuario = await usuarioCom(c, "catalogo.gerenciar");
+  const usuario = await _quem_importa(c);
   const tx = c.get("tx");
   return pagina(c, "paginas/reconciliacao.html", usuario, {
     reconciliacao: await servico_reconciliacao.reconciliar(tx),
@@ -75,7 +87,7 @@ rotas.get("/importar/reconciliacao", async (c) => {
 // permissão. Com `exportar` ele abria para quem recebia 403 na tela de onde o
 // link sai (engenheiro, técnico, médico).
 rotas.get("/importar/reconciliacao.csv", async (c) => {
-  await usuarioCom(c, "catalogo.gerenciar");
+  await _quem_importa(c);
   const resultado = await servico_reconciliacao.reconciliar(c.get("tx"));
   let texto = linha_csv(["Relatório", "Referência", "Detalhe"]);
   for (const [titulo, , achados] of resultado.como_secoes()) {
@@ -105,7 +117,7 @@ async function _receber(c: Ctx, padrao: string) {
 const SEM_ARQUIVO = "Escolha o arquivo antes de importar — nenhum arquivo chegou.";
 
 rotas.post("/importar/planilha", async (c) => {
-  const usuario = await usuarioCom(c, "catalogo.gerenciar");
+  const usuario = await _quem_importa(c);
   const tx = c.get("tx");
   const recebido = await _receber(c, "planilha.xlsx");
   if (recebido === null) return _tela_importar(c, usuario, { origem: "planilha", mensagem: SEM_ARQUIVO }, 422);
@@ -132,7 +144,7 @@ rotas.post("/importar/planilha", async (c) => {
 });
 
 rotas.post("/importar/trello", async (c) => {
-  const usuario = await usuarioCom(c, "catalogo.gerenciar");
+  const usuario = await _quem_importa(c);
   const tx = c.get("tx");
   const recebido = await _receber(c, "trello.json");
   if (recebido === null) return _tela_importar(c, usuario, { origem: "trello", mensagem: SEM_ARQUIVO }, 422);
