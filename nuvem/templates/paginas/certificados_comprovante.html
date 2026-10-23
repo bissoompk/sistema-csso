@@ -24,6 +24,7 @@
       <dl class="tabela-dados">
         {% if titular.lotacao %}<dt>Lotação</dt><dd>{{ titular.lotacao }}</dd>{% endif %}
         {% if titular.campus %}<dt>Campus</dt><dd>{{ titular.campus }}</dd>{% endif %}
+        {% if titular.organizacao %}<dt>Organização</dt><dd>{{ titular.organizacao }}</dd>{% endif %}
         <dt>Emitido em</dt><dd>{{ emitido_em }}</dd>
       </dl>
       <p class="comprovante-aviso">Documento de conferência. Vale a validação de cada QR na data da consulta.</p>

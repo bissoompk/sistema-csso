@@ -55,6 +55,7 @@ import * as pendencias from "./pendencias.js";
 import * as servico_participante from "./participante.js";
 import * as setor_promotor from "./setor_promotor.js";
 import * as setor_equipe from "./setor_equipe.js";
+import * as titular_externo from "./titular_externo.js";
 import { COM_PARTICIPANTE, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import { comparar } from "./presenca.js";
@@ -1120,7 +1121,8 @@ export async function inscricoes_da_turma(tx: Executor, turma: TurmaCarregada): 
 // `turma.inscrever_se` e `turma.inscrever` são permissões diferentes porque
 // descrevem atos diferentes. **A propriedade de segurança é a ausência de um
 // parâmetro**: as funções abaixo não recebem participante nem inscrição de
-// terceiro — o titular sai de `usuario.servidor_id`, que vem da sessão.
+// terceiro — o titular sai de `usuario.servidor_id`, que vem da sessão (ou,
+// para o terceirizado e o discente, da própria conta: `titular_externo.ts`).
 export const TIPO_PENDENCIA_CONFIRMAR = "TURMA_INSCRICAO_A_CONFIRMAR";
 
 export function chave_da_pendencia_de_confirmacao(inscricao: { id: number }): string {
@@ -1175,14 +1177,27 @@ export async function fechar_pendencia_de_confirmacao(
   if (existente) await pendencias.concluir(tx, existente, usuario);
 }
 
-async function _titular_da_conta(tx: Executor, usuario: UsuarioAtual) {
+/**
+ * O participante em nome de quem a conta pede a vaga. O servidor, pelo
+ * `servidor_id` (o participante dele nasce em `de_servidor`); o terceirizado e
+ * o discente, pelo participante ligado à conta (`titular_externo.ts`), que
+ * nasce no primeiro pedido.
+ */
+async function _titular_da_conta(tx: Executor, usuario: UsuarioAtual): Promise<ParticipanteCarregado> {
+  _exigir_titular(usuario);
   if (usuario.servidor_id === null) {
-    throw new RegraDaTurma(
-      "Sua conta não está ligada a um cadastro de servidor, e sem essa " +
-        "ligação o sistema não tem em nome de quem inscrever. A ligação é " +
-        "feita em Usuários, por quem tem `usuario.criar_conta` — peça " +
-        "informando o seu SIAPE.",
-    );
+    try {
+      return await titular_externo.garantir_participante_da_conta(tx, usuario);
+    } catch (erro) {
+      // o e-mail da conta que não serve de e-mail de participante: a frase
+      // não repete o endereço
+      if (erro instanceof servico_participante.DadosDoParticipante) {
+        throw new RegraDaTurma(
+          "O e-mail da sua conta não pôde ser usado no cadastro de participante." + FALE_COM_A_EQUIPE,
+        );
+      }
+      throw erro;
+    }
   }
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id));
   if (!servidor) {
@@ -1190,7 +1205,18 @@ async function _titular_da_conta(tx: Executor, usuario: UsuarioAtual) {
       "O cadastro de servidor ligado a esta conta não existe mais. Avise a equipe responsável antes de tentar de novo.",
     );
   }
-  return servidor;
+  return servico_participante.de_servidor(tx, servidor, usuario);
+}
+
+/** A conta sem titular (nem servidor ligado, nem perfil externo) não pede vaga. */
+function _exigir_titular(usuario: UsuarioAtual): void {
+  if (titular_externo.tem_titular(usuario)) return;
+  throw new RegraDaTurma(
+    "Sua conta não está ligada a um cadastro de servidor, e sem essa " +
+      "ligação o sistema não tem em nome de quem inscrever. A ligação é " +
+      "feita em Usuários, por quem tem `usuario.criar_conta` — peça " +
+      "informando o seu SIAPE.",
+  );
 }
 
 /**
@@ -1245,7 +1271,8 @@ export async function turmas_abertas(tx: Executor, hoje: string | null = null): 
 
 /**
  * "As minhas" — AQUI o escopo próprio quer dizer alguma coisa. Presa ao
- * `servidor_id` da conta; `-1` no lugar de null para não virar `IS NULL`.
+ * `servidor_id` da conta (`-1` no lugar de null para não virar `IS NULL`) ou,
+ * para o terceirizado e o discente, ao participante ligado à conta.
  */
 export async function inscricoes_do_titular(tx: Executor, usuario: UsuarioAtual): Promise<InscricaoCarregada[]> {
   const ids = await tx
@@ -1253,7 +1280,11 @@ export async function inscricoes_do_titular(tx: Executor, usuario: UsuarioAtual)
     .from(tabela_inscricao)
     .innerJoin(tabela_participante, eq(tabela_participante.id, tabela_inscricao.participante_id))
     .innerJoin(tabela_turma, eq(tabela_turma.id, tabela_inscricao.turma_id))
-    .where(eq(tabela_participante.servidor_id, usuario.servidor_id ?? -1))
+    .where(
+      titular_externo.eh_titular_externo(usuario)
+        ? eq(tabela_participante.usuario_id, usuario.id)
+        : eq(tabela_participante.servidor_id, usuario.servidor_id ?? -1),
+    )
     .orderBy(desc(tabela_turma.data_inicio), desc(tabela_turma.codigo));
   const saida: InscricaoCarregada[] = [];
   for (const { id } of ids) saida.push((await carregar_inscricao(tx, id))!);
@@ -1283,12 +1314,14 @@ export async function inscrever_se(
 ): Promise<InscricaoCarregada> {
   usuario.exigir("turma.inscrever_se");
   const hoje = opcoes.hoje ?? datas_br.hoje();
-  const servidor = await _titular_da_conta(tx, usuario);
+  _exigir_titular(usuario);
 
   const impedimento = aberta_a_pedido_proprio(turma, hoje);
   if (impedimento) throw new RegraDaTurma(impedimento);
 
-  const pessoa = await servico_participante.de_servidor(tx, servidor, usuario);
+  // depois do impedimento: o participante (do servidor ou da conta externa)
+  // não nasce de um pedido que seria recusado de qualquer jeito
+  const pessoa = await _titular_da_conta(tx, usuario);
   await _conferir_inscricao_unica(tx, turma, pessoa, true);
   await _conferir_vaga(tx, turma);
 
@@ -1322,6 +1355,18 @@ export async function inscrever_se(
  */
 const DESISTIVEIS: ReadonlySet<string> = new Set(["INSCRITA", "CONFIRMADA", "AGUARDANDO_EMAIL"]);
 
+/**
+ * O participante é o da própria conta: o servidor ligado, ou — para o
+ * terceirizado e o discente — o participante ligado à conta.
+ */
+export function e_do_titular(
+  usuario: UsuarioAtual,
+  participante: { servidor_id: number | null; usuario_id: number | null },
+): boolean {
+  if (titular_externo.eh_titular_externo(usuario)) return participante.usuario_id === usuario.id;
+  return usuario.servidor_id !== null && participante.servidor_id === usuario.servidor_id;
+}
+
 /** Desistir cabe até a véspera do início, e só de inscrição ainda viva. */
 export function pode_desistir(inscricao: InscricaoCarregada, hoje: string | null = null): boolean {
   const dia = hoje ?? datas_br.hoje();
@@ -1340,8 +1385,7 @@ export async function desistir(
 ): Promise<InscricaoCarregada> {
   usuario.exigir("turma.inscrever_se");
   const hoje = opcoes.hoje ?? datas_br.hoje();
-  const servidor_id = inscricao.participante.servidor_id;
-  if (usuario.servidor_id === null || servidor_id !== usuario.servidor_id) {
+  if (!e_do_titular(usuario, inscricao.participante)) {
     // não é "permissão negada": a permissão ele tem; relação com a inscrição, não
     throw new RegraDaTurma("Esta inscrição não é sua.");
   }

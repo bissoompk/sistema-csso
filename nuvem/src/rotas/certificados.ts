@@ -36,6 +36,7 @@ import * as aviso_reciclagem from "../servicos/aviso_reciclagem.js";
 import * as fila_emissao from "../servicos/fila_emissao.js";
 import * as email from "../servicos/email.js";
 import * as certificados_titular from "../servicos/certificados_titular.js";
+import * as titular_externo from "../servicos/titular_externo.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
 import * as dono_turma from "../servicos/dono_turma.js";
 import { chave_busca, parece_cpf } from "../servicos/textos.js";
@@ -347,7 +348,8 @@ rotas.post(`${FILA}/email`, async (c) => {
 /**
  * O certificado do próprio servidor, em cartões. Tela separada de
  * `/certificados`: a permissão do item de menu é outra (`treinamento.ver`) e o
- * filtro é fixo no `servidor_id` da conta (`certificados_titular.do_titular`).
+ * filtro é fixo no `servidor_id` da conta — ou, para o terceirizado e o
+ * discente, no participante ligado à conta (`certificados_titular.chave_da_conta`).
  * Sem paginação: a lista de um titular é pequena, e os filtros por situação,
  * ano e busca (lista fechada) recortam no servidor.
  */
@@ -356,7 +358,7 @@ rotas.get(MEUS, async (c) => {
   usuario.exigir("treinamento.ver");
   const tx = c.get("tx");
   const hoje = datas_br.hoje();
-  const dados = await certificados_titular.do_titular(tx, usuario.servidor_id, hoje);
+  const dados = await certificados_titular.do_titular(tx, await certificados_titular.chave_da_conta(tx, usuario), hoje);
   const lista = certificados_titular.filtrar(dados, {
     situacao: c.req.query("situacao"),
     ano: c.req.query("ano"),
@@ -395,8 +397,9 @@ rotas.get(MEUS, async (c) => {
     frase_vazio,
     anulados: dados.anulados,
     tem_em_vigor: certificados_titular.para_o_comprovante(dados.cartoes).length > 0,
-    // a conta sem cadastro de servidor não é erro: é a tela dizendo por que está vazia
-    sem_servidor: usuario.servidor_id === null,
+    // a conta sem titular (nem servidor ligado, nem terceirizado/discente) não
+    // é erro: é a tela dizendo por que está vazia
+    sem_servidor: !titular_externo.tem_titular(usuario),
   });
 });
 
@@ -412,10 +415,12 @@ rotas.get(`${MEUS}/comprovante`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("treinamento.ver");
   const tx = c.get("tx");
-  if (usuario.servidor_id === null) return redirecionar(c, MEUS);
+  // o externo que nunca se inscreveu ainda não tem participante: nada a comprovar
+  const chave = await certificados_titular.chave_da_conta(tx, usuario);
+  if (chave === null) return redirecionar(c, MEUS);
   const hoje = datas_br.hoje();
-  const dados = await certificados_titular.do_titular(tx, usuario.servidor_id, hoje);
-  const titular = await certificados_titular.identificacao_do_titular(tx, usuario.servidor_id);
+  const dados = await certificados_titular.do_titular(tx, chave, hoje);
+  const titular = await certificados_titular.identificacao_do_titular(tx, chave);
   const itens = certificados_titular.com_qr(certificados_titular.para_o_comprovante(dados.cartoes), 3);
   return pagina(c, "paginas/certificados_comprovante.html", usuario, {
     titular,
@@ -432,15 +437,22 @@ function _volta_da_ficha(usuario: UsuarioAtual): string {
 /**
  * A linha e a relação com ela: `[certificado | null, de_outro]`. A ordem dos três
  * passos evita transformar a URL num enumerador: quem não tem `certificado.ver`
- * nem cadastro de servidor leva o 403 antes de o banco ser tocado; `no_escopo`
- * decide QUAL linha; `exigir_leitura_do_certificado` decide o RIGOR.
+ * nem titular (servidor ligado ou perfil externo) leva o 403 antes de o banco
+ * ser tocado; `no_escopo` decide QUAL linha; `exigir_leitura_do_certificado`
+ * decide o RIGOR. O terceirizado e o discente sem `certificado.ver` só
+ * alcançam o certificado do participante ligado à conta.
  */
 async function _abrir(
   tx: Executor,
   usuario: UsuarioAtual,
   certificado_id: number,
 ): Promise<[servico.CertificadoRegistro | null, boolean]> {
-  if (!usuario.pode("certificado.ver") && usuario.servidor_id === null) usuario.exigir("certificado.ver");
+  if (!usuario.pode("certificado.ver") && !titular_externo.tem_titular(usuario)) usuario.exigir("certificado.ver");
+  if (titular_externo.eh_titular_externo(usuario) && !usuario.pode("certificado.ver")) {
+    const proprio = await servico.do_titular_externo_por_id(tx, usuario, certificado_id);
+    if (!proprio) return [null, false];
+    return [proprio, servico.exigir_leitura_do_certificado(usuario, proprio.servidor_id, true)];
+  }
   const certificado = await servico.no_escopo(tx, usuario, certificado_id);
   if (!certificado) return [null, false];
   return [certificado, servico.exigir_leitura_do_certificado(usuario, certificado.servidor_id)];
@@ -453,7 +465,9 @@ async function _abrir(
 async function _ficha_do_titular(c: Ctx, usuario: UsuarioAtual, certificado: servico.CertificadoRegistro) {
   const tx = c.get("tx");
   const hoje = datas_br.hoje();
-  const dados = await certificados_titular.do_titular(tx, certificado.servidor_id, hoje);
+  // o do servidor pelo `servidor_id`; o do externo, pelo participante
+  const chave = certificado.servidor_id ?? { participante_id: certificado.participante_id };
+  const dados = await certificados_titular.do_titular(tx, chave, hoje);
   const cartao = [...dados.cartoes, ...dados.anulados].find((x) => x.id === certificado.id);
   if (!cartao) return redirecionar(c, MEUS);
   certificados_titular.com_qr([cartao], 5);
