@@ -177,6 +177,9 @@ async function dono_acidente(tx: Executor, usuario: UsuarioAtual, anexo: Anexo):
     .where(and(eq(acidente_ocorrencia.id, anexo.entidade_id), aplicar_escopo(usuario, acidente_ocorrencia, "acidente.ver")));
   if (!ocorrencia) throw new AnexoForaDeAlcance();
   if (ocorrencia.restrita_sst && !pode_ver_restrita_sst(usuario)) throw new AnexoForaDeAlcance();
+  // evidência e gravação de entrevista (F4) são dado de terceiro: só quem
+  // investiga ou encaminha ao SIASS — nem o titular nem quem comunicou as baixa
+  if (anexo.categoria === "EVIDENCIA_ACIDENTE" && !pode_ver_restrita_sst(usuario)) throw new AnexoForaDeAlcance();
   const [relatorio] = await tx
     .select({ variante: acidente_relatorio.variante })
     .from(acidente_relatorio)

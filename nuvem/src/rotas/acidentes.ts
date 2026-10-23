@@ -45,7 +45,12 @@ import {
   LOCAIS_TIPO,
   MENSAGEM_MENOR_DE_IDADE,
   MOTIVOS_CANCELAMENTO,
+  ROTULO_CARACTERIZACAO,
   ROTULO_CONDICAO_ENVOLVIDO,
+  ROTULO_SITUACAO_BARREIRA,
+  ROTULO_TIPO_BARREIRA,
+  SITUACOES_BARREIRA,
+  TIPOS_BARREIRA,
   ROTULO_ESPECIE,
   ROTULO_LOCAL_TIPO,
   ROTULO_MOTIVO_CANCELAMENTO,
@@ -62,6 +67,9 @@ import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
 import { escopo_ocorrencias, filtro_restrita, pode_ver_restrita_sst } from "../servicos/acidente_acesso.js";
 import * as comunicacao from "../servicos/acidente_comunicacao.js";
 import * as triagem from "../servicos/acidente_triagem.js";
+import * as investigacao from "../servicos/acidente_investigacao.js";
+import * as checklist from "../servicos/acidente_checklist.js";
+import * as entrevista from "../servicos/acidente_entrevista.js";
 import { hoje } from "../servicos/datas_br.js";
 import { comMensagem, fragmento, pagina, redirecionar } from "../web.js";
 
@@ -632,6 +640,25 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
   const envolvidos = await comunicacao.envolvidos_de(tx, ocorrencia.id);
   const [comunicante] = await tx.select().from(acidente_comunicante).where(eq(acidente_comunicante.ocorrencia_id, ocorrencia.id));
   const conduz = NOMINAIS_ACIDENTE.some((p) => usuario.pode(p)) || ocorrencia.criado_por === usuario.id;
+  // F4: as abas da investigação são de quem investiga ou encaminha ao SIASS
+  // (relato e evidência são dado de terceiro); para os outros, a aba diz isso
+  const ve_investigacao = pode_ver_restrita_sst(usuario);
+  const dados_investigacao: Record<string, unknown> = { ve_investigacao };
+  if (ve_investigacao && aba === "investigacao") {
+    dados_investigacao.investigacao = await investigacao.obter(tx, ocorrencia);
+    dados_investigacao.linha_do_tempo = await investigacao.linha_do_tempo(tx, ocorrencia.id);
+    dados_investigacao.barreiras = await investigacao.barreiras(tx, ocorrencia.id);
+  } else if (ve_investigacao && aba === "checklist") {
+    const itens = await checklist.itens(tx, ocorrencia);
+    dados_investigacao.checklist_por_secao = checklist.SECOES.map((titulo, n) => ({
+      n,
+      titulo,
+      itens: itens.filter((i) => i.secao === n),
+    })).filter((g) => g.itens.length);
+  } else if (ve_investigacao && aba === "entrevistas") {
+    dados_investigacao.entrevistas = await entrevista.entrevistas(tx, ocorrencia.id);
+    dados_investigacao.evidencias = await entrevista.evidencias(tx, ocorrencia.id);
+  }
   const contexto = (vigente?.contexto_congelado ?? null) as comunicacao.ContextoCatSp | null;
   const pode_triar = usuario.pode("acidente.triar") && !ACIDENTE_ENCERRADO.has(ocorrencia.estado);
   const destinos = pode_triar
@@ -695,6 +722,16 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       pre: "ret",
       prazo_efetivo: ocorrencia.prazo_prorrogado_ate ?? ocorrencia.prazo_comunicacao,
       ..._recados(c),
+      ...dados_investigacao,
+      investigacao_editavel: usuario.pode("acidente.investigar") && investigacao.editavel(ocorrencia),
+      CAMPOS_TEXTO: investigacao.CAMPOS_TEXTO,
+      CAMPOS_ESCOLHA: investigacao.CAMPOS_ESCOLHA,
+      SECOES_CHECKLIST: checklist.SECOES,
+      TIPOS_BARREIRA,
+      ROTULO_TIPO_BARREIRA,
+      SITUACOES_BARREIRA,
+      ROTULO_SITUACAO_BARREIRA,
+      ROTULO_CARACTERIZACAO,
       ...extra,
     },
     status,
@@ -840,8 +877,13 @@ rotas.post("/acidentes/:id{[0-9]+}/complementar", async (c) => {
   );
 });
 
-// o formulário por link (`rotas/acidente_publico.ts`) lê o mesmo formulário
+// o formulário por link (`rotas/acidente_publico.ts`) lê o mesmo formulário, e
+// as rotas da investigação (`rotas/acidente_investigacao.ts`) voltam à ficha
 export {
+  _ocorrencia as ocorrencia_no_alcance,
+  _porta as porta,
+  _recados as recados,
+  _tela_ficha as tela_ficha,
   _catalogos as catalogos,
   CONTEXTO_FORM,
   _digitado as digitado,

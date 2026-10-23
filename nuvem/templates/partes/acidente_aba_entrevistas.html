@@ -1,0 +1,81 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Entrevistas e evidências (F4). O relato e os arquivos são dado de
+   terceiro: restritos a quem investiga ou encaminha ao SIASS. A gravação só
+   entra com "consentimento obtido" marcado — o gravador (`gravador.js`) nem
+   começa sem a caixa, e o servidor recusa o áudio sem ela. #}
+{% set oc = ocorrencia %}
+{% if not ve_investigacao %}
+<div class="cartao"><div class="vazio"><strong>Restrito à equipe que investiga</strong>
+  <span>Entrevistas e evidências ficam com quem investiga o caso ou o encaminha ao SIASS.</span></div></div>
+{% else %}
+<section class="cartao">
+  <h2>Entrevistas <span class="contador">{{ entrevistas|length }}</span></h2>
+  {% if entrevistas|length %}
+  <ul class="linha-tempo">
+    {% for e in entrevistas %}
+    <li><strong>{{ e.entrevistado_nome }}</strong>{% if e.entrevistado_vinculo %} ({{ ROTULO_VINCULO_ACIDENTADO[e.entrevistado_vinculo] }}){% endif %}
+      {%- if e.realizada_em %}, {{ e.realizada_em|momento }}{% endif %}
+      {%- if e.entrevistadores %} — por {{ e.entrevistadores }}{% endif %}
+      {%- if e.anexo_audio_id %} · <a href="/anexos/{{ e.anexo_audio_id }}">gravação</a> <span class="discreto">(consentimento registrado)</span>{% endif %}
+      {% if e.relato %}<p class="relato">{{ e.relato }}</p>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="discreto">Nenhuma entrevista registrada.</p>{% endif %}
+
+  {% if investigacao_editavel %}
+  <form method="post" action="/acidentes/{{ oc.id }}/entrevistas" enctype="multipart/form-data" data-gravador>
+    <div class="linha-campos">
+      <div class="campo"><label for="entr-nome">Entrevistado</label>
+        <input id="entr-nome" name="entrevistado_nome" maxlength="160" required></div>
+      <div class="campo"><label for="entr-vinculo">Vínculo</label>
+        <select id="entr-vinculo" name="entrevistado_vinculo"><option value="">—</option>
+          {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}">{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
+        </select></div>
+      <div class="campo"><label for="entr-quando">Quando</label>
+        <input id="entr-quando" name="realizada_em" type="datetime-local"></div>
+      <div class="campo"><label for="entr-quem">Entrevistadores</label>
+        <input id="entr-quem" name="entrevistadores" maxlength="400"></div>
+    </div>
+    <div class="campo"><label for="entr-relato">Relato</label>
+      <textarea id="entr-relato" name="relato" rows="5" maxlength="20000" aria-describedby="dica-relato"></textarea>
+      <span class="dica" id="dica-relato">O que a pessoa contou sobre o trabalho e o evento. Saúde fica com o médico do trabalho.</span></div>
+    <div class="campo">
+      <label><input type="checkbox" name="consentiu_gravacao" value="1" data-gravador-consentimento>
+        Consentimento para gravar obtido do entrevistado</label>
+      <span class="dica">Sem esta caixa o gravador não liga e o áudio é recusado.</span>
+    </div>
+    <div class="campo" data-gravador-controles>
+      <button type="button" class="secundario" data-gravador-iniciar>Gravar</button>
+      <button type="button" class="secundario" data-gravador-parar hidden>Parar</button>
+      <span class="dica" data-gravador-estado aria-live="polite"></span>
+    </div>
+    <div class="campo"><label for="entr-audio">Ou anexe o áudio (até 4 MB)</label>
+      <input id="entr-audio" name="audio" type="file" accept="audio/*" data-gravador-arquivo></div>
+    <div class="acoes"><button type="submit">Registrar a entrevista</button></div>
+  </form>
+  <script src="/estaticos/js/gravador.js" nonce="{{ nonce() }}" defer></script>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Evidências <span class="contador">{{ evidencias|length }}</span></h2>
+  {% if evidencias|length %}
+  <ul class="linha-tempo">
+    {% for ev in evidencias %}
+    <li><a href="/anexos/{{ ev.anexo_id }}">{{ ev.nome_original }}</a>{% if ev.descricao %} — {{ ev.descricao }}{% endif %}
+      {% if ev.citada_no_relatorio %}<span class="pilula">citada no relatório</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="discreto">Nenhuma evidência anexada.</p>{% endif %}
+  {% if investigacao_editavel %}
+  <form method="post" action="/acidentes/{{ oc.id }}/evidencias" enctype="multipart/form-data" class="linha-campos">
+    <div class="campo"><label for="evid-arquivo">Arquivo (PDF ou imagem, até 4 MB)</label>
+      <input id="evid-arquivo" name="arquivo" type="file" accept="application/pdf,image/*" required aria-describedby="dica-evid"></div>
+    <div class="campo"><label for="evid-desc">Descrição</label>
+      <input id="evid-desc" name="descricao" maxlength="1000"></div>
+    <div class="acoes"><button type="submit" class="secundario">Anexar</button></div>
+  </form>
+  <p class="dica" id="dica-evid">Foto do local, do equipamento e das condições — nunca da lesão.</p>
+  {% endif %}
+</section>
+{% endif %}

@@ -1,0 +1,47 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Checklist (F4): o checklist de campo gerado na primeira abertura (base
+   + pontos específicos do caso), com caixa e observação por item, para levar
+   impresso à visita (`data-imprimir`). #}
+{% set oc = ocorrencia %}
+{% if not ve_investigacao %}
+<div class="cartao"><div class="vazio"><strong>Restrito à equipe que investiga</strong>
+  <span>O checklist de campo fica com quem investiga o caso ou o encaminha ao SIASS.</span></div></div>
+{% else %}
+<div class="acoes"><button type="button" class="secundario" data-imprimir>Imprimir o checklist</button></div>
+<form method="post" action="/acidentes/{{ oc.id }}/checklist">
+  {% for g in checklist_por_secao %}
+  <fieldset class="cartao">
+    <legend>{{ g.n }}. {{ g.titulo }}</legend>
+    {% for item in g.itens %}
+    <div class="campo">
+      <label><input type="checkbox" name="marcado" value="{{ item.id }}"{{ ' checked' if item.marcado }}{{ ' disabled' if not investigacao_editavel }}>
+        {{ item.texto }}{% if item.origem == 'MANUAL' %} <span class="pilula">acrescentado</span>{% endif %}</label>
+      <input name="obs_{{ item.id }}" maxlength="1000" value="{{ item.observacao or '' }}" placeholder="observação"
+             aria-label="Observação: {{ item.texto }}"{{ ' readonly' if not investigacao_editavel }}>
+    </div>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  {% if investigacao_editavel %}<div class="acoes"><button type="submit">Salvar o checklist</button></div>{% endif %}
+</form>
+
+{% if investigacao_editavel %}
+<section class="cartao">
+  <h2>Acrescentar item</h2>
+  <form method="post" action="/acidentes/{{ oc.id }}/checklist/item" class="linha-campos">
+    <div class="campo"><label for="item-secao">Seção</label>
+      <select id="item-secao" name="secao">
+        {% for secao in SECOES_CHECKLIST %}<option value="{{ loop.index0 }}">{{ loop.index0 }}. {{ secao }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="item-texto">Item</label>
+      <input id="item-texto" name="texto" maxlength="300" required></div>
+    <div class="acoes"><button type="submit" class="secundario">Acrescentar</button></div>
+  </form>
+  {% for g in checklist_por_secao %}{% for item in g.itens %}{% if item.origem == 'MANUAL' %}
+  <form method="post" action="/acidentes/{{ oc.id }}/checklist/item/{{ item.id }}/desativar" class="em-linha">
+    <span>{{ item.texto }}</span> <button type="submit" class="secundario compacto">Tirar</button>
+  </form>
+  {% endif %}{% endfor %}{% endfor %}
+</section>
+{% endif %}
+{% endif %}

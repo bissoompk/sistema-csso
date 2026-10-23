@@ -1626,3 +1626,15 @@ D1b. `/acidente/:token` (`servicos/acidente_publico.ts`, `rotas/acidente_publico
 - **Complementação.** Não se pede a quem comunicou sem conta: o botão some e a aba explica o caminho (e-mail + retificação da CAT/SP).
 - **PRG.** O envio responde 303 para o próprio link; o protocolo viaja num cookie de 30 min preso ao caminho. O robô recebe a mesma tela "recebida", sem protocolo.
 - **Trava.** Segue `acidentesLiberado()`: com o módulo seguro na produção, `/acidente/*` também é 404.
+
+## Análise de Acidentes — F4: investigação MAPA (23/10/2026)
+
+`servicos/acidente_investigacao.ts`, `acidente_checklist.ts`, `acidente_entrevista.ts`, `rotas/acidente_investigacao.ts`, abas Investigação, Checklist e Entrevistas da ficha, `public/estaticos/js/gravador.js`.
+
+- **Quem vê e quem edita.** As três abas são de quem investiga ou encaminha ao SIASS (`pode_ver_restrita_sst`): relato e evidência são dado de terceiro. Edita quem tem `acidente.investigar`, na triagem e na investigação; depois do relatório (e no caso encerrado) trava — mudar o que o relatório disse é retificar o relatório (F6).
+- **Controle otimista** no MAPA: a tela velha volta com 409, o que foi digitado ao lado do gravado, e nada sobrescreve. Diff por campo na trilha (`registrar_diferencas`, evento `ACIDENTE_INVESTIGACAO_SALVA`). No lugar do autosave do legado, rascunho local no navegador (`data-rascunho-local`) e o "Salvar".
+- **Os valores dos campos do MAPA vão para a trilha** (o diff tem antes e depois). Os campos recusam CPF e termo de saúde, mas texto livre pode citar pessoas: a trilha é lida por quem tem `auditoria.ver`. **Confirmar** se basta, ou se a trilha deve guardar só o nome do campo, como a saúde.
+- **Checklist**: base nas seções 0 a 7 e pontos específicos na 8, por espécie (trajeto), óbito declarado e PALAVRA INTEIRA do caso (relato, local, atividade, agente causador) — sem os falsos positivos do legado. **Os textos dos itens foram escritos nesta fatia** a partir das seções do legado (que não estavam no repositório): a equipe de SST deve revisá-los (`ESPECIFICOS` e `BASE` em `acidente_checklist.ts`). Item da equipe (MANUAL) sai; os da base e os específicos ficam (a observação diz "não se aplica").
+- **Entrevistas**: gravação só com "consentimento obtido" marcado (o gravador não liga sem a caixa; o servidor recusa o áudio sem ela; o banco guarda quem registrou). Tipo pelos bytes (áudio WebM, Ogg, WAV, MP3, M4A; evidência PDF, PNG, JPEG, GIF, WebP), teto de 4 MB. Sem transcrição automática (era Web Speech, API externa).
+- **Anexos `EVIDENCIA_ACIDENTE`** (evidência e gravação) passaram a baixar só para quem investiga ou encaminha ao SIASS (`anexo_acesso.dono_acidente`); antes, qualquer um no escopo da ocorrência, inclusive o titular, os baixaria.
+- **Não feito.** Unidade de exposição (doença do trabalho), marcar evidência "citada no relatório" (é da F6) e o link para a ficha de EPI do acidentado.

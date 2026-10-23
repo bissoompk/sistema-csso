@@ -29,6 +29,7 @@ import { rotas as turmas } from "./turmas.js";
 import { rotas as certificados } from "./certificados.js";
 import { rotas as acidentes } from "./acidentes.js";
 import { rotas as acidente_publico } from "./acidente_publico.js";
+import { rotas as acidente_investigacao } from "./acidente_investigacao.js";
 import { rotas as epis } from "./epis.js";
 import { rotas as epi_fichas } from "./epi_fichas.js";
 import { rotas as epi_estoque } from "./epi_estoque.js";
@@ -70,6 +71,7 @@ export const ROTAS: Hono<Ambiente>[] = [
   certificados,
   acidentes,
   acidente_publico,
+  acidente_investigacao,
   epis,
   epi_fichas,
   epi_estoque,
