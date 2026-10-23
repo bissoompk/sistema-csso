@@ -36,6 +36,8 @@ import {
   ESCOPO_UNIDADE,
   TEXTO_PERMISSAO,
   PERFIL_ADMINISTRADOR_SISTEMA,
+  PERFIL_POR_VINCULO,
+  PERFIS_EXTERNOS,
   PERMISSAO_DA_BASE,
   PERMISSOES_DO_TITULAR,
   SO_DO_TECNICO_HABILITADO,
@@ -660,6 +662,37 @@ rotas.get("/usuarios", async (c) => {
   return _tela_lista(c, usuario, { mensagem: c.req.query("mensagem") ?? null, erro: c.req.query("erro") ?? null });
 });
 
+/**
+ * Concede o perfil que o vínculo da conta decide (servidor, terceirizado ou
+ * discente). É regra do cadastro, e não escolha de quem cria: por isso não passa
+ * pela segregação de `_conceder` (quem só cria conta também a aplica). O ato diz
+ * de onde veio.
+ */
+async function _conceder_do_vinculo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  conta: { id: number; login: string },
+  vinculo: string,
+  codigo: string,
+): Promise<void> {
+  const [perfil] = await tx.select().from(tabela_perfil).where(eq(tabela_perfil.codigo, codigo));
+  if (!perfil || !perfil.ativo) throw new Error(`perfil '${codigo}' ausente ou inativo: o banco não foi semeado`);
+  await tx.insert(atribuicao).values({
+    usuario_id: conta.id,
+    perfil_id: perfil.id,
+    vigencia_inicio: hoje_iso(),
+    ato_normativo: `Vínculo informado no cadastro da conta (${vinculo.toLowerCase()})`,
+    concedido_por: usuario.id,
+  });
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: "PERFIL_CONCEDIDO",
+    descricao: `Perfil ${codigo} concedido a '${conta.login}' pelo vínculo informado no cadastro (${vinculo.toLowerCase()}).`,
+    usuario,
+  });
+}
+
 rotas.post("/usuarios", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("usuario.criar_conta");
@@ -678,7 +711,11 @@ rotas.post("/usuarios", async (c) => {
     ato_normativo: f.texto("ato_normativo"),
     servidor: f.texto("servidor").trim(),
   };
-  const digitado: Digitado = { forma: "conta", ...limpos, ...extras, perfil_id: perfil_id ?? "" };
+  // O vínculo decide o perfil (23/10/2026): servidor → `servidor_consulta`,
+  // terceirizado → `terceirizado`, discente → `discente`. Em branco é conta de
+  // equipe, e o perfil é o escolhido (ou nenhum).
+  const vinculo = f.texto("vinculo").trim();
+  const digitado: Digitado = { forma: "conta", ...limpos, ...extras, perfil_id: perfil_id ?? "", vinculo };
   if (!limpos.nome || !limpos.email) {
     return _tela_lista(c, usuario, { erro: "Nome e e-mail não ficam em branco.", digitado });
   }
@@ -693,8 +730,28 @@ rotas.post("/usuarios", async (c) => {
       digitado,
     });
   }
+  if (vinculo && !Object.hasOwn(PERFIL_POR_VINCULO, vinculo)) {
+    return _tela_lista(c, usuario, { erro: "Conta não criada: escolha o vínculo na lista.", digitado });
+  }
+  const externo = vinculo === "TERCEIRIZADO" || vinculo === "DISCENTE";
+  // terceirizado e discente não são servidores: a conta deles nunca se liga a
+  // um (é o vínculo com servidor que traz o pedido de EPI)
+  if (externo && extras.servidor) {
+    return _tela_lista(c, usuario, {
+      erro: `Conta não criada: ${vinculo === "TERCEIRIZADO" ? "terceirizado" : "discente"} não se vincula a servidor. Deixe o campo Servidor em branco.`,
+      digitado,
+    });
+  }
   // conceder perfil e vincular a servidor são atos de governo, como em Gerir
   const governa = usuario.pode("perfil.conceder");
+  if (vinculo === "SERVIDOR" && !governa) {
+    return _tela_lista(c, usuario, {
+      erro:
+        "Conta não criada: a conta de servidor nasce sozinha quando o servidor ativo com e-mail institucional é " +
+        "cadastrado em Servidores. Vincular uma conta a servidor aqui pede a permissão perfil.conceder.",
+      digitado,
+    });
+  }
   if (!governa && (perfil_id !== null || extras.servidor)) {
     return _tela_lista(c, usuario, {
       erro: "Perfil e servidor pedem a permissão perfil.conceder: crie a conta sem eles.",
@@ -722,7 +779,7 @@ rotas.post("/usuarios", async (c) => {
     const achado = await _resolver_servidor(tx, extras.servidor, null);
     if (achado.erro) return _tela_lista(c, usuario, { erro: `Conta não criada: ${achado.erro}`, digitado });
     servidor = achado.servidor;
-  } else if (governa) {
+  } else if (governa && !externo) {
     // em branco, o e-mail decide: servidor com o mesmo e-mail, se for um só
     const mesmo_email = await tx
       .select()
@@ -733,6 +790,14 @@ rotas.post("/usuarios", async (c) => {
       : [];
     servidor = _unico_pelo_email(mesmo_email, vinculadas, limpos.email);
     pelo_email = servidor !== null;
+  }
+  if (vinculo === "SERVIDOR" && !servidor) {
+    return _tela_lista(c, usuario, {
+      erro:
+        "Conta não criada: o vínculo servidor pede o servidor do cadastro. Informe o SIAPE no campo Servidor " +
+        "(ou cadastre a pessoa em Servidores, com o e-mail institucional: a conta nasce sozinha).",
+      digitado,
+    });
   }
   const provisoria = autenticacao.senha_provisoria();
   const [novo] = await tx
@@ -769,13 +834,22 @@ rotas.post("/usuarios", async (c) => {
     // o campus e a segregação já foram conferidos antes de a conta existir
     if (recusa) throw new ErroHttp(422, recusa);
   }
+  // o perfil do vínculo é regra, não escolha: entra sem a segregação do "mais
+  // do que tem" (o perfil do titular é o menor que existe), e não repete o
+  // escolhido acima
+  const perfil_do_vinculo = vinculo ? PERFIL_POR_VINCULO[vinculo]! : null;
+  if (perfil_do_vinculo && perfil?.codigo !== perfil_do_vinculo) {
+    await _conceder_do_vinculo(tx, usuario, novo!, vinculo, perfil_do_vinculo);
+  }
   const detalhes = [
+    perfil_do_vinculo ? `vínculo ${vinculo.toLowerCase()}, perfil ${perfil_do_vinculo}` : null,
     perfil ? `perfil ${perfil.codigo}` : null,
     servidor ? `vinculada a ${servidor.nome}${pelo_email ? " pelo e-mail" : ""}` : null,
   ].filter(Boolean);
   // A conta criada sem perfil não abre nada: quem a criou sem poder conceder
   // precisa saber que o próximo passo é de outra pessoa.
-  const sem_perfil = perfil ? "" : " Ela ainda não abre nada: o perfil é concedido por quem concede perfil.";
+  const sem_perfil =
+    perfil || perfil_do_vinculo ? "" : " Ela ainda não abre nada: o perfil é concedido por quem concede perfil.";
   // A senha provisória sai no CORPO, nunca na URL: no `?mensagem=` ela ficava
   // no histórico do navegador e em qualquer registro de acesso do caminho.
   return _senha_na_tela(
@@ -871,6 +945,14 @@ rotas.post("/usuarios/:id{[0-9]+}/servidor", async (c) => {
   const achado = await _resolver_servidor(tx, f.texto("servidor"), alvo.id);
   if (achado.erro) return _tela_lista(c, usuario, { erro: `${alvo.nome}: ${achado.erro}` });
   const novo_id = achado.servidor?.id ?? null;
+  if (novo_id !== null) {
+    const { perfis: do_alvo } = await perfis_vigentes(tx, alvo.id, null, { incluir_futuras: true });
+    if (do_alvo.some((p) => PERFIS_EXTERNOS.includes(p))) {
+      return _tela_lista(c, usuario, {
+        erro: `${alvo.nome}: conta de terceirizado ou discente não se vincula a servidor. Encerre antes esse perfil, se a pessoa virou servidora.`,
+      });
+    }
+  }
   if (novo_id === alvo.servidor_id) return redirecionar(c, comMensagem("/usuarios", "Nada mudou."));
   await tx.update(tabela_usuario).set({ servidor_id: novo_id }).where(eq(tabela_usuario.id, alvo.id));
   await auditoria.registrar(tx, {

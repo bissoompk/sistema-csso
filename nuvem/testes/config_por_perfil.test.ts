@@ -44,6 +44,8 @@ const ESPERADO: Record<string, Bloco[] | null> = {
   admin_ti: ["secao_sistema", "onde_mora", "backup"],
   consulta_progep: null,
   servidor_consulta: null,
+  terceirizado: null,
+  discente: null,
   engenheiro_seguranca: [...PROCESSOS, "retirada_epi"],
   medico_trabalho: [...PROCESSOS, "retirada_epi"],
   almoxarife_sesmt: ["secao_setor", "retirada_epi"],

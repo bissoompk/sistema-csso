@@ -417,6 +417,32 @@ export function permissoes_do_administrador_sistema(): string[] {
   return Object.keys(PERMISSOES).filter((p) => !SO_DO_TECNICO_HABILITADO.has(p));
 }
 
+/**
+ * O que o terceirizado e o discente fazem no sistema: comunicar acidente (e ver
+ * as próprias comunicações) e se inscrever em treinamento (e ver os próprios
+ * certificados). Nada de EPI, processo ou parecer.
+ */
+export const PERMISSOES_DO_EXTERNO: readonly string[] = Object.freeze([
+  "treinamento.ver",
+  "turma.inscrever_se",
+  "acidente.comunicar",
+  "acidente.ver",
+]);
+
+/**
+ * Os perfis de quem não é servidor. A conta com um deles não se liga a servidor
+ * (o cadastro e o "vincular servidor" recusam) e, se por engano estiver ligada,
+ * não recebe a concessão do titular (`carregar_usuario_atual`).
+ */
+export const PERFIS_EXTERNOS: readonly string[] = Object.freeze(["terceirizado", "discente"]);
+
+/** O vínculo escolhido no cadastro da conta e o perfil que ele concede. */
+export const PERFIL_POR_VINCULO: Readonly<Record<string, string>> = Object.freeze({
+  SERVIDOR: "servidor_consulta",
+  TERCEIRIZADO: "terceirizado",
+  DISCENTE: "discente",
+});
+
 export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
   admin_ti: {
     nome: "Administrador de TI",
@@ -842,6 +868,24 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "Não se ajusta por módulo: está sempre em Operação.",
     permissoes: permissoes_do_administrador_sistema(),
   },
+  // Quem não é servidor e usa o sistema para o que é DELE (23/10/2026): o
+  // terceirizado e o discente comunicam acidente e se inscrevem em treinamento,
+  // mas não pedem EPI (o EPI do terceirizado é da contratada; o do discente, da
+  // disciplina). A conta deles nunca se liga a um servidor (`PERFIS_EXTERNOS`),
+  // então a concessão do titular — que traz `epi.requisitar` — não os alcança.
+  terceirizado: {
+    nome: "Terceirizado (os próprios dados)",
+    base_normativa:
+      "LGPD art. 18, II - acesso do titular. Comunica acidente e se inscreve em treinamento; não pede EPI " +
+      "(o equipamento do terceirizado é fornecido pela contratada).",
+    permissoes: [...PERMISSOES_DO_EXTERNO],
+  },
+  discente: {
+    nome: "Discente (os próprios dados)",
+    base_normativa:
+      "LGPD art. 18, II - acesso do titular. Comunica acidente e se inscreve em treinamento; não pede EPI.",
+    permissoes: [...PERMISSOES_DO_EXTERNO],
+  },
 };
 
 /**
@@ -923,6 +967,8 @@ export const ESCOPO_POR_PERFIL: Record<string, string> = {
   consulta_progep: ESCOPO_UNIDADE,
   servidor_consulta: ESCOPO_PROPRIO,
   auditor_interno: ESCOPO_TOTAL,
+  terceirizado: ESCOPO_PROPRIO,
+  discente: ESCOPO_PROPRIO,
 };
 
 export const ESCOPOS_VALIDOS = [ESCOPO_TOTAL, ESCOPO_UNIDADE, ESCOPO_PROPRIO, ESCOPO_AGREGADO] as const;
@@ -1704,7 +1750,9 @@ export async function carregar_usuario_atual(
     throw new PermissaoNegada("sessao", "usuario inativo ou inexistente");
   }
   const habilitacoes = vinculos.filter((h) => vigente_em(h, dia)).map((h) => h.id);
-  if (usuario.servidor_id !== null) {
+  // o terceirizado e o discente não recebem a concessão do titular (ela traz o
+  // pedido de EPI), mesmo que a conta tenha ficado ligada a um servidor
+  if (usuario.servidor_id !== null && !perfis.some((p) => PERFIS_EXTERNOS.includes(p))) {
     concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: PERMISSOES_DO_TITULAR });
     for (const p of PERMISSOES_DO_TITULAR) permissoes.add(p);
   }
