@@ -32,8 +32,8 @@ const EXTERNOS = [
   ["discente", "ESTUDANTE", "Discente de Teste"],
 ] as const;
 
-const DELE = ["Meus treinamentos", "Meus certificados", "Comunicar acidente", "Minhas comunicações", "Meu perfil"];
-const NAO_DELE = ["Pedir EPI", "Minha ficha de EPI", "Meus pedidos de EPI", "Meus processos", "Meu adicional", "Comprovante de treinamentos"];
+const DELE = ["Meus treinamentos", "Meus certificados", "Comprovante de treinamentos", "Comunicar acidente", "Minhas comunicações", "Meu perfil"];
+const NAO_DELE = ["Pedir EPI", "Minha ficha de EPI", "Meus pedidos de EPI", "Meus processos", "Meu adicional"];
 
 function formulario(extra: Campos = {}): Campos {
   return {

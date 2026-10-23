@@ -759,10 +759,6 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
         "treinamento.ver",
         "Uma folha com os seus treinamentos em vigor.",
         true,
-        [],
-        false,
-        // nome, lotação e campus: a folha sai do cadastro de servidor
-        true,
       ),
     ],
   },
