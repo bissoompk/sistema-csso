@@ -68,6 +68,14 @@ export const ATOR = "o próprio titular";
 /** Cadastro que já saiu do quadro: não ganha conta nova por aqui. */
 const SITUACOES_FORA = ["APOSENTADO", "EXONERADO"];
 
+/**
+ * Valor de `usuario.senha_hash` da conta criada no cadastro do servidor, antes
+ * de ele escolher a senha. Não começa com `$argon2`: `conferir_senha` o recusa
+ * sem tentar verificar, então nenhuma senha digitada entra nessa conta.
+ */
+export const SEM_SENHA = "!sem-senha";
+export const ACESSO_CRIADO_NO_CADASTRO = "ACESSO_CRIADO_NO_CADASTRO";
+
 export const PEDIDO_DE_ACESSO_RECUSADO = "PEDIDO_DE_ACESSO_RECUSADO";
 export const ACESSO_ATIVADO = "ACESSO_ATIVADO";
 export const SENHA_REDEFINIDA_POR_LINK = "SENHA_REDEFINIDA_POR_LINK";
@@ -245,6 +253,84 @@ export async function pedir(
   });
 }
 
+export type Origem = Pick<auditoria.DadosRegistro, "usuario" | "usuario_nome" | "ip" | "user_agent">;
+
+export type ResultadoDoAcesso = "criada" | "ja_tem_conta" | "sem_email" | "fora_do_quadro" | "recusada";
+
+async function _perfil_do_titular(tx: Executor) {
+  const [perfil] = await tx.select().from(tabela_perfil).where(eq(tabela_perfil.codigo, PERFIL_DO_TITULAR));
+  if (!perfil || !perfil.ativo) throw new Error(`perfil '${PERFIL_DO_TITULAR}' ausente ou inativo: o banco não foi semeado`);
+  return perfil;
+}
+
+/**
+ * O servidor ativo com e-mail institucional passa a ter conta (22/10/2026: não
+ * há separação entre servidor e conta). A conta nasce SEM senha utilizável
+ * (`SEM_SENHA`); o titular a define por "Ativar meu acesso" ou "Esqueci minha
+ * senha". Nenhum e-mail sai daqui. Quem já tem conta (ou cujo e-mail já é de
+ * outra) não é tocado.
+ */
+export async function garantir_acesso(tx: Executor, servidor: Servidor, origem: Origem): Promise<ResultadoDoAcesso> {
+  const cadastrado = (servidor.email ?? "").trim();
+  if (!cadastrado || !email.email_valido(cadastrado)) return "sem_email";
+  if (servidor.situacao !== "ATIVO") return "fora_do_quadro";
+  const decisao = await decidir(tx, servidor);
+  if (decisao.tipo === "redefinir") return "ja_tem_conta";
+  if (decisao.tipo === "recusar") return decisao.conta ? "ja_tem_conta" : "recusada";
+  const perfil = await _perfil_do_titular(tx);
+  const [conta] = await tx
+    .insert(tabela_usuario)
+    .values({
+      login: autenticacao.login_do_email(cadastrado),
+      nome: servidor.nome,
+      email: cadastrado,
+      senha_hash: SEM_SENHA,
+      servidor_id: servidor.id,
+      precisa_trocar_senha: false,
+    })
+    .returning();
+  await tx.insert(atribuicao).values({
+    usuario_id: conta!.id,
+    perfil_id: perfil.id,
+    vigencia_inicio: hoje_iso(),
+    ato_normativo: "Acesso criado no cadastro do servidor",
+  });
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta!.id,
+    tipo_evento: ACESSO_CRIADO_NO_CADASTRO,
+    descricao:
+      `Conta criada com o cadastro do servidor, com o perfil ${PERFIL_DO_TITULAR} e sem senha utilizável: ` +
+      "o titular define a senha por 'Ativar meu acesso'. Nenhum e-mail foi enviado.",
+    ...origem,
+  });
+  return "criada";
+}
+
+export type SituacaoDoAcesso = "ATIVO" | "AGUARDANDO_ATIVACAO" | "SEM_ACESSO";
+
+/** Para a ficha do servidor: o acesso dele ao sistema e, quando não há, por quê. */
+export async function situacao_do_acesso(
+  tx: Executor,
+  servidor: Servidor,
+): Promise<{ situacao: SituacaoDoAcesso; motivo: string | null }> {
+  const [conta] = await tx
+    .select()
+    .from(tabela_usuario)
+    .where(eq(tabela_usuario.servidor_id, servidor.id))
+    .limit(1);
+  if (conta) {
+    if (!conta.ativo) return { situacao: "SEM_ACESSO", motivo: "conta inativa" };
+    return conta.senha_hash === SEM_SENHA
+      ? { situacao: "AGUARDANDO_ATIVACAO", motivo: null }
+      : { situacao: "ATIVO", motivo: null };
+  }
+  const email_ok = !!(servidor.email ?? "").trim() && email.email_valido(servidor.email!.trim());
+  if (!email_ok) return { situacao: "SEM_ACESSO", motivo: "falta o e-mail institucional no cadastro" };
+  if (servidor.situacao !== "ATIVO") return { situacao: "SEM_ACESSO", motivo: "servidor não está ativo" };
+  return { situacao: "SEM_ACESSO", motivo: "sem conta" };
+}
+
 async function _linha_valida(tx: Executor, token: string, agora: Date) {
   if (!token || token.length > 64) return null;
   const [linha] = await tx.select().from(tabela).where(eq(tabela.token_hash, _hash(token)));
@@ -306,8 +392,7 @@ export async function definir_senha(
   const origem = { usuario_nome: ATOR, ip: contexto.ip ?? null, user_agent: contexto.user_agent ?? null };
   const senha_hash = await autenticacao.gerar_hash(nova);
   if (decisao.tipo === "criar") {
-    const [perfil] = await tx.select().from(tabela_perfil).where(eq(tabela_perfil.codigo, PERFIL_DO_TITULAR));
-    if (!perfil || !perfil.ativo) throw new Error(`perfil '${PERFIL_DO_TITULAR}' ausente ou inativo: o banco não foi semeado`);
+    const perfil = await _perfil_do_titular(tx);
     const cadastrado = servidor.email.trim();
     const [conta] = await tx
       .insert(tabela_usuario)
@@ -343,6 +428,17 @@ export async function definir_senha(
     .set({ senha_hash, precisa_trocar_senha: false, tentativas_falhas: 0, bloqueado_ate: null })
     .where(eq(tabela_usuario.id, decisao.conta.id));
   const encerradas = await autenticacao.revogar_do_usuario(tx, decisao.conta.id);
+  if (decisao.conta.senha_hash === SEM_SENHA) {
+    // primeira senha da conta criada no cadastro: é a ativação do acesso
+    await auditoria.registrar(tx, {
+      entidade: "usuario",
+      entidade_id: decisao.conta.id,
+      tipo_evento: ACESSO_ATIVADO,
+      descricao: "Acesso ativado pelo próprio titular: definiu a primeira senha pelo link enviado ao e-mail do cadastro.",
+      ...origem,
+    });
+    return "redefinida";
+  }
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: decisao.conta.id,

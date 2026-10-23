@@ -25,6 +25,7 @@ import {
 import { hoje_iso, somar_dias } from "../dominio/datas.js";
 import { UnidadeUorg, vigente_em } from "../dominio/organizacao.js";
 import { RegraViolada } from "../nucleo/erros.js";
+import * as ativar_acesso from "./ativar_acesso.js";
 import * as auditoria from "./auditoria.js";
 import * as identificacao from "./identificacao.js";
 import * as textos from "./textos.js";
@@ -294,6 +295,7 @@ export async function atualizar_cadastro(
     depois,
     usuario,
   });
+  await ativar_acesso.garantir_acesso(tx, gravado!, { usuario });
   return gravado!;
 }
 
