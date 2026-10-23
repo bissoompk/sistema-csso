@@ -21,6 +21,7 @@ import * as conversor_pdf from "./conversor_pdf.js";
 import * as datas_br from "./datas_br.js";
 import * as email from "./email.js";
 import * as servico from "./emissao_certificado.js";
+import * as dono_turma from "./dono_turma.js";
 import * as servico_participante from "./participante.js";
 import { carregar_usuario_atual, type UsuarioAtual } from "./rbac.js";
 import * as setor_equipe from "./setor_equipe.js";
@@ -34,6 +35,9 @@ export interface ResultadoPedido {
   sem_email: number;
   ja_enviados: number;
   fora: number;
+  /** NUVEM: de turma que a conta só consulta (`dono_turma.ts`) */
+  de_outro_dono?: number;
+  aviso_dono?: string;
 }
 
 function _corpo(certificado: CertificadoRegistro): { assunto: string; corpo: string } {
@@ -91,10 +95,19 @@ export async function pedir_envio(
         )
     ).map((l) => l.certificado_id),
   );
+  // NUVEM: a regra de dono — enviar é ato da emissão, na turma do certificado
+  const turmas = await dono_turma.turmas_dos_certificados(tx, certificado_ids);
+  const direitos = await dono_turma.direitos_nas_turmas(tx, usuario, [...turmas.values()].map((t) => t.id));
   for (const id of certificado_ids) {
     const certificado = await servico.no_escopo(tx, usuario, id);
     if (!certificado || certificado.situacao !== "EMITIDO") {
       r.fora += 1;
+      continue;
+    }
+    const direito = direitos.get(turmas.get(id)?.id ?? -1);
+    if (direito && !direito.pode(dono_turma.EMISSAO)) {
+      r.de_outro_dono = (r.de_outro_dono ?? 0) + 1;
+      r.aviso_dono = dono_turma.recusa_de(direito, dono_turma.EMISSAO);
       continue;
     }
     if (anteriores.has(id) && !opcoes.reenviar) {
@@ -213,6 +226,7 @@ export function resumo(r: ResultadoPedido): string {
   if (r.ja_enviados) partes.push(`${r.ja_enviados} já enviado(s) antes (reenvie pela ficha do certificado)`);
   if (r.sem_email) partes.push(`${r.sem_email} sem e-mail cadastrado`);
   if (r.fora) partes.push(`${r.fora} anulado(s) ou fora do seu escopo`);
+  if (r.de_outro_dono) partes.push(`${r.de_outro_dono} de turma que você só consulta (${(r.aviso_dono ?? "").replace(/\.$/, "")})`);
   let frase = partes.join("; ") + ".";
   if (r.enfileirados && !email.configurado()) {
     frase += " O envio de e-mail ainda não está ligado: eles saem quando for configurado.";

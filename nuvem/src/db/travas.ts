@@ -104,4 +104,7 @@ export const TRIGGERS = [
   // 0016: o codigo curto do treinamento e o numero impresso do certificado
   'trg_treinamento_codigo_curto',
   'trg_certificado_numero_imutavel',
+  // 0017: o dono (criado_por) do treinamento e da turma não se troca
+  'trg_treinamento_dono_imutavel',
+  'trg_turma_dono_imutavel',
 ] as const;

@@ -47,6 +47,7 @@ import * as ics from "../servicos/ics.js";
 import * as inscricao_lote from "../servicos/inscricao_lote.js";
 import * as inscricao_publica from "../servicos/inscricao_publica.js";
 import * as retificacao from "../servicos/retificacao.js";
+import * as dono_turma from "../servicos/dono_turma.js";
 import * as email from "../servicos/email.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
 import { qr_png } from "../servicos/qr.js";
@@ -166,6 +167,23 @@ function _turma_no_escopo(
   permissao: string | readonly string[] = "treinamento.ver",
 ) {
   return servico_turma.no_escopo(tx, usuario, turma_id, permissao);
+}
+
+/**
+ * NUVEM: a turma do ATO de alteração — a do escopo da permissão e, por cima,
+ * a regra de dono (`dono_turma.ts`): quem não é dono, superior nem ajudante do
+ * papel recebe 403 com o aviso, antes de qualquer gravação.
+ */
+async function _turma_para_alterar(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma_id: number,
+  permissao: string | readonly string[],
+  papel: dono_turma.Papel,
+): Promise<TurmaCarregada | null> {
+  const turma = await _turma_no_escopo(tx, usuario, turma_id, permissao);
+  if (turma) await dono_turma.exigir_alterar_turma(tx, usuario, turma, papel);
+  return turma;
 }
 
 /** A ação que pode ser recusada, num savepoint (o `s.rollback()` do Python). */
@@ -658,6 +676,9 @@ async function _instrutores_livres(tx: Executor, turma: TurmaCarregada) {
     .map(vista_assinatura);
 }
 
+/** NUVEM: designar ajudante pede a permissão de abrir/editar turma, e ser dono ou superior. */
+export const PERMISSAO_DESIGNAR = "turma.criar";
+
 // quem opera a turma (e lê o bloco das regras da máquina); o resto é participante
 const PERMISSOES_DE_QUEM_GERENCIA = ["turma.criar", "turma.inscrever", "turma.avaliar", "turma.concluir"];
 
@@ -675,6 +696,11 @@ async function _tela_ficha(
   const tx = c.get("tx");
   vista_turma(turma);
   const hoje = datas_br.hoje();
+  // NUVEM (23/10/2026): a regra de dono, decidida UMA vez para a ficha toda
+  // (`dono_turma.ts`). O template pergunta `pode_aqui('permissão')` — a
+  // permissão do RBAC E o papel na turma — no lugar de `usuario.pode(...)`.
+  const direito = await dono_turma.direito_na_turma(tx, usuario, turma);
+  const pode_aqui = (permissao: string) => dono_turma.pode_aqui(usuario, direito, permissao);
   // quem só lê o cartaz recebe uma aba só, e as nominais nem são carregadas
   const ve_nominal = PERMISSOES_DAS_ABAS_NOMINAIS.some((p) => usuario.pode(p));
   const abas = ve_nominal ? ABAS : ABAS.slice(0, 1);
@@ -774,7 +800,7 @@ async function _tela_ficha(
   const certificados_em_word = Object.values(certificados).some((cert) => cert.so_word);
   // NUVEM: o último envio por e-mail de cada certificado (aba Emissão)
   const envios =
-    aba === "emissao" && usuario.pode("certificado.emitir")
+    aba === "emissao" && pode_aqui("certificado.emitir")
       ? await envio_certificado.ultimo_envio_por_certificado(
           tx,
           Object.values(certificados).map((cert) => cert.id),
@@ -783,7 +809,7 @@ async function _tela_ficha(
 
   // excluir só aparece onde poderia dar certo; os motivos vão na camada
   const impedimentos_exclusao =
-    aba === "turma" && usuario.pode("turma.concluir") && ["PLANEJADA", "INSCRICOES_ABERTAS"].includes(turma.situacao)
+    aba === "turma" && pode_aqui("turma.concluir") && ["PLANEJADA", "INSCRICOES_ABERTAS"].includes(turma.situacao)
       ? await servico_turma.impedimentos_da_exclusao(tx, turma)
       : null;
 
@@ -794,6 +820,13 @@ async function _tela_ficha(
 
   // quem não opera a turma vê só o cartaz, a situação e a própria inscrição
   const gerencia = PERMISSOES_DE_QUEM_GERENCIA.some((p) => usuario.pode(p));
+  // os ajudantes: a lista para quem é da equipe; os candidatos, só para quem designa
+  const [ajudantes, candidatos_ajudante] = await Promise.all([
+    gerencia ? dono_turma.ajudantes_da_turma(tx, turma.id) : Promise.resolve([]),
+    gerencia && direito.designa && usuario.pode(PERMISSAO_DESIGNAR)
+      ? dono_turma.candidatos_a_ajudante(tx, turma)
+      : Promise.resolve([]),
+  ]);
   const minha_inscricao =
     !gerencia && usuario.servidor_id !== null
       ? ((await servico_turma.inscricoes_do_titular(tx, usuario)).find((i) => i.turma_id === turma.id) ?? null)
@@ -845,13 +878,13 @@ async function _tela_ficha(
       .map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     // e o dia em que o "Concluir" aparece, para a tela dizer por que ele não está lá
     conclui_a_partir:
-      destinos_possiveis.includes("CONCLUIDA") && turma.data_fim > hoje && usuario.pode("turma.concluir") ? turma.data_fim : null,
+      destinos_possiveis.includes("CONCLUIDA") && turma.data_fim > hoje && pode_aqui("turma.concluir") ? turma.data_fim : null,
     // o atalho "turma já realizada": datas passadas e nada lançado ainda
     ja_realizada:
       ["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"].includes(turma.situacao) &&
       turma.data_fim <= datas_br.hoje() &&
-      usuario.pode("turma.avaliar") &&
-      usuario.pode("turma.concluir"),
+      pode_aqui("turma.avaliar") &&
+      pode_aqui("turma.concluir"),
     lancamento_aberto: turma.situacao === "CONCLUIDA" || servico_presenca.aceita_lancamento(turma),
     permissao_por_destino: servico_turma.PERMISSAO_POR_SITUACAO_TURMA,
     instrutores_livres,
@@ -879,8 +912,15 @@ async function _tela_ficha(
     valores_turma,
     valores_inscritos,
     trilha_campos,
-    pode_preencher_turma: campos_certificado.pode_preencher_turma(usuario),
-    pode_preencher_participante: usuario.pode(campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE),
+    pode_preencher_turma: campos_certificado.pode_preencher_turma(usuario) && direito.pode(dono_turma.EMISSAO),
+    pode_preencher_participante:
+      usuario.pode(campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE) && direito.pode(dono_turma.EMISSAO),
+    // NUVEM: o dono, o direito de quem lê e os ajudantes (`dono_turma.ts`)
+    direito,
+    pode_aqui,
+    ajudantes,
+    candidatos_ajudante,
+    papeis_ajudante: dono_turma.PAPEIS_DE_AJUDANTE,
     ...recados(c),
     ...(d.extras ?? {}),
   }, d.status);
@@ -900,7 +940,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.criar");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.criar", dono_turma.GERAL);
   if (!turma) return redirecionar(c, TURMAS);
   const destino = `${TURMAS}/${turma_id}`;
   try {
@@ -952,7 +992,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
     usuario.exigir(servico_turma.PERMISSAO_POR_SITUACAO_TURMA[pedido]!);
   }
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(
+  const turma = await _turma_para_alterar(
     tx,
     usuario,
     turma_id,
@@ -961,6 +1001,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
     Object.hasOwn(servico_turma.PERMISSAO_POR_SITUACAO_TURMA, pedido)
       ? servico_turma.PERMISSAO_POR_SITUACAO_TURMA[pedido]!
       : de_destino,
+    dono_turma.GERAL,
   );
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}`;
@@ -987,7 +1028,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/retificar`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.concluir");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.concluir", dono_turma.GERAL);
   if (!turma) return redirecionar(c, TURMAS);
   const destino = `${TURMAS}/${turma_id}`;
   let r: retificacao.ResultadoTurma;
@@ -1041,7 +1082,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados/retificar`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "certificado.anular");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "certificado.anular", dono_turma.EMISSAO);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
   let r: retificacao.ResultadoLote;
@@ -1072,7 +1113,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/excluir`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.concluir");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.concluir", dono_turma.GERAL);
   if (!turma) return redirecionar(c, TURMAS);
   const codigo = turma.codigo;
   try {
@@ -1095,7 +1136,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/realizada`, async (c) => {
   usuario.exigir("turma.concluir");
   const tx = c.get("tx");
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.avaliar", dono_turma.GERAL);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}`;
   let feito: servico_presenca.TurmaRealizada;
@@ -1128,7 +1169,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.criar");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.criar", dono_turma.GERAL);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}`;
   const alvo = id_opcional(f.texto("assinatura_instrutor_id"));
@@ -1155,6 +1196,47 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
     throw erro;
   }
   return _volta(c, volta, `${nome} vinculado à turma.`);
+});
+
+// =====================================================================
+// NUVEM: ajudantes da turma (`dono_turma.ts`) — o dono (ou quem está acima
+// dele) designa quem opera a turma, e em quais papéis
+// =====================================================================
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/ajudantes`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir(PERMISSAO_DESIGNAR);
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, PERMISSAO_DESIGNAR, dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}`;
+  const conta_id = id_opcional(f.texto("usuario_id"));
+  if (conta_id === null) return _erro(c, volta, "Escolha a conta do ajudante.");
+  try {
+    await _no_savepoint(c, (sp) => dono_turma.designar_ajudante(sp, usuario, turma, conta_id, f.todos("papel")));
+  } catch (erro) {
+    if (erro instanceof dono_turma.AjudanteRecusado) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, "Ajudante designado. Ele opera a turma só nos papéis marcados.");
+});
+
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/ajudantes/:usuario_id{[0-9]+}/retirar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir(PERMISSAO_DESIGNAR);
+  const tx = c.get("tx");
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, PERMISSAO_DESIGNAR, dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}`;
+  try {
+    await _no_savepoint(c, (sp) => dono_turma.retirar_ajudante(sp, usuario, turma, Number(c.req.param("usuario_id"))));
+  } catch (erro) {
+    if (erro instanceof dono_turma.AjudanteRecusado) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, "Ajudante retirado: a conta volta a só consultar a turma.");
 });
 
 // =====================================================================
@@ -1206,7 +1288,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.inscrever", dono_turma.INSCRICOES);
   if (!turma) return redirecionar(c, TURMAS);
   // inscrito um da lista, a mesma busca volta aberta para o próximo
   const busca = f.texto("busca").trim();
@@ -1300,7 +1382,7 @@ async function _tela_lote(
 rotas.get(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.inscrever");
-  const turma = await _turma_no_escopo(c.get("tx"), usuario, Number(c.req.param("turma_id")), "turma.inscrever");
+  const turma = await _turma_para_alterar(c.get("tx"), usuario, Number(c.req.param("turma_id")), "turma.inscrever", dono_turma.INSCRICOES);
   if (!turma) return redirecionar(c, TURMAS);
   return _tela_lote(c, usuario, turma);
 });
@@ -1309,7 +1391,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/lote`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.inscrever");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.inscrever");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.inscrever", dono_turma.INSCRICOES);
   if (!turma) return redirecionar(c, TURMAS);
   const f = await formulario(c);
   const d = { texto: f.texto("lista"), vinculo: f.texto("vinculo"), organizacao: f.texto("organizacao").trim() };
@@ -1338,7 +1420,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.criar");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.criar");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
   let token: string;
@@ -1368,7 +1450,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/desligar`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("turma.criar");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.criar");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
   if (!turma) return redirecionar(c, TURMAS);
   await inscricao_publica.desligar_link(tx, usuario, turma);
   return _volta(c, `${TURMAS}/${turma.id}?aba=inscricoes`, "Link público desligado: o endereço deixou de funcionar.");
@@ -1381,7 +1463,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.inscrever", dono_turma.INSCRICOES);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
   const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
@@ -1412,7 +1494,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/cpf`, a
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.inscrever", dono_turma.INSCRICOES);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
   const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
@@ -1442,7 +1524,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/partici
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.inscrever");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.inscrever", dono_turma.INSCRICOES);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
   const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
@@ -1538,7 +1620,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.avaliar", dono_turma.PRESENCA);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   const inscricao = await _inscricao_da_turma(tx, turma, id_opcional(f.texto("inscricao_id")));
@@ -1583,7 +1665,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/todos`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.avaliar", dono_turma.PRESENCA);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   let alcancadas: InscricaoCarregada[];
@@ -1609,7 +1691,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
   usuario.exigir("turma.avaliar");
   const tx = c.get("tx");
   const f = await formulario(c);
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "turma.avaliar");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.avaliar", dono_turma.PRESENCA);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma.id}${PRESENCAS}`;
   const horas = new Map<string, string>();
@@ -1658,7 +1740,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/dia`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.avaliar", dono_turma.PRESENCA);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   let dia = "";
@@ -1689,7 +1771,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/notas`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "turma.avaliar");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.avaliar", dono_turma.PRESENCA);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}${PRESENCAS}`;
   const inscricao = await _inscricao_da_turma(tx, turma, id_opcional(f.texto("inscricao_id")));
@@ -1743,7 +1825,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados/email`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("certificado.emitir");
   const tx = c.get("tx");
-  const turma = await _turma_no_escopo(tx, usuario, Number(c.req.param("turma_id")), "certificado.emitir");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "certificado.emitir", dono_turma.EMISSAO);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma.id}?aba=emissao`;
   const ids = Object.values(await servico_emissao.certificados_da_turma(tx, turma)).map((cert) => cert.id);
@@ -1759,7 +1841,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, "certificado.emitir");
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "certificado.emitir", dono_turma.EMISSAO);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
 
@@ -1800,7 +1882,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-certificado`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, campos_certificado.PERMISSOES_CAMPO_TURMA);
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, campos_certificado.PERMISSOES_CAMPO_TURMA, dono_turma.EMISSAO);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
   const [modelo] = await servico_emissao.modelo_da_turma(tx, turma);
@@ -1832,7 +1914,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/campos-participante`, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const turma_id = Number(c.req.param("turma_id"));
-  const turma = await _turma_no_escopo(tx, usuario, turma_id, campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE);
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, campos_certificado.PERMISSAO_CAMPO_PARTICIPANTE, dono_turma.EMISSAO);
   if (!turma) return redirecionar(c, TURMAS);
   const volta = `${TURMAS}/${turma_id}?aba=emissao`;
   const [modelo] = await servico_emissao.modelo_da_turma(tx, turma);

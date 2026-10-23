@@ -23,6 +23,7 @@ import { RegraViolada } from "../nucleo/erros.js";
 import { nome_exibicao } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
 import * as servico_turma from "./turma.js";
+import * as dono_turma from "./dono_turma.js";
 
 /** Teto de um lote: o mesmo do teto de pedidos em espera por turma. */
 export const LIMITE_LOTE = 200;
@@ -47,6 +48,9 @@ export interface TurmaComPedidos {
   vagas: number | null;
   vagas_restantes: number | null;
   pedidos: PedidoNaFila[];
+  /** NUVEM: a conta decide os pedidos desta turma (`dono_turma.ts`)? Senão, o aviso */
+  pode_decidir: boolean;
+  aviso_dono: string;
 }
 
 /** Os pedidos a conferir, agrupados pela turma, da turma mais próxima à mais distante. */
@@ -75,11 +79,15 @@ export async function a_conferir(tx: Executor, usuario: UsuarioAtual): Promise<T
     .orderBy(asc(tabela_turma.data_inicio), asc(tabela_turma.id));
 
   const saida = new Map<number, TurmaComPedidos>();
+  const direitos = await dono_turma.direitos_nas_turmas(tx, usuario, turmas.map((t) => t.id));
   for (const t of turmas) {
+    const d = direitos.get(t.id);
     saida.set(t.id, {
       ...t,
       vagas_restantes: await servico_turma.vagas_restantes(tx, t as never),
       pedidos: [],
+      pode_decidir: d ? d.pode(dono_turma.INSCRICOES) : false,
+      aviso_dono: d ? dono_turma.recusa_de(d, dono_turma.INSCRICOES) : "",
     });
   }
   for (const l of linhas) {
@@ -130,11 +138,27 @@ export async function decidir(
   }
   const resultado: ResultadoLote = { feitos: 0, travados: [], excedidas: [] };
   const validas: servico_turma.InscricaoCarregada[] = [];
+  const no_escopo: servico_turma.InscricaoCarregada[] = [];
   for (const id of [...new Set(ids)].slice(0, LIMITE_LOTE)) {
     const inscricao = await servico_turma.carregar_inscricao(tx, id);
     if (!inscricao || inscricao.situacao !== "AGUARDANDO_EMAIL") continue;
     if (!(await servico_turma.no_escopo(tx, usuario, inscricao.turma_id, "turma.inscrever"))) continue;
-    validas.push(inscricao);
+    no_escopo.push(inscricao);
+  }
+  // NUVEM: a regra de dono (`dono_turma.ts`) — o pedido da turma que a conta
+  // só consulta fica como estava, com o aviso de quem é a turma
+  const direitos = await dono_turma.direitos_nas_turmas(tx, usuario, no_escopo.map((i) => i.turma_id));
+  for (const inscricao of no_escopo) {
+    const d = direitos.get(inscricao.turma_id);
+    if (d && d.pode(dono_turma.INSCRICOES)) {
+      validas.push(inscricao);
+      continue;
+    }
+    resultado.travados.push({
+      inscricao_id: inscricao.id,
+      quem: nome_exibicao(inscricao.participante),
+      motivo: d ? dono_turma.recusa_de(d, dono_turma.INSCRICOES) : "Turma não encontrada.",
+    });
   }
   const barradas = new Set<number>();
   if (destino === "INSCRITA") {

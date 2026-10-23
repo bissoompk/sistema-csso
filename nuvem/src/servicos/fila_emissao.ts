@@ -24,6 +24,7 @@ import {
 } from "../db/esquema/index.js";
 import { Certificado } from "../dominio/treinamento.js";
 import * as servico_emissao from "./emissao_certificado.js";
+import * as dono_turma from "./dono_turma.js";
 import type { UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
 import * as servico_turma from "./turma.js";
@@ -226,6 +227,19 @@ export async function emitir_escolhidas(
     // (D9): turma fora dele não é emitida (nem dita)
     const turma = await servico_turma.no_escopo(tx, usuario, turma_id, "certificado.emitir");
     if (!turma) continue;
+    // NUVEM: a regra de dono (`dono_turma.ts`) — a turma que a conta só
+    // consulta não emite: cada marcado dela trava com o aviso de quem é
+    const direito = await dono_turma.direito_na_turma(tx, usuario, turma);
+    if (!direito.pode(dono_turma.EMISSAO)) {
+      const motivo = dono_turma.recusa_de(direito, dono_turma.EMISSAO);
+      const quem = await tx
+        .select({ id: tabela_inscricao.id, identificador: tabela_participante.identificador_publico })
+        .from(tabela_inscricao)
+        .innerJoin(tabela_participante, eq(tabela_participante.id, tabela_inscricao.participante_id))
+        .where(inArray(tabela_inscricao.id, ids));
+      for (const q of quem) resultado.travados.push({ inscricao_id: q.id, quem: `${turma.codigo} · ${q.identificador}`, motivo });
+      continue;
+    }
     const relatorio = await servico_emissao.emitir_lote(tx, usuario, turma, { inscricao_ids: ids });
     resultado.emitidos += relatorio.emitidos.length;
     for (const item of relatorio.travados) {

@@ -408,6 +408,27 @@ export async function contas(db: Executor): Promise<Record<string, [string, stri
   return criadas;
 }
 
+/**
+ * NUVEM (Dono de treinamento e turma, 23/10/2026): designa a conta como
+ * AJUDANTE da turma (`dono_turma.ts`), direto no banco — para o teste que abre
+ * a turma com uma conta e opera com outra. Padrão: os três papéis.
+ */
+export async function designarAjudante(
+  db: Executor,
+  turma_id: number,
+  login: string,
+  papeis: { inscricoes?: boolean; presenca?: boolean; emissao?: boolean } = { inscricoes: true, presenca: true, emissao: true },
+): Promise<void> {
+  const [conta] = await db.select().from(esquema.usuario).where(eq(esquema.usuario.login, login));
+  if (!conta) throw new Error(`conta inexistente: ${login}`);
+  const [turma] = await db.select().from(esquema.turma).where(eq(esquema.turma.id, turma_id));
+  const valores = { inscricoes: papeis.inscricoes ?? false, presenca: papeis.presenca ?? false, emissao: papeis.emissao ?? false };
+  await db
+    .insert(esquema.turma_ajudante)
+    .values({ turma_id, usuario_id: conta.id, ...valores, designado_por: turma?.criado_por ?? conta.id })
+    .onConflictDoUpdate({ target: [esquema.turma_ajudante.turma_id, esquema.turma_ajudante.usuario_id], set: valores });
+}
+
 /** POST /login sem seguir; exige o 303 (o `entrar` do conftest). */
 export async function entrar(cliente: Cliente, login: string, senha = SENHA_TESTE): Promise<Cliente> {
   const r = await cliente.post("/login", { login, senha }, { seguir: false });

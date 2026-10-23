@@ -119,6 +119,11 @@ export const treinamento = pgTable(
     modelo_vigente_id: integer('modelo_vigente_id'),
     instrutor_padrao_id: integer('instrutor_padrao_id'),
     ativo: boolean('ativo').notNull().default(true),
+    // NUVEM (23/10/2026): o DONO do treinamento — a conta que o cadastrou
+    // (`servicos/dono_turma.ts`). Nulo = "sem dono" (cadastrado antes da regra,
+    // sem evento de criação na trilha): só a hierarquia superior altera. O
+    // mesmo nome da coluna de `turma`, que já existia.
+    criado_por: integer('criado_por'),
   },
   (t) => [
     // nomes da migracao `certificados_catalogo_de_treinamentos` (no modelo as
@@ -137,6 +142,7 @@ export const treinamento = pgTable(
       columns: [t.instrutor_padrao_id],
       foreignColumns: [assinatura_instrutor.id],
     }),
+    foreignKey({ name: 'fk_treinamento_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
     check('ck_treinamento_validade', sql.raw(`validade_meses >= 0`)),
     check('ck_treinamento_carga', sql.raw(`carga_horaria_horas > 0`)),
     check_regex('ck_treinamento_codigo', 'codigo', PADRAO_CODIGO_TREINAMENTO),
@@ -558,6 +564,37 @@ export const turma_instrutor = pgTable(
       foreignColumns: [assinatura_instrutor.id],
     }),
     primaryKey({ name: 'pk_turma_instrutor', columns: [t.turma_id, t.assinatura_instrutor_id] }),
+  ],
+);
+
+/**
+ * NUVEM (23/10/2026): os AJUDANTES da turma — a conta que o dono (ou quem
+ * está acima dele) designou para operar a turma em alguns papéis
+ * (`servicos/dono_turma.ts`). Sem linha aqui, quem não é dono nem superior só
+ * consulta. Ajudante não designa outros. Retirar é apagar a linha (a trilha
+ * guarda `TURMA_AJUDANTE_DESIGNADO`/`TURMA_AJUDANTE_RETIRADO`).
+ */
+export const turma_ajudante = pgTable(
+  'turma_ajudante',
+  {
+    turma_id: integer('turma_id').notNull(),
+    usuario_id: integer('usuario_id').notNull(),
+    // os papeis, um a um (lista fechada de `dono_turma.PAPEIS_DE_AJUDANTE`)
+    inscricoes: boolean('inscricoes').notNull().default(false),
+    presenca: boolean('presenca').notNull().default(false),
+    emissao: boolean('emissao').notNull().default(false),
+    designado_por: integer('designado_por').notNull(),
+    designado_em: MomentoUTC('designado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_turma_ajudante', columns: [t.turma_id, t.usuario_id] }),
+    // a turma excluída leva os ajudantes junto (a trilha fica)
+    foreignKey({ name: 'fk_turma_ajudante_turma', columns: [t.turma_id], foreignColumns: [turma.id] }).onDelete('cascade'),
+    foreignKey({ name: 'fk_turma_ajudante_usuario', columns: [t.usuario_id], foreignColumns: [usuario.id] }),
+    foreignKey({ name: 'fk_turma_ajudante_designado_por', columns: [t.designado_por], foreignColumns: [usuario.id] }),
+    // designar sem papel nenhum é retirar
+    check('ck_turma_ajudante_papel', sql.raw(`inscricoes OR presenca OR emissao`)),
+    index('ix_turma_ajudante_usuario').on(t.usuario_id),
   ],
 );
 

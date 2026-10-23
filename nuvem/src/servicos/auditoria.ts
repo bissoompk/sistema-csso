@@ -197,6 +197,9 @@ export const ROTULO_EVENTO: Record<string, string> = {
   TURMA_REALIZADA_REGISTRADA: "Turma já realizada registrada",
   TURMA_INSTRUTOR_VINCULADO: "Instrutor vinculado à turma",
   TURMA_INSTRUTOR_DESVINCULADO: "Instrutor desvinculado da turma",
+  // NUVEM (Dono de treinamento e turma, 23/10/2026): `dono_turma.ts`
+  TURMA_AJUDANTE_DESIGNADO: "Ajudante designado na turma",
+  TURMA_AJUDANTE_RETIRADO: "Ajudante retirado da turma",
   INSCRICAO_CRIADA: "Inscrição criada",
   // Os dois atos do PRÓPRIO servidor: "quem pediu esta vaga?" e "quem
   // desistiu dela?" são fatos diferentes de "a secretaria inscreveu".

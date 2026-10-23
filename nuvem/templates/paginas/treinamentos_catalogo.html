@@ -138,6 +138,12 @@
       </td>
       {% if editavel %}
       <td class="acao-linha">
+        {# NUVEM (23/10/2026): só o dono (ou quem está acima dele) altera; o
+           resto da equipe consulta e lê de quem é (`dono_turma.ts`) #}
+        {% if not direitos[t.id].pode %}
+        <span class="pilula sem-ponto" title="{{ direitos[t.id].aviso }}">só consulta</span>
+        <span class="quebra discreto">de {{ direitos[t.id].dono.nome if direitos[t.id].dono else 'sem dono registrado' }}</span>
+        {% else %}
         {{ ui.botao_cadastro('editar-trein-' ~ t.id, 'Editar', 'secundario compacto') }}
         {# só o que nunca teve turma se apaga; o resto se desativa (o serviço recusa e diz) #}
         {% call ui.popup_gaveta('excluir-trein-' ~ t.id, 'excluir', 'Excluir · ' ~ t.codigo, largo=false) %}
@@ -146,7 +152,8 @@
               turma. O que já teve turma não se apaga: desmarque “ativo”.</p>
             <div class="acoes"><button type="submit" class="perigo compacto">Excluir {{ t.codigo }}</button></div>
           </form>
-        {% endcall %}</td>
+        {% endcall %}
+        {% endif %}</td>
       {% endif %}
     </tr>
     {% else %}
@@ -213,7 +220,7 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
 {# A edição de cada treinamento, num popup por linha (fora da tabela, como o
    cadastro). Os valores vêm do treinamento; na recusa, só o popup DESTA linha
    volta aberto, com o que foi digitado e a mensagem. #}
-{% for t in itens %}
+{% for t in itens %}{% if direitos[t.id].pode %}
 {% set deste = recusado and editando_id == t.id %}
 {% set p = 'ed-trein-' ~ t.id %}
 {# o treinamento em texto, como o digitado: as duas grafias se comparam igual #}
@@ -268,6 +275,6 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
         {{- ' checked' if v.ativo == '1' }}> ativo</label>
   </div>
 {% endcall %}
-{% endfor %}
+{% endif %}{% endfor %}
 {% endif %}
 {% endblock %}

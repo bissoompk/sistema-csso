@@ -868,6 +868,71 @@ export function _conferir_escopos(): void {
 
 _conferir_escopos();
 
+// ---------------------------------------------------------------------
+// Hierarquia (Dono de treinamento e turma, 23/10/2026) — NUM LUGAR SÓ.
+// ---------------------------------------------------------------------
+// Quem está ACIMA de quem para alterar o que outra conta criou
+// (`dono_turma.ts`). Não dá permissão nenhuma: a regra de dono é uma camada a
+// mais sobre o RBAC (precisa ter a permissão E ser dono, superior ou ajudante).
+//
+// - administrador do sistema (4) — `administrador_sistema`, acima de todos
+//   (o perfil vem da branch do perfil de administração; enquanto não existir
+//   aqui, a entrada é inofensiva — `PERFIS_PREVISTOS_NA_HIERARQUIA`); altera tudo;
+// - superintendente (3) — altera tudo;
+// - coordenação (2) — `coordenador_csso` e os equivalentes de outros setores
+//   (perfil de coordenação novo entra AQUI com 2): altera o que foi criado por
+//   perfil abaixo dele, no PRÓPRIO setor promotor; entre coordenadores, só o dono;
+// - demais (1) — todo perfil fora desta lista (engenheiro, médico, técnico,
+//   secretaria, almoxarife, consulta…): altera só o que criou, ou o que o dono
+//   lhe designou como ajudante.
+//
+// A ORDEM, do topo para baixo, é `ORDEM_HIERARQUICA`; o número de cada um sai dela.
+export const ORDEM_HIERARQUICA: readonly (readonly string[])[] = Object.freeze([
+  Object.freeze(["administrador_sistema"]),
+  Object.freeze(["superintendente"]),
+  Object.freeze(["coordenador_csso"]),
+]);
+export const NIVEL_ADMINISTRACAO_SISTEMA = 4;
+export const NIVEL_SUPERINTENDENCIA = 3;
+export const NIVEL_COORDENACAO = 2;
+export const NIVEL_DEMAIS = 1;
+export const NIVEL_HIERARQUICO_POR_PERFIL: Readonly<Record<string, number>> = Object.freeze(
+  Object.fromEntries(
+    ORDEM_HIERARQUICA.flatMap((grupo, i) => grupo.map((perfil) => [perfil, ORDEM_HIERARQUICA.length + 1 - i] as const)),
+  ),
+);
+
+/** Perfis citados na hierarquia antes de existirem na matriz (vêm de outra branch). */
+export const PERFIS_PREVISTOS_NA_HIERARQUIA: ReadonlySet<string> = new Set(["administrador_sistema"]);
+
+/** O nível da conta: o mais alto entre os perfis vigentes (sem perfil listado, "demais"). */
+export function nivel_hierarquico(perfis: Iterable<string>): number {
+  let nivel = NIVEL_DEMAIS;
+  for (const p of perfis) {
+    const dele = Object.hasOwn(NIVEL_HIERARQUICO_POR_PERFIL, p) ? NIVEL_HIERARQUICO_POR_PERFIL[p]! : NIVEL_DEMAIS;
+    if (dele > nivel) nivel = dele;
+  }
+  return nivel;
+}
+
+/** Perfil da hierarquia que não existe é erro de digitação: derruba a importação. */
+export function _conferir_hierarquia(): void {
+  const sobra = Object.keys(NIVEL_HIERARQUICO_POR_PERFIL).filter(
+    (p) => !Object.hasOwn(MATRIZ_PERFIS, p) && !PERFIS_PREVISTOS_NA_HIERARQUIA.has(p),
+  );
+  if (sobra.length) throw new Error("Hierarquia mal declarada — perfil inexistente: " + sobra.join(", "));
+  const esperado: Record<string, number> = {
+    administrador_sistema: NIVEL_ADMINISTRACAO_SISTEMA,
+    superintendente: NIVEL_SUPERINTENDENCIA,
+    coordenador_csso: NIVEL_COORDENACAO,
+  };
+  for (const [p, n] of Object.entries(esperado)) {
+    if (NIVEL_HIERARQUICO_POR_PERFIL[p] !== n) throw new Error(`Hierarquia mal declarada — ${p} deveria ser ${n}`);
+  }
+}
+
+_conferir_hierarquia();
+
 /**
  * O mapa da liberação por módulo (`niveis_modulo.ts`) fecha com `PERMISSOES`:
  * toda permissão está num módulo OU entre as só do perfil, nunca nos dois, e
