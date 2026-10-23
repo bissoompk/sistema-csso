@@ -1,82 +1,49 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
+{% from "partes/cartao_certificado.html" import cartao_certificado, cartao_em_emissao %}
 
-{# A tela do titular: o que é dele, e só.
+{# A tela do titular: o que é dele, e só, em cartões (Portal do servidor).
 
    Ela existe porque a lista do setor (`/certificados`) é guardada por
    `certificado.ver`, que é a permissão de ler o certificado DE OUTRO. O servidor
    que fez a NR-35 não precisa dessa permissão para pegar o próprio papel — ele
-   precisa de uma porta, e esta é a porta. #}
+   precisa de uma porta, e esta é a porta.
+
+   Filtros por link GET (a URL guarda o filtro), sem JS. #}
 
 {% block titulo %}Meus certificados · SISA{% endblock %}
-
-{# A linha de um certificado, nas duas seções. O anulado não tem os botões
-   verdes do válido: só a cópia anulada (com a tarja), como ação secundária. #}
-{% macro linha_certificado(c, anulado=false) %}
-{% set congelado = c.contexto_congelado or {} %}
-{% set publica = situacao_publica[c.id] %}
-<tr{% if not anulado and publica == 'VALIDO' and c.data_vencimento and c.data_vencimento <= limite_atencao %} class="linha-atencao"{% endif %}>
-  <td><a class="mono" href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
-  {# do congelado: é o que o papel diz. Renomear o treinamento depois não muda
-     o que está escrito no documento que já circulou. #}
-  <td data-coluna="Treinamento">{{ congelado['treinamento_nome'] or c.treinamento.nome }}
-    {% if congelado['turma_codigo'] %}
-    <span class="quebra discreto mono">{{ congelado['turma_codigo'] }}</span>{% endif %}</td>
-  <td data-coluna="Conclusão" class="mono">{{ c.data_base_vencimento|data }}</td>
-  {% if anulado %}
-  <td data-coluna="Substituído por">
-    {% set novo = substitutos[c.substituido_por_id] if c.substituido_por_id else none %}
-    {% if novo %}<a class="mono" href="/certificados/{{ novo.id }}">{{ novo.rotulo }}</a>
-    {% else %}<span class="discreto">sem substituto</span>{% endif %}</td>
-  <td data-coluna="Situação">{{ ui.pilula_certificado(publica) }}</td>
-  <td class="acao-linha">
-    <a class="botao secundario compacto"
-       href="/certificados/{{ c.id }}/{{ 'pdf' if not congelado['modelo_chave'] or pdf_fiel() else 'documento' }}">Baixar cópia anulada</a></td>
-  {% else %}
-  <td data-coluna="Vencimento">
-    {% if c.data_vencimento %}<span class="mono">{{ c.data_vencimento|data }}</span>
-      {% if publica == 'VALIDO' and c.data_vencimento <= limite_atencao %}<span class="quebra discreto">vence em breve: procure a reciclagem</span>{% endif %}
-    {% else %}<span class="selo">validade indeterminada</span>{% endif %}
-  </td>
-  <td data-coluna="Situação">{{ ui.pilula_certificado(publica) }}</td>
-  <td class="acao-linha">
-    {% if not congelado['modelo_chave'] or pdf_fiel() %}<a class="botao compacto" href="/certificados/{{ c.id }}/pdf">PDF</a>{% endif %}
-    <a class="botao {{ 'compacto' if congelado['modelo_chave'] and not pdf_fiel() else 'secundario compacto' }}"
-       href="/certificados/{{ c.id }}/documento">Word</a>
-    {# o endereço impresso no papel, para mandar à chefia ou à empresa #}
-    <input type="text" class="oculto" id="validacao-{{ c.id }}" readonly tabindex="-1" aria-hidden="true"
-           value="{{ congelado['url_validacao'] or ('/validar/' + c.chave_validacao) }}">
-    <button type="button" class="secundario compacto" data-copiar="validacao-{{ c.id }}" hidden
-            title="Copia o endereço que confirma este certificado, para enviar a quem precisa conferir">Copiar link de validação</button>
-  </td>
-  {% endif %}
-</tr>
-{% endmacro %}
 
 {% block conteudo %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
-    <div class="titulo">
-      <h1>Meus certificados</h1>
-      <p class="sub">
-        {%- if not recorte.total %}Nenhum certificado emitido em seu nome.
-        {%- else %}Baixe seus certificados em PDF{% if recorte.total > recorte.por_pagina %}
-        ({{ itens|length }} de {{ recorte.total }} nesta página){% endif %}, ou copie o link
-        de validação para quem precisa conferir.{% endif %}</p>
-      {% call ui.info('o-que-e-meu', 'por que esta tela mostra só o que é seu') %}
-        <p>A lista do setor é outra tela, e pede a permissão de ler o certificado
-          <strong>de outra pessoa</strong>. Esta aqui prende a consulta ao cadastro
-          de servidor da sua conta: ela não alarga se o seu perfil alargar.</p>
-        <p>O acesso do titular ao que é dele é o <strong>art. 18, II da LGPD</strong>,
-          e por isso abrir o próprio certificado <strong>não</strong> gera registro de
-          acesso a dado sensível — ao contrário de ler o de outro, que gera.</p>
-        <p><strong>Vencido</strong> e <strong>anulado</strong> são calculados agora,
-          nunca congelados: um certificado que vence continua existindo, e é a data
-          que muda de lado, não o papel. A segunda via sai reimpressa do documento
-          congelado; a do anulado sai com a tarja de ANULADO.</p>
-      {% endcall %}
+    <div class="titulo cert-cabecalho">
+      <span class="cert-cabecalho-icone" aria-hidden="true">{{ ui.icone('award') }}</span>
+      <div>
+        <h1>Meus certificados</h1>
+        <p class="sub">{{ resumo.emitidos }} {{ 'certificado emitido' if resumo.emitidos == 1 else 'certificados emitidos' }}
+          · {{ horas|num }} h de capacitação</p>
+          {% call ui.info('o-que-e-meu', 'por que esta tela mostra só o que é seu') %}
+            <p>A lista do setor é outra tela, e pede a permissão de ler o certificado
+              <strong>de outra pessoa</strong>. Esta aqui prende a consulta ao cadastro
+              de servidor da sua conta: ela não alarga se o seu perfil alargar.</p>
+            <p>O acesso do titular ao que é dele é o <strong>art. 18, II da LGPD</strong>,
+              e por isso abrir o próprio certificado <strong>não</strong> gera registro de
+              acesso a dado sensível — ao contrário de ler o de outro, que gera.</p>
+            <p><strong>Vencido</strong> e <strong>anulado</strong> são calculados agora,
+              nunca congelados: um certificado que vence continua existindo, e é a data
+              que muda de lado, não o papel. A segunda via sai reimpressa do documento
+              congelado; a do anulado sai com a tarja de ANULADO.</p>
+            <p>As horas de capacitação somam a carga horária dos certificados emitidos
+              (sem os anulados).</p>
+          {% endcall %}
+      </div>
     </div>
+    {% if tem_em_vigor %}
+    <div class="acoes">
+      <a class="botao secundario" href="/certificados/meus/comprovante">{{ ui.icone('printer') }}Comprovante de treinamentos</a>
+    </div>
+    {% endif %}
   </div>
 
   {% if sem_servidor %}
@@ -89,62 +56,83 @@
   </div>
   {% endif %}
 
-  <div class="tabela-cartao lista sem-altura">
-  <table class="empilhavel">
-    <thead>
-      <tr>
-        <th scope="col">Nº</th><th scope="col">Treinamento</th><th scope="col">Conclusão</th>
-        <th scope="col">Vencimento</th><th scope="col">Situação</th><th scope="col"><span class="oculto">Ações</span></th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for c in validos %}
-    {{ linha_certificado(c) }}
-    {% else %}
-    {% if sem_servidor %}
-    {{ ui.vazio_de_lista(
-         'Nada a listar enquanto a conta não tiver cadastro de servidor.',
-         'O aviso acima diz onde a ligação é feita. Ela é o que amarra o
-          certificado emitido à conta que o consulta.', 6) }}
-    {% elif anulados|length %}
-    {{ ui.vazio_de_lista(
-         'Nenhum certificado válido nesta página.',
-         'Os anulados estão logo abaixo, com o número do certificado que os substituiu.', 6) }}
-    {% else %}
-    {{ ui.vazio_de_lista(
-         'Você ainda não tem certificado emitido em seu nome.',
-         'O certificado é emitido pelo setor promotor depois que a turma termina, para quem foi
-          aprovado — não é pedido nesta tela. Concluiu um treinamento e ele não aparece
-          aqui? Fale com o setor que promoveu o treinamento informando o código da turma.', 6) }}
+  {% if lista.contagens.todos %}
+  <div class="cert-filtros">
+    <nav aria-label="Filtrar por situação">
+      <ul class="filtro-pilulas" role="list">
+        {% for s in situacoes %}
+        <li><a href="{{ s.href }}"{% if s.ativo %} aria-current="true"{% endif %}>{{ s.rotulo }}
+          <span class="contagem">{{ s.contagem }}</span></a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+    {% if lista.com_ano or lista.com_busca %}
+    <form method="get" action="/certificados/meus" class="cert-filtro-form" role="search">
+      {% if lista.filtros.situacao != 'todos' %}<input type="hidden" name="situacao" value="{{ lista.filtros.situacao }}">{% endif %}
+      {% if lista.com_busca %}
+      <label class="oculto" for="cert-q">Buscar pelo nome do treinamento</label>
+      <input id="cert-q" type="search" name="q" value="{{ lista.filtros.q }}" maxlength="80"
+             placeholder="Buscar treinamento">
+      {% endif %}
+      {% if lista.com_ano %}
+      <label for="cert-ano">Ano</label>
+      <select id="cert-ano" name="ano">
+        <option value="">Todos</option>
+        {% for a in lista.anos %}<option value="{{ a }}"{% if lista.filtros.ano == a %} selected{% endif %}>{{ a }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <button type="submit" class="secundario">Filtrar</button>
+    </form>
     {% endif %}
-    {% endfor %}
-    </tbody>
-  </table>
   </div>
-
-  {% if anulados|length %}
-  <details class="recolhido">
-    <summary>Anulados ou substituídos <span class="nota">{{ anulados|length }}</span></summary>
-    <p class="discreto">Não valem como comprovação: a validação pública responde
-      “anulado”. A cópia sai com a tarja de ANULADO, para juntar a um processo se for preciso.</p>
-    <div class="tabela-cartao sem-altura">
-    <table class="empilhavel">
-      <thead>
-        <tr>
-          <th scope="col">Nº</th><th scope="col">Treinamento</th><th scope="col">Conclusão</th>
-          <th scope="col">Substituído por</th><th scope="col">Situação</th><th scope="col"><span class="oculto">Ações</span></th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for c in anulados %}{{ linha_certificado(c, true) }}{% endfor %}
-      </tbody>
-    </table>
-    </div>
-  </details>
   {% endif %}
 
-  {{ ui.paginacao(recorte.pagina, recorte.por_pagina, recorte.total,
-                  '/certificados/meus') }}
+  {% for g in lista.grupos %}
+  <section class="cert-grupo" aria-labelledby="{{ 'grupo-' ~ g.ano if lista.agrupar else 'grupo-todos' }}">
+    {% if lista.agrupar %}
+    <h2 id="grupo-{{ g.ano }}" class="cert-grupo-titulo">{{ g.ano }}
+      <span>· {{ g.cartoes|length }} {{ 'certificado' if g.cartoes|length == 1 else 'certificados' }}
+        {%- if g.em_emissao|length %} e {{ g.em_emissao|length }} em emissão{% endif %}</span></h2>
+    {% else %}
+    <h2 id="grupo-todos" class="oculto">Certificados</h2>
+    {% endif %}
+    <ul class="grade-cert" role="list">
+      {% for x in g.em_emissao %}<li>{{ cartao_em_emissao(x) }}</li>{% endfor %}
+      {% for c in g.cartoes %}<li>{{ cartao_certificado(c) }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% else %}
+  {% if sem_servidor %}
+  <div class="vazio cert-vazio">
+    <strong>Nada a listar enquanto a conta não tiver cadastro de servidor.</strong>
+    <span>O aviso acima diz onde a ligação é feita. Ela é o que amarra o
+      certificado emitido à conta que o consulta.</span>
+  </div>
+  {% elif lista.filtrado %}
+  <div class="vazio cert-vazio">
+    <strong>{{ frase_vazio }}</strong>
+    <a href="/certificados/meus">Ver todos</a>
+  </div>
+  {% else %}
+  <div class="vazio cert-vazio">
+    <span class="cert-cabecalho-icone" aria-hidden="true">{{ ui.icone('award') }}</span>
+    <strong>Você ainda não tem certificados emitidos.</strong>
+    <span>Quando você concluir um treinamento, o certificado aparece aqui para baixar e validar.</span>
+    <a class="botao" href="/turmas/minhas#abertas">Ver turmas abertas</a>
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  {% if anulados|length %}
+  <details class="recolhido cert-anulados">
+    <summary>Certificados anulados <span class="nota">{{ anulados|length }}</span></summary>
+    <p class="discreto">Não valem como comprovação: a validação pública responde
+      “anulado”. A cópia sai com a tarja de ANULADO, para juntar a um processo se for preciso.</p>
+    <ul class="grade-cert" role="list">
+      {% for c in anulados %}<li>{{ cartao_certificado(c) }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 
 </div>
 {% endblock %}

@@ -21,7 +21,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { Ambiente } from "../nucleo/contexto.js";
 import { usuarioLogado } from "../dependencias.js";
 import { ErroHttp } from "../nucleo/erros.js";
-import { Item } from "../modulos.js";
+import { MEU_ESPACO, cartao_meu_espaco, meu_espaco_grupos_de, type Item } from "../modulos.js";
 import { pagina } from "../web.js";
 import { pastaDeEstaticos } from "./aplicativo.js";
 
@@ -29,23 +29,28 @@ export const rotas = new Hono<Ambiente>();
 
 /**
  * Os atalhos de quem não tem balcão nem chamada: o servidor que instalou a
- * tela no celular. São `Item`s do menu, com a mesma permissão das rotas e a
- * mesma marca de "tela do titular" — sem servidor vinculado eles abririam
- * vazios, e então não aparecem. Nada de código de permissão na tela.
+ * tela no celular. Desde o Portal do servidor (22/10/2026) são a MESMA lista
+ * do "Meu espaço" (`modulos.MEU_ESPACO`, nos mesmos grupos), menos o "Início",
+ * que é o sistema completo — a tela de bolso já tem o link para ele. Cada item
+ * aparece só se abre para a conta (`modulos.meu_espaco_de`): sem servidor
+ * vinculado as telas do titular abririam vazias, e então não aparecem. Nada
+ * de código de permissão na tela.
  */
-export const ATALHOS: readonly Item[] = [
-  new Item("Meus certificados", "/certificados/meus", "treinamento.ver", "O que foi emitido em seu nome, para baixar.", true),
-  new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true),
-  new Item("Turmas abertas", "/turmas/minhas", "treinamento.ver", "Treinamentos com inscrição aberta, e os seus pedidos.", true),
-];
+export const ATALHOS: readonly Item[] = Object.freeze(MEU_ESPACO.filter((item) => item.caminho !== "/"));
 
 rotas.get("/celular", async (c) => {
   const usuario = await usuarioLogado(c);
+  const grupos = meu_espaco_grupos_de(usuario)
+    .map((g) => ({ titulo: g.titulo, itens: g.itens.filter((item) => ATALHOS.includes(item)) }))
+    .filter((g) => g.itens.length > 0);
   const resposta = await pagina(c, "paginas/celular.html", usuario, {
     pode_entregar: usuario.pode("epi.entregar"),
     pode_chamada: usuario.pode("turma.avaliar"),
     tem_ficha: usuario.servidor_id !== null,
-    atalhos: ATALHOS.filter((item) => item.visivel_para(usuario)),
+    atalhos: grupos.flatMap((g) => g.itens),
+    grupos_atalhos: grupos,
+    // o cartão compacto do alto: avatar e nome (sem a lotação, que não cabe)
+    cartao_celular: grupos.length ? cartao_meu_espaco(usuario) : null,
   });
   // A página leva o nome de quem entrou ("Olá, Adelaide"). O service worker já
   // não a guarda (`sw.js`); `no-store` fecha a outra porta, o cache HTTP do

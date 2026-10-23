@@ -107,9 +107,18 @@ export function chave_busca(texto: string | null | undefined): string {
  * Isto é detecção, não recusa; mas a detecção é uma só, aqui.
  */
 export function parece_cpf(bruto: string | null | undefined): boolean {
+  // NUVEM (22/10/2026): o número do certificado novo e a chave de validação
+  // dele (`SISA-NR35-2026-0002-5CWBY`) podem somar 11 algarismos por acaso —
+  // e a busca pela chave virava "isto é CPF, não busco". O formato deles é
+  // inconfundível com CPF (blocos com letras, separados por traço).
+  if (_RE_NUMERO_CERTIFICADO.test((bruto ?? "").trim())) return false;
   const digitos = [...(bruto ?? "")].filter((c) => /\p{Nd}/u.test(c));
   return digitos.length === 11;
 }
+
+// o mesmo desenho de `PADRAO_NUMERO_IMPRESSO`/`PADRAO_CHAVE_NOVA`
+// (`dominio/treinamento.ts`), sem caixa: com ou sem os 5 sorteados
+const _RE_NUMERO_CERTIFICADO = /^[A-Z0-9]{1,12}-[A-Z0-9]{2,10}-\d{4}-\d{4,6}(?:-[A-Z0-9]{5})?$/i;
 
 /**
  * Forma canônica de comparação do CA-01: TODO espaço em branco (inclusive a

@@ -3248,6 +3248,594 @@ details.ajuste-horas input { margin-top: 4px; }
   gap: 6px 12px; padding: 8px 0; border-bottom: 1px solid var(--borda-fraca); }
 .treinamentos-vinculados li form { margin: 0; }
 
+/* =====================================================================
+   PORTAL DO SERVIDOR (22/10/2026)
+   Uma subseção por frente de trabalho; cada uma só mexe na sua. Tudo aqui
+   fica ANTES do bloco CELULAR (lote 0), que ajusta o celular por cima, e do
+   `@media print`, que continua o último da folha.
+   ===================================================================== */
+
+/* ---------- PORTAL/COMUM: pílulas de filtro por link (situação, tipo) ----------
+   Links GET, sem JS: a URL guarda o filtro. O ativo é sólido e leva
+   `aria-current="true"`; a forma (fundo cheio) diz o ativo, não só a cor. No
+   celular a faixa rola na horizontal dentro dela mesma, sem rolar a página.
+   Quem usa: Meus certificados e Minha atividade. */
+.filtro-pilulas { display: flex; gap: 8px; margin: 0 0 16px; padding: 2px 0 6px; overflow-x: auto; max-width: 100%;
+  list-style: none; scrollbar-width: thin; }
+.filtro-pilulas li { flex: 0 0 auto; margin: 0; }
+.filtro-pilulas a { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 14px;
+  border: 1px solid var(--borda); border-radius: 999px; background: var(--cartao); color: var(--tinta-media);
+  font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.filtro-pilulas a:hover { border-color: var(--acento); color: var(--acento); }
+.filtro-pilulas a[aria-current="true"] { background: var(--acento); border-color: var(--acento); color: #fff; }
+.filtro-pilulas .contagem { font-weight: 500; font-variant-numeric: tabular-nums; opacity: .9; }
+@media (pointer: coarse) { .filtro-pilulas a { min-height: 44px; } }
+/* ---------- fim PORTAL/COMUM ---------- */
+
+/* ---------- PORTAL/SETOR: cor e ícone do setor promotor (.setor, .setor--{cor}, selo de setor) ---------- */
+/* A paleta FECHADA do setor promotor (`CORES_SETOR`, dominio/organizacao.ts;
+   CHECK em `unidade_uorg.cor_setor`). Proposta para aprovação em DESVIOS.md
+   (Portal do servidor, 22/10/2026). Cada chave tem quatro valores:
+     -cor    o sólido: fundo de cabeçalho/capa com texto BRANCO (>= 4,5:1);
+     -fundo  o pastel: fundo do selo em página clara;
+     -texto  o texto escuro sobre o pastel (>= 4,5:1);
+     -borda  só desenho (a borda do selo), sem exigência de contraste.
+   "Claro" é texto/ícone -texto sobre -fundo; "escuro" é branco sobre -cor —
+   o sistema não tem tema escuro, então não há `prefers-color-scheme`: quem
+   quiser o selo sobre fundo escuro usa `.selo-setor.solido`.
+   Contrastes medidos pela luminância relativa da WCAG 2.x (o teste
+   `setor_aparencia.test.ts` recalcula a partir DESTE bloco):
+     azul      #0058a3 x branco 7,18 | #00467f x #e3eefa 8,19   (a cor da marca)
+     verde     #2f6b17 x branco 6,49 | #24540f x #e5f2da 7,68   (o --ok)
+     petroleo  #00666b x branco 6,75 | #004f53 x #dcf1f0 7,97   (verde-azulado: CPOS)
+     roxo      #8a52c8 x branco 5,10 | #5c2f94 x #f1e9fa 7,76   (claro de propósito, ver abaixo)
+     marinho   #0a2a5c x branco 14,0 | #0a2a5c x #e2e7f0 11,3   (a lateral)
+     vinho     #8c1d40 x branco 8,88 | #741634 x #f8e4ea 9,06
+     ambar     #8a4b00 x branco 6,80 | #6e3c00 x #fbefd9 7,99
+     grafite   #414b59 x branco 8,84 | #353d49 x #e9ecf0 9,25
+   O roxo é mais CLARO que o azul (luminância 0,16 contra 0,10): na
+   deuteranopia e na protanopia roxo e azul viram o mesmo matiz, e é a
+   diferença de claridade que os separa (ΔE simulado ~12 e ~17; o roxo da
+   vitrine, #6b3fa0, dava ~6 e ~9). Mesmo assim a sigla escrita é o sinal
+   principal: a cor só ajuda a achar. */
+:root {
+  --paleta-azul: #0058a3;     --paleta-azul-fundo: #e3eefa;     --paleta-azul-texto: #00467f;     --paleta-azul-borda: #9cc0e6;
+  --paleta-verde: #2f6b17;    --paleta-verde-fundo: #e5f2da;    --paleta-verde-texto: #24540f;    --paleta-verde-borda: #a6cf74;
+  --paleta-petroleo: #00666b; --paleta-petroleo-fundo: #dcf1f0; --paleta-petroleo-texto: #004f53; --paleta-petroleo-borda: #8fcac8;
+  --paleta-roxo: #8a52c8;     --paleta-roxo-fundo: #f1e9fa;     --paleta-roxo-texto: #5c2f94;     --paleta-roxo-borda: #c9b0ea;
+  --paleta-marinho: #0a2a5c;  --paleta-marinho-fundo: #e2e7f0;  --paleta-marinho-texto: #0a2a5c;  --paleta-marinho-borda: #a9b6cc;
+  --paleta-vinho: #8c1d40;    --paleta-vinho-fundo: #f8e4ea;    --paleta-vinho-texto: #741634;    --paleta-vinho-borda: #e2a9ba;
+  --paleta-ambar: #8a4b00;    --paleta-ambar-fundo: #fbefd9;    --paleta-ambar-texto: #6e3c00;    --paleta-ambar-borda: #e8c088;
+  --paleta-grafite: #414b59;  --paleta-grafite-fundo: #e9ecf0;  --paleta-grafite-texto: #353d49;  --paleta-grafite-borda: #b7bec9;
+}
+
+/* O setor sem cor escolhida: a cor do sistema (7,18 com branco; o
+   --acento-forte dá 8,14 sobre o --acento-suave). */
+.setor--padrao, .selo-setor {
+  --setor-cor: var(--acento); --setor-fundo: var(--acento-suave);
+  --setor-texto: var(--acento-forte); --setor-borda: var(--acento-claro);
+}
+.setor--azul     { --setor-cor: var(--paleta-azul);     --setor-fundo: var(--paleta-azul-fundo);     --setor-texto: var(--paleta-azul-texto);     --setor-borda: var(--paleta-azul-borda); }
+.setor--verde    { --setor-cor: var(--paleta-verde);    --setor-fundo: var(--paleta-verde-fundo);    --setor-texto: var(--paleta-verde-texto);    --setor-borda: var(--paleta-verde-borda); }
+.setor--petroleo { --setor-cor: var(--paleta-petroleo); --setor-fundo: var(--paleta-petroleo-fundo); --setor-texto: var(--paleta-petroleo-texto); --setor-borda: var(--paleta-petroleo-borda); }
+.setor--roxo     { --setor-cor: var(--paleta-roxo);     --setor-fundo: var(--paleta-roxo-fundo);     --setor-texto: var(--paleta-roxo-texto);     --setor-borda: var(--paleta-roxo-borda); }
+.setor--marinho  { --setor-cor: var(--paleta-marinho);  --setor-fundo: var(--paleta-marinho-fundo);  --setor-texto: var(--paleta-marinho-texto);  --setor-borda: var(--paleta-marinho-borda); }
+.setor--vinho    { --setor-cor: var(--paleta-vinho);    --setor-fundo: var(--paleta-vinho-fundo);    --setor-texto: var(--paleta-vinho-texto);    --setor-borda: var(--paleta-vinho-borda); }
+.setor--ambar    { --setor-cor: var(--paleta-ambar);    --setor-fundo: var(--paleta-ambar-fundo);    --setor-texto: var(--paleta-ambar-texto);    --setor-borda: var(--paleta-ambar-borda); }
+.setor--grafite  { --setor-cor: var(--paleta-grafite);  --setor-fundo: var(--paleta-grafite-fundo);  --setor-texto: var(--paleta-grafite-texto);  --setor-borda: var(--paleta-grafite-borda); }
+
+/* O selo (`ui.selo_setor`): pastel, ícone e sigla, 13px em peso 600. Não é
+   alvo de toque (é um `<span>`), então não leva os 44px. */
+.selo-setor {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 4px 9px; border-radius: 999px; vertical-align: middle;
+  font-size: 13px; font-weight: 600; line-height: 1.2; letter-spacing: .01em; white-space: nowrap;
+  background: var(--setor-fundo); color: var(--setor-texto); border: 1px solid var(--setor-borda);
+}
+.selo-setor > span { overflow: hidden; text-overflow: ellipsis; }
+.selo-setor > .ico { font-size: 14px; flex: none; }
+/* a variante sólida: cabeçalho de cartão, capa de turma, fundo escuro */
+.selo-setor.solido { background: var(--setor-cor); color: #fff; border-color: var(--setor-cor); }
+@media (forced-colors: active) { .selo-setor { border-color: CanvasText; } }
+
+/* ---- o popup "Aparência" (Treinamentos → Setores promotores) ---- */
+.acoes-setor > form { display: inline-block; margin-left: 6px; }
+.aparencia-setor { display: grid; gap: 16px; }
+.escolha-setor { border: 0; padding: 0; margin: 0; min-width: 0; }
+.escolha-setor > legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
+.escolha-setor { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
+.opcao-setor {
+  display: flex; align-items: center; gap: 8px; min-height: 44px;
+  padding: 6px 10px; border: 1px solid var(--borda); border-radius: var(--raio);
+  background: var(--cartao); cursor: pointer;
+}
+.opcao-setor:has(input:checked) { border-color: var(--acento); background: var(--acento-suave); }
+.opcao-setor:has(input:focus-visible) { outline: var(--anel-foco); outline-offset: 1px; }
+.opcao-setor > input { margin: 0; flex: none; }
+.opcao-setor > .ico { font-size: 18px; color: var(--tinta-media); flex: none; }
+.amostra-setor {
+  width: 22px; height: 22px; flex: none; border-radius: 6px;
+  background: var(--setor-cor); box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .15);
+}
+.previa-setor {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 12px; border-radius: var(--raio); background: var(--papel);
+}
+.previa-setor > .rotulo { font-weight: 600; font-size: 13px; color: var(--tinta-fraca); }
+.previa-setor > .dica { flex-basis: 100%; }
+/* sem `:has()`, a prévia mostra o selo gravado; com ele, segue os rádios */
+.previa-setor .previa-ico { display: none; }
+.previa-setor .previa-ico.gravado { display: inline-block; }
+.aparencia-setor:has(input[name="icone"]:checked) .previa-ico.gravado { display: none; }
+.aparencia-setor:has(input[name="icone"][value="shield-plus"]:checked) .previa-ico--shield-plus { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="heart-pulse"]:checked) .previa-ico--heart-pulse { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="clipboard2-check"]:checked) .previa-ico--clipboard2-check { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="mortarboard"]:checked) .previa-ico--mortarboard { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="building"]:checked) .previa-ico--building { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="people"]:checked) .previa-ico--people { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="award"]:checked) .previa-ico--award { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="journal-bookmark"]:checked) .previa-ico--journal-bookmark { display: inline-block; }
+.aparencia-setor:has(input[name="icone"][value="person-badge"]:checked) .previa-ico--person-badge { display: inline-block; }
+.aparencia-setor:has(input[name="cor"][value=""]:checked) .previa-setor .selo-setor { --setor-cor: var(--acento); --setor-fundo: var(--acento-suave); --setor-texto: var(--acento-forte); --setor-borda: var(--acento-claro); }
+.aparencia-setor:has(input[name="cor"][value="azul"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-azul); --setor-fundo: var(--paleta-azul-fundo); --setor-texto: var(--paleta-azul-texto); --setor-borda: var(--paleta-azul-borda); }
+.aparencia-setor:has(input[name="cor"][value="verde"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-verde); --setor-fundo: var(--paleta-verde-fundo); --setor-texto: var(--paleta-verde-texto); --setor-borda: var(--paleta-verde-borda); }
+.aparencia-setor:has(input[name="cor"][value="petroleo"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-petroleo); --setor-fundo: var(--paleta-petroleo-fundo); --setor-texto: var(--paleta-petroleo-texto); --setor-borda: var(--paleta-petroleo-borda); }
+.aparencia-setor:has(input[name="cor"][value="roxo"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-roxo); --setor-fundo: var(--paleta-roxo-fundo); --setor-texto: var(--paleta-roxo-texto); --setor-borda: var(--paleta-roxo-borda); }
+.aparencia-setor:has(input[name="cor"][value="marinho"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-marinho); --setor-fundo: var(--paleta-marinho-fundo); --setor-texto: var(--paleta-marinho-texto); --setor-borda: var(--paleta-marinho-borda); }
+.aparencia-setor:has(input[name="cor"][value="vinho"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-vinho); --setor-fundo: var(--paleta-vinho-fundo); --setor-texto: var(--paleta-vinho-texto); --setor-borda: var(--paleta-vinho-borda); }
+.aparencia-setor:has(input[name="cor"][value="ambar"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-ambar); --setor-fundo: var(--paleta-ambar-fundo); --setor-texto: var(--paleta-ambar-texto); --setor-borda: var(--paleta-ambar-borda); }
+.aparencia-setor:has(input[name="cor"][value="grafite"]:checked) .previa-setor .selo-setor { --setor-cor: var(--paleta-grafite); --setor-fundo: var(--paleta-grafite-fundo); --setor-texto: var(--paleta-grafite-texto); --setor-borda: var(--paleta-grafite-borda); }
+@media (max-width: 600px) {
+  .escolha-setor { grid-template-columns: 1fr; }
+  .acoes-setor > form { display: block; margin-left: 0; }
+}
+/* ---------- fim PORTAL/SETOR ---------- */
+
+/* ---------- PORTAL/CERTIFICADOS: Meus certificados em cartões, ficha leve e comprovante ---------- */
+/* Cartão do certificado (`partes/cartao_certificado.html`): selos de situação
+   (texto + ícone, nunca só a cor), título em até 2 linhas, metadados em 13px,
+   uma ação principal sólida. Grade de 2 colunas a partir de 720px. */
+.cert-cabecalho { display: flex; align-items: flex-start; gap: 12px; }
+.cert-cabecalho-icone { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 44px; height: 44px; border-radius: var(--raio-cartao); background: var(--acento-claro); color: var(--acento); }
+.cert-cabecalho-icone .ico { width: 22px; height: 22px; }
+.cert-filtros { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 8px; }
+.cert-filtros > nav { min-width: 0; max-width: 100%; }
+.cert-filtros .filtro-pilulas { margin: 0; }
+.cert-filtro-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cert-filtro-form label { font-size: 14px; color: var(--tinta-fraca); }
+.cert-filtro-form select, .cert-filtro-form input[type=search] { width: auto; min-width: 0; }
+.cert-grupo { margin: 0 0 24px; }
+.cert-grupo-titulo { margin: 8px 0 10px; font-size: 16px; font-weight: 700; color: var(--tinta); }
+.cert-grupo-titulo span { font-size: 13px; font-weight: 400; color: var(--tinta-fraca); }
+.grade-cert { display: grid; grid-template-columns: 1fr; align-items: start; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.grade-cert > li { margin: 0; min-width: 0; }
+@media (min-width: 720px) { .grade-cert { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cert { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px;
+  background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio-cartao); box-shadow: var(--sombra); }
+.cert--vencido { border-left: 4px solid var(--erro); }
+.cert--avencer { border-left: 4px solid var(--alerta); }
+.cert--apagado, .cert--emissao { background: var(--linha-hover); }
+.cert--emissao { border-style: dashed; }
+.cert-selos { display: flex; flex-wrap: wrap; gap: 6px; }
+.cert-selos .selo { display: inline-flex; align-items: center; gap: 4px; font-family: inherit; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .03em; }
+.cert-selos .selo .ico { width: 13px; height: 13px; }
+.selo.cert-selo-neutro { background: var(--neutra-fundo); border-color: var(--neutra-borda); color: var(--tinta-media); }
+.cert-titulo { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--tinta);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.cert-titulo a { color: inherit; text-decoration: none; }
+.cert-titulo a:hover, .cert-titulo a:focus-visible { text-decoration: underline; }
+.cert-setor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--tinta-fraca); }
+.cert-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--tinta-media); }
+.cert-meta li { display: inline-flex; align-items: center; gap: 5px; margin: 0; }
+.cert-meta .ico { width: 14px; height: 14px; color: var(--tinta-fraca); }
+.cert-validade--vencido { color: var(--erro); font-weight: 600; }
+.cert-validade--avencer { color: var(--alerta-texto); font-weight: 600; }
+.cert-validade--vencido .ico, .cert-validade--avencer .ico { color: currentColor; }
+.cert-anulado { display: inline-flex; align-items: center; gap: 5px; margin: 0; font-size: 13px; color: var(--erro); }
+.cert-acoes { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 10px; margin-top: auto; padding-top: 4px; }
+.cert-acoes .botao { display: inline-flex; align-items: center; gap: 6px; }
+.cert-detalhe { flex: 0 1 auto; }
+.cert-detalhe > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cert-detalhe > summary::-webkit-details-marker { display: none; }
+.cert-detalhe[open] { flex-basis: 100%; }
+.cert-link { min-height: 36px; padding: 6px 4px; color: var(--acento); font-size: 14px; font-weight: 600; }
+.cert-link:hover { text-decoration: underline; }
+.cert-conteudo { margin: 8px 0 0; padding-left: 20px; font-size: 13px; color: var(--tinta-media); }
+.cert-conteudo li { margin: 2px 0; }
+.cert-validar-corpo { display: grid; gap: 6px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--borda-fraca);
+  border-radius: var(--raio-aviso); background: var(--linha-hover); }
+.cert-chave { font-size: 13px; word-break: break-all; }
+.cert-link-validacao { width: 100%; font-size: 12px; }
+.cert-qr { display: block; width: 132px; height: 132px; image-rendering: pixelated; }
+.cert-qr--grande { width: 200px; height: 200px; margin: 0 auto 12px; }
+.botao.cert-reciclagem { background: var(--cartao); border: 1px solid var(--alerta-borda); color: var(--alerta-texto); }
+.botao.cert-reciclagem:hover { background: var(--alerta-fundo); border-color: var(--alerta); color: var(--alerta-texto); }
+.cert-sem-turma { display: inline-flex; align-items: center; gap: 5px; margin: 0; flex-basis: 100%; font-size: 13px; color: var(--tinta-fraca); }
+.cert-nota { margin: 0; font-size: 13px; color: var(--tinta-fraca); }
+.cert-rodape { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 4px 0 0; padding-top: 8px;
+  border-top: 1px solid var(--borda-fraca); font-size: 12px; color: var(--tinta-dica); }
+.cert--compacto .cert-rodape { display: none; }
+.cert-vazio { padding: 32px 16px; gap: 10px; }
+.cert-vazio > span { max-width: 380px; }
+.cert-anulados .grade-cert { margin-top: 12px; }
+/* ficha leve do titular */
+.cert-ficha { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
+@media (min-width: 900px) { .cert-ficha { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.cert-ficha-dados .cert-selos { margin-bottom: 10px; }
+.cert-ficha-validar { display: grid; gap: 8px; align-content: start; }
+/* comprovante de treinamentos */
+.comprovante-folha { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 900px) { .comprovante-folha { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); } }
+.comprovante-frente, .comprovante-verso { padding: 18px 20px; background: var(--cartao); border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao); }
+.comprovante-faixa { margin: -18px -20px 14px; padding: 10px 20px; background: var(--acento); color: #fff;
+  border-radius: var(--raio-cartao) var(--raio-cartao) 0 0; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.comprovante-nome { margin: 0 0 10px; font-size: 20px; }
+.comprovante-verso > h2 { margin-top: 0; }
+.comprovante-aviso { margin: 14px 0 0; padding: 8px 10px; border: 1px dashed var(--borda); border-radius: var(--raio-aviso);
+  font-size: 13px; color: var(--tinta-media); }
+.comprovante-tabela { width: 100%; }
+.comprovante-qr img { display: block; width: 84px; height: 84px; image-rendering: pixelated; }
+.comprovante-link { display: block; max-width: 220px; font-size: 10px; word-break: break-all; color: var(--tinta-fraca); }
+@media (pointer: coarse) {
+  .cert-acoes .botao, .cert-link, .cert-detalhe > summary { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .cert { padding: 14px; }
+  .cert-acoes .botao, .cert-acoes > .cert-detalhe:not(.cert-validar) { flex: 1 1 100%; justify-content: center; }
+  .cert-acoes .botao, .cert-link { min-height: 44px; }
+  .cert-filtros { flex-direction: column; align-items: stretch; }
+  .cert-filtro-form { justify-content: flex-start; }
+}
+/* Impressão sem `@media print` (o da folha é o último e único): a página
+   nomeada só vale no papel — frente e verso lado a lado em A4 deitado, que dá
+   mais de 900px de largura e cai na grade de duas colunas acima. */
+@page comprovante { size: A4 landscape; margin: 12mm; }
+.comprovante { page: comprovante; }
+.comprovante-faixa { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.comprovante-frente, .comprovante-verso { break-inside: avoid; }
+/* ---------- fim PORTAL/CERTIFICADOS ---------- */
+
+/* ---------- PORTAL/PAINEL: Início do servidor e lateral do Meu espaço ---------- */
+/* O cartão de identificação no alto da lateral do "Meu espaço": degradê do
+   marinho da lateral ao acento, o símbolo da Sisa em marca d'água (pseudo-
+   elemento, translúcido) e as iniciais num círculo ciano de 44px — texto
+   branco GRANDE e negrito, porque ciano com texto pequeno não passa no
+   contraste. O nome numa linha, com reticências. */
+.ident-lateral {
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 10px; padding: 14px 12px;
+  border-radius: var(--raio-cartao); border: 1px solid rgba(255, 255, 255, .14);
+  background: linear-gradient(135deg, var(--lateral) 0%, var(--acento) 100%);
+  color: #fff;
+}
+.ident-lateral::after {
+  content: ""; position: absolute; right: -14px; top: 50%; width: 76px; height: 76px;
+  transform: translateY(-50%); opacity: .12; pointer-events: none;
+  background: url("/estaticos/img/marca-sisa.png") center / contain no-repeat;
+}
+.ident-avatar {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75);
+  background: #1a96c0; color: #fff; font-size: 17px; font-weight: 700; letter-spacing: .02em;
+}
+.ident-texto { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ident-nome {
+  display: block; font-size: 14px; font-weight: 700; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ident-linha { font-size: 12px; color: rgba(255, 255, 255, .88); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Os grupos do "Meu espaço": o mesmo subtítulo leve do menu do módulo. */
+.lateral .menu-meu .menu-grupo { display: flex; flex-direction: column; gap: 1px; margin-top: 10px; }
+.lateral .menu-meu .rotulo-grupo {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--lateral-texto-fraco);
+  padding: 0 12px 3px 10px;
+}
+/* O item ativo: além da chapa clara, o FIO à esquerda — a forma diz "você
+   está aqui", e não só a cor. */
+.lateral .menu-meu a.ativo { box-shadow: inset 4px 0 0 var(--acento); }
+/* O "Sair" no pé, depois do divisor, em vermelho claro com ícone: na lateral
+   escura o --erro (#8e010c) some; o tom claro passa de 8:1 sobre o marinho. */
+.lateral .menu-meu-pe { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--lateral-linha); }
+.lateral .menu-meu-pe a.sair-meu { color: #ffb4ab; font-weight: 600; }
+.lateral .menu-meu-pe a.sair-meu:hover { color: #ffd6d1; }
+
+/* Lateral recolhida (só na mesa): sobra o avatar, centrado. */
+@media screen and (min-width: 901px) {
+  html.lateral-recolhida aside.lateral > .ident-lateral { justify-content: center; padding: 8px 0; }
+  html.lateral-recolhida aside.lateral > .ident-lateral .ident-texto {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  html.lateral-recolhida aside.lateral > .ident-lateral::after { display: none; }
+}
+
+/* ---- o Início do titular ---- */
+.inicio-titular { display: flex; flex-direction: column; gap: 18px; }
+.inicio-titular h2 { margin: 0 0 10px; font-size: 18px; font-weight: 700; color: var(--tinta); }
+
+.boas-vindas {
+  position: relative; overflow: hidden;
+  padding: 24px 26px; border-radius: var(--raio-cartao);
+  background: linear-gradient(135deg, var(--lateral) 0%, var(--acento) 100%);
+  color: #fff;
+}
+.boas-vindas::after {
+  content: ""; position: absolute; right: -40px; top: 50%; width: 220px; height: 220px;
+  transform: translateY(-50%); opacity: .10; pointer-events: none;
+  background: url("/estaticos/img/marca-sisa.png") center / contain no-repeat;
+}
+.boas-vindas > * { position: relative; z-index: 1; }
+.boas-vindas h1, .boas-vindas h1:not(.mono) { margin: 0 0 6px; font-size: 26px; font-weight: 700; color: #fff; }
+.boas-vindas p { margin: 0 0 14px; font-size: 15px; color: rgba(255, 255, 255, .92); }
+.boas-vindas .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.boas-vindas .chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 14px;
+  border-radius: 999px; border: 1px solid rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .12);
+  color: #fff; font-size: 13px; font-weight: 600; max-width: 100%;
+}
+.boas-vindas .chip > span { overflow-wrap: anywhere; }
+
+/* Avisos por severidade: borda à esquerda, ícone e título na cor do nível. */
+.avisos-titular { display: flex; flex-direction: column; gap: 10px; }
+.aviso-titular {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px;
+  border: 1px solid var(--borda); border-left-width: 4px; border-radius: var(--raio-aviso);
+  background: var(--cartao);
+}
+.aviso-titular > .ico { flex: none; font-size: 20px; margin-top: 2px; }
+.aviso-titular strong { display: block; font-size: 15px; }
+.aviso-titular p { margin: 2px 0 0; font-size: 14px; color: var(--tinta); }
+.aviso-titular--erro { border-color: var(--erro-borda); border-left-color: var(--erro); background: var(--erro-fundo); }
+.aviso-titular--erro > .ico, .aviso-titular--erro strong { color: var(--erro); }
+.aviso-titular--alerta { border-color: var(--alerta-borda); border-left-color: var(--alerta); background: var(--alerta-fundo); }
+.aviso-titular--alerta > .ico, .aviso-titular--alerta strong { color: var(--alerta-texto); }
+.aviso-titular--info { border-color: var(--info-borda); border-left-color: var(--acento); background: var(--info-fundo); }
+.aviso-titular--info > .ico, .aviso-titular--info strong { color: var(--acento); }
+
+/* Os cartões de status: ícone num quadrado pastel, rótulo em maiúsculas,
+   número grande e o link com seta. */
+.cartoes-status { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.cartao-status {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 16px; border: 1px solid var(--borda); border-radius: var(--raio-cartao);
+  background: var(--cartao); box-shadow: var(--sombra);
+}
+.cartao-status-icone {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; margin-bottom: 6px; border-radius: var(--raio-cartao);
+  background: var(--neutra-fundo); color: var(--tinta);
+}
+.cartao-status-icone .ico { font-size: 20px; }
+.cartao-status--ok .cartao-status-icone { background: var(--ok-fundo); color: var(--ok); }
+.cartao-status--alerta .cartao-status-icone { background: var(--alerta-fundo); color: var(--alerta-texto); }
+.cartao-status--info .cartao-status-icone { background: var(--info-fundo); color: var(--acento); }
+.cartao-status--epi .cartao-status-icone { background: var(--info-fundo); color: var(--acento); }
+.inicio-titular .cartao-status-rotulo {
+  margin: 0; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--tinta-fraca);
+}
+.cartao-status-valor { font-size: 30px; font-weight: 700; line-height: 1.1; color: var(--tinta); }
+.cartao-status-valor--texto { font-size: 18px; }
+.cartao-status p { margin: 0; font-size: 13px; color: var(--tinta-fraca); overflow-wrap: anywhere; }
+.cartao-status > a:last-child { margin-top: auto; padding-top: 8px; font-size: 14px; font-weight: 600; }
+
+.ultimos-certificados .todos-cert { font-weight: 600; text-decoration: underline; }
+.ultimos-certificados > p { margin: 12px 0 0; }
+
+/* Os atalhos: 3 colunas na mesa, 1 no celular. */
+.atalhos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.atalho {
+  display: flex; align-items: center; gap: 12px; min-height: 44px; height: 100%;
+  padding: 14px 16px; border: 1px solid var(--borda); border-radius: var(--raio-cartao);
+  background: var(--cartao); color: var(--tinta);
+}
+.atalho:hover { text-decoration: none; border-color: var(--acento); }
+.atalho-icone {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--raio-cartao); background: var(--info-fundo); color: var(--acento);
+}
+.atalho-icone .ico { font-size: 20px; }
+.atalho-texto { display: flex; flex-direction: column; min-width: 0; }
+.atalho-texto strong { font-size: 15px; }
+.atalho-texto span { font-size: 13px; color: var(--tinta-fraca); }
+
+/* A tela de bolso (`/celular`): a mesma lista do Meu espaço, 44px por item. */
+.ident-compacto { margin: 0 0 12px; }
+.atalhos-celular-meu .rotulo-grupo-celular {
+  margin: 14px 0 6px; font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--tinta-fraca);
+}
+.atalhos-celular-meu ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.atalhos-celular-meu a {
+  display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 10px 14px;
+  border: 1px solid var(--borda); border-radius: var(--raio-cartao); background: var(--cartao); color: var(--tinta);
+}
+.atalhos-celular-meu a span { font-size: 13px; color: var(--tinta-fraca); }
+
+/* No celular: o cartão de identificação vai para o alto da gaveta "Menu",
+   compacto (avatar e nome), e só aparece com a gaveta aberta; os itens têm
+   44px e uma coluna. */
+@media screen and (max-width: 900px) {
+  .lateral:has(> details.menu-celular:not([open])) > .ident-lateral { display: none; }
+  .lateral > .ident-lateral { flex: 1 1 100%; margin: 0; padding: 10px 12px; }
+  .lateral > .ident-lateral .ident-linha { display: none; }
+  aside.lateral nav.menu-meu { display: flex; flex-direction: column; }
+  aside.lateral nav.menu-meu .menu-grupo { flex-direction: column; flex-wrap: nowrap; }
+  aside.lateral nav.menu-meu a { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .boas-vindas { padding: 18px 16px; }
+  .boas-vindas h1 { font-size: 22px; }
+  .cartoes-status { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .cartao-status { padding: 12px; }
+  .cartao-status-valor { font-size: 26px; }
+  .atalhos { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 359px) {
+  .cartoes-status { grid-template-columns: minmax(0, 1fr); }
+}
+/* ---------- fim PORTAL/PAINEL ---------- */
+
+/* ---------- PORTAL/ATIVIDADE: Minha atividade e Meu perfil em seções ---------- */
+/* Minha atividade: a linha do tempo, um <ol> por dia com o <h3> da data. Cada
+   evento tem o ícone num quadrado pastel na cor do GRUPO (Treinamentos azul,
+   Certificados petróleo, EPI verde, Processos roxo, Conta grafite), o título em
+   negrito, o objeto e o agente em cinza, e a hora à direita. A cor só ajuda a
+   achar: o título escrito diz o que é. */
+.linha-tempo-dia { margin: 0 0 18px; }
+.linha-tempo-dia h3 { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--tinta-media); }
+.linha-tempo-dia ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.evento-titular {
+  --grupo-cor: var(--paleta-grafite-texto); --grupo-fundo: var(--paleta-grafite-fundo);
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start;
+  margin: 0; padding: 12px 14px; background: var(--cartao); border: 1px solid var(--borda-fraca);
+  border-radius: var(--raio-cartao);
+}
+.evento-titular.grupo--treinamentos { --grupo-cor: var(--paleta-azul-texto);     --grupo-fundo: var(--paleta-azul-fundo); }
+.evento-titular.grupo--certificados { --grupo-cor: var(--paleta-petroleo-texto); --grupo-fundo: var(--paleta-petroleo-fundo); }
+.evento-titular.grupo--epi          { --grupo-cor: var(--paleta-verde-texto);    --grupo-fundo: var(--paleta-verde-fundo); }
+.evento-titular.grupo--processos    { --grupo-cor: var(--paleta-roxo-texto);     --grupo-fundo: var(--paleta-roxo-fundo); }
+.evento-icone {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+  border-radius: 10px; background: var(--grupo-fundo); color: var(--grupo-cor); font-size: 18px;
+}
+.evento-corpo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.evento-titulo { color: var(--tinta); font-size: 15px; }
+.evento-objeto { color: var(--tinta-media); font-size: 14px; overflow-wrap: anywhere; }
+.evento-agente { color: var(--tinta-fraca); font-size: 13px; }
+.evento-quando { color: var(--tinta-fraca); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.atividade-mais { margin: 4px 0 16px; }
+.atividade-rodape {
+  margin: 16px 0 0; padding: 12px 14px; border: 1px dashed var(--borda); border-radius: var(--raio-cartao);
+  color: var(--tinta-media); font-size: 14px;
+}
+@media (forced-colors: active) { .evento-icone { border: 1px solid CanvasText; } }
+
+/* Meu perfil (/minha-conta): o cabeçalho marinho com as iniciais, o nome e os
+   chips; depois as seções em <details> (sem JS), a primeira aberta. */
+.perfil-cabecalho {
+  display: flex; align-items: center; gap: 18px; margin: 0 0 16px; padding: 20px 22px;
+  border-radius: var(--raio-cartao); background: var(--paleta-marinho); color: #fff;
+}
+.perfil-iniciais {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7);
+  background: var(--paleta-azul); font-size: 24px; font-weight: 700; letter-spacing: .02em;
+}
+.perfil-identidade { min-width: 0; }
+.perfil-nome { margin: 0 0 8px; font-size: 22px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.perfil-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.perfil-chips .chip {
+  display: inline-flex; align-items: center; min-height: 28px; padding: 3px 12px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .45); background: rgba(255, 255, 255, .12);
+  color: #fff; font-size: 13px; font-weight: 600;
+}
+.perfil-chips .chip--situacao { padding: 0; border: 0; background: none; }
+
+.perfil-secao {
+  margin: 0 0 12px; background: var(--cartao); border: 1px solid var(--borda-fraca);
+  border-radius: var(--raio-cartao);
+}
+.perfil-secao > summary {
+  display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 16px;
+  cursor: pointer; list-style: none; font-weight: 700; color: var(--tinta);
+}
+.perfil-secao > summary::-webkit-details-marker { display: none; }
+.perfil-secao > summary:focus-visible { outline: none; box-shadow: var(--anel-foco); border-radius: var(--raio-cartao); }
+.perfil-secao-icone {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+  border-radius: 10px; background: var(--paleta-azul-fundo); color: var(--paleta-azul-texto); font-size: 17px;
+}
+.perfil-secao-titulo { flex: 1 1 auto; font-size: 16px; }
+.perfil-secao-seta { flex: none; color: var(--tinta-fraca); transition: transform .15s; }
+.perfil-secao[open] > summary .perfil-secao-seta { transform: rotate(90deg); }
+.perfil-secao[open] > summary { border-bottom: 1px solid var(--borda-fraca); }
+.perfil-secao-corpo { padding: 14px 16px 16px; }
+.perfil-secao-corpo > :last-child { margin-bottom: 0; }
+.perfil-secao-corpo section + section { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--divisor); }
+.perfil-subtitulo { margin: 0 0 8px; font-size: 15px; }
+.perfil-nota { color: var(--tinta-media); font-size: 13px; }
+.perfil-resumo { font-size: 16px; }
+.perfil-links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.perfil-links a { display: inline-flex; align-items: center; min-height: 32px; }
+
+/* rótulo e valor: rótulo em caixa alta cinza (30%), valor à direita */
+.dl-rotulo { margin: 0 0 12px; }
+.dl-rotulo > div {
+  display: grid; grid-template-columns: 30% 1fr; gap: 12px; align-items: baseline;
+  padding: 9px 0; border-bottom: 1px solid var(--divisor);
+}
+.dl-rotulo dt { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--tinta-fraca); }
+.dl-rotulo dd { margin: 0; color: var(--tinta); overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  .perfil-links a { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .evento-titular { grid-template-columns: auto 1fr; }
+  .evento-quando { grid-column: 2; }
+  .perfil-cabecalho { flex-direction: column; align-items: flex-start; padding: 16px; }
+  .dl-rotulo > div { grid-template-columns: 1fr; gap: 2px; }
+}
+/* ---------- fim PORTAL/ATIVIDADE ---------- */
+
+/* ---------- PORTAL/TURMAS: hora da turma, público e agenda (.ics) ---------- */
+/* O horário embaixo do período ("8h às 17h"), na lista, em Meus treinamentos. */
+.turma-horario { font-family: inherit; font-variant-numeric: tabular-nums; }
+/* "Para: servidores, terceirizados…" no cartaz público e na tela do link. */
+.turma-publico { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* A caixa "Aceita comunidade externa" nos popups de cadastro e edição. */
+.turma-marcar { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; font-weight: 600; cursor: pointer; }
+.turma-marcar input { width: 18px; height: 18px; margin: 0; }
+/* O recorte por treinamento que chega do cartão do certificado. */
+.turma-filtro-ativo { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--cartao); }
+.turma-filtro-ativo a { margin-left: 8px; font-weight: 600; white-space: nowrap; }
+/* "Adicionar à agenda" ao lado de "Desistir". */
+.turma-agenda { display: inline-flex; align-items: center; gap: 6px; margin: 0 6px 6px 0; white-space: nowrap; }
+@media (max-width: 720px) {
+  .turma-agenda { display: flex; justify-content: center; width: 100%; min-height: 44px; margin: 0 0 8px; }
+  .turma-marcar { min-height: 44px; }
+  .turma-filtro-ativo a { display: inline-flex; align-items: center; min-height: 44px; margin-left: 0; }
+}
+/* ---------- fim PORTAL/TURMAS ---------- */
+
+/* ---------- PORTAL/VALIDACAO: validação pública e código curto do catálogo ---------- */
+/* A chave nova (CSSO-NR35-2026-0001-K7QMX) chega a 41 caracteres sem espaço:
+   no celular ela quebra em qualquer ponto em vez de empurrar a página. */
+.tela-auxiliar #resultado h1 .mono,
+.tela-auxiliar .tabela-dados dd.mono,
+.tela-auxiliar #resultado .aviso .mono {
+  overflow-wrap: anywhere;
+}
+.validacao-so-numero {
+  border-left: 3px solid currentColor;
+  padding-left: .6rem;
+}
+/* o código curto no catálogo: digitado em caixa alta (o servidor também passa) */
+.entrada-codigo-curto {
+  text-transform: uppercase;
+  max-width: 14ch;
+}
+.entrada-codigo-curto::placeholder {
+  text-transform: none;
+}
+.codigo-curto {
+  white-space: nowrap;
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .entrada-codigo-curto {
+    max-width: none;
+    min-height: 44px;
+  }
+}
+/* ---------- fim PORTAL/VALIDACAO ---------- */
+
 /* ===== CELULAR (lote 0) =====
    O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
    com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o

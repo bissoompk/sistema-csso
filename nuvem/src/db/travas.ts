@@ -101,4 +101,7 @@ export const TRIGGERS = [
   // 0015: a comunicação do titular se retira ou se trata, e não se apaga
   'trg_epi_comunicacao_sem_delete',
   'trg_epi_comunicacao_sem_truncate',
+  // 0016: o codigo curto do treinamento e o numero impresso do certificado
+  'trg_treinamento_codigo_curto',
+  'trg_certificado_numero_imutavel',
 ] as const;

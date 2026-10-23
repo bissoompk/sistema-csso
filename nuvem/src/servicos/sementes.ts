@@ -12,6 +12,7 @@
  * serviço recebe o executor e não fecha transação (PORTE.md §2); quem chama
  * (`ferramentas/semear.ts`, o `globalSetup` dos testes) abre e fecha.
  */
+import { APARENCIA_SETOR_INICIAL } from "../dominio/organizacao.js";
 import { and, eq, isNull, type SQL } from "drizzle-orm";
 import type { PgTable, PgColumn } from "drizzle-orm/pg-core";
 import type { Executor } from "../db/cliente.js";
@@ -249,6 +250,9 @@ export async function semear_organizacao(
       // só ao CRIAR (`_obter_ou_criar` não reescreve quem já existe): a lista de
       // promotores é do setor, e o que ele desmarcar não volta no próximo deploy
       promove_treinamento: SETORES_PROMOTORES_INICIAIS.includes(sigla),
+      // a proposta de cor e ícone (22/10/2026), também só ao criar
+      cor_setor: APARENCIA_SETOR_INICIAL[oficial]?.cor ?? null,
+      icone_setor: APARENCIA_SETOR_INICIAL[oficial]?.icone ?? null,
     };
     for (const k of Object.keys(chave)) delete valores[k];
     objetos_uorg[sigla] = await _obter_ou_criar(tx, unidade_uorg, chave, valores);

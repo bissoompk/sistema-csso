@@ -331,3 +331,52 @@ export function exigir_ordem(inicio: Data, fim: Data, rotulo_inicio: string, rot
     throw new RegraViolada(`${rotulo_fim} não pode ser anterior ${complemento}.`);
   }
 }
+
+// ---------------------------------------------------------------------
+// Portal do servidor (22/10/2026): o período curto do cartão e o "há 3 h"
+// ---------------------------------------------------------------------
+
+/**
+ * O período da turma no cartão do certificado:
+ * - um dia: "14/07/2026";
+ * - dias seguidos no mesmo mês: "02 a 06/09/2026"; dois dias: "02 e 03/09/2026";
+ * - meses diferentes do mesmo ano: "30/09 a 02/10/2026";
+ * - anos diferentes: "30/12/2025 a 02/01/2026".
+ */
+export function periodo_curto(inicio: Data, fim: Data | null = null): string {
+  const f = fim ?? inicio;
+  const [a1, m1, d1] = partes(inicio);
+  const [a2, m2, d2] = partes(f);
+  if (inicio === f) return numerica(inicio);
+  if (a1 === a2 && m1 === m2) {
+    const ligacao = d2 - d1 === 1 ? " e " : " a ";
+    return `${dois(d1)}${ligacao}${dois(d2)}/${dois(m2)}/${a2}`;
+  }
+  if (a1 === a2) return `${dois(d1)}/${dois(m1)} a ${dois(d2)}/${dois(m2)}/${a2}`;
+  return `${numerica(inicio)} a ${numerica(f)}`;
+}
+
+/**
+ * "agora", "há 5 min", "há 3 h", "ontem", "há 4 dias", e a data a partir de
+ * 7 dias. Calculado no servidor (sem JS); o `title` da tela leva a data e a
+ * hora inteiras.
+ */
+export function tempo_relativo(momento: Date | string | null | undefined, agora: Date = new Date()): string {
+  if (!momento) return "";
+  const m = momento instanceof Date ? momento : new Date(momento);
+  const segundos = Math.max(0, Math.floor((agora.getTime() - m.getTime()) / 1000));
+  if (segundos < 60) return "agora";
+  const minutos = Math.floor(segundos / 60);
+  if (minutos < 60) return `há ${minutos} min`;
+  const dia_m = data_local(m);
+  const dia_agora = data_local(agora);
+  const horas = Math.floor(minutos / 60);
+  if (dia_m === dia_agora) return `há ${horas} h`;
+  if (dia_m && dia_agora) {
+    const [a, b] = [Date.parse(`${dia_m}T00:00:00Z`), Date.parse(`${dia_agora}T00:00:00Z`)];
+    const dias = Math.round((b - a) / 86_400_000);
+    if (dias === 1) return "ontem";
+    if (dias < 7) return `há ${dias} dias`;
+  }
+  return local_formatado(m, false);
+}

@@ -302,7 +302,9 @@ describe("telas", async () => {
       const bloco = lateral.slice(inicio_do_bloco);
       expect(bloco).toContain('href="/turmas/minhas"');
       expect(bloco).toContain('href="/epis/requisicoes/nova"');
-      expect(bloco).toContain(`href="/servidores/${servidor!.id}"`);
+      // "Meus dados" saiu do menu (22/10/2026); a Minha atividade entrou
+      expect(bloco).not.toContain(`href="/servidores/${servidor!.id}"`);
+      expect(bloco).toContain('href="/minha-atividade"');
       const corpo = (await cliente.get("/turmas/minhas")).text;
       // um "Meus treinamentos" só, e a trilha fala a língua do bloco
       expect(lateral.split('href="/turmas/minhas"').length - 1).toBe(1);
@@ -499,12 +501,13 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
       "Início",
       "Meus treinamentos",
       "Meus certificados",
+      "Comprovante de treinamentos",
       "Minha ficha de EPI",
       "Pedir EPI",
       "Meu adicional",
       "Meus processos",
-      "Meus dados",
-      "Minha conta",
+      "Minha atividade",
+      "Meu perfil",
     ]);
     // "Meus pedidos de EPI" não: para ele `/epis/requisicoes` é a fila do setor,
     // que a lateral já oferece como "Requisições"
@@ -531,7 +534,14 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
     const caminhos = caminhos_da_equipe(coordenador);
     expect(caminhos).toEqual(expect.arrayContaining(["/", "/kanban", "/processos", "/turmas", "/catalogos", "/epis/requisicoes"]));
     const meu = modulos.meu_espaco_de(coordenador);
-    expect(meu.map((i) => i.rotulo)).toEqual(["Meus treinamentos", "Meus certificados", "Minha ficha de EPI", "Meus dados", "Minha conta"]);
+    expect(meu.map((i) => i.rotulo)).toEqual([
+      "Meus treinamentos",
+      "Meus certificados",
+      "Comprovante de treinamentos",
+      "Minha ficha de EPI",
+      "Minha atividade",
+      "Meu perfil",
+    ]);
     // nada do bloco aparece também na lateral
     for (const item of meu) expect(caminhos, item.caminho).not.toContain(item.caminho);
     expect(modulos.primeira_tela(coordenador)).toBe("/");

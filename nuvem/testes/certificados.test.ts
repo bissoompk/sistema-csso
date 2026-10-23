@@ -233,7 +233,9 @@ describe("chave de validação", () => {
     const cen = await cenario_certificado();
     const cert = (await servico.emitir(db, cen.usuario, cen.inscricao, { gerar_pdf: false })).certificado;
     expect(servico_certificado.chave_valida(cert.chave_validacao)).toBe(true);
-    expect(cert.chave_validacao.startsWith(`CSSO-${cert.ano}-`)).toBe(true);
+    // 22/10/2026: a chave é o número impresso mais 5 sorteados
+    expect(cert.chave_validacao.startsWith(`${cert.numero_impresso}-`)).toBe(true);
+    expect(cert.numero_impresso).toMatch(new RegExp(`-${cert.ano}-\\d{4}$`));
     expect((cert.contexto_congelado as Record<string, unknown>).chave_validacao).toBe(cert.chave_validacao);
   });
 });
@@ -700,7 +702,7 @@ describe("rotas", () => {
 // =====================================================================
 // Monitor de reciclagem
 // =====================================================================
-describe("reciclagem: o monitor e o aviso de 30 dias", () => {
+describe("reciclagem: o monitor e o aviso de 60 dias (JANELA_A_VENCER_DIAS)", () => {
   const HOJE = "2026-10-20";
 
   async function _dois_emitidos() {
@@ -714,11 +716,11 @@ describe("reciclagem: o monitor e o aviso de 30 dias", () => {
     return { usuario, a, b };
   }
 
-  it("situação: vencido, a vencer em até 30 dias, válido", () => {
+  it("situação: vencido, a vencer em até 60 dias, válido", () => {
     expect(C.situacao_reciclagem({ data_vencimento: "2026-10-19" }, HOJE)).toBe("VENCIDO");
     expect(C.situacao_reciclagem({ data_vencimento: "2026-10-20" }, HOJE)).toBe("A_VENCER");
-    expect(C.situacao_reciclagem({ data_vencimento: "2026-11-19" }, HOJE)).toBe("A_VENCER");
-    expect(C.situacao_reciclagem({ data_vencimento: "2026-11-20" }, HOJE)).toBe("VALIDO");
+    expect(C.situacao_reciclagem({ data_vencimento: "2026-12-19" }, HOJE)).toBe("A_VENCER");
+    expect(C.situacao_reciclagem({ data_vencimento: "2026-12-20" }, HOJE)).toBe("VALIDO");
   });
 
   it("o monitor lista o em vigor de cada pessoa, conta por situação e busca pelo nome", async () => {
@@ -751,6 +753,8 @@ describe("reciclagem: o monitor e o aviso de 30 dias", () => {
       ...resto,
       inscricao_id: b.inscricao_id,
       numero: 900,
+      // inserido à mão: com a chave antiga, sem número impresso (o do original é único)
+      numero_impresso: null,
       chave_validacao: servico_certificado.gerar_chave(2026),
       data_emissao: "2026-10-25",
       data_vencimento: "2028-10-25",
@@ -851,7 +855,7 @@ describe("fila de emissão entre turmas", () => {
     await servico.emitir(db, usuario, cen.inscricao, { gerar_pdf: false });
     r = await fila_emissao.fila(db, usuario, { etapa: "EMITIDO" });
     expect(r.itens.map((x) => x.participante_nome)).toEqual(["Marco Antônio Alves Schetino"]);
-    expect(r.itens[0]!.certificado_rotulo).toMatch(/^\d+\/\d{4}$/);
+    expect(r.itens[0]!.certificado_rotulo).toMatch(/^[A-Z0-9]+-[A-Z0-9]+-\d{4}-\d{4}$/);
     // o instrutor perde a vigência antes do curso: a emissão recusaria, a fila diz por quê
     await db.update(e.assinatura_instrutor).set({ vigencia_fim: "2001-01-01", vigencia_inicio: "2000-01-01" });
     r = await fila_emissao.fila(db, usuario, { etapa: "TRAVADO" });

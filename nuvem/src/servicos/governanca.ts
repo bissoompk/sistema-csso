@@ -8,6 +8,7 @@
  * dia de hoje e sem lock: duas pessoas encerrando ao mesmo tempo passavam as
  * duas, e a concessão com fim marcado vencia sozinha sem aviso nenhum.
  */
+import { JANELA_A_VENCER_DIAS } from "../dominio/treinamento.js";
 import { and, eq, like, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import { pendencia as tabela_pendencia } from "../db/esquema/index.js";
@@ -77,8 +78,11 @@ export async function fim_da_cobertura(tx: Executor, hoje: string = hoje_iso()):
 }
 
 export const TIPO_PENDENCIA = "COBERTURA_DE_CONCESSAO_A_VENCER";
-/** Quantos dias antes do vencimento o sino avisa. */
-export const JANELA_DE_AVISO_DIAS = 30;
+/**
+ * Quantos dias antes do vencimento o sino avisa: a janela ÚNICA de "a vencer"
+ * do sistema (60 dias desde 22/10/2026; eram 30).
+ */
+export const JANELA_DE_AVISO_DIAS = JANELA_A_VENCER_DIAS;
 
 function _chave(fim: string, usuario_id: number): string {
   return `cobertura-conceder-${fim}-${usuario_id}`;

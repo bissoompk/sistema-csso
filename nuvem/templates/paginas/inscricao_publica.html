@@ -36,10 +36,12 @@
   <h1>{{ turma.treinamento.nome }}</h1>
   <p class="sub">
     <span class="mono">{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
+    {%- if turma|horario_turma %} · <span class="mono">{{ turma|horario_turma }}</span>{% endif %}
     {%- if turma.local or turma.campus %} · {{ turma.local or '' }}{% if turma.local and turma.campus %}, {% endif %}{{ turma.campus.nome if turma.campus else '' }}{% endif %}
     {%- if turma.carga_efetiva %} · <span class="mono">{{ turma.carga_efetiva|num }} h</span>{% endif %}</p>
   <p class="discreto sem-margem">Turma <span class="mono">{{ turma.codigo }}</span> · {{ promotor or 'Sisa' }} / UFVJM
     {%- if turma.inscricao_aberta_ate %} · inscrições até {{ turma.inscricao_aberta_ate|data }}{% endif %}</p>
+  <p class="discreto sem-margem turma-publico">{{ ui.icone('people') }} Para: {{ publico }}</p>
   {% if turma.instrutores|length or turma.unidade_promotora or turma.descricao %}
   <details class="recolhido">
     <summary>Mais sobre a turma</summary>
@@ -88,6 +90,15 @@
         {% for v in vinculos %}
         <option value="{{ v }}"{{ ' selected' if v == pedido.vinculo }}>{{ rotulo_vinculo[v] }}</option>
         {% endfor %}
+        {# Visitante e Outro só existem na turma marcada "aceita comunidade
+           externa"; o serviço recusa os dois nas outras, com ou sem tela #}
+        {% if vinculos_externos|length %}
+        <optgroup label="{{ rotulo_externos }}">
+          {% for v in vinculos_externos %}
+          <option value="{{ v }}"{{ ' selected' if v == pedido.vinculo }}>{{ rotulo_vinculo[v] }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endif %}
       </select></div>
     {# O SIAPE só para o servidor (`data-mostra-quando`, csso.js). Sem `required`:
        sem JavaScript o campo fica à vista para todos, e quem decide se ele falta

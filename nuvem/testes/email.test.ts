@@ -278,7 +278,8 @@ describe("busca em /certificados", () => {
     await entrar(cliente, "coordenador_csso");
     const busca = async (termo: string) =>
       (await cliente.get(`/certificados?busca=${encodeURIComponent(termo)}`)).text;
-    const rotulo = `${h.do_marco.numero}/${h.do_marco.ano}`;
+    // 22/10/2026: a lista mostra o número impresso (CSSO-NR35-2026-0001)
+    const rotulo = h.do_marco.numero_impresso ?? `${h.do_marco.numero}/${h.do_marco.ano}`;
     const so_marco = (html: string) => html.includes(`>${rotulo}<`) && !html.includes("Ana Lima");
     expect(so_marco(await busca("marco schetino"))).toBe(true);
     expect(so_marco(await busca("ANTONIO"))).toBe(true);

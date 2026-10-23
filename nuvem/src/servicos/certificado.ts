@@ -19,9 +19,11 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   ALFABETO_IDENTIFICADOR,
-  PADRAO_CHAVE_VALIDACAO,
+  PADRAO_CHAVE_ANTIGA,
+  PADRAO_CHAVE_NOVA,
   PREFIXO_CHAVE,
   TAMANHO_SORTEIO_CHAVE,
+  TAMANHO_SORTEIO_VALIDACAO,
 } from "../dominio/treinamento.js";
 import type { ArquivoEnviado, MarcadorDoModelo } from "../dominio/treinamento.js";
 import * as anexos from "./anexos.js";
@@ -46,7 +48,8 @@ export const SEM_VENCIMENTO = "não expira";
 export const SEM_VALIDADE = "Validade: indeterminada";
 
 const _ALFABETO_CHAVE = ALFABETO_IDENTIFICADOR;
-const _RE_CHAVE = new RegExp(`^(?:${PADRAO_CHAVE_VALIDACAO})$`);
+const _RE_CHAVE = new RegExp(`^(?:${PADRAO_CHAVE_ANTIGA})$`);
+const _RE_CHAVE_NOVA = new RegExp(`^(?:${PADRAO_CHAVE_NOVA})$`);
 
 /** Nunca chutar a chave: campo fora do vocabulário é erro, não aviso. */
 export class CampoDesconhecido extends Error {
@@ -99,15 +102,32 @@ const _RE_CHAVE_COMPACTA = new RegExp(`^(?:${PREFIXO_CHAVE})?(\\d{4})([A-Z0-9]{5
 export function normalizar_chave(bruta: string | null | undefined): string {
   const sem_espaco = (bruta ?? "").replace(/\s+/g, "").toUpperCase();
   const partes = _RE_CHAVE_COMPACTA.exec(sem_espaco.replace(/[-‐‑‒–—―−_.]/g, ""));
-  return partes ? `${PREFIXO_CHAVE}-${partes[1]}-${partes[2]}-${partes[3]}-${partes[4]}` : sem_espaco;
+  if (partes) return `${PREFIXO_CHAVE}-${partes[1]}-${partes[2]}-${partes[3]}-${partes[4]}`;
+  // NUVEM (22/10/2026): a chave nova (`CSSO-NR35-2026-0001-K7QMX`) mantém os
+  // traços — sem eles não há como saber onde termina a sigla do setor. Traço
+  // tipográfico, sublinhado e ponto viram o traço simples.
+  return sem_espaco.replace(/[‐‑‒–—―−_.]/g, "-");
 }
 
-/** Formato E dígito verificador, sem tocar no banco. */
+/**
+ * Formato (e, na antiga, o dígito verificador), sem tocar no banco. Vale a
+ * chave antiga (`CSSO-2026-K7QMX-3FTB9-H`) e a nova (número impresso + 5
+ * sorteados). O número impresso SOZINHO não é chave: ele é legível e se
+ * adivinha; quem valida precisa do QR ou do link.
+ */
 export function chave_valida(chave: string | null | undefined): boolean {
   const limpa = normalizar_chave(chave);
+  if (_RE_CHAVE_NOVA.test(limpa)) return true;
   if (!_RE_CHAVE.test(limpa)) return false;
   const [, ano, bloco1, bloco2, digito] = limpa.split("-");
   return digito_verificador(`${ano}${bloco1}${bloco2}`) === digito;
+}
+
+/** A chave nova: `{numero impresso}-{5 sorteados}` (~24 bits além do número). */
+export function gerar_chave_do_numero(numero_impresso: string): string {
+  let sorteio = "";
+  for (let i = 0; i < TAMANHO_SORTEIO_VALIDACAO; i++) sorteio += _ALFABETO_CHAVE[randomInt(_ALFABETO_CHAVE.length)];
+  return `${numero_impresso}-${sorteio}`;
 }
 
 // =====================================================================
@@ -203,6 +223,8 @@ export interface DadosContextoCertificado {
   instrutores: InstrutorCongelado[];
   numero: number;
   ano: number;
+  // NUVEM (22/10/2026): `CSSO-NR35-2026-0001`; null/ausente = emitido antes
+  numero_impresso?: string | null;
   data_emissao: string;
   chave_validacao: string;
   data_vencimento: string | null;
@@ -236,7 +258,7 @@ const CAMPOS_CONGELADOS = [
   "validade_meses", "turma_codigo", "turma_data_inicio", "turma_data_fim",
   "carga_horaria", "turma_local", "turma_descricao", "turma_unidade_promotora", "turma_campus",
   "turma_campus_cidade", "data_base_vencimento", "nota_final", "frequencia_percentual",
-  "nota_minima", "frequencia_minima", "instrutores", "numero", "ano",
+  "nota_minima", "frequencia_minima", "instrutores", "numero", "ano", "numero_impresso",
   "data_emissao", "chave_validacao", "data_vencimento", "url_validacao",
   "setor_sigla", "setor_nome", "setor_endereco", "cidade", "modelo_id",
   "modelo_arquivo", "modelo_sha256", "modelo_versao", "mapa_tags",
@@ -280,6 +302,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   instrutores!: InstrutorCongelado[];
   numero!: number;
   ano!: number;
+  numero_impresso: string | null = null;
   data_emissao!: string;
   chave_validacao!: string;
   data_vencimento!: string | null;
@@ -304,6 +327,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   constructor(d: DadosContextoCertificado) {
     Object.assign(this, d);
     this.modelo_chave = d.modelo_chave ?? null;
+    this.numero_impresso = d.numero_impresso ?? null;
     // certificado emitido antes destes campos não os tem no congelado
     this.turma_campus_cidade = d.turma_campus_cidade ?? "";
     this.turma_descricao = d.turma_descricao ?? "";
@@ -351,8 +375,9 @@ export class ContextoCertificado implements DadosContextoCertificado {
   }
 
   // ---- leitura ----------------------------------------------------
+  /** `CSSO-NR35-2026-0001` no certificado novo; `27/2026` no de antes. */
   get rotulo(): string {
-    return `${this.numero}/${this.ano}`;
+    return this.numero_impresso || `${this.numero}/${this.ano}`;
   }
 
   /** O primeiro instrutor que assina (`assinante_*` é singular no vocabulário). */
@@ -515,7 +540,10 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   ),
   certificado_numero: _c("Documento", "Número", "27", (c) => String(c.numero)),
   certificado_ano: _c("Documento", "Ano", "2026", (c) => String(c.ano)),
-  certificado_rotulo: _c("Documento", "Número/ano", "27/2026", (c) => c.rotulo),
+  // NUVEM (22/10/2026): o número impresso (sigla do setor promotor + código
+  // curto do treinamento + ano + sequência); o certificado emitido antes
+  // continua com o rótulo antigo (`27/2026`) — `c.rotulo` decide.
+  certificado_rotulo: _c("Documento", "Número do certificado", "CSSO-NR35-2026-0001", (c) => c.rotulo),
   certificado_data_emissao: _c("Documento", "Data de emissão", "12/03/2026", (c) => _data(c.data_emissao)),
   certificado_data_extenso: _c("Documento", "Data por extenso", "12 de março de 2026", (c) =>
     datas_br.por_extenso(c.data_emissao),
@@ -527,7 +555,8 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   certificado_mes_extenso: _c("Documento", "Mês da emissão por extenso", "março", (c) =>
     c.data_emissao ? datas_br.MESES_ACENTUADOS[datas_br.partes(c.data_emissao)[1] - 1]! : "",
   ),
-  certificado_chave: _c("Documento", "Chave de validação", "CSSO-2026-K7QMX-3FTB9-H", (c) => c.chave_validacao),
+  // o número e mais 5 sorteados; a chave antiga (`CSSO-2026-K7QMX-3FTB9-H`) segue valendo
+  certificado_chave: _c("Documento", "Chave de validação", "CSSO-NR35-2026-0001-K7QMX", (c) => c.chave_validacao),
   // A imagem do QR que abre /validar/{chave} (o PDF desenha o seu em vetor).
   certificado_qrcode: _c("Documento", "QR Code da validação", "imagem 25 mm", (c) =>
     c.url_validacao ? new documento.ImagemEmLinha({ bytes: qr_png(c.url_validacao), largura_mm: LARGURA_QR_MM }) : "",
@@ -535,7 +564,7 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   certificado_url_validacao: _c(
     "Documento",
     "Endereço da validação",
-    "https://.../validar/CSSO-2026-…",
+    "https://.../validar/CSSO-NR35-2026-0001-K7QMX",
     (c) => c.url_validacao,
   ),
   certificado_data_vencimento: _c(
@@ -839,7 +868,7 @@ export async function renderizar_exemplo(
       valores[m.marcador] = `[falta: ${m.rotulo}]`;
     } else if (campo === "certificado_qrcode") {
       valores[m.marcador] = new documento.ImagemEmLinha({
-        bytes: qr_png("https://exemplo.invalid/validar/CSSO-2026-K7QMX-3FTB9-H"),
+        bytes: qr_png("https://exemplo.invalid/validar/CSSO-NR35-2026-0001-K7QMX"),
         largura_mm: LARGURA_QR_MM,
       });
     } else {

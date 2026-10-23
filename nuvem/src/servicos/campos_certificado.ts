@@ -23,7 +23,7 @@ import {
   historico_evento,
   inscricao as tabela_inscricao,
 } from "../db/esquema/index.js";
-import { ROTULO_TIPO_TAG, TIPOS_TAG, type TipoTag } from "../dominio/treinamento.js";
+import { Certificado, ROTULO_TIPO_TAG, TIPOS_TAG, type TipoTag } from "../dominio/treinamento.js";
 import { PermissaoNegada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
 import type { CampoLivreCongelado } from "./certificado.js";
@@ -308,7 +308,7 @@ export async function gravar_valores_inscricao(
   const emitido = await certificado_ativo(tx, inscricao);
   if (emitido) {
     throw new RegraDaTurma(
-      `${inscricao.participante.identificador_publico} já tem o certificado ${emitido.numero}/${emitido.ano}: ` +
+      `${inscricao.participante.identificador_publico} já tem o certificado ${Certificado.rotulo(emitido)}: ` +
         "certificado que saiu não se reescreve — anule-o com o motivo e reemita depois de corrigir.",
     );
   }

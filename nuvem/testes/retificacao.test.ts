@@ -93,12 +93,12 @@ describe("corrigir o certificado emitido", () => {
     expect(corrigido!.descricao).toContain("nome corrigido");
     expect(corrigido!.descricao).not.toContain("Joana");
     const [retificado] = await _eventos("CERTIFICADO_RETIFICADO");
-    expect(retificado!.descricao).toContain(`substitui ${antigo.numero}/${antigo.ano}`);
+    expect(retificado!.descricao).toContain(`substitui ${antigo.numero_impresso}`);
 
     // a chave antiga responde anulado e aponta o número do substituto
     const resposta = await validacao.consultar(db, antigo.chave_validacao);
     expect(resposta.situacao).toBe("ANULADO");
-    expect(resposta.substituido_por).toBe(`${novo.numero}/${novo.ano}`);
+    expect(resposta.substituido_por).toBe(`${novo.numero_impresso}`);
   });
 
   it("sem mudança de cadastro, só reemite com o contexto de hoje", async () => {

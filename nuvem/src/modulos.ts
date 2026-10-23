@@ -18,6 +18,13 @@
 import { EscopoNaoDeclarado, type UsuarioAtual } from "./servicos/rbac.js";
 import { PERMISSOES_VER as PERMISSOES_PENDENCIAS } from "./servicos/pendencias.js";
 import { ganchos, global } from "./web.js";
+import { eq } from "drizzle-orm";
+import type { Executor } from "./db/cliente.js";
+import {
+  campus as tabela_campus,
+  servidor as tabela_servidor,
+  unidade_uorg as tabela_unidade,
+} from "./db/esquema/index.js";
 
 export const PROCESSOS_SEI = "processos-sei";
 
@@ -53,6 +60,14 @@ export class Item {
      * 22/10/2026). A rota exige as mesmas.
      */
     readonly tambem: readonly string[] = [],
+    /**
+     * Condição "titular" (Portal do servidor, 22/10/2026): abre para toda conta
+     * ligada a um servidor (`usuario.servidor_id !== null`), SEM permissão de
+     * catálogo — o "Início", a "Minha atividade" e o "Meu perfil" são da pessoa,
+     * e não de um módulo. Sem vínculo, vale a `permissao` declarada (quando
+     * houver); sem vínculo e sem permissão, o item não aparece.
+     */
+    readonly titular: boolean = false,
   ) {
     Object.freeze(this);
   }
@@ -68,6 +83,10 @@ export class Item {
    */
   visivel_para(usuario: UsuarioAtual | null | undefined): boolean {
     if (!usuario) return false;
+    if (this.titular) {
+      if (usuario.servidor_id !== null) return true;
+      if (this.permissao === null) return false;
+    }
     if (this.do_titular && usuario.servidor_id === null) return false;
     if (this.permissao === null) return true;
     const abre = (p: string) => usuario.pode(p) && (this.do_titular || _na_equipe(usuario, p));
@@ -613,6 +632,75 @@ export const BASE: readonly Item[] = [
   ),
 ];
 
+// Portal do servidor (22/10/2026): o "Início", a "Minha atividade" e o "Meu
+// perfil" têm a condição "titular" (`Item.titular`): abrem para toda conta
+// ligada a servidor, sem permissão de catálogo. O "Início" guarda também a
+// permissão de antes, para a conta de escopo próprio ainda sem vínculo (ela
+// abre o Início com o aviso de que falta o vínculo).
+const INICIO = new Item("Início", "/", "processo.ver", "O que é seu no sistema, num relance.", false, [], true);
+
+/**
+ * A tela da própria conta. No cabeçalho ela continua sendo o nome da pessoa,
+ * que leva a `/minha-conta`; no "Meu espaço" ela se chama "Meu perfil".
+ */
+export const MINHA_CONTA = new Item(
+  "Minha conta",
+  "/minha-conta",
+  null,
+  "Seus dados de contato, e-mail e senha.",
+);
+
+/** A mesma `/minha-conta`, com o nome que ela tem no "Meu espaço". */
+export const MEU_PERFIL = new Item("Meu perfil", "/minha-conta", null, "Contato, senha e e-mail.");
+
+/**
+ * Os grupos do "Meu espaço", com o subtítulo pequeno. A ordem e as permissões
+ * são as da especificação do Portal (seção 1). "Meus dados" saiu do menu: os
+ * dados funcionais moram no "Meu perfil", que leva à ficha.
+ */
+export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
+  { titulo: null, itens: [INICIO] },
+  {
+    titulo: "Treinamentos",
+    itens: [
+      new Item("Meus treinamentos", "/turmas/minhas", "treinamento.ver", "As turmas com inscrição aberta, e as suas inscrições.", true),
+      new Item("Meus certificados", "/certificados/meus", "treinamento.ver", "O que foi emitido em seu nome.", true),
+      new Item(
+        "Comprovante de treinamentos",
+        "/certificados/meus/comprovante",
+        "treinamento.ver",
+        "Uma folha com os seus treinamentos em vigor.",
+        true,
+      ),
+    ],
+  },
+  {
+    titulo: "EPI",
+    itens: [
+      new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true),
+      new Item("Meus pedidos de EPI", "/epis/requisicoes", "epi.ver", "Os seus pedidos e em que pé estão.", true),
+      new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true),
+    ],
+  },
+  {
+    titulo: "Adicional",
+    itens: [
+      new Item("Meu adicional", "/adicionais", "processo.ver", "O adicional ocupacional concedido a você.", true),
+      // O pedido de adicional em andamento. Sem o item, a ficha do processo
+      // abria com a trilha "Meu espaço / Processos", o nome de um item que este
+      // menu não tem.
+      new Item("Meus processos", "/processos", "processo.ver", "Os seus pedidos de adicional e em que pé estão.", true),
+    ],
+  },
+  {
+    titulo: "Eu",
+    itens: [
+      new Item("Minha atividade", "/minha-atividade", null, "Tudo o que aconteceu com o que é seu.", false, [], true),
+      MEU_PERFIL,
+    ],
+  },
+].map((g) => Object.freeze({ titulo: g.titulo, itens: Object.freeze([...g.itens]) })));
+
 /**
  * O MENU DE QUEM SÓ TEM O PRÓPRIO: "Meu espaço".
  *
@@ -629,27 +717,10 @@ export const BASE: readonly Item[] = [
  * sendo o filtro. Quem digitar `/kanban` continua abrindo o que abria — o que
  * mudou foi só o que o menu oferece.
  *
- * A lista de `/processos` volta aqui como "Meus processos": o escopo já a
- * recorta para os dele, e o que a deixava incompreensível era o nome e a
- * vizinhança (Kanban, Laudos, Relatórios), não o conteúdo.
- *
- * Os itens da equipe que apontam para os mesmos caminhos ("Requisições",
- * "Nova requisição") não foram renomeados: os textos das telas de EPI e de
- * treinamento estão alinhados ao menu da equipe, e este bloco é a outra porta.
+ * A lista plana, na ordem dos grupos (`MEU_ESPACO_GRUPOS`): é ela que decide o
+ * destaque, a trilha e a porta de entrada; o grupo é só desenho da lateral.
  */
-export const MEU_ESPACO: readonly Item[] = [
-  new Item("Início", "/", "processo.ver", "O que é seu no sistema, num relance."),
-  new Item("Meus treinamentos", "/turmas/minhas", "treinamento.ver", "As turmas com inscrição aberta, e as suas inscrições.", true),
-  new Item("Meus certificados", "/certificados/meus", "treinamento.ver", "O que foi emitido em seu nome.", true),
-  new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true),
-  new Item("Meus pedidos de EPI", "/epis/requisicoes", "epi.ver", "Os seus pedidos e em que pé estão.", true),
-  new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true),
-  new Item("Meu adicional", "/adicionais", "processo.ver", "O adicional ocupacional concedido a você.", true),
-  // O pedido de adicional em andamento. O "Início" dele já tem o cartão "Meus
-  // processos" com o link para cá; sem o item, a ficha do processo abria com a
-  // trilha "Meu espaço / Processos", o nome de um item que este menu não tem.
-  new Item("Meus processos", "/processos", "processo.ver", "Os seus pedidos de adicional e em que pé estão.", true),
-];
+export const MEU_ESPACO: readonly Item[] = Object.freeze(MEU_ESPACO_GRUPOS.flatMap((g) => g.itens));
 
 /**
  * Quem recebe o "Meu espaço" no lugar da lateral da equipe: quem não tem
@@ -675,9 +746,20 @@ export function so_o_proprio(usuario: UsuarioAtual | null | undefined): boolean 
 }
 
 /**
- * Os itens do "Meu espaço" que abrem para esta pessoa, e o "Meus dados", que
- * não cabe na lista fixa porque o caminho é o do PRÓPRIO cadastro — a ficha
- * do servidor, que a rota de `/servidores/{id}` já recorta pelo escopo.
+ * Se o item do "Meu espaço" abre para esta pessoa. A tela do titular passa
+ * pelo `visivel_para` (vínculo + permissão); a condição "titular" abre com o
+ * vínculo; o resto (o "Início" sem vínculo) basta a permissão, de onde quer
+ * que ela venha — o filtro de equipe não vale aqui, o bloco é da pessoa.
+ */
+function _abre_no_meu_espaco(item: Item, usuario: UsuarioAtual): boolean {
+  if (item.titular && usuario.servidor_id !== null) return true;
+  if (item.do_titular) return item.visivel_para(usuario);
+  if (item.permissao === null) return !item.titular;
+  return item.exigidas.some((p) => usuario.pode(p));
+}
+
+/**
+ * Os itens do "Meu espaço" que abrem para esta pessoa, na ordem dos grupos.
  *
  * Para quem só tem o próprio, é o menu inteiro. Para a conta de equipe ligada
  * a servidor, é um bloco AO LADO da lateral, com o que é do titular: "Meus
@@ -685,6 +767,9 @@ export function so_o_proprio(usuario: UsuarioAtual | null | undefined): boolean 
  * caminho a lateral já oferece como tela da equipe — para o coordenador, `/`
  * é o Painel e `/epis/requisicoes` é a fila do setor, e chamá-los de "Início"
  * e "Meus pedidos de EPI" seria afirmar um recorte que a tela não faz.
+ *
+ * A conta de equipe SEM servidor não tem "Meu espaço": o que seria dela aqui é
+ * o próprio nome no cabeçalho, que é a porta de todo mundo para `/minha-conta`.
  */
 export function meu_espaco_de(usuario: UsuarioAtual | null | undefined): Item[] {
   if (!usuario) return [];
@@ -697,39 +782,74 @@ export function meu_espaco_de(usuario: UsuarioAtual | null | undefined): Item[] 
           .filter((item) => !item.do_titular && item.visivel_para(usuario))
           .map((item) => item.caminho),
       );
-  // O "Início" não é tela do titular (abre também sem vínculo, e aí é a única
-  // coisa do menu): basta a permissão, de onde quer que ela venha.
   const itens = MEU_ESPACO.filter(
-    (item) =>
-      (item.do_titular ? item.visivel_para(usuario) : item.exigidas.some((p) => usuario.pode(p))) &&
-      !da_equipe.has(item.caminho),
+    (item) => item !== MEU_PERFIL && _abre_no_meu_espaco(item, usuario) && !da_equipe.has(item.caminho),
   );
-  if (usuario.servidor_id !== null) {
-    const meus_dados = new Item(
-      "Meus dados",
-      `/servidores/${usuario.servidor_id}`,
-      "processo.ver",
-      "Seu cadastro: lotação, cargo e posto.",
-      true,
-    );
-    if (meus_dados.visivel_para(usuario)) itens.push(meus_dados);
-  }
-  // "Minha conta" (22/10/2026) fecha o bloco de quem TEM o bloco: abre para
-  // toda conta logada, sem permissão nenhuma. Não cria o bloco sozinha — a
-  // equipe sem vínculo de servidor continuaria sem "Meu espaço" e passaria a
-  // ganhar a lateral de um item só; para ela a porta é o próprio nome, no
-  // cabeçalho, que é a porta de todo mundo.
-  if (itens.length) itens.push(MINHA_CONTA);
+  // O "Meu perfil" fecha o bloco de quem TEM o bloco: abre para toda conta
+  // logada, sem permissão nenhuma, mas não cria o bloco sozinho — a equipe sem
+  // vínculo continuaria sem "Meu espaço" e ganharia uma lateral de um item só.
+  if (itens.length) itens.push(MEU_PERFIL);
   return itens;
 }
 
-/** A tela da própria conta: dados de contato, e-mail, senha, sessões e perfis. */
-export const MINHA_CONTA = new Item(
-  "Minha conta",
-  "/minha-conta",
-  null,
-  "Seus dados de contato, e-mail, senha e as sessões abertas.",
-);
+/**
+ * Os mesmos itens de `meu_espaco_de`, nos grupos com subtítulo, para a lateral
+ * e para a tela de bolso. Grupo que fica vazio some.
+ */
+export function meu_espaco_grupos_de(usuario: UsuarioAtual | null | undefined, itens?: readonly Item[]): GrupoMenu[] {
+  const abertos = new Set(itens ?? meu_espaco_de(usuario));
+  return MEU_ESPACO_GRUPOS.map((g) => ({ titulo: g.titulo, itens: g.itens.filter((i) => abertos.has(i)) })).filter(
+    (g) => g.itens.length > 0,
+  );
+}
+
+/**
+ * As iniciais do avatar do cartão de identificação: a primeira letra do
+ * primeiro nome e a do último, sem as partículas ("da", "dos"). Sem nome, "?".
+ */
+export function iniciais_de(nome: string | null | undefined): string {
+  const PARTICULAS = new Set(["da", "das", "de", "do", "dos", "e"]);
+  const partes = (nome ?? "").trim().split(/\s+/).filter((p) => p && !PARTICULAS.has(p.toLowerCase()));
+  if (!partes.length) return "?";
+  const primeira = partes[0]!.charAt(0);
+  const ultima = partes.length > 1 ? partes[partes.length - 1]!.charAt(0) : "";
+  return (primeira + ultima).toLocaleUpperCase("pt-BR");
+}
+
+/** O cartão de identificação do topo da lateral do "Meu espaço". */
+export interface CartaoMeuEspaco {
+  nome: string;
+  iniciais: string;
+  /** "Sigla da unidade · Campus"; null quando a tela não leu a lotação */
+  linha: string | null;
+}
+
+/** O cartão só com o que a sessão já sabe (o nome da conta). */
+export function cartao_meu_espaco(usuario: UsuarioAtual | null | undefined): CartaoMeuEspaco | null {
+  if (!usuario) return null;
+  return { nome: usuario.nome, iniciais: iniciais_de(usuario.nome), linha: null };
+}
+
+/**
+ * O cartão completo, com a lotação ("ICT · Campus JK"), lido do cadastro do
+ * servidor da conta. Uma consulta; sem vínculo, o cartão da sessão. A casca
+ * (`web.pagina`) o chama pelo gancho `cartaoMeuEspaco` em toda tela que tem o
+ * cartão; a tela que já leu o servidor (o Início, a tela de bolso) o passa no
+ * contexto com a chave `cartao_meu_espaco` e poupa a consulta.
+ */
+export async function cartao_meu_espaco_completo(tx: Executor, usuario: UsuarioAtual): Promise<CartaoMeuEspaco | null> {
+  const base = cartao_meu_espaco(usuario);
+  if (!base || usuario.servidor_id === null) return base;
+  const [linha] = await tx
+    .select({ nome: tabela_servidor.nome, sigla: tabela_unidade.sigla, unidade: tabela_unidade.nome_extenso, campus: tabela_campus.nome })
+    .from(tabela_servidor)
+    .leftJoin(tabela_unidade, eq(tabela_unidade.id, tabela_servidor.unidade_uorg_id))
+    .leftJoin(tabela_campus, eq(tabela_campus.id, tabela_unidade.campus_id))
+    .where(eq(tabela_servidor.id, usuario.servidor_id));
+  if (!linha) return base;
+  const partes = [linha.sigla || linha.unidade, linha.campus].filter((p): p is string => !!p);
+  return { ...base, linha: partes.length ? partes.join(" · ") : null };
+}
 
 function _escopo_declarado(usuario: UsuarioAtual): boolean {
   try {
@@ -868,6 +988,13 @@ export interface Navegacao extends Record<string, unknown> {
    * a servidor, o bloco ao lado da lateral; vazio para a equipe sem vínculo.
    */
   meu_espaco: Item[];
+  /** os mesmos `meu_espaco`, nos grupos com subtítulo (Treinamentos, EPI...) */
+  grupos_meu_espaco: GrupoMenu[];
+  /**
+   * O cartão de identificação do topo da lateral (iniciais e nome). A tela que
+   * leu a lotação passa o completo no contexto, com a mesma chave.
+   */
+  cartao_meu_espaco: CartaoMeuEspaco | null;
   /** o "Meu espaço" é o menu inteiro: a lateral da equipe não aparece */
   so_meu_espaco: boolean;
 }
@@ -914,6 +1041,8 @@ export function navegacao(
     // só caminho de módulo lembra; a base não reescreve de onde a pessoa veio
     modulo_a_lembrar: no_modulo ? do_caminho!.codigo : null,
     meu_espaco,
+    grupos_meu_espaco: meu_espaco.length ? meu_espaco_grupos_de(usuario, meu_espaco) : [],
+    cartao_meu_espaco: meu_espaco.length ? cartao_meu_espaco(usuario) : null,
     so_meu_espaco: so_o_proprio(usuario) && meu_espaco.length > 0,
   };
 }
@@ -969,10 +1098,14 @@ const ICONES: Readonly<Record<string, string>> = {
   "/usuarios": "gear",
   // os do "Meu espaço" que não repetem o da equipe
   "Início": "house",
+  "Comprovante de treinamentos": "journal-album",
   "Meus pedidos de EPI": "inbox",
   "Meu adicional": "cash-coin",
-  "Meus dados": "person",
   "Meus processos": "file-earmark-text",
+  "Minha atividade": "clock",
+  "Meu perfil": "person",
+  "Sair": "door-open",
+  "/minha-atividade": "clock",
   "/minha-conta": "person-gear",
 };
 
@@ -986,7 +1119,9 @@ export function icone_de(chave: string): string | null {
 // ---------------------------------------------------------------------
 ganchos.navegacao = (caminho, usuario, origem) => navegacao(caminho, usuario, origem);
 ganchos.cookieModulo = COOKIE_MODULO;
+ganchos.cartaoMeuEspaco = (c, usuario) => cartao_meu_espaco_completo(c.get("tx"), usuario);
 // O seletor da lateral precisa saber por onde se entra em cada módulo; a
 // decisão tem de ser a mesma que `/inicio` toma.
 global("porta_de_entrada", porta_de_entrada);
 global("icone_de", icone_de);
+global("iniciais_de", iniciais_de);

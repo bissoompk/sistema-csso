@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario } from "../dependencias.js";
 import * as servico from "../servicos/acesso_participante.js";
+import type { CartaoCertificado } from "../servicos/certificados_titular.js";
 import * as email from "../servicos/email.js";
 import * as emissao from "../servicos/emissao_certificado.js";
 import { pagina } from "../web.js";
@@ -32,6 +33,7 @@ async function _tela(
     recebido?: boolean;
     excedeu?: boolean;
     itens?: servico.ItemDoTitular[] | null;
+    cartoes?: CartaoCertificado[];
     aberto?: servico.LinkAberto | null;
     token?: string;
     expirado?: boolean;
@@ -51,6 +53,7 @@ async function _tela(
         excedeu: d.excedeu ?? false,
         resposta_padrao: servico.RESPOSTA_PADRAO,
         itens: d.itens ?? null,
+        cartoes: d.cartoes ?? [],
         aberto: d.itens !== undefined && d.itens !== null,
         ambiguo: d.aberto?.ambiguo ?? false,
         titular: d.aberto?.titular ?? "",
@@ -90,7 +93,7 @@ rotas.get(`${servico.CAMINHO}/:token`, async (c) => {
   const token = c.req.param("token");
   const aberto = await servico.abrir(c.get("tx"), token);
   if (!aberto) return _tela(c, { expirado: true, status: 404 });
-  return _tela(c, { itens: servico.itens(aberto.certificados), aberto, token });
+  return _tela(c, { itens: servico.itens(aberto.certificados), cartoes: servico.cartoes(aberto.certificados), aberto, token });
 });
 
 rotas.get(`${servico.CAMINHO}/:token/:certificado_id{[0-9]+}`, async (c) => {
@@ -100,7 +103,13 @@ rotas.get(`${servico.CAMINHO}/:token/:certificado_id{[0-9]+}`, async (c) => {
   const certificado = aberto.certificados.find((x) => x.id === Number(c.req.param("certificado_id")));
   // o certificado de outra pessoa e o que não existe são o mesmo "não"
   if (!certificado) {
-    return _tela(c, { itens: servico.itens(aberto.certificados), aberto, token: c.req.param("token"), status: 404 });
+    return _tela(c, {
+      itens: servico.itens(aberto.certificados),
+      cartoes: servico.cartoes(aberto.certificados),
+      aberto,
+      token: c.req.param("token"),
+      status: 404,
+    });
   }
   const arquivo = await emissao.arquivo_do_titular(tx, certificado);
   return _sem_rastro(baixar(c, arquivo.bytes, arquivo.nome, arquivo.tipo));

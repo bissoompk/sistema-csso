@@ -103,7 +103,8 @@
         <strong>{{ turma.treinamento.nome }}</strong>
         <span class="ponto">·</span>
         <span class="mono">{{ turma.data_inicio|data }}
-          {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
+          {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
+          {%- if turma|horario_turma %}, {{ turma|horario_turma }}{% endif %}</span>
         <span class="ponto">·</span>
         <span class="mono">{{ turma.carga_efetiva|num }} h</span>
         {{ ui.pilula_turma(turma.situacao) }}
@@ -153,12 +154,15 @@
       {% if turma.descricao %}<dt>Descrição do evento</dt><dd><span class="texto-literal">{{ turma.descricao }}</span></dd>{% endif %}
       <dt>Período</dt>
       <dd class="mono">{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
+      <dt>Horário</dt>
+      <dd>{{ turma|horario_turma or 'dia inteiro (sem hora definida)' }}</dd>
       <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
       <dt>Local</dt><dd>{{ turma.local or '—' }}</dd>
       <dt>Campus</dt><dd>{{ turma.campus.nome if turma.campus else '—' }}</dd>
       <dt>Unidade promotora</dt>
       <dd>{{ turma.unidade_promotora.nome_extenso if turma.unidade_promotora else '—' }}</dd>
       <dt>Vagas</dt><dd>{{ turma.vagas or 'sem limite' }}</dd>
+      <dt>Público</dt><dd>{{ publico }}</dd>
       <dt>Inscrições até</dt>
       <dd class="mono">{{ turma.inscricao_aberta_ate|data or '—' }}</dd>
       <dt>Nota mínima</dt>
@@ -1291,6 +1295,15 @@
       <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
   </div>
   <div class="linha-campos">
+    <div class="campo"><label for="hora_inicio">Hora de início</label>
+      <input id="hora_inicio" type="time" name="hora_inicio" step="300"
+             value="{{ turma.hora_inicio|hora_campo }}" aria-describedby="dica-hora"></div>
+    <div class="campo"><label for="hora_fim">Hora de término</label>
+      <input id="hora_fim" type="time" name="hora_fim" step="300"
+             value="{{ turma.hora_fim|hora_campo }}" aria-describedby="dica-hora">
+      <span class="dica" id="dica-hora">Opcional. Vazio é dia inteiro; vale para todos os dias.</span></div>
+  </div>
+  <div class="linha-campos">
     <div class="campo"><label for="local">Local</label>
       <input id="local" name="local" value="{{ turma.local or '' }}"></div>
     <div class="campo"><label for="campus_id">Campus</label>
@@ -1325,6 +1338,15 @@
     <div class="campo"><label for="frequencia_minima_percentual">Frequência mínima (%)</label>
       <input id="frequencia_minima_percentual" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"
              value="{{ turma.frequencia_minima_percentual }}" required></div>
+    {# `publico_no_formulario`: a caixa desmarcada não manda nada, e é esta
+       marca que diz à rota que o formulário trazia a pergunta #}
+    <div class="campo"><input type="hidden" name="publico_no_formulario" value="1">
+      <span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+      <label class="turma-marcar" for="aceita_comunidade_externa">
+        <input id="aceita_comunidade_externa" type="checkbox" name="aceita_comunidade_externa" value="1"
+          {{- ' checked' if turma.aceita_comunidade_externa }} aria-describedby="dica-publico">
+        Aceita comunidade externa</label>
+      <span class="dica" id="dica-publico">Visitantes e outros de fora da UFVJM no link público.</span></div>
     <div class="campo"><label for="data_base_vencimento">Data base do vencimento</label>
       <input id="data_base_vencimento" type="date" name="data_base_vencimento"
              value="{{ turma.data_base_vencimento if turma.data_base_vencimento else '' }}"

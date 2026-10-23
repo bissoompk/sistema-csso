@@ -5,11 +5,16 @@
  *
  * O motivo da recusa NÃO vai no e-mail: ele é escrito para a trilha, por quem
  * conferiu, e não para a pessoa.
+ *
+ * O aviso de inscrição ACEITA leva a agenda da turma (.ics, `ics.ts`) anexa,
+ * montada na hora do envio (`registrar_anexador`): a hora ou o local mudados
+ * entre o aceite e o envio já saem certos.
  */
 import type { Executor } from "../db/cliente.js";
 import { Participante } from "../dominio/treinamento.js";
 import * as datas_br from "./datas_br.js";
 import * as email from "./email.js";
+import * as ics from "./ics.js";
 
 export const TIPO_ACEITA = "INSCRICAO_ACEITA";
 export const TIPO_RECUSADA = "INSCRICAO_RECUSADA";
@@ -78,3 +83,18 @@ export async function avisar(
   });
   return true;
 }
+
+/**
+ * A agenda da turma no e-mail de inscrição aceita. Sem a inscrição (apagada
+ * com a turma, por exemplo) o e-mail sai sem anexo, e não falha: a agenda é
+ * cortesia, o aviso é o que importa.
+ */
+email.registrar_anexador(TIPO_ACEITA, async (tx, mensagem) => {
+  if (mensagem.inscricao_id === null) return [];
+  // import tardio: `turma.ts` importa este arquivo
+  const servico_turma = await import("./turma.js");
+  const inscricao = await servico_turma.carregar_inscricao(tx, mensagem.inscricao_id);
+  if (!inscricao || !inscricao.turma || inscricao.turma.situacao === "CANCELADA") return [];
+  const agenda = await ics.da_turma(tx, inscricao.turma);
+  return [{ nome: agenda.nome, tipo: ics.TIPO_ICS, bytes: agenda.bytes }];
+});

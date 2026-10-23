@@ -6,8 +6,9 @@
  * segunda via a partir do congelado e a anulação. Nenhuma regra mora neste
  * arquivo: a guarda que importa é a do serviço (`emissao_certificado.ts`).
  */
+import { JANELA_A_VENCER_DIAS } from "../dominio/treinamento.js";
 import { Hono } from "hono";
-import { and, asc, count, desc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, or, sql, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import { certificado as tabela_certificado, treinamento as tabela_treinamento } from "../db/esquema/index.js";
@@ -23,7 +24,6 @@ import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencia
 import * as auditoria from "../servicos/auditoria.js";
 import { CAMPOS_CERTIFICADO, chave_valida, normalizar_chave } from "../servicos/certificado.js";
 import * as datas_br from "../servicos/datas_br.js";
-import { somar_dias } from "../dominio/datas.js";
 import * as servico from "../servicos/emissao_certificado.js";
 import { COM_PARTICIPANTE } from "../servicos/participante.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
@@ -35,6 +35,7 @@ import * as reciclagem from "../servicos/reciclagem.js";
 import * as aviso_reciclagem from "../servicos/aviso_reciclagem.js";
 import * as fila_emissao from "../servicos/fila_emissao.js";
 import * as email from "../servicos/email.js";
+import * as certificados_titular from "../servicos/certificados_titular.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
 import { chave_busca, parece_cpf } from "../servicos/textos.js";
 import { baixar } from "./turmas.js";
@@ -343,38 +344,82 @@ rotas.post(`${FILA}/email`, async (c) => {
 // Meus certificados — a tela do titular (antes de /certificados/{id})
 // =====================================================================
 /**
- * O certificado do próprio servidor. Tela separada de `/certificados`: a
- * permissão do item de menu é outra (`treinamento.ver`) e o filtro é fixo no
- * `servidor_id` da conta.
+ * O certificado do próprio servidor, em cartões. Tela separada de
+ * `/certificados`: a permissão do item de menu é outra (`treinamento.ver`) e o
+ * filtro é fixo no `servidor_id` da conta (`certificados_titular.do_titular`).
+ * Sem paginação: a lista de um titular é pequena, e os filtros por situação,
+ * ano e busca (lista fechada) recortam no servidor.
  */
 rotas.get(MEUS, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("treinamento.ver");
-  const recorte = await _pagina_de_certificados(c, servico.consulta_do_titular(usuario));
+  const tx = c.get("tx");
   const hoje = datas_br.hoje();
-  // o anulado vai para uma seção à parte, recolhida, com o número do substituto:
-  // na mesma lista, com os mesmos botões, ele parecia tão utilizável quanto o válido
-  const anulados = recorte.itens.filter((x) => C.anulado(x as never));
-  const ids_substitutos = anulados.map((x) => x.substituido_por_id).filter((id): id is number => id !== null);
-  const substitutos = ids_substitutos.length
-    ? await c
-        .get("tx")
-        .select({ id: tabela_certificado.id, numero: tabela_certificado.numero, ano: tabela_certificado.ano })
-        .from(tabela_certificado)
-        .where(and(inArray(tabela_certificado.id, ids_substitutos), servico.consulta_do_titular(usuario)))
-    : [];
+  const dados = await certificados_titular.do_titular(tx, usuario.servidor_id, hoje);
+  const lista = certificados_titular.filtrar(dados, {
+    situacao: c.req.query("situacao"),
+    ano: c.req.query("ano"),
+    q: c.req.query("q"),
+  });
+  const visiveis = lista.grupos.flatMap((g) => g.cartoes);
+  certificados_titular.com_qr(visiveis);
+  await certificados_titular.marcar_turmas_abertas(tx, visiveis, hoje);
+  // as pílulas mantêm o ano e a busca que já estão na URL
+  const resto = new URLSearchParams();
+  if (lista.filtros.ano !== null) resto.set("ano", String(lista.filtros.ano));
+  if (lista.filtros.q) resto.set("q", lista.filtros.q);
+  const situacoes = certificados_titular.SITUACOES_FILTRO.map((s) => {
+    const p = new URLSearchParams(resto);
+    if (s !== "todos") p.set("situacao", s);
+    const qs = p.toString();
+    return {
+      rotulo: certificados_titular.ROTULO_SITUACAO_FILTRO[s],
+      contagem: lista.contagens[s],
+      ativo: lista.filtros.situacao === s,
+      href: `${MEUS}${qs ? `?${qs}` : ""}`,
+    };
+  });
+  const frase_vazio =
+    {
+      vencidos: "Nenhum certificado vencido. Ótimo!",
+      a_vencer: `Nenhum certificado vence nos próximos ${JANELA_A_VENCER_DIAS} dias.`,
+      validos: "Nenhum certificado válido com esse filtro.",
+      todos: "Nenhum certificado com esse filtro.",
+    }[lista.filtros.situacao] ?? "Nenhum certificado com esse filtro.";
   return pagina(c, "paginas/certificados_meus.html", usuario, {
-    itens: recorte.itens,
-    validos: recorte.itens.filter((x) => !C.anulado(x as never)),
-    anulados,
-    substitutos: Object.fromEntries(substitutos.map((s) => [s.id, { id: s.id, rotulo: `${s.numero}/${s.ano}` }])),
-    recorte,
-    hoje,
-    // o que vence nos próximos 60 dias pede reciclagem: linha em amarelo
-    limite_atencao: somar_dias(hoje, 60),
-    situacao_publica: Object.fromEntries(recorte.itens.map((x) => [x.id, C.situacao_publica(x as never, hoje)])),
+    resumo: dados.resumo,
+    horas: dados.resumo.horas,
+    lista,
+    situacoes,
+    frase_vazio,
+    anulados: dados.anulados,
+    tem_em_vigor: certificados_titular.para_o_comprovante(dados.cartoes).length > 0,
     // a conta sem cadastro de servidor não é erro: é a tela dizendo por que está vazia
     sem_servidor: usuario.servidor_id === null,
+  });
+});
+
+// =====================================================================
+// Comprovante de treinamentos — os em vigor do titular, para imprimir
+// =====================================================================
+/**
+ * Página de conferência: nome, lotação e campus, e os treinamentos em vigor
+ * com o QR de validação de cada um. Sem chave própria (cada linha se valida
+ * sozinha), sem CPF e sem SIAPE.
+ */
+rotas.get(`${MEUS}/comprovante`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.ver");
+  const tx = c.get("tx");
+  if (usuario.servidor_id === null) return redirecionar(c, MEUS);
+  const hoje = datas_br.hoje();
+  const dados = await certificados_titular.do_titular(tx, usuario.servidor_id, hoje);
+  const titular = await certificados_titular.identificacao_do_titular(tx, usuario.servidor_id);
+  const itens = certificados_titular.com_qr(certificados_titular.para_o_comprovante(dados.cartoes), 3);
+  return pagina(c, "paginas/certificados_comprovante.html", usuario, {
+    titular,
+    itens,
+    emitido_em: datas_br.local_formatado(new Date()),
   });
 });
 
@@ -403,12 +448,27 @@ async function _abrir(
 // =====================================================================
 // Ficha
 // =====================================================================
+/** A ficha leve do titular: o cartão, o QR maior, o conteúdo e a segunda via. */
+async function _ficha_do_titular(c: Ctx, usuario: UsuarioAtual, certificado: servico.CertificadoRegistro) {
+  const tx = c.get("tx");
+  const hoje = datas_br.hoje();
+  const dados = await certificados_titular.do_titular(tx, certificado.servidor_id, hoje);
+  const cartao = [...dados.cartoes, ...dados.anulados].find((x) => x.id === certificado.id);
+  if (!cartao) return redirecionar(c, MEUS);
+  certificados_titular.com_qr([cartao], 5);
+  await certificados_titular.marcar_turmas_abertas(tx, [cartao], hoje);
+  return pagina(c, "paginas/certificado_ficha_titular.html", usuario, { c: cartao, ...recados(c) });
+}
+
 /** O congelado, o hash, a trilha e o link público. */
 rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
-  const [certificado] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
+  const [certificado, de_outro] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
   if (!certificado) return redirecionar(c, _volta_da_ficha(usuario));
+  // o titular sem permissão de equipe: a ficha leve (sem hashes, dicionário
+  // de tags nem trilha), com os dados do cartão, o QR e a segunda via
+  if (!de_outro && !usuario.pode("certificado.ver")) return _ficha_do_titular(c, usuario, certificado);
   // ler o certificado nominal de OUTRA pessoa entra em `acesso_dado_sensivel`
   await auditoria.registrar_leitura_nominal(tx, usuario, "certificado", {
     servidor_id: certificado.servidor_id,

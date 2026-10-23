@@ -24,6 +24,7 @@
  * importar este módulo fecharia o ciclo web → epi_estoque → pendencias → web,
  * e `pendencias.ts` usa `ganchos` de `web.ts` já no carregamento.
  */
+import { JANELA_A_VENCER_DIAS } from "../dominio/treinamento.js";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -63,7 +64,7 @@ export const TIPO_PENDENCIA_CA = "CA_A_VENCER";
 
 // RN-25: a pendência do CA abre 60 dias antes do vencimento — o mesmo horizonte
 // de `EpiItem.ca_a_vencer_em` no catálogo.
-export const DIAS_AVISO_CA = 60;
+export const DIAS_AVISO_CA = JANELA_A_VENCER_DIAS;
 
 /** O que impede este movimento, tudo de uma vez (lista, e não primeiro-erro). */
 export class EstoqueBloqueado extends RegraViolada {

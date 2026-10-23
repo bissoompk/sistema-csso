@@ -21,6 +21,28 @@
 {% endif %}
 {% endblock %}
 
+{# O código curto, no cadastro e na edição. `data-sugerir-codigo-curto` (csso.js)
+   preenche a sugestão enquanto o nome é digitado, só enquanto a pessoa não
+   mexeu no campo (e só se ele abriu vazio); sem JavaScript, o cadastro em
+   branco recebe a mesma sugestão no servidor. `pattern` aceita minúscula: o
+   servidor passa para caixa alta. #}
+{% macro campo_codigo_curto(id, valor, id_nome, id_codigo, codigo_fixo='') %}
+  <div class="campo campo-codigo-curto">
+    <label for="{{ id }}">Código curto (entra no número do certificado)</label>
+    <input id="{{ id }}" name="codigo_curto" class="mono entrada-codigo-curto" value="{{ valor }}" required
+           maxlength="{{ tamanho_codigo_curto }}" pattern="[A-Za-z0-9]{2,{{ tamanho_codigo_curto }}}"
+           autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false"
+           placeholder="NR35"
+           data-sugerir-codigo-curto="{{ id_nome }}"{% if id_codigo %} data-sugerir-codigo-curto-codigo="{{ id_codigo }}"{% endif %}
+           {%- if codigo_fixo %} data-sugerir-codigo-curto-codigo-fixo="{{ codigo_fixo }}"{% endif %}
+           aria-describedby="dica-{{ id }}">
+    <span class="dica" id="dica-{{ id }}">De 2 a 10 letras ou algarismos, sem traço (NR35, BRIG).
+      Ele forma o número do certificado com a sigla do setor promotor e o ano
+      (<span class="mono">CSSO-NR35-2026-0001</span>) e é único no catálogo. Mudar depois
+      não altera os certificados já emitidos: cada um guarda o número com que saiu.</span>
+  </div>
+{% endmacro %}
+
 {% block conteudo %}
 {% set editavel = usuario.pode('treinamento.gerenciar') %}
 
@@ -83,7 +105,7 @@
       <tr>
         {# Menos colunas, para o nome ter largura: a norma vai sob o código, e o
            instrutor padrão sob o modelo (os dois dizem como o certificado sai). #}
-        <th scope="col">Código</th><th scope="col">Nome</th><th scope="col">Carga</th>
+        <th scope="col">Código</th><th scope="col">Código curto</th><th scope="col">Nome</th><th scope="col">Carga</th>
         <th scope="col">Reciclagem (meses, 0 = não vence)</th>
         <th scope="col">Certificado</th>
         <th scope="col">Situação</th>{% if editavel %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}
@@ -93,6 +115,8 @@
     <tr>
       <td><span class="mono">{{ t.codigo }}</span>
         {% if t.norma_referencia and t.norma_referencia != t.codigo %}<span class="quebra discreto">{{ t.norma_referencia }}</span>{% endif %}</td>
+      {# o código curto entra no número do certificado novo (CSSO-NR35-2026-0001) #}
+      <td data-coluna="Código curto" class="curta"><span class="mono codigo-curto">{{ t.codigo_curto }}</span></td>
       {# O conteúdo programático vem sob o nome, e não numa segunda linha da
          tabela: é o que distingue dois treinamentos de nome parecido, e numa
          linha própria ele se lia como outro registro. #}
@@ -132,7 +156,7 @@
           não há turma para abrir, e sem turma não há certificado.'
          ~ (' Use “' ~ CADASTRAR ~ '”, no canto superior direito.'
             if editavel else ' Cadastrar pede a permissão treinamento.gerenciar.'),
-         7 if editavel else 6) }}
+         8 if editavel else 7) }}
     {% endfor %}
   </table>
   </div>
@@ -171,6 +195,7 @@
              aria-describedby="dica-codigo">
       <span class="dica" id="dica-codigo">Em branco, sai do nome. Não muda depois.</span></div>
   </div>
+  {{ campo_codigo_curto('novo-codigo-curto', dn['codigo_curto'] or '', 'novo-nome', 'novo-codigo') }}
   <div class="linha-campos">
     <div class="campo"><label for="nova-norma">Norma de referência</label>
       <input id="nova-norma" name="norma_referencia" placeholder="NR-35"
@@ -192,7 +217,7 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
 {% set deste = recusado and editando_id == t.id %}
 {% set p = 'ed-trein-' ~ t.id %}
 {# o treinamento em texto, como o digitado: as duas grafias se comparam igual #}
-{% set v = d if deste else {'nome': t.nome, 'carga_horaria_horas': t.carga_horaria_horas|num,
+{% set v = d if deste else {'nome': t.nome, 'codigo_curto': t.codigo_curto, 'carga_horaria_horas': t.carga_horaria_horas|num,
             'validade_meses': t.validade_meses, 'norma_referencia': t.norma_referencia,
             'conteudo_programatico': t.conteudo_programatico,
             'modelo_vigente_id': t.modelo_vigente_id, 'instrutor_padrao_id': t.instrutor_padrao_id,
@@ -202,6 +227,7 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
                           nota='o certificado já emitido guarda o que valia no dia') %}
   <div class="campo{{ ' com-erro' if deste }}"><label for="{{ p }}-nome">Nome (sai no certificado)</label>
     <input id="{{ p }}-nome" name="nome" value="{{ v.nome or '' }}" required{{ ' autofocus' if deste }}></div>
+  {{ campo_codigo_curto(p ~ '-codigo-curto', v.codigo_curto or '', p ~ '-nome', '', t.codigo) }}
   <div class="linha-campos">
     <div class="campo"><label for="{{ p }}-carga">Carga horária (horas)</label>
       <input id="{{ p }}-carga" name="carga_horaria_horas" value="{{ v.carga_horaria_horas }}"

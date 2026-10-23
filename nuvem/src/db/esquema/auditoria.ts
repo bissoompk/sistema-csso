@@ -171,6 +171,8 @@ export const historico_evento = pgTable(
     index('ix_hist_entidade').on(t.entidade, t.entidade_id),
     index('ix_hist_processo').on(t.processo_id),
     index('ix_hist_ocorrido').on(t.ocorrido_em),
+    // NUVEM (22/10/2026): "Minha atividade" lê por entidade, do mais novo
+    index('ix_hist_entidade_quando').on(t.entidade, t.entidade_id, t.ocorrido_em),
   ],
 );
 

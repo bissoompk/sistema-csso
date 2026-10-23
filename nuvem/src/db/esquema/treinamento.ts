@@ -33,6 +33,7 @@ import {
   primaryKey,
   smallint,
   text,
+  time,
   unique,
   uniqueIndex,
   varchar,
@@ -45,7 +46,9 @@ import {
   ORIGENS_EMAIL,
   ORIGENS_INSCRICAO,
   PADRAO_CHAVE_VALIDACAO,
+  PADRAO_CODIGO_CURTO,
   PADRAO_CODIGO_TREINAMENTO,
+  PADRAO_NUMERO_IMPRESSO,
   PADRAO_IDENTIFICADOR_PARTICIPANTE,
   PADRAO_MARCADOR,
   PREFIXO_CHAVE,
@@ -70,7 +73,9 @@ export {
   ORIGENS_EMAIL,
   ORIGENS_INSCRICAO,
   PADRAO_CHAVE_VALIDACAO,
+  PADRAO_CODIGO_CURTO,
   PADRAO_CODIGO_TREINAMENTO,
+  PADRAO_NUMERO_IMPRESSO,
   PADRAO_IDENTIFICADOR_PARTICIPANTE,
   PADRAO_MARCADOR,
   PREFIXO_CHAVE,
@@ -91,6 +96,11 @@ export const treinamento = pgTable(
   {
     id: integer('id').notNull().generatedByDefaultAsIdentity(),
     codigo: varchar('codigo', { length: 30 }).notNull(),
+    // NUVEM (22/10/2026): o codigo curto que entra no numero do certificado
+    // (`CSSO-NR35-2026-0001`). Obrigatorio; o '' do padrao nunca fica gravado:
+    // a trava `csso_treinamento_codigo_curto` (travas.sql) poe a sugestao no
+    // lugar, pela mesma regra de `sugerir_codigo_curto`.
+    codigo_curto: varchar('codigo_curto', { length: 10 }).notNull().default(''),
     // sai no certificado byte a byte, como o nome do posto sai no parecer
     nome: varchar('nome', { length: 160 }).notNull(),
     carga_horaria_horas: numeric('carga_horaria_horas', {
@@ -116,6 +126,7 @@ export const treinamento = pgTable(
     primaryKey({ name: 'pk_treinamento', columns: [t.id] }),
     unique('uq_treinamento_codigo').on(t.codigo),
     unique('uq_treinamento_nome').on(t.nome),
+    unique('uq_treinamento_codigo_curto').on(t.codigo_curto),
     fk_ciclo(
       'fk_treinamento_modelo_vigente',
       t.modelo_vigente_id,
@@ -129,6 +140,7 @@ export const treinamento = pgTable(
     check('ck_treinamento_validade', sql.raw(`validade_meses >= 0`)),
     check('ck_treinamento_carga', sql.raw(`carga_horaria_horas > 0`)),
     check_regex('ck_treinamento_codigo', 'codigo', PADRAO_CODIGO_TREINAMENTO),
+    check_regex('ck_treinamento_codigo_curto', 'codigo_curto', PADRAO_CODIGO_CURTO),
     index('ix_treinamento_ativo').on(t.ativo),
   ],
 );
@@ -421,6 +433,10 @@ export const turma = pgTable(
     // o legado tinha so DATA_CURSO; turma de 40h dura dias
     data_inicio: DataPura('data_inicio').notNull(),
     data_fim: DataPura('data_fim').notNull(),
+    // NUVEM (22/10/2026): o horario em campos proprios, para o .ics e os
+    // filtros. Opcionais: a turma antiga continua sem hora (dia inteiro).
+    hora_inicio: time('hora_inicio'),
+    hora_fim: time('hora_fim'),
     // nem sempre e o fim do curso (pode ser a avaliacao pratica). Vazio = data_fim.
     data_base_vencimento: DataPura('data_base_vencimento'),
     // sobrepoe a carga do treinamento quando a turma teve carga diferente
@@ -441,6 +457,9 @@ export const turma = pgTable(
     // O token vive no cartaz e no e-mail; aqui fica so o SHA-256, pelo mesmo
     // motivo que `sessao` guarda `token_hash`.
     inscricao_publica: boolean('inscricao_publica').notNull().default(false),
+    // NUVEM (22/10/2026): o publico "Comunidade externa" (visitante/outro) so
+    // entra quando a equipe marca na turma
+    aceita_comunidade_externa: boolean('aceita_comunidade_externa').notNull().default(false),
     inscricao_token_hash: varchar('inscricao_token_hash', { length: 64 }),
     inscricao_token_expira_em: MomentoUTC('inscricao_token_expira_em'),
 
@@ -504,6 +523,8 @@ export const turma = pgTable(
       sql.raw(`frequencia_minima_percentual >= 0 AND frequencia_minima_percentual <= 100`),
     ),
     check('ck_turma_ano', sql.raw(`EXTRACT(YEAR FROM data_inicio) = ano`)),
+    // hora de fim pede a de inicio, e vem depois dela
+    check('ck_turma_horas', sql.raw(`hora_fim IS NULL OR (hora_inicio IS NOT NULL AND hora_fim > hora_inicio)`)),
     primaryKey({ name: 'pk_turma', columns: [t.id] }),
     unique('uq_turma_codigo').on(t.codigo),
     unique('uq_turma_token').on(t.inscricao_token_hash),
@@ -696,6 +717,21 @@ export const certificado_sequencia = pgTable(
 );
 
 /**
+ * NUVEM (22/10/2026): a sequencia anual do numero impresso, por PREFIXO
+ * (sigla do setor promotor + codigo curto do treinamento). Mesma disciplina
+ * da RN-03: nunca MAX(numero)+1 (`numeracao.proximo_numero_impresso`).
+ */
+export const certificado_sequencia_prefixo = pgTable(
+  'certificado_sequencia_prefixo',
+  {
+    prefixo: varchar('prefixo', { length: 24 }).notNull(),
+    ano: integer('ano').notNull(),
+    ultimo_numero: integer('ultimo_numero').notNull().default(0),
+  },
+  (t) => [primaryKey({ name: 'pk_certificado_sequencia_prefixo', columns: [t.prefixo, t.ano] })],
+);
+
+/**
  * O documento que circula — e por isso o unico deste modulo que congela.
  *
  * RN-15: `contexto_congelado` guarda TUDO o que foi renderizado, **inclusive o
@@ -713,8 +749,12 @@ export const certificado = pgTable(
     inscricao_id: integer('inscricao_id').notNull(),
     numero: integer('numero').notNull(),
     ano: integer('ano').notNull(),
-    // em claro, com indice unico: a segunda via sai com a MESMA chave
-    chave_validacao: varchar('chave_validacao', { length: 24 }).notNull(),
+    // NUVEM (22/10/2026): o numero impresso do certificado novo
+    // (`CSSO-NR35-2026-0001`). NULL = emitido antes: o rotulo continua `27/2026`.
+    numero_impresso: varchar('numero_impresso', { length: 40 }),
+    // em claro, com indice unico: a segunda via sai com a MESMA chave.
+    // Nova: numero impresso + 5 sorteados (`CSSO-NR35-2026-0001-K7QMX`).
+    chave_validacao: varchar('chave_validacao', { length: 48 }).notNull(),
 
     situacao: varchar('situacao', { length: 12 }).notNull().default('EMITIDO'),
     data_emissao: DataPura('data_emissao').notNull(),
@@ -795,6 +835,13 @@ export const certificado = pgTable(
     }),
     unique('uq_certificado').on(t.numero, t.ano),
     unique('uq_certificado_chave').on(t.chave_validacao),
+    unique('uq_certificado_numero_impresso').on(t.numero_impresso),
+    check_regex('ck_certificado_numero_impresso', 'numero_impresso', PADRAO_NUMERO_IMPRESSO),
+    // a chave nova comeca pelo numero impresso do proprio certificado
+    check(
+      'ck_certificado_chave_do_numero',
+      sql.raw(`numero_impresso IS NULL OR chave_validacao LIKE numero_impresso || '-%'`),
+    ),
     check('ck_certificado_situacao', sql.raw(`situacao IN ('EMITIDO','ANULADO')`)),
     // anular sem motivo produz documento morto sem explicacao
     check('ck_certificado_anulado', sql.raw(`situacao <> 'ANULADO' OR motivo_anulacao IS NOT NULL`)),

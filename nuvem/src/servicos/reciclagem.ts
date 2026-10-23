@@ -25,6 +25,7 @@ import { somar_dias } from "../dominio/datas.js";
 import { Certificado, DIAS_AVISO_RECICLAGEM } from "../dominio/treinamento.js";
 import * as datas_br from "./datas_br.js";
 import * as aviso_reciclagem from "./aviso_reciclagem.js";
+import { ultimos_por } from "./certificados_titular.js";
 import * as pendencias from "./pendencias.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import * as setor_equipe from "./setor_equipe.js";
@@ -60,7 +61,9 @@ async function _em_vigor(tx: Executor, onde: SQL | undefined) {
   const linhas = await tx
     .select({
       id: tabela_certificado.id,
+      situacao: tabela_certificado.situacao,
       numero: tabela_certificado.numero,
+      numero_impresso: tabela_certificado.numero_impresso,
       ano: tabela_certificado.ano,
       participante_id: tabela_certificado.participante_id,
       treinamento_id: tabela_certificado.treinamento_id,
@@ -79,9 +82,9 @@ async function _em_vigor(tx: Executor, onde: SQL | undefined) {
     .innerJoin(tabela_participante, eq(tabela_participante.id, tabela_certificado.participante_id))
     .where(and(eq(tabela_certificado.situacao, "EMITIDO"), onde))
     .orderBy(asc(tabela_certificado.data_emissao), asc(tabela_certificado.ano), asc(tabela_certificado.numero));
-  // em ordem de emissão: o último a entrar no mapa é o em vigor
-  const ultimo = new Map<string, (typeof linhas)[number]>();
-  for (const l of linhas) ultimo.set(`${l.participante_id}:${l.treinamento_id}`, l);
+  // em ordem de emissão, o último de cada par é o em vigor — a mesma regra
+  // dos cartões do titular (`certificados_titular.ultimos_por`)
+  const ultimo = ultimos_por(linhas, (l) => `${l.participante_id}:${l.treinamento_id}`);
   return [...ultimo.values()].filter((l) => l.data_vencimento !== null);
 }
 

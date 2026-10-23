@@ -18,13 +18,9 @@
 
 {% block titulo %}Gestão de EPI · SISA{% endblock %}
 
+{# "Pedir EPI" e "Relatórios" viraram cartões do hub, logo abaixo do título. #}
 {% block acoes_cabecalho %}
-{% if pessoal %}
-{% if pode_pedir and tem_servidor %}<a class="botao" href="/epis/requisicoes/nova">Pedir EPI</a>{% endif %}
-{% else %}
-{% if pode_indicador %}
-<a class="botao secundario" href="/epis/relatorios">Relatórios</a>
-{% endif %}
+{% if not pessoal %}
 {% if usuario.pode('epi.entregar') %}
 <a class="botao" href="/epis/entregas/nova">Registrar entrega</a>
 {% endif %}
@@ -53,6 +49,27 @@
     informando o seu SIAPE.
   </div>
   {% else %}
+  {# Os três atalhos do "Portal do Servidor (EPI)" do IntegraSST, na mesma ordem. #}
+  <div class="acoes-hub">
+    {% if pode_pedir %}
+    <a class="acao-hub azul" href="/epis/requisicoes/nova">
+      {{ ui.icone('shield-plus') }}
+      <strong>Fazer requisição</strong>
+      <span>Solicitar novo EPI</span>
+    </a>
+    {% endif %}
+    <a class="acao-hub escuro" href="/epis/requisicoes">
+      {{ ui.icone('list-check') }}
+      <strong>Visualizar requisições</strong>
+      <span>Acompanhar andamento</span>
+    </a>
+    <a class="acao-hub teal" href="/epis/fichas/minha">
+      {{ ui.icone('file-earmark-person') }}
+      <strong>Ficha de EPI</strong>
+      <span>Consultar recibos legais</span>
+    </a>
+  </div>
+
   <div class="grade-resumo">
     <div class="cartao-resumo">
       <span class="rotulo">Meus pedidos</span>
@@ -130,6 +147,48 @@
   {% if primeiros_passos %}
   {{ ui.primeiros_passos('Primeiros passos na gestão de EPI', primeiros_passos) }}
   {% endif %}
+
+  {# Os cinco cartões do "Gestão de Segurança do Trabalho (EPI)" do IntegraSST,
+     na mesma ordem; cada um só para quem tem o ato. O selo de "novas" vira a
+     contagem do cartão de análise (só número, RN-19). #}
+  <div class="acoes-hub">
+    {% if usuario.pode('epi.analisar') %}
+    <a class="acao-hub azul" href="/epis/requisicoes">
+      {{ ui.icone('inboxes') }}
+      <strong>Analisar requisições</strong>
+      <span>Avalie pedidos de EPI, libere estoque e justifique recusas.</span>
+      {% if a_tratar.a_analisar and a_tratar.a_analisar.total %}<span class="contagem urgente">{{ ui.icone('bell-fill') }}{{ a_tratar.a_analisar.total }} {{ 'nova' if a_tratar.a_analisar.total == 1 else 'novas' }}</span>{% endif %}
+    </a>
+    {% endif %}
+    {% if usuario.pode('epi.estoque') %}
+    <a class="acao-hub escuro" href="/epis/estoque">
+      {{ ui.icone('box-seam') }}
+      <strong>Controle de estoque</strong>
+      <span>Dê entrada em novos lotes de EPI via pregão/empenho.</span>
+    </a>
+    {% endif %}
+    {% if usuario.pode('epi.catalogo') %}
+    <a class="acao-hub roxo" href="/epis/catalogo">
+      {{ ui.icone('journal-album') }}
+      <strong>Catálogo de EPIs</strong>
+      <span>Cadastre os equipamentos, CAs e manuais em PDF.</span>
+    </a>
+    {% endif %}
+    {% if pode_indicador %}
+    <a class="acao-hub amarelo" href="/epis/relatorios">
+      {{ ui.icone('bar-chart-fill') }}
+      <strong>Relatórios e indicadores</strong>
+      <span>Volume de EPIs entregues por perfil, material e local.</span>
+    </a>
+    {% endif %}
+    {% if usuario.pode('epi.ficha') %}
+    <a class="acao-hub teal" href="/epis/fichas">
+      {{ ui.icone('file-earmark-person') }}
+      <strong>Fichas de EPI</strong>
+      <span>Consulte o histórico legal de retiradas por servidor.</span>
+    </a>
+    {% endif %}
+  </div>
 
   {# Fatia G (o selo de pendentes do IntegraSST, sem ir para o menu — recusado em
      DESVIOS, 22/10): o que espera a pessoa que abre a tela. Cada cartão só para

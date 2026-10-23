@@ -27,8 +27,9 @@ export const rotas = new Hono<Ambiente>();
 export const VALIDAR = "/validar";
 
 // A chave vai na URL porque é assim que o QR a carrega; um caminho de 4 KB só
-// serviria para encher o registro de acesso.
-export const TAMANHO_MAXIMO_CHAVE = 40;
+// serviria para encher o registro de acesso. 48 = a coluna `chave_validacao`:
+// a chave nova (22/10/2026) chega a 41 caracteres (sigla de 12, código de 10).
+export const TAMANHO_MAXIMO_CHAVE = 48;
 
 /**
  * `noindex` e `no-store` na resposta pública: a página responde sobre um
@@ -62,6 +63,10 @@ async function _tela(
       confere: d.confere ?? null,
       nome_digitado: d.nome_digitado ?? "",
       excedeu: d.excedeu ?? false,
+      // digitou só o número impresso: a tela orienta a usar o código do QR.
+      // Decide pelo FORMATO, nunca pelo banco — a negativa é a mesma.
+      so_numero: Boolean(d.resposta && !d.resposta.encontrado && servico.so_o_numero(d.digitada)),
+      tamanho_maximo_chave: TAMANHO_MAXIMO_CHAVE,
       hoje: datas_br.hoje(),
       limite_curto: servico.LIMITE_CURTO,
       // o convite "receba por e-mail" só quando o envio está ligado: sem ele a
@@ -115,10 +120,10 @@ rotas.post(`${VALIDAR}/:chave/conferir`, async (c) => {
   const tx = c.get("tx");
   const limpa = normalizar_chave(chave).slice(0, TAMANHO_MAXIMO_CHAVE);
   const resposta = await servico.consultar(tx, limpa);
-  const confere = resposta.encontrado ? await servico.confere_o_nome(tx, limpa, nome) : null;
+  const confere = resposta.encontrado ? await servico.confere_o_nome(tx, resposta.chave, nome) : null;
   return _tela(c, {
     resposta,
-    digitada: limpa,
+    digitada: resposta.encontrado ? resposta.chave : limpa,
     confere,
     // o que foi digitado volta: sem isso "não confere" some junto com o texto
     nome_digitado: nome.trim(),

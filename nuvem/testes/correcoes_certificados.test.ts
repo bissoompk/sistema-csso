@@ -129,7 +129,7 @@ describe("D28/D29/D30/M45: o certificado novo escreve as frases inteiras", () =>
     expect(texto).not.toContain("NR-35 NR-35");
     expect(texto).not.toContain("promovido por ,");
     expect(texto).toContain("em Auditório do Campus JK, com frequência de 100%");
-    expect(texto).toContain(`Certificado nº ${emitido.certificado.numero}/${emitido.certificado.ano} · Validade: indeterminada`);
+    expect(texto).toContain(`Certificado nº ${emitido.certificado.numero_impresso} · Validade: indeterminada`);
     expect(texto).not.toContain("não expira");
     // o PDF diz o mesmo
     const pdf = _texto_pdf((await servico.pdf_do_certificado(db, cen.usuario, emitido.certificado)).bytes);
@@ -215,7 +215,7 @@ describe("D31: segunda via do anulado carimbada", () => {
     );
     const [antigo] = await db.select().from(e.certificado).where(eq(e.certificado.id, emitido.certificado.id));
     const tarja = await servico.tarja_do_anulado(db, antigo!);
-    expect(tarja).toMatch(new RegExp(`^ANULADO em \\d{2}/\\d{2}/\\d{4} — substituído por ${r.novo.numero}/${r.novo.ano}$`));
+    expect(tarja).toMatch(new RegExp(`^ANULADO em \\d{2}/\\d{2}/\\d{4} — substituído por ${r.novo.numero_impresso}$`));
 
     const via = await servico.segunda_via(db, cen.usuario, antigo!);
     expect(via.confere).toBe(true);
@@ -302,14 +302,15 @@ describe("D40: busca e validação pela chave sem traços", () => {
     const chave = emitido.certificado.chave_validacao;
     expect(chave_valida(chave)).toBe(true);
     await entrar(cliente, "coordenador_csso");
-    const rotulo = `${emitido.certificado.numero}/${emitido.certificado.ano}`;
-    for (const termo of [chave.replaceAll("-", "").toLowerCase(), chave.slice(10, 15), chave.slice(10, 17)]) {
+    // 22/10/2026: o número impresso; a chave nova termina nos 5 sorteados
+    const rotulo = emitido.certificado.numero_impresso!;
+    for (const termo of [chave.replaceAll("-", "").toLowerCase(), chave.slice(-5), chave.slice(-7)]) {
       const tela = (await cliente.get(`/certificados?busca=${encodeURIComponent(termo)}`)).text;
       expect(tela, termo).toContain(rotulo);
     }
     // revisão: o pedaço curto não casa com a chave — "csso" e o ano estão em
     // toda chave, e listariam todos os certificados
-    for (const termo of ["csso", chave.slice(10, 14)]) {
+    for (const termo of ["csso", chave.slice(-5, -1)]) {
       const tela = (await cliente.get(`/certificados?busca=${encodeURIComponent(termo)}`)).text;
       expect(tela, termo).not.toContain(`>${rotulo}<`);
     }
@@ -382,7 +383,8 @@ describe("D52/M56: acesso pelo link do e-mail", () => {
     const tela = await publico.get(`${acesso.CAMINHO}/${token}`);
     expect(tela.text).toContain("Certificados de <strong>Marco Antônio Alves Schetino</strong>");
     expect(tela.text).toMatch(/vence às <strong>\d{2}:\d{2}<\/strong> \(daqui a (1 h( \d+ min)?|\d+ min)\)/);
-    expect(tela.text).toContain('class="empilhavel"');
+    // os cartões de "Meus certificados" (Portal do servidor, 22/10/2026)
+    expect(tela.text).toContain('<ul class="grade-cert" role="list">');
     expect(tela.text).toContain(`${acesso.CAMINHO}/${token}/${h.do_marco.id}`);
     expect(tela.text).not.toContain(`${acesso.CAMINHO}/${token}/${h.da_ana.id}`);
     expect((await publico.get(`${acesso.CAMINHO}/${token}/${h.da_ana.id}`)).status).toBe(404);
@@ -566,18 +568,20 @@ describe("M50: meus certificados", () => {
     await db.update(e.usuario).set({ servidor_id: cen.servidor.id }).where(eq(e.usuario.id, conta!.id));
     await entrar(cliente, "servidor_consulta");
     const tela = (await cliente.get("/certificados/meus")).text;
-    const recolhido = tela.indexOf("Anulados ou substituídos");
+    // Portal do servidor (22/10/2026): cartões; o anulado na seção recolhida
+    const recolhido = tela.indexOf("<summary>Certificados anulados");
     expect(recolhido).toBeGreaterThan(-1);
     const depois = tela.slice(recolhido);
-    expect(depois).toContain(`${emitido.certificado.numero}/${emitido.certificado.ano}`);
+    expect(depois).toContain(`${emitido.certificado.numero_impresso}`);
+    expect(depois).toContain("Anulado → substituído por");
     expect(depois).toContain(`href="/certificados/${r.novo.id}"`);
     expect(depois).toContain("Baixar cópia anulada");
     const antes = tela.slice(0, recolhido);
     expect(antes).toContain(`data-copiar="validacao-${r.novo.id}"`);
     expect(antes).toContain(`/validar/${r.novo.chave_validacao}`);
     expect(antes).not.toContain(`/certificados/${emitido.certificado.id}/pdf`);
-    expect(tela).toContain('class="empilhavel"');
-    expect(tela).toContain("Baixe seus certificados em PDF");
+    expect(tela).toContain('<ul class="grade-cert" role="list">');
+    expect(tela).toContain("1 certificado emitido");
   });
 });
 
@@ -617,7 +621,7 @@ describe("M35: ficha do certificado", () => {
     const tela = (await cliente.get(`/certificados/${emitido.certificado.id}`)).text;
     expect(tela).toContain("<summary>O dicionário de tags congelado");
     expect(tela).toContain("<summary>Trilha");
-    expect(tela).toContain(`Abrir o substituto ${r.novo.numero}/${r.novo.ano}`);
+    expect(tela).toContain(`Abrir o substituto ${r.novo.numero_impresso}`);
     expect(tela).toContain("Baixar cópia anulada");
     expect(tela).not.toMatch(/<a class="botao" href="\/certificados\/\d+\/pdf"/);
   });

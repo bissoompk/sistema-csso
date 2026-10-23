@@ -1097,6 +1097,85 @@
   // -------------------------------------------------------------------
   // arranque
   // -------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  // Codigo curto do treinamento (catalogo, 22/10/2026): ele entra no numero
+  // do certificado novo (`CSSO-NR35-2026-0001`). Enquanto o nome e digitado,
+  // o campo recebe a sugestao — a MESMA regra de `sugerir_codigo_curto`
+  // (`src/dominio/treinamento.ts`) e da trava do banco —, mas so enquanto a
+  // pessoa nao mexeu nele, e so se ele abriu vazio (na edicao o codigo ja
+  // existe e nao muda sozinho). Sem JavaScript, o servidor preenche a sugestao
+  // do cadastro em branco.
+  // Contrato: `<input data-sugerir-codigo-curto="<id do campo nome>"
+  //   [data-sugerir-codigo-curto-codigo="<id do campo codigo>"]
+  //   [data-sugerir-codigo-curto-codigo-fixo="<codigo do catalogo>"]>`.
+  // ---------------------------------------------------------------------
+  var PARTICULAS_CODIGO = { DAS: 1, DOS: 1, NOS: 1, NAS: 1, PARA: 1, COM: 1, POR: 1 };
+  function semAcentoMaiusculo(texto) {
+    return String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  }
+  function soLetrasEAlgarismos(texto) {
+    return semAcentoMaiusculo(texto).replace(/[^A-Z0-9]/g, '');
+  }
+  function sugerirCodigoCurto(nome, codigo) {
+    var fonte = semAcentoMaiusculo((nome || '') + ' ' + (codigo || ''));
+    var nr = /\bNR\s*[-–—]?\s*0*(\d{1,2})\b/.exec(fonte);
+    if (nr) return 'NR' + nr[1];
+    var doCodigo = soLetrasEAlgarismos(codigo).slice(0, 10);
+    if (doCodigo.length >= 2) return doCodigo;
+    var palavras = semAcentoMaiusculo(nome).split(/[^A-Z0-9]+/);
+    var iniciais = '';
+    for (var i = 0; i < palavras.length; i++) {
+      if (palavras[i].length >= 3 && !PARTICULAS_CODIGO[palavras[i]]) iniciais += palavras[i].charAt(0);
+    }
+    iniciais = iniciais.slice(0, 6);
+    if (iniciais.length >= 2) return iniciais;
+    var letras = soLetrasEAlgarismos(nome).slice(0, 4);
+    return letras.length >= 2 ? letras : 'TR';
+  }
+  function preencherCodigoCurto(campo) {
+    if (campo.getAttribute('data-codigo-curto-editado')) return;
+    var nome = document.getElementById(campo.getAttribute('data-sugerir-codigo-curto'));
+    if (!nome) return;
+    var idCodigo = campo.getAttribute('data-sugerir-codigo-curto-codigo');
+    var doCodigo = idCodigo ? document.getElementById(idCodigo) : null;
+    var codigo = doCodigo ? doCodigo.value : campo.getAttribute('data-sugerir-codigo-curto-codigo-fixo') || '';
+    campo.value = nome.value.trim() ? sugerirCodigoCurto(nome.value, codigo) : '';
+  }
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== 'INPUT') return;
+    if (el.hasAttribute('data-sugerir-codigo-curto')) {
+      // a pessoa escreveu no codigo: dali em diante a sugestao nao o cobre.
+      // Esvaziado, ele volta a seguir o nome.
+      var inicio = el.selectionStart;
+      var fim = el.selectionEnd;
+      el.value = el.value.toUpperCase();
+      if (inicio !== null && el.setSelectionRange) el.setSelectionRange(inicio, fim);
+      if (el.value) el.setAttribute('data-codigo-curto-editado', '1');
+      else {
+        el.removeAttribute('data-codigo-curto-editado');
+        preencherCodigoCurto(el);
+      }
+      return;
+    }
+    if (!el.id) return;
+    var campos = document.querySelectorAll('input[data-sugerir-codigo-curto]');
+    for (var i = 0; i < campos.length; i++) {
+      if (
+        campos[i].getAttribute('data-sugerir-codigo-curto') === el.id ||
+        campos[i].getAttribute('data-sugerir-codigo-curto-codigo') === el.id
+      ) {
+        preencherCodigoCurto(campos[i]);
+      }
+    }
+  });
+  function marcarCodigosCurtosPreenchidos() {
+    var campos = document.querySelectorAll('input[data-sugerir-codigo-curto]');
+    for (var i = 0; i < campos.length; i++) {
+      if (campos[i].value.trim()) campos[i].setAttribute('data-codigo-curto-editado', '1');
+    }
+  }
+
   function arrancar() {
     reporRascunhos();
     var reusar = document.querySelectorAll('button[data-reusar-descricao]');
@@ -1115,6 +1194,7 @@
     for (var m = 0; m < mestres.length; m++) sincronizarMestre(mestres[m]);
     atualizarBarrasDeLote();
     aplicarCorTipo(document);
+    marcarCodigosCurtosPreenchidos();
   }
   // A cor do tipo de processo no cartao do kanban vem em `data-cor-tipo` (sem
   // `style=` no HTML, pela CSP). A folha ja traduz as cores semeadas; aqui

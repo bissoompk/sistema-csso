@@ -128,6 +128,7 @@ export async function fila(
       siape: tabela_servidor.siape,
       certificado_id: tabela_certificado.id,
       certificado_numero: tabela_certificado.numero,
+      certificado_numero_impresso: tabela_certificado.numero_impresso,
       certificado_ano: tabela_certificado.ano,
     })
     .from(tabela_inscricao)
@@ -158,7 +159,7 @@ export async function fila(
       etapa,
       certificado_id: l.certificado_id,
       certificado_rotulo:
-        l.certificado_numero !== null ? Certificado.rotulo({ numero: l.certificado_numero, ano: l.certificado_ano! }) : "",
+        l.certificado_numero !== null ? Certificado.rotulo({ numero: l.certificado_numero, ano: l.certificado_ano!, numero_impresso: l.certificado_numero_impresso }) : "",
       motivos: [],
     });
   }

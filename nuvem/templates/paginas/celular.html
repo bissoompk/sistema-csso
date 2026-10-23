@@ -44,15 +44,26 @@
        telas do "Meu espaço" que cabem em pé, e cada uma só aparece se abre para
        ele (`rotas/celular.ATALHOS`, a mesma regra do menu). #}
     {% if atalhos|length %}
-    <p class="sub">O que é seu, a um toque.</p>
-    <div class="grade-resumo atalhos-celular">
-      {% for a in atalhos %}
-      <a class="cartao-resumo" href="{{ a.caminho }}">
-        <span class="valor">{{ a.rotulo }}</span>
-        <span class="detalhe">{{ a.descricao }}</span>
-      </a>
-      {% endfor %}
+    {# Portal do servidor: a MESMA lista do "Meu espaço", nos mesmos grupos, e
+       o cartão compacto (iniciais e nome) no alto. Cada item tem 44px de
+       altura, o alvo de toque do polegar (`csso.css`, PORTAL/PAINEL). #}
+    {% if cartao_celular %}
+    <div class="ident-lateral ident-compacto">
+      <span class="ident-avatar" aria-hidden="true">{{ cartao_celular.iniciais }}</span>
+      <span class="ident-texto"><strong class="ident-nome" title="{{ cartao_celular.nome }}">{{ cartao_celular.nome }}</strong></span>
     </div>
+    {% endif %}
+    <p class="sub">O que é seu, a um toque.</p>
+    <nav class="atalhos-celular-meu" aria-label="Meu espaço">
+      {% for g in grupos_atalhos %}
+      {% if g.titulo %}<h2 class="rotulo-grupo-celular">{{ g.titulo }}</h2>{% endif %}
+      <ul>
+        {% for a in g.itens %}
+        <li><a href="{{ a.caminho }}"><strong>{{ a.rotulo }}</strong><span>{{ a.descricao }}</span></a></li>
+        {% endfor %}
+      </ul>
+      {% endfor %}
+    </nav>
     {% else %}
     <div class="vazio">
       <strong>Esta tela ainda não tem trabalho para você.</strong>

@@ -1269,3 +1269,15 @@
 {% macro icone(nome, classe='') -%}
 <svg class="ico {{ classe }}" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>
 {%- endmacro %}
+
+{# NUVEM (Portal do servidor, 22/10/2026): o selo do setor promotor, na cor e
+   com o ícone do cadastro do setor (`unidade_uorg.cor_setor`/`icone_setor`,
+   paleta fechada de `dominio/organizacao.ts`). `setor` = {sigla, nome, cor,
+   icone}; sem cor, `.setor--padrao` (a do sistema). A cor nunca é o único
+   sinal: a sigla vai escrita, e o nome inteiro no `title`. #}
+{% macro selo_setor(setor, classe='') -%}
+{%- if setor and (setor.sigla or setor.nome) -%}
+<span class="selo-setor setor--{{ setor.cor or 'padrao' }} {{ classe }}" title="{{ setor.nome or setor.sigla }}">
+  {%- if setor.icone %}{{ icone(setor.icone) }}{% endif %}<span>{{ setor.sigla or setor.nome }}</span></span>
+{%- endif -%}
+{%- endmacro %}

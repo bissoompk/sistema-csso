@@ -186,6 +186,23 @@
     <summary data-menu-celular>{{ ico('list') }}<span>Menu</span></summary>
   </details>
 
+  {# O CARTÃO DE IDENTIFICAÇÃO de quem só tem o próprio (Portal do servidor):
+     iniciais num círculo (`aria-hidden` — o nome ao lado já diz quem é), o
+     nome numa linha, cortado com reticências e inteiro no `title`, e a
+     lotação ("ICT · Campus JK") quando a tela a leu
+     (`modulos.cartao_meu_espaco_completo`). Não é link nem foco: identifica,
+     não navega. No celular ele aparece no alto da gaveta "Menu", só com o
+     avatar e o nome. #}
+  {% if so_meu_espaco and cartao_meu_espaco %}
+  <div class="ident-lateral">
+    <span class="ident-avatar" aria-hidden="true">{{ cartao_meu_espaco.iniciais }}</span>
+    <span class="ident-texto">
+      <strong class="ident-nome" title="{{ cartao_meu_espaco.nome }}">{{ cartao_meu_espaco.nome }}</strong>
+      {% if cartao_meu_espaco.linha %}<span class="ident-linha">{{ cartao_meu_espaco.linha }}</span>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+
   {# Quem só tem o próprio (o servidor comum) não recebe a lateral da equipe —
      ver `modulos.MEU_ESPACO`: o bloco "Meu espaço", lá embaixo, é o menu
      inteiro. A conta de equipe ligada a servidor recebe a lateral e, depois
@@ -251,13 +268,32 @@
   {% endif %}
 
   {% if meu_espaco and meu_espaco|length %}
+  {# O "Meu espaço" em grupos com subtítulo (`modulos.MEU_ESPACO_GRUPOS`): o
+     "Início" sem título, e Treinamentos, EPI, Adicional e Eu. O subtítulo é
+     <span>, como no menu do módulo: não entra no esqueleto de títulos nem
+     recebe foco; quem o anuncia é o `role="group"` com `aria-labelledby`. O
+     item ativo leva `aria-current="page"` e o fio à esquerda (forma, e não só
+     cor — `csso.css`, PORTAL/PAINEL). O "Sair" fecha a lista de quem só tem
+     o próprio, depois de um divisor: leva à tela `/sair`, que faz o POST com
+     CSRF. A conta de equipe ligada a servidor tem o "sair" no cabeçalho, como
+     sempre, e o bloco continua com o rótulo de seção. #}
   <nav class="menu menu-meu {{ 'ao-lado' if not so_meu_espaco }}" aria-label="Meu espaço" id="lateral-meu">
-    <span class="rotulo-secao">Meu espaço</span>
-    {% for item in meu_espaco %}
+    {% if not so_meu_espaco %}<span class="rotulo-secao">Meu espaço</span>{% endif %}
+    {% for g in grupos_meu_espaco %}
+    {% if g.titulo %}<div class="menu-grupo" role="group" aria-labelledby="grupo-meu-{{ loop.index }}">
+    <span class="rotulo-grupo" id="grupo-meu-{{ loop.index }}">{{ g.titulo }}</span>{% endif %}
+    {% for item in g.itens %}
     <a href="{{ item.caminho }}" title="{{ item.descricao }}"
        class="{{ 'ativo' if item_ativo and item.caminho == item_ativo.caminho }}"
        {% if item_ativo and item.caminho == item_ativo.caminho %}aria-current="page"{% endif %} data-rotulo="{{ item.rotulo }}">{{ ico(icone_de(item.rotulo) or icone_de(item.caminho)) }}<span>{{ item.rotulo }}</span></a>
     {% endfor %}
+    {% if g.titulo %}</div>{% endif %}
+    {% endfor %}
+    {% if so_meu_espaco %}
+    <div class="menu-meu-pe">
+      <a class="sair-meu" href="/sair" data-rotulo="Sair">{{ ico(icone_de('Sair')) }}<span>Sair</span></a>
+    </div>
+    {% endif %}
   </nav>
   {% endif %}
 

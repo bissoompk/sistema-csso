@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# A ficha LEVE do certificado, para o titular sem permissão de equipe
+   (Portal do servidor, 22/10/2026): os dados do cartão, o QR, o conteúdo
+   programático e a segunda via em PDF e Word. Ficam de fora os hashes, o
+   dicionário de tags e a trilha técnica — a ficha técnica
+   (`certificado_ficha.html`) continua para a equipe. Tudo do congelado. #}
+{% block titulo %}Certificado {{ c.rotulo }} · SISA{% endblock %}
+{% block trilha %}
+<a href="/certificados/meus">Meus certificados</a>
+<span class="atual mono" aria-current="page">{{ c.rotulo }}</span>
+{% endblock %}
+
+{% block conteudo %}
+{% set so_word = c.modelo_enviado and not pdf_fiel() %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ c.treinamento }}</h1>
+      <p class="sub">Certificado Nº <span class="mono">{{ c.rotulo }}</span></p>
+    </div>
+  </div>
+
+  {% if c.anulado %}
+  <div class="aviso aviso-erro">
+    <p><strong>Este certificado foi anulado.</strong> Ele não vale como comprovação: a
+      validação pública responde “anulado”.</p>
+    {% if c.substituido_por %}
+    <p>Foi substituído pelo certificado
+      <a href="/certificados/{{ c.substituido_por.id }}">Nº <span class="mono">{{ c.substituido_por.rotulo }}</span></a>
+      — é ele que vale.</p>
+    {% endif %}
+  </div>
+  {% elif c.superado_por %}
+  <div class="aviso">
+    <p>Você já fez a reciclagem: o certificado em vigor deste treinamento é o
+      Nº <span class="mono">{{ c.superado_por }}</span>.</p>
+  </div>
+  {% endif %}
+
+  <div class="cert-ficha">
+    <section class="cartao cert-ficha-dados" aria-labelledby="ficha-dados">
+      <h2 id="ficha-dados" class="oculto">Dados do certificado</h2>
+      <div class="cert-selos">
+        {% from "partes/cartao_certificado.html" import selo_situacao_cert %}
+        {{ selo_situacao_cert(c) }}
+        {% if c.norma %}<span class="selo info cert-norma">{{ c.norma }}</span>{% endif %}
+      </div>
+      <dl class="tabela-dados">
+        {% if c.setor.sigla or c.setor.nome %}
+        <dt>Setor promotor</dt>
+        <dd>{{ ui.selo_setor(c.setor) }}{% if c.setor.sigla and c.setor.nome and c.setor.nome != c.setor.sigla %} {{ c.setor.nome }}{% endif %}</dd>
+        {% endif %}
+        {% if c.periodo %}
+        <dt>Período</dt>
+        <dd><time datetime="{{ c.inicio }}">{{ c.periodo }}</time></dd>
+        {% endif %}
+        <dt>Carga horária</dt>
+        <dd>{{ c.carga_horaria }} h</dd>
+        <dt>Turma</dt>
+        <dd class="mono">{{ c.turma_codigo }}</dd>
+        <dt>Emitido em</dt>
+        <dd><time datetime="{{ c.data_emissao }}">{{ c.data_emissao|data }}</time></dd>
+        <dt>Validade</dt>
+        <dd>{% if c.data_vencimento %}{{ 'Venceu em' if c.situacao.tipo == 'vencido' else 'Válido até' }}
+          <time datetime="{{ c.data_vencimento }}">{{ c.data_vencimento|data }}</time>{% else %}Sem prazo de validade{% endif %}</dd>
+        <dt>Código de validação</dt>
+        <dd class="mono">{{ c.chave }}</dd>
+      </dl>
+
+      <div class="acoes">
+        {% if c.anulado %}
+        <a class="botao secundario" href="/certificados/{{ c.id }}/{{ 'documento' if so_word else 'pdf' }}"
+           data-baixar="Gerando a cópia anulada…">{{ ui.icone('download') }}Baixar cópia anulada</a>
+        {% elif so_word %}
+        <a class="botao" href="/certificados/{{ c.id }}/documento"
+           data-baixar="Gerando a segunda via…">{{ ui.icone('download') }}Baixar certificado (Word)</a>
+        {% else %}
+        <a class="botao" href="/certificados/{{ c.id }}/pdf"
+           data-baixar="Gerando o PDF…">{{ ui.icone('download') }}Baixar certificado (PDF)</a>
+        <a class="botao secundario" href="/certificados/{{ c.id }}/documento"
+           data-baixar="Gerando a segunda via…">Baixar em Word (.docx)</a>
+        {% endif %}
+        {% if c.reciclagem %}
+        {% if c.turma_aberta == false %}
+        <p class="cert-sem-turma">Sem turma aberta de reciclagem. Avisaremos por e-mail.</p>
+        {% else %}
+        <a class="botao cert-reciclagem" href="/turmas/minhas?treinamento={{ c.treinamento_id }}#abertas">{{ ui.icone('clock-history') }}Inscrever-se na reciclagem</a>
+        {% endif %}
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="cartao cert-ficha-validar" aria-labelledby="ficha-validar">
+      <h2 id="ficha-validar">Validação</h2>
+      {% if c.qr %}<img class="cert-qr cert-qr--grande" src="{{ c.qr }}" width="200" height="200"
+           alt="QR do link de validação do certificado de {{ c.treinamento }}">{% endif %}
+      <label class="discreto" for="validacao-{{ c.id }}">Link de validação</label>
+      <input type="text" class="mono cert-link-validacao" id="validacao-{{ c.id }}" readonly value="{{ c.url_validacao }}">
+      <button type="button" class="secundario compacto" data-copiar="validacao-{{ c.id }}" hidden>Copiar link</button>
+      <p class="discreto">Quem recebe o certificado confere a autenticidade por este link ou pelo QR.</p>
+    </section>
+  </div>
+
+  {% if c.conteudo|length %}
+  <section class="cartao" aria-labelledby="ficha-conteudo">
+    <h2 id="ficha-conteudo">Conteúdo programático</h2>
+    <ol class="cert-conteudo">
+      {% for t in c.conteudo %}<li>{{ t }}</li>{% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -6,7 +6,7 @@
  * formulário de cadastro embaixo e diff campo a campo na auditoria.
  */
 import { Hono } from "hono";
-import { and, asc, count, desc, eq, isNull, ne, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -24,8 +24,11 @@ import {
   AssinaturaInstrutor,
   CertificadoModelo,
   ORIENTACOES,
+  PADRAO_CODIGO_CURTO,
   PADRAO_CODIGO_TREINAMENTO,
   PADRAO_MARCADOR,
+  TAMANHO_MAXIMO_CODIGO_CURTO,
+  sugerir_codigo_curto,
   ROTULO_TIPO_TAG,
   TIPOS_TAG,
   type TipoTag,
@@ -195,7 +198,57 @@ async function _tela_catalogo(c: Ctx, usuario: UsuarioAtual, d: Recado = {}): Pr
     erro: d.erro ?? null,
     digitado: d.digitado ?? {},
     editando_id: d.editando_id ?? null,
+    padrao_codigo_curto: PADRAO_CODIGO_CURTO,
+    tamanho_codigo_curto: TAMANHO_MAXIMO_CODIGO_CURTO,
   });
+}
+
+// ---------------------------------------------------------------------
+// O código curto (22/10/2026): entra no número do certificado novo
+// (`CSSO-NR35-2026-0001`). Obrigatório, único, 2 a 10 letras/algarismos em
+// caixa alta. Mudar não mexe no certificado já emitido: o número impresso é
+// gravado e imutável (trava `trg_certificado_numero_imutavel`).
+// ---------------------------------------------------------------------
+const _RE_CODIGO_CURTO = new RegExp(`^(?:${PADRAO_CODIGO_CURTO})$`);
+const MENSAGEM_CODIGO_CURTO_INVALIDO =
+  "Código curto inválido: de 2 a 10 letras (sem acento) ou algarismos, sem traço nem espaço (NR35, BRIG, PSOC).";
+
+/** Caixa alta e sem espaço nas pontas — o resto o padrão confere. */
+function _codigo_curto_digitado(bruto: string): string {
+  return bruto.trim().toUpperCase();
+}
+
+/**
+ * A sugestão livre: `sugerir_codigo_curto` e, se já é de outro treinamento,
+ * algarismo no fim — pela MESMA função do banco que a trava usa
+ * (`csso_codigo_curto_livre`), para a tela e a trava nunca discordarem.
+ */
+async function _codigo_curto_livre(tx: Executor, base: string, treinamento_id: number | null): Promise<string> {
+  const linhas = await tx.execute<{ livre: string }>(
+    sql`SELECT csso_codigo_curto_livre(${base}, ${treinamento_id}::integer) AS livre`,
+  );
+  return linhas[0]?.livre ?? base;
+}
+
+/** O treinamento (outro que não `exceto_id`) que já usa o código curto. */
+async function _dono_do_codigo_curto(tx: Executor, codigo_curto: string, exceto_id: number | null) {
+  const [dono] = await tx
+    .select({ id: tabela_treinamento.id, codigo: tabela_treinamento.codigo, nome: tabela_treinamento.nome })
+    .from(tabela_treinamento)
+    .where(
+      exceto_id === null
+        ? eq(tabela_treinamento.codigo_curto, codigo_curto)
+        : and(eq(tabela_treinamento.codigo_curto, codigo_curto), ne(tabela_treinamento.id, exceto_id)),
+    );
+  return dono ?? null;
+}
+
+async function _mensagem_duplicado(tx: Executor, codigo_curto: string, dono: { nome: string }, id: number | null) {
+  const livre = await _codigo_curto_livre(tx, codigo_curto, id);
+  return (
+    `O código curto ${codigo_curto} já é do treinamento “${dono.nome}”: cada treinamento tem o seu, ` +
+    `porque ele entra no número do certificado. Escolha outro (por exemplo, ${livre}).`
+  );
 }
 
 // =====================================================================
@@ -243,6 +296,7 @@ rotas.post(CATALOGO, async (c) => {
   // Tudo o que foi digitado, guardado antes da primeira recusa
   const digitado = {
     codigo: f.texto("codigo"),
+    codigo_curto: f.texto("codigo_curto"),
     nome: f.texto("nome"),
     carga_horaria_horas: f.texto("carga_horaria_horas"),
     // NUVEM: vazio no cadastro é 0 (não expira), o default do formulário
@@ -271,11 +325,23 @@ rotas.post(CATALOGO, async (c) => {
     .from(tabela_treinamento)
     .where(or(eq(tabela_treinamento.codigo, codigo_limpo), eq(tabela_treinamento.nome, nome_limpo)));
   if (ja) return recusar(`Já existe treinamento com esse código ou nome (${ja.codigo}).`);
+  // o código curto: digitado, ou a sugestão a partir do nome (já livre)
+  let codigo_curto = _codigo_curto_digitado(digitado.codigo_curto);
+  if (!codigo_curto) {
+    // só o código DIGITADO conta: o que sai do nome (BRIGADA_DE_INCENDIO) daria
+    // "BRIGADADEI" no lugar das iniciais — e o navegador sugere sem ele
+    codigo_curto = await _codigo_curto_livre(tx, sugerir_codigo_curto(nome_limpo, digitado.codigo.trim() || null), null);
+  } else {
+    if (!_RE_CODIGO_CURTO.test(codigo_curto)) return recusar(MENSAGEM_CODIGO_CURTO_INVALIDO);
+    const dono = await _dono_do_codigo_curto(tx, codigo_curto, null);
+    if (dono) return recusar(await _mensagem_duplicado(tx, codigo_curto, dono, null));
+  }
 
   const [treinamento] = await tx
     .insert(tabela_treinamento)
     .values({
       codigo: codigo_limpo,
+      codigo_curto,
       nome: nome_limpo,
       carga_horaria_horas: horas,
       validade_meses: meses,
@@ -290,7 +356,7 @@ rotas.post(CATALOGO, async (c) => {
     tipo_evento: "TREINAMENTO_CRIADO",
     descricao:
       `${treinamento!.codigo} · ${treinamento!.nome} · ` +
-      `${horas}h · validade ${Treinamento.validade_rotulo(treinamento!)}`,
+      `${horas}h · validade ${Treinamento.validade_rotulo(treinamento!)} · código curto ${treinamento!.codigo_curto}`,
     usuario,
   });
   return _volta(c, CATALOGO, `Treinamento ${codigo_limpo} cadastrado.`);
@@ -306,6 +372,7 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
   // voltava à lista com a faixa vermelha, e o que fora escrito no popup se perdia.
   const digitado = {
     nome: f.texto("nome"),
+    codigo_curto: f.texto("codigo_curto"),
     carga_horaria_horas: f.texto("carga_horaria_horas"),
     validade_meses: f.texto("validade_meses"),
     norma_referencia: f.texto("norma_referencia"),
@@ -329,6 +396,14 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
   if (homonimo) return recusar(`Já existe outro treinamento chamado '${nome_limpo}'.`);
   const [alvo] = await tx.select().from(tabela_treinamento).where(eq(tabela_treinamento.id, treinamento_id));
   if (!alvo) return redirecionar(c, CATALOGO);
+  // O código curto é obrigatório: o popup o exige; quem posta sem o campo
+  // (formulário antigo, integração) mantém o de hoje — nunca o apaga.
+  const codigo_curto = _codigo_curto_digitado(digitado.codigo_curto) || alvo.codigo_curto;
+  if (codigo_curto !== alvo.codigo_curto) {
+    if (!_RE_CODIGO_CURTO.test(codigo_curto)) return recusar(MENSAGEM_CODIGO_CURTO_INVALIDO);
+    const dono = await _dono_do_codigo_curto(tx, codigo_curto, treinamento_id);
+    if (dono) return recusar(await _mensagem_duplicado(tx, codigo_curto, dono, treinamento_id));
+  }
   const modelo_escolhido = id_opcional(digitado.modelo_vigente_id);
   const instrutor_escolhido = id_opcional(digitado.instrutor_padrao_id);
   const problema = await _confere_vinculos(tx, alvo, modelo_escolhido, instrutor_escolhido);
@@ -340,6 +415,8 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
     treinamento_id,
     {
       nome: nome_limpo,
+      // a mudança vai para a trilha (CAMPO_ALTERADO, por `salvar_com_diff`)
+      codigo_curto,
       carga_horaria_horas: horas,
       validade_meses: meses,
       norma_referencia: texto_ou_nulo(digitado.norma_referencia),

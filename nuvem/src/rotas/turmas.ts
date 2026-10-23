@@ -35,7 +35,7 @@ import {
   TransicaoInvalida,
   destinos_de_turma,
 } from "../dominio/estados.js";
-import { AssinaturaInstrutor, ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
+import { AssinaturaInstrutor, Certificado as C, ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
 import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencias.js";
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as servico_emissao from "../servicos/emissao_certificado.js";
@@ -43,6 +43,7 @@ import * as campos_certificado from "../servicos/campos_certificado.js";
 import * as identificacao from "../servicos/identificacao.js";
 import { atores_para_tela } from "../servicos/privacidade.js";
 import { TIPO_PDF } from "../servicos/certificado_pdf.js";
+import * as ics from "../servicos/ics.js";
 import * as inscricao_lote from "../servicos/inscricao_lote.js";
 import * as inscricao_publica from "../servicos/inscricao_publica.js";
 import * as retificacao from "../servicos/retificacao.js";
@@ -192,6 +193,7 @@ async function _tela_lista(
     situacao?: string;
     treinamento_id?: string;
     setor?: string;
+    turno?: string;
     mensagem?: string | null;
     erro?: string | null;
     digitado?: Record<string, string> | null;
@@ -207,6 +209,9 @@ async function _tela_lista(
   // o setor promotor, como o filtro do IntegraSST
   const setor = id_opcional(d.setor ?? "");
   if (setor !== null) filtros.push(eq(tabela_turma.unidade_promotora_id, setor));
+  // o turno, pela hora de início (lista fechada em `servico_turma.TURNOS`)
+  const turno = servico_turma.ler_turno(d.turno);
+  if (turno) filtros.push(servico_turma.condicao_turno(turno));
   const itens = (
     (await tx.query.turma.findMany({
       where: and(...filtros),
@@ -218,7 +223,7 @@ async function _tela_lista(
   // oferecer "Abrir turma" sem treinamento para escolher.
   // A conta sem setor promotor não está "começando": o aviso dela é outro.
   const comecando =
-    !itens.length && !situacao && alvo === null && usuario.pode("turma.criar") && !setor_equipe.sem_setor(usuario);
+    !itens.length && !situacao && alvo === null && !turno && usuario.pode("turma.criar") && !setor_equipe.sem_setor(usuario);
   // tudo junto: uma ida ao banco, e não uma por turma (ver `db/cliente.ts`)
   const [ocupadas, treinamentos, campi, unidades, [instrutor], setores_usados] = await Promise.all([
     Promise.all(itens.map((turma) => servico_turma.inscricoes_que_ocupam_vaga(tx, turma))),
@@ -310,6 +315,8 @@ async function _tela_lista(
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
+    filtro_turno: turno,
+    turnos: servico_turma.TURNOS,
     digitado: d.digitado ?? {},
     mensagem: d.mensagem ?? null,
     erro: d.erro ?? null,
@@ -342,6 +349,7 @@ rotas.get(TURMAS, async (c) => {
     situacao: c.req.query("situacao") ?? "",
     treinamento_id: c.req.query("treinamento_id") ?? "",
     setor: c.req.query("setor") ?? "",
+    turno: c.req.query("turno") ?? "",
     ...recados(c),
   });
 });
@@ -438,7 +446,24 @@ rotas.get(MINHAS, async (c) => {
   const minha_situacao: Record<number, string> = {};
   for (const i of minhas_inscricoes) minha_situacao[i.turma_id] = servico_turma.situacao_para_o_titular(i.situacao);
   const restantes: Record<number, number | null> = {};
-  const abertas = (await servico_turma.turmas_abertas(tx, hoje)).map(vista_turma);
+  // os filtros GET: o turno (lista fechada) e o treinamento — este é o destino
+  // do "Inscrever-se na reciclagem" do cartão do certificado
+  // (`/turmas/minhas?treinamento={id}#abertas`); id que não existe é ignorado
+  const turno = servico_turma.ler_turno(c.req.query("turno"));
+  const pedido_treinamento = id_opcional(c.req.query("treinamento"));
+  const [treinamento_filtro] =
+    pedido_treinamento === null
+      ? []
+      : await tx
+          .select({ id: tabela_treinamento.id, nome: tabela_treinamento.nome })
+          .from(tabela_treinamento)
+          .where(eq(tabela_treinamento.id, pedido_treinamento));
+  const todas_abertas = (await servico_turma.turmas_abertas(tx, hoje)).map(vista_turma);
+  const abertas = todas_abertas.filter(
+    (t) =>
+      (!treinamento_filtro || t.treinamento_id === treinamento_filtro.id) &&
+      (!turno || servico_turma.turno_de(t.hora_inicio) === turno),
+  );
   for (const turma of abertas) restantes[turma.id] = await servico_turma.vagas_restantes(tx, turma);
   // a lotada vai para o fim: quem procura vaga lê de cima para baixo
   abertas.sort((a, b) => Number(restantes[a.id] === 0) - Number(restantes[b.id] === 0));
@@ -451,10 +476,35 @@ rotas.get(MINHAS, async (c) => {
     inscricoes: minhas_inscricoes,
     desistivel: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, servico_turma.pode_desistir(i, hoje)])),
     pode_pedir: usuario.pode("turma.inscrever_se"),
+    filtro_turno: turno,
+    turnos: servico_turma.TURNOS,
+    treinamento_filtro: treinamento_filtro ?? null,
+    total_abertas: todas_abertas.length,
+    // "Adicionar à agenda": a inscrição viva de turma que não foi cancelada
+    com_agenda: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, servico_turma.tem_agenda(i)])),
     // conta sem cadastro de servidor não é erro: é a tela dizendo por que está vazia
     sem_servidor: usuario.servidor_id === null,
     ...recados(c),
   });
+});
+
+/**
+ * A agenda (.ics) da turma em que o titular está inscrito. Como o resto de
+ * "Meus treinamentos", a rota não aceita "quem": o titular sai da sessão, e a
+ * turma em que ele não tem inscrição viva responde 404 — a mesma resposta da
+ * turma que não existe.
+ */
+rotas.get(`${MINHAS}/:turma_id{[0-9]+}/agenda.ics`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.ver");
+  const tx = c.get("tx");
+  const turma_id = Number(c.req.param("turma_id"));
+  const minha = (await servico_turma.inscricoes_do_titular(tx, usuario)).find((i) => i.turma_id === turma_id);
+  if (!minha || !servico_turma.tem_agenda(minha)) return c.text("Turma não encontrada entre as suas inscrições.", 404);
+  const agenda = await ics.da_turma(tx, minha.turma);
+  const resposta = baixar(c, agenda.bytes, agenda.nome, ics.TIPO_ICS);
+  resposta.headers.set("cache-control", "no-store");
+  return resposta;
 });
 
 /**
@@ -529,6 +579,9 @@ rotas.post(TURMAS, async (c) => {
     "frequencia_minima_percentual",
     "observacoes",
     "abertura",
+    "hora_inicio",
+    "hora_fim",
+    "aceita_comunidade_externa",
   ];
   const digitado: Record<string, string> = Object.fromEntries(campos.map((k) => [k, f.texto(k)]));
   const recusar = (mensagem: string) => _tela_lista(c, usuario, { erro: mensagem, digitado });
@@ -568,6 +621,9 @@ rotas.post(TURMAS, async (c) => {
         nota_minima_aprovacao: _decimal(digitado.nota_minima_aprovacao!, "a nota mínima"),
         frequencia_minima_percentual: _decimal(digitado.frequencia_minima_percentual!, "a frequência mínima", "75")!,
         observacoes: texto_ou_nulo(digitado.observacoes),
+        hora_inicio: texto_ou_nulo(digitado.hora_inicio),
+        hora_fim: texto_ou_nulo(digitado.hora_fim),
+        aceita_comunidade_externa: marcado(digitado.aceita_comunidade_externa),
       });
       // o atalho "turma aberta com link": tudo ou nada, no mesmo savepoint
       if (com_link) {
@@ -711,7 +767,7 @@ async function _tela_ficha(
   const certificados = Object.fromEntries(
     Object.entries(certificados_por_inscricao).map(([k, cert]) => [
       k,
-      { ...cert, rotulo: `${cert.numero}/${cert.ano}`, so_word: servico_emissao.do_modelo_enviado(cert) },
+      { ...cert, rotulo: C.rotulo(cert), so_word: servico_emissao.do_modelo_enviado(cert) },
     ]),
   );
   // algum de modelo enviado: o "todos" sai em Word (.zip), não no PDF da casa
@@ -772,6 +828,7 @@ async function _tela_ficha(
     impedimentos_exclusao,
     descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
     link_no_ar: inscricao_publica.link_no_ar(turma),
+    publico: inscricao_publica.publico_da_turma(turma),
     certificados_em_word,
     envios,
     rotulo_envio: email.ROTULO_SITUACAO,
@@ -862,7 +919,14 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
         nota_minima_aprovacao: _decimal(f.texto("nota_minima_aprovacao"), "a nota mínima"),
         frequencia_minima_percentual: _decimal(f.texto("frequencia_minima_percentual"), "a frequência mínima", "75")!,
         observacoes: texto_ou_nulo(f.texto("observacoes")),
-      };
+      } as Partial<servico_turma.TurmaRegistro>;
+      // a hora e o público só mudam quando o formulário os traz: quem posta
+      // a edição sem esses campos (versão antiga da tela, teste) não os apaga
+      if (f.tem("hora_inicio")) campos.hora_inicio = texto_ou_nulo(f.texto("hora_inicio"));
+      if (f.tem("hora_fim")) campos.hora_fim = texto_ou_nulo(f.texto("hora_fim"));
+      if (f.tem("publico_no_formulario")) {
+        campos.aceita_comunidade_externa = marcado(f.texto("aceita_comunidade_externa"));
+      }
       await servico_turma.editar_turma(sp, usuario, turma, campos);
     });
   } catch (erro) {
@@ -1292,6 +1356,7 @@ async function _tela_link(c: Ctx, usuario: UsuarioAtual, turma: TurmaCarregada, 
   const endereco = `${await servico_emissao.url_base_validacao(c.get("tx"))}${inscricao_publica.CAMINHO}/${token}`;
   const resposta = await pagina(c, "paginas/turma_link.html", usuario, {
     turma: vista_turma(turma),
+    publico: inscricao_publica.publico_da_turma(turma),
     endereco,
     qr: `data:image/png;base64,${Buffer.from(qr_png(endereco, 8)).toString("base64")}`,
   });
@@ -1713,7 +1778,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
     return _volta(
       c,
       volta,
-      `Certificado ${resultado.certificado.numero}/${resultado.certificado.ano} emitido para ` +
+      `Certificado ${C.rotulo(resultado.certificado)} emitido para ` +
         `${nome_exibicao(inscricao.participante)}.${aviso}`,
     );
   }
