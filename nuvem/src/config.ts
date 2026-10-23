@@ -66,6 +66,20 @@ export function ehProducao(ambiente: string = process.env.CSSO_AMBIENTE ?? ""): 
   return a === "producao";
 }
 
+/**
+ * O módulo de acidentes está liberado nesta instalação? A especificação (§4)
+ * segura a PRODUÇÃO até o relatório (F6) e a emenda da ROPA (dado de saúde):
+ * sem `CSSO_MODULO_ACIDENTES=sim`, a produção mostra o módulo como "em
+ * desenvolvimento" e as rotas `/acidentes*` respondem 404. Fora da produção
+ * vale por padrão; `CSSO_MODULO_ACIDENTES=nao` desliga em qualquer ambiente.
+ */
+export function acidentesLiberado(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.CSSO_MODULO_ACIDENTES ?? "").trim().toLowerCase();
+  if (v === "sim") return true;
+  if (v === "nao" || v === "não") return false;
+  return !ehProducao(env.CSSO_AMBIENTE ?? "");
+}
+
 export class ConfiguracaoInsegura extends Error {
   constructor(readonly problemas: string[]) {
     super(

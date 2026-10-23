@@ -427,3 +427,8 @@ npm run criar-acessos
 ```
 
 Cada servidor define a senha em «Ativar meu acesso» (ou «Esqueci minha senha») na tela de login. Quem está sem e-mail institucional no cadastro não ganha acesso: a ficha e `/config` mostram quantos são.
+
+## 11. Liberar o módulo de acidentes
+
+O módulo Análise de Acidentes fica **seguro na produção** até o relatório (F6) e a emenda da ROPA que trata o dado de saúde: o cartão aparece «em desenvolvimento» e as telas `/acidentes` respondem 404. Para liberar, no painel do Netlify, acrescente `CSSO_MODULO_ACIDENTES=sim` e publique de novo. Para voltar a segurar, apague a variável (ou ponha `nao`) e publique.
+

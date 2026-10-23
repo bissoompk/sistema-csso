@@ -242,3 +242,26 @@ describe("a triagem pelas telas", () => {
     expect((await tit.post(`/acidentes/${oc.id}/assumir`, { versao: String(oc.versao) }, { seguir: false })).status).toBe(403);
   });
 });
+
+describe("o módulo seguro na produção (§4: até a F6 e a emenda da ROPA)", () => {
+  it("acidentesLiberado: produção só com CSSO_MODULO_ACIDENTES=sim; fora dela, por padrão", async () => {
+    const { acidentesLiberado } = await import("../src/config.js");
+    expect(acidentesLiberado({ CSSO_AMBIENTE: "producao" })).toBe(false);
+    expect(acidentesLiberado({ CSSO_AMBIENTE: "produção", CSSO_MODULO_ACIDENTES: "sim" })).toBe(true);
+    expect(acidentesLiberado({ CSSO_AMBIENTE: "teste" })).toBe(true);
+    expect(acidentesLiberado({ CSSO_AMBIENTE: "teste", CSSO_MODULO_ACIDENTES: "nao" })).toBe(false);
+  });
+
+  it("desligado, toda rota do módulo é 404, inclusive para a coordenação", async () => {
+    process.env.CSSO_MODULO_ACIDENTES = "nao";
+    try {
+      const cli = await como("coordenador_csso");
+      for (const caminho of ["/acidentes", "/acidentes/comunicar", "/acidentes/fila", "/acidentes/minhas", "/acidentes/1"]) {
+        expect((await cli.get(caminho, { seguir: false })).status, caminho).toBe(404);
+      }
+      expect((await cli.post("/acidentes/comunicar", formulario(), { seguir: false })).status).toBe(404);
+    } finally {
+      delete process.env.CSSO_MODULO_ACIDENTES;
+    }
+  });
+});

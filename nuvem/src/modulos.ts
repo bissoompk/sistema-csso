@@ -15,6 +15,7 @@
  * Carregá-lo liga os ganchos da casca em `web.ts` (`navegacao`, `cookieModulo`)
  * e registra o global `porta_de_entrada`.
  */
+import { acidentesLiberado } from "./config.js";
 import { EscopoNaoDeclarado, type UsuarioAtual } from "./servicos/rbac.js";
 import { PERMISSOES_VER as PERMISSOES_PENDENCIAS } from "./servicos/pendencias.js";
 import { tem_acesso_ao_modulo } from "./servicos/acesso_modulo.js";
@@ -598,6 +599,9 @@ export const MODULOS: readonly Modulo[] = [
         ["acidente.ver"],
       ),
     ],
+    // na produção, só com `CSSO_MODULO_ACIDENTES=sim` (`acidentesLiberado`):
+    // até a F6 e a emenda da ROPA o módulo aparece "em desenvolvimento"
+    disponivel: acidentesLiberado(),
     // entregue por fatias: a investigação, a saúde e o SIASS vêm depois da
     // fundação, e o que ainda falta continua declarado
     itens_previstos: [
@@ -737,18 +741,23 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
       new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true),
     ],
   },
-  {
-    titulo: "Acidentes",
-    itens: [
-      new Item(
-        "Minhas comunicações",
-        "/acidentes/minhas",
-        "acidente.ver",
-        "Os acidentes que você comunicou ou em que foi o acidentado, e em que pé estão.",
-        true,
-      ),
-    ],
-  },
+  // o grupo some junto com o módulo enquanto ele está seguro (`acidentesLiberado`)
+  ...(acidentesLiberado()
+    ? [
+        {
+          titulo: "Acidentes",
+          itens: [
+            new Item(
+              "Minhas comunicações",
+              "/acidentes/minhas",
+              "acidente.ver",
+              "Os acidentes que você comunicou ou em que foi o acidentado, e em que pé estão.",
+              true,
+            ),
+          ],
+        },
+      ]
+    : []),
   {
     titulo: "Adicional",
     itens: [

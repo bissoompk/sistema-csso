@@ -21,6 +21,7 @@
 import { Hono } from "hono";
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, or, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
+import { acidentesLiberado } from "../config.js";
 import { ErroHttp, RegraViolada } from "../nucleo/erros.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import type { Executor } from "../db/cliente.js";
@@ -65,6 +66,15 @@ import { hoje } from "../servicos/datas_br.js";
 import { comMensagem, fragmento, pagina, redirecionar } from "../web.js";
 
 export const rotas = new Hono<Ambiente>();
+
+// Enquanto o módulo está seguro na produção (`acidentesLiberado`, §4 da
+// especificação), toda rota dele é 404 — igual a uma rota que não existe.
+const _modulo_liberado = async (_c: Ctx, seguir: () => Promise<void>) => {
+  if (!acidentesLiberado()) throw new ErroHttp(404, "Página não encontrada.");
+  await seguir();
+};
+rotas.use("/acidentes", _modulo_liberado);
+rotas.use("/acidentes/*", _modulo_liberado);
 
 export const PAINEL = "/acidentes";
 export const COMUNICAR = "/acidentes/comunicar";
