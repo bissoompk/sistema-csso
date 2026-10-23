@@ -135,3 +135,32 @@ describe("situacao_do_acesso", () => {
     expect((await servico.situacao_do_acesso(db, com!)).situacao).toBe("ATIVO");
   });
 });
+
+describe("a saída do quadro encerra o acesso", () => {
+  const rotas_do_cadastro = async (id: number, situacao: string) => {
+    const { atualizar_cadastro } = await import("../src/servicos/servidores.js");
+    const { usuarioAtual } = await import("./ajuda.js");
+    const [sv] = await db.select().from(e.servidor).where(eq(e.servidor.id, id));
+    const [equipe] = await db.select().from(e.usuario).orderBy(asc(e.usuario.id)).limit(1);
+    const quem = await usuarioAtual(db, equipe!.login);
+    return atualizar_cadastro(db, sv!, quem, { nome: sv!.nome, siape: sv!.siape, email: sv!.email, situacao });
+  };
+
+  it("aposentado ou exonerado inativa a conta e derruba as sessões; voltar a ativo não reativa", async () => {
+    const s = await servidor();
+    await servico.garantir_acesso(db, s, ORIGEM);
+    await rotas_do_cadastro(s.id, "EXONERADO");
+    const [conta] = await contas_de(EMAIL);
+    expect(conta!.ativo).toBe(false);
+    expect(await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, servico.ACESSO_ENCERRADO_NA_SAIDA))).toHaveLength(1);
+    await rotas_do_cadastro(s.id, "ATIVO");
+    expect((await contas_de(EMAIL))[0]!.ativo).toBe(false);
+  });
+
+  it("licença e cessão não mexem na conta", async () => {
+    const s = await servidor();
+    await servico.garantir_acesso(db, s, ORIGEM);
+    await rotas_do_cadastro(s.id, "LICENCA");
+    expect((await contas_de(EMAIL))[0]!.ativo).toBe(true);
+  });
+});

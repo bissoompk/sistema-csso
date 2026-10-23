@@ -47,7 +47,7 @@
         {% if acesso %}
         <span class="ponto">·</span>
         <span class="discreto">Acesso:
-          {% if acesso.situacao == 'ATIVO' %}ativo
+          {% if acesso.situacao == 'ATIVO' %}ativo{% if acesso.motivo %} — {{ acesso.motivo }}{% endif %}
           {% elif acesso.situacao == 'AGUARDANDO_ATIVACAO' %}aguardando ativação (o servidor define a senha em “Ativar meu acesso”)
           {% else %}sem acesso{% if acesso.motivo %} — {{ acesso.motivo }}{% endif %}{% endif %}</span>
         {% endif %}

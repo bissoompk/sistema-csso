@@ -296,6 +296,7 @@ export async function atualizar_cadastro(
     usuario,
   });
   await ativar_acesso.garantir_acesso(tx, gravado!, { usuario });
+  if (situacao !== antes.situacao) await ativar_acesso.encerrar_acesso(tx, gravado!, { usuario });
   return gravado!;
 }
 

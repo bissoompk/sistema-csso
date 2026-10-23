@@ -52,7 +52,8 @@ import * as auditoria from "./auditoria.js";
 import * as autenticacao from "./autenticacao.js";
 import * as datas_br from "./datas_br.js";
 import * as email from "./email.js";
-import { TOPO_DA_HIERARQUIA, perfis_vigentes } from "./rbac.js";
+import * as governanca from "./governanca.js";
+import { TOPO_DA_HIERARQUIA, eh_conta_de_governo, perfis_vigentes } from "./rbac.js";
 
 export const CAMINHO = "/ativar-acesso";
 export const VALIDADE_MS = 3_600_000;
@@ -75,6 +76,8 @@ const SITUACOES_FORA = ["APOSENTADO", "EXONERADO"];
  */
 export const SEM_SENHA = "!sem-senha";
 export const ACESSO_CRIADO_NO_CADASTRO = "ACESSO_CRIADO_NO_CADASTRO";
+export const ACESSO_ENCERRADO_NA_SAIDA = "ACESSO_ENCERRADO_NA_SAIDA";
+export const ACESSO_MANTIDO_NA_SAIDA = "ACESSO_MANTIDO_NA_SAIDA";
 export const ACESSO_EMAIL_ACOMPANHOU_CADASTRO = "ACESSO_EMAIL_ACOMPANHOU_CADASTRO";
 
 export const PEDIDO_DE_ACESSO_RECUSADO = "PEDIDO_DE_ACESSO_RECUSADO";
@@ -339,6 +342,54 @@ export async function garantir_acesso(tx: Executor, servidor: Servidor, origem: 
   return "criada";
 }
 
+/**
+ * O servidor saiu do quadro (aposentado ou exonerado): a conta dele é inativada
+ * e as sessões, encerradas. Fica como está — e o motivo na trilha — a conta de
+ * administração e a última que concede perfil: inativá-las tira o governo do
+ * sistema, e isso é decisão de quem concede (`/usuarios`). Reativar é sempre
+ * ato da equipe: voltar a ser ativo no cadastro não reativa a conta.
+ */
+export async function encerrar_acesso(
+  tx: Executor,
+  servidor: Servidor,
+  origem: Origem,
+): Promise<"inativada" | "sem_conta" | "ja_inativa" | "mantida"> {
+  if (!SITUACOES_FORA.includes(servidor.situacao)) return "sem_conta";
+  await governanca.travar(tx);
+  const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.servidor_id, servidor.id)).limit(1);
+  if (!conta) return "sem_conta";
+  if (!conta.ativo) return "ja_inativa";
+  const { permissoes: com_futuras } = await perfis_vigentes(tx, conta.id, null, { incluir_futuras: true });
+  const { permissoes: hoje } = await perfis_vigentes(tx, conta.id);
+  const ultima =
+    hoje.has("perfil.conceder") && !(await governanca.contas_que_concedem(tx, { sem_conta: conta.id })).length;
+  if (eh_conta_de_governo(com_futuras) || ultima) {
+    await auditoria.registrar(tx, {
+      entidade: "usuario",
+      entidade_id: conta.id,
+      tipo_evento: ACESSO_MANTIDO_NA_SAIDA,
+      descricao:
+        `O servidor ficou ${servidor.situacao === "APOSENTADO" ? "aposentado" : "exonerado"}, mas a conta é de ` +
+        "administração (ou a última que concede perfil) e NÃO foi inativada: quem concede perfil decide em Usuários.",
+      ...origem,
+    });
+    return "mantida";
+  }
+  await tx.update(tabela_usuario).set({ ativo: false }).where(eq(tabela_usuario.id, conta.id));
+  const encerradas = await autenticacao.revogar_do_usuario(tx, conta.id);
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: ACESSO_ENCERRADO_NA_SAIDA,
+    descricao:
+      `Conta inativada porque o servidor ficou ${servidor.situacao === "APOSENTADO" ? "aposentado" : "exonerado"} ` +
+      `no cadastro; ${encerradas} sessão(ões) encerrada(s).`,
+    ...origem,
+  });
+  await governanca.sincronizar_aviso_de_cobertura(tx);
+  return "inativada";
+}
+
 export type SituacaoDoAcesso = "ATIVO" | "AGUARDANDO_ATIVACAO" | "SEM_ACESSO";
 
 /** Para a ficha do servidor: o acesso dele ao sistema e, quando não há, por quê. */
@@ -353,6 +404,9 @@ export async function situacao_do_acesso(
     .limit(1);
   if (conta) {
     if (!conta.ativo) return { situacao: "SEM_ACESSO", motivo: "conta inativa" };
+    if (SITUACOES_FORA.includes(servidor.situacao)) {
+      return { situacao: "ATIVO", motivo: "o servidor saiu do quadro e a conta segue ativa: quem concede perfil decide em Usuários" };
+    }
     return conta.senha_hash === SEM_SENHA
       ? { situacao: "AGUARDANDO_ATIVACAO", motivo: null }
       : { situacao: "ATIVO", motivo: null };
