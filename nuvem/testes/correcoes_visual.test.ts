@@ -6,7 +6,7 @@
  * - o "Meu espaço" de quem só tem o próprio (M47/M81): o menu muda, a porta
  *   não — cada item tem de abrir, e nenhum item da equipe aparece;
  * - o item Pendências usa a MESMA tupla da rota (M83);
- * - a engrenagem de /config segue a tupla combinada com `PERMISSOES_CONFIG`;
+ * - a engrenagem de /config segue a mesma conta da rota (`ve_config`);
  * - o service worker não guarda a página com o nome de quem entrou (D59);
  * - a tela de bolso não cita código de permissão (M53);
  * - as ações da tela saíram do cabeçalho de 62px (D39/D12).
@@ -180,19 +180,13 @@ describe("a casca", () => {
     expect(corpo).toMatch(/\d+ pendência\(s\) aberta\(s\) sob sua responsabilidade/);
   });
 
-  it("a engrenagem de /config aparece exatamente para quem ajusta o sistema", async () => {
-    const ajusta = ["processo.editar", "catalogo.gerenciar", "backup.executar"];
-    for (const [perfil, def] of Object.entries(MATRIZ_PERFIS)) {
+  it("a engrenagem de /config aparece exatamente para quem a rota abre", async () => {
+    for (const perfil of Object.keys(MATRIZ_PERFIS)) {
       const cliente = await entrar(novoCliente(), perfil);
       const corpo = (await cliente.get("/modulos")).text;
-      const espera = ajusta.some((p) => (def.permissoes as readonly string[]).includes(p));
-      expect(corpo.includes('href="/config"'), perfil).toBe(espera);
+      const abre = (await cliente.get("/config")).status === 200;
+      expect(corpo.includes('href="/config"'), perfil).toBe(abre);
     }
-  });
-
-  it("a tupla da engrenagem é a da rota de /config (depende de PERMISSOES_CONFIG, lote base-admin)", async () => {
-    const { PERMISSOES_CONFIG } = await import("../src/rotas/configuracao.js");
-    expect([...PERMISSOES_CONFIG].sort()).toEqual(["backup.executar", "catalogo.gerenciar", "processo.editar"]);
   });
 });
 

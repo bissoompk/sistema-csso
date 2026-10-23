@@ -1460,3 +1460,26 @@ Decisão do usuário: no módulo Certificados e Treinamentos, **só o dono alter
 - **Exceção consciente: o que é do titular.** As permissões do titular (`PERMISSOES_DO_TITULAR`) continuam no «Meu espaço» e no portal: a própria ficha de EPI, os próprios pedidos, os treinamentos, os certificados, os processos, o adicional e o Início. Pela URL, `/epis` abre o painel **pessoal**, `/processos` mostra só os dele e o catálogo de EPI abre em leitura, como para qualquer servidor (não nomeia ninguém). Nenhum desses aparece como módulo no menu.
 - **A base compartilhada não depende de Processos SEI** (decisão do usuário, 23/10/2026). Servidores e Catálogos eram guardados por `processo.ver`. Agora usam a permissão **derivada** `@base` (`niveis_modulo.PERMISSAO_DA_BASE`). Ela não fica no banco nem em `UsuarioAtual.permissoes`, e a API não muda. Fica só na concessão que já lia a base (`processo.ver` do perfil, antes ou depois do nível) **e** ainda dá algum módulo (Processos SEI, EPI ou Certificados), com o mesmo alcance dessa concessão. Quem não lia a base (o almoxarife) continua sem ela; sem módulo nenhum, a base fecha. Na ficha do servidor, processos, pareceres e adicionais só aparecem com Processos SEI na equipe (ou na própria ficha). **Editar** o cadastro continua pedindo `processo.criar`/`processo.editar`, que são do módulo. O Painel `/` é de Processos SEI. Sem ele, quem tem vínculo abre o Início do titular, e quem não tem é levado pelo `/inicio` à primeira tela que abre.
 - **Testes:** `testes/sem_acesso_modulo.test.ts` cobre perfil e pessoa, os três módulos, menu, `/modulos`, rota direta, `/inicio`, união, titular preservado e base.
+
+## Configurações conforme o perfil (23/10/2026)
+
+Pedido: «a parte de configurações do sistema deve aparecer só as informações conforme perfil de acesso liberado». `/config` passou a montar bloco por bloco; o mapa bloco → módulo/permissão está num lugar só, `blocos_config` em `src/rotas/configuracao.ts`. A rota GET, as rotas POST, o template e a engrenagem do cabeçalho (`ve_config`, global dos templates, usado em `base.html`) leem desse mapa.
+
+| Bloco | Módulo | Permissão | Dado que expõe |
+|---|---|---|---|
+| Setor emissor + Autoridade destinatária (leitura) | Processos SEI liberado | `processo.editar` ou `catalogo.gerenciar` | sigla, nome e vigência do setor; nome e cargo da autoridade |
+| Links para os catálogos de setor e autoridade | Processos SEI | o mesmo, mais `catalogo.gerenciar` | — |
+| SLA por coluna (leitura) | Processos SEI | `processo.editar` ou `catalogo.gerenciar` | prazo de cada coluna |
+| Editar os prazos (formulário + `POST /config/sla`) | Processos SEI em Operação | `catalogo.gerenciar` e `processo.editar` | grava `parametro` |
+| Integração com o SEI + passo a passo | Processos SEI | `processo.editar` ou `catalogo.gerenciar` | versão do SEI alvo, passos de inclusão |
+| Retirada de EPI | Gestão de EPI liberado | gestão de EPI na equipe: `epi.catalogo`, `epi.entregar`, `epi.estoque` ou `epi.analisar` | `CSSO_EPI_LOCAL_RETIRADA` |
+| Onde o dado mora | administração do sistema | `backup.executar` | host/porta/banco do Postgres, bucket e prefixos |
+| Backup cifrado (botão + `POST /config/backup`) | administração do sistema | `backup.executar` | gera `.enc` |
+| Exportar tudo (botão + `POST /config/exportar-tudo`) | transversal | `pode_exportar_tudo` (`exportar` + `perfil.conceder`/`catalogo.gerenciar`) e `exposicao.ver` | o banco inteiro em claro |
+
+- **Módulo liberado**: a conta tem alguma permissão do módulo, já com o nível aplicado (`niveis_modulo.ts`; «Sem acesso» tira todas), **no trabalho da equipe** (`pode_na_equipe`). As funções do titular sozinhas não contam. O teste de módulo liberado é a função única `tem_acesso_ao_modulo` (`servicos/acesso_modulo.ts`).
+- **Seções**: o título «Configuração do setor» ou «Sistema» só sai se a seção tiver algum bloco. A **Integração com o SEI** mudou de «Sistema» para «Configuração do setor», porque é do módulo Processos SEI. Por isso o `admin_ti` deixou de vê-la.
+- **Sem bloco nenhum**: `GET /config` responde 403 com o recado curto «Não há configuração liberada para o seu perfil de acesso.», e a engrenagem some. Hoje isso vale para `servidor_consulta`, `auditor_interno` e `consulta_progep`, e para qualquer conta que fique sem bloco depois do nível por módulo.
+- **DESVIO do comportamento anterior**: o `almoxarife_sesmt` **passou a entrar** em `/config` e vê só a «Retirada de EPI», que é dele, porque é quem atende o pedido. Os testes que pediam 403 para ele foram trocados para o `servidor_consulta` e o `auditor_interno`. A `secretaria_csso` deixou de ver a Retirada de EPI, porque não gere EPI. O `admin_ti` deixou de ver a Integração com o SEI.
+- **POST**: `/config/sla` também exige o módulo Processos SEI em Operação (antes bastava `catalogo.gerenciar`, mesmo com o módulo em «Sem acesso»). `/config/backup` e `/config/exportar-tudo` já recusavam com 403 e foram conferidos. Testes em `testes/config_por_perfil.test.ts`.
+- `PERMISSOES_CONFIG` foi removido. O invariante «engrenagem = rota» agora é cobrado perfil a perfil, comparando a engrenagem com o status de `GET /config` (`testes/correcoes_visual.test.ts`).

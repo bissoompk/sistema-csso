@@ -2,24 +2,28 @@
  * /config — parâmetros operacionais, backup e exportação.
  * Porte de `app/rotas/configuracao.py`.
  *
- * Quem abre `/config`: a página é uma só, em duas seções. **Configuração do
- * setor** (SLA, setor emissor, autoridade destinatária, local de retirada de
- * EPI) é de quem instrui processo ou gere catálogo (`processo.editar`,
- * `catalogo.gerenciar`); **Sistema** (onde o dado mora, backup, exportação) é
- * de quem opera a máquina (`backup.executar`) — e a exportação completa também
- * de quem `pode_exportar_tudo`. A ROTA aceita qualquer uma das três; a TELA
- * reparte, e o que a conta não pode ler nem vai ao contexto.
+ * Configurações conforme o perfil (23/10/2026): cada bloco da tela tem DONO —
+ * um módulo e uma permissão — e só aparece a quem tem os dois
+ * (`blocos_config`). Os blocos de Processos SEI (setor emissor, autoridade,
+ * SLA, integração com o SEI) somem com o módulo em "Sem acesso"; a retirada de
+ * EPI é de quem gere EPI; onde o dado mora e o backup, de quem opera a máquina.
+ * O título de seção sem bloco não sai, e a conta sem bloco nenhum não entra
+ * (403 com recado curto) nem vê a engrenagem do cabeçalho — a engrenagem chama
+ * a MESMA função (`ve_config`, global dos templates).
  *
  * Era `processo.ver` (D47): o servidor comum (`servidor_consulta`) tem essa
  * permissão para acompanhar o PRÓPRIO processo, e entrava aqui lendo o host do
- * banco e os caminhos de disco da instalação.
+ * banco e os caminhos de disco da instalação. Continua fora: ler o setor exige,
+ * além do módulo, quem instrui processo ou gere catálogo.
  */
+import { tem_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { Hono } from "hono";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import { obterConfig, VERSAO } from "../config.js";
 import { autoridade_destinataria, setor_emissor } from "../db/esquema/index.js";
-import { PermissaoNegada, type UsuarioAtual } from "../servicos/rbac.js";
+import { EscopoNaoDeclarado, PermissaoNegada, type UsuarioAtual } from "../servicos/rbac.js";
+import { modulo_nivelado, permissoes_do_modulo } from "../servicos/niveis_modulo.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as servico_backup from "../servicos/backup.js";
 import { RotinaFalhou, conferir_senha_do_backup } from "../servicos/rotinas.js";
@@ -29,30 +33,105 @@ import { COLUNAS_KANBAN } from "../dominio/estados.js";
 import { obterArmazenamento, pastaLocal } from "../servicos/armazenamento.js";
 import { dicionario } from "../dicionario.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
-import { marcarDownload, pagina, redirecionar } from "../web.js";
+import { global, marcarDownload, pagina, redirecionar } from "../web.js";
 
 export const rotas = new Hono<Ambiente>();
 
-/**
- * A tupla que abre a página — e a mesma que guarda a engrenagem de `base.html`.
- * `processo.ver` fica de fora de propósito: é a permissão do servidor comum.
- */
-export const PERMISSOES_CONFIG: readonly string[] = ["processo.editar", "catalogo.gerenciar", "backup.executar"];
-
-/** Qualquer uma de `PERMISSOES_CONFIG` — não precisa das três. */
-function _exigir_config(usuario: UsuarioAtual): void {
-  if (!PERMISSOES_CONFIG.some((codigo) => usuario.pode(codigo))) {
-    throw new PermissaoNegada(
-      PERMISSOES_CONFIG[0]!,
-      "A configuração abre para quem instrui processo ou gere os catálogos do setor, " +
-        "e para quem opera o backup do sistema.",
-    );
+/** `pode_na_equipe` sem derrubar a tela: perfil sem escopo declarado conta como equipe. */
+function _na_equipe(usuario: UsuarioAtual, permissao: string): boolean {
+  try {
+    return usuario.pode_na_equipe(permissao);
+  } catch (erro) {
+    if (erro instanceof EscopoNaoDeclarado) return true;
+    throw erro;
   }
 }
 
-/** A seção "Configuração do setor": parâmetro do processo, não da máquina. */
-export function ve_config_do_setor(usuario: UsuarioAtual): boolean {
-  return usuario.pode("processo.editar") || usuario.pode("catalogo.gerenciar");
+/** As permissões de quem GERE EPI (o "Retirada de EPI" é de quem atende o pedido). */
+export const PERMISSOES_GESTAO_EPI: readonly string[] = ["epi.catalogo", "epi.entregar", "epi.estoque", "epi.analisar"];
+
+/** O que cada conta vê em /config — bloco a bloco. */
+export interface BlocosConfig {
+  /** Setor emissor + autoridade destinatária (leitura) */
+  setor_emissor: boolean;
+  /** SLA por coluna (leitura) */
+  sla: boolean;
+  /** o formulário do SLA (POST /config/sla) */
+  editar_sla: boolean;
+  /** os links para os catálogos de setor/autoridade */
+  catalogos: boolean;
+  /** Integração com o SEI (e o passo a passo) */
+  integracao_sei: boolean;
+  /** Retirada de EPI (leitura do .env) */
+  retirada_epi: boolean;
+  /** Onde o dado mora (host do banco, caminhos) */
+  onde_mora: boolean;
+  /** o botão e o POST do backup cifrado */
+  backup: boolean;
+  /** o botão e o POST da exportação completa */
+  exportar_tudo: boolean;
+  /** a seção "Configuração do setor" tem algum bloco */
+  secao_setor: boolean;
+  /** a seção "Sistema" tem algum bloco */
+  secao_sistema: boolean;
+  /** sobra algum bloco — abre a tela e mostra a engrenagem */
+  algum: boolean;
+}
+
+/**
+ * O mapa bloco → módulo/permissão, num lugar só. A rota GET, as POST, o
+ * template e a engrenagem de `base.html` leem daqui.
+ */
+export function blocos_config(usuario: UsuarioAtual): BlocosConfig {
+  const processos = tem_acesso_ao_modulo(usuario, "processos-sei");
+  // quem ajusta o setor: instrui processo ou gere catálogo. `processo.ver`
+  // sozinho (servidor comum, auditor, PROGEP) não basta — D47.
+  const do_setor = processos && (usuario.pode("processo.editar") || usuario.pode("catalogo.gerenciar"));
+  const editar_sla = do_setor && usuario.pode("catalogo.gerenciar") && usuario.pode("processo.editar");
+  const retirada_epi =
+    tem_acesso_ao_modulo(usuario, "epis") &&
+    PERMISSOES_GESTAO_EPI.some((p) => usuario.pode(p) && _na_equipe(usuario, p));
+  const onde_mora = usuario.pode("backup.executar");
+  const backup = usuario.pode("backup.executar");
+  const exportar_tudo = pode_exportar_tudo(usuario) && usuario.pode("exposicao.ver");
+  const secao_setor = do_setor || retirada_epi;
+  const secao_sistema = onde_mora || backup || exportar_tudo;
+  return {
+    setor_emissor: do_setor,
+    sla: do_setor,
+    editar_sla,
+    catalogos: do_setor && usuario.pode("catalogo.gerenciar"),
+    integracao_sei: do_setor,
+    retirada_epi,
+    onde_mora,
+    backup,
+    exportar_tudo,
+    secao_setor,
+    secao_sistema,
+    algum: secao_setor || secao_sistema,
+  };
+}
+
+/** A engrenagem do cabeçalho (`base.html`) usa a mesma conta da rota. */
+export function ve_config(usuario: UsuarioAtual | null | undefined): boolean {
+  return !!usuario && blocos_config(usuario).algum;
+}
+global("ve_config", ve_config);
+
+function _exigir_config(usuario: UsuarioAtual): BlocosConfig {
+  const blocos = blocos_config(usuario);
+  if (!blocos.algum) {
+    throw new PermissaoNegada(
+      "configuracao",
+      "Não há configuração liberada para o seu perfil de acesso.",
+    );
+  }
+  return blocos;
+}
+
+/** Recusa o POST cujo bloco a conta não vê — a tela não é a barreira. */
+function _exigir_bloco(ok: boolean, codigo: string, mensagem: string): void {
+  if (!ok) throw new PermissaoNegada(codigo, mensagem);
 }
 
 /**
@@ -82,27 +161,24 @@ function _onde_mora() {
 }
 
 async function _tela(c: Ctx, usuario: UsuarioAtual, recado: { mensagem?: string | null; erro?: string | null } = {}) {
-  _exigir_config(usuario);
+  const blocos = _exigir_config(usuario);
   const tx = c.get("tx");
   const cfg = obterConfig();
-  // o que é do setor só é CONSULTADO por quem pode lê-lo; o que é da máquina
-  // (host do banco, caminhos) nem vai ao contexto sem `backup.executar`
-  const do_processo = ve_config_do_setor(usuario);
-  const da_maquina = usuario.pode("backup.executar");
+  // o que a conta não vê nem vai ao contexto
+  const do_processo = blocos.setor_emissor;
   return pagina(c, "paginas/config.html", usuario, {
-    cfg: { ambiente: cfg.ambiente, epi_local_retirada: do_processo ? cfg.epiLocalRetirada : "" },
-    pode_exportar_tudo: pode_exportar_tudo(usuario),
-    onde: da_maquina ? _onde_mora() : null,
-    da_maquina,
+    cfg: { ambiente: cfg.ambiente, epi_local_retirada: blocos.retirada_epi ? cfg.epiLocalRetirada : "" },
+    blocos,
+    pode_exportar_tudo: blocos.exportar_tudo,
+    onde: blocos.onde_mora ? _onde_mora() : null,
     versao: VERSAO,
-    do_processo,
     // o código da coluna é chave do parâmetro; a tela mostra o rótulo do quadro
     rotulo_coluna: Object.fromEntries(COLUNAS_KANBAN),
-    sla: dicionario(do_processo ? await sla_vigente(tx) : {}),
+    sla: dicionario(blocos.sla ? await sla_vigente(tx) : {}),
     sla_padrao: SLA_PADRAO,
     setores: do_processo ? await tx.select().from(setor_emissor) : [],
     destinatarios: do_processo ? await tx.select().from(autoridade_destinataria) : [],
-    passos_sei: do_processo ? sei.PASSOS_INCLUSAO : [],
+    passos_sei: blocos.integracao_sei ? sei.PASSOS_INCLUSAO : [],
     versao_sei: sei.VERSAO_SEI_ALVO,
     mensagem: recado.mensagem ?? null,
     erro: recado.erro ?? null,
@@ -118,6 +194,13 @@ rotas.get("/config", async (c) => {
 rotas.post("/config/sla", async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("catalogo.gerenciar");
+  // e o módulo Processos SEI em Operação: o catálogo sozinho não grava o prazo
+  // de um quadro que a conta nem vê
+  _exigir_bloco(
+    blocos_config(usuario).editar_sla,
+    "processo.editar",
+    "Editar o SLA é de quem opera o módulo Processos SEI e gere os catálogos.",
+  );
   const f = await formulario(c);
   const valores: Record<string, number> = {};
   for (const coluna of Object.keys(SLA_PADRAO)) {

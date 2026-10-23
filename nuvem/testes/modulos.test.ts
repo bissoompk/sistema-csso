@@ -351,7 +351,7 @@ describe("telas", async () => {
     expect((await cliente.get("/modulos")).text).toContain('href="/config"');
     await entrar(cliente, "admin_ti");
     expect((await cliente.get("/modulos")).text).toContain('href="/config"');
-    await entrar(cliente, "almoxarife_sesmt");
+    await entrar(cliente, "servidor_consulta");
     expect((await cliente.get("/modulos")).text).not.toContain('href="/config"');
   });
 });

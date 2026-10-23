@@ -27,7 +27,7 @@ const MATRIZ: [string, string, string | null][] = [
   ["/servidores", "coordenador_csso", "admin_ti"],
   ["/catalogos", "coordenador_csso", "admin_ti"],
   ["/auditoria", "auditor_interno", "secretaria_csso"],
-  ["/config", "coordenador_csso", "almoxarife_sesmt"],
+  ["/config", "coordenador_csso", "servidor_consulta"],
   ["/config", "admin_ti", null],
   // D24: o admin_ti, que cria conta, abre a matriz; quem não governa acesso nem lê processo, não
   ["/perfis", "coordenador_csso", "almoxarife_sesmt"],
