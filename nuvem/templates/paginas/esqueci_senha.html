@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{# "Esqueci minha senha" para qualquer conta (servidor, terceirizado, discente):
+   só o e-mail de entrada. O link vai ao e-mail da conta e responde sempre igual. #}
+{% set sem_casca = true %}
+{% block titulo %}Esqueci minha senha · SISA{% endblock %}
+{% block classe_conteudo %}tela-auxiliar estreita{% endblock %}
+
+{% block conteudo %}
+{% if recebido %}
+<div class="cartao">
+  <h1>Verifique o seu e-mail</h1>
+  <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
+  <p><a href="/login">Voltar para a entrada</a></p>
+</div>
+{% else %}
+<div class="cartao">
+  <h1>Esqueci minha senha</h1>
+  <p class="sub">Digite o e-mail com que você entra no Sistema SISA. Enviamos para ele um link para
+    definir uma senha nova.</p>
+  {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+  <form method="post" action="{{ caminho }}">
+    <div class="campo"><label for="esqueci-email">E-mail</label>
+      <input id="esqueci-email" name="email" type="email" value="{{ digitado }}" required autofocus
+             maxlength="160" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="nome@ufvjm.edu.br"></div>
+    <div class="acoes"><button type="submit" class="largo">Receber o link</button></div>
+  </form>
+  <p class="discreto rodape-cartao sem-margem"><a href="/login">Lembrei: entrar</a> ·
+    <a href="/cadastre-se">Ainda não tenho acesso</a></p>
+</div>
+{% endif %}
+{% endblock %}

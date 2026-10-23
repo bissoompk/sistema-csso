@@ -37,6 +37,8 @@
 {{ ui.botao_cadastro('conceder-perfil', CONCEDER_PERFIL, 'secundario') }}
 {% endif %}
 {% if usuario.pode('usuario.criar_conta') %}
+{# os pedidos do Cadastre-se (terceirizado e discente) que a equipe confere #}
+<a class="botao secundario" href="/usuarios/pedidos">Pedidos de conta</a>
 {{ ui.botao_cadastro('nova-conta', CADASTRAR_CONTA) }}
 {% endif %}
 {% endblock %}
@@ -486,8 +488,20 @@
 {% if usuario.pode('usuario.criar_conta') %}
 {% call ui.popup_cadastro('nova-conta', CADASTRAR_CONTA, '/usuarios', CADASTRAR_CONTA,
                           aberto=(forma == 'conta'), erro=erro_conta,
-                          nota=('perfil e servidor são opcionais' if usuario.pode('perfil.conceder')
-                                else 'a conta nasce sem perfil nenhum')) %}
+                          nota='o vínculo decide o perfil') %}
+  {# O vínculo decide o perfil (23/10/2026): servidor → "Servidor (os próprios
+     dados)", terceirizado e discente → os perfis deles, que comunicam acidente
+     e se inscrevem em treinamento, mas não pedem EPI. Em branco é conta de
+     equipe: o perfil é o escolhido abaixo, ou nenhum. #}
+  <div class="campo"><label for="conta-vinculo">Vínculo</label>
+    <select id="conta-vinculo" name="vinculo" aria-describedby="dica-conta-vinculo">
+      <option value="">Equipe (sem vínculo de titular)</option>
+      {% if usuario.pode('perfil.conceder') %}<option value="SERVIDOR"{{ ui.sel(d['vinculo'], 'SERVIDOR') }}>Servidor</option>{% endif %}
+      <option value="TERCEIRIZADO"{{ ui.sel(d['vinculo'], 'TERCEIRIZADO') }}>Terceirizado</option>
+      <option value="DISCENTE"{{ ui.sel(d['vinculo'], 'DISCENTE') }}>Discente</option>
+    </select>
+    <span class="dica" id="dica-conta-vinculo">Servidor, terceirizado e discente já nascem com o perfil do
+      vínculo. Terceirizado e discente comunicam acidente e se inscrevem em treinamento; não pedem EPI.</span></div>
   <div class="campo"><label for="conta-nome">Nome</label>
     <input id="conta-nome" name="nome" required value="{{ d['nome'] or '' }}"></div>
   {# Sem campo de login (23/10/2026): o login é o e-mail cadastrado, em
@@ -504,7 +518,7 @@
   {# Opcionais, e no MESMO envio: a conta já nasce abrindo o que precisa. O
      ato em branco entra como "pendente", como em Conceder perfil. #}
   <div class="linha-campos">
-    <div class="campo"><label for="conta-perfil">Perfil (opcional)</label>
+    <div class="campo"><label for="conta-perfil">Perfil de equipe (opcional)</label>
       <select id="conta-perfil" name="perfil_id"><option value="">nenhum</option>
         {% for p in perfis_ativos %}<option value="{{ p.id }}"{{ ui.sel(d['perfil_id'], p.id) }}>{{ p.nome }} — {{ p.escopo }}</option>{% endfor %}</select></div>
     <div class="campo"><label for="conta-campus">Campus (escopo)</label>
@@ -517,9 +531,9 @@
   <div class="campo"><label for="conta-servidor">Servidor (SIAPE ou nome, opcional)</label>
     <input id="conta-servidor" name="servidor" list="lista-servidores"
            value="{{ d['servidor'] or '' }}" aria-describedby="dica-conta-servidor">
-    <span class="dica" id="dica-conta-servidor">Em branco, vincula sozinho o servidor
-      que tiver o mesmo e-mail. É o vínculo que abre “minha ficha de EPI” e
-      “meus certificados”.</span></div>
+    <span class="dica" id="dica-conta-servidor">Com o vínculo Servidor, informe o SIAPE (em branco,
+      vincula sozinho o servidor que tiver o mesmo e-mail). Terceirizado e discente não se vinculam
+      a servidor.</span></div>
   {% endif %}
   <p class="discreto rodape-cartao sem-margem">A senha provisória aparece uma única
     vez, na faixa verde do topo da lista. Não existe <code>admin/admin</code>.</p>

@@ -61,6 +61,7 @@ import * as servico_servidores from "./servidores.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import * as setor_equipe from "./setor_equipe.js";
 import * as textos from "./textos.js";
+import * as titular_externo from "./titular_externo.js";
 import PizZip from "pizzip";
 import {
   COM_TAGS,
@@ -199,8 +200,14 @@ export function recusa_de_ato_sobre_o_proprio(
  * próprio exige `treinamento.ver`; ler o de outro exige `certificado.ver` — a
  * mesma assimetria da ficha de EPI.
  */
-export function exigir_leitura_do_certificado(usuario: UsuarioAtual, servidor_id: number | null): boolean {
-  const propria = usuario.servidor_id !== null && usuario.servidor_id === servidor_id;
+export function exigir_leitura_do_certificado(
+  usuario: UsuarioAtual,
+  servidor_id: number | null,
+  // o terceirizado e o discente não têm `servidor_id`: quem chama diz se o
+  // certificado é do participante ligado à conta (`do_titular_externo`)
+  proprio_externo = false,
+): boolean {
+  const propria = proprio_externo || (usuario.servidor_id !== null && usuario.servidor_id === servidor_id);
   if (propria) {
     usuario.exigir("treinamento.ver");
     return false;
@@ -217,11 +224,47 @@ anexo_acesso.declarar_porta("exigir_leitura_do_certificado", (usuario, servidor_
 });
 
 /**
+ * O certificado é do participante ligado à conta do terceirizado/discente
+ * (`titular_externo.ts`)? Sempre `false` para quem não é titular externo — o
+ * servidor responde pelo `servidor_id`.
+ */
+export async function do_titular_externo(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  certificado: Pick<CertificadoRegistro, "participante_id">,
+): Promise<boolean> {
+  const proprio = await titular_externo.id_do_participante_da_conta(tx, usuario);
+  return proprio !== null && proprio === certificado.participante_id;
+}
+
+/**
+ * A leitura do terceirizado/discente: o certificado `certificado_id` só se for
+ * do participante ligado à conta. `aplicar_escopo` não serve aqui — o escopo
+ * próprio dele recorta por `servidor_id`, que a conta não tem.
+ */
+export async function do_titular_externo_por_id(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  certificado_id: number,
+): Promise<CertificadoRegistro | null> {
+  const proprio = await titular_externo.id_do_participante_da_conta(tx, usuario);
+  if (proprio === null) return null;
+  const [achado] = await tx
+    .select()
+    .from(tabela_certificado)
+    .where(and(eq(tabela_certificado.id, certificado_id), eq(tabela_certificado.participante_id, proprio)));
+  return achado ?? null;
+}
+
+/**
  * A condição de "meus certificados": `servidor_id` fixo no da conta, sem
  * `aplicar_escopo` (não alarga quando o escopo do perfil alargar). `-1` no
- * lugar de null para não virar `servidor_id IS NULL`.
+ * lugar de null para não virar `servidor_id IS NULL`. Para o terceirizado e o
+ * discente, o participante ligado à conta (`participante_id`, de
+ * `titular_externo.id_do_participante_da_conta`).
  */
-export function consulta_do_titular(usuario: UsuarioAtual) {
+export function consulta_do_titular(usuario: UsuarioAtual, participante_id: number | null = null) {
+  if (titular_externo.eh_titular_externo(usuario)) return eq(tabela_certificado.participante_id, participante_id ?? -1);
   return eq(tabela_certificado.servidor_id, usuario.servidor_id ?? -1);
 }
 
@@ -914,7 +957,7 @@ export async function segunda_via(
   _opcoes: { gerar_pdf?: boolean } = {},
 ): Promise<ResultadoSegundaVia> {
   // chamada pelo efeito: é ela que levanta para quem não pode ler
-  exigir_leitura_do_certificado(usuario, certificado.servidor_id);
+  exigir_leitura_do_certificado(usuario, certificado.servidor_id, await do_titular_externo(tx, usuario, certificado));
   const via = await _reimprimir(tx, certificado, usuario, "");
   // a segunda via do PRÓPRIO certificado não entra em `acesso_dado_sensivel`
   await auditoria.registrar_leitura_nominal(tx, usuario, "certificado", {
@@ -1014,7 +1057,7 @@ export async function pdf_do_modelo_enviado(
   certificado: CertificadoRegistro,
 ): Promise<{ nome: string; bytes: Uint8Array }> {
   // o guardado não passa pela segunda via: a leitura é conferida aqui
-  exigir_leitura_do_certificado(usuario, certificado.servidor_id);
+  exigir_leitura_do_certificado(usuario, certificado.servidor_id, await do_titular_externo(tx, usuario, certificado));
   const congelado = certificado.contexto_congelado as Record<string, unknown>;
   const chave = conversor_pdf.chave_do_pdf(
     certificado.id,

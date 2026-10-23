@@ -89,6 +89,9 @@ export const TIPOS: Record<string, readonly [string, number]> = {
   // o prazo real é o da própria ação do plano
   ACIDENTE_ACAO_PRAZO: ["Cumprir a ação do plano de um acidente", 30],
   ACIDENTE_AGUARDA_PERICIA: ["Acompanhar a decisão da perícia do SIASS", 60],
+  // o Cadastre-se do terceirizado e do discente (`pedido_conta.ts`): nasce sem
+  // responsável e se fecha sozinha quando o pedido é aprovado ou recusado
+  CONTA_A_CONFERIR: ["Conferir pedido de conta de terceirizado ou discente", 5],
 };
 
 // ---------------------------------------------------------------------
@@ -144,6 +147,7 @@ export const PERMISSAO_CONCLUIR_POR_TIPO: Readonly<Record<string, string>> = Obj
   ACIDENTE_INVESTIGAR: "acidente.investigar",
   ACIDENTE_ACAO_PRAZO: "acidente.investigar",
   ACIDENTE_AGUARDA_PERICIA: "acidente.siass",
+  CONTA_A_CONFERIR: "usuario.criar_conta",
 });
 
 export function pode_ver(usuario: UsuarioAtual | null | undefined): boolean {
@@ -478,6 +482,8 @@ const _LUGAR_DA_ENTIDADE: Readonly<Record<string, readonly [string, string, stri
   certificado: ["Certificado", "/certificados/", "", "certificado.ver"],
   // o número que se mostra é o protocolo (`CAT-2026-0001`); o texto não leva nome
   acidente_ocorrencia: ["Ocorrência de acidente", "/acidentes/", "", "acidente.ver"],
+  // a fila é uma tela só; o número leva à linha do pedido
+  pedido_conta: ["Pedido de conta nº", "/usuarios/pedidos#pedido-", "", "usuario.criar_conta"],
 };
 
 async function _mapa<T extends { id: number }>(

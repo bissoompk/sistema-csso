@@ -91,6 +91,20 @@ export async function _mesclar(
         "e é o externo que se junta a ele.",
     );
   }
+  // a conta de terceirizado ou discente (`participante.usuario_id`) vai junto
+  // com a pessoa; duas contas são duas pessoas, e conta externa não vira servidor
+  if (mantido.usuario_id !== null && absorvido.usuario_id !== null) {
+    throw new MesclagemRecusada(
+      "Os dois cadastros estão ligados a contas diferentes do sistema: não são a mesma pessoa. " +
+        "Se uma conta está duplicada, inative-a em Usuários antes de juntar.",
+    );
+  }
+  if (mantido.servidor_id !== null && absorvido.usuario_id !== null) {
+    throw new MesclagemRecusada(
+      `${absorvido.identificador_publico} está ligado a uma conta de terceirizado ou discente, e o outro é de ` +
+        "servidor. Se a pessoa é servidor, inative a conta externa em Usuários antes de juntar.",
+    );
+  }
   if (mantido.cpf && absorvido.cpf && mantido.cpf !== absorvido.cpf) {
     throw new MesclagemRecusada(
       "Os dois têm CPFs diferentes gravados para o certificado: não parecem a mesma pessoa. " +
@@ -164,11 +178,16 @@ export async function _mesclar(
   if (Object.keys(completar).length) {
     await tx.update(tabela_participante).set(completar).where(eq(tabela_participante.id, mantido.id));
   }
-  // o absorvido fica (a trilha e os relatórios antigos resolvem por ele), sem CPF
+  // o absorvido fica (a trilha e os relatórios antigos resolvem por ele), sem
+  // CPF e sem a conta, que passa ao mantido (UNIQUE: primeiro sai, depois entra)
   await tx
     .update(tabela_participante)
-    .set({ mesclado_em_id: mantido.id, ativo: false, cpf: null, suspeita_duplicado_em: null })
+    .set({ mesclado_em_id: mantido.id, ativo: false, cpf: null, suspeita_duplicado_em: null, usuario_id: null })
     .where(eq(tabela_participante.id, absorvido.id));
+  const conta_movida = absorvido.usuario_id;
+  if (conta_movida !== null) {
+    await tx.update(tabela_participante).set({ usuario_id: conta_movida }).where(eq(tabela_participante.id, mantido.id));
+  }
   // a dúvida do mantido, se havia, foi resolvida por quem juntou
   if (mantido.suspeita_duplicado_em !== null) {
     await tx.update(tabela_participante).set({ suspeita_duplicado_em: null }).where(eq(tabela_participante.id, mantido.id));
@@ -182,6 +201,7 @@ export async function _mesclar(
     principal_herdado: completar.email_principal_id ?? null,
     campos_herdados: Object.keys(completar).filter((k) => k !== "email_principal_id"),
     absorvido_tinha_cpf: Boolean(absorvido.cpf),
+    conta_movida,
   };
   await tx.insert(tabela_mesclagem).values({
     mantido_id: mantido.id,

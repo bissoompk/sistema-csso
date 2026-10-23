@@ -64,7 +64,8 @@ describe("Visão geral: quem vê qual cartão", () => {
 
   it("cada conta de equipe vê exatamente os módulos que a lateral oferece, e cada botão abre", async () => {
     for (const [login] of PERFIS_DE_TESTE) {
-      if (login === "servidor_consulta") continue;
+      // os titulares (servidor, terceirizado, discente) não são equipe: não têm Visão geral
+      if (["servidor_consulta", "terceirizado", "discente"].includes(login)) continue;
       const usuario = await usuarioAtual(db, login);
       const html = await _visao(login);
       const vistos = new Set(_cartoes(html));

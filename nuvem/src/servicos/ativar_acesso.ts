@@ -53,13 +53,15 @@ import * as autenticacao from "./autenticacao.js";
 import * as datas_br from "./datas_br.js";
 import * as email from "./email.js";
 import * as governanca from "./governanca.js";
-import { TOPO_DA_HIERARQUIA, eh_conta_de_governo, perfis_vigentes } from "./rbac.js";
+import { PERFIS_EXTERNOS, TOPO_DA_HIERARQUIA, eh_conta_de_governo, perfis_vigentes } from "./rbac.js";
 
 export const CAMINHO = "/ativar-acesso";
 export const VALIDADE_MS = 3_600_000;
 export const TIPO_LINK = "ATIVAR_ACESSO";
 export const TIPO_NEUTRO = "ATIVAR_ACESSO_NEUTRO";
-export const TIPOS: readonly string[] = [TIPO_LINK, TIPO_NEUTRO];
+/** Os e-mails que contam para o teto por destinatário (inclui o neutro do Cadastre-se). */
+export const TIPOS: readonly string[] = [TIPO_LINK, TIPO_NEUTRO, "PEDIDO_CONTA_NEUTRO"];
+export const CAMINHO_ESQUECI = "/esqueci-senha";
 export const PEDIDOS_POR_HORA_POR_IP = 8;
 export const ENVIOS_POR_HORA = 2;
 export const ENVIOS_POR_DIA = 5;
@@ -91,6 +93,10 @@ export const RESPOSTA_PADRAO =
   "Se os dados conferem com o cadastro de servidores, enviamos ao e-mail institucional cadastrado " +
   "um link para definir a senha, válido por 1 hora e de uso único. Confira também a caixa de spam. " +
   "Se não chegar, procure a equipe responsável.";
+
+export const RESPOSTA_ESQUECI =
+  "Se este e-mail é o de uma conta do Sistema SISA, enviamos para ele um link para definir a senha, " +
+  "válido por 1 hora e de uso único. Confira também a caixa de spam. Se não chegar, procure a equipe responsável.";
 
 export class DadosInvalidos extends Error {}
 export class LinkInvalido extends Error {}
@@ -133,6 +139,17 @@ export async function decidir(tx: Executor, servidor: Servidor): Promise<Decisao
   if (conta.servidor_id !== null && conta.servidor_id !== servidor.id) {
     return { tipo: "recusar", motivo: "o e-mail pertence à conta de outro servidor", conta };
   }
+  const { perfis } = await perfis_vigentes(tx, conta.id, null, { incluir_futuras: true });
+  // a conta de terceirizado ou discente com o e-mail do servidor não é dele:
+  // o link do servidor não a adota (quem decide é a equipe, em Usuários)
+  if (conta.servidor_id === null && perfis.some((p) => PERFIS_EXTERNOS.includes(p))) {
+    return { tipo: "recusar", motivo: "o e-mail do servidor é o de uma conta de terceirizado ou discente", conta };
+  }
+  return decidir_conta(tx, conta);
+}
+
+/** A conta que o link alcança: ativa e fora da administração. */
+export async function decidir_conta(tx: Executor, conta: Conta): Promise<Decisao> {
   if (!conta.ativo) return { tipo: "recusar", motivo: "conta inativa (quem decide é a equipe)", conta };
   const { perfis, permissoes } = await perfis_vigentes(tx, conta.id, null, { incluir_futuras: true });
   if (perfis.some((p) => TOPO_DA_HIERARQUIA.includes(p)) || permissoes.has("perfil.conceder")) {
@@ -169,7 +186,7 @@ export function corpo_neutro(): string {
   );
 }
 
-async function _no_teto_do_destinatario(tx: Executor, para: string, agora: Date): Promise<boolean> {
+export async function no_teto_do_destinatario(tx: Executor, para: string, agora: Date): Promise<boolean> {
   const contar = async (ms: number) => {
     const [r] = await tx
       .select({ n: count() })
@@ -201,6 +218,17 @@ export async function pedir(
   const siape = d.siape.trim();
   if (!/^\d{7}$/.test(siape)) throw new DadosInvalidos("Digite o SIAPE com 7 dígitos.");
   if (!email.email_valido(d.email)) throw new DadosInvalidos("Digite o e-mail institucional completo.");
+  const marcar = await _registrar_pedido(tx, ip, agora);
+  if (!marcar) return;
+  const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
+  if (!servidor) return;
+  await _atender_servidor(tx, servidor, d.email, ip, base_url, agora, marcar);
+}
+
+type Marcar = (v: Partial<typeof tabela.$inferInsert>) => Promise<unknown>;
+
+/** O teto por endereço de rede; dentro dele, a linha do pedido (e como marcá-la). */
+async function _registrar_pedido(tx: Executor, ip: string | null, agora: Date): Promise<Marcar | null> {
   const [recentes] = await tx
     .select({ n: count() })
     .from(tabela)
@@ -210,30 +238,42 @@ export async function pedir(
         gt(tabela.criado_em, new Date(agora.getTime() - 3_600_000)),
       ),
     );
-  if (Number(recentes?.n ?? 0) >= PEDIDOS_POR_HORA_POR_IP) return;
+  if (Number(recentes?.n ?? 0) >= PEDIDOS_POR_HORA_POR_IP) return null;
   const [registro] = await tx.insert(tabela).values({ ip, criado_em: agora }).returning({ id: tabela.id });
-  const marcar = (v: Partial<typeof tabela.$inferInsert>) => tx.update(tabela).set(v).where(eq(tabela.id, registro!.id));
+  return (v) => tx.update(tabela).set(v).where(eq(tabela.id, registro!.id));
+}
 
-  const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
-  if (!servidor) return;
+async function _neutro(tx: Executor, para: string, agora: Date): Promise<void> {
+  await email.enfileirar(tx, {
+    tipo: TIPO_NEUTRO,
+    destinatario: para,
+    assunto: ASSUNTO,
+    corpo: corpo_neutro(),
+    expira_em: new Date(agora.getTime() + 24 * 3_600_000),
+  });
+}
+
+async function _atender_servidor(
+  tx: Executor,
+  servidor: Servidor,
+  digitado: string,
+  ip: string | null,
+  base_url: string,
+  agora: Date,
+  marcar: Marcar,
+): Promise<void> {
   const cadastrado = (servidor.email ?? "").trim();
   if (!cadastrado || !email.email_valido(cadastrado)) {
     await marcar({ servidor_id: servidor.id, resultado: "SEM_EMAIL" });
     return;
   }
-  if (normalizar_email(cadastrado) !== normalizar_email(d.email)) return;
-  if (await _no_teto_do_destinatario(tx, cadastrado, agora)) return;
+  if (normalizar_email(cadastrado) !== normalizar_email(digitado)) return;
+  if (await no_teto_do_destinatario(tx, cadastrado, agora)) return;
 
   const decisao = await decidir(tx, servidor);
   if (decisao.tipo === "recusar") {
     await marcar({ servidor_id: servidor.id, resultado: "NEUTRO" });
-    await email.enfileirar(tx, {
-      tipo: TIPO_NEUTRO,
-      destinatario: cadastrado,
-      assunto: ASSUNTO,
-      corpo: corpo_neutro(),
-      expira_em: new Date(agora.getTime() + 24 * 3_600_000),
-    });
+    await _neutro(tx, cadastrado, agora);
     await auditoria.registrar(tx, {
       entidade: decisao.conta ? "usuario" : "servidor",
       entidade_id: decisao.conta ? decisao.conta.id : servidor.id,
@@ -253,6 +293,86 @@ export async function pedir(
     destinatario: cadastrado,
     assunto: ASSUNTO,
     corpo: corpo_do_link(`${base_url}${CAMINHO}/${token}`, expira_em),
+    expira_em,
+  });
+}
+
+/**
+ * "Esqueci minha senha" só com o e-mail, para qualquer conta (23/10/2026): a
+ * do terceirizado e a do discente não têm SIAPE. O link vai ao e-mail DA
+ * CONTA. E-mail sem conta, mas de um servidor do cadastro, segue o caminho do
+ * servidor (é o primeiro acesso dele). Mesma resposta, mesmos tetos.
+ */
+export async function pedir_por_email(
+  tx: Executor,
+  digitado: string,
+  ip: string | null,
+  base_url: string,
+  agora: Date = new Date(),
+): Promise<void> {
+  if (!email.email_valido(digitado.trim())) throw new DadosInvalidos("Digite o e-mail completo.");
+  const marcar = await _registrar_pedido(tx, ip, agora);
+  if (!marcar) return;
+  const alvo = normalizar_email(digitado);
+  const contas = await tx
+    .select()
+    .from(tabela_usuario)
+    .where(sql`lower(${tabela_usuario.email}) = ${alvo} OR lower(${tabela_usuario.login}) = ${alvo}`);
+  if (contas.length > 1) return;
+  const conta = contas[0];
+  if (!conta) {
+    const servidores = await tx.select().from(tabela_servidor).where(sql`lower(btrim(${tabela_servidor.email})) = ${alvo}`);
+    if (servidores.length === 1) await _atender_servidor(tx, servidores[0]!, digitado, ip, base_url, agora, marcar);
+    return;
+  }
+  if (conta.servidor_id !== null) {
+    // a conta de servidor segue a regra do servidor (o e-mail do cadastro)
+    const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, conta.servidor_id));
+    if (servidor && normalizar_email(servidor.email ?? "") === alvo) {
+      await _atender_servidor(tx, servidor, digitado, ip, base_url, agora, marcar);
+      return;
+    }
+  }
+  if (!email.email_valido(conta.email) || (await no_teto_do_destinatario(tx, conta.email, agora))) return;
+  const decisao = await decidir_conta(tx, conta);
+  if (decisao.tipo === "recusar") {
+    await marcar({ usuario_id: conta.id, resultado: "NEUTRO" });
+    await _neutro(tx, conta.email, agora);
+    await auditoria.registrar(tx, {
+      entidade: "usuario",
+      entidade_id: conta.id,
+      tipo_evento: PEDIDO_DE_ACESSO_RECUSADO,
+      descricao: `Pedido de redefinição de senha não atendido por esta via: ${decisao.motivo}. A tela respondeu como a todos.`,
+      usuario_nome: ATOR,
+      ip,
+    });
+    return;
+  }
+  await emitir_link_da_conta(tx, conta, base_url, { agora, marcar });
+}
+
+/**
+ * O link de uso único para a CONTA definir a senha, no e-mail dela. Serve ao
+ * "Esqueci minha senha" e à conta aprovada no Cadastre-se (que espera mais:
+ * `validade_ms` e o texto próprio).
+ */
+export async function emitir_link_da_conta(
+  tx: Executor,
+  conta: Pick<Conta, "id" | "email">,
+  base_url: string,
+  o: { validade_ms?: number; corpo?: (link: string, expira_em: Date) => string; agora?: Date; marcar?: Marcar } = {},
+): Promise<void> {
+  const agora = o.agora ?? new Date();
+  const token = randomBytes(24).toString("base64url");
+  const expira_em = new Date(agora.getTime() + (o.validade_ms ?? VALIDADE_MS));
+  const valores = { token_hash: _hash(token), usuario_id: conta.id, resultado: "LINK", expira_em };
+  if (o.marcar) await o.marcar(valores);
+  else await tx.insert(tabela).values({ ...valores, ip: null, criado_em: agora });
+  await email.enfileirar(tx, {
+    tipo: TIPO_LINK,
+    destinatario: conta.email,
+    assunto: ASSUNTO,
+    corpo: (o.corpo ?? corpo_do_link)(`${base_url}${CAMINHO}/${token}`, expira_em),
     expira_em,
   });
 }
@@ -420,7 +540,9 @@ export async function situacao_do_acesso(
 async function _linha_valida(tx: Executor, token: string, agora: Date) {
   if (!token || token.length > 64) return null;
   const [linha] = await tx.select().from(tabela).where(eq(tabela.token_hash, _hash(token)));
-  if (!linha || linha.usado_em !== null || !linha.expira_em || linha.expira_em <= agora || linha.servidor_id === null) {
+  if (!linha || linha.usado_em !== null || !linha.expira_em || linha.expira_em <= agora) return null;
+  // o link de troca de e-mail não define senha
+  if ((linha.servidor_id === null && linha.usuario_id === null) || linha.email_novo !== null) {
     return null;
   }
   return linha;
@@ -430,6 +552,10 @@ async function _linha_valida(tx: Executor, token: string, agora: Date) {
 export async function link_vale(tx: Executor, token: string, agora: Date = new Date()): Promise<boolean> {
   const linha = await _linha_valida(tx, token, agora);
   if (!linha) return false;
+  if (linha.usuario_id !== null) {
+    const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, linha.usuario_id));
+    return !!conta && (await decidir_conta(tx, conta)).tipo !== "recusar";
+  }
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!));
   if (!servidor?.email) return false;
   return (await decidir(tx, servidor)).tipo !== "recusar";
@@ -457,6 +583,7 @@ export async function definir_senha(
   if (nova !== confirmacao) throw new autenticacao.SenhaRecusada("A confirmação não confere.");
   const problemas = autenticacao.politica_de_senha(nova);
   if (problemas.length) throw new autenticacao.SenhaRecusada("Senha fraca: " + problemas.join("; "));
+  if (linha.usuario_id !== null) return _definir_da_conta(tx, linha, nova, contexto, agora);
   // um servidor por vez: dois links do mesmo servidor não criam duas contas
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!)).for("update");
   if (!servidor?.email) throw new LinkInvalido("link inválido ou vencido");
@@ -535,6 +662,115 @@ export async function definir_senha(
     ...origem,
   });
   return "redefinida";
+}
+
+/** O link de uma conta (Esqueci por e-mail, conta aprovada no Cadastre-se): só define a senha. */
+async function _definir_da_conta(
+  tx: Executor,
+  linha: typeof tabela.$inferSelect,
+  nova: string,
+  contexto: Contexto,
+  agora: Date,
+): Promise<"criada" | "redefinida"> {
+  const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, linha.usuario_id!)).for("update");
+  if (!conta || (await decidir_conta(tx, conta)).tipo === "recusar") throw new LinkInvalido("link inválido ou vencido");
+  const gasto = await tx
+    .update(tabela)
+    .set({ usado_em: agora_utc() })
+    .where(and(eq(tabela.id, linha.id), isNull(tabela.usado_em)))
+    .returning({ id: tabela.id });
+  if (!gasto.length) throw new LinkInvalido("link inválido ou vencido");
+  await tx.update(tabela).set({ usado_em: agora_utc() }).where(and(eq(tabela.usuario_id, conta.id), isNull(tabela.usado_em)));
+  const origem = { usuario_nome: ATOR, ip: contexto.ip ?? null, user_agent: contexto.user_agent ?? null };
+  await tx
+    .update(tabela_usuario)
+    .set({ senha_hash: await autenticacao.gerar_hash(nova), precisa_trocar_senha: false, tentativas_falhas: 0, bloqueado_ate: null })
+    .where(eq(tabela_usuario.id, conta.id));
+  const encerradas = await autenticacao.revogar_do_usuario(tx, conta.id);
+  const primeira = conta.senha_hash === SEM_SENHA;
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: primeira ? ACESSO_ATIVADO : SENHA_REDEFINIDA_POR_LINK,
+    descricao: primeira
+      ? "Acesso ativado pelo próprio titular: definiu a primeira senha pelo link enviado ao e-mail da conta."
+      : "Senha redefinida pelo próprio titular, pelo link enviado ao e-mail da conta; " +
+        `bloqueio e tentativas zerados, ${encerradas} sessão(ões) encerrada(s). Nenhum perfil foi concedido.`,
+    ...origem,
+  });
+  return primeira ? "criada" : "redefinida";
+}
+
+// ---------------------------------------------------------------------
+// Troca do e-mail em Meus dados (23/10/2026): o e-mail é o login e o destino
+// do "Esqueci minha senha", então o endereço novo só vale quando o link
+// enviado a ELE é aberto pela própria conta. Sem isto, a conta passava a
+// entrar com um e-mail que ninguém provou ter.
+// ---------------------------------------------------------------------
+export const CAMINHO_TROCA_EMAIL = "/minha-conta/email";
+export const VALIDADE_TROCA_EMAIL_MS = 24 * 3_600_000;
+export const TIPO_TROCA_EMAIL = "TROCA_EMAIL";
+
+export function corpo_da_troca(link: string): string {
+  return (
+    "Olá.\n\n" +
+    "Foi pedido, em Meus dados do Sistema SISA, que este passe a ser o e-mail de entrada da conta. Para " +
+    "confirmar, abra o link abaixo nas próximas 24 horas, entrando no sistema com a conta de sempre:\n\n" +
+    `${link}\n\n` +
+    "Até lá, o e-mail de entrada continua o anterior. Se não foi você, ignore esta mensagem.\n\n" +
+    ASSINATURA
+  );
+}
+
+export async function pedir_troca_de_email(
+  tx: Executor,
+  conta_id: number,
+  email_novo: string,
+  base_url: string,
+  agora: Date = new Date(),
+): Promise<void> {
+  // um pedido por vez: o anterior cai
+  await tx
+    .update(tabela)
+    .set({ usado_em: agora_utc() })
+    .where(and(eq(tabela.usuario_id, conta_id), isNull(tabela.usado_em), sql`${tabela.email_novo} IS NOT NULL`));
+  const token = randomBytes(24).toString("base64url");
+  const expira_em = new Date(agora.getTime() + VALIDADE_TROCA_EMAIL_MS);
+  await tx.insert(tabela).values({
+    token_hash: _hash(token),
+    usuario_id: conta_id,
+    email_novo,
+    resultado: "EMAIL",
+    expira_em,
+    ip: null,
+    criado_em: agora,
+  });
+  await email.enfileirar(tx, {
+    tipo: TIPO_TROCA_EMAIL,
+    destinatario: email_novo,
+    assunto: ASSUNTO,
+    corpo: corpo_da_troca(`${base_url}${CAMINHO_TROCA_EMAIL}/${token}`),
+    expira_em,
+  });
+}
+
+/** O e-mail novo que o link confirma, gastando-o; `null` se não vale para esta conta. */
+export async function gastar_troca_de_email(
+  tx: Executor,
+  conta_id: number,
+  token: string,
+  agora: Date = new Date(),
+): Promise<string | null> {
+  if (!token || token.length > 64) return null;
+  const [linha] = await tx.select().from(tabela).where(eq(tabela.token_hash, _hash(token)));
+  if (!linha || linha.email_novo === null || linha.usuario_id !== conta_id) return null;
+  if (linha.usado_em !== null || !linha.expira_em || linha.expira_em <= agora) return null;
+  const gasto = await tx
+    .update(tabela)
+    .set({ usado_em: agora_utc() })
+    .where(and(eq(tabela.id, linha.id), isNull(tabela.usado_em)))
+    .returning({ id: tabela.id });
+  return gasto.length ? linha.email_novo : null;
 }
 
 /** Apaga o registro dos pedidos (IP) passado o prazo. */

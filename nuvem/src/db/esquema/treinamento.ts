@@ -339,8 +339,15 @@ export const participante = pgTable(
     // pode ser feita a ele, e o cadastro nasce marcado para quem le nomes
     // conferir (`servicos/duplicados.ts`). Some quando a duvida se resolve.
     suspeita_duplicado_em: MomentoUTC('suspeita_duplicado_em'),
+    // NUVEM (23/10/2026): a conta do terceirizado ou do discente (perfis
+    // `terceirizado`/`discente`), que não é servidor. É por aqui que a conta se
+    // inscreve e lê os próprios certificados; o servidor continua pelo
+    // `servidor_id`. Uma conta, um participante.
+    usuario_id: integer('usuario_id'),
   },
   (t) => [
+    foreignKey({ name: 'fk_participante_usuario', columns: [t.usuario_id], foreignColumns: [usuario.id] }),
+    unique('uq_participante_usuario').on(t.usuario_id),
     foreignKey({
       name: 'fk_participante_servidor',
       columns: [t.servidor_id],
@@ -480,6 +487,8 @@ export const participante_mesclagem = pgTable(
       principal_herdado: number | null;
       campos_herdados: string[];
       absorvido_tinha_cpf: boolean;
+      // a conta de terceirizado/discente que passou do absorvido para o mantido
+      conta_movida?: number | null;
     }>('movido').notNull(),
     feito_por: integer('feito_por'),
     feito_em: MomentoUTC('feito_em').notNull().$defaultFn(agora_utc),

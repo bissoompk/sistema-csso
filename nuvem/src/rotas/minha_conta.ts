@@ -42,14 +42,18 @@ import {
 } from "../db/esquema/index.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { vigente_em } from "../dominio/organizacao.js";
+import * as ativar_acesso from "../servicos/ativar_acesso.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as autenticacao from "../servicos/autenticacao.js";
 import * as certificados_titular from "../servicos/certificados_titular.js";
+import * as email_saida from "../servicos/email.js";
+import * as emissao from "../servicos/emissao_certificado.js";
 import { numero as numero_br } from "../servicos/presenca.js";
 import { postos_atuais } from "../servicos/servidores.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { comMensagem, pagina, redirecionar } from "../web.js";
 import { INICIO, ipDoCliente } from "./autenticacao.js";
+import { e_externo } from "../modulos.js";
 import { _duplicada } from "./usuarios.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -173,6 +177,9 @@ async function _tela(
     postos,
     iniciais: iniciais(servidor?.nome ?? conta?.nome ?? usuario.nome),
     resumo_certificados,
+    // terceirizado ou discente: não há cadastro funcional a mostrar, e o aviso
+    // não manda pedir à coordenação um vínculo que ela não faz
+    externo: e_externo(usuario),
     inatividade_minutos: obterConfig().sessaoInatividadeMinutos,
     mensagem: c.req.query("mensagem") ?? null,
     TELEFONE_MAX,
@@ -229,6 +236,9 @@ rotas.post(`${CAMINHO}/dados`, async (c) => {
  * é a da troca de senha (`conferir_senha_atual`), com o mesmo contador do login
  * — sem ela, a sessão esquecida aberta numa máquina compartilhada trocava o
  * e-mail e a conta ia junto.
+ *
+ * E o endereço novo só vale depois de provado (23/10/2026): vai a ele um link
+ * de 24 h, que a própria conta abre (GET abaixo). Até lá o login é o de antes.
  */
 rotas.post(`${CAMINHO}/email`, async (c) => {
   const usuario = await usuarioLogado(c);
@@ -262,21 +272,53 @@ rotas.post(`${CAMINHO}/email`, async (c) => {
   if (await _duplicada(tx, { login, email }, atual.id)) {
     return recusar("ele já é usado por outra conta. Se o e-mail é seu, fale com a coordenação.");
   }
+  await ativar_acesso.pedir_troca_de_email(tx, atual.id, email, await emissao.url_base_validacao(tx));
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: atual.id,
+    tipo_evento: auditoria.TROCA_DE_EMAIL_PEDIDA,
+    descricao: `Conta '${atual.login}': troca do e-mail de entrada pedida, com a senha atual conferida; aguarda o link no e-mail novo.`,
+    campo: "email",
+    ...contexto,
+  });
+  await email_saida.acordar_envio();
+  return redirecionar(
+    c,
+    comMensagem(
+      CAMINHO,
+      `Enviamos um link para ${email}. O e-mail de entrada muda quando você abrir o link (vale 24 horas); até lá, continue entrando com ${atual.email}.`,
+    ),
+  );
+});
+
+rotas.get(`${CAMINHO}/email/:token`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  const [atual] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id)).for("update");
+  if (!atual) return redirecionar(c, "/login");
+  const email = await ativar_acesso.gastar_troca_de_email(tx, atual.id, c.req.param("token"));
+  if (!email) {
+    return _tela(c, usuario, { erro_email: "O link de troca de e-mail venceu, já foi usado ou é de outra conta. Peça a troca de novo." });
+  }
+  const login = autenticacao.login_do_email(email);
+  if (await _duplicada(tx, { login, email }, atual.id)) {
+    return _tela(c, usuario, { erro_email: "O e-mail não foi alterado: ele passou a ser usado por outra conta. Fale com a coordenação." });
+  }
   await tx.update(tabela_usuario).set({ email, login }).where(eq(tabela_usuario.id, atual.id));
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: atual.id,
     tipo_evento: auditoria.EMAIL_ALTERADO_PELO_TITULAR,
     descricao:
-      `Conta '${atual.login}': e-mail de entrada alterado pela própria conta, com a senha atual conferida.` +
+      `Conta '${atual.login}': e-mail de entrada alterado pela própria conta, com a senha atual conferida e o ` +
+      "e-mail novo confirmado pelo link." +
       (login !== atual.login ? ` O login acompanhou o e-mail: '${login}'.` : ""),
     campo: "email",
     valor_anterior: atual.email,
     valor_novo: email,
-    ...contexto,
+    usuario,
+    ip: ipDoCliente(c),
+    user_agent: c.req.header("user-agent") ?? null,
   });
-  return redirecionar(
-    c,
-    comMensagem(CAMINHO, `E-mail alterado. A partir de agora você entra com ${email}.`),
-  );
+  return redirecionar(c, comMensagem(CAMINHO, `E-mail confirmado. A partir de agora você entra com ${email}.`));
 });

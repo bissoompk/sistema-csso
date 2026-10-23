@@ -508,6 +508,8 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
       "Comprovante de treinamentos",
       "Minha ficha de EPI",
       "Pedir EPI",
+      // pela concessão do titular: a lateral dele não tem o módulo de acidentes
+      "Comunicar acidente",
       "Minhas comunicações",
       "Meu adicional",
       "Meus processos",

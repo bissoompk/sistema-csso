@@ -16,7 +16,7 @@
  * e registra o global `porta_de_entrada`.
  */
 import { acidentesLiberado } from "./config.js";
-import { EscopoNaoDeclarado, type UsuarioAtual } from "./servicos/rbac.js";
+import { EscopoNaoDeclarado, PERFIS_EXTERNOS, type UsuarioAtual } from "./servicos/rbac.js";
 import { PERMISSOES_VER as PERMISSOES_PENDENCIAS } from "./servicos/pendencias.js";
 import { tem_acesso_ao_modulo } from "./servicos/acesso_modulo.js";
 import { PERMISSAO_DA_BASE } from "./servicos/niveis_modulo.js";
@@ -55,8 +55,10 @@ export class Item {
     readonly descricao: string = "",
     /**
      * Tela do titular ("minha ficha", "meus certificados"): só aparece para
-     * conta vinculada a um servidor — sem vínculo ela abre sempre vazia, e a
-     * conta de quem só administra ficava com três portas para o nada.
+     * conta que TEM titular (`tem_titular`) — a ligada a um servidor, ou a do
+     * terceirizado e do discente, que são o próprio titular sem cadastro de
+     * servidor. Sem titular ela abre sempre vazia, e a conta de quem só
+     * administra ficava com três portas para o nada.
      */
     readonly do_titular: boolean = false,
     /**
@@ -75,6 +77,12 @@ export class Item {
      * houver); sem vínculo e sem permissão, o item não aparece.
      */
     readonly titular: boolean = false,
+    /**
+     * A tela do titular que mora no cadastro de SERVIDOR (a ficha de EPI, o
+     * adicional, o comprovante com lotação): o terceirizado e o discente não a
+     * veem, ainda que tenham a permissão que ela declara.
+     */
+    readonly exige_servidor: boolean = false,
   ) {
     Object.freeze(this);
   }
@@ -94,7 +102,8 @@ export class Item {
       if (usuario.servidor_id !== null) return true;
       if (this.permissao === null) return false;
     }
-    if (this.do_titular && usuario.servidor_id === null) return false;
+    if (this.do_titular && !tem_titular(usuario)) return false;
+    if (this.exige_servidor && usuario.servidor_id === null) return false;
     if (this.permissao === null) return true;
     const abre = (p: string) => usuario.pode(p) && (this.do_titular || _na_equipe(usuario, p));
     return this.exigidas.some(abre) && this.tambem.every(abre);
@@ -105,6 +114,23 @@ export class Item {
     if (this.permissao === null) return [];
     return typeof this.permissao === "string" ? [this.permissao] : this.permissao;
   }
+}
+
+/**
+ * A conta é de um TITULAR: ligada a um servidor, ou de um perfil externo
+ * (`PERFIS_EXTERNOS`: terceirizado e discente). A conta externa nunca tem
+ * `servidor_id`, mas é dela o que comunicou e aquilo em que se inscreveu — as
+ * telas do titular abrem para ela (o que ela não tem, EPI e processo, some pela
+ * permissão, e o que só existe no cadastro de servidor, por `exige_servidor`).
+ */
+export function tem_titular(usuario: UsuarioAtual | null | undefined): boolean {
+  if (!usuario) return false;
+  return usuario.servidor_id !== null || e_externo(usuario);
+}
+
+/** A conta tem um perfil externo (terceirizado ou discente). */
+export function e_externo(usuario: UsuarioAtual | null | undefined): boolean {
+  return !!usuario && usuario.perfis.some((p) => PERFIS_EXTERNOS.includes(p));
 }
 
 /**
@@ -348,6 +374,9 @@ export const MODULOS: readonly Modulo[] = [
         "/epis/fichas/minha",
         "epi.ver",
         "O que você recebeu: CA e lote congelados, com o comprovante.",
+        true,
+        [],
+        false,
         true,
       ),
       new Item(
@@ -736,9 +765,11 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
   {
     titulo: "EPI",
     itens: [
-      new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true),
-      new Item("Meus pedidos de EPI", "/epis/requisicoes", "epi.ver", "Os seus pedidos e em que pé estão.", true),
-      new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true),
+      // o EPI mora no cadastro de servidor (`exige_servidor`); o externo nem
+      // tem `epi.*`, e a marca é a segunda tranca, não a primeira
+      new Item("Minha ficha de EPI", "/epis/fichas/minha", "epi.ver", "O que você recebeu, com o comprovante.", true, [], false, true),
+      new Item("Meus pedidos de EPI", "/epis/requisicoes", "epi.ver", "Os seus pedidos e em que pé estão.", true, [], false, true),
+      new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true, [], false, true),
     ],
   },
   // o grupo some junto com o módulo enquanto ele está seguro (`acidentesLiberado`)
@@ -747,6 +778,15 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
         {
           titulo: "Acidentes",
           itens: [
+            // a mesma permissão da rota; para a equipe do módulo, a lateral já
+            // oferece o item e ele sai daqui (`meu_espaco_de`)
+            new Item(
+              "Comunicar acidente",
+              "/acidentes/comunicar",
+              "acidente.comunicar",
+              "Registrar um acidente com você ou que você presenciou.",
+              true,
+            ),
             new Item(
               "Minhas comunicações",
               "/acidentes/minhas",
@@ -761,11 +801,20 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
   {
     titulo: "Adicional",
     itens: [
-      new Item("Meu adicional", "/adicionais", "processo.ver", "O adicional ocupacional concedido a você.", true),
+      new Item("Meu adicional", "/adicionais", "processo.ver", "O adicional ocupacional concedido a você.", true, [], false, true),
       // O pedido de adicional em andamento. Sem o item, a ficha do processo
       // abria com a trilha "Meu espaço / Processos", o nome de um item que este
       // menu não tem.
-      new Item("Meus processos", "/processos", "processo.ver", "Os seus pedidos de adicional e em que pé estão.", true),
+      new Item(
+        "Meus processos",
+        "/processos",
+        "processo.ver",
+        "Os seus pedidos de adicional e em que pé estão.",
+        true,
+        [],
+        false,
+        true,
+      ),
     ],
   },
   {
@@ -850,7 +899,7 @@ function _abre_no_meu_espaco(item: Item, usuario: UsuarioAtual): boolean {
 export function meu_espaco_de(usuario: UsuarioAtual | null | undefined): Item[] {
   if (!usuario) return [];
   const sozinho = so_o_proprio(usuario);
-  if (!sozinho && (usuario.servidor_id === null || !_escopo_declarado(usuario))) return [];
+  if (!sozinho && (!tem_titular(usuario) || !_escopo_declarado(usuario))) return [];
   const da_equipe = sozinho
     ? new Set<string>()
     : new Set(

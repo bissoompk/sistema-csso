@@ -178,10 +178,22 @@ describe("e-mail", () => {
     expect(depois.tentativas_falhas).toBe(1);
   });
 
-  it("com a senha certa é aceito, gera o evento e o login passa a ser pelo e-mail novo", async () => {
+  it("com a senha certa, o e-mail só muda quando o link enviado a ele é aberto pela conta", async () => {
     await entrar(amb.cliente, "admin_ti");
     const r = await amb.cliente.post("/minha-conta/email", { email: "Novo.Admin@teste.ufvjm.edu.br", senha_atual: SENHA_TESTE });
-    expect(r.text).toContain("E-mail alterado.");
+    expect(r.text).toContain("Enviamos um link para Novo.Admin@teste.ufvjm.edu.br");
+    // ainda não mudou
+    expect((await conta("admin_ti")).email).toBe("admin_ti@teste.ufvjm.edu.br");
+    const [m] = await amb.db.select().from(e.email_saida).where(eq(e.email_saida.tipo, "TROCA_EMAIL"));
+    expect(m!.destinatario).toBe("Novo.Admin@teste.ufvjm.edu.br");
+    const caminho = m!.corpo!.match(/\/minha-conta\/email\/[A-Za-z0-9_-]+/)![0];
+    // de outra conta, o link não vale (e não se gasta)
+    const outro = await entrar(amb.novoCliente(), "auditor_interno");
+    expect((await outro.get(caminho)).text).toContain("venceu, já foi usado ou é de outra conta");
+    // nem serve para definir senha
+    expect((await amb.novoCliente().get(caminho.replace("/minha-conta/email/", "/ativar-acesso/"))).status).toBe(404);
+    expect((await amb.cliente.get(caminho)).text).toContain("E-mail confirmado.");
+    expect((await amb.cliente.get(caminho)).text).toContain("já foi usado");
     // o login acompanha o e-mail (23/10/2026)
     const depois = await conta("novo.admin@teste.ufvjm.edu.br");
     expect(depois.email).toBe("Novo.Admin@teste.ufvjm.edu.br");

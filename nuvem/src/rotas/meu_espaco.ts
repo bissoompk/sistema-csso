@@ -14,6 +14,8 @@ import type { Ambiente } from "../nucleo/contexto.js";
 import { usuarioLogado } from "../dependencias.js";
 import { atividade_do_titular, grupo_valido, GRUPOS_ATIVIDADE } from "../servicos/atividade_titular.js";
 import { pagina } from "../web.js";
+import { e_externo } from "../modulos.js";
+import { acidentesLiberado } from "../config.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -25,6 +27,10 @@ rotas.get(MINHA_ATIVIDADE, async (c) => {
   if (usuario.servidor_id === null) {
     return pagina(c, "paginas/minha_atividade.html", usuario, {
       sem_servidor: true,
+      // o terceirizado e o discente nunca terão o vínculo: o aviso não manda
+      // pedir à coordenação o que ela não pode fazer
+      externo: e_externo(usuario),
+      com_acidentes: acidentesLiberado(),
       grupos: GRUPOS_ATIVIDADE,
       grupo,
       atividade: null,

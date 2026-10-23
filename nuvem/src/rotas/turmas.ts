@@ -66,6 +66,7 @@ import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
 import * as datas_br from "../servicos/datas_br.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
+import * as titular_externo from "../servicos/titular_externo.js";
 import { fragmento, marcarDownload, pagina, redirecionar } from "../web.js";
 import {
   data_iso,
@@ -503,8 +504,9 @@ rotas.get(MINHAS, async (c) => {
     total_abertas: todas_abertas.length,
     // "Adicionar à agenda": a inscrição viva de turma que não foi cancelada
     com_agenda: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, servico_turma.tem_agenda(i)])),
-    // conta sem cadastro de servidor não é erro: é a tela dizendo por que está vazia
-    sem_servidor: usuario.servidor_id === null,
+    // conta sem titular (nem servidor ligado, nem terceirizado/discente) não é
+    // erro: é a tela dizendo por que está vazia
+    sem_servidor: !titular_externo.tem_titular(usuario),
     ...recados(c),
   });
 });
@@ -831,7 +833,7 @@ async function _tela_ficha(
       : Promise.resolve([]),
   ]);
   const minha_inscricao =
-    !gerencia && usuario.servidor_id !== null
+    !gerencia && titular_externo.tem_titular(usuario)
       ? ((await servico_turma.inscricoes_do_titular(tx, usuario)).find((i) => i.turma_id === turma.id) ?? null)
       : null;
 
@@ -855,7 +857,7 @@ async function _tela_ficha(
       !gerencia &&
       !minha_inscricao &&
       usuario.pode("turma.inscrever_se") &&
-      usuario.servidor_id !== null &&
+      titular_externo.tem_titular(usuario) &&
       !servico_turma.aberta_a_pedido_proprio(turma, hoje) &&
       vagas_restantes !== 0,
     link_impedimento,

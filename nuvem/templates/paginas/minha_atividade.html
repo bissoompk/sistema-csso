@@ -26,7 +26,15 @@
     </div>
   </div>
 
-  {% if sem_servidor %}
+  {% if sem_servidor and externo %}
+  <div class="vazio">
+    <p><strong>A atividade ainda não está disponível para a sua conta.</strong></p>
+    <p>Ela mostra o que acontece com o cadastro de um servidor da UFVJM. O que é seu está no
+      Meu espaço: em <a href="/turmas/minhas">Meus treinamentos</a>{{ ',' if com_acidentes else ' e' }}
+      <a href="/certificados/meus">Meus certificados</a>{% if com_acidentes %} e
+      <a href="/acidentes/minhas">Minhas comunicações</a>{% endif %}.</p>
+  </div>
+  {% elif sem_servidor %}
   <div class="vazio">
     <p><strong>Esta conta não está ligada a um cadastro de servidor.</strong></p>
     <p>A atividade mostra o que acontece com os treinamentos, certificados e EPIs de
