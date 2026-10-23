@@ -14,25 +14,29 @@
  * de certificado diferentes, ou os dois na mesma turma (a junção deixaria a
  * pessoa inscrita duas vezes).
  */
-import { and, count, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   certificado as tabela_certificado,
   inscricao as tabela_inscricao,
   participante as tabela_participante,
   participante_email as tabela_email,
+  participante_mesclagem as tabela_mesclagem,
   turma as tabela_turma,
 } from "../db/esquema/index.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
+import * as duplicados from "./duplicados.js";
 import * as servico_participante from "./participante.js";
 import { nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
-import * as textos from "./textos.js";
 
 export const PARTICIPANTE_MESCLADO = "PARTICIPANTE_MESCLADO";
 
 export class MesclagemRecusada extends RegraViolada {}
+
+/** O que a junção moveu, como fica em `participante_mesclagem.movido`. */
+export type Movido = (typeof tabela_mesclagem.$inferInsert)["movido"];
 
 export interface ResultadoMesclagem {
   inscricoes: number;
@@ -48,6 +52,22 @@ export async function mesclar(
   motivo: string | null | undefined,
 ): Promise<ResultadoMesclagem> {
   usuario.exigir("participante.mesclar");
+  return _mesclar(tx, usuario, mantido_id, absorvido_id, motivo);
+}
+
+/**
+ * A junção sem a pergunta da permissão — para quem já a fez com outra régua:
+ * a conferência do pedido pelo link (`pedidos_link.usar_cadastro`), em que o
+ * absorvido é o cadastro que o próprio pedido acabou de criar e não tem mais
+ * nada. Todas as outras recusas valem igual.
+ */
+export async function _mesclar(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  mantido_id: number,
+  absorvido_id: number,
+  motivo: string | null | undefined,
+): Promise<ResultadoMesclagem> {
   const limpo = (motivo ?? "").trim();
   if (!limpo) throw new MesclagemRecusada("Juntar cadastros exige o motivo: é o que explica a junção na trilha.");
   if (mantido_id === absorvido_id) throw new MesclagemRecusada("Escolha dois cadastros diferentes.");
@@ -98,6 +118,11 @@ export async function mesclar(
     .where(eq(tabela_inscricao.participante_id, absorvido.id))
     .returning({ id: tabela_inscricao.id });
   // o certificado é do mantido daqui em diante; `servidor_id` é o escopo "meus"
+  // (o de antes fica no registro da junção, para poder desfazer)
+  const certificados_antes = await tx
+    .select({ id: tabela_certificado.id, servidor_id: tabela_certificado.servidor_id })
+    .from(tabela_certificado)
+    .where(eq(tabela_certificado.participante_id, absorvido.id));
   const certificados = await tx
     .update(tabela_certificado)
     .set({ participante_id: mantido.id, servidor_id: mantido.servidor_id })
@@ -109,12 +134,22 @@ export async function mesclar(
   await tx.update(tabela_participante).set({ email_principal_id: null }).where(eq(tabela_participante.id, absorvido.id));
   let emails = 0;
   let principal_herdado: number | null = null;
+  const emails_movidos: number[] = [];
+  const emails_repetidos: Movido["emails_repetidos"] = [];
   for (const m of absorvido.emails) {
     if (ja_tem.has(m.email_normalizado)) {
+      // o endereço não vai para o registro (é o mesmo do mantido): só de onde veio
+      emails_repetidos.push({
+        id: m.id,
+        origem: m.origem,
+        confirmado_em: m.confirmado_em ? m.confirmado_em.toISOString() : null,
+        igual_a: mantido.emails.find((x) => x.email_normalizado === m.email_normalizado)?.id ?? null,
+      });
       await tx.delete(tabela_email).where(eq(tabela_email.id, m.id));
       continue;
     }
     await tx.update(tabela_email).set({ participante_id: mantido.id }).where(eq(tabela_email.id, m.id));
+    emails_movidos.push(m.id);
     emails += 1;
     if (m.id === absorvido.email_principal_id) principal_herdado = m.id;
   }
@@ -132,8 +167,28 @@ export async function mesclar(
   // o absorvido fica (a trilha e os relatórios antigos resolvem por ele), sem CPF
   await tx
     .update(tabela_participante)
-    .set({ mesclado_em_id: mantido.id, ativo: false, cpf: null })
+    .set({ mesclado_em_id: mantido.id, ativo: false, cpf: null, suspeita_duplicado_em: null })
     .where(eq(tabela_participante.id, absorvido.id));
+  // a dúvida do mantido, se havia, foi resolvida por quem juntou
+  if (mantido.suspeita_duplicado_em !== null) {
+    await tx.update(tabela_participante).set({ suspeita_duplicado_em: null }).where(eq(tabela_participante.id, mantido.id));
+  }
+  // o que mudou de dono, para a junção poder ser desfeita um dia (23/10/2026)
+  const movido: Movido = {
+    inscricoes: inscricoes.map((l) => l.id),
+    certificados: certificados_antes.map((l) => ({ id: l.id, servidor_id_antes: l.servidor_id })),
+    emails_movidos,
+    emails_repetidos,
+    principal_herdado: completar.email_principal_id ?? null,
+    campos_herdados: Object.keys(completar).filter((k) => k !== "email_principal_id"),
+    absorvido_tinha_cpf: Boolean(absorvido.cpf),
+  };
+  await tx.insert(tabela_mesclagem).values({
+    mantido_id: mantido.id,
+    absorvido_id: absorvido.id,
+    movido,
+    feito_por: usuario.id,
+  });
 
   const resumo = `${inscricoes.length} inscrição(ões), ${certificados.length} certificado(s), ${emails} e-mail(s)`;
   for (const [p, frase] of [
@@ -166,6 +221,8 @@ export interface Ficha {
   emails: string[];
   inscricoes: number;
   certificados: number;
+  /** criado por quem não lê nomes, quando já havia cadastro parecido */
+  suspeito: boolean;
 }
 
 async function _contar(tx: Executor, ids: number[]) {
@@ -205,49 +262,18 @@ export async function fichas(tx: Executor, pessoas: ParticipanteCarregado[]): Pr
     emails: p.emails.map((m) => m.email),
     inscricoes: n.inscricoes.get(p.id) ?? 0,
     certificados: n.certificados.get(p.id) ?? 0,
+    suspeito: p.suspeita_duplicado_em !== null,
   }));
 }
 
 /**
- * Grupos de cadastros ativos que parecem a mesma pessoa: o mesmo nome (sem
- * acento, caixa nem partícula) ou o mesmo e-mail. Dois servidores com o mesmo
- * nome não entram — SIAPEs diferentes são pessoas diferentes.
+ * Grupos de cadastros ativos que parecem a mesma pessoa, pelo critério único
+ * de `duplicados.grupos` (nome parecido ou o mesmo e-mail). Dois servidores
+ * nunca entram juntos, e o par marcado "não é a mesma pessoa" também não.
  */
 export async function possiveis_duplicados(tx: Executor, limite = 50): Promise<Ficha[][]> {
-  // uma consulta só: a lista inteira, com servidor e e-mails
-  const pessoas = (await tx.query.participante.findMany({
-    where: and(
-      eq(tabela_participante.ativo, true),
-      isNull(tabela_participante.mesclado_em_id),
-      isNull(tabela_participante.expurgado_em),
-    ),
-    with: servico_participante.COM_PARTICIPANTE as never,
-  })) as unknown as ParticipanteCarregado[];
-
-  // união por nome e por e-mail
-  const pai = new Map<number, number>(pessoas.map((p) => [p.id, p.id]));
-  const raiz = (x: number): number => (pai.get(x) === x ? x : raiz(pai.get(x)!));
-  const unir = (a: number, b: number) => pai.set(raiz(a), raiz(b));
-  const por_chave = new Map<string, number>();
-  for (const p of pessoas) {
-    const chaves = [
-      "n:" + textos.chave_busca(nome_exibicao(p)).split(" ").filter((w) => w.length > 2).join(" "),
-      ...p.emails.map((m) => "e:" + m.email_normalizado),
-    ];
-    for (const k of chaves) {
-      if (k === "n:") continue;
-      const outro = por_chave.get(k);
-      if (outro === undefined) por_chave.set(k, p.id);
-      else unir(p.id, outro);
-    }
-  }
-  const grupos = new Map<number, ParticipanteCarregado[]>();
-  for (const p of pessoas) grupos.set(raiz(p.id), [...(grupos.get(raiz(p.id)) ?? []), p]);
-  const candidatos = [...grupos.values()].filter(
-    (g) => g.length > 1 && g.filter((p) => p.servidor_id !== null).length <= 1,
-  );
   const r: Ficha[][] = [];
-  for (const g of candidatos.slice(0, limite)) r.push(await fichas(tx, g));
+  for (const g of await duplicados.grupos(tx, limite)) r.push(await fichas(tx, g));
   return r;
 }
 

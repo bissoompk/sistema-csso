@@ -215,6 +215,11 @@ export const ROTULO_EVENTO: Record<string, string> = {
   PARTICIPANTE_MESCLADO: "Cadastros do participante juntados",
   // o fato, nunca o valor: a trilha diz que o CPF mudou, e não qual é
   PARTICIPANTE_CPF_ALTERADO: "CPF do participante (certificado) alterado",
+  // Prevenção de cadastros duplicados (23/10/2026, `servicos/duplicados.ts`)
+  PARTICIPANTES_DISTINTOS: "Cadastros conferidos: não são a mesma pessoa",
+  PARTICIPANTE_SUSPEITO_DUPLICADO: "Participante cadastrado sem conferência de duplicidade",
+  AVISO_CADASTRO_EXISTENTE: "Aviso de pedido pelo link enviado ao e-mail do cadastro",
+  EMAIL_CONFIRMADO_PELO_LINK: "E-mail do participante confirmado pelo link de acesso",
   PRESENCA_LANCADA: "Presença lançada",
   PRESENCA_EM_LOTE: "Presença lançada em lote",
   NOTA_LANCADA: "Nota lançada",

@@ -379,7 +379,6 @@ describe("grupos do menu do módulo", () => {
         "/treinamentos/modelos",
         "/treinamentos/assinaturas",
         "/treinamentos/setores-promotores",
-        "/treinamentos/participantes",
       ],
       ["/turmas/minhas", "/certificados/meus"],
     ]);

@@ -17,6 +17,7 @@
  * desfaz as outras. Conferir é a mesma passada dentro de um savepoint que se
  * desfaz no fim — a conferência diz exatamente o que a gravação faria.
  */
+import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -26,6 +27,7 @@ import {
 } from "../db/esquema/index.js";
 import { ROTULO_INSCRICAO } from "../dominio/estados.js";
 import { VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
+import * as duplicados from "./duplicados.js";
 import * as servico_participante from "./participante.js";
 import { DadosDoParticipante, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
@@ -47,11 +49,26 @@ export interface LinhaLida {
   erro: string;
 }
 
-export type Resultado = "INSCRITA" | "JA_INSCRITA" | "RECUSADA";
+/**
+ * `A_DECIDIR` (23/10/2026): a linha parece um cadastro que já existe, e quem
+ * lê nomes escolhe — "usar este" ou "criar novo". Não é inscrita enquanto não
+ * houver escolha (decisão do dono: perguntar linha a linha, nunca casar
+ * sozinho pelo nome parecido).
+ */
+export type Resultado = "INSCRITA" | "JA_INSCRITA" | "RECUSADA" | "A_DECIDIR";
+
+/** A escolha de uma linha: o id do cadastro parecido, ou criar um novo. */
+export type Escolha = number | "novo";
 
 export interface Desfecho {
   numero: number;
   resultado: Resultado;
+  /** a assinatura da linha (o texto dela), que liga a escolha à linha mesmo que a lista seja renumerada */
+  chave: string;
+  /** com quem a linha parece (só em `A_DECIDIR`, e só quem o usuário pode identificar) */
+  parecidos: duplicados.ParecidoNaTela[];
+  /** a escolha que chegou para esta linha, para a tela marcar de novo */
+  escolha: string;
   /** quem a linha virou, como a tela pode mostrar */
   quem: string;
   /** por qual porta a pessoa foi achada (ou criada) */
@@ -115,6 +132,18 @@ export function ler_lista(texto: string): { linhas: LinhaLida[]; brutas: Map<num
 
 class LinhaRecusada extends Error {}
 
+/** A linha parece cadastro existente e espera a escolha de quem lê nomes. */
+class LinhaPergunta extends Error {
+  constructor(readonly parecidos: duplicados.ParecidoNaTela[]) {
+    super("Parece com cadastro que já existe: escolha “usar este” ou “criar novo” e confira de novo.");
+  }
+}
+
+/** A assinatura de uma linha: o texto dela sem acento, caixa nem espaço sobrando. */
+export function chave_da_linha(texto: string): string {
+  return createHash("sha256").update(textos.chave_busca(texto), "utf8").digest("hex").slice(0, 12);
+}
+
 function _quem(usuario: UsuarioAtual, pessoa: ParticipanteCarregado): string {
   if (pessoa.servidor && !servico_participante.pode_identificar(usuario, pessoa)) {
     return `SIAPE ${pessoa.servidor.siape}`;
@@ -158,11 +187,24 @@ async function _por_nome(tx: Executor, nome: string): Promise<[ParticipanteCarre
   return [null, ""];
 }
 
+/**
+ * Quem a linha é. A ordem de sempre (SIAPE, e-mail, nome exato), e antes de
+ * criar externo novo a pergunta do critério único (`duplicados.procurar`):
+ *
+ * - quem lê nomes recebe "parece com …" (`LinhaPergunta`) e escolhe, linha a
+ *   linha, "usar este" ou "criar novo" — o "criar novo" grava o par como
+ *   pessoas diferentes;
+ * - o e-mail conhecido com nome que NÃO parece o do cadastro também pergunta
+ *   (era a linha caindo calada na pessoa errada: o e-mail do setor, da mãe);
+ * - quem não lê nomes não pode receber a pergunta (RN-19): o externo nasce e,
+ *   havendo parecido, fica marcado como suspeito para quem lê nomes conferir.
+ */
 async function _pessoa(
   tx: Executor,
   usuario: UsuarioAtual,
   l: LinhaLida,
   padrao: { vinculo: string; organizacao: string },
+  escolha: Escolha | undefined,
 ): Promise<[ParticipanteCarregado, string]> {
   if (l.siape) {
     const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, l.siape));
@@ -171,11 +213,29 @@ async function _pessoa(
     await servico_participante.registrar_email(tx, pessoa, l.email);
     return [pessoa, "servidor, pelo SIAPE"];
   }
+  const pergunta = casa_nome(usuario);
+  const parecidos = async () =>
+    duplicados.procurar(tx, { nome: l.nome, emails: [l.email] }, { limite: 50 });
+  if (typeof escolha === "number" && pergunta) {
+    // "usar este": só vale um dos parecidos da linha, e que o usuário pode identificar
+    const alvo = duplicados.visiveis(await parecidos(), usuario).find((p) => p.pessoa.id === escolha);
+    if (alvo) {
+      await servico_participante.registrar_email(tx, alvo.pessoa, l.email);
+      return [alvo.pessoa, "escolhido na conferência"];
+    }
+  }
   if (l.email) {
     const pessoa = await servico_participante.por_email(tx, l.email);
-    if (pessoa) return [pessoa, "já participou, pelo e-mail"];
+    if (pessoa) {
+      const confere = !l.nome || duplicados.nomes_parecidos(nome_exibicao(pessoa), l.nome);
+      if (confere || !pergunta) return [pessoa, "já participou, pelo e-mail"];
+      if (escolha !== "novo") {
+        const vistos = duplicados.visiveis(await parecidos(), usuario);
+        throw new LinhaPergunta(duplicados.na_tela(vistos.length ? vistos : [{ pessoa, motivo: "EMAIL" }], usuario));
+      }
+    }
   }
-  if (l.nome && casa_nome(usuario)) {
+  if (l.nome && pergunta && escolha !== "novo") {
     const [pessoa, como] = await _por_nome(tx, l.nome);
     if (pessoa) {
       await servico_participante.registrar_email(tx, pessoa, l.email);
@@ -183,6 +243,9 @@ async function _pessoa(
     }
   }
   if (!l.nome) throw new LinhaRecusada("Sem nome, e o e-mail não é de ninguém cadastrado.");
+  const achados = l.nome || l.email ? await parecidos() : [];
+  const vistos = pergunta ? duplicados.visiveis(achados, usuario) : [];
+  if (vistos.length && escolha !== "novo") throw new LinhaPergunta(duplicados.na_tela(vistos, usuario));
   const pessoa = await servico_participante.criar_externo(tx, {
     nome: l.nome,
     vinculo: padrao.vinculo,
@@ -190,6 +253,14 @@ async function _pessoa(
     email: l.email,
     organizacao: l.organizacao || padrao.organizacao,
   });
+  if (escolha === "novo") {
+    // "criar novo" é a resposta "não é a mesma pessoa" para cada parecido mostrado
+    for (const p of vistos) await duplicados.marcar_distintos(tx, usuario, pessoa.id, p.pessoa.id, "LOTE");
+    return [pessoa, "externo novo (conferido)"];
+  }
+  // a marca é silenciosa: dizer "parece alguém" a quem não lê nomes seria
+  // dizer que esse alguém existe
+  if (!pergunta && achados.length) await duplicados.marcar_suspeito(tx, pessoa, usuario);
   return [pessoa, "externo novo"];
 }
 
@@ -205,6 +276,7 @@ export async function processar(
   texto: string,
   padrao: { vinculo: string; organizacao: string },
   simular: boolean,
+  escolhas: ReadonlyMap<string, Escolha> = new Map(),
 ): Promise<Desfecho[]> {
   usuario.exigir("turma.inscrever");
   if (!(VINCULOS_PARTICIPANTE as readonly string[]).includes(padrao.vinculo) || padrao.vinculo === "SERVIDOR") {
@@ -219,7 +291,20 @@ export async function processar(
     const desfechos: Desfecho[] = [];
     const vistos = new Set<number>();
     for (const l of linhas) {
-      const base = { numero: l.numero, quem: l.nome || l.siape || l.email, como: "", motivo: "", ignorados: l.ignorados, texto: brutas.get(l.numero)! };
+      const texto_linha = brutas.get(l.numero)!;
+      const chave = chave_da_linha(texto_linha);
+      const escolha = escolhas.get(chave);
+      const base = {
+        numero: l.numero,
+        quem: l.nome || l.siape || l.email,
+        como: "",
+        motivo: "",
+        ignorados: l.ignorados,
+        texto: texto_linha,
+        chave,
+        parecidos: [] as duplicados.ParecidoNaTela[],
+        escolha: escolha === undefined ? "" : String(escolha),
+      };
       if (l.erro) {
         desfechos.push({ ...base, resultado: "RECUSADA", motivo: l.erro });
         continue;
@@ -227,7 +312,7 @@ export async function processar(
       try {
         const desfecho = await sp.transaction(async (linha_sp) => {
           const t = linha_sp as Executor;
-          const [pessoa, como] = await _pessoa(t, usuario, l, padrao);
+          const [pessoa, como] = await _pessoa(t, usuario, l, padrao, escolha);
           const quem = _quem(usuario, pessoa);
           if (vistos.has(pessoa.id)) {
             return { ...base, quem, como, resultado: "JA_INSCRITA" as const, motivo: "Repetida na lista." };
@@ -246,6 +331,10 @@ export async function processar(
         });
         desfechos.push(desfecho);
       } catch (erro) {
+        if (erro instanceof LinhaPergunta) {
+          desfechos.push({ ...base, resultado: "A_DECIDIR", motivo: erro.message, parecidos: erro.parecidos });
+          continue;
+        }
         if (erro instanceof LinhaRecusada || erro instanceof RegraDaTurma || erro instanceof DadosDoParticipante) {
           desfechos.push({ ...base, resultado: "RECUSADA", motivo: erro.message });
           continue;

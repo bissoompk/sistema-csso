@@ -22,6 +22,7 @@ import { rotas as laudos } from "./laudos.js";
 import { rotas as adicionais } from "./adicionais.js";
 import { rotas as servidores } from "./servidores.js";
 import { rotas as catalogos } from "./catalogos.js";
+import { rotas as duplicados } from "./duplicados.js";
 import { rotas as treinamentos } from "./treinamentos.js";
 import { rotas as turmas } from "./turmas.js";
 import { rotas as certificados } from "./certificados.js";
@@ -59,6 +60,7 @@ export const ROTAS: Hono<Ambiente>[] = [
   adicionais,
   servidores,
   catalogos,
+  duplicados,
   treinamentos,
   turmas,
   certificados,

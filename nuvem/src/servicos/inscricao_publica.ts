@@ -18,22 +18,29 @@
  *
  * **Sem oráculo.** A resposta ao público é sempre a mesma frase: quem já
  * estava inscrito, o SIAPE de outra pessoa e o pedido novo são indistinguíveis
- * de fora. Quem confere é a equipe, olhando a aba Inscrições.
+ * de fora — no texto e no tempo (`esperar_o_piso`). Quem confere é a equipe,
+ * na aba Inscrições e nos pedidos pelo link, onde cada pedido diz com quem
+ * parece. Quem fica sabendo que já tem cadastro é só o dono do e-mail DO
+ * CADASTRO, pelo aviso de `aviso_cadastro_existente.ts` (modelo "esqueci a
+ * senha", 23/10/2026).
  *
  * **Sem CPF.** O formulário não tem o campo, e recusa o número digitado em
  * qualquer outro (o CPF só entra pela tela interna, e só para o certificado).
  */
 import { createHash, randomBytes } from "node:crypto";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   inscricao as tabela_inscricao,
+  limite_login_ip,
   servidor as tabela_servidor,
   turma as tabela_turma,
 } from "../db/esquema/index.js";
 import { somar_dias } from "../dominio/datas.js";
 import * as auditoria from "./auditoria.js";
+import * as aviso_cadastro from "./aviso_cadastro_existente.js";
 import * as datas_br from "./datas_br.js";
+import { nomes_parecidos } from "./duplicados.js";
 import * as servico_participante from "./participante.js";
 import { DadosDoParticipante, mesmo_nome, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
@@ -52,6 +59,15 @@ const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const RESPOSTA_PADRAO =
   "Pedido recebido. A equipe responsável pela turma confere cada pedido antes de confirmar a vaga; " +
   "se precisar de algo, ela procura você pelos dados informados.";
+
+/**
+ * A linha que vem junto, IGUAL para todos (23/10/2026): não diz "você já tem
+ * cadastro" — diz que, SE tiver, pode chegar uma mensagem no e-mail de antes
+ * (`aviso_cadastro_existente.ts`).
+ */
+export const LINHA_NEUTRA =
+  "Se você já tem cadastro com a gente, pode chegar uma mensagem no e-mail que usou antes. " +
+  "Não chegou nada? Tudo bem: a equipe confere o pedido do mesmo jeito.";
 
 // ---------------------------------------------------------------------
 // O público da turma (22/10/2026)
@@ -282,29 +298,39 @@ async function _pedido_em_espera(tx: Executor, turma: TurmaCarregada, p: Pedido)
   return null;
 }
 
+/** Por qual chave o pedido casou com um cadastro existente (`null`: não casou). */
+export type Casamento = "SIAPE" | "EMAIL" | null;
+
 /**
  * Quem é a pessoa do pedido. Casa com cadastro existente SÓ quando o nome
- * digitado confere com o do cadastro (pelo SIAPE, ou pelo e-mail): digitar o
- * SIAPE de outra pessoa não pendura o pedido nela. O e-mail é procurado em
- * TODOS os participantes que o usam (dois podem dividir o endereço, e o
- * primeiro nem sempre é o do nome digitado). Sem casamento, o pedido em espera
- * da mesma pessoa na turma é reaproveitado; só então nasce um participante
- * externo — a duplicata, se for, aparece para a equipe mesclar.
+ * digitado parece o do cadastro (`duplicados.nomes_parecidos`, o critério
+ * único), pelo SIAPE ou pelo e-mail: digitar o SIAPE de outra pessoa não
+ * pendura o pedido nela. O e-mail é procurado em TODOS os participantes que o
+ * usam (dois podem dividir o endereço, e o primeiro nem sempre é o do nome
+ * digitado). Sem casamento, o pedido em espera da mesma pessoa na turma é
+ * reaproveitado; só então nasce um participante externo — e a equipe vê, na
+ * conferência, com quem ele parece.
  */
-async function _participante(tx: Executor, turma: TurmaCarregada, p: Pedido): Promise<[ParticipanteCarregado, string]> {
+async function _participante(
+  tx: Executor,
+  turma: TurmaCarregada,
+  p: Pedido,
+): Promise<[ParticipanteCarregado, string, Casamento]> {
   if (p.siape) {
     const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, p.siape));
-    if (servidor && mesmo_nome(servidor.nome, p.nome)) {
-      return [await servico_participante.de_servidor(tx, servidor, null), ""];
+    if (servidor && nomes_parecidos(servidor.nome, p.nome)) {
+      return [await servico_participante.de_servidor(tx, servidor, null), "", "SIAPE"];
     }
   }
   if (p.email) {
     const do_endereco = await servico_participante.por_email_todos(tx, p.email);
-    const ja = do_endereco.find((x) => x.ativo && x.mesclado_em_id === null && mesmo_nome(nome_exibicao(x), p.nome));
-    if (ja) return [ja, ""];
+    const ja = do_endereco.find(
+      (x) => x.ativo && x.mesclado_em_id === null && nomes_parecidos(nome_exibicao(x), p.nome),
+    );
+    if (ja) return [ja, "", "EMAIL"];
   }
   const em_espera = await _pedido_em_espera(tx, turma, p);
-  if (em_espera) return [em_espera, ""];
+  if (em_espera) return [em_espera, "", null];
   const nota = p.siape ? `Pedido pelo link: o SIAPE ${p.siape} informado não confere com o cadastro de servidor.` : "";
   const novo = await servico_participante.criar_externo(tx, {
     nome: p.nome,
@@ -314,13 +340,23 @@ async function _participante(tx: Executor, turma: TurmaCarregada, p: Pedido): Pr
   });
   // a origem diz de onde o endereço veio; confirmado ele não está
   if (p.email) await servico_participante.registrar_email(tx, novo, p.email, { origem: "INSCRICAO_PUBLICA" });
-  return [novo, nota];
+  return [novo, nota, null];
 }
+
+/**
+ * A recusa de dado que chega ao visitante: genérica. A mensagem do cadastro
+ * (`DadosDoParticipante`) pode repetir dado que não é dele — era por ela que
+ * o e-mail institucional de um servidor saía na tela de quem só digitou o
+ * SIAPE (`E-mail inválido: '…'`, 23/10/2026).
+ */
+export const RECUSA_GENERICA = "Não foi possível registrar o pedido com estes dados. Confira o que foi digitado.";
 
 /**
  * Registra o pedido. Devolve sempre do mesmo jeito (a rota responde a mesma
  * frase): pessoa já na turma não ganha segundo registro, e de fora ninguém
- * sabe disso.
+ * sabe disso. Quando o pedido casou com um cadastro pelo e-mail ou pelo
+ * SIAPE, o aviso vai ao e-mail DO CADASTRO (`aviso_cadastro_existente.ts`) —
+ * nos dois ramos, o novo e o repetido, que assim fazem o mesmo trabalho.
  */
 export async function pedir(
   tx: Executor,
@@ -328,6 +364,7 @@ export async function pedir(
   dados: Pedido,
   ip: string | null,
   hoje: string | null = null,
+  agora: Date = new Date(),
 ): Promise<void> {
   const p = _ler(dados, turma);
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
@@ -350,17 +387,21 @@ export async function pedir(
   }
   let pessoa: ParticipanteCarregado;
   let nota: string;
+  let casou: Casamento;
   try {
-    [pessoa, nota] = await _participante(tx, turma, p);
+    [pessoa, nota, casou] = await _participante(tx, turma, p);
   } catch (erro) {
-    if (erro instanceof DadosDoParticipante) throw new PedidoInvalido(erro.message);
+    if (erro instanceof DadosDoParticipante) throw new PedidoInvalido(RECUSA_GENERICA);
     throw erro;
   }
   const [ja] = await tx
     .select({ id: tabela_inscricao.id })
     .from(tabela_inscricao)
     .where(and(eq(tabela_inscricao.turma_id, turma.id), eq(tabela_inscricao.participante_id, pessoa.id)));
-  if (ja) return;
+  if (ja) {
+    if (casou) await aviso_cadastro.avisar(tx, pessoa, { chave: casou, digitado: p.email, ja_na_turma: true }, agora);
+    return;
+  }
 
   const [linha] = await tx
     .insert(tabela_inscricao)
@@ -383,27 +424,66 @@ export async function pedir(
     usuario: null,
   });
   await servico_turma.abrir_pendencia_de_confirmacao(tx, inscricao, null, true);
+  if (casou) await aviso_cadastro.avisar(tx, pessoa, { chave: casou, digitado: p.email, ja_na_turma: false }, agora);
 }
 
 // ---------------------------------------------------------------------
-// Limite por IP — o mesmo desenho do de /validar (memória da instância)
+// Tempo de resposta constante
 // ---------------------------------------------------------------------
+/**
+ * O piso do tempo da resposta ao POST do link, em milissegundos, mais um
+ * acréscimo sorteado: o pedido repetido (que não grava inscrição) respondia
+ * mais cedo que o novo, e o tempo dizia o que a frase não diz. Trocável no
+ * teste.
+ */
+export const tempo_de_resposta = { piso_ms: 450, variacao_ms: 150 };
+
+export async function esperar_o_piso(inicio: number, agora: () => number = () => performance.now()): Promise<void> {
+  const alvo = tempo_de_resposta.piso_ms + Math.floor(Math.random() * (tempo_de_resposta.variacao_ms + 1));
+  const falta = alvo - (agora() - inicio);
+  if (falta > 0) await new Promise((r) => setTimeout(r, falta));
+}
+
+// ---------------------------------------------------------------------
+// Limite por IP — no banco (23/10/2026)
+// ---------------------------------------------------------------------
+/**
+ * Era um mapa na memória da instância: zerava a cada arranque a frio e valia
+ * por instância. Agora mora em `limite_login_ip`, com chave própria (o mesmo
+ * truque do bloqueio encenado de `autenticacao.ts`), e a rotina noturna apaga
+ * a linha um dia depois (`expurgar_limites_ip`) — o IP é dado pessoal.
+ */
 export const JANELA_S = 600;
 export const LIMITE_POR_JANELA = 8;
-const _tentativas = new Map<string, number[]>();
+export const PREFIXO_CHAVE_IP = "inscricao:";
 
-export const relogio = { agora: (): number => performance.now() / 1000 };
+/** Mantida para quem a chamava: o limite agora é do banco, que cada teste já recria. */
+export function limpar_limites(): void {}
 
-export function limpar_limites(): void {
-  _tentativas.clear();
+function _chave_ip(ip: string | null | undefined): string {
+  return (PREFIXO_CHAVE_IP + (ip || "desconhecido")).slice(0, 64);
 }
 
 /** Conta o envio e diz se ele cabe. Só o POST conta: abrir o cartaz é de graça. */
-export function dentro_do_limite(ip: string | null | undefined): boolean {
-  const chave = ip || "desconhecido";
-  const agora = relogio.agora();
-  const fila = (_tentativas.get(chave) ?? []).filter((t) => agora - t <= JANELA_S);
-  fila.push(agora);
-  _tentativas.set(chave, fila);
-  return fila.length <= LIMITE_POR_JANELA;
+export async function dentro_do_limite(
+  tx: Executor,
+  ip: string | null | undefined,
+  agora: Date = new Date(),
+): Promise<boolean> {
+  const chave = _chave_ip(ip);
+  const inicio_valido = new Date(agora.getTime() - JANELA_S * 1000);
+  // Date solto num `sql` vai como texto ISO (ver `autenticacao.registrar_falha_ip`)
+  const vencida = sql`${limite_login_ip.janela_inicio} < ${inicio_valido.toISOString()}::timestamptz`;
+  const [linha] = await tx
+    .insert(limite_login_ip)
+    .values({ ip: chave, falhas: 1, janela_inicio: agora, bloqueado_ate: null })
+    .onConflictDoUpdate({
+      target: limite_login_ip.ip,
+      set: {
+        falhas: sql`CASE WHEN ${vencida} THEN 1 ELSE ${limite_login_ip.falhas} + 1 END`,
+        janela_inicio: sql`CASE WHEN ${vencida} THEN ${agora.toISOString()}::timestamptz ELSE ${limite_login_ip.janela_inicio} END`,
+      },
+    })
+    .returning({ falhas: limite_login_ip.falhas });
+  return Number(linha?.falhas ?? 1) <= LIMITE_POR_JANELA;
 }

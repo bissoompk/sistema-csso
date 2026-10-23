@@ -3970,6 +3970,40 @@ details.ajuste-horas input { margin-top: 4px; }
 #ajudantes .nome { overflow-wrap: anywhere; }
 /* ---------- fim DONO ---------- */
 
+/* ---------- DUPLICADOS (23/10/2026) ----------
+   "parece com PTC-…" na conferência dos pedidos e na prévia do lote: uma
+   linha por cadastro parecido, com as duas decisões ao lado. No celular os
+   botões descem para baixo do texto (flex-wrap), sem rolar a tabela. */
+.parece-com {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem .5rem;
+  margin-top: .35rem;
+  font-weight: 400;
+}
+.parece-com .acoes-parece {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+.parece-com label.escolha-parece {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-weight: 400;
+}
+@media (max-width: 640px) {
+  .parece-com .acoes-parece {
+    width: 100%;
+  }
+  .parece-com .acoes-parece button,
+  .parece-com label.escolha-parece {
+    min-height: 44px;
+  }
+}
+/* ---------- fim DUPLICADOS ---------- */
+
 /* ===== CELULAR (lote 0) =====
    O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
    com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o

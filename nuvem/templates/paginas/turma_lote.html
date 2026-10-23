@@ -26,6 +26,12 @@
           servidor, ponha o SIAPE na linha.{% endif %}
           E-mail já conhecido acha quem já participou de outra turma. Quem não for achado
           entra como participante externo, com o vínculo escolhido abaixo.</p>
+        <p>{% if casa_nome %}A linha que <strong>parece</strong> um cadastro que já existe
+          (nome parecido, ou o e-mail de alguém com outro nome) não é inscrita sozinha: a
+          conferência mostra “parece com …” e você escolhe, linha a linha, “usar este” ou
+          “criar novo”.{% else %}Nesta sessão os nomes estão suprimidos, e a conferência
+          não pergunta “é a mesma pessoa?”: quem tem acesso aos nomes confere depois os
+          possíveis duplicados.{% endif %}</p>
         <p><strong>CPF não entra pela lista.</strong> Quando o certificado exige
           (brigadista), ele se informa na linha de cada inscrição, no campo próprio.
           Telefone e cargo também não são guardados.</p>
@@ -41,23 +47,48 @@
     {% else %}Conferência: {{ contagem.INSCRITA }} seriam inscrito(s). Nada foi gravado ainda.{% endif %}
     {% if contagem.JA_INSCRITA %}{{ contagem.JA_INSCRITA }} já estava(m) na turma. {% endif %}
     {% if contagem.RECUSADA %}{{ contagem.RECUSADA }} recusada(s){{ ' — continuam na caixa para corrigir' if gravado }}.{% endif %}
+    {% if contagem.A_DECIDIR %}{{ contagem.A_DECIDIR }} parece(m) cadastro que já existe: escolha, em cada
+      uma, “usar este” ou “criar novo”, e confira de novo{{ ' (continuam na caixa)' if gravado }}.{% endif %}
   </div>
+  {# `empilhavel`: no celular cada linha vira um cartão, e a escolha "usar este" /
+     "criar novo" ganha a largura inteira, sem rolar a tabela #}
   <div class="tabela-cartao lista">
-  <table>
+  <table class="empilhavel">
     <thead>
       <tr><th scope="col">Linha</th><th scope="col">Quem</th><th scope="col">Como foi achado</th>
           <th scope="col">Resultado</th></tr>
     </thead>
     {% for x in desfechos %}
     <tr>
-      <td class="mono">{{ x.numero }}</td>
+      <td class="mono" data-coluna="Linha">{{ x.numero }}</td>
       <td class="nome">{{ x.quem or '—' }}</td>
-      <td>{{ x.como or '—' }}</td>
-      <td>
+      <td data-coluna="Como foi achado">{{ x.como or '—' }}</td>
+      <td data-coluna="Resultado">
         {%- if x.resultado == 'INSCRITA' %}<span class="pilula ok">{{ 'inscrito' if gravado else 'será inscrito' }}</span>
         {%- elif x.resultado == 'JA_INSCRITA' %}<span class="pilula sem-ponto">já na turma</span>
+        {%- elif x.resultado == 'A_DECIDIR' %}<span class="pilula alerta">a decidir</span>
         {%- else %}<span class="pilula erro">recusada</span>{% endif %}
         {% if x.motivo %}<span class="quebra discreto">{{ x.motivo }}</span>{% endif %}
+        {# "parece com …" linha a linha: a escolha vai com o formulário da lista
+           (`form="f-lote"`), presa à linha pelo texto dela, não pelo número #}
+        {% if x.resultado == 'A_DECIDIR' %}
+        <fieldset class="campos">
+          <legend class="oculto">Linha {{ x.numero }}: é a mesma pessoa?</legend>
+          {% for p in x.parecidos %}
+          <span class="parece-com">
+            <label class="escolha-parece"><input type="radio" form="f-lote" name="escolha_{{ x.chave }}" value="{{ p.id }}"
+                   {{- ' checked' if x.escolha == (p.id|string) }}>
+              <span>usar este: parece com <span class="mono">{{ p.identificador }}</span>{% if p.nome %} {{ p.nome }}{% endif %}</span></label>
+            <span class="discreto">· {{ p.rotulo_motivo }}{% if p.servidor %} · servidor{% endif %}</span>
+          </span>
+          {% endfor %}
+          <span class="parece-com">
+            <label class="escolha-parece"><input type="radio" form="f-lote" name="escolha_{{ x.chave }}" value="novo"
+                   {{- ' checked' if x.escolha == 'novo' }}>
+              <span>criar novo (não é a mesma pessoa)</span></label>
+          </span>
+        </fieldset>
+        {% endif %}
         {% if x.ignorados|length %}<span class="quebra discreto">não guardado: {{ x.ignorados|join(', ') }}</span>{% endif %}
       </td>
     </tr>
@@ -67,7 +98,7 @@
   {% endif %}
 
   {% if turma.aceita_inscricao %}
-  <form method="post" action="/turmas/{{ turma.id }}/inscricoes/lote" class="corpo">
+  <form method="post" action="/turmas/{{ turma.id }}/inscricoes/lote" class="corpo" id="f-lote">
     <div class="campo"><label for="lote-lista">Lista</label>
       <textarea id="lote-lista" name="lista" rows="12" class="mono" spellcheck="false"
                 placeholder="1110654&#10;Maria Aparecida de Souza; maria@empresa.com.br; Limpa Tudo Ltda&#10;João Pereira	joao@ufvjm.edu.br"

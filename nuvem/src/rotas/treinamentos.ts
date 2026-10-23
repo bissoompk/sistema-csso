@@ -42,6 +42,7 @@ import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as dono_turma from "../servicos/dono_turma.js";
 import * as exclusao_cadastro from "../servicos/exclusao_cadastro.js";
+import * as duplicados from "../servicos/duplicados.js";
 import * as mesclagem from "../servicos/mesclagem.js";
 import * as servico_participante from "../servicos/participante.js";
 import * as campos_certificado from "../servicos/campos_certificado.js";
@@ -1576,12 +1577,26 @@ rotas.get(PARTICIPANTES, async (c) => {
   usuario.exigir("participante.mesclar");
   const tx = c.get("tx");
   const busca = (c.req.query("busca") ?? "").trim();
-  const achados = busca ? await mesclagem.fichas(tx, await servico_participante.buscar(tx, busca, usuario, 30)) : [];
-  const grupos = busca ? [] : await mesclagem.possiveis_duplicados(tx);
+  // o atalho "juntar com outro cadastro" da ficha (23/10/2026): a pessoa e
+  // quem parece com ela, pelo critério único (`duplicados.procurar`)
+  const de = id_opcional(c.req.query("de"));
+  const origem = de !== null ? await servico_participante.carregar(tx, de) : null;
+  const do_atalho =
+    origem && origem.ativo && origem.mesclado_em_id === null
+      ? [origem, ...(await duplicados.procurar(tx, duplicados.alvo_do_cadastro(origem), { limite: 20 })).map((p) => p.pessoa)]
+      : [];
+  const achados = busca
+    ? await mesclagem.fichas(tx, await servico_participante.buscar(tx, busca, usuario, 30))
+    : do_atalho.length
+      ? await mesclagem.fichas(tx, do_atalho)
+      : [];
+  const grupos = busca || do_atalho.length ? [] : await mesclagem.possiveis_duplicados(tx);
   return pagina(c, "paginas/participantes.html", usuario, {
     // `termo`, e não `busca`: a casca copia `busca` para o campo da busca
     // global do cabeçalho, e o mesmo texto nos dois campos confundia
     termo: busca,
+    de_identificador: do_atalho.length ? origem!.identificador_publico : null,
+    de_id: do_atalho.length ? origem!.id : null,
     achados,
     sugerido_achados: achados.length ? mesclagem.sugerido(achados) : null,
     difere_achados: achados.length ? _o_que_difere(achados, mesclagem.sugerido(achados)) : {},

@@ -10,9 +10,10 @@
  * só põe cada pedido no seu savepoint, e o que travar fica como estava, com o
  * motivo no relatório.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
+  certificado as tabela_certificado,
   inscricao as tabela_inscricao,
   treinamento as tabela_treinamento,
   turma as tabela_turma,
@@ -20,7 +21,9 @@ import {
 import { TransicaoInvalida } from "../dominio/estados.js";
 import { Participante } from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
-import { nome_exibicao } from "./participante.js";
+import * as duplicados from "./duplicados.js";
+import * as mesclagem from "./mesclagem.js";
+import { nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
 import * as servico_turma from "./turma.js";
 import * as dono_turma from "./dono_turma.js";
@@ -38,6 +41,11 @@ export interface PedidoNaFila {
   email: string;
   observacao: string | null;
   criado_em: Date;
+  /**
+   * Com quem o pedido parece (23/10/2026, `duplicados.procurar`): o `PTC-…`
+   * sempre, o nome só para quem pode lê-lo. O visitante não vê nada disto.
+   */
+  parecidos: duplicados.ParecidoNaTela[];
 }
 
 export interface TurmaComPedidos {
@@ -103,9 +111,97 @@ export async function a_conferir(tx: Executor, usuario: UsuarioAtual): Promise<T
       email: Participante.email_exibicao(i.participante),
       observacao: i.observacao,
       criado_em: i.inscrito_em,
+      parecidos: duplicados.na_tela(await duplicados.procurar(tx, duplicados.alvo_do_cadastro(i.participante)), usuario),
     });
   }
   return [...saida.values()].filter((t) => t.pedidos.length);
+}
+
+// ---------------------------------------------------------------------
+// "Parece com PTC-…": usar o cadastro que já existe, ou não é a mesma pessoa
+// ---------------------------------------------------------------------
+export class DecisaoRecusada extends RegraViolada {}
+
+async function _pedido_no_escopo(tx: Executor, usuario: UsuarioAtual, inscricao_id: number) {
+  const inscricao = await servico_turma.carregar_inscricao(tx, inscricao_id);
+  if (!inscricao || inscricao.situacao !== "AGUARDANDO_EMAIL" || inscricao.origem !== "PUBLICA") {
+    throw new DecisaoRecusada("Este pedido já foi decidido ou não existe mais.");
+  }
+  if (!(await servico_turma.no_escopo(tx, usuario, inscricao.turma_id, "turma.inscrever"))) {
+    throw new DecisaoRecusada("Este pedido já foi decidido ou não existe mais.");
+  }
+  return inscricao;
+}
+
+async function _parecido_do_pedido(tx: Executor, pessoa: ParticipanteCarregado, participante_id: number) {
+  const achados = await duplicados.procurar(tx, duplicados.alvo_do_cadastro(pessoa), { limite: 50 });
+  const outro = achados.find((p) => p.pessoa.id === participante_id);
+  if (!outro) throw new DecisaoRecusada("Esse cadastro não está entre os parecidos deste pedido.");
+  return outro.pessoa;
+}
+
+/** O cadastro "novo" do pedido: só tem este pedido, e nenhum certificado. */
+async function _so_este_pedido(tx: Executor, participante_id: number): Promise<boolean> {
+  const [ins] = await tx
+    .select({ n: count() })
+    .from(tabela_inscricao)
+    .where(eq(tabela_inscricao.participante_id, participante_id));
+  const [cer] = await tx
+    .select({ n: count() })
+    .from(tabela_certificado)
+    .where(eq(tabela_certificado.participante_id, participante_id));
+  return Number(ins?.n ?? 0) === 1 && Number(cer?.n ?? 0) === 0;
+}
+
+/**
+ * "É a mesma pessoa: usar este cadastro." Junta o cadastro do pedido ao que já
+ * existia (`mesclagem`), e o pedido passa a ser dele — continua a conferir:
+ * aceitar é outro passo. O de servidor é sempre o que fica.
+ *
+ * Basta `turma.inscrever` quando o que se junta é o cadastro que o próprio
+ * pedido criou (só este pedido, nenhum certificado): é desfazer uma duplicata
+ * de minutos. Juntar dois cadastros com história continua pedindo
+ * `participante.mesclar`, a régua da tela de junção.
+ */
+export async function usar_cadastro(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  inscricao_id: number,
+  participante_id: number,
+): Promise<{ mantido: ParticipanteCarregado; turma: string }> {
+  usuario.exigir("turma.inscrever");
+  const inscricao = await _pedido_no_escopo(tx, usuario, inscricao_id);
+  const do_pedido = inscricao.participante;
+  const outro = await _parecido_do_pedido(tx, do_pedido, participante_id);
+  const [mantido, absorvido] = do_pedido.servidor_id !== null ? [do_pedido, outro] : [outro, do_pedido];
+  if (!usuario.pode("participante.mesclar") && !(absorvido.id === do_pedido.id && (await _so_este_pedido(tx, do_pedido.id)))) {
+    throw new DecisaoRecusada(
+      `${absorvido.identificador_publico} já tem outras inscrições ou certificados: juntar os dois cadastros ` +
+        "é com quem pode juntar cadastros duplicados.",
+    );
+  }
+  await mesclagem._mesclar(
+    tx,
+    usuario,
+    mantido.id,
+    absorvido.id,
+    `Mesma pessoa: pedido pelo link em ${inscricao.turma.codigo} conferido como ${mantido.identificador_publico}`,
+  );
+  return { mantido, turma: inscricao.turma.codigo };
+}
+
+/** "Não é a mesma pessoa": o par fica gravado e não volta como parecido. */
+export async function nao_e_a_mesma(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  inscricao_id: number,
+  participante_id: number,
+): Promise<{ pedido: string; outro: string }> {
+  usuario.exigir("turma.inscrever");
+  const inscricao = await _pedido_no_escopo(tx, usuario, inscricao_id);
+  const outro = await _parecido_do_pedido(tx, inscricao.participante, participante_id);
+  await duplicados.marcar_distintos(tx, usuario, inscricao.participante.id, outro.id, "CONFERENCIA");
+  return { pedido: inscricao.participante.identificador_publico, outro: outro.identificador_publico };
 }
 
 export interface ResultadoLote {

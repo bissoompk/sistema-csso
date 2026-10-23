@@ -46,6 +46,7 @@ import {
 } from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
+import * as duplicados from "./duplicados.js";
 import * as identificacao from "./identificacao.js";
 import * as textos from "./textos.js";
 import type { UsuarioAtual } from "./rbac.js";
@@ -232,8 +233,15 @@ export async function de_servidor(
   const participante: ParticipanteCarregado = { ...linha!, servidor, emails: [], email_principal: null };
   if (servidor.email) {
     // o institucional entra como conhecido, mas NÃO como confirmado: o que
-    // confirma é a posse da caixa, e ninguém clicou em link nenhum
-    await registrar_email(tx, participante, servidor.email, { origem: "SERVIDOR" });
+    // confirma é a posse da caixa, e ninguém clicou em link nenhum. O
+    // endereço mal formado do cadastro é deixado de lado, sem recusa: a
+    // mensagem de recusa repetia o endereço, e pelo link público ela chegava
+    // a quem só digitou o SIAPE (23/10/2026)
+    try {
+      await registrar_email(tx, participante, servidor.email, { origem: "SERVIDOR" });
+    } catch (erro) {
+      if (!(erro instanceof DadosDoParticipante)) throw erro;
+    }
   }
   await auditoria.registrar(tx, {
     entidade: "participante",
@@ -402,7 +410,11 @@ export async function buscar_servidores(
   return candidatos.filter((s) => identificacao.casa_a_busca(alvo, s, usuario)).slice(0, limite);
 }
 
-/** Primeiro e último nome iguais, sem acento nem caixa — o bastante para não casar estranho. */
+/**
+ * Primeiro e último nome iguais, sem acento nem caixa. Desde 23/10/2026 quem
+ * decide "parece a mesma pessoa" é `duplicados.nomes_parecidos` (o critério
+ * único, mais largo); esta fica para quem só quer a comparação estrita.
+ */
 export function mesmo_nome(a: string, b: string): boolean {
   const x = textos.chave_busca(a).split(" ").filter(Boolean);
   const y = textos.chave_busca(b).split(" ").filter(Boolean);
@@ -411,14 +423,15 @@ export function mesmo_nome(a: string, b: string): boolean {
 
 /**
  * Quem já está na base e PARECE ser a pessoa que está para ser cadastrada como
- * externa: mesmo nome (primeiro e último, sem acento) ou o mesmo e-mail. A tela
- * pergunta "é a mesma pessoa?" antes de criar a segunda linha — sem a pergunta a
- * duplicata nascia em silêncio e o trabalho caía na mesclagem.
+ * externa, pelo critério único de `duplicados.procurar` (SIAPE, e-mail, nome
+ * parecido; o par "não é a mesma pessoa" fica de fora). A tela pergunta "é a
+ * mesma pessoa?" antes de criar a segunda linha.
  *
  * RN-19 do lado do filtro, a mesma de `buscar`: só entra quem `usuario` pode
  * identificar. Para quem não lê nomes a lista sai vazia, e a pergunta não é
  * feita — perguntar "já existe Fulano?" a quem digitou "Fulano" diria que ele
- * existe, que é o oráculo que a busca fecha.
+ * existe. Nesse caso o cadastro nasce marcado como suspeito
+ * (`duplicados.marcar_suspeito`), para quem lê nomes conferir.
  */
 export async function parecidos(
   tx: Executor,
@@ -426,37 +439,9 @@ export async function parecidos(
   usuario: UsuarioAtual | null,
   limite = 5,
 ): Promise<ParticipanteCarregado[]> {
-  const nome = (d.nome ?? "").trim().replace(/\s+/g, " ");
-  const partes = textos.chave_busca(nome).split(" ").filter(Boolean);
-  const candidatos = new Map<number, ParticipanteCarregado>();
-  if (partes.length > 1) {
-    // o SQL é o recorte largo (primeiro e último nome, com o que houver no
-    // meio); quem decide é `mesmo_nome`. Só o primeiro nome trazia todas as
-    // Marias da base, uma carga de cada
-    const literal = (t: string) => t.replace(/[\\%_]/g, "\\$&");
-    const curinga = `${literal(partes[0]!)}%${literal(partes.at(-1)!)}%`;
-    const ids = await tx
-      .selectDistinct({ id: tabela_participante.id })
-      .from(tabela_participante)
-      .leftJoin(tabela_servidor, eq(tabela_participante.servidor_id, tabela_servidor.id))
-      .where(
-        and(
-          eq(tabela_participante.ativo, true),
-          isNull(tabela_participante.mesclado_em_id),
-          or(
-            sql`translate(lower(${tabela_participante.nome}), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc') ilike ${curinga}`,
-            sql`translate(lower(${tabela_servidor.nome}), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc') ilike ${curinga}`,
-          ),
-        ),
-      )
-      .orderBy(asc(tabela_participante.id));
-    for (const { id } of ids) {
-      const pessoa = (await carregar(tx, id))!;
-      if (mesmo_nome(nome_exibicao(pessoa), nome)) candidatos.set(pessoa.id, pessoa);
-    }
-  }
-  for (const pessoa of await por_email_todos(tx, d.email ?? "")) {
-    if (pessoa.ativo && pessoa.mesclado_em_id === null) candidatos.set(pessoa.id, pessoa);
-  }
-  return [...candidatos.values()].filter((p) => pode_identificar(usuario, p)).slice(0, limite);
+  const achados = await duplicados.procurar(tx, { nome: d.nome, emails: [d.email] }, { limite: 50 });
+  return duplicados
+    .visiveis(achados, usuario)
+    .map((p) => p.pessoa)
+    .slice(0, limite);
 }

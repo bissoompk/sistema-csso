@@ -27,6 +27,8 @@
       <td class="acao-linha curta" data-coluna="Juntar"><label class="alvo-marca"><input type="checkbox" name="absorvido_id" value="{{ f.id }}" aria-label="Juntar {{ f.identificador }}"
                  {% if f.id != sugerido and alvo == 'grupo' %}checked{% endif %}></label></td>
       <td class="nome">{{ valor(f.nome, d.nome) }}
+        {% if f.suspeito %}<span class="pilula alerta sem-ponto" title="cadastrado por quem não lê nomes, quando já havia cadastro parecido">a conferir</span>{% endif %}
+        <input type="hidden" name="membro_id" value="{{ f.id }}">
         {% if f.organizacao %}<span class="quebra discreto">{{ valor(f.organizacao, d.organizacao) }}</span>{% endif %}</td>
       <td class="mono curta" data-coluna="Identificador">{{ f.identificador }}{% if f.siape %}<span class="quebra discreto">SIAPE {{ f.siape }}</span>{% endif %}</td>
       <td class="curta" data-coluna="Vínculo">{{ valor(rotulo_vinculo[f.vinculo] or f.vinculo, d.vinculo) }}</td>
@@ -43,7 +45,10 @@
         <input id="motivo-{{ alvo }}-{{ fichas[0].id }}" name="motivo" required
                placeholder="mesma pessoa, cadastrada pelo link e pela lista…"></div>
     </div>
-    <div class="acoes"><button type="submit" class="secundario">Juntar os marcados a quem fica</button></div>
+    <div class="acoes"><button type="submit" class="secundario">Juntar os marcados a quem fica</button>
+      {# a outra resposta: o par fica gravado e o grupo sai da lista e do contador #}
+      <button type="submit" class="secundario" formaction="/treinamentos/participantes/distintos" formnovalidate>
+        Não são a mesma pessoa</button></div>
   </div>
 </form>
 {% endmacro %}
@@ -69,7 +74,7 @@
   {# A lista abre nos possíveis duplicados; a busca é para o par que o sistema
      não achou sozinho (nomes diferentes da mesma pessoa). #}
   <div class="fileira">
-    {% if termo %}<a class="ficha-filtro" href="/treinamentos/participantes">Possíveis duplicados</a>
+    {% if termo or de_identificador %}<a class="ficha-filtro" href="/treinamentos/participantes">Possíveis duplicados</a>
     {% else %}<span class="ficha-filtro ativa" aria-current="page">Possíveis duplicados <span class="conta">{{ grupos|length }}</span></span>{% endif %}
     <form method="get" action="/treinamentos/participantes" class="filtro-inline">
       <label class="oculto" for="busca-participante">Procurar participante</label>
@@ -89,14 +94,25 @@
   {% else %}
   <p class="discreto">Nenhum cadastro com “{{ termo }}”.</p>
   {% endif %}
+  {% elif de_identificador %}
+  {# o atalho da ficha: a pessoa e quem parece com ela #}
+  <h2>Quem parece com <span class="mono">{{ de_identificador }}</span></h2>
+  {% if achados.length > 1 %}
+  <p class="discreto">Marque quem fica e quem se junta a ele, ou diga que não são a mesma pessoa.
+    Não está aqui? Procure pelo outro cadastro acima.</p>
+  {{ grupo(achados, sugerido_achados, 'busca', '/treinamentos/participantes?de=' ~ de_id, rotulo_vinculo, difere_achados) }}
+  {% else %}
+  <p class="discreto">Nenhum cadastro parece com <span class="mono">{{ de_identificador }}</span>
+    (nome, e-mail ou SIAPE). Para juntar com outro, procure por ele acima.</p>
+  {% endif %}
   {% else %}
   <h2>Possíveis duplicados</h2>
-  {% if grupos|length %}<p class="discreto">Cada grupo são cadastros com o mesmo nome ou o mesmo e-mail. O que cada um tem de diferente do sugerido para ficar vem marcado.</p>{% endif %}
+  {% if grupos|length %}<p class="discreto">Cada grupo são cadastros com nome parecido ou o mesmo e-mail. O que cada um tem de diferente do sugerido para ficar vem marcado. Os que alguém já marcou como pessoas diferentes não voltam.</p>{% endif %}
   {% for g in grupos %}
   {{ grupo(g.fichas, g.sugerido, 'grupo', '/treinamentos/participantes', rotulo_vinculo, g.difere) }}
   {% else %}
   <div class="vazio">
-    <strong>Nenhum cadastro com nome ou e-mail repetido</strong>
+    <strong>Nenhum cadastro com nome parecido ou e-mail repetido</strong>
     <span>Se a mesma pessoa está com nomes diferentes, procure pelos dois acima.</span>
   </div>
   {% endfor %}

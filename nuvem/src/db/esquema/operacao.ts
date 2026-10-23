@@ -90,6 +90,10 @@ export const email_saida = pgTable(
     criado_por: integer('criado_por'),
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
     enviado_em: MomentoUTC('enviado_em'),
+    // NUVEM (23/10/2026): o aviso que só faz sentido na hora (o de cadastro
+    // existente do link público) vence — com o envio desligado ele ficaria
+    // na fila e sairia dias depois. Vencido, sai como CANCELADO, sem envio.
+    expira_em: MomentoUTC('expira_em'),
   },
   (t) => [
     foreignKey({ name: 'fk_email_saida_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
