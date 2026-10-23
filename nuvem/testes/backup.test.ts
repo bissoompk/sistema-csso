@@ -202,8 +202,8 @@ describe("tela /config", () => {
     expect(corpo).not.toContain("Setor emissor</h2>");
   });
 
-  it("quem não tem nenhuma das duas não entra", async () => {
-    await entrar(amb.cliente, "almoxarife_sesmt");
+  it("quem não tem bloco nenhum não entra", async () => {
+    await entrar(amb.cliente, "auditor_interno");
     expect((await amb.cliente.get("/config")).status).toBe(403);
   });
 

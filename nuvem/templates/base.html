@@ -447,17 +447,13 @@
            trancada por acidente. O bloco do usuário é onde ajuste de sistema
            mora em todo lugar, e a permissão é a mesma que a rota exige.
 
-           A tupla é a de `rotas/configuracao.PERMISSOES_CONFIG`, e a igualdade é
-           o invariante (`testes/correcoes_visual.test.ts` a cobra perfil a
-           perfil): `backup.executar` entrou porque o `admin_ti`, que é o único
-           perfil que a tem, não tem `processo.ver` — quem faz backup não
-           alcançava a tela do backup. E `processo.ver` saiu: é a leitura que o
-           servidor comum e o auditor também têm, e a engrenagem os levava ao SLA
-           e ao setor que assina, que não são deles. Quem ajusta o sistema é
-           quem instrui processo (`processo.editar`), quem cuida dos catálogos
-           (`catalogo.gerenciar`) ou quem opera a máquina. Divergir aqui volta a
-           oferecer porta trancada, ou a esconder porta aberta. #}
-        {% if usuario.pode('processo.editar') or usuario.pode('catalogo.gerenciar') or usuario.pode('backup.executar') %}
+           A condição é a MESMA da rota (`rotas/configuracao.ve_config`): a
+           engrenagem aparece se sobrar algum bloco da tela para esta conta, já
+           com o nível por módulo aplicado (Configurações conforme o perfil,
+           23/10/2026). `processo.ver` sozinho continua não abrindo (D47).
+           Divergir aqui volta a oferecer porta trancada, ou a esconder porta
+           aberta. #}
+        {% if ve_config(usuario) %}
         {# Era o dingbat `⚙`. Ele não existe na Public Sans, então caía num
            fallback do sistema e saía com peso e tamanho diferentes do vizinho
            "sair", que está a 4px de distância. Mesmo argumento do sino, e o

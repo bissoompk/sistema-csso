@@ -8,20 +8,18 @@
    Não ser de menu não é não ter entrada, e por um tempo foi: nenhum template
    apontava para cá e só chegava quem digitasse a URL. **A porta é a engrenagem
    no bloco do usuário, no cabeçalho** (`base.html`), guardada pela MESMA tupla
-   que a rota exige (`PERMISSOES_CONFIG`). Se um dia a permissão da rota mudar, a
+   que a rota exige (`ve_config`). Se um dia a permissão da rota mudar, a
    de lá muda junto — é o mesmo invariante do menu.
 
-   A página é uma só, em duas seções, e cada conta vê a sua. **Configuração do
-   setor** — o que é congelado no parecer, o SLA que pinta o vermelho das
-   listas e o local de retirada de EPI — é de quem instrui processo ou gere
-   catálogo (`processo.editar`, `catalogo.gerenciar`). **Sistema** — onde o
-   dado mora, o backup e a exportação — é de quem opera a máquina
-   (`backup.executar`); a exportação completa também de quem
-   `pode_exportar_tudo`. O `admin_ti` só tem a segunda, e a base normativa do
-   perfil dele — "sem acesso ao conteúdo técnico" — é a razão de a primeira
-   continuar fechada para ele. O servidor comum não entra (D47): `processo.ver`
-   é a permissão de acompanhar o PRÓPRIO processo, e abria o host do banco e os
-   caminhos de disco. Abrir demais é defeito do mesmo tamanho que trancar. #}
+   A página é uma só, em duas seções, e cada conta vê só os blocos que o perfil
+   libera (Configurações conforme o perfil, 23/10/2026). O mapa bloco →
+   módulo/permissão é `blocos_config` em `rotas/configuracao.ts`, e o template
+   só lê `blocos.*`: **Configuração do setor** — setor emissor, autoridade,
+   SLA e integração com o SEI (módulo Processos SEI, de quem instrui processo
+   ou gere catálogo) e retirada de EPI (módulo EPI, de quem gere EPI);
+   **Sistema** — onde o dado mora e o backup (`backup.executar`) e a exportação
+   completa (`pode_exportar_tudo`). Seção sem bloco não tem título. O servidor
+   comum não entra (D47). Abrir demais é defeito do mesmo tamanho que trancar. #}
 {% set trilha_raiz = 'Sistema' %}
 {% import "partes/macros.html" as ui with context %}
 {% block titulo %}Configuração · SISA{% endblock %}
@@ -43,14 +41,11 @@
          não pode ler o setor emissor é a mesma porta trancada do menu, escrita
          em prosa. #}
       <p class="sub">
-        {%- if do_processo and da_maquina %}O que vale para o sistema inteiro: quem
-        assina, quanto tempo cada coluna pode levar, onde o dado mora e o backup.
-        {%- elif do_processo %}O que vale para o setor inteiro: quem assina e quanto
-        tempo cada coluna pode levar{% if pode_exportar_tudo %} — e a exportação
-        completa da base{% endif %}.
-        {%- else %}Onde o dado mora, o backup cifrado e a exportação. O que é
-        parâmetro do setor — setor emissor, autoridade e prazos — fica com a
-        coordenação.{% endif %}</p>
+        {%- if blocos.secao_setor and blocos.secao_sistema %}Os parâmetros do setor e
+        da instalação liberados para o seu perfil.
+        {%- elif blocos.secao_setor %}Os parâmetros do setor liberados para o seu perfil.
+        {%- else %}A instalação: o que o seu perfil opera — onde o dado mora, o backup
+        e a exportação.{% endif %}</p>
     </div>
     <div class="ao-lado">
       {# Versão e ambiente são fato, não alerta: quem avisa que a configuração
@@ -63,8 +58,10 @@
   {# Os dois cartões do PROCESSO. Setor emissor e autoridade destinatária são
      congelados no parecer (RN-15) e o SLA é o prazo de cada coluna do kanban:
      nenhum dos três é operação de máquina, e é isso que o perfil de TI não vê. #}
-  {% if do_processo %}
+  {% if blocos.secao_setor %}
   <h2 class="secao-hub">Configuração do setor</h2>
+  {% endif %}
+  {% if blocos.setor_emissor %}
   <div class="grade grade-2">
     <section class="cartao liso">
       <div class="cabecalho-cartao">
@@ -100,9 +97,11 @@
             <td class="mono discreto">desde {{ d.vigencia_inicio|data }}</td></tr>
         {% else %}<tr><td class="nada">Nenhuma autoridade cadastrada.</td></tr>{% endfor %}
       </table>
+      {% if blocos.catalogos %}
       <p class="corpo discreto">Cadastrar e editar: <a href="/catalogos/setores-emissores">setores
         emissores</a> e <a href="/catalogos/autoridades-destinatarias">autoridades destinatárias</a>,
         em Catálogos.</p>
+      {% endif %}
     </section>
 
     <section class="cartao liso">
@@ -116,7 +115,7 @@
           <p>A idade total é outra medida, e é ela que alimenta o indicador de
             <em>dias médios até a emissão</em>, no painel.</p>
         {% endcall %}
-        {% if usuario.pode('catalogo.gerenciar') %}
+        {% if blocos.editar_sla %}
         {{ ui.botao_cadastro('editar-sla', EDITAR_SLA, 'secundario compacto a-direita') }}
         {% endif %}
       </div>
@@ -132,12 +131,33 @@
       </div>
     </section>
   </div>
+  {% endif %}
+
+  {# A integração com o SEI é do módulo Processos SEI: mudou da seção Sistema
+     para cá. Quem só opera a máquina não instrui processo no SEI. #}
+  {% if blocos.integracao_sei %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Integração com o SEI</h2>
+      <span class="pilula sem-ponto">não integra</span>
+    </div>
+    <p>A v1 <strong>não</strong> integra com o SEI (versão alvo {{ versao_sei }}): nenhuma API,
+       nenhum scraping. O NUP é digitado e validado localmente.</p>
+    <div class="corpo">
+      {% call ui.info('passos-sei-config', 'o passo a passo dentro do SEI') %}
+        <ol class="passos">{% for passo in passos_sei %}<li>{{ passo }}</li>{% endfor %}</ol>
+      {% endcall %}
+    </div>
+  </section>
+  {% endif %}
 
   {# Onde RETIRAR o EPI reservado. Morava na lista "Onde o dado mora", mas é
      parâmetro do setor, e não da máquina: quem precisa descobri-lo é quem
      atende o pedido de EPI, não quem faz o backup. Lido do .env e não
      editável por tela — está aqui para ser DESCOBERTO: vazio, a ficha do
-     pedido diz que o local não está registrado em vez de inventar endereço. #}
+     pedido diz que o local não está registrado em vez de inventar endereço.
+     Só para quem tem o módulo EPI e gere EPI (`PERMISSOES_GESTAO_EPI`). #}
+  {% if blocos.retirada_epi %}
   <section class="cartao liso">
     <div class="cabecalho-cartao">
       <h2>Retirada de EPI</h2>
@@ -152,14 +172,14 @@
   </section>
   {% endif %}
 
-  {% if da_maquina or pode_exportar_tudo %}
+  {% if blocos.secao_sistema %}
   <h2 class="secao-hub">Sistema</h2>
   {% endif %}
 
   {# Os caminhos saíram de dentro do cartão de SLA. Onde o banco, os documentos e
      os anexos moram é a pergunta de quem responde pela máquina — e só ela os
      recebe: sem `backup.executar`, `onde` nem chega ao contexto. #}
-  {% if da_maquina %}
+  {% if blocos.onde_mora %}
   <section class="cartao liso">
     <div class="cabecalho-cartao">
       <h2>Onde o dado mora</h2>
@@ -175,7 +195,7 @@
   </section>
   {% endif %}
 
-  {% if da_maquina or pode_exportar_tudo %}
+  {% if blocos.backup or blocos.exportar_tudo %}
   <section class="cartao">
     <div class="titulo-cartao">
       <h2>Backup e exportação</h2>
@@ -198,7 +218,7 @@
        do clique. Estava embaixo dos dois botões, num rodapé que se lê depois —
        ou não se lê. Dentro do popup ele é o último texto antes do botão. #}
     <div class="acoes">
-      {% if usuario.pode('backup.executar') %}
+      {% if blocos.backup %}
       {{ ui.botao_cadastro('fazer-backup', BACKUP) }}
       {% endif %}
       {% if pode_exportar_tudo %}
@@ -208,30 +228,11 @@
   </section>
   {% endif %}
 
-  <section class="cartao">
-    <div class="titulo-cartao">
-      <h2>Integração com o SEI</h2>
-      <span class="pilula sem-ponto">não integra</span>
-    </div>
-    <p>A v1 <strong>não</strong> integra com o SEI (versão alvo {{ versao_sei }}): nenhuma API,
-       nenhum scraping. O NUP é digitado e validado localmente.</p>
-    {# O fato de não haver integração é fato de sistema e interessa a quem opera
-       a máquina — fica na tela. Os passos, não: eles são o procedimento de anexar
-       o parecer no SEI, que é trabalho de processo, se lê uma vez e já mora na
-       ficha do processo. #}
-    {% if do_processo %}
-    <div class="corpo">
-      {% call ui.info('passos-sei-config', 'o passo a passo dentro do SEI') %}
-        <ol class="passos">{% for passo in passos_sei %}<li>{{ passo }}</li>{% endfor %}</ol>
-      {% endcall %}
-    </div>
-    {% endif %}
-  </section>
 
 </div>
 
 {# Daqui para baixo é camada, e não bloco da coluna. #}
-{% if usuario.pode('catalogo.gerenciar') and do_processo %}
+{% if blocos.editar_sla %}
 {% call ui.popup_cadastro('editar-sla', EDITAR_SLA, '/config/sla', 'Salvar SLA',
                           largo=true,
                           nota='0 desliga o alerta da coluna') %}
@@ -247,7 +248,7 @@
 {% endcall %}
 {% endif %}
 
-{% if usuario.pode('backup.executar') %}
+{% if blocos.backup %}
 {% call ui.popup_cadastro('fazer-backup', BACKUP, '/config/backup',
                           'Fazer o backup agora',
                           nota='AES-256-GCM, com a senha desta instalação') %}
