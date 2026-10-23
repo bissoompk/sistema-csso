@@ -50,8 +50,8 @@
     {% for t in turmas %}
     <tbody>
       <tr class="grupo-da-tabela">
-        <th scope="row"><input type="checkbox" class="marcar" data-marca-grupo="turma-{{ t.id }}"
-                   aria-label="Marcar todos os pedidos de {{ t.codigo }}" title="Marcar todos desta turma"></th>
+        <th scope="row">{% if t.pode_decidir %}<input type="checkbox" class="marcar" data-marca-grupo="turma-{{ t.id }}"
+                   aria-label="Marcar todos os pedidos de {{ t.codigo }}" title="Marcar todos desta turma">{% endif %}</th>
         <th scope="colgroup" colspan="4">
           <a class="mono" href="/turmas/{{ t.id }}?aba=inscricoes">{{ t.codigo }}</a> · {{ t.treinamento }}
           <span class="pilula sem-ponto">{{ t.data_inicio|data }}</span>
@@ -62,12 +62,14 @@
             {%- if t.vagas_restantes == 0 %}lotada{% elif t.vagas_restantes == 1 %}1 vaga livre{% else %}{{ t.vagas_restantes }} vagas livres{% endif %} de {{ t.vagas }}</span>
           {% else %}<span class="pilula sem-ponto">sem limite de vagas</span>{% endif %}
           <span class="pilula alerta">{{ t.pedidos|length }} pedido(s)</span>
+          {# NUVEM: a turma de outro dono só se consulta (`dono_turma.ts`) #}
+          {% if not t.pode_decidir %}<span class="quebra discreto">{{ t.aviso_dono }}</span>{% endif %}
         </th>
       </tr>
       {% for p in t.pedidos %}
       <tr>
-        <td><input type="checkbox" class="marcar" name="inscricao_id" value="{{ p.inscricao_id }}"
-                   data-grupo="turma-{{ t.id }}" aria-label="Decidir o pedido de {{ p.nome }}"></td>
+        <td>{% if t.pode_decidir %}<input type="checkbox" class="marcar" name="inscricao_id" value="{{ p.inscricao_id }}"
+                   data-grupo="turma-{{ t.id }}" aria-label="Decidir o pedido de {{ p.nome }}">{% endif %}</td>
         <td class="nome">{{ p.nome }}
           {% if p.observacao %}<span class="quebra discreto">{{ p.observacao }}</span>{% endif %}</td>
         <td>{{ rotulo_vinculo[p.vinculo] or p.vinculo }}

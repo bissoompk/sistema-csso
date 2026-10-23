@@ -39,7 +39,7 @@ import { periodo_de } from "../src/rotas/treinamentos.js";
 import { PermissaoNegada, type UsuarioAtual } from "../src/servicos/rbac.js";
 import { normalizar_fluxo } from "../src/servicos/textos.js";
 import * as servico_turma from "../src/servicos/turma.js";
-import { bancoLimpo, contas, entrar, type Cliente } from "./ajuda.js";
+import { bancoLimpo, contas, designarAjudante, entrar, type Cliente } from "./ajuda.js";
 import { INICIO, MAPA_SUGERIDO, OBRIGATORIOS, TODAS, _cenario, _modelo_com_tags, _usuario, type Cenario } from "./ajuda_certificado.js";
 
 definirArmazenamento(null);
@@ -675,6 +675,9 @@ describe("rotas", () => {
     await entrar(cliente, "coordenador_csso");
     await cliente.post(`/turmas/${h.turma_id}/certificados`, { inscricao_id: h.inscricao_id }, { seguir: false });
     const gravado = (await _certificados_gravados())[0]!;
+    // regra de dono (23/10/2026): a turma é do coordenador; o perfil testado
+    // entra como ajudante da emissão, e o que se mede aqui é o RBAC
+    await designarAjudante(db, h.turma_id, perfil, { emissao: true });
 
     await entrar(cliente, perfil);
     const esperado = pode_ver ? 200 : 403;

@@ -389,6 +389,36 @@ CREATE TRIGGER trg_certificado_numero_imutavel
   FOR EACH ROW EXECUTE FUNCTION csso_certificado_numero_imutavel();
 
 -- =====================================================================
+-- 0017 (Dono de treinamento e turma, 23/10/2026): o DONO nao se troca.
+--
+-- `criado_por` do treinamento e da turma e o dono (`servicos/dono_turma.ts`):
+-- so ele, ou quem esta acima dele na hierarquia, altera. Trocar o dono depois
+-- de gravado daria a qualquer um um atalho para "virar dono". O nulo (o "sem
+-- dono" de antes da regra) pode ser preenchido uma vez — e o que a migracao
+-- 0017 faz a partir da trilha —, mas o dono gravado nao muda nem se apaga.
+-- =====================================================================
+CREATE OR REPLACE FUNCTION csso_dono_imutavel() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.criado_por IS NOT NULL AND NEW.criado_por IS DISTINCT FROM OLD.criado_por THEN
+    RAISE EXCEPTION '%: o dono (criado_por) nao muda depois de gravado', TG_TABLE_NAME
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_treinamento_dono_imutavel ON treinamento;
+CREATE TRIGGER trg_treinamento_dono_imutavel
+  BEFORE UPDATE OF criado_por ON treinamento
+  FOR EACH ROW EXECUTE FUNCTION csso_dono_imutavel();
+
+DROP TRIGGER IF EXISTS trg_turma_dono_imutavel ON turma;
+CREATE TRIGGER trg_turma_dono_imutavel
+  BEFORE UPDATE OF criado_por ON turma
+  FOR EACH ROW EXECUTE FUNCTION csso_dono_imutavel();
+
+-- =====================================================================
 -- A API de dados do Supabase fica FORA do sistema.
 --
 -- O Supabase publica toda tabela de `public` numa API REST (PostgREST) para

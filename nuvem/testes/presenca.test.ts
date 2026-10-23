@@ -18,7 +18,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 process.env.CSSO_DIR_ARQUIVOS = mkdtempSync(path.join(tmpdir(), "csso-presenca-"));
 
-import { bancoLimpo, contas, criarUsuario, entrar, type Cliente, type Resposta } from "./ajuda";
+import { bancoLimpo, contas, criarUsuario, designarAjudante, entrar, type Cliente, type Resposta } from "./ajuda";
 import type { Banco } from "../src/db/cliente";
 import * as e from "../src/db/esquema/index";
 import { somar_dias } from "../src/dominio/datas";
@@ -571,6 +571,9 @@ describe("permissão", () => {
     await entrar(cliente, "coordenador_csso");
     const turma_id = await montar(cliente);
     const inscricao_id = await inscrever(cliente, turma_id, "1110654", "Marco Antônio");
+    // regra de dono (23/10/2026): a turma é do coordenador; a secretaria opera
+    // a presença como ajudante designada
+    await designarAjudante(db, turma_id, "secretaria_csso", { presenca: true });
     await entrar(cliente, "secretaria_csso");
     expect((await lancar(cliente, turma_id, inscricao_id, { horas: "8" })).status).toBe(303);
     expect((await inscricao(inscricao_id)).frequencia_percentual).toBe("100.00");

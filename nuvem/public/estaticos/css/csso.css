@@ -3955,6 +3955,21 @@ details.ajuste-horas input { margin-top: 4px; }
 }
 /* ---------- fim VISAO GERAL ---------- */
 
+/* ---------- DONO DE TREINAMENTO E TURMA (23/10/2026) ----------
+   O aviso "só consulta" da ficha da turma e o popup "Designar ajudante"
+   (`dono_turma.ts`). Fica antes do bloco CELULAR (lote 0) e do `@media print`. */
+.aviso-dono .pilula { margin-right: 2px; }
+.opcao-ajudante {
+  display: flex; align-items: flex-start; gap: 8px; min-height: 44px;
+  padding: 8px 10px; border: 1px solid var(--borda); border-radius: var(--raio);
+  background: var(--cartao); cursor: pointer; margin-bottom: 6px;
+}
+.opcao-ajudante:has(input:checked) { border-color: var(--acento); background: var(--acento-suave); }
+.opcao-ajudante:has(input:focus-visible) { outline: var(--anel-foco); outline-offset: 1px; }
+.opcao-ajudante > input { margin: 3px 0 0; flex: none; }
+#ajudantes .nome { overflow-wrap: anywhere; }
+/* ---------- fim DONO ---------- */
+
 /* ===== CELULAR (lote 0) =====
    O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
    com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o

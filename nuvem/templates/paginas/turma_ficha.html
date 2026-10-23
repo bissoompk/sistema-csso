@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block acoes_cabecalho %}
-{% if usuario.pode('turma.avaliar') %}
+{% if pode_aqui('turma.avaliar') %}
 <a class="botao secundario" href="/turmas/{{ turma.id }}/lista-presenca"
    title="A folha para assinar em campo, em .docx, gerada na hora com quem está inscrito hoje">
   Lista de presença</a>
@@ -17,7 +17,7 @@
    de propósito: exige motivo escrito e não é o passo natural da turma. O botão
    leva ao formulário, na aba Turma — não dispara nada sozinho. #}
 {% set proximos = [] %}
-{% for codigo, rotulo in destinos %}{% if codigo != 'CANCELADA' and usuario.pode(permissao_por_destino[codigo]) %}{% set _ = proximos.push([codigo, rotulo]) %}{% endif %}{% endfor %}
+{% for codigo, rotulo in destinos %}{% if codigo != 'CANCELADA' and pode_aqui(permissao_por_destino[codigo]) %}{% set _ = proximos.push([codigo, rotulo]) %}{% endif %}{% endfor %}
 {% for codigo, rotulo in proximos %}
 {% if loop.first %}
 <a class="botao" href="/turmas/{{ turma.id }}?aba=turma#situacao">
@@ -39,17 +39,18 @@
 {% set CADASTRAR_EXTERNO = 'Cadastrar participante externo' %}
 {% set MARCAR_TODOS = 'Marcar todos presentes' %}
 {% set EMITIR_LOTE = 'Emitir os certificados' %}
+{% set DESIGNAR_AJUDANTE = 'Designar ajudante' %}
 
 {% block conteudo %}
-{% set pode_editar = usuario.pode('turma.criar') %}
-{% set pode_inscrever = usuario.pode('turma.inscrever') %}
-{% set pode_avaliar = usuario.pode('turma.avaliar') %}
+{% set pode_editar = pode_aqui('turma.criar') %}
+{% set pode_inscrever = pode_aqui('turma.inscrever') %}
+{% set pode_avaliar = pode_aqui('turma.avaliar') %}
 {# retificar mexe em resultado já comunicado: pede a mesma permissão de concluir #}
-{% set pode_lancar = pode_avaliar and (not retificando or usuario.pode('turma.concluir'))
+{% set pode_lancar = pode_avaliar and (not retificando or pode_aqui('turma.concluir'))
                      and lancamento_aberto %}
 {% set editavel = pode_editar and not turma.encerrada %}
 {# a turma concluída com dado errado: corrige-se com motivo (`retificacao.ts`) #}
-{% set corrigivel = pode_editar and turma.situacao == 'CONCLUIDA' and usuario.pode('turma.concluir') %}
+{% set corrigivel = pode_editar and turma.situacao == 'CONCLUIDA' and pode_aqui('turma.concluir') %}
 
 {# =====================================================================
    RN-19 NESTA FICHA — quem pode ler o nome de quem está na turma
@@ -90,7 +91,7 @@
    que só é nominal nas telas de EPI. Desde que toda conta ligada a servidor
    abre a turma como cartaz (D16), o almoxarife chegava aqui e lia o nome de
    todos os inscritos. #}
-{% set pode_nominal = usuario.pode('certificado.ver') or usuario.pode('exposicao.ver') %}
+{% set pode_nominal = pode_aqui('certificado.ver') or pode_aqui('exposicao.ver') %}
 {% set SUPRIMIDO = 'identificação suprimida' %}
 
 <div class="tela">
@@ -116,6 +117,21 @@
   <div class="aviso aviso-erro">
     <strong>Turma cancelada:</strong> {{ turma.motivo_cancelamento }}. Cancelada é
     situação final — adiar para outra data pede abrir outra turma, com código próprio.
+  </div>
+  {% endif %}
+
+  {# NUVEM (23/10/2026): a regra de dono (`dono_turma.ts`). Quem é da equipe
+     e não é dono, superior nem ajudante só consulta — e a tela diz de quem é
+     a turma, em vez de esconder os botões sem explicação. #}
+  {% if gerencia and direito.so_consulta %}
+  <div class="aviso aviso-info aviso-dono" role="note">
+    <strong>Só consulta.</strong> {{ direito.aviso }}
+  </div>
+  {% elif gerencia and direito.motivo == 'AJUDANTE' %}
+  <div class="aviso aviso-info aviso-dono" role="note">
+    <strong>Você ajuda nesta turma</strong> em:
+    {% for papel in papeis_ajudante %}{% if direito.pode(papel.papel) %}<span class="pilula sem-ponto">{{ papel.rotulo }}</span> {% endif %}{% endfor %}
+    — o resto, só {{ direito.nome_do_dono }} ou a coordenação acima altera.
   </div>
   {% endif %}
 
@@ -151,6 +167,9 @@
     </div>
     <dl class="tabela-dados">
       <dt>Treinamento</dt><dd>{{ turma.treinamento.nome }}</dd>
+      {# o dono: a conta que abriu a turma (nominal, como quem opera na trilha) #}
+      <dt>Responsável (dono)</dt>
+      <dd>{{ direito.nome_do_dono }}{% if direito.eh_dono %} <span class="pilula ok">você</span>{% endif %}</dd>
       {% if turma.descricao %}<dt>Descrição do evento</dt><dd><span class="texto-literal">{{ turma.descricao }}</span></dd>{% endif %}
       <dt>Período</dt>
       <dd class="mono">{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
@@ -245,7 +264,7 @@
       {% if destinos %}
       <div class="acoes">
         {% for codigo, rotulo in destinos %}
-        {% if usuario.pode(permissao_por_destino[codigo]) %}
+        {% if pode_aqui(permissao_por_destino[codigo]) %}
         {% if codigo == 'CONCLUIDA' %}
         {# Concluir é irreversível — `CONCLUIDA` não tem destino de saída. Saía com
            `secundario`, a classe menos enfática do sistema, ao lado de "Cancelar
@@ -343,13 +362,71 @@
       </div>
       {% endif %}
     </section>
+
+    {% if gerencia %}
+    {# NUVEM (23/10/2026): quem o dono (ou quem está acima dele) designou para
+       operar a turma, e em quê. Ajudante não designa ninguém. #}
+    <section class="cartao liso" id="ajudantes">
+      <div class="cabecalho-cartao">
+        <h2>Ajudantes</h2>
+        <span class="contador">{{ ajudantes|length }}</span>
+        {% call ui.info('ajudantes-da-turma', 'quem pode alterar esta turma') %}
+          <p>Só o dono da turma (quem a abriu) altera. Acima dele, a coordenação do
+            setor promotor — quando o dono é de perfil abaixo — e a superintendência.
+            As outras contas da equipe só consultam.</p>
+          <p>O dono pode designar <strong>ajudantes</strong>, cada um num ou mais papéis:
+            {% for papel in papeis_ajudante %}<strong>{{ papel.rotulo|lower }}</strong> ({{ papel.dica }}){{ '; ' if not loop.last else '.' }}{% endfor %}
+            Editar a turma, mudar a situação, instrutores, link e designar ajudantes
+            continuam só do dono.</p>
+        {% endcall %}
+      </div>
+      {% if ajudantes|length %}
+      <table class="empilhavel">
+        <thead>
+          <tr><th scope="col">Conta</th><th scope="col">Papéis</th>
+              {% if direito.designa %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}</tr>
+        </thead>
+        {% for a in ajudantes %}
+        <tr>
+          <td class="nome">{{ a.nome }} <span class="quebra discreto mono">{{ a.login }}</span></td>
+          <td data-coluna="Papéis">{% for r in a.rotulos %}<span class="pilula sem-ponto">{{ r }}</span> {% endfor %}</td>
+          {% if direito.designa %}
+          <td class="acao-linha">
+            <form method="post" action="/turmas/{{ turma.id }}/ajudantes/{{ a.usuario_id }}/retirar">
+              <button type="submit" class="secundario marcador">retirar</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="corpo">
+        <p class="discreto sem-margem">Nenhum ajudante: só {{ direito.nome_do_dono if direito.dono else 'a coordenação do setor' }}
+          {{- '' if direito.dono else ' e a superintendência' }} alteram esta turma.</p>
+      </div>
+      {% endif %}
+      {% if direito.designa and pode_aqui('turma.criar') %}
+      <div class="corpo">
+        <div class="acoes">
+          {% if candidatos_ajudante|length %}
+          {{ ui.botao_cadastro('designar-ajudante', DESIGNAR_AJUDANTE, 'secundario') }}
+          {% else %}
+          <p class="discreto sem-margem">Nenhuma outra conta ativa está vinculada ao setor promotor
+            desta turma — vincule a pessoa ao setor em Usuários antes de designá-la.</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
   </div>
 </div>
 {% endif %}
 
 {# ===================== aba 2 — inscrições ===================== #}
 {% if aba == 'inscricoes' %}
-{% if usuario.pode('turma.criar') and (turma.aceita_inscricao or turma.inscricao_publica) %}
+{% if pode_aqui('turma.criar') and (turma.aceita_inscricao or turma.inscricao_publica) %}
 {# o link público: o token não mora no banco, então aqui só se diz se há um no ar #}
 <section class="cartao" id="link-publico">
   <div class="cabecalho-cartao">
@@ -687,7 +764,7 @@
            ('Esta lista mostra só quem nunca participou de nenhuma turma, por nome
              ou SIAPE. Quem já participou está na tabela acima — e não estando em
              nenhuma das duas, o cadastro do servidor é que falta, em /servidores.'
-            if usuario.pode('exposicao.ver') else
+            if pode_aqui('exposicao.ver') else
             'Esta lista é o cadastro de servidor, e aqui vale a mesma regra de
              /servidores: sem `exposicao.ver` ela casa só pelo SIAPE, que vem no
              processo do SEI. Quem já participou de alguma turma está na tabela
@@ -946,7 +1023,7 @@
 
 {# ===================== aba 4 — emissão ===================== #}
 {% if aba == 'emissao' %}
-{% set pode_emitir = usuario.pode('certificado.emitir') %}
+{% set pode_emitir = pode_aqui('certificado.emitir') %}
 
 {# Quantos números a emissão em lote vai consumir. A tela dizia isso em lugar
    nenhum: o único número visível era o contador "{{ certificados|length }}
@@ -1088,13 +1165,13 @@
     <a class="botao compacto" href="/turmas/{{ turma.id }}/certificados.pdf"
        data-baixar="Gerando os PDFs…">Baixar todos em PDF</a>
     {% endif %}
-    {% if usuario.pode('certificado.emitir') %}
+    {% if pode_aqui('certificado.emitir') %}
     {# só os ainda não enviados; reenviar é pela ficha de cada certificado #}
     <form method="post" action="/turmas/{{ turma.id }}/certificados/email" class="em-linha">
       <button type="submit" class="secundario compacto">Enviar por e-mail os não enviados</button>
     </form>
     {% endif %}
-    {% if usuario.pode('certificado.emitir') and usuario.pode('certificado.anular') %}
+    {% if pode_aqui('certificado.emitir') and pode_aqui('certificado.anular') %}
     {{ ui.botao_cadastro('reemitir-turma', REEMITIR_TURMA ~ '…', 'secundario compacto') }}
     {% endif %}
     {% endif %}
@@ -1223,6 +1300,27 @@
    oferece, pelo mesmo motivo que o botão sai.
    =================================================================== #}
 {% if aba == 'turma' %}
+{% if gerencia and direito.designa and pode_aqui('turma.criar') and candidatos_ajudante|length %}
+{% call ui.popup_cadastro('designar-ajudante', DESIGNAR_AJUDANTE,
+                          '/turmas/' ~ turma.id ~ '/ajudantes', 'Designar',
+                          nota='a conta opera a turma só nos papéis marcados') %}
+  <div class="campo"><label for="ajudante-conta">Conta da equipe do setor</label>
+    <select id="ajudante-conta" name="usuario_id" required>
+      <option value="">Escolha…</option>
+      {% for conta in candidatos_ajudante %}
+      <option value="{{ conta.id }}">{{ conta.nome }} ({{ conta.login }})</option>
+      {% endfor %}
+    </select>
+    <span class="dica">Já é ajudante? Escolha de novo e marque os papéis: os de antes são trocados por estes.</span></div>
+  <fieldset class="campo">
+    <legend>Papéis</legend>
+    {% for papel in papeis_ajudante %}
+    <label class="opcao-ajudante"><input type="checkbox" name="papel" value="{{ papel.papel }}">
+      <strong>{{ papel.rotulo }}</strong> <span class="discreto">— {{ papel.dica }}</span></label>
+    {% endfor %}
+  </fieldset>
+{% endcall %}
+{% endif %}
 {% if corrigivel %}
 {% call ui.popup_cadastro('corrigir-turma', CORRIGIR_TURMA,
                           '/turmas/' ~ turma.id ~ '/retificar', 'Gravar a correção',
@@ -1411,7 +1509,7 @@
 {% endif %}
 
 {% for codigo, rotulo in destinos %}
-{% if codigo == 'CANCELADA' and usuario.pode(permissao_por_destino[codigo]) %}
+{% if codigo == 'CANCELADA' and pode_aqui(permissao_por_destino[codigo]) %}
 {% call ui.popup_cadastro('cancelar-turma', CANCELAR_TURMA,
                           '/turmas/' ~ turma.id ~ '/situacao', CANCELAR_TURMA,
                           classe_botao='perigo') %}
@@ -1432,7 +1530,7 @@
 {% set destinos_codigos = [] %}
 {% for codigo, rotulo in destinos %}{% set _ = destinos_codigos.push(codigo) %}{% endfor %}
 {% set concluivel = destinos and 'CONCLUIDA' in destinos_codigos
-                    and usuario.pode(permissao_por_destino['CONCLUIDA']) %}
+                    and pode_aqui(permissao_por_destino['CONCLUIDA']) %}
 {% if concluivel %}
 {# A confirmação de concluir. Não é um "tem certeza?": ela conta quantos inscritos
    vão ser apurados e diz que a apuração grava resultado em cada um e que
@@ -1546,7 +1644,7 @@
 {% endcall %}
 {% endif %}
 
-{% if aba == 'emissao' and usuario.pode('certificado.emitir') and aptos %}
+{% if aba == 'emissao' and pode_aqui('certificado.emitir') and aptos %}
 {# A confirmação da emissão em lote. Não é um "tem certeza?": ela diz **quantos**
    números vão sair, **de quem**, e **o que não volta**. Confirmação que não diz
    o que vai acontecer treina a pessoa a clicar em "sim" sem ler. #}
@@ -1576,7 +1674,7 @@
 {% endcall %}
 {% endif %}
 
-{% if aba == 'emissao' and certificados|length and usuario.pode('certificado.emitir') and usuario.pode('certificado.anular') %}
+{% if aba == 'emissao' and certificados|length and pode_aqui('certificado.emitir') and pode_aqui('certificado.anular') %}
 {% call ui.popup_cadastro('reemitir-turma', REEMITIR_TURMA ~ ' de ' ~ turma.codigo,
                           '/turmas/' ~ turma.id ~ '/certificados/retificar',
                           'Anular e reemitir os ' ~ certificados|length, largo=true, classe_botao='perigo') %}

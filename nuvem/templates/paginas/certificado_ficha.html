@@ -38,7 +38,7 @@
    do cadastro, que é o que o substituto vai levar. #}
 {{ ui.botao_cadastro('corrigir-certificado', CORRIGIR, 'secundario') }}
 {% endif %}
-{% if usuario.pode('certificado.anular') and not certificado.anulado %}
+{% if pode_aqui('certificado.anular') and not certificado.anulado %}
 {# Anular exige motivo por escrito: o botão do cabeçalho ABRE a camada com o
    formulário, não dispara nada sozinho. #}
 {{ ui.botao_cadastro('anular-certificado', ANULAR, 'perigo-discreto') }}
@@ -46,7 +46,7 @@
 {% endblock %}
 
 {% block conteudo %}
-{% set pode_anular = usuario.pode('certificado.anular') %}
+{% set pode_anular = pode_aqui('certificado.anular') %}
 
 <div class="tela">
 
@@ -66,6 +66,11 @@
       </p>
     </div>
   </div>
+
+  {# NUVEM (23/10/2026): a turma do certificado é de outro dono (`dono_turma.ts`) #}
+  {% if aviso_dono %}
+  <div class="aviso aviso-info aviso-dono" role="note"><strong>Só consulta.</strong> {{ aviso_dono }}</div>
+  {% endif %}
 
   {# O certificado emitido é imutável. Quando ele foi anulado, a tela abre por
      aí: o documento continua existindo e continua consultável, mas a validação
@@ -168,7 +173,7 @@
         </div>
       </section>
 
-      {% if usuario.pode('certificado.emitir') %}
+      {% if pode_aqui('certificado.emitir') %}
       <section class="cartao" id="envio-email">
         <div class="titulo-cartao"><h2>Envio por e-mail</h2></div>
         {% if not email_configurado() %}

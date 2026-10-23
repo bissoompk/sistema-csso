@@ -37,6 +37,7 @@ import * as fila_emissao from "../servicos/fila_emissao.js";
 import * as email from "../servicos/email.js";
 import * as certificados_titular from "../servicos/certificados_titular.js";
 import * as envio_certificado from "../servicos/envio_certificado.js";
+import * as dono_turma from "../servicos/dono_turma.js";
 import { chave_busca, parece_cpf } from "../servicos/textos.js";
 import { baixar } from "./turmas.js";
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
@@ -481,9 +482,13 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}`, async (c) => {
     substituto = s ? vista_certificado(s as Record<string, any>) : null;
   }
   const hoje = datas_br.hoje();
+  // NUVEM: a regra de dono — a turma do certificado decide quem anula,
+  // corrige e envia (`dono_turma.ts`); o resto da equipe só consulta
+  const direito = await dono_turma.direito_no_certificado(tx, usuario, certificado.id);
+  const pode_aqui = (permissao: string) => (direito ? dono_turma.pode_aqui(usuario, direito, permissao) : usuario.pode(permissao));
   // o formulário da correção: o cadastro de HOJE, que é o que o substituto leva
   let correcao = null;
-  if (!C.anulado(certificado) && usuario.pode("certificado.anular") && usuario.pode("certificado.emitir")) {
+  if (!C.anulado(certificado) && pode_aqui("certificado.anular") && pode_aqui("certificado.emitir")) {
     const inscricao = await carregar_inscricao(tx, certificado.inscricao_id);
     const p = inscricao?.participante;
     if (p) {
@@ -500,6 +505,8 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}`, async (c) => {
   }
   return pagina(c, "paginas/certificado_ficha.html", usuario, {
     correcao,
+    pode_aqui,
+    aviso_dono: direito && direito.so_consulta && usuario.pode("certificado.emitir") ? direito.aviso : "",
     certificado: vista_certificado(certificado as Record<string, any>),
     contexto,
     campos: CAMPOS_CERTIFICADO,
@@ -565,6 +572,8 @@ rotas.post(`${CERTIFICADOS}/:certificado_id{[0-9]+}/email`, async (c) => {
   usuario.exigir("certificado.emitir");
   const certificado_id = Number(c.req.param("certificado_id"));
   const destino = `${CERTIFICADOS}/${certificado_id}`;
+  // NUVEM: a regra de dono (`dono_turma.ts`): a turma do certificado decide
+  await dono_turma.exigir_alterar_certificado(c.get("tx"), usuario, certificado_id);
   const r = await envio_certificado.pedir_envio(c.get("tx"), usuario, [certificado_id], { reenviar: true });
   if (!r.enfileirados) {
     return _erro(c, destino, r.sem_email ? "O participante não tem e-mail cadastrado." : "Este certificado não pode ser enviado.");
@@ -633,6 +642,7 @@ rotas.post(`${CERTIFICADOS}/:certificado_id{[0-9]+}/corrigir`, async (c) => {
   const certificado_id = Number(c.req.param("certificado_id"));
   const certificado = await servico.no_escopo(tx, usuario, certificado_id, "certificado.anular");
   if (!certificado) return redirecionar(c, CERTIFICADOS);
+  await dono_turma.exigir_alterar_certificado(tx, usuario, certificado_id);
   const destino = `${CERTIFICADOS}/${certificado_id}`;
   const proprio = servico.recusa_de_ato_sobre_o_proprio(usuario, certificado);
   if (proprio) return _erro(c, destino, `Nada foi alterado. ${proprio}`);
@@ -677,6 +687,7 @@ rotas.post(`${CERTIFICADOS}/:certificado_id{[0-9]+}/anular`, async (c) => {
   const certificado_id = Number(c.req.param("certificado_id"));
   const certificado = await servico.no_escopo(tx, usuario, certificado_id, "certificado.anular");
   if (!certificado) return redirecionar(c, CERTIFICADOS);
+  await dono_turma.exigir_alterar_certificado(tx, usuario, certificado_id);
   const destino = `${CERTIFICADOS}/${certificado_id}`;
   const proprio = servico.recusa_de_ato_sobre_o_proprio(usuario, certificado);
   if (proprio) return _erro(c, destino, proprio);

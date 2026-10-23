@@ -49,6 +49,7 @@ import * as servico_pendencias from "../servicos/pendencias.js";
 import * as servico_presenca from "../servicos/presenca.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import * as servico_turma from "../servicos/turma.js";
+import * as dono_turma from "../servicos/dono_turma.js";
 import { nome_exibicao } from "../servicos/participante.js";
 import { hoje } from "../servicos/datas_br.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
@@ -423,6 +424,11 @@ rotas.post(`${PREFIXO}/turmas/:turma_id{[0-9]+}/presencas`, async (c) => {
   const tx = c.get("tx");
   const turma = await servico_turma.no_escopo(tx, usuario, id(c, "turma_id"), "turma.avaliar");
   if (!turma) throw new RecusaDaApi(404, "Turma não encontrada ou fora do seu escopo.");
+  // NUVEM: a regra de dono (`dono_turma.ts`) — 403 com o aviso de quem é a turma
+  const direito = await dono_turma.direito_na_turma(tx, usuario, turma);
+  if (!direito.pode(dono_turma.PRESENCA)) {
+    throw new RecusaDaApi(403, dono_turma.recusa_de(direito, dono_turma.PRESENCA), [`regra de dono: ${dono_turma.CODIGO_RECUSA}`]);
+  }
   const inscricao = (await servico_turma.inscricoes_da_turma(tx, turma)).find((i) => i.id === corpo.inscricao_id);
   if (!inscricao) throw new RecusaDaApi(422, "Inscrição não encontrada nesta turma.");
   let horas: string | null = null;

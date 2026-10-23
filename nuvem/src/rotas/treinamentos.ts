@@ -39,6 +39,7 @@ import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado, type Formulario } fro
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
+import * as dono_turma from "../servicos/dono_turma.js";
 import * as exclusao_cadastro from "../servicos/exclusao_cadastro.js";
 import * as mesclagem from "../servicos/mesclagem.js";
 import * as servico_participante from "../servicos/participante.js";
@@ -192,6 +193,8 @@ async function _tela_catalogo(c: Ctx, usuario: UsuarioAtual, d: Recado = {}): Pr
   });
   return pagina(c, "paginas/treinamentos_catalogo.html", usuario, {
     itens: (itens as any[]).map(vista_treinamento),
+    // NUVEM: quem altera cada treinamento (`dono_turma.ts`); os outros só consultam
+    direitos: await dono_turma.direitos_nos_treinamentos(tx, usuario, itens as { id: number; criado_por: number | null }[]),
     modelos: await _modelos_ordenados(tx),
     instrutores: instrutores.map(vista_assinatura),
     mensagem: d.mensagem ?? null,
@@ -348,6 +351,8 @@ rotas.post(CATALOGO, async (c) => {
       norma_referencia: texto_ou_nulo(digitado.norma_referencia),
       conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
       obrigatorio: marcado(digitado.obrigatorio),
+      // NUVEM: o dono do treinamento (`dono_turma.ts`)
+      criado_por: usuario.id,
     })
     .returning();
   await auditoria.registrar(tx, {
@@ -396,6 +401,8 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
   if (homonimo) return recusar(`Já existe outro treinamento chamado '${nome_limpo}'.`);
   const [alvo] = await tx.select().from(tabela_treinamento).where(eq(tabela_treinamento.id, treinamento_id));
   if (!alvo) return redirecionar(c, CATALOGO);
+  // NUVEM: só o dono do treinamento (ou quem está acima dele) altera
+  await dono_turma.exigir_alterar_treinamento(tx, usuario, alvo);
   // O código curto é obrigatório: o popup o exige; quem posta sem o campo
   // (formulário antigo, integração) mantém o de hoje — nunca o apaga.
   const codigo_curto = _codigo_curto_digitado(digitado.codigo_curto) || alvo.codigo_curto;
@@ -513,6 +520,13 @@ rotas.post(`${SETORES}/:unidade_id{[0-9]+}/retirar`, async (c) => {
 rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}/excluir`, async (c) => {
   const usuario = await usuarioLogado(c);
   usuario.exigir("treinamento.gerenciar");
+  // NUVEM: só o dono do treinamento (ou quem está acima dele) exclui
+  const [alvo] = await c
+    .get("tx")
+    .select({ id: tabela_treinamento.id, criado_por: tabela_treinamento.criado_por })
+    .from(tabela_treinamento)
+    .where(eq(tabela_treinamento.id, Number(c.req.param("treinamento_id"))));
+  if (alvo) await dono_turma.exigir_alterar_treinamento(c.get("tx"), usuario, alvo);
   try {
     const codigo = await c
       .get("tx")
