@@ -10,18 +10,23 @@
 <fieldset class="cartao envolvido" id="envolvido-{{ i }}">
   <legend>Envolvido {{ i }}</legend>
   <input type="hidden" name="env_indice" value="{{ i }}">
-  {% if i == 1 and tem_servidor %}
+  {% if i == 1 and (tem_servidor or vinculo_proprio) %}
   <div class="campo">
     <label><input type="checkbox" name="{{ p }}sou_eu" value="1"{{ ' checked' if d[p ~ 'sou_eu'] == '1' or (not d|length) }}>
       Sou eu o envolvido</label>
+    {% if tem_servidor %}
     <span class="dica">Marcado, o sistema usa o seu cadastro de servidor; não precisa do SIAPE.</span>
+    {% else %}
+    <span class="dica">Marcado, o sistema usa o nome da sua conta e o seu vínculo; não precisa digitar o nome.</span>
+    {% endif %}
   </div>
   {% endif %}
+  {% set vinculo_padrao = vinculo_proprio if (i == 1 and vinculo_proprio) else 'SERVIDOR' %}
   <div class="linha-campos">
     <div class="campo">
       <label for="{{ p }}vinculo">Vínculo</label>
       <select id="{{ p }}vinculo" name="{{ p }}vinculo" required>
-        {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'vinculo'] or 'SERVIDOR', v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
+        {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'vinculo'] or vinculo_padrao, v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
       </select>
     </div>
     <div class="campo">

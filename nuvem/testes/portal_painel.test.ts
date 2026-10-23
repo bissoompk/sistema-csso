@@ -198,7 +198,7 @@ describe("menu do Meu espaço", () => {
       ["Início"],
       ["Meus treinamentos", "Meus certificados", "Comprovante de treinamentos"],
       ["Minha ficha de EPI", "Meus pedidos de EPI", "Pedir EPI"],
-      ["Minhas comunicações"],
+      ["Comunicar acidente", "Minhas comunicações"],
       ["Meu adicional", "Meus processos"],
       ["Minha atividade", "Meu perfil"],
     ]);

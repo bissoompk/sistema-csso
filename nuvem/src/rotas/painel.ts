@@ -8,7 +8,7 @@ import { getCookie } from "hono/cookie";
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, notInArray } from "drizzle-orm";
 import type { Ambiente } from "../nucleo/contexto.js";
 import { exigir, usuarioLogado } from "../dependencias.js";
-import { pagina } from "../web.js";
+import { pagina, redirecionar } from "../web.js";
 import { dicionario } from "../dicionario.js";
 import {
   agente_nocivo,
@@ -47,7 +47,7 @@ import * as epi_contagens from "../servicos/epi_contagens.js";
 import type { Executor } from "../db/cliente.js";
 import * as certificados_titular from "../servicos/certificados_titular.js";
 import { turmas_abertas } from "../servicos/turma.js";
-import { cartao_meu_espaco, icone_de, meu_espaco_de } from "../modulos.js";
+import { cartao_meu_espaco, e_externo, icone_de, meu_espaco_de, primeira_tela } from "../modulos.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -80,9 +80,17 @@ rotas.get("/", async (c) => {
   const hoje = datas_br.hoje();
   // Condição "titular" do menu (Portal do servidor): a conta ligada a servidor
   // abre o Início dela mesmo sem `processo.ver`. Sem vínculo, vale a permissão
-  // de sempre (403 com o nome dela).
+  // de sempre (403 com o nome dela). O terceirizado e o discente não têm o
+  // Início do servidor (adicional, EPI e lotação moram no cadastro de servidor):
+  // vão para a primeira tela do "Meu espaço" deles.
   if (!usuario.pode("processo.ver")) {
-    if (usuario.servidor_id === null) exigir(usuario, "processo.ver");
+    if (usuario.servidor_id === null) {
+      if (e_externo(usuario)) {
+        const destino = primeira_tela(usuario);
+        if (destino !== "/") return redirecionar(c, destino);
+      }
+      exigir(usuario, "processo.ver");
+    }
     return pagina(c, "paginas/painel.html", usuario, await inicio_do_servidor(tx, usuario, hoje));
   }
   const exercicio = Number(hoje.slice(0, 4));

@@ -144,7 +144,10 @@
         </form>
       </section>
 
-      {% if not servidor %}
+      {% if not servidor and externo %}
+      <p class="perfil-nota">Esta conta é de quem não é servidor da UFVJM (terceirizado ou
+        discente): não há dados funcionais de servidor a mostrar.</p>
+      {% elif not servidor %}
       <p class="perfil-nota">Esta conta não está ligada a um cadastro de servidor.
         Dados funcionais, só leitura. Para corrigir, fale com a coordenação.</p>
       {% endif %}
@@ -204,6 +207,16 @@
         {{ 'treinamento concluído aguarda' if resumo_certificados.em_emissao == 1 else 'treinamentos concluídos aguardam' }}
         a emissão do certificado.</p>
       {% endif %}
+      <p class="perfil-links">
+        <a href="/certificados/meus">Meus certificados →</a>
+        <a href="/turmas/minhas">Meus treinamentos →</a>
+      </p>
+    </div>
+  </details>
+  {% elif externo %}
+  <details class="perfil-secao" id="treinamentos">
+    {{ resumo_secao('award', 'Treinamentos e certificados') }}
+    <div class="perfil-secao-corpo">
       <p class="perfil-links">
         <a href="/certificados/meus">Meus certificados →</a>
         <a href="/turmas/minhas">Meus treinamentos →</a>

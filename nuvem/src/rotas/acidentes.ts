@@ -499,6 +499,9 @@ async function _tela_comunicar(
       indices: d.indices ?? [1],
       proximo_indice: Math.max(...(d.indices ?? [1])) + 1,
       tem_servidor: usuario.servidor_id !== null,
+      // terceirizado ou discente: o "Sou eu" entra pelo nome da conta, com
+      // este vínculo pré-marcado
+      vinculo_proprio: usuario.servidor_id === null ? comunicacao.vinculo_externo_de(usuario) : null,
       hoje: hoje(),
       erro_form: d.erro ?? null,
       campo_erro: d.campo_erro ?? null,

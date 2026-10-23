@@ -36,6 +36,7 @@ import {
   campus as tabela_campus,
   servidor as tabela_servidor,
   unidade_uorg,
+  usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import {
   CONDICOES_ENVOLVIDO,
@@ -53,7 +54,7 @@ import * as acidente_email from "./acidente_email.js";
 import * as auditoria from "./auditoria.js";
 import { proximo_numero_cat_sp } from "./numeracao.js";
 import * as pendencias from "./pendencias.js";
-import type { UsuarioAtual } from "./rbac.js";
+import { PERFIS_EXTERNOS, type UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
 
 export type Ocorrencia = typeof acidente_ocorrencia.$inferSelect;
@@ -293,6 +294,20 @@ interface EnvolvidoResolvido extends Envolvido {
   siape_digitado: string | null;
 }
 
+/**
+ * O vínculo do acidentado que o perfil externo da conta diz (terceirizado →
+ * TERCEIRIZADO, discente → ESTUDANTE), ou `null` para a conta sem perfil
+ * externo. É o que o "Sou eu" da conta sem servidor grava, e o que a tela de
+ * comunicar pré-seleciona.
+ */
+export function vinculo_externo_de(usuario: UsuarioAtual | null): string | null {
+  if (!usuario) return null;
+  const externos = usuario.perfis.filter((p) => PERFIS_EXTERNOS.includes(p));
+  if (externos.includes("terceirizado")) return "TERCEIRIZADO";
+  if (externos.includes("discente")) return "ESTUDANTE";
+  return null;
+}
+
 async function _resolver_envolvidos(
   tx: Executor,
   usuario: UsuarioAtual | null,
@@ -308,6 +323,7 @@ async function _resolver_envolvidos(
     ),
   );
   const vistos = new Set<number>();
+  let ja_sou_eu = false;
   const saida: EnvolvidoResolvido[] = [];
   for (const [i, e] of lista.entries()) {
     const n = i + 1;
@@ -320,17 +336,40 @@ async function _resolver_envolvidos(
     // ao anônimo o oráculo "este SIAPE existe"
     const publico = usuario === null;
     let siape_digitado: string | null = null;
+    // o "Sou eu" da conta externa (terceirizado, discente): sem cadastro de
+    // servidor, entra pelo nome da CONTA (lido do banco, não do formulário) e
+    // com o vínculo do perfil
+    let externo_proprio: { nome: string; vinculo: string } | null = null;
     if (publico) {
       const so_digitos = (e.siape ?? "").replace(/\D/g, "");
       siape_digitado = /^\d{7}$/.test(so_digitos) ? so_digitos : null;
     } else if (e.sou_eu) {
-      if (!usuario || usuario.servidor_id === null) {
+      if (ja_sou_eu) {
+        throw new ComunicacaoRecusada(`O envolvido ${n} repete você, já informado.`, `o envolvido ${n}`);
+      }
+      ja_sou_eu = true;
+      const vinculo_externo = usuario ? vinculo_externo_de(usuario) : null;
+      if (usuario && usuario.servidor_id === null && vinculo_externo !== null) {
+        const [conta] = await tx
+          .select({ nome: tabela_usuario.nome })
+          .from(tabela_usuario)
+          .where(eq(tabela_usuario.id, usuario.id));
+        const nome = (conta?.nome ?? "").trim();
+        if (!nome) {
+          throw new ComunicacaoRecusada(
+            "Sua conta não tem nome cadastrado: desmarque \"Sou eu\" e informe o seu nome no envolvido.",
+            `o nome ${rotulo}`,
+          );
+        }
+        externo_proprio = { nome: nome.slice(0, 160), vinculo: vinculo_externo };
+      } else if (!usuario || usuario.servidor_id === null) {
         throw new ComunicacaoRecusada(
           "Sua conta não está ligada a um cadastro de servidor: informe o seu SIAPE no envolvido.",
           `o SIAPE ${rotulo}`,
         );
+      } else {
+        [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id));
       }
-      [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id));
     } else if (vinculo === "SERVIDOR") {
       const siape = (e.siape ?? "").replace(/\D/g, "");
       if (!/^\d{7}$/.test(siape)) {
@@ -351,7 +390,9 @@ async function _resolver_envolvidos(
       }
       vistos.add(servidor.id);
     }
-    const nome_externo = servidor ? null : _texto(e.nome_externo, `o nome ${rotulo}`, 160);
+    const nome_externo = servidor
+      ? null
+      : (externo_proprio?.nome ?? _texto(e.nome_externo, `o nome ${rotulo}`, 160));
     if (!servidor && !nome_externo) {
       throw new ComunicacaoRecusada(`Informe o nome ${rotulo} (quem não é servidor entra pelo nome).`, `o nome ${rotulo}`);
     }
@@ -367,7 +408,7 @@ async function _resolver_envolvidos(
     const partes = [...new Set(e.saude.partes_corpo_ids)].filter((p) => partes_validas.has(p));
     saida.push({
       ...e,
-      vinculo: servidor ? "SERVIDOR" : vinculo,
+      vinculo: servidor ? "SERVIDOR" : (externo_proprio?.vinculo ?? vinculo),
       siape_digitado,
       condicao,
       servidor: servidor ?? null,

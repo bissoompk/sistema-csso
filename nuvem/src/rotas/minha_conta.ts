@@ -50,6 +50,7 @@ import { postos_atuais } from "../servicos/servidores.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { comMensagem, pagina, redirecionar } from "../web.js";
 import { INICIO, ipDoCliente } from "./autenticacao.js";
+import { e_externo } from "../modulos.js";
 import { _duplicada } from "./usuarios.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -173,6 +174,9 @@ async function _tela(
     postos,
     iniciais: iniciais(servidor?.nome ?? conta?.nome ?? usuario.nome),
     resumo_certificados,
+    // terceirizado ou discente: não há cadastro funcional a mostrar, e o aviso
+    // não manda pedir à coordenação um vínculo que ela não faz
+    externo: e_externo(usuario),
     inatividade_minutos: obterConfig().sessaoInatividadeMinutos,
     mensagem: c.req.query("mensagem") ?? null,
     TELEFONE_MAX,
