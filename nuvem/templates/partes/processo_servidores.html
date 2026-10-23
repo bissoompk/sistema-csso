@@ -21,7 +21,7 @@
 <span class="dica" role="status">
   {%- if q_servidor and not servidores|length -%}
   Nada encontrado para “{{ q_servidor }}”.
-  {%- if busca_so_siape %} Sem permissão de ler identificação nominal, só o SIAPE acha (RN-19).{% endif -%}
+  {%- if busca_so_siape %} Sem permissão de ler identificação nominal, só o SIAPE acha.{% endif -%}
   {%- elif q_servidor -%}
   {{ servidores|length }} servidor(es) para “{{ q_servidor }}”.
   {%- else -%}

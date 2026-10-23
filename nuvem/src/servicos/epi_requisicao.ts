@@ -146,7 +146,7 @@ export class AutoanaliseProibida extends PermissaoNegada {
   constructor(requisicao: EpiRequisicao, nome_servidor: string) {
     super(
       "epi.analisar",
-      `Quem analisa não é quem requisita (RN-28): a requisição ` +
+      `Quem analisa não é quem requisita: a requisição ` +
         `${identificacao(requisicao)} é de ${nome_servidor}, e essa pessoa é ` +
         "você. Há duas saídas legítimas, e nenhuma delas é analisar o " +
         "próprio pedido: (1) outra pessoa com a permissão de analisar EPI " +

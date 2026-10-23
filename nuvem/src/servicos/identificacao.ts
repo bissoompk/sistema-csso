@@ -28,7 +28,7 @@ export const SEM_SERVIDOR = "—";
 
 // O que fica no lugar da frase suprimida. "—" se leria como "não houve
 // descrição"; isto diz que há texto e que ele foi escondido.
-export const TEXTO_SUPRIMIDO = "conteúdo suprimido (RN-19)";
+export const TEXTO_SUPRIMIDO = "conteúdo suprimido";
 
 /**
  * O que a tela pode escrever sobre a pessoa, já decidido. `nome` NUNCA é o

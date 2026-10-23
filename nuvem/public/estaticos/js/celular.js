@@ -158,7 +158,7 @@
             botao.setAttribute('data-servidor', sv.id);
             botao.setAttribute('data-rotulo', sv.rotulo);
             botao.textContent = sv.rotulo;
-            if (!sv.nominal) botao.title = 'identificação suprimida (RN-19)';
+            if (!sv.nominal) botao.title = 'identificação suprimida';
             li.appendChild(botao);
             listaServidores.appendChild(li);
           });

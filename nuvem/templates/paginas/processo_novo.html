@@ -129,7 +129,7 @@
         <span class="dica" id="dica-busca-servidor">
           {%- if busca_so_siape -%}
           Busque pelo SIAPE: sem permissão de ler identificação nominal, o nome não
-          acha ninguém e a lista mostra o código da sessão (RN-19).
+          acha ninguém e a lista mostra o código da sessão.
           {%- else -%}
           Confira pelo SIAPE, nunca pelo nome: homônimo na UFVJM não é raridade.
           {%- endif -%}</span>
@@ -152,7 +152,7 @@
       {% if erro_observacoes %}
       <span class="erro-campo">{{ erro_observacoes }}</span>{% endif %}
       <span class="dica atencao" id="dica-obs">Evite estado de saúde, diagnóstico ou
-        gestação; CPF e CID nunca (RN-21).</span>
+        gestação; CPF e CID nunca.</span>
     </div>
     {{ ui.confirmar_mencao_saude(aviso_saude, 'obs-confirmo-saude') }}
 

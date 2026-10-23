@@ -508,7 +508,7 @@ export async function exportar(
     texto += linha_csv([
       "Nota",
       `Célula com menos de ${LIMIAR_SUPRESSAO} servidores sai como ` +
-        `'${MARCA_SUPRIMIDO}' (RN-19). Quando só uma seria suprimida, a ` +
+        `'${MARCA_SUPRIMIDO}'. Quando só uma seria suprimida, a ` +
         "menor sobrevivente vai junto, e o total do campus some com as " +
         "unidades dele — senão a subtração devolveria o número escondido.",
       "",

@@ -166,7 +166,7 @@ describe("entregas_ate", () => {
     expect(linha!.ca_vencido).toBe(false);
     expect(linha!.troca_vencida).toBe(true);
     expect(linha!.sustenta_neutralizacao).toBe(false);
-    expect(linha!.ressalvas.join(" ")).toContain("RN-32");
+    expect(linha!.ressalvas.join(" ")).toContain("a vida útil acabou antes da avaliação");
   });
 
   it("entrega estornada não sustenta nada", async () => {

@@ -44,7 +44,7 @@
       {% if titular.suprimida %}
       <h1 class="mono">{{ processo.nup }}</h1>
       <p class="identificacao">
-        <span class="mono discreto" title="identificação suprimida (RN-19)">{{ titular.nome }}</span>
+        <span class="mono discreto" title="identificação suprimida">{{ titular.nome }}</span>
         <span class="ponto">·</span>
       {% else %}
       <h1>{{ titular }}</h1>
@@ -442,7 +442,7 @@
       Sem relatório de ensaio anexado, escreva aqui a justificativa da avaliação
       qualitativa: ela é o registro que fica no lugar do ensaio.
       {%- else -%}
-      Evite estado de saúde, diagnóstico ou gestação; CPF e CID nunca (RN-21).
+      Evite estado de saúde, diagnóstico ou gestação; CPF e CID nunca.
       {%- endif -%}</span></div>
 
   {% if faltas_saida and not recusa_mover %}
@@ -536,7 +536,7 @@
            {{- ' autofocus' if recusa_comentario }}
            aria-describedby="dica-comentario">
     <span class="dica atencao" id="dica-comentario">Evite estado de saúde, diagnóstico ou
-      gestação; CPF e CID nunca (RN-21).</span></div>
+      gestação; CPF e CID nunca.</span></div>
   {{ ui.confirmar_mencao_saude(aviso_saude, 'comentario-confirmo-saude') }}
 {% endcall %}
 {% endif %}

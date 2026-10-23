@@ -91,7 +91,7 @@
    abre a turma como cartaz (D16), o almoxarife chegava aqui e lia o nome de
    todos os inscritos. #}
 {% set pode_nominal = usuario.pode('certificado.ver') or usuario.pode('exposicao.ver') %}
-{% set SUPRIMIDO = 'identificação suprimida (RN-19)' %}
+{% set SUPRIMIDO = 'identificação suprimida' %}
 
 <div class="tela">
 
@@ -393,7 +393,7 @@
        decisão de `servidores.html`: coluna em branco sem explicação é o que faz
        alguém concluir que a inscrição está incompleta e inscrever de novo. #}
     <span class="pilula alerta"
-          title="RN-19: sem `certificado.ver` o nome de quem está na turma não é exibido; o código SRV-… identifica a pessoa dentro desta sessão">
+          title="Sem `certificado.ver` o nome de quem está na turma não é exibido; o código SRV-… identifica a pessoa dentro desta sessão">
       identificação suprimida</span>
     {% endif %}
   </div>
@@ -599,7 +599,7 @@
         {% if not pode_nominal %}
         <span class="dica" id="dica-busca-part">Sem <code>certificado.ver</code> a
           busca não casa por nome: o nome está suprimido nesta tela, e casar por
-          ele diria de quem é cada código (RN-19). O SIAPE e o
+          ele diria de quem é cada código. O SIAPE e o
           <code>PTC-…</code> continuam achando.</span>
         {% endif %}</div>
       <div class="acoes"><button type="submit" class="secundario">Procurar</button></div>
@@ -644,7 +644,7 @@
             if pode_nominal else
             'Esta lista é de quem já esteve em alguma turma, e nesta sessão ela
              olha só o SIAPE e o PTC-… — o nome está suprimido, e casar por ele
-             diria de quem é cada código (RN-19). Vazio aqui não quer dizer que a
+             diria de quem é cada código. Vazio aqui não quer dizer que a
              pessoa não está na base.'), 4) }}
       {% endfor %}
     </table>

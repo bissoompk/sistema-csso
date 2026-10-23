@@ -369,8 +369,8 @@ export class RegistroFicha {
     }
     if (this.troca_vencida) {
       motivos.push(
-        `a troca prevista era ${datas_br.numerica(this.previsao_troca!)} e já estava vencida ` +
-          "(RN-32): a vida útil acabou antes da avaliação",
+        `a troca prevista era ${datas_br.numerica(this.previsao_troca!)} e já estava vencida: ` +
+          "a vida útil acabou antes da avaliação",
       );
     }
     if (this.devolvido) {
@@ -1622,8 +1622,7 @@ export async function sincronizar_pendencia_de_troca(
       `${datas_br.numerica(registro.data_evento)} estava prevista para ` +
       `${datas_br.numerica(registro.previsao_troca!)} e venceu. Entregue o ` +
       "substituto ou registre a devolução: EPI com troca vencida não " +
-      "sustenta a alegação de que o agente nocivo está neutralizado " +
-      "(RN-32).",
+      "sustenta a alegação de que o agente nocivo está neutralizado.",
     entidade: ENTIDADE,
     entidade_id: registro.id,
     // o prazo é a própria previsão: a tarefa está atrasada por definição

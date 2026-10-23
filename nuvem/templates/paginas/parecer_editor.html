@@ -145,7 +145,7 @@
         <strong>Parecer anulado.</strong> O conteúdo fica preservado como saiu,
         para a trilha; nada aqui se edita.
         {% else %}
-        <strong>Conteúdo congelado na emissão (RN-14).</strong> Parecer emitido é
+        <strong>Conteúdo congelado na emissão.</strong> Parecer emitido é
         imutável: para corrigir, anule e crie uma versão nova — a reemissão
         recebe outro número.
         {% endif %}
@@ -376,8 +376,7 @@
                       <p>A validade do CA e a troca prevista são lidas <strong>na data da
                         avaliação</strong>, não na de hoje: um CA que valia naquele dia e
                         venceu depois não desmente o parecer.</p>
-                      <p>EPI com CA vencido na data da avaliação, ou com troca vencida
-                        (RN-32), <strong>não sustenta</strong> alegação de neutralização: sem
+                      <p>EPI com CA vencido na data da avaliação, ou com troca vencida, <strong>não sustenta</strong> alegação de neutralização: sem
                         Certificado de Aprovação vigente o equipamento não é EPI (NR-6), e
                         passada a vida útil ninguém pode afirmar o que a pessoa estava
                         usando. Entrega registrada não é proteção comprovada.</p>
@@ -463,8 +462,7 @@
                         <button type="submit" class="secundario" form="epi-{{ e.id }}">Registrar avaliação</button></div>
                     </div>
                     <p class="discreto">Alegar neutralização reduz ou cessa o direito de
-                      alguém: exige justificativa por escrito e habilitação técnica vigente
-                      (RN-01). Quem entrega o EPI não decide isso — o adicional só muda por
+                      alguém: exige justificativa por escrito e habilitação técnica vigente. Quem entrega o EPI não decide isso — o adicional só muda por
                       parecer.</p>
                   </div>
                   {% else %}
@@ -542,7 +540,7 @@
               <textarea id="pa-texto-alteracao"
                         name="texto_alteracao">{{ parecer.texto_alteracao or '' }}</textarea></div>
             <div class="campo"><label for="pa-texto-reavaliacao">Reavaliação
-                <span class="discreto">(obrigatória para agente químico — RN-06)</span></label>
+                <span class="discreto">(obrigatória para agente químico)</span></label>
               <textarea id="pa-texto-reavaliacao"
                         name="texto_reavaliacao">{{ parecer.texto_reavaliacao or '' }}</textarea></div>
           </section>
@@ -569,7 +567,7 @@
             </div>
 
             {% if parecer.tipo_adicional and parecer.tipo_adicional.codigo in ['RAIOS_X','IRRADIACAO_IONIZANTE'] %}
-            <h3>Radiológicos (RN-22)</h3>
+            <h3>Radiológicos</h3>
             <div class="linha-campos">
               <div class="campo"><label for="pa-horas-fonte">Horas semanais junto à fonte</label>
                 <input id="pa-horas-fonte" name="horas_semanais_fonte" type="number" inputmode="decimal" step="0.5" class="mono"
@@ -610,7 +608,7 @@
               emissão, e a habilitação é que confere, não o cargo.</p>
             <p>A emissão consome o próximo número da sequência e <strong>congela</strong>
               o conteúdo do parecer: a partir dela, corrigir o catálogo não muda o que já
-              saiu, e o documento se reimprime idêntico (RN-14 e RN-15).</p>
+              saiu, e o documento se reimprime idêntico.</p>
           {% endcall %}
           {% set travas = validacao.faltantes|length + validacao.bloqueios|length %}
           {% if travas %}
@@ -795,7 +793,7 @@
       documentos diferentes nunca circularem com a mesma identificação.</p>
     <p>No mesmo ato o conteúdo é <strong>congelado</strong>: corrigir o
       catálogo amanhã não muda o que saiu, e o documento se reimprime
-      idêntico (RN-14 e RN-15). Parecer emitido é imutável — a correção é
+      idêntico. Parecer emitido é imutável — a correção é
       anular e criar versão nova.</p>
     {% if validacao.avisos %}
     <p>Sai com {{ validacao.avisos|length }} aviso(s) — aviso não é

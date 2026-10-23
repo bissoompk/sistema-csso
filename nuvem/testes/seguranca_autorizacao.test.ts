@@ -59,7 +59,7 @@ describe("escritas do parecer: RN-14 e escopo", () => {
       data_publicacao: "2024-09-17",
       numero: "99",
     });
-    expect(r.text).toContain("imutável (RN-14)");
+    expect(r.text).toContain("Parecer emitido é imutável. Crie uma nova versão.");
     const [depois] = await db.select().from(e.parecer_tecnico).where(eq(e.parecer_tecnico.id, id));
     expect(depois!.portaria_id).toBe(antes!.portaria_id);
     expect(depois!.data_marco_inicial).toBe(antes!.data_marco_inicial);

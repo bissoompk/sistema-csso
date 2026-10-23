@@ -127,7 +127,7 @@ describe("textos", () => {
     expect(frase).not.toContain("'comentario'");
     expect(frase).toContain("contém termo proibido");
     expect(frase).toContain("Estado de saúde, gestação, CID e diagnóstico");
-    expect(frase).toContain("RN-21");
+    expect(frase).not.toContain("RN-21");
     expect(frase).toContain("LGPD art. 11");
   });
 
