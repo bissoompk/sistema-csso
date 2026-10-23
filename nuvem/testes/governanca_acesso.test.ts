@@ -245,11 +245,12 @@ describe("D11/D12: dados da conta e unicidade sem caixa", () => {
       { seguir: false },
     );
     expect(r.status).toBe(303);
-    const depois = await conta("servidor_consulta");
+    // o login acompanha o e-mail (23/10/2026): um evento a mais, o do login
+    const depois = await conta("corrigido@teste.ufvjm.edu.br");
     expect(depois.nome).toBe("Servidora Corrigida");
     expect(depois.email).toBe("corrigido@teste.ufvjm.edu.br");
     const evs = await eventos("USUARIO_ALTERADO");
-    expect(evs.map((ev) => ev.campo).sort()).toEqual(["email", "nome"]);
+    expect(evs.map((ev) => ev.campo).sort()).toEqual(["email", "login", "nome"]);
   });
 
   it("conta de administração só por quem concede; credencial de conta técnica também", async () => {
@@ -259,23 +260,24 @@ describe("D11/D12: dados da conta e unicidade sem caixa", () => {
     expect(r.text).toContain("é conta de administração");
     expect(abertos(r.text)).toEqual([`editar-conta-${sup.id}`]);
     const med = await conta("medico_trabalho");
-    const login = await amb.cliente.post(`/usuarios/${med.id}/dados`, { nome: med.nome, login: "medico2", email: med.email });
-    expect(login.text).toContain("login e e-mail são credenciais");
+    const login = await amb.cliente.post(`/usuarios/${med.id}/dados`, { nome: med.nome, email: "medico2@teste.ufvjm.edu.br" });
+    expect(login.text).toContain("o e-mail é o login da conta, e");
+    expect((await conta("medico_trabalho")).email).toBe(med.email);
     expect((await conta("medico_trabalho")).login).toBe("medico_trabalho");
     // o nome, que não é credencial, se corrige
     const nome = await amb.cliente.post(`/usuarios/${med.id}/dados`, { nome: "Médica Corrigida", login: med.login, email: med.email }, { seguir: false });
     expect(nome.status).toBe(303);
   });
 
-  it("login e e-mail repetidos em outra caixa são recusados, na criação e na edição", async () => {
+  // o login é o e-mail (23/10/2026): o `login` do formulário é ignorado, e a
+  // duplicata que sobra é a do e-mail
+  it("e-mail repetido em outra caixa é recusado, na criação e na edição", async () => {
     await entrar(amb.cliente, "superintendente");
-    const criar = await amb.cliente.post("/usuarios", { login: "ADMIN_TI", nome: "Outra", email: "outra@teste.ufvjm.edu.br" });
-    expect(criar.text).toContain("Já existe conta com este login");
-    const email = await amb.cliente.post("/usuarios", { login: "outra", nome: "Outra", email: "ADMIN_TI@teste.ufvjm.edu.br" });
-    expect(email.text).toContain("Já existe conta com este e-mail");
+    const email = await amb.cliente.post("/usuarios", { nome: "Outra", email: "ADMIN_TI@teste.ufvjm.edu.br" });
+    expect(email.text).toContain("já é o login da conta de Admin TI de Teste");
     const alvo = await conta("secretaria_csso");
-    const editar = await amb.cliente.post(`/usuarios/${alvo.id}/dados`, { nome: alvo.nome, login: "Tecnico_Seguranca", email: alvo.email });
-    expect(editar.text).toContain("já existe conta com este login");
+    const editar = await amb.cliente.post(`/usuarios/${alvo.id}/dados`, { nome: alvo.nome, email: "Tecnico_Seguranca@teste.ufvjm.edu.br" });
+    expect(editar.text).toContain("já é o login da conta de Técnica de Teste");
     expect(abertos(editar.text)).toEqual([`editar-conta-${alvo.id}`]);
   });
 
@@ -285,11 +287,11 @@ describe("D11/D12: dados da conta e unicidade sem caixa", () => {
     ).rejects.toThrow();
   });
 
-  it("USUARIO_CRIADO grava o login aparado (D27)", async () => {
+  it("USUARIO_CRIADO grava o login aparado (D27) — o e-mail, em minúsculas", async () => {
     await entrar(amb.cliente, "admin_ti");
-    await amb.cliente.post("/usuarios", { login: "  aparado  ", nome: "Aparado", email: "aparado@teste.ufvjm.edu.br" });
+    await amb.cliente.post("/usuarios", { nome: "Aparado", email: "  Aparado@teste.ufvjm.edu.br  " });
     const [ev] = await eventos("USUARIO_CRIADO");
-    expect(ev!.descricao).toBe("Conta 'aparado' criada.");
+    expect(ev!.descricao).toBe("Conta 'aparado@teste.ufvjm.edu.br' criada.");
   });
 });
 

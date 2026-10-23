@@ -63,6 +63,10 @@ export const PERMISSAO_RETIRADA_DO_PERFIL = "PERMISSAO_RETIRADA_DO_PERFIL";
 // Telefone e ramal entram só como NOME de campo — o número nunca vai à trilha.
 export const CONTA_DADOS_ALTERADOS_PELO_TITULAR = "CONTA_DADOS_ALTERADOS_PELO_TITULAR";
 export const EMAIL_ALTERADO_PELO_TITULAR = "EMAIL_ALTERADO_PELO_TITULAR";
+// Login é o e-mail (23/10/2026): a conversão das contas antigas, na
+// publicação, só no banco com a marca de produção (`login_email.ts`). Tipo
+// novo: os textos já gravados na trilha não mudam (a cadeia é por hash).
+export const LOGIN_CONVERTIDO_PARA_EMAIL = "LOGIN_CONVERTIDO_PARA_EMAIL";
 // Liberação por módulo e turmas por setor (22/10/2026). Tipos novos: os textos
 // já gravados na trilha não mudam (a cadeia é por hash). O nível guarda o
 // anterior e o novo em `valor_anterior`/`valor_novo`, e o módulo em `campo`.
@@ -97,6 +101,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   SENHA_TROCADA: "Senha trocada pelo próprio dono",
   CONTA_DADOS_ALTERADOS_PELO_TITULAR: "Dados da conta alterados pelo próprio titular",
   EMAIL_ALTERADO_PELO_TITULAR: "E-mail da conta alterado pelo próprio titular",
+  LOGIN_CONVERTIDO_PARA_EMAIL: "Login convertido para o e-mail",
   CONTA_BLOQUEADA: "Conta bloqueada por tentativas",
   PERMISSAO_ACRESCENTADA_AO_PERFIL: "Permissão acrescentada ao perfil",
   PERMISSAO_RETIRADA_DO_PERFIL: "Permissão retirada do perfil",

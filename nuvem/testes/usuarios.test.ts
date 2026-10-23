@@ -63,20 +63,21 @@ describe("CA-17: toda rota tem fluxo feliz e negativa", () => {
 describe("contas", () => {
   it("criar conta mostra a senha provisória uma vez e obriga a trocar", async () => {
     await entrar(amb.cliente, "admin_ti");
-    const r = await amb.cliente.post("/usuarios", { login: "novo", nome: "Conta Nova", email: "novo@teste.ufvjm.edu.br" });
+    const r = await amb.cliente.post("/usuarios", { nome: "Conta Nova", email: "novo@teste.ufvjm.edu.br" });
     expect(r.status).toBe(200);
     expect(r.text).toContain("Senha provisória:");
-    const [conta] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "novo"));
+    const [conta] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "novo@teste.ufvjm.edu.br"));
     expect(conta!.precisa_trocar_senha).toBe(true);
     const evento = await amb.db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "USUARIO_CRIADO"));
     expect(evento).toHaveLength(1);
   });
 
-  it("login repetido volta o popup preenchido, sem 500", async () => {
+  // o login é o e-mail (23/10/2026): a duplicata que sobra é a do e-mail
+  it("e-mail repetido volta o popup preenchido, sem 500", async () => {
     await entrar(amb.cliente, "admin_ti");
-    const r = await amb.cliente.post("/usuarios", { login: "admin_ti", nome: "Outra Pessoa", email: "outra@teste.ufvjm.edu.br" });
+    const r = await amb.cliente.post("/usuarios", { nome: "Outra Pessoa", email: "admin_ti@teste.ufvjm.edu.br" });
     expect(r.status).toBe(200);
-    expect(r.text).toContain("Já existe conta com este login");
+    expect(r.text).toContain("já é o login da conta de Admin TI de Teste");
     expect(abertos(r.text)).toEqual(["nova-conta"]);
     expect(r.text).toContain('value="Outra Pessoa"');
   });
@@ -339,16 +340,15 @@ describe("conta com perfil e servidor no mesmo envio", () => {
     const [perfil] = await amb.db.select().from(e.perfil).where(eq(e.perfil.codigo, "servidor_consulta"));
     await entrar(amb.cliente, "superintendente");
     const r = await amb.cliente.post("/usuarios", {
-      login: "joana",
       nome: "Joana Prado",
       email: "joana@teste.ufvjm.edu.br",
       perfil_id: String(perfil!.id),
       servidor: "7654321 — Joana Prado",
     });
     expect(r.text).toContain("Senha provisória:");
-    expect((await conta("joana")).servidor_id).toBe(s.id);
-    expect(await vigentes("joana")).toEqual(["servidor_consulta"]);
-    const a = await atribuicaoDe("joana", "servidor_consulta");
+    expect((await conta("joana@teste.ufvjm.edu.br")).servidor_id).toBe(s.id);
+    expect(await vigentes("joana@teste.ufvjm.edu.br")).toEqual(["servidor_consulta"]);
+    const a = await atribuicaoDe("joana@teste.ufvjm.edu.br", "servidor_consulta");
     expect(a.ato_normativo).toMatch(/^Pendente — informado por superintendente/);
     expect(await eventos("SERVIDOR_VINCULADO")).toHaveLength(1);
   });
@@ -356,27 +356,27 @@ describe("conta com perfil e servidor no mesmo envio", () => {
   it("em branco, vincula sozinho o servidor de mesmo e-mail", async () => {
     const s = await servidor("1112223", "Rui Teles", "Rui.Teles@ufvjm.edu.br");
     await entrar(amb.cliente, "superintendente");
-    const r = await amb.cliente.post("/usuarios", { login: "rui", nome: "Rui Teles", email: "rui.teles@ufvjm.edu.br" });
+    const r = await amb.cliente.post("/usuarios", { nome: "Rui Teles", email: "rui.teles@ufvjm.edu.br" });
     expect(r.text).toContain("pelo e-mail");
-    expect((await conta("rui")).servidor_id).toBe(s.id);
+    expect((await conta("rui.teles@ufvjm.edu.br")).servidor_id).toBe(s.id);
   });
 
   it("servidor que não existe volta o popup preenchido, sem criar nada", async () => {
     await entrar(amb.cliente, "superintendente");
-    const r = await amb.cliente.post("/usuarios", { login: "x1", nome: "X", email: "x1@teste.ufvjm.edu.br", servidor: "9999999" });
+    const r = await amb.cliente.post("/usuarios", { nome: "X", email: "x1@teste.ufvjm.edu.br", servidor: "9999999" });
     expect(abertos(r.text)).toEqual(["nova-conta"]);
     expect(r.text).toContain("servidor não encontrado");
-    expect(await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "x1"))).toHaveLength(0);
+    expect(await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "x1@teste.ufvjm.edu.br"))).toHaveLength(0);
   });
 
   it("admin_ti cria conta, mas não com perfil nem servidor (nem pelo e-mail)", async () => {
     await servidor("3334445", "Ana Lis", "ana@ufvjm.edu.br");
     await entrar(amb.cliente, "admin_ti");
-    const r = await amb.cliente.post("/usuarios", { login: "ana", nome: "Ana Lis", email: "ana@ufvjm.edu.br", servidor: "3334445" });
+    const r = await amb.cliente.post("/usuarios", { nome: "Ana Lis", email: "ana@ufvjm.edu.br", servidor: "3334445" });
     expect(r.text).toContain("pedem a permissão perfil.conceder");
-    expect(await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "ana"))).toHaveLength(0);
-    await amb.cliente.post("/usuarios", { login: "ana", nome: "Ana Lis", email: "ana@ufvjm.edu.br" });
-    expect((await conta("ana")).servidor_id).toBeNull();
+    expect(await amb.db.select().from(e.usuario).where(eq(e.usuario.login, "ana@ufvjm.edu.br"))).toHaveLength(0);
+    await amb.cliente.post("/usuarios", { nome: "Ana Lis", email: "ana@ufvjm.edu.br" });
+    expect((await conta("ana@ufvjm.edu.br")).servidor_id).toBeNull();
     // e a página dele não traz a lista nominal de servidores (RN-19)
     expect((await amb.cliente.get("/usuarios")).text).not.toContain('id="lista-servidores"');
   });

@@ -454,10 +454,13 @@ describe("M74/M77: troca de senha e login", () => {
     expect((await conta("tecnico_seguranca")).tentativas_falhas).toBe(0);
   });
 
-  it("o texto não aponta mais para 'a barra acima'; o login diz 'E-mail ou usuário'", async () => {
+  // era "E-mail ou usuário" (M77); desde 23/10/2026 o login é o e-mail
+  it("o texto não aponta mais para 'a barra acima'; o login diz 'E-mail'", async () => {
     await entrar(cliente, "tecnico_seguranca");
     expect((await cliente.get("/trocar-senha")).text).not.toContain("a barra acima");
-    expect((await amb.novoCliente().get("/login")).text).toContain("E-mail ou usuário");
+    const tela = (await amb.novoCliente().get("/login")).text;
+    expect(tela).toContain('<label for="login">E-mail</label>');
+    expect(tela).not.toContain("E-mail ou usuário");
   });
 });
 

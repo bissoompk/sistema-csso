@@ -9,7 +9,8 @@
  *
  * - Nome, telefone e ramal: editáveis; a trilha diz QUAIS campos mudaram,
  *   nunca o número (CONTA_DADOS_ALTERADOS_PELO_TITULAR).
- * - E-mail: é a credencial de entrada. Trocá-lo pede a senha atual, conferida
+ * - E-mail: é a credencial de entrada e o login (23/10/2026: o login
+ *   acompanha a troca). Trocá-lo pede a senha atual, conferida
  *   com o mesmo teto de tentativas da troca de senha (M74), e a unicidade é
  *   sem caixa, como no login (D12, migração 0012).
  * - Senha: a tela leva a /trocar-senha, que já tem a política, a barra de
@@ -256,15 +257,19 @@ rotas.post(`${CAMINHO}/email`, async (c) => {
   // Sem caixa e cruzado com o login (D12): a mesma conferência de /usuarios.
   // A mensagem não diz de quem é: esta tela abre para qualquer conta, e ela não
   // pode virar um jeito de descobrir o dono de um e-mail.
-  if (await _duplicada(tx, { login: atual.login, email }, atual.id)) {
+  // O login acompanha o e-mail (23/10/2026, DESVIOS.md "Login é o e-mail").
+  const login = autenticacao.login_do_email(email);
+  if (await _duplicada(tx, { login, email }, atual.id)) {
     return recusar("ele já é usado por outra conta. Se o e-mail é seu, fale com a coordenação.");
   }
-  await tx.update(tabela_usuario).set({ email }).where(eq(tabela_usuario.id, atual.id));
+  await tx.update(tabela_usuario).set({ email, login }).where(eq(tabela_usuario.id, atual.id));
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: atual.id,
     tipo_evento: auditoria.EMAIL_ALTERADO_PELO_TITULAR,
-    descricao: `Conta '${atual.login}': e-mail de entrada alterado pela própria conta, com a senha atual conferida.`,
+    descricao:
+      `Conta '${atual.login}': e-mail de entrada alterado pela própria conta, com a senha atual conferida.` +
+      (login !== atual.login ? ` O login acompanhou o e-mail: '${login}'.` : ""),
     campo: "email",
     valor_anterior: atual.email,
     valor_novo: email,

@@ -395,13 +395,16 @@ describe("D23: campus forjado não alarga a concessão", () => {
 
 // =====================================================================
 describe("D12: login de uma conta igual ao e-mail de outra", () => {
-  it("a criação recusa o login que já é e-mail de outra conta, e o e-mail que já é login", async () => {
+  // desde 23/10/2026 o login da conta nova é o e-mail: o cruzamento que sobra
+  // é o e-mail novo igual ao login (antigo) de outra conta, ou ao e-mail dela
+  it("a criação recusa o e-mail que já é login de outra conta, e o que já é e-mail", async () => {
+    await amb.db.update(e.usuario).set({ login: "cruzada@teste.ufvjm.edu.br" }).where(eq(e.usuario.login, "secretaria_csso"));
     await entrar(amb.cliente, "admin_ti");
     const outra = await conta("coordenador_csso");
-    const r = await amb.cliente.post("/usuarios", { login: outra.email.toUpperCase(), nome: "Cruzada", email: "cruzada@teste.ufvjm.edu.br" });
-    expect(r.text).toContain("Já existe conta com este login");
-    const r2 = await amb.cliente.post("/usuarios", { login: "cruzada", nome: "Cruzada", email: "Coordenador_CSSO" });
-    expect(r2.text).toContain("Já existe conta com este e-mail");
+    const r = await amb.cliente.post("/usuarios", { nome: "Cruzada", email: "Cruzada@teste.ufvjm.edu.br" });
+    expect(r.text).toContain("já é o login da conta de Secretaria de Teste");
+    const r2 = await amb.cliente.post("/usuarios", { nome: "Cruzada", email: outra.email.toUpperCase() });
+    expect(r2.text).toContain("já é o login da conta de Coordenador de Teste");
     expect(await amb.db.select().from(e.usuario).where(eq(e.usuario.nome, "Cruzada"))).toHaveLength(0);
   });
 });
@@ -421,13 +424,12 @@ describe("D3: a conta-fantoche não recebe a habilitação de quem a criou", () 
     await entrar(amb.cliente, "superintendente");
     const coord = await perfil("coordenador_csso");
     const criada = await amb.cliente.post("/usuarios", {
-      login: "fantoche",
       nome: "Fantoche",
       email: "fantoche@teste.ufvjm.edu.br",
       perfil_id: String(coord.id),
     });
     expect(criada.text).toContain("Senha provisória");
-    const fantoche = await conta("fantoche");
+    const fantoche = await conta("fantoche@teste.ufvjm.edu.br");
     // ele mesmo faria a troca obrigatória: a marca de provisória não segura nada
     await amb.db.update(e.usuario).set({ precisa_trocar_senha: false }).where(eq(e.usuario.id, fantoche.id));
     const r = await atestar({ usuario_alvo_id: String(fantoche.id), externo: "1", justificativa_art10_par5: "sem quadro" });

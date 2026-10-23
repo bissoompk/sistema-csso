@@ -21,7 +21,8 @@ describe("primeiro acesso", () => {
       { nome: "Chefe da Sisa", login: "sisa", email: "sisa@ufvjm.edu.br", senha: "PrimeiroAcesso2026" },
       { seguir: false },
     );
-    const [u] = await db.select().from(e.usuario).where(eq(e.usuario.login, "sisa"));
+    // o `login` do formulário é ignorado: o login é o e-mail (23/10/2026)
+    const [u] = await db.select().from(e.usuario).where(eq(e.usuario.login, "sisa@ufvjm.edu.br"));
     // D28: a senha foi escolhida agora, nesta tela — não é provisória
     expect(u!.precisa_trocar_senha).toBe(false);
     const atribuicoes = await db.select().from(e.atribuicao).where(eq(e.atribuicao.usuario_id, u!.id));
@@ -70,7 +71,7 @@ describe("primeiro acesso", () => {
       { seguir: false },
     );
     expect(r.status).toBe(303);
-    const entrada = await cliente.post("/login", { login: "chefe", senha: "csso-sisa-26" }, { seguir: false });
+    const entrada = await cliente.post("/login", { login: "c@ufvjm.edu.br", senha: "csso-sisa-26" }, { seguir: false });
     expect(entrada.status).toBe(303);
   });
 

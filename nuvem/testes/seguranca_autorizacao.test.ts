@@ -116,7 +116,7 @@ describe("senha provisória", () => {
     const cliente = await entrar(amb.novoCliente(), "admin_ti");
     const r = await cliente.post(
       "/usuarios",
-      { login: "nova", nome: "Conta Nova", email: "nova@teste.ufvjm.edu.br" },
+      { nome: "Conta Nova", email: "nova@teste.ufvjm.edu.br" },
       { seguir: false },
     );
     expect(r.status).toBe(200);

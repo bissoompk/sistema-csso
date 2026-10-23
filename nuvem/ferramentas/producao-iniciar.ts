@@ -2,8 +2,12 @@
  * Implantação: deixa o banco do `DATABASE_URL` pronto para DADO REAL.
  *
  *     npx tsx ferramentas/producao-iniciar.ts \
- *       --login fabricio --nome "Fabrício ..." --email fabricio@ufvjm.edu.br \
+ *       --nome "Fabrício ..." --email fabricio@ufvjm.edu.br \
  *       --url-publica https://csso.exemplo.ufvjm.edu.br
+ *
+ * O login é o e-mail (23/10/2026, DESVIOS.md "Login é o e-mail"). `--login`
+ * deixou de existir; quem ainda o passa (roteiro antigo) recebe um aviso e o
+ * valor é ignorado — o superintendente entra com o `--email`.
  *
  * O que faz, nesta ordem:
  *
@@ -31,11 +35,12 @@ import { pathToFileURL } from "node:url";
 import { carregarEnvLocal } from "./env-local.js";
 
 export interface Opcoes {
-  login: string;
   nome: string;
   email: string;
   urlPublica: string;
   confirmar: string | null;
+  /** `--login` veio na linha de comando (roteiro antigo): ignorado, com aviso */
+  loginIgnorado: string | null;
 }
 
 // sem 0/O/1/l/I: a senha é lida na tela e digitada à mão uma vez
@@ -79,26 +84,24 @@ function valor(argv: string[], nome: string): string | null {
 }
 
 export function lerOpcoes(argv: string[]): Opcoes | string {
-  const login = (valor(argv, "--login") ?? "").trim();
+  const loginIgnorado = (valor(argv, "--login") ?? "").trim() || null;
   const nome = (valor(argv, "--nome") ?? "").trim();
   const email = (valor(argv, "--email") ?? "").trim();
   const url = valor(argv, "--url-publica") ?? "";
   const faltam = [
-    !login && "--login",
     !nome && "--nome",
     !email && "--email",
     !url && "--url-publica",
   ].filter(Boolean);
   if (faltam.length) return `faltam: ${faltam.join(", ")}`;
-  if (!/^[a-z0-9._-]{3,64}$/.test(login)) return "--login: 3 a 64 caracteres, só a-z, 0-9, ponto, hífen e sublinhado";
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return `--email inválido: ${email}`;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 160) return `--email inválido: ${email}`;
   let urlPublica: string;
   try {
     urlPublica = normalizarUrlPublica(url);
   } catch (erro) {
     return (erro as Error).message;
   }
-  return { login, nome, email, urlPublica, confirmar: valor(argv, "--confirmar") };
+  return { nome, email, urlPublica, confirmar: valor(argv, "--confirmar"), loginIgnorado };
 }
 
 /** O que há no banco antes de apagar — para a pessoa ver o que vai perder. */
@@ -178,7 +181,7 @@ export async function implantar(url: string, o: Opcoes, marcadaPor: string): Pro
         })
         .onConflictDoUpdate({ target: parametro.chave, set: { valor: o.urlPublica } });
       await gravarMarca(tx, identidade, marcadaPor);
-      const conta = await autenticacao.criar_primeiro_superintendente(tx, o.login, o.nome, o.email, senha);
+      const conta = await autenticacao.criar_primeiro_superintendente(tx, o.nome, o.email, senha);
       await auditoria.registrar(tx, {
         entidade: "parametro",
         entidade_id: 0,
@@ -193,7 +196,7 @@ export async function implantar(url: string, o: Opcoes, marcadaPor: string): Pro
   } finally {
     await banco.fechar();
   }
-  return { identidade, login: o.login, senha };
+  return { identidade, login: autenticacao.login_do_email(o.email), senha };
 }
 
 export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Promise<number> {
@@ -207,9 +210,14 @@ export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Pr
   if (typeof opcoes === "string") {
     saida.erro(`ERRO: ${opcoes}`);
     saida.erro(
-      "uso: producao-iniciar --login <login> --nome <nome> --email <email> --url-publica https://<endereço> [--confirmar <identidade>]",
+      "uso: producao-iniciar --nome <nome> --email <email> --url-publica https://<endereço> [--confirmar <identidade>]",
     );
     return 1;
+  }
+  if (opcoes.loginIgnorado) {
+    saida.log(
+      `AVISO: --login '${opcoes.loginIgnorado}' ignorado: o login é o e-mail (${opcoes.email.toLowerCase()}).`,
+    );
   }
   const { identidadeDoBanco, marcaDoBanco } = await import("../src/servicos/instalacao.js");
   const identidade = identidadeDoBanco(url);
@@ -233,7 +241,7 @@ export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Pr
     saida.log("  ATENÇÃO: a URL pública é um *.netlify.app. Se um domínio institucional vier depois,");
     saida.log("           os certificados já emitidos continuarão apontando para este endereço.");
   }
-  saida.log(`  1º superintendente: ${opcoes.login} (${opcoes.nome}, ${opcoes.email})`);
+  saida.log(`  1º superintendente: ${opcoes.nome} — entra com o e-mail ${opcoes.email}`);
   saida.log("");
   const digitado = opcoes.confirmar ?? (await saida.perguntar(`Para confirmar, digite a identidade do banco (${identidade}): `));
   if (digitado.trim() !== identidade) {
@@ -241,7 +249,7 @@ export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Pr
     return 2;
   }
 
-  const marcadaPor = `${opcoes.login} via producao-iniciar (${os.userInfo().username}@${os.hostname()})`;
+  const marcadaPor = `${opcoes.email.toLowerCase()} via producao-iniciar (${os.userInfo().username}@${os.hostname()})`;
   const { BancoDeProducao } = await import("../src/servicos/instalacao.js");
   let feito: Implantado;
   try {
@@ -258,7 +266,7 @@ export async function principal(argv: string[], saida: Saida = SAIDA_PADRAO): Pr
   saida.log(" PRODUÇÃO IMPLANTADA");
   saida.log("=".repeat(66));
   saida.log(`  Banco marcado como PRODUÇÃO: ${feito.identidade}`);
-  saida.log(`  Login:             ${feito.login}`);
+  saida.log(`  Login (e-mail):    ${feito.login}`);
   saida.log(`  Senha provisória:  ${feito.senha}`);
   saida.log("");
   saida.log("  Esta senha aparece SÓ AGORA e não fica gravada em lugar nenhum.");

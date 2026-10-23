@@ -186,14 +186,12 @@ rotas.post("/primeiro-acesso", async (c) => {
   const nome = f.texto("nome");
   const email = f.texto("email");
   const senha = f.texto("senha");
-  const login = f.texto("login");
   if ((await autenticacao.existe_algum_usuario(tx)) || !_local(c)) return redirecionar(c, "/login");
-  // a tela não pede mais nome de usuário: a entrada é pelo e-mail. A coluna
-  // continua existindo e obrigatória, então sai do próprio e-mail.
-  const escolhido = login.trim() || autenticacao.usuario_a_partir_do_email(email);
+  // a tela não pede nome de usuário: o login é o próprio e-mail (23/10/2026),
+  // e um `login` que venha no formulário é ignorado
   try {
     // a senha foi escolhida agora, nesta tela: não é provisória (D28)
-    await autenticacao.criar_primeiro_superintendente(tx, escolhido, nome.trim(), email.trim(), senha, {
+    await autenticacao.criar_primeiro_superintendente(tx, nome.trim(), email.trim(), senha, {
       precisa_trocar_senha: false,
     });
   } catch (erro) {
@@ -201,7 +199,7 @@ rotas.post("/primeiro-acesso", async (c) => {
       throw erro;
     }
     // Devolve o que NÃO é segredo; a senha jamais volta.
-    return pagina(c, "paginas/primeiro_acesso.html", null, { erro: erro.message, nome, email, login });
+    return pagina(c, "paginas/primeiro_acesso.html", null, { erro: erro.message, nome, email });
   }
   return redirecionar(c, "/login");
 });

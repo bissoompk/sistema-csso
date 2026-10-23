@@ -182,7 +182,8 @@ describe("e-mail", () => {
     await entrar(amb.cliente, "admin_ti");
     const r = await amb.cliente.post("/minha-conta/email", { email: "Novo.Admin@teste.ufvjm.edu.br", senha_atual: SENHA_TESTE });
     expect(r.text).toContain("E-mail alterado.");
-    const depois = await conta("admin_ti");
+    // o login acompanha o e-mail (23/10/2026)
+    const depois = await conta("novo.admin@teste.ufvjm.edu.br");
     expect(depois.email).toBe("Novo.Admin@teste.ufvjm.edu.br");
     const [ev] = await eventos(auditoria.EMAIL_ALTERADO_PELO_TITULAR, depois.id);
     expect(ev!.valor_anterior).toBe("admin_ti@teste.ufvjm.edu.br");

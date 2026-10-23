@@ -234,13 +234,14 @@ export function politica_de_senha(senha: string): string[] {
 }
 
 /**
- * Deriva o nome de usuário do e-mail: a parte local, só `[a-z0-9._-]`, até 64.
- * A coluna `login` é obrigatória e única, mas deixou de ser digitada.
+ * O login da conta: o PRÓPRIO e-mail cadastrado, aparado e em minúsculas
+ * (23/10/2026, DESVIOS.md "Login é o e-mail"). Era só a parte local
+ * (`usuario_a_partir_do_email`), e "fabricio" e "fabricio@" de outro domínio
+ * disputavam o mesmo login. A coluna `login` continua obrigatória e única; ela
+ * só deixou de ser um segundo identificador para alguém lembrar.
  */
-export function usuario_a_partir_do_email(email: string): string {
-  const local = (email ?? "").trim().split("@")[0] ?? "";
-  const limpo = casefold(local).replace(/[^a-z0-9._-]/g, "").slice(0, 64);
-  return limpo || "usuario";
+export function login_do_email(email: string): string {
+  return casefold((email ?? "").trim());
 }
 
 /** `str.casefold()`: minúsculas + o ß alemão (o único caso que o `toLowerCase` não cobre e importa aqui). */
@@ -770,7 +771,6 @@ export async function existe_algum_usuario(tx: Executor): Promise<boolean> {
  */
 export async function criar_primeiro_superintendente(
   tx: Executor,
-  login: string,
   nome: string,
   email: string,
   senha: string,
@@ -781,6 +781,9 @@ export async function criar_primeiro_superintendente(
   }
   const problemas = politica_de_senha(senha);
   if (problemas.length) throw new SenhaRecusada("Senha fraca: " + problemas.join("; "));
+  email = email.trim();
+  // o login é o e-mail (23/10/2026): não há mais um segundo identificador
+  const login = login_do_email(email);
 
   const [conta] = await tx
     .insert(usuario)

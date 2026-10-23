@@ -134,6 +134,13 @@
       "when": 1792765807128,
       "tag": "0018_prevencao_duplicados",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792765960108,
+      "tag": "0019_usuario_login_email",
+      "breakpoints": true
     }
   ]
 }

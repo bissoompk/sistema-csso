@@ -128,7 +128,7 @@ transação:
 ```bash
 DATABASE_URL='postgresql://postgres.<ref>:<senha>@aws-0-sa-east-1.pooler.supabase.com:5432/postgres' \
 npm run producao-iniciar -- \
-  --login <seu.login> --nome "<Seu Nome>" --email <voce>@ufvjm.edu.br \
+  --nome "<Seu Nome>" --email <voce>@ufvjm.edu.br \
   --url-publica https://<endereço DEFINITIVO do sistema>
 ```
 
@@ -149,7 +149,7 @@ pode ser apagado depois.
 ## 4. Primeiro login
 
 1. Publique o site (Deploys > Trigger deploy) com as variáveis do §2.
-2. Entre com o login e a senha provisória. O sistema manda para
+2. Entre com o seu e-mail (é o login) e a senha provisória. O sistema manda para
    `/trocar-senha`: troque. A senha precisa de **10 caracteres** (uma frase
    curta serve). Conta trazida de banco antigo com senha de 6 caracteres
    entra uma vez e é mandada trocar.
@@ -157,7 +157,7 @@ pode ser apagado depois.
    conta de administração (superintendente, `admin_ti`) só o superintendente
    redefine. A do único superintendente, se perdida, pela linha de comando
    (com a `DATABASE_URL` de produção; registre em ata):
-   `npm run redefinir-senha -- --login <login>` (`--reativar` se a conta
+   `npm run redefinir-senha -- --email <e-mail>` (`--reativar` se a conta
    também estiver inativa). A senha provisória aparece uma vez.
 4. Em `/usuarios` > Gerir, corrija o ato "BOOTSTRAP — substituir pelo ato
    real" para o ato normativo verdadeiro e cadastre as demais contas (perfil e
@@ -276,6 +276,16 @@ planeje o Pro antes.
 semeia** antes de publicar; se a migração falhar, a publicação falha e a
 versão anterior continua no ar. Migração nova é gerada com `npm run db:gerar`,
 revisada à mão e testada (`npx vitest run`) antes do push.
+
+Depois de semear, o build roda `ferramentas/converter-logins.ts` (login é o
+e-mail, 23/10/2026): **só no banco com a marca de produção**, troca o login
+de cada conta antiga pelo e-mail cadastrado (minúsculas), com o evento
+"Login convertido para o e-mail" na trilha. Idempotente: na publicação
+seguinte não há o que converter. A conta com e-mail vazio, repetido ou já
+usado como login de outra **não** é convertida; o log do deploy mostra
+`[logins] ATENÇÃO: conta N ... NÃO convertida: <motivo>` — corrija o e-mail
+em Usuários e a próxima publicação a converte. Até lá ela entra pelo login
+antigo, que a tela continua aceitando. As sessões abertas não caem.
 
 ## 8. Voltar atrás
 
