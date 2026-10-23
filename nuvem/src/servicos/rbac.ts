@@ -20,11 +20,15 @@ import { PermissaoNegada } from "../nucleo/erros.js";
 import {
   MODULOS_NIVELADOS,
   PERFIS_NO_NIVEL_MAIS_ALTO,
+  PERMISSAO_DA_BASE,
   PERMISSOES_SO_DO_PERFIL,
+  concessao_da_a_base,
   niveis_de,
   permissoes_com_niveis,
   permissoes_do_modulo,
 } from "./niveis_modulo.js";
+
+export { PERMISSAO_DA_BASE } from "./niveis_modulo.js";
 
 // A mesma classe que `src/app.ts` trata no `onError`: uma só, reexportada daqui
 // para que `import { PermissaoNegada } from "servicos/rbac"` continue valendo
@@ -1238,9 +1242,16 @@ export class UsuarioAtual {
     this.habilitacoes = Object.freeze([...(d.habilitacoes ?? [])]);
     this.concessoes = d.concessoes
       ? Object.freeze(
-          d.concessoes.map((c) =>
-            Object.freeze({ perfil: c.perfil, campus_id: c.campus_id, permissoes: Object.freeze(new Set(c.permissoes)) }),
-          ),
+          d.concessoes.map((c) => {
+            const permissoes = new Set(c.permissoes);
+            // a base derivada também na concessão montada à mão, que já vem
+            // com as efetivas (`perfis_vigentes` a marca antes, quando o nível
+            // tirou o `processo.ver` que a sustentava)
+            if (c.perfil !== CONCESSAO_DO_TITULAR && concessao_da_a_base(permissoes, permissoes)) {
+              permissoes.add(PERMISSAO_DA_BASE);
+            }
+            return Object.freeze({ perfil: c.perfil, campus_id: c.campus_id, permissoes: Object.freeze(permissoes) });
+          }),
         )
       : null;
     this.setores_promotores = Object.freeze([...(d.setores_promotores ?? [])]);
@@ -1248,6 +1259,13 @@ export class UsuarioAtual {
   }
 
   pode(codigo: string): boolean {
+    // a base compartilhada é derivada e mora só nas concessões
+    // (`niveis_modulo.PERMISSAO_DA_BASE`); montado à mão, ela segue o
+    // `processo.ver`, como sempre seguiu
+    if (codigo === PERMISSAO_DA_BASE) {
+      if (this.concessoes === null) return this.permissoes.has("processo.ver");
+      return this.concessoes.some((c) => (c.permissoes as ReadonlySet<string>).has(PERMISSAO_DA_BASE));
+    }
     return this.permissoes.has(codigo);
   }
 
@@ -1530,7 +1548,11 @@ export async function perfis_vigentes(
       : cruas;
     for (const p of dela) permissoes.add(p);
     if (a.campus_id) campi.add(a.campus_id);
-    concessoes.push({ perfil: perfil.codigo, campus_id: a.campus_id ?? null, permissoes: dela });
+    // a base compartilhada sobrevive a "Sem acesso" em Processos SEI enquanto a
+    // concessão der outro módulo (23/10/2026); fica só na concessão, com o
+    // alcance dela, e não entra em `permissoes`
+    const da_concessao = concessao_da_a_base(cruas, dela) ? [...dela, PERMISSAO_DA_BASE] : dela;
+    concessoes.push({ perfil: perfil.codigo, campus_id: a.campus_id ?? null, permissoes: da_concessao });
   }
   return { permissoes, perfis, campi, concessoes };
 }

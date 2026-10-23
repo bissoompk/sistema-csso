@@ -15,8 +15,13 @@
     </div>
   </div>
 
+  {# Módulo em uso que não abre tela nenhuma para esta pessoa ("Sem acesso" no
+     perfil ou na conta) não aparece no mapa, como não aparece no menu
+     (23/10/2026). O previsto aparece sempre: diz o que ainda vem. #}
+  {% set escondidos = [] %}
   {% for m in modulos %}
   {% set itens = m.itens_de(usuario) if m.disponivel else [] %}
+  {% if m.disponivel and not itens %}{% set _ = escondidos.push(m) %}{% else %}
   <section class="cartao liso cartao-modulo {{ 'modulo-previsto' if not m.disponivel }}"
            id="{{ m.codigo }}">
     <div class="cabecalho-cartao">
@@ -72,7 +77,15 @@
     </div>
     {% endif %}
   </section>
+  {% endif %}
   {% endfor %}
+
+  {% if escondidos|length %}
+  <p class="discreto nota-sem-acesso">{{ 'O módulo' if escondidos|length == 1 else 'Os módulos' }}
+    {% for m in escondidos %}{{ m.nome }}{{ ', ' if not loop.last }}{% endfor %}
+    não {{ 'aparece' if escondidos|length == 1 else 'aparecem' }} aqui porque a sua conta está sem
+    acesso — o acesso por módulo se concede em Usuários.</p>
+  {% endif %}
 
   <section class="cartao liso">
     <div class="cabecalho-cartao">

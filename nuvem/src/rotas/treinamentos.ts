@@ -6,6 +6,7 @@
  * formulário de cadastro embaixo e diff campo a campo na auditoria.
  */
 import { Hono } from "hono";
+import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { and, asc, count, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
@@ -1220,12 +1221,22 @@ async function _tela_assinaturas(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) 
   });
 }
 
+/**
+ * "Instrutores" é do módulo Certificados e Treinamentos, mas a permissão é só
+ * do perfil (`assinatura.gerenciar`): com "Sem acesso" ao módulo ela sobrava e
+ * segurava o módulo no menu (23/10/2026). A tela e as ações pedem as duas.
+ */
+function _exigir_instrutores(usuario: UsuarioAtual): void {
+  usuario.exigir("assinatura.gerenciar");
+  exigir_acesso_ao_modulo(usuario, "certificados");
+}
+
 // o menu diz "Instrutores": o endereço digitado por esse nome leva à mesma tela
 rotas.get("/treinamentos/instrutores", (c) => redirecionar(c, ASSINATURAS));
 
 rotas.get(ASSINATURAS, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("assinatura.gerenciar");
+  _exigir_instrutores(usuario);
   return _tela_assinaturas(c, usuario, recados(c));
 });
 
@@ -1278,7 +1289,7 @@ function _campos_do_formulario(f: Formulario) {
 
 rotas.post(ASSINATURAS, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("assinatura.gerenciar");
+  _exigir_instrutores(usuario);
   const tx = c.get("tx");
   const f = await formulario(c);
   const digitado = _campos_do_formulario(f);
@@ -1326,7 +1337,7 @@ rotas.post(ASSINATURAS, async (c) => {
 
 rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("assinatura.gerenciar");
+  _exigir_instrutores(usuario);
   const tx = c.get("tx");
   const assinatura_id = Number(c.req.param("assinatura_id"));
   const f = await formulario(c);
@@ -1375,7 +1386,7 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
 /** O instrutor cadastrado por engano, que nunca esteve em turma. */
 rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}/excluir`, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("assinatura.gerenciar");
+  _exigir_instrutores(usuario);
   try {
     const nome = await c
       .get("tx")
@@ -1401,7 +1412,7 @@ function _tipo_da_rubrica(bytes: Uint8Array): string | null {
 
 rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}/rubrica`, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("assinatura.gerenciar");
+  _exigir_instrutores(usuario);
   const tx = c.get("tx");
   const instrutor = await _assinatura(tx, Number(c.req.param("assinatura_id")));
   if (!instrutor) return _erro(c, ASSINATURAS, "Instrutor não encontrado.");
@@ -1453,7 +1464,7 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}/rubrica`, async (c) => {
 // a miniatura da tela: quem gerencia instrutores vê a rubrica que vai ao papel
 rotas.get(`${ASSINATURAS}/:assinatura_id{[0-9]+}/rubrica`, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("assinatura.gerenciar");
+  _exigir_instrutores(usuario);
   const tx = c.get("tx");
   const instrutor = await _assinatura(tx, Number(c.req.param("assinatura_id")));
   const [anexo] =

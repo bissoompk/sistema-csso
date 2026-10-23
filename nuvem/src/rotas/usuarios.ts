@@ -38,6 +38,7 @@ import {
   GRUPOS_PERMISSAO_TELA,
   MATRIZ_PERFIS,
   PERFIL_ADMINISTRADOR_SISTEMA,
+  PERMISSAO_DA_BASE,
   PERMISSOES_DO_TITULAR,
   SO_DO_TECNICO_HABILITADO,
   aceita_nivel_modulo,
@@ -109,6 +110,9 @@ function _alem_do_que_tem(
     const dela = Object.hasOwn(ESCOPO_POR_PERFIL, c.perfil) ? alcance_da_concessao(c.perfil, c.campus_id ?? null) : null;
     for (const p of c.permissoes) {
       if (proprio && PERMISSOES_DO_TITULAR.has(p)) continue;
+      // a base derivada não se concede: o que a sustenta (`processo.ver` e o
+      // módulo) já entra na comparação pela própria permissão (23/10/2026)
+      if (p === PERMISSAO_DA_BASE) continue;
       if (usuario.pode(p) && (dela === null || cobre_inteiro(usuario.alcance_da_equipe(p), dela))) continue;
       alem.add(p);
     }

@@ -57,7 +57,10 @@ async function do_perfil(login: string): Promise<string[]> {
   const u = await carregar_usuario_atual(amb.db, await conta_id(login));
   return [
     ...new Set(u.concessoes!.filter((c) => c.perfil !== CONCESSAO_DO_TITULAR).flatMap((c) => [...c.permissoes])),
-  ].sort();
+  ]
+    // a base derivada (`@base`, 23/10/2026) não é permissão do banco
+    .filter((p) => !p.startsWith("@"))
+    .sort();
 }
 
 describe("o mapa", () => {

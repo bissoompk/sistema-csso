@@ -38,6 +38,7 @@ import * as auditoria from "../servicos/auditoria.js";
 import * as textos from "../servicos/textos.js";
 import { analisar_portaria } from "../servicos/importacao_planilha.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
+import { exigir_a_base_na_equipe } from "../servicos/acesso_modulo.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { comMensagem, pagina, redirecionar, salvar_com_diff } from "../web.js";
 
@@ -253,14 +254,16 @@ async function _tela(
 
 rotas.get("/catalogos", async (c) => {
   const usuario = await usuarioLogado(c);
-  // tela da equipe: o `processo.ver` do titular (D16) não a abre
-  usuario.exigir_na_equipe("processo.ver");
+  // tela da equipe: o `processo.ver` do titular (D16) não a abre. Pela base
+  // derivada, e não por `processo.ver`: "Sem acesso" a Processos SEI não a
+  // fecha para quem trabalha noutro módulo (23/10/2026)
+  exigir_a_base_na_equipe(usuario);
   return pagina(c, "paginas/catalogos.html", usuario, { catalogos: CATALOGOS });
 });
 
 rotas.get("/catalogos/:nome", async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir_na_equipe("processo.ver");
+  exigir_a_base_na_equipe(usuario);
   return _tela(c, usuario, c.req.param("nome"), {
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
