@@ -487,6 +487,8 @@ export const participante_mesclagem = pgTable(
       principal_herdado: number | null;
       campos_herdados: string[];
       absorvido_tinha_cpf: boolean;
+      // a conta de terceirizado/discente que passou do absorvido para o mantido
+      conta_movida?: number | null;
     }>('movido').notNull(),
     feito_por: integer('feito_por'),
     feito_em: MomentoUTC('feito_em').notNull().$defaultFn(agora_utc),
