@@ -1,0 +1,5 @@
+{% import "partes/macros.html" as ui with context %}
+{# Resposta do "+ outro envolvido" (HTMX): o cartão `i` e, no lugar do botão
+   que pediu, o botão que pede o próximo — o índice anda sem estado no servidor. #}
+{% include "partes/acidente_envolvido.html" %}
+{% include "partes/acidente_botao_envolvido.html" %}

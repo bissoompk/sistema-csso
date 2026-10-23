@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Complementar {{ ocorrencia.protocolo }} · SISA{% endblock %}
+
+{% block trilha %}<a href="/acidentes/{{ ocorrencia.id }}">{{ ocorrencia.protocolo }}</a>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Complementar a comunicação {{ ocorrencia.protocolo }}</h1>
+      <p class="sub">A resposta entra numa versão nova da CAT/SP, e a anterior continua guardada.</p>
+    </div>
+  </div>
+  {% if erro_form %}<div class="aviso aviso-erro" role="alert">{{ erro_form }}</div>{% endif %}
+  {% if pedido %}
+  <section class="cartao">
+    <h2>O que a equipe pediu</h2>
+    <p>{{ pedido.pedido_texto }}</p>
+  </section>
+  <form method="post" action="/acidentes/{{ ocorrencia.id }}/complementar" data-rascunho-local="acidente-complementar-{{ ocorrencia.id }}">
+    <div class="campo">
+      <label for="resposta">Sua resposta</label>
+      <textarea id="resposta" name="resposta" required maxlength="2000" rows="6"
+                aria-describedby="dica-resposta">{{ resposta }}</textarea>
+      <span class="dica" id="dica-resposta">Fale do evento. Sem CPF e sem diagnóstico: a saúde é registrada pelo médico do trabalho.</span>
+    </div>
+    <div class="acoes">
+      <button type="submit">Enviar resposta</button>
+      <a class="botao secundario" href="/acidentes/{{ ocorrencia.id }}">Voltar</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="cartao"><div class="vazio"><strong>Não há pedido aberto</strong>
+    <span>A equipe não está aguardando complementação desta comunicação.</span></div></div>
+  {% endif %}
+</div>
+{% endblock %}

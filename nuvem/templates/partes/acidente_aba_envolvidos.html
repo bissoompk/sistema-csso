@@ -1,0 +1,43 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Envolvidos (F1). O servidor sai por `identificar` (RN-19, com a família
+   nominal do módulo: quem tria, investiga ou encaminha ao SIASS — e o próprio
+   titular); quem não é servidor e as testemunhas, só para quem conduz o caso ou
+   comunicou. Cargo e lotação são o retrato do ATO, não o cadastro de hoje. #}
+<section class="cartao">
+  <h2>Envolvidos <span class="contador">{{ acidentados|length }}</span></h2>
+  <div class="tabela-cartao lista">
+    <table class="empilhavel">
+      <thead>
+        <tr><th scope="col">#</th><th scope="col">Quem</th><th scope="col">Vínculo</th>
+          <th scope="col">Condição</th><th scope="col">Lesão</th><th scope="col">Contato</th></tr>
+      </thead>
+      {% for a in acidentados %}
+      <tr>
+        <td class="mono">{{ a.ordem }}</td>
+        <td data-coluna="Quem">
+          {%- if a.servidor %}{% set quem = identificar(a.servidor) %}{{ quem.nome }}{% if quem.nominal %} <span class="mono discreto">SIAPE {{ quem.siape }}</span>{% endif %}
+          {%- elif ve_nomes %}{{ a.nome_externo }}{% if a.identificacao_externa %} <span class="mono discreto">{{ a.identificacao_externa }}</span>{% endif %}
+          {%- else %}<span class="discreto">pessoa externa {{ a.ordem }}</span>{% endif %}
+          {%- if a.empresa_contratada and ve_nomes %} <span class="discreto">({{ a.empresa_contratada }})</span>{% endif %}
+          {%- if a.menor_de_idade %} <span class="pilula alerta">menor de idade</span>{% endif %}</td>
+        <td data-coluna="Vínculo">{{ ROTULO_VINCULO_ACIDENTADO[a.vinculo] or a.vinculo }}</td>
+        <td data-coluna="Condição">{{ ROTULO_CONDICAO_ENVOLVIDO[a.condicao] or a.condicao }}</td>
+        <td data-coluna="Lesão">{{ ROTULO_SIM_NAO_NAO_SEI[a.houve_lesao] if a.houve_lesao else '—' }}</td>
+        <td data-coluna="Contato">{{ a.contato_investigacao if ve_nomes and a.contato_investigacao else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+
+<section class="cartao">
+  <h2>Testemunhas <span class="contador">{{ testemunhas|length }}</span></h2>
+  {% if testemunhas|length %}
+  <ul class="linha-tempo">
+    {% for t in testemunhas %}
+    <li>{% if ve_nomes %}{{ t.nome }}{% if t.contato %} — {{ t.contato }}{% endif %}{% else %}Testemunha {{ loop.index }}{% endif %}
+      {%- if t.vinculo %} <span class="discreto">({{ ROTULO_VINCULO_ACIDENTADO[t.vinculo] }})</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="discreto">Nenhuma testemunha informada.</p>{% endif %}
+</section>

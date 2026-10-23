@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Minhas comunicações · SISA{% endblock %}
+
+{% block acoes_cabecalho %}
+{% if pode_comunicar %}<a class="botao" href="/acidentes/comunicar">Comunicar acidente</a>{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Minhas comunicações</h1>
+      <p class="sub">Os acidentes que você comunicou ou em que foi o acidentado.</p>
+    </div>
+  </div>
+  {% if ocorrencias|length %}
+  <div class="tabela-cartao lista">
+    <table class="empilhavel">
+      <thead>
+        <tr>
+          <th scope="col">Protocolo</th><th scope="col">Espécie</th><th scope="col">Data do acidente</th>
+          <th scope="col">Situação</th><th scope="col">O que falta</th>
+        </tr>
+      </thead>
+      {% for o in ocorrencias %}
+      <tr>
+        <td><a class="mono" href="/acidentes/{{ o.id }}">{{ o.protocolo }}</a></td>
+        <td data-coluna="Espécie">{{ ROTULO_ESPECIE[o.especie] or o.especie }}</td>
+        <td data-coluna="Data do acidente">{{ o.data_evento|data }}</td>
+        <td data-coluna="Situação">{{ ROTULO_ACIDENTE[o.estado] or o.estado }}</td>
+        <td data-coluna="O que falta">
+          {%- if o.id in a_responder %}<a class="botao compacto" href="/acidentes/{{ o.id }}/complementar">Responder à complementação</a>
+          {%- elif o.estado in ACIDENTE_ENCERRADO %}<span class="discreto">nada: encerrada</span>
+          {%- else %}<span class="discreto">com a equipe de segurança do trabalho</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  <div class="cartao">
+    <div class="vazio">
+      <strong>Nenhuma comunicação sua</strong>
+      <span>Se você sofreu ou presenciou um acidente em serviço, comunique em até 10 dias da data do acidente.</span>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

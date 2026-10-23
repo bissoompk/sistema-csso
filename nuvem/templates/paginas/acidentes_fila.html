@@ -2,6 +2,13 @@
 {% import "partes/macros.html" as ui with context %}
 {% block titulo %}{{ titulo_tela }} · SISA{% endblock %}
 
+{% macro linha_prazo(o) %}
+{%- set efetivo = o.prazo_prorrogado_ate or o.prazo_comunicacao -%}
+<span class="mono">{{ efetivo|data }}</span>
+{%- if o.prazo_prorrogado_ate %} <span class="discreto">(prorrogado)</span>{% endif %}
+{%- if o.estado not in ACIDENTE_ENCERRADO and o.estado != 'ENCAMINHADA_SIASS' and efetivo < hoje %} <span class="pilula erro">vencido</span>{% endif %}
+{%- endmacro %}
+
 {% block conteudo %}
 <div class="tela">
   <div class="cabecalho-pagina">
@@ -10,13 +17,62 @@
       <p class="sub">{{ subtitulo }}</p>
     </div>
   </div>
+
+  {# Os filtros vão na URL (GET): a lista filtrada se compartilha e o "voltar"
+     do navegador devolve o recorte. A busca é pelo PROTOCOLO, nunca por nome —
+     casar por nome faria da fila um oráculo nome↔ocorrência (RN-19). #}
+  <form method="get" action="/acidentes/fila" class="filtros cartao" role="search">
+    <div class="linha-campos">
+      <div class="campo">
+        <label for="f-estado">Situação</label>
+        <select id="f-estado" name="estado">
+          <option value="">Todas</option>
+          <option value="ABERTAS"{{ ui.sel(filtros.estado, 'ABERTAS') }}>Em aberto</option>
+          <option value="VENCENDO"{{ ui.sel(filtros.estado, 'VENCENDO') }}>Prazo vencendo ou vencido</option>
+          {% for e in ESTADOS_ACIDENTE %}<option value="{{ e }}"{{ ui.sel(filtros.estado, e) }}>{{ ROTULO_ACIDENTE[e] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="f-especie">Espécie</label>
+        <select id="f-especie" name="especie">
+          <option value="">Todas</option>
+          {% for e in ESPECIES %}<option value="{{ e }}"{{ ui.sel(filtros.especie, e) }}>{{ ROTULO_ESPECIE[e] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="f-campus">Campus</label>
+        <select id="f-campus" name="campus">
+          <option value="">Todos</option>
+          {% for cp in campi %}<option value="{{ cp.id }}"{{ ui.sel(filtros.campus, cp.id) }}>{{ cp.sigla }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="f-de">Acidente a partir de</label>
+        <input id="f-de" type="date" name="de" value="{{ filtros.de }}">
+      </div>
+      <div class="campo">
+        <label for="f-ate">até</label>
+        <input id="f-ate" type="date" name="ate" value="{{ filtros.ate }}">
+      </div>
+      <div class="campo">
+        <label for="f-protocolo">Protocolo</label>
+        <input id="f-protocolo" name="protocolo" value="{{ filtros.protocolo }}" placeholder="CAT-AAAA-NNNN" class="mono">
+      </div>
+    </div>
+    <div class="acoes">
+      <label><input type="checkbox" name="minhas" value="1"{{ ' checked' if filtros.minhas }}> Só as que eu conduzo</label>
+      <button type="submit" class="secundario">Filtrar</button>
+      <a class="botao secundario" href="/acidentes/fila">Limpar</a>
+    </div>
+  </form>
+
   {% if ocorrencias|length %}
   <div class="tabela-cartao lista">
     <table class="empilhavel">
       <thead>
         <tr>
           <th scope="col">Protocolo</th><th scope="col">Espécie</th><th scope="col">Data do acidente</th>
-          <th scope="col">Situação</th><th scope="col">Prazo de comunicação</th>
+          <th scope="col">Situação</th><th scope="col">Prazo de comunicação</th><th scope="col">Condução</th>
         </tr>
       </thead>
       {% for o in ocorrencias %}
@@ -25,17 +81,19 @@
         <td data-coluna="Espécie">{{ ROTULO_ESPECIE[o.especie] or o.especie }}</td>
         <td data-coluna="Data do acidente">{{ o.data_evento|data }}</td>
         <td data-coluna="Situação">{{ ROTULO_ACIDENTE[o.estado] or o.estado }}</td>
-        <td data-coluna="Prazo de comunicação">{{ (o.prazo_prorrogado_ate or o.prazo_comunicacao)|data }}</td>
+        <td data-coluna="Prazo de comunicação">{{ linha_prazo(o) }}</td>
+        <td data-coluna="Condução">{% if o.responsavel_id == usuario.id %}com você{% elif o.responsavel_id %}assumida{% else %}<span class="discreto">ninguém ainda</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </table>
   </div>
-  {% if ocorrencias|length >= limite %}<p class="sub">Mostrando as {{ limite }} mais recentes.</p>{% endif %}
+  {{ ui.paginacao(pagina, por_pagina, total, '/acidentes/fila', consulta) }}
   {% else %}
   <div class="cartao">
     <div class="vazio">
-      <strong>Nenhuma ocorrência por aqui</strong>
-      <span>Quando um acidente for comunicado, ele aparece nesta lista com o protocolo e o prazo.</span>
+      <strong>Nenhuma ocorrência neste recorte</strong>
+      <span>{% if consulta %}Tire um filtro ou <a href="/acidentes/fila">veja a fila inteira</a>.
+        {% else %}Quando um acidente for comunicado, ele aparece aqui com o protocolo e o prazo.{% endif %}</span>
     </div>
   </div>
   {% endif %}

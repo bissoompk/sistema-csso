@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Comunicar acidente · SISA{% endblock %}
+
+{# A comunicação em cinco seções recolhíveis. O rascunho fica no navegador
+   (`data-rascunho-local`) até o envio; a recusa devolve tudo o que foi digitado
+   (`d`) com o erro no topo. Sem JavaScript, as seções abrem e os campos
+   condicionais ficam à vista — o servidor decide o que vale. #}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Comunicar acidente</h1>
+      <p class="sub">Acidente em serviço, de trajeto, doença relacionada ao trabalho ou quase acidente.
+        A comunicação vai à equipe de segurança do trabalho, que tem 10 dias da data do acidente para
+        encaminhá-la (Lei 8.112, art. 214).</p>
+    </div>
+  </div>
+
+  {% if erro_form %}<div class="aviso aviso-erro" role="alert" id="erro-comunicar">{{ erro_form }}</div>{% endif %}
+
+  <form method="post" action="/acidentes/comunicar" data-rascunho-local="acidente-comunicar" data-rascunho-versao="1">
+    <details class="recolhido" open>
+      <summary>1. Quem se envolveu</summary>
+      <div id="envolvidos">
+        {% for i in indices %}{% include "partes/acidente_envolvido.html" %}{% endfor %}
+        {% include "partes/acidente_botao_envolvido.html" %}
+      </div>
+    </details>
+
+    <details class="recolhido" open>
+      <summary>2. O que aconteceu</summary>
+      {% include "partes/acidente_campos_fatos.html" %}
+    </details>
+
+    <details class="recolhido"{{ ' open' if recusado }}>
+      <summary>3. Testemunhas (opcional)</summary>
+      <p class="dica">Nome e um contato (e-mail institucional ou ramal). Endereço não é pedido.</p>
+      {% for t in range(1, MAXIMO_TESTEMUNHAS + 1) %}
+      {% set tp = 'test_' ~ t ~ '_' %}
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="{{ tp }}nome">Testemunha {{ t }}</label>
+          <input id="{{ tp }}nome" name="{{ tp }}nome" maxlength="160" value="{{ d[tp ~ 'nome'] or '' }}">
+        </div>
+        <div class="campo">
+          <label for="{{ tp }}vinculo">Vínculo</label>
+          <select id="{{ tp }}vinculo" name="{{ tp }}vinculo">
+            <option value="">—</option>
+            {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}"{{ ui.sel(d[tp ~ 'vinculo'], v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="campo">
+          <label for="{{ tp }}contato">Contato</label>
+          <input id="{{ tp }}contato" name="{{ tp }}contato" maxlength="160" value="{{ d[tp ~ 'contato'] or '' }}">
+        </div>
+      </div>
+      {% endfor %}
+    </details>
+
+    <details class="recolhido" open>
+      <summary>4. Declaração e envio</summary>
+      <div class="campo">
+        <label><input type="checkbox" name="sou_chefia" value="1"{{ ' checked' if d['sou_chefia'] == '1' }}>
+          Sou a chefia imediata de quem se acidentou</label>
+      </div>
+      <div class="campo">
+        <label><input type="checkbox" name="declaracao" value="1" required{{ ' checked' if d['declaracao'] == '1' }}>
+          Declaro que as informações são verdadeiras.</label>
+      </div>
+      <details>
+        <summary>Por que estes dados e quem os vê</summary>
+        <p>A comunicação de acidente em serviço é obrigação legal (Lei 8.112, arts. 211 a 214), e os dados
+          servem para a investigação e para a perícia do SIASS (LGPD, art. 7º, II e III). Só a equipe de
+          segurança do trabalho e quem você comunicou acompanham o caso; a lista da fila não mostra nomes.
+          CPF, endereço e diagnóstico não são pedidos.</p>
+      </details>
+      <div class="acoes">
+        <button type="submit">Enviar comunicação</button>
+        <a class="botao secundario" href="/acidentes">Voltar</a>
+      </div>
+    </details>
+  </form>
+</div>
+{% endblock %}

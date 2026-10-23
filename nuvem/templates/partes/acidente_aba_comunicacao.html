@@ -1,0 +1,169 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Comunicação da ficha (F1): o resumo do trâmite, as ações da triagem
+   (cada uma num popup com a `versao` lida — a recusa por versão diz que outra
+   pessoa mudou a ocorrência), os fatos e o relato da CAT/SP vigente, as
+   complementações e as versões guardadas. A saúde declarada NÃO aparece aqui:
+   ela é da aba Saúde, com finalidade escolhida antes de ver. #}
+{% set oc = ocorrencia %}
+
+{% if pode_responder %}
+<div class="aviso aviso-alerta" role="status">
+  <p><strong>A equipe pediu uma complementação.</strong> {{ complementacao_aberta.pedido_texto if complementacao_aberta }}</p>
+  <p><a class="botao" href="/acidentes/{{ oc.id }}/complementar">Responder</a></p>
+</div>
+{% endif %}
+
+{% if pode_triar %}
+<div class="acoes">
+  {% if oc.responsavel_id != usuario.id %}{{ ui.botao_cadastro('assumir', 'Assumir') }}{% endif %}
+  {% if destinos|length %}{{ ui.botao_cadastro('mudar-estado', 'Mudar a situação', 'secundario') }}{% endif %}
+  {% if pode_complementar %}{{ ui.botao_cadastro('pedir-complementacao', 'Pedir complementação', 'secundario') }}{% endif %}
+  {{ ui.botao_cadastro('prorrogar', 'Prorrogar o prazo', 'secundario') }}
+  {{ ui.botao_cadastro('retificar', 'Retificar a CAT/SP', 'secundario') }}
+  {% if pode_cancelar %}{{ ui.botao_cadastro('cancelar', 'Cancelar', 'perigo') }}{% endif %}
+</div>
+
+{% call ui.popup_cadastro('assumir', 'Assumir a ocorrência', '/acidentes/' ~ oc.id ~ '/assumir', 'Assumir',
+                          aberto=popup_aberto == 'assumir', erro=erro if popup_aberto == 'assumir' else '') %}
+  <input type="hidden" name="versao" value="{{ oc.versao }}">
+  <p>Você passa a conduzir {{ oc.protocolo }}{% if oc.estado == 'RECEBIDA' %}, e ela vai para a triagem{% endif %}.
+    O prazo legal passa a ser acompanhado por você.</p>
+{% endcall %}
+
+{% call ui.popup_cadastro('mudar-estado', 'Mudar a situação', '/acidentes/' ~ oc.id ~ '/estado', 'Mudar',
+                          aberto=popup_aberto == 'mudar-estado', erro=erro if popup_aberto == 'mudar-estado' else '') %}
+  <input type="hidden" name="versao" value="{{ oc.versao }}">
+  <div class="campo">
+    <label for="destino">Para</label>
+    <select id="destino" name="destino" required>
+      {% for dd in destinos %}<option value="{{ dd }}">{{ ROTULO_ACIDENTE[dd] }}</option>{% endfor %}
+    </select>
+    <span class="dica">Pedir complementação e cancelar têm botão próprio.</span>
+  </div>
+{% endcall %}
+
+{% call ui.popup_cadastro('pedir-complementacao', 'Pedir complementação', '/acidentes/' ~ oc.id ~ '/complementacao', 'Pedir',
+                          aberto=popup_aberto == 'pedir-complementacao', erro=erro if popup_aberto == 'pedir-complementacao' else '',
+                          nota='quem comunicou tem 5 dias') %}
+  <input type="hidden" name="versao" value="{{ oc.versao }}">
+  <div class="campo">
+    <label for="pedido">O que falta na comunicação</label>
+    <textarea id="pedido" name="pedido" required maxlength="2000" rows="4">{{ digitado['pedido'] if digitado }}</textarea>
+    <span class="dica">Quem comunicou recebe o aviso no sistema; o texto não vai no e-mail.</span>
+  </div>
+{% endcall %}
+
+{% call ui.popup_cadastro('prorrogar', 'Prorrogar o prazo de comunicação', '/acidentes/' ~ oc.id ~ '/prazo', 'Prorrogar',
+                          aberto=popup_aberto == 'prorrogar', erro=erro if popup_aberto == 'prorrogar' else '') %}
+  <input type="hidden" name="versao" value="{{ oc.versao }}">
+  <p>O prazo legal ({{ oc.prazo_comunicacao|data }}) continua registrado; a prorrogação fica ao lado, com o motivo.</p>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="ate">Nova data</label>
+      <input id="ate" type="date" name="ate" required min="{{ oc.prazo_comunicacao }}" value="{{ digitado['ate'] if digitado }}">
+    </div>
+  </div>
+  <div class="campo">
+    <label for="motivo-prazo">Motivo</label>
+    <textarea id="motivo-prazo" name="motivo" required maxlength="1000" rows="3">{{ digitado['motivo'] if digitado }}</textarea>
+  </div>
+{% endcall %}
+
+{% call ui.popup_cadastro('retificar', 'Retificar a CAT/SP', '/acidentes/' ~ oc.id ~ '/retificar', 'Gravar a versão nova',
+                          aberto=popup_aberto == 'retificar', erro=erro if popup_aberto == 'retificar' else '', largo=true,
+                          nota='a versão vigente continua guardada') %}
+  <input type="hidden" name="versao" value="{{ oc.versao }}">
+  {% include "partes/acidente_campos_fatos.html" %}
+  <div class="campo">
+    <label for="motivo-ret">Motivo da retificação</label>
+    <textarea id="motivo-ret" name="motivo" required maxlength="1000" rows="2">{{ d['motivo'] or '' }}</textarea>
+  </div>
+{% endcall %}
+
+{% call ui.popup_cadastro('cancelar', 'Cancelar a ocorrência', '/acidentes/' ~ oc.id ~ '/cancelar', 'Cancelar a ocorrência',
+                          aberto=popup_aberto == 'cancelar', erro=erro if popup_aberto == 'cancelar' else '', classe_botao='perigo') %}
+  <input type="hidden" name="versao" value="{{ oc.versao }}">
+  <p>O registro fica, com o motivo — nada é apagado. O número {{ oc.protocolo }} não volta para a sequência.</p>
+  <div class="campo">
+    <label for="motivo-cancelar">Motivo</label>
+    <select id="motivo-cancelar" name="motivo" required>
+      <option value="">Escolha…</option>
+      {% for m in MOTIVOS_CANCELAMENTO %}<option value="{{ m }}">{{ ROTULO_MOTIVO_CANCELAMENTO[m] }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="texto-cancelar">Explicação (obrigatória no “outro motivo”)</label>
+    <textarea id="texto-cancelar" name="texto" maxlength="1000" rows="3"></textarea>
+  </div>
+{% endcall %}
+{% endif %}
+
+<div class="grade-resumo">
+  <div class="cartao-resumo">
+    <span class="rotulo">Comunicada</span>
+    <span class="valor">{{ oc.criado_em|momento }}</span>
+    <span class="detalhe">{{ ROTULO_ORIGEM[oc.origem] or oc.origem }}</span>
+  </div>
+  <div class="cartao-resumo{{ ' atencao' if oc.estado not in ACIDENTE_ENCERRADO and oc.estado != 'ENCAMINHADA_SIASS' and prazo_efetivo < hoje }}">
+    <span class="rotulo">Prazo de comunicação</span>
+    <span class="valor">{{ prazo_efetivo|data }}</span>
+    <span class="detalhe">{% if oc.prazo_prorrogado_ate %}Prorrogado (o legal era {{ oc.prazo_comunicacao|data }}): {{ oc.prorrogacao_motivo }}
+      {% else %}Data do acidente + 10 dias (art. 214).{% endif %}</span>
+  </div>
+  <div class="cartao-resumo">
+    <span class="rotulo">Quem conduz</span>
+    <span class="valor">{{ responsavel_nome or 'ninguém ainda' }}</span>
+    <span class="detalhe">{{ campus.sigla ~ ' — ' ~ campus.nome if campus else 'campus não informado' }}</span>
+  </div>
+</div>
+
+{% if oc.estado == 'CANCELADA' %}
+<div class="aviso aviso-alerta"><strong>Cancelada:</strong> {{ ROTULO_MOTIVO_CANCELAMENTO[oc.cancelamento_motivo] or oc.cancelamento_motivo }}
+  {%- if oc.cancelamento_texto %} — {{ oc.cancelamento_texto }}{% endif %}</div>
+{% endif %}
+{% if oc.restrita_sst %}<div class="aviso aviso-alerta">Acidentado menor de idade: ocorrência restrita à equipe de segurança do trabalho; o responsável legal precisa ser avisado.</div>{% endif %}
+
+<section class="cartao">
+  <h2>O que aconteceu <span class="discreto">— CAT/SP versão {{ oc.cat_sp_versao }}</span></h2>
+  <dl class="lista-dados">
+    <dt>Espécie</dt><dd>{{ ROTULO_ESPECIE[oc.especie] or oc.especie }}</dd>
+    <dt>Data e hora</dt><dd>{{ oc.data_evento|data }}{% if oc.hora_evento %}, {{ oc.hora_evento.slice(0, 5) }}{% endif %}</dd>
+    {% if oc.minutos_apos_inicio_jornada !== null %}<dt>Tempo de jornada</dt><dd>{{ (oc.minutos_apos_inicio_jornada // 60) }} h {{ oc.minutos_apos_inicio_jornada % 60 }} min</dd>{% endif %}
+    {% if oc.ultimo_dia_trabalho %}<dt>Último dia trabalhado</dt><dd>{{ oc.ultimo_dia_trabalho|data }}</dd>{% endif %}
+    <dt>Local</dt><dd>{{ ROTULO_LOCAL_TIPO[oc.local_tipo] or oc.local_tipo }} — {{ oc.local_especificacao }}
+      {%- if oc.local_municipio %} ({{ oc.local_municipio }}{% if oc.local_uf %}/{{ oc.local_uf }}{% endif %}){% endif %}</dd>
+    {% if oc.local_cnpj_contratada %}<dt>CNPJ da contratada</dt><dd class="mono">{{ oc.local_cnpj_contratada }}</dd>{% endif %}
+    {% if oc.transito_registro_policial %}<dt>Registro policial</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[oc.transito_registro_policial] }}{% if oc.transito_numero_bo %} — BO {{ oc.transito_numero_bo }}{% endif %}</dd>{% endif %}
+    {% if oc.transito_vitima_terceiros %}<dt>Vítima de terceiros</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[oc.transito_vitima_terceiros] }}</dd>{% endif %}
+    {% if agente_rotulo %}<dt>Agente causador</dt><dd>{{ agente_rotulo }}</dd>{% endif %}
+    {% if doenca_rotulo %}<dt>Agente da doença</dt><dd>{{ doenca_rotulo }}</dd>{% endif %}
+    {% if situacao_rotulo %}<dt>Situação geradora</dt><dd>{{ situacao_rotulo }}</dd>{% endif %}
+    {% if contexto and contexto.relato.atividade_no_momento %}<dt>Atividade no momento</dt><dd>{{ contexto.relato.atividade_no_momento }}</dd>{% endif %}
+  </dl>
+  {% if contexto %}<p class="relato">{{ contexto.relato.descricao }}</p>{% endif %}
+</section>
+
+{% if complementacoes|length %}
+<section class="cartao">
+  <h2>Complementações <span class="contador">{{ complementacoes|length }}</span></h2>
+  <ul class="linha-tempo">
+    {% for cp in complementacoes %}
+    <li><strong>Pedido em {{ cp.pedido_em|momento }}:</strong> {{ cp.pedido_texto }}
+      {% if cp.respondida_em %}<br><span class="discreto">respondida em {{ cp.respondida_em|momento }} — a resposta está na CAT/SP.</span>
+      {% else %}<br><span class="discreto">aguardando resposta</span>{% endif %}
+      {% if contexto %}{% for r in contexto.complementacoes %}{% if r.pedido == cp.pedido_texto and cp.respondida_em %}<br><em>Resposta:</em> {{ r.resposta }}{% endif %}{% endfor %}{% endif %}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<details class="recolhido">
+  <summary>Versões da CAT/SP <span class="contador">{{ versoes|length }}</span></summary>
+  <ul class="linha-tempo">
+    {% for v in versoes %}
+    <li><strong>Versão {{ v.versao }}</strong> — {{ ROTULO_ORIGEM_CAT_SP[v.origem] or v.origem }}, {{ v.registrada_em|momento }}
+      {%- if v.motivo_retificacao %}. Motivo: {{ v.motivo_retificacao }}{% endif %}
+      <span class="discreto mono" title="SHA-256 do conteúdo congelado">#{{ v.hash_conteudo.slice(0, 12) }}</span></li>
+    {% endfor %}
+  </ul>
+</details>
