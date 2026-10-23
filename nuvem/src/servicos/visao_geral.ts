@@ -37,7 +37,8 @@ import {
 } from "../modulos.js";
 import { ESCOPO_PROPRIO, EscopoNaoDeclarado, type UsuarioAtual } from "./rbac.js";
 import * as epi_contagens from "./epi_contagens.js";
-import { modulo_nivelado, permissoes_do_modulo } from "./niveis_modulo.js";
+import { modulo_nivelado } from "./niveis_modulo.js";
+import { tem_acesso_ao_modulo } from "./acesso_modulo.js";
 import { consulta_no_escopo } from "./turma.js";
 
 /** O selo vermelho do cartão: o número e o que ele conta, por extenso. */
@@ -236,17 +237,8 @@ function _administracao(usuario: UsuarioAtual): CartaoModulo | null {
  * Módulo sem mapa de níveis (nenhum hoje) segue só o `itens_de`.
  */
 function _tem_o_modulo(usuario: UsuarioAtual, codigo: string): boolean {
-  const m = modulo_nivelado(codigo);
-  if (!m) return true;
-  return permissoes_do_modulo(m).some((p) => {
-    if (!usuario.pode(p)) return false;
-    try {
-      return usuario.pode_na_equipe(p);
-    } catch (erro) {
-      if (erro instanceof EscopoNaoDeclarado) return true;
-      throw erro;
-    }
-  });
+  // a regra é uma só (`acesso_modulo.ts`), a mesma do menu, do mapa e das rotas
+  return modulo_nivelado(codigo) ? tem_acesso_ao_modulo(usuario, codigo) : true;
 }
 
 /**
