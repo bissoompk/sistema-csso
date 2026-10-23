@@ -433,6 +433,13 @@ describe("D24: a matriz de perfis", () => {
 
 // =====================================================================
 describe("D17: cobertura de quem concede perfil", () => {
+  // a conta de teste do Administrador do sistema também concede perfil, sem
+  // termo: com ela a cobertura nunca acabaria, e estes testes medem a do
+  // superintendente
+  beforeEach(async () => {
+    await amb.db.delete(e.atribuicao).where(eq(e.atribuicao.perfil_id, (await perfil("administrador_sistema")).id));
+  });
+
   async function concessaoDoSuperintendente() {
     return (await atribuicoesDe("superintendente")).find((a) => a.perfil.codigo === "superintendente")!;
   }

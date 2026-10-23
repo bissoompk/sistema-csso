@@ -121,8 +121,8 @@
       {% for codigo, motivo in so_do_perfil %}<li><span class="mono">{{ codigo }}</span> — {{ motivo }}</li>{% endfor %}
     </ul>
     {% if fora|length %}
-    <p class="discreto">Não se ajustam por módulo (o alcance deles é o do titular ou só
-      contagem): {% for p in fora %}{{ p.nome }}{{ ', ' if not loop.last }}{% endfor %}.</p>
+    <p class="discreto">Não se ajustam por módulo (o alcance deles é o do titular, só
+      contagem, ou já é o mais alto em todos os módulos — o Administrador do sistema): {% for p in fora %}{{ p.nome }}{{ ', ' if not loop.last }}{% endfor %}.</p>
     {% endif %}
   </section>
 

@@ -33,6 +33,7 @@ import {
   MODULOS_NIVELADOS,
   PARCIAL,
   ROTULO_NIVEL,
+  PERFIS_NO_NIVEL_MAIS_ALTO,
   do_modulo,
   modulo_nivelado,
   niveis_de,
@@ -182,6 +183,9 @@ export async function alterar_nivel_perfil(
     with: { perfil_permissoes: { with: { permissao: true } }, niveis_modulo: true },
   });
   if (!pf) return "Perfil inexistente.";
+  if (Object.hasOwn(PERFIS_NO_NIVEL_MAIS_ALTO, pf.codigo)) {
+    return `O perfil ${pf.nome} está sempre no nível mais alto (Operação) em todos os módulos e não se ajusta.`;
+  }
   if (!aceita_nivel_modulo(pf.codigo)) {
     return `O perfil ${pf.nome} não se ajusta por módulo: o alcance dele é o do titular ou só agregado.`;
   }

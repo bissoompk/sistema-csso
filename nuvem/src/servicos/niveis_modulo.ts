@@ -136,6 +136,20 @@ export const PERMISSOES_SO_DO_PERFIL: Readonly<Record<string, string>> = Object.
   "turma.todos_os_setores": "alcance de setor — ver as turmas de todos os setores promotores",
 });
 
+/**
+ * O perfil que está SEMPRE no nível mais alto de cada módulo, sem ajuste: o
+ * Administrador do sistema (23/10/2026) — Operação em todos. Nem o nível do
+ * perfil nem a exceção da pessoa valem sobre ele (`rbac.aceita_nivel_modulo`
+ * devolve `false`), e as permissões que não são de módulo vêm todas do perfil.
+ * O código fica aqui escrito (este arquivo não importa o RBAC);
+ * `perfil_admin_sistema.test.ts` confere que é `rbac.PERFIL_ADMINISTRADOR_SISTEMA`.
+ */
+export const PERFIS_NO_NIVEL_MAIS_ALTO: Readonly<Record<string, Readonly<Record<string, Nivel>>>> = Object.freeze({
+  administrador_sistema: Object.freeze(
+    Object.fromEntries(MODULOS_NIVELADOS.map((m) => [m.codigo, OPERACAO as Nivel])),
+  ),
+});
+
 export function modulo_nivelado(codigo: string): ModuloNivelado | null {
   return MODULOS_NIVELADOS.find((m) => m.codigo === codigo) ?? null;
 }

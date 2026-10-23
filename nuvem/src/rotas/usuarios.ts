@@ -37,6 +37,7 @@ import {
   ESCOPO_UNIDADE,
   GRUPOS_PERMISSAO_TELA,
   MATRIZ_PERFIS,
+  PERFIL_ADMINISTRADOR_SISTEMA,
   PERMISSOES_DO_TITULAR,
   SO_DO_TECNICO_HABILITADO,
   aceita_nivel_modulo,
@@ -44,6 +45,8 @@ import {
   cobre_inteiro,
   eh_conta_de_governo,
   perfis_vigentes,
+  recusa_do_administrador_sistema,
+  tem_administrador_sistema,
   type UsuarioAtual,
 } from "../servicos/rbac.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
@@ -111,6 +114,18 @@ function _alem_do_que_tem(
     }
   }
   return [...alem].sort();
+}
+
+/**
+ * A trava do perfil do topo sobre UMA conta: se ela tem (vigente ou futuro) o
+ * Administrador do sistema, só outro Administrador do sistema mexe nela —
+ * senão o superintendente redefinia a senha, inativava ou encerrava o perfil
+ * de quem está acima dele. Devolve o motivo, ou `null`.
+ */
+async function _recusa_sobre_administrador(tx: Executor, usuario: UsuarioAtual, alvo_id: number): Promise<string | null> {
+  if (tem_administrador_sistema(usuario.perfis)) return null;
+  const { perfis } = await perfis_vigentes(tx, alvo_id, null, { incluir_futuras: true });
+  return recusa_do_administrador_sistema(usuario, perfis);
 }
 
 function _lista_curta(codigos: string[]): string {
@@ -245,7 +260,10 @@ async function _tela_lista(
     ultima_que_concede: ultima_que_concede.length === 1 ? ultima_que_concede[0] : null,
     perfis,
     // o select de concessão só oferece perfil ativo, com o escopo ao lado (D23/D24)
-    perfis_ativos: perfis.filter((p) => p.ativo).map((p) => ({ ...p, escopo: _escopo_do_perfil(p.codigo) })),
+    // o Administrador do sistema só aparece para quem também o é (só ele o concede)
+    perfis_ativos: perfis
+      .filter((p) => p.ativo && (p.codigo !== PERFIL_ADMINISTRADOR_SISTEMA || tem_administrador_sistema(usuario.perfis)))
+      .map((p) => ({ ...p, escopo: _escopo_do_perfil(p.codigo) })),
     campi,
     sigla_campus,
     atribuicoes,
@@ -392,6 +410,10 @@ function _recusa_de_segregacao(
   if (alvo_id === usuario.id) {
     return "ninguém concede perfil à própria conta: peça a outra pessoa que concede perfil.";
   }
+  // o perfil do topo: só quem já o tem o concede (nem o superintendente)
+  if (perfil.codigo === PERFIL_ADMINISTRADOR_SISTEMA && !tem_administrador_sistema(usuario.perfis)) {
+    return `só quem é ${perfil.nome} concede o perfil ${perfil.nome} — nem o superintendente.`;
+  }
   const alem = _alem_do_que_tem(usuario, [{ perfil: perfil.codigo, campus_id, permissoes: perfil.permissoes }]).filter(
     (p) => !SO_DO_TECNICO_HABILITADO.has(p),
   );
@@ -528,6 +550,8 @@ async function _recusa_de_inativacao(
   if (alvo.ativo && alvo.id === usuario.id) {
     return "a própria conta não se inativa — peça a outra pessoa que administra o sistema.";
   }
+  const do_topo = await _recusa_sobre_administrador(tx, usuario, alvo.id);
+  if (do_topo) return do_topo;
   // a trava de governo olha também a concessão futura (D18): sem isso, o
   // `admin_ti` inativava hoje a conta que vira superintendente na semana que vem
   const { permissoes: vigentes_ou_futuras } = await perfis_vigentes(tx, alvo.id, null, { incluir_futuras: true });
@@ -576,6 +600,8 @@ function _motivo_de_redefinicao(
   concessoes: { perfil: string; permissoes: Iterable<string> }[],
 ): string | null {
   if (alvo_id === usuario.id) return "a própria senha se troca em Trocar senha, informando a atual.";
+  const do_topo = recusa_do_administrador_sistema(usuario, concessoes.map((c) => c.perfil));
+  if (do_topo) return do_topo;
   if (usuario.pode("perfil.conceder")) return null;
   if (eh_conta_de_governo(concessoes.flatMap((c) => [...c.permissoes]))) {
     return "é conta de administração; só quem concede perfil (o superintendente) redefine.";
@@ -592,7 +618,7 @@ function _motivo_de_redefinicao(
 }
 
 async function _recusa_de_redefinicao(tx: Executor, usuario: UsuarioAtual, alvo_id: number): Promise<string | null> {
-  if (alvo_id === usuario.id || usuario.pode("perfil.conceder")) return _motivo_de_redefinicao(usuario, alvo_id, []);
+  if (alvo_id === usuario.id) return _motivo_de_redefinicao(usuario, alvo_id, []);
   const { concessoes } = await perfis_vigentes(tx, alvo_id, null, { incluir_futuras: true });
   return _motivo_de_redefinicao(usuario, alvo_id, concessoes);
 }
@@ -763,6 +789,8 @@ rotas.post("/usuarios/:id{[0-9]+}/dados", async (c) => {
   if (!novos.nome || !novos.login || !novos.email) return recusar("nome, login e e-mail não ficam em branco.");
   if (!/^[^\s@]+@[^\s@]+$/.test(novos.email)) return recusar("o e-mail não parece um e-mail.");
   const proprio = alvo.id === usuario.id;
+  const do_topo = proprio ? null : await _recusa_sobre_administrador(tx, usuario, alvo.id);
+  if (do_topo) return recusar(do_topo);
   if (!proprio && !usuario.pode("perfil.conceder")) {
     const { permissoes } = await perfis_vigentes(tx, alvo.id, null, { incluir_futuras: true });
     if (eh_conta_de_governo(permissoes)) {
@@ -807,6 +835,8 @@ rotas.post("/usuarios/:id{[0-9]+}/servidor", async (c) => {
   const tx = c.get("tx");
   const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
   if (!alvo) return redirecionar(c, "/usuarios");
+  const do_topo = await _recusa_sobre_administrador(tx, usuario, alvo.id);
+  if (do_topo) return _tela_lista(c, usuario, { erro: `${alvo.nome}: ${do_topo}` });
   const achado = await _resolver_servidor(tx, f.texto("servidor"), alvo.id);
   if (achado.erro) return _tela_lista(c, usuario, { erro: `${alvo.nome}: ${achado.erro}` });
   const novo_id = achado.servidor?.id ?? null;
@@ -1023,6 +1053,13 @@ rotas.post("/usuarios/atribuicoes/:id{[0-9]+}/encerrar", async (c) => {
   const fim = somar_dias(hoje, -1);
   if (a.vigencia_fim !== null && a.vigencia_fim <= fim) {
     return redirecionar(c, comMensagem("/usuarios", "Esta concessão já estava encerrada."));
+  }
+  if (a.perfil.codigo === PERFIL_ADMINISTRADOR_SISTEMA && !tem_administrador_sistema(usuario.perfis)) {
+    return _tela_lista(c, usuario, {
+      erro:
+        `O perfil ${a.perfil.nome} de ${a.usuario.nome} não foi encerrado: só outro ${a.perfil.nome} ` +
+        "encerra esse perfil — nem o superintendente.",
+    });
   }
   const concede = a.perfil.perfil_permissoes.some((pp) => pp.permissao.codigo === "perfil.conceder");
   if (concede && !(await governanca.contas_que_concedem(tx, { sem_atribuicao: a.id })).length) {
@@ -1583,6 +1620,8 @@ rotas.post("/usuarios/:id{[0-9]+}/niveis", async (c) => {
       erro: "Ninguém altera o acesso da própria conta: peça a outra pessoa que administra acesso.",
     });
   }
+  const do_topo = await _recusa_sobre_administrador(tx, usuario, alvo.id);
+  if (do_topo) return _tela_lista(c, usuario, { erro: `Acesso de ${alvo.nome} não alterado: ${do_topo}` });
   let recusa: string | null = null;
   let mudou = 0;
   try {
@@ -1622,6 +1661,8 @@ rotas.post("/usuarios/:id{[0-9]+}/setores", async (c) => {
   const alvo_id = Number(c.req.param("id"));
   const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, alvo_id));
   if (!alvo) throw new ErroHttp(404, "conta inexistente");
+  const do_topo = alvo.id === usuario.id ? null : await _recusa_sobre_administrador(tx, usuario, alvo.id);
+  if (do_topo) return _tela_lista(c, usuario, { erro: `Setores de ${alvo.nome} não alterados: ${do_topo}` });
   const escolhidos = f.todos("setor").filter((v) => /^\d+$/.test(v)).map(Number);
   const recusa = await liberacao.definir_setores(tx, usuario, alvo.id, escolhidos);
   if (recusa) return _tela_lista(c, usuario, { erro: `Setores de ${alvo.nome} não alterados: ${recusa}` });
