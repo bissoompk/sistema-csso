@@ -43,6 +43,9 @@ export const FICHA_CONGELADA = [
   'motivo',
   'registro_estornado_id',
   'registrado_em',
+  // 0015 (paridade com o IntegraSST, 22/10/2026): conteúdo, e por isso congeladas
+  'motivo_codigo',
+  'orientacao_anexo_id',
 ] as const;
 
 /**
@@ -95,4 +98,7 @@ export const TRIGGERS = [
   'trg_instalacao_sem_update',
   'trg_instalacao_sem_delete',
   'trg_instalacao_sem_truncate',
+  // 0015: a comunicação do titular se retira ou se trata, e não se apaga
+  'trg_epi_comunicacao_sem_delete',
+  'trg_epi_comunicacao_sem_truncate',
 ] as const;

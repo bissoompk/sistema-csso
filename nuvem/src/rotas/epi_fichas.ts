@@ -21,7 +21,7 @@
 import { Hono } from "hono";
 import { asc, eq, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
-import { PermissaoNegada } from "../nucleo/erros.js";
+import { PermissaoNegada, RegraViolada } from "../nucleo/erros.js";
 import type { Executor } from "../db/cliente.js";
 import {
   anexo as tabela_anexo,
@@ -34,13 +34,23 @@ import {
 } from "../db/esquema/index.js";
 import { usuarioLogado, formulario } from "../dependencias.js";
 import { comMensagem, fragmento, numeroDaPagina, pagina, recortar, redirecionar } from "../web.js";
-import { EpiItem as DominioItem } from "../dominio/epi.js";
+import {
+  EpiItem as DominioItem,
+  JANELA_RETIRADA_COMUNICACAO_HORAS,
+  MOTIVOS_FICHA,
+  ROTULO_COMUNICACAO_TITULAR,
+  ROTULO_MOTIVO_FICHA,
+  TIPOS_COMUNICACAO_TITULAR,
+} from "../dominio/epi.js";
 import * as anexo_acesso from "../servicos/anexo_acesso.js";
 import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as comprovante_epi from "../servicos/comprovante_epi.js";
 import * as datas_br from "../servicos/datas_br.js";
+import * as epi_catalogo_anexos from "../servicos/epi_catalogo_anexos.js";
+import * as epi_comunicacao from "../servicos/epi_comunicacao.js";
 import * as epi_estoque from "../servicos/epi_estoque.js";
+import * as epi_treinamento from "../servicos/epi_treinamento.js";
 import * as servico from "../servicos/epi_ficha.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import * as textos from "../servicos/textos.js";
@@ -160,6 +170,7 @@ rotas.get(FICHAS, async (c) => {
     recorte,
     q,
     pendentes,
+    comunicacoes_abertas: await epi_comunicacao.contar_abertas(tx, usuario),
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
   });
@@ -212,10 +223,12 @@ interface OpcoesTela {
 async function tela_de_entrega(c: Ctx, usuario: UsuarioAtual, o: OpcoesTela): Promise<Response> {
   const tx = c.get("tx");
   const item = await item_por_id(tx, o.item_id ?? null);
+  const servidor_escolhido = await servidor_por_id(tx, o.servidor_id ?? null);
   return pagina(c, "paginas/epis_entrega.html", usuario, {
     // a lista inteira — o `<select>` completo é o que sai sem JavaScript
     servidores: await servico_servidores.buscar(tx, "", usuario),
-    servidor_escolhido: await servidor_por_id(tx, o.servidor_id ?? null),
+    servidor_escolhido,
+    treinamento: await _treinamento(tx, servidor_escolhido?.id ?? null, item, o.digitado?.data_evento),
     itens: await itens_ativos(tx),
     item: item ? item_para_tela(item) : null,
     lotes: item ? await epi_estoque.lotes_de(tx, item) : [],
@@ -324,6 +337,22 @@ rotas.post(SERVIDOR_NOVO_NO_BALCAO, async (c) => {
   return cadastrar_pelo_fragmento(c, usuario, { rotulo: "Quem recebe", url_cadastro: SERVIDOR_NOVO_NO_BALCAO });
 });
 
+/**
+ * Fatia E: o treinamento que o item exige, conferido em quem recebe, na data da
+ * entrega (hoje, ou a digitada). `null` quando falta o servidor ou o item.
+ */
+async function _treinamento(
+  tx: Executor,
+  servidor_id: number | null,
+  item: typeof epi_item.$inferSelect | null,
+  data_digitada?: string | null,
+): Promise<epi_treinamento.SituacaoTreinamento | null> {
+  if (servidor_id === null || !item) return null;
+  const bruta = (data_digitada ?? "").trim().slice(0, 10);
+  const quando = /^\d{4}-\d{2}-\d{2}$/.test(bruta) && bruta <= datas_br.hoje() ? bruta : datas_br.hoje();
+  return epi_treinamento.situacao_de_treinamento(tx, servidor_id, item, quando);
+}
+
 /** Fragmento HTMX: escolhido o item, aparecem tamanho, lote e quantidade. */
 rotas.get("/epis/entregas/opcoes", async (c) => {
   const usuario = await usuarioLogado(c);
@@ -332,6 +361,9 @@ rotas.get("/epis/entregas/opcoes", async (c) => {
   const item = await item_por_id(tx, inteiro(c.req.query("item_id")));
   return fragmento(c, "partes/epi_opcoes_item.html", {
     item: item ? item_para_tela(item) : null,
+    // o servidor já escolhido vem junto (`hx-include`): com ele a etiqueta do
+    // treinamento aparece antes do clique; sem ele, a entrega confere no envio
+    treinamento: await _treinamento(tx, inteiro(c.req.query("servidor_id")), item),
     lotes: item ? await epi_estoque.lotes_de(tx, item) : [],
     hoje: datas_br.hoje(),
   });
@@ -354,6 +386,7 @@ rotas.post("/epis/entregas", async (c) => {
     "data_evento",
     "observacao",
     "justificativa_excecao",
+    "confirmar_sem_treinamento",
   ]) {
     digitado[campo] = f.texto(campo);
   }
@@ -399,6 +432,7 @@ rotas.post("/epis/entregas", async (c) => {
         data_evento: quando,
         observacao: digitado.observacao,
         justificativa_excecao: digitado.justificativa_excecao,
+        confirmar_sem_treinamento: digitado.confirmar_sem_treinamento === "1",
       }),
     );
   } catch (falha) {
@@ -579,6 +613,33 @@ rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/anexo`, async (c) => {
   });
 });
 
+/**
+ * O PDF de orientação CONGELADO na entrega (Decisão 4, fatia C): o que valia
+ * no dia, e não o do catálogo de hoje. Mesma leitura da ficha (o titular, ou
+ * `epi.ficha` no campus do servidor).
+ */
+rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/orientacao`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.ver");
+  const tx = c.get("tx");
+  const registro = await registro_legivel(tx, usuario, c.req.param("registro_id"));
+  if (!registro || registro.orientacao_anexo_id === null) {
+    return erro(c, volta_da_ficha(usuario), "Não há PDF de orientação para baixar neste endereço.");
+  }
+  await servico.exigir_leitura_da_ficha(tx, usuario, registro.servidor_id);
+  const anexo = await epi_catalogo_anexos.anexo_do_catalogo(tx, registro.orientacao_anexo_id);
+  if (!anexo) return erro(c, volta_da_ficha(usuario), "Não há PDF de orientação para baixar neste endereço.");
+  const conteudo = await anexos.ler_conteudo(anexo);
+  return new Response(conteudo, {
+    status: 200,
+    headers: {
+      "content-type": anexos.tipo_para_servir(anexo.mime_type),
+      "x-content-type-options": "nosniff",
+      "content-disposition": disposicao(anexo.nome_original),
+    },
+  });
+});
+
 /** O EPI voltou. **Não é estorno.** */
 rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/devolucao`, async (c) => {
   const usuario = await usuarioLogado(c);
@@ -601,6 +662,7 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/devolucao`, async (c) => {
       servico.registrar_devolucao(sp, usuario, registro, {
         quantidade: quantas,
         motivo: f.texto("motivo"),
+        motivo_codigo: f.texto("motivo_codigo"),
         data_evento: quando,
       }),
     );
@@ -644,6 +706,96 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/estorno`, async (c) => {
 });
 
 // =====================================================================
+// Fatia A — o titular comunica o EPI que está com ele
+// =====================================================================
+const COMUNICACOES = "/epis/comunicacoes";
+const NADA_A_COMUNICAR = "Não há entrega da sua ficha de EPI neste endereço.";
+
+/**
+ * O titular comunica extravio ou pede troca. 403 para registro de outra
+ * pessoa — e a MESMA resposta para registro que não existe.
+ */
+rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/comunicar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.ver");
+  const tx = c.get("tx");
+  const registro = await registro_por_id(tx, inteiro(c.req.param("registro_id")));
+  if (!registro || usuario.servidor_id === null || usuario.servidor_id !== registro.servidor_id) {
+    throw new PermissaoNegada("epi.ver", NADA_A_COMUNICAR);
+  }
+  const destino = `${FICHAS}/${registro.servidor_id}`;
+  const f = await formulario(c);
+  let comunicacao;
+  try {
+    comunicacao = await tx.transaction((sp) =>
+      epi_comunicacao.comunicar(sp, usuario, registro, { tipo: f.texto("tipo"), observacao: f.texto("observacao") }),
+    );
+  } catch (falha) {
+    if (!(falha instanceof RegraViolada || falha instanceof TextoProibido)) throw falha;
+    return erro(c, destino, falha.message);
+  }
+  return volta(
+    c,
+    `${destino}?comunicada=${comunicacao.id}`,
+    `Comunicação registrada (nº ${comunicacao.id}). O almoxarifado foi avisado. ` +
+      `Você pode retirá-la nas próximas ${JANELA_RETIRADA_COMUNICACAO_HORAS} horas.`,
+  );
+});
+
+/** A âncora da pendência: leva à ficha onde a comunicação aparece. */
+rotas.get(`${COMUNICACOES}/:id{[0-9]+}`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.ver");
+  const tx = c.get("tx");
+  const comunicacao = await epi_comunicacao.por_id(tx, inteiro(c.req.param("id")));
+  if (!comunicacao) return erro(c, volta_da_ficha(usuario), "Não há comunicação de EPI neste endereço.");
+  await servico.exigir_leitura_da_ficha(tx, usuario, comunicacao.servidor_id);
+  return redirecionar(c, `${FICHAS}/${comunicacao.servidor_id}#comunicacao-${comunicacao.id}`);
+});
+
+async function comunicacao_da_rota(c: Ctx, usuario: UsuarioAtual) {
+  const comunicacao = await epi_comunicacao.por_id(c.get("tx"), inteiro(c.req.param("id")));
+  const propria = comunicacao !== null && usuario.servidor_id !== null && usuario.servidor_id === comunicacao.servidor_id;
+  if (!comunicacao || (!propria && !usuario.pode("epi.entregar"))) {
+    throw new PermissaoNegada("epi.entregar", "Não há comunicação de EPI sua neste endereço.");
+  }
+  return comunicacao;
+}
+
+/** O titular retira na janela de 24 h; a equipe, a qualquer tempo. Nada se apaga. */
+rotas.post(`${COMUNICACOES}/:id{[0-9]+}/retirar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.ver");
+  const tx = c.get("tx");
+  const comunicacao = await comunicacao_da_rota(c, usuario);
+  const destino = `${FICHAS}/${comunicacao.servidor_id}`;
+  try {
+    await tx.transaction((sp) => epi_comunicacao.retirar(sp, usuario, comunicacao));
+  } catch (falha) {
+    if (!(falha instanceof RegraViolada)) throw falha;
+    return erro(c, destino, falha.message);
+  }
+  return volta(c, destino, `Comunicação nº ${comunicacao.id} retirada. Ela continua registrada, marcada como retirada.`);
+});
+
+/** A equipe diz o que fez com a comunicação. */
+rotas.post(`${COMUNICACOES}/:id{[0-9]+}/tratar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.entregar");
+  const tx = c.get("tx");
+  const comunicacao = await comunicacao_da_rota(c, usuario);
+  const destino = `${FICHAS}/${comunicacao.servidor_id}`;
+  const f = await formulario(c);
+  try {
+    await tx.transaction((sp) => epi_comunicacao.tratar(sp, usuario, comunicacao, f.texto("tratamento")));
+  } catch (falha) {
+    if (!(falha instanceof RegraViolada || falha instanceof TextoProibido)) throw falha;
+    return erro(c, destino, falha.message);
+  }
+  return volta(c, destino, `Comunicação nº ${comunicacao.id} tratada. A pendência do almoxarifado foi fechada.`);
+});
+
+// =====================================================================
 // A ficha do servidor — por último
 // =====================================================================
 rotas.get(`${FICHAS}/:servidor_id{[0-9]+}`, async (c) => {
@@ -666,6 +818,16 @@ rotas.get(`${FICHAS}/:servidor_id{[0-9]+}`, async (c) => {
 
   const linhas = await servico.linha_do_tempo(tx, servidor_id);
   const hoje = datas_br.hoje();
+  const propria = usuario.servidor_id !== null && usuario.servidor_id === servidor_id;
+  const comunicacoes = await epi_comunicacao.para_a_ficha(tx, usuario, servidor_id);
+  // logo depois de comunicar: o pedido de troca já preenchido, em destaque
+  const id_comunicada = inteiro(c.req.query("comunicada"));
+  const comunicada =
+    id_comunicada === null
+      ? null
+      : (Object.values(comunicacoes)
+          .flat()
+          .find((x) => x.c.id === id_comunicada) ?? null);
   // o lote do estorno que acabou de acontecer: a ficha avisa que o saldo não voltou
   const id_lote = inteiro(c.req.query("lote_estornado"));
   const [lote_estornado] =
@@ -687,6 +849,13 @@ rotas.get(`${FICHAS}/:servidor_id{[0-9]+}`, async (c) => {
     pode_entregar: usuario.pode("epi.entregar"),
     pode_pedir: usuario.pode("epi.requisitar"),
     pode_estocar: usuario.pode("epi.estoque"),
+    // fatia A: a comunicação do titular
+    propria,
+    comunicacoes,
+    comunicada,
+    tipos_comunicacao: TIPOS_COMUNICACAO_TITULAR.map((t) => [t, ROTULO_COMUNICACAO_TITULAR[t]]),
+    motivos_ficha: MOTIVOS_FICHA.map((m) => [m, ROTULO_MOTIVO_FICHA[m]]),
+    janela_horas: JANELA_RETIRADA_COMUNICACAO_HORAS,
     lote_estornado: lote_estornado ?? null,
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,

@@ -737,6 +737,26 @@
   });
 
   // -------------------------------------------------------------------
+  // 9b. Trocar um campo recarrega o bloco que depende dele
+  //
+  // Contrato: `data-ao-trocar-dispara="#seletor"` num contêiner. Um `change`
+  // dentro dele (o seletor de servidor do balcão, que a busca HTMX substitui
+  // inteiro — por isso o atributo fica no contêiner, e não no `<select>`)
+  // dispara `change` no alvo, se ele já tem valor: o alvo faz o próprio
+  // `hx-get`. Usado no balcão de EPI: trocar quem recebe atualiza a etiqueta de
+  // treinamento do item já escolhido. Sem JavaScript, a conferência ao gravar
+  // continua valendo.
+  // -------------------------------------------------------------------
+  document.addEventListener('change', function (e) {
+    var dono = e.target && e.target.closest && e.target.closest('[data-ao-trocar-dispara]');
+    if (!dono) return;
+    var alvo = document.querySelector(dono.getAttribute('data-ao-trocar-dispara'));
+    if (!alvo || !alvo.value || alvo === e.target) return;
+    if (window.htmx) window.htmx.trigger(alvo, 'change');
+    else alvo.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  // -------------------------------------------------------------------
   // 10. O menu do celular fecha como camada
   //
   // Contrato: `<summary data-menu-celular>` dentro do `<details>` do "Menu"

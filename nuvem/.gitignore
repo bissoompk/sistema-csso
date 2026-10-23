@@ -4,3 +4,5 @@ node_modules/
 dist/
 # arquivos de desenvolvimento do armazenamento local (src/servicos/armazenamento.ts)
 .dados/
+# saída de relatório do vitest (`--reporter=json`, gravada em .vitest/json/)
+.vitest/

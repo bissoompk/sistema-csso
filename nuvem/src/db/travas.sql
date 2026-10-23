@@ -147,7 +147,7 @@ CREATE TRIGGER trg_laudo_subscritor_habilitado_upd
 -- proibe), `comprovante_anexo_id` (o papel assinado e digitalizado depois,
 -- decisao 8) e `recebimento_confirmado_em` (quando a prova chegou).
 --
--- O que continua impossivel e o que importa: **nenhuma das 26 colunas de
+-- O que continua impossivel e o que importa: **nenhuma das 28 colunas de
 -- conteudo muda**, e as tres acima sao de escrita unica — de nulo para valor.
 -- Completar um registro nao e reescreve-lo.
 CREATE OR REPLACE FUNCTION csso_epi_ficha_sem_update() RETURNS trigger
@@ -179,6 +179,8 @@ BEGIN
      OR NEW.motivo IS DISTINCT FROM OLD.motivo
      OR NEW.registro_estornado_id IS DISTINCT FROM OLD.registro_estornado_id
      OR NEW.registrado_em IS DISTINCT FROM OLD.registrado_em
+     OR NEW.motivo_codigo IS DISTINCT FROM OLD.motivo_codigo
+     OR NEW.orientacao_anexo_id IS DISTINCT FROM OLD.orientacao_anexo_id
      OR (OLD.evento_id IS NOT NULL AND NEW.evento_id IS DISTINCT FROM OLD.evento_id)
      OR (OLD.comprovante_anexo_id IS NOT NULL AND NEW.comprovante_anexo_id IS DISTINCT FROM OLD.comprovante_anexo_id)
      OR (OLD.recebimento_confirmado_em IS NOT NULL AND NEW.recebimento_confirmado_em IS DISTINCT FROM OLD.recebimento_confirmado_em)
@@ -268,6 +270,22 @@ CREATE TRIGGER trg_instalacao_sem_truncate
   BEFORE TRUNCATE ON instalacao
   FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('instalacao: a marca de producao nao se apaga pela aplicacao');
 
+
+-- =====================================================================
+-- 0015 (paridade com o IntegraSST, 22/10/2026): a comunicacao do titular
+-- sobre o EPI que esta com ele. Ela nao e append-only — o titular a RETIRA (ate
+-- 24 h) e a equipe a TRATA, colunas que se preenchem —, mas nao se apaga: a
+-- linha e o registro de que a pessoa comunicou, e quando.
+-- =====================================================================
+DROP TRIGGER IF EXISTS trg_epi_comunicacao_sem_delete ON epi_comunicacao_titular;
+CREATE TRIGGER trg_epi_comunicacao_sem_delete
+  BEFORE DELETE ON epi_comunicacao_titular
+  FOR EACH ROW EXECUTE FUNCTION csso_recusar('epi_comunicacao_titular: a comunicacao nao se apaga. O titular a retira, a equipe a trata.');
+
+DROP TRIGGER IF EXISTS trg_epi_comunicacao_sem_truncate ON epi_comunicacao_titular;
+CREATE TRIGGER trg_epi_comunicacao_sem_truncate
+  BEFORE TRUNCATE ON epi_comunicacao_titular
+  FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('epi_comunicacao_titular: a comunicacao nao se apaga.');
 
 -- =====================================================================
 -- A API de dados do Supabase fica FORA do sistema.

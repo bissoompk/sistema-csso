@@ -42,7 +42,17 @@ import {
   unidade_uorg,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
-import { EpiItem as EpiItemDominio, EpiRequisicao as EpiRequisicaoDominio, EpiRequisicaoItem as EpiRequisicaoItemDominio, FINALIDADES_REQUISICAO, URGENCIAS_REQUISICAO } from "../dominio/epi.js";
+import {
+  EpiItem as EpiItemDominio,
+  EpiRequisicao as EpiRequisicaoDominio,
+  EpiRequisicaoItem as EpiRequisicaoItemDominio,
+  FINALIDADES_REQUISICAO,
+  MOTIVOS_ITEM_REQUISICAO,
+  ROTULO_MOTIVO_ITEM,
+  TERMO_NR06_VIGENTE,
+  URGENCIAS_REQUISICAO,
+  type MotivoItemRequisicao,
+} from "../dominio/epi.js";
 import {
   EPI_ITEM_DECIDIDO,
   EPI_ITEM_PENDENTE_DE_ATENDIMENTO,
@@ -56,6 +66,7 @@ import {
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
+import * as epi_email from "./epi_email.js";
 import * as epi_estoque from "./epi_estoque.js";
 import * as epi_ficha from "./epi_ficha.js";
 import { EPI_MAXIMO_EXCEDIDO } from "./epi_ficha.js";
@@ -86,6 +97,8 @@ export const EPI_REQUISICAO_EM_ATENDIMENTO = "EPI_REQUISICAO_EM_ATENDIMENTO";
 export const EPI_REQUISICAO_ATENDIDA = "EPI_REQUISICAO_ATENDIDA";
 export const EPI_REQUISICAO_CANCELADA = "EPI_REQUISICAO_CANCELADA";
 export const EPI_REQUISICAO_EXCLUIDA = "EPI_REQUISICAO_EXCLUIDA";
+// Fatia B (paridade IntegraSST, 22/10/2026): o termo NR-06 declarado no envio
+export const EPI_REQUISICAO_TERMO_ACEITO = "EPI_REQUISICAO_TERMO_ACEITO";
 
 // --- eventos do item (máquina D) ---
 export const EPI_ITEM_APROVADO = "EPI_ITEM_APROVADO";
@@ -405,7 +418,10 @@ export async function sincronizar_pendencia_de_decisao(
   }
   if (existente) {
     // decidir de novo é decisão NOVA sobre o mesmo pedido
-    if (existente.concluida) await pendencias.reabrir(tx, existente, usuario, "o pedido foi decidido de novo");
+    if (existente.concluida) {
+      await pendencias.reabrir(tx, existente, usuario, "o pedido foi decidido de novo");
+      await _email_da_decisao(tx, requisicao, usuario);
+    }
     return;
   }
 
@@ -444,6 +460,17 @@ export async function sincronizar_pendencia_de_decisao(
     responsavel_id: dono,
     usuario,
   });
+  await _email_da_decisao(tx, requisicao, usuario);
+}
+
+/**
+ * Fatia F: o e-mail repete o aviso do sino — só na DECISÃO de fato (analisada
+ * ou indeferida), e não na primeira entrega, que também mora em
+ * `DECIDIDO_E_NAO_LIDO`. Desligado por padrão (`CSSO_EPI_EMAIL`).
+ */
+async function _email_da_decisao(tx: Executor, requisicao: EpiRequisicao, usuario: UsuarioAtual): Promise<void> {
+  if (requisicao.estado !== "ANALISADA" && requisicao.estado !== "INDEFERIDA") return;
+  await epi_email.avisar_decisao(tx, requisicao, usuario);
 }
 
 /**
@@ -464,7 +491,10 @@ export async function sincronizar_pendencia_de_retirada(
     return;
   }
   if (existente) {
-    if (existente.concluida) await pendencias.reabrir(tx, existente, usuario, "o item voltou a ter lote reservado");
+    if (existente.concluida) {
+      await pendencias.reabrir(tx, existente, usuario, "o item voltou a ter lote reservado");
+      await epi_email.avisar_retirada(tx, await _requisicao_da_linha(tx, linha), usuario);
+    }
     return;
   }
 
@@ -489,6 +519,8 @@ export async function sincronizar_pendencia_de_retirada(
     responsavel_id: dono,
     usuario,
   });
+  // fatia F: repete o aviso por e-mail (desligado por padrão)
+  await epi_email.avisar_retirada(tx, requisicao, usuario);
 }
 
 export async function requisicoes_de(tx: Executor, servidor_id: number): Promise<EpiRequisicao[]> {
@@ -804,20 +836,46 @@ export async function excluir_rascunho(tx: Executor, usuario: UsuarioAtual, requ
 // Os itens do rascunho
 // =====================================================================
 /**
- * Uma linha do pedido. Item inativo não entra; quantidade tem de ser > 0. A
- * RN-29 (justificativa onde o catálogo exige) é cobrada no ENVIO.
+ * Fatia B — o motivo da linha (`MOTIVOS_ITEM_REQUISICAO`, o `L:EPI_Frontend.html:704`
+ * do legado). Obrigatório NA INCLUSÃO, e não só no envio: o motivo é o que diz
+ * a quem analisa se é primeira entrega ou troca, e descobrir no envio que
+ * faltava manda a pessoa de volta a uma linha que ela já achava pronta. Devolve
+ * o código limpo, ou acrescenta a recusa a `problemas`.
+ */
+export function motivo_do_item(bruto: string | null | undefined, problemas: string[]): MotivoItemRequisicao | null {
+  const limpo = (bruto ?? "").trim();
+  if (!limpo) {
+    problemas.push(
+      "diga o motivo do item (" +
+        MOTIVOS_ITEM_REQUISICAO.map((m) => ROTULO_MOTIVO_ITEM[m].toLowerCase()).join("; ") +
+        "): é ele que diz a quem analisa se é primeira entrega ou troca",
+    );
+    return null;
+  }
+  if (!(MOTIVOS_ITEM_REQUISICAO as readonly string[]).includes(limpo)) {
+    problemas.push(`motivo de item desconhecido: '${limpo}'. Conhecidos: ` + MOTIVOS_ITEM_REQUISICAO.join(", "));
+    return null;
+  }
+  return limpo as MotivoItemRequisicao;
+}
+
+/**
+ * Uma linha do pedido. Item inativo não entra; quantidade tem de ser > 0; o
+ * motivo do item é obrigatório (fatia B). A RN-29 (justificativa onde o
+ * catálogo exige) é cobrada no ENVIO.
  */
 export async function adicionar_item(
   tx: Executor,
   usuario: UsuarioAtual,
   requisicao: EpiRequisicao,
-  opcoes: { item: EpiItem; quantidade: number; tamanho?: string; justificativa?: string },
+  opcoes: { item: EpiItem; quantidade: number; tamanho?: string; justificativa?: string; motivo?: string | null },
 ): Promise<EpiRequisicaoItem> {
   usuario.exigir("epi.requisitar");
   _exigir_editavel(requisicao, "acrescentar item");
   const { item, quantidade } = opcoes;
   const problemas: string[] = [];
   if (quantidade <= 0) problemas.push("a quantidade pedida tem de ser maior que zero");
+  const motivo = motivo_do_item(opcoes.motivo, problemas);
   if (!item.ativo) problemas.push(`'${item.nome}' está inativo no catálogo e não pode ser requisitado`);
   const limpo = (opcoes.tamanho || "").trim();
   const tamanhos = EpiItemDominio.lista_de_tamanhos(item);
@@ -845,6 +903,7 @@ export async function adicionar_item(
       tamanho: limpo || null,
       quantidade_solicitada: quantidade,
       justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item") || null,
+      motivo,
       estado: "SOLICITADO",
     })
     .returning();
@@ -855,7 +914,8 @@ export async function editar_item(
   tx: Executor,
   usuario: UsuarioAtual,
   linha: EpiRequisicaoItem,
-  opcoes: { quantidade: number; tamanho?: string; justificativa?: string },
+  // `motivo` ausente mantém o da linha; informado, tem de ser um dos conhecidos
+  opcoes: { quantidade: number; tamanho?: string; justificativa?: string; motivo?: string | null },
 ): Promise<EpiRequisicaoItem> {
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao_da_linha(tx, linha);
@@ -863,6 +923,7 @@ export async function editar_item(
   const item = await _item(tx, linha.epi_item_id);
   const problemas: string[] = [];
   if (opcoes.quantidade <= 0) problemas.push("a quantidade pedida tem de ser maior que zero");
+  const motivo = motivo_do_item(opcoes.motivo === undefined ? linha.motivo : opcoes.motivo, problemas);
   const limpo = (opcoes.tamanho || "").trim();
   const tamanhos = EpiItemDominio.lista_de_tamanhos(item);
   if (tamanhos.length && !tamanhos.includes(limpo)) {
@@ -878,6 +939,7 @@ export async function editar_item(
     quantidade_solicitada: opcoes.quantidade,
     tamanho: limpo || null,
     justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item") || null,
+    motivo,
   });
   return linha;
 }
@@ -908,15 +970,24 @@ async function _linha_igual(
 // Enviar — o protocolo, o congelamento e a RN-29
 // =====================================================================
 /**
- * RASCUNHO → ENVIADA. A ordem: permissão e estado; validar tudo (≥1 item e
- * RN-29) ANTES de gastar número; congelar a lotação; consumir o protocolo;
- * mover e auditar.
+ * RASCUNHO → ENVIADA. A ordem: permissão e estado; validar tudo (≥1 item,
+ * motivo de cada item, RN-29 e o termo NR-06) ANTES de gastar número; congelar
+ * a lotação; consumir o protocolo; mover e auditar; enfileirar os e-mails da
+ * abertura (fatia F — desligados por padrão).
+ *
+ * **O termo NR-06 (fatia B, Decisão 3).** Quem ENVIA declara — o servidor, ou
+ * a chefia/secretaria que pede por ele —, e o aceite tem de vir marcado por
+ * quem chama (`termo_aceito: true`): a tela o oferece DESMARCADO. Gravam-se a
+ * conta, o instante e a versão do texto (`TERMO_NR06_VIGENTE`), no MESMO
+ * UPDATE do estado (`ck_req_termo`), e o evento `EPI_REQUISICAO_TERMO_ACEITO`
+ * vai para a trilha. O termo de guarda do titular continua no comprovante da
+ * entrega.
  */
 export async function enviar(
   tx: Executor,
   usuario: UsuarioAtual,
   requisicao: EpiRequisicao,
-  opcoes: { quando?: string | null } = {},
+  opcoes: { quando?: string | null; termo_aceito?: boolean } = {},
 ): Promise<EpiRequisicao> {
   usuario.exigir("epi.requisitar");
   const quando = opcoes.quando || datas_br.hoje();
@@ -944,6 +1015,16 @@ export async function enviar(
           "no rascunho: remova a linha ou escolha o item que o substituiu",
       );
     }
+    // fatia B: a inclusão já exige; aqui é a rede para a linha gravada por fora
+    if (!linha.motivo) {
+      problemas.push(`'${item.nome}' está sem o motivo do item: edite a linha e diga o motivo`);
+    }
+  }
+  if (opcoes.termo_aceito !== true) {
+    problemas.push(
+      "marque a declaração do termo NR-06: quem envia o pedido declara que as " +
+        "informações são verdadeiras — sem ela o pedido não é enviado",
+    );
   }
   if (problemas.length) throw new RequisicaoBloqueada(problemas);
 
@@ -951,13 +1032,38 @@ export async function enviar(
 
   const ano = Number(quando.slice(0, 4));
   const numero = await numeracao.proximo_numero_requisicao_epi(tx, ano);
-  const campos = { ano, numero, protocolo: protocolo_de(ano, numero), enviada_em: agora_utc() };
+  const aceito_em = agora_utc();
+  const campos = {
+    ano,
+    numero,
+    protocolo: protocolo_de(ano, numero),
+    enviada_em: aceito_em,
+    // o termo entra no MESMO UPDATE do estado (ck_req_termo)
+    termo_aceito_em: aceito_em,
+    termo_aceito_por: usuario.id,
+    termo_versao: TERMO_NR06_VIGENTE,
+  };
 
-  return _mover(tx, requisicao, "ENVIADA", usuario, {
+  await _mover(tx, requisicao, "ENVIADA", usuario, {
     campos,
     tipo_evento: EPI_REQUISICAO_ENVIADA,
     comentario: `${itens.length} item(ns) · ` + `${requisicao.urgencia === "URGENTE" ? "URGENTE" : "normal"}`,
   });
+  await auditoria.registrar(tx, {
+    entidade: ENTIDADE,
+    entidade_id: requisicao.id,
+    tipo_evento: EPI_REQUISICAO_TERMO_ACEITO,
+    // RN-19 na ESCRITA: o titular sai pelo id; quem declara é o ator do evento
+    descricao:
+      `${identificacao(requisicao)}: termo NR-06 (versão ${TERMO_NR06_VIGENTE}) declarado no envio ` +
+      `por ${usuario.nome}, pedido para o servidor #${requisicao.servidor_id}`,
+    campo: "termo_versao",
+    valor_novo: TERMO_NR06_VIGENTE,
+    usuario,
+  });
+  // fatia F: setor e requerente por e-mail — só com CSSO_EPI_EMAIL=sim
+  await epi_email.avisar_abertura(tx, requisicao, usuario);
+  return requisicao;
 }
 
 /** `EPI-2026-0001`. Passando de 9999, o formato cresce em vez de truncar. */
@@ -1534,6 +1640,154 @@ async function _travar_lote(tx: Executor, entrada_id: number): Promise<void> {
   await tx.select({ id: epi_entrada_estoque.id }).from(epi_entrada_estoque).where(eq(epi_entrada_estoque.id, entrada_id)).for("update");
 }
 
+// =====================================================================
+// "Separar todos" — a reserva de cada item reservável, num ato só
+// =====================================================================
+/** Um item que o "Separar todos" deixou como estava, e por quê. */
+export interface FaltaNaSeparacao {
+  linha_id: number;
+  nome: string;
+  tamanho: string | null;
+  motivo: string;
+}
+/** Um item que o "Separar todos" reservou. */
+export interface ItemSeparado {
+  linha_id: number;
+  nome: string;
+  tamanho: string | null;
+  quantidade: number;
+  lote: string;
+}
+export interface ResultadoSeparacao {
+  separados: ItemSeparado[];
+  faltaram: FaltaNaSeparacao[];
+}
+
+/** A linha que o "Separar todos" tenta: aprovada (ou sem estoque) e ainda devida. */
+export function separavel(linha: Pick<EpiRequisicaoItem, "estado" | "quantidade_aprovada" | "quantidade_entregue">): boolean {
+  return RESERVAVEL.has(linha.estado) && quantidade_devida(linha) > 0;
+}
+
+/**
+ * O lote que o "Separar todos" escolhe para `quantidade` unidades, entre os
+ * candidatos de `epi_estoque.lotes_de` (já filtrados pelo tamanho do pedido):
+ * só lote que pode sair HOJE (ativo, CA do LOTE válido — RN-25) e com
+ * disponível (físico − reservado — RN-24) que cubra a quantidade inteira.
+ * Entre esses, o que VENCE PRIMEIRO (validade do CA mais próxima; sem validade
+ * por último) e, no empate, a ordem de entrada do estoque — o mais antigo sai
+ * antes. Reserva parcial não é escolha automática: continua item a item.
+ */
+export function lote_sugerido(
+  candidatos: readonly epi_estoque.LoteDisponivel[],
+  quantidade: number,
+): epi_estoque.LoteDisponivel | null {
+  const cabem = candidatos
+    .map((l, ordem) => ({ l, ordem }))
+    .filter(({ l }) => l.pode_sair && l.saldo >= quantidade);
+  cabem.sort((a, b) => {
+    const va = a.l.entrada.validade_ca;
+    const vb = b.l.entrada.validade_ca;
+    if (va && vb && va !== vb) return va < vb ? -1 : 1;
+    if (va && !vb) return -1;
+    if (!va && vb) return 1;
+    return a.ordem - b.ordem;
+  });
+  return cabem[0]?.l ?? null;
+}
+
+/** Por que nenhum lote serve — o texto que vai para o recado. */
+function _por_que_nao_ha_lote(candidatos: readonly epi_estoque.LoteDisponivel[], devida: number, tamanho: string | null): string {
+  if (!candidatos.length) {
+    return "não há lote deste item" + (tamanho ? ` no tamanho ${tamanho}` : "") + " no estoque";
+  }
+  const liberados = candidatos.filter((l) => !l.impedimento);
+  if (!liberados.length) {
+    const motivos = [...new Set(candidatos.map((l) => l.impedimento))];
+    return `nenhum lote pode ser prometido hoje — ${motivos.join("; ")}`;
+  }
+  const maior = Math.max(0, ...liberados.map((l) => l.saldo));
+  if (maior <= 0) return "os lotes deste item estão sem disponível (o saldo já está prometido a outros pedidos)";
+  return (
+    `o pedido deve ${devida} e o lote com mais disponível tem ${maior}; ` +
+    "reserve a parte que existe item a item"
+  );
+}
+
+/**
+ * O "Separar todos": reserva, NUM ATO, cada item do pedido que pode ser
+ * reservado e tem lote com disponível. Cada reserva passa por `reservar_item`
+ * — a mesma auditoria (`EPI_ITEM_RESERVADO` por item), a mesma pendência de
+ * retirada e o mesmo `sincronizar_atendimento` do ato item a item.
+ *
+ * **Um executor só, e de propósito.** O aviso por e-mail de retirada agrupa
+ * por ato com a chave no executor da transação (`epi_email.avisar_retirada`):
+ * rodar todas as reservas no MESMO `tx` é o que faz sair UM e-mail listando os
+ * itens separados. Por isso não há ponto de salvamento por item; o isolamento
+ * vem de duas coisas: (1) o lote é escolhido aqui, conferindo antes o que a
+ * reserva confere (estado, RN-24, RN-25, tamanho), e (2) `reservar_item` só
+ * levanta `RequisicaoBloqueada` ANTES de escrever qualquer coisa — a recusa
+ * de um item não deixa resto no banco nem aborta a transação, e o item entra
+ * em `faltaram` com o motivo. Qualquer outra falha sobe e desfaz o ato inteiro.
+ */
+export async function reservar_todos(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  requisicao: EpiRequisicao,
+  opcoes: { quando?: string | null } = {},
+): Promise<ResultadoSeparacao> {
+  usuario.exigir("epi.estoque");
+  const quando = opcoes.quando || datas_br.hoje();
+  const [atual] = await tx.select().from(epi_requisicao).where(eq(epi_requisicao.id, requisicao.id));
+  if (atual) Object.assign(requisicao, atual);
+  if (!ATENDIVEL.includes(requisicao.estado)) {
+    throw new RequisicaoBloqueada([
+      `separar exige a requisição analisada, e ${identificacao(requisicao)} está em ` +
+        `${rotulo_req(requisicao.estado).toLowerCase()}`,
+    ]);
+  }
+  const linhas = (await itens_de(tx, requisicao.id)).filter(separavel);
+  if (!linhas.length) {
+    throw new RequisicaoBloqueada([
+      "não há item a separar neste pedido: só se reserva o que foi aprovado e ainda não saiu",
+    ]);
+  }
+
+  const resultado: ResultadoSeparacao = { separados: [], faltaram: [] };
+  for (const linha of linhas) {
+    const item = await _item(tx, linha.epi_item_id);
+    const tamanho = linha.tamanho || null;
+    const devida = quantidade_devida(linha);
+    // relido a cada linha: duas linhas do mesmo item disputam o mesmo lote
+    const candidatos = await epi_estoque.lotes_de(tx, item, { quando, tamanho });
+    const escolhido = lote_sugerido(candidatos, devida);
+    if (!escolhido) {
+      resultado.faltaram.push({
+        linha_id: linha.id,
+        nome: item.nome,
+        tamanho,
+        motivo: _por_que_nao_ha_lote(candidatos, devida, tamanho),
+      });
+      continue;
+    }
+    try {
+      await reservar_item(tx, usuario, linha, { entrada: escolhido.entrada, quantidade: devida, quando });
+    } catch (erro) {
+      // levantada antes de qualquer escrita (ver acima): nada a desfazer
+      if (!(erro instanceof RequisicaoBloqueada)) throw erro;
+      resultado.faltaram.push({ linha_id: linha.id, nome: item.nome, tamanho, motivo: erro.motivos.join(" · ") });
+      continue;
+    }
+    resultado.separados.push({
+      linha_id: linha.id,
+      nome: item.nome,
+      tamanho,
+      quantidade: devida,
+      lote: escolhido.entrada.lote || "sem número",
+    });
+  }
+  return resultado;
+}
+
 /**
  * APROVADO → SEM_ESTOQUE: o item é devido e a prateleira não tem. RECUSA
  * quando existe lote elegível com saldo — "sem estoque" com prateleira cheia
@@ -1742,7 +1996,14 @@ export async function entregar_item(
   tx: Executor,
   usuario: UsuarioAtual,
   linha: EpiRequisicaoItem,
-  opcoes: { entrada?: EpiEntradaEstoque | null; quantidade?: number | null; data_evento?: string | null; observacao?: string } = {},
+  opcoes: {
+    entrada?: EpiEntradaEstoque | null;
+    quantidade?: number | null;
+    data_evento?: string | null;
+    observacao?: string;
+    /** fatia E (Decisão 2): "Entrego mesmo sem treinamento em vigor", marcado */
+    confirmar_sem_treinamento?: boolean;
+  } = {},
 ): Promise<epi_ficha.EpiFichaRegistro> {
   usuario.exigir("epi.entregar");
   const requisicao = await _requisicao_da_linha(tx, linha);
@@ -1829,6 +2090,7 @@ export async function entregar_item(
     // a exceção já foi autorizada, por escrito e com nome, na aprovação
     justificativa_excecao: linha.excedeu_maximo ? linha.justificativa || "" : "",
     requisicao_item_id: linha.id,
+    confirmar_sem_treinamento: opcoes.confirmar_sem_treinamento ?? false,
   });
 
   const campos: Partial<EpiRequisicaoItem> = { quantidade_entregue: linha.quantidade_entregue + quantidade };

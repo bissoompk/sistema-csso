@@ -144,7 +144,7 @@ function abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
 function acrescentar(cliente: Cliente, requisicao_id: number, cen: Cenario, troca: Campos = {}) {
   return cliente.post(
     `${FILA}/${requisicao_id}/itens`,
-    { item_id: String(cen.item), quantidade: "1", tamanho: "M", justificativa: "", ...troca },
+    { item_id: String(cen.item), quantidade: "1", tamanho: "M", justificativa: "", motivo: "USO_INICIAL", ...troca },
     { seguir: false },
   );
 }
@@ -172,7 +172,7 @@ async function pedido_enviado(amb: Amb, cliente: Cliente, cen: Cenario, troca: C
   await abrir(cliente, cen);
   const requisicao = await ultima(amb);
   await acrescentar(cliente, requisicao.id, cen, troca);
-  const r = await cliente.post(`${FILA}/${requisicao.id}/enviar`, {}, { seguir: false });
+  const r = await cliente.post(`${FILA}/${requisicao.id}/enviar`, { termo_aceito: "1" }, { seguir: false });
   expect(r.status, recado(r)).toBe(303);
   return requisicao.id;
 }
@@ -256,7 +256,7 @@ describe("o caminho inteiro", () => {
     expect(requisicao.estado).toBe("RASCUNHO");
 
     expect((await acrescentar(cliente, requisicao.id, cen)).status).toBe(303);
-    const enviada = await cliente.post(`${FILA}/${requisicao.id}/enviar`, {}, { seguir: false });
+    const enviada = await cliente.post(`${FILA}/${requisicao.id}/enviar`, { termo_aceito: "1" }, { seguir: false });
     expect(enviada.status).toBe(303);
     expect(recado(enviada)).toContain("EPI-");
 
@@ -303,7 +303,7 @@ describe("o caminho inteiro", () => {
     await abrir(cliente, cen);
     const requisicao_id = (await ultima(amb)).id;
     await acrescentar(cliente, requisicao_id, cen, { quantidade: "2" });
-    await cliente.post(`${FILA}/${requisicao_id}/enviar`, {}, { seguir: false });
+    await cliente.post(`${FILA}/${requisicao_id}/enviar`, { termo_aceito: "1" }, { seguir: false });
     await cliente.post(`${FILA}/${requisicao_id}/analise`, {}, { seguir: false });
     const linha = (await linhas(amb, requisicao_id))[0]!;
     await cliente.post(`${FILA}/${requisicao_id}/itens/${linha.id}/aprovar`, { quantidade_aprovada: "2" }, { seguir: false });
@@ -579,7 +579,7 @@ describe("só o rascunho se edita", () => {
     expect(rascunho).toContain(`action="${FILA}/${requisicao_id}/excluir"`);
 
     await acrescentar(cliente, requisicao_id, cen);
-    await cliente.post(`${FILA}/${requisicao_id}/enviar`, {}, { seguir: false });
+    await cliente.post(`${FILA}/${requisicao_id}/enviar`, { termo_aceito: "1" }, { seguir: false });
     const enviado = (await cliente.get(`${FILA}/${requisicao_id}`)).text;
     expect(enviado).not.toContain('id="acrescentar-item"');
     expect(enviado).not.toContain(`action="${FILA}/${requisicao_id}/excluir"`);
@@ -927,7 +927,7 @@ async function pedido_de_duas_linhas(amb: Amb, cliente: Cliente, cen: Cenario): 
   const requisicao_id = (await ultima(amb)).id;
   await acrescentar(cliente, requisicao_id, cen, { tamanho: "M" });
   await acrescentar(cliente, requisicao_id, cen, { tamanho: "G" });
-  const r = await cliente.post(`${FILA}/${requisicao_id}/enviar`, {}, { seguir: false });
+  const r = await cliente.post(`${FILA}/${requisicao_id}/enviar`, { termo_aceito: "1" }, { seguir: false });
   expect(r.status, recado(r)).toBe(303);
   return requisicao_id;
 }

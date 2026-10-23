@@ -37,6 +37,7 @@ import { atores_para_tela } from "../servicos/privacidade.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "../servicos/rbac.js";
 import { linha_do_tempo } from "../servicos/direito.js";
 import { troca_devida_em } from "../servicos/epi_ficha.js";
+import * as epi_contagens from "../servicos/epi_contagens.js";
 import type { Executor } from "../db/cliente.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -83,7 +84,7 @@ rotas.get("/", async (c) => {
   // Os blocos do painel não dependem uns dos outros: saem juntos, e as
   // consultas seguem lado a lado pela conexão (o banco fica longe — ver
   // `db/cliente.ts`).
-  const [indicadores, habilitados, emitidos, contagem_risco, [lista, total_precisam], laudos_vigentes, ultimos] =
+  const [indicadores, habilitados, emitidos, contagem_risco, [lista, total_precisam], laudos_vigentes, ultimos, epi] =
     await Promise.all([
       repo.indicadores(tx, usuario, exercicio),
       habilitados_vigentes(tx, hoje),
@@ -123,6 +124,9 @@ rotas.get("/", async (c) => {
         .where(so_o_proprio ? eq(historico_evento.usuario_id, usuario.id) : undefined)
         .orderBy(desc(historico_evento.id))
         .limit(10),
+      // fatia G: o que espera a equipe de EPI (só para quem faz o ato; sem a
+      // permissão, nenhuma consulta; com ela, as duas contagens numa ida só)
+      epi_contagens.contagens_numa_ida(tx, usuario),
     ]);
   const kpis: Record<string, number | null> = { ...indicadores };
   kpis.subscritores_habilitados = habilitados.length;
@@ -185,6 +189,7 @@ rotas.get("/", async (c) => {
     precisam_de_voce,
     total_precisam,
     fila_precisam: FILA_PRECISAM,
+    epi,
     laudos_sem_conferencia: usuario.pode("laudo.ver") ? laudos_sem_conferencia : [],
     // a trilha de estado é gravada em ASCII com "->" (entra no digest da
     // cadeia): a tela acentua só na exibição, como a aba Histórico da ficha
@@ -213,7 +218,7 @@ const INSCRICAO_EM_CURSO = ["AGUARDANDO_EMAIL", "INSCRITA", "CONFIRMADA"];
 export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, hoje: string) {
   const servidor_id = usuario.servidor_id;
   const limite_certificado = datas_br.somar_dias(hoje, JANELA_CERTIFICADO_DIAS);
-  const [[meus, total_meus], vigencias, proximas, certificados, entregas] = await Promise.all([
+  const [[meus, total_meus], vigencias, proximas, certificados, entregas, epi] = await Promise.all([
     repo.listar(tx, usuario, new repo.Filtro({ por_pagina: 5 })),
     servidor_id === null ? Promise.resolve([]) : linha_do_tempo(tx, servidor_id),
     servidor_id === null
@@ -275,6 +280,9 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
             ),
           )
           .orderBy(asc(epi_ficha_registro.previsao_troca)),
+    // fatia G: a conta de escopo próprio no processo pode atender EPI de um
+    // campus (D1: o alcance é por permissão)
+    epi_contagens.contagens_numa_ida(tx, usuario),
   ]);
 
   // O adicional: a vigência mais recente diz o estado; o percentual e o tipo
@@ -303,6 +311,7 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
   const [resumos] = await Promise.all([resumir_varios(tx, meus)]);
   return {
     inicio_do_servidor: true,
+    epi,
     tem_servidor: servidor_id !== null,
     adicional,
     meus_processos: resumos,

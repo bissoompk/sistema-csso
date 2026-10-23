@@ -1,0 +1,62 @@
+{% import "partes/macros.html" as ui with context %}
+{# Os popups da comunicação do titular (fatia A), fora de `.tela` como os
+   outros diálogos da ficha. Incluído por `epis_ficha.html`: lê `linhas`,
+   `comunicacoes`, `propria`, `tipos_comunicacao` e `janela_horas`.
+
+   Comunicar: um por entrega vigente da PRÓPRIA ficha sem comunicação aberta.
+   Retirar e tratar: um por comunicação aberta que esta conta pode mexer. #}
+{% for l in linhas %}
+{% set r = l.registro %}
+{% set abertas = (comunicacoes[r.id] or [])|selectattr('aberta')|list %}
+
+{% if propria and l.vigente and not abertas|length %}
+{% call ui.popup_cadastro('comunicar-' ~ r.id, 'Comunicar sobre o equipamento',
+                          '/epis/fichas/registros/' ~ r.id ~ '/comunicar', 'Comunicar',
+                          nota=r.nome_epi_snapshot ~ ' · entregue em ' ~ (r.data_evento|data)) %}
+  <div class="campo">
+    <label for="tipo-com-{{ r.id }}">O que aconteceu</label>
+    <select id="tipo-com-{{ r.id }}" name="tipo" required>
+      <option value="">Escolha…</option>
+      {% for codigo, rotulo in tipos_comunicacao %}
+      <option value="{{ codigo }}">{{ rotulo }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="obs-com-{{ r.id }}">Observação <span class="discreto">(opcional)</span></label>
+    <textarea id="obs-com-{{ r.id }}" name="observacao" rows="3" maxlength="500"
+              aria-describedby="dica-com-{{ r.id }}"></textarea>
+    <span class="dica" id="dica-com-{{ r.id }}">Só o necessário para o almoxarifado
+      entender. Não escreva diagnóstico nem dado de saúde.</span>
+  </div>
+  <p class="discreto">A comunicação avisa o almoxarifado. Ela <strong>não</strong>
+    muda a sua ficha nem gera cobrança: o setor combina com você a devolução ou a
+    reposição. Você pode retirá-la nas próximas {{ janela_horas }} horas.</p>
+{% endcall %}
+{% endif %}
+
+{% for x in abertas %}
+{% if x.pode_retirar %}
+{% call ui.popup_cadastro('retirar-comunicacao-' ~ x.c.id, 'Retirar a comunicação',
+                          '/epis/comunicacoes/' ~ x.c.id ~ '/retirar', 'Retirar',
+                          nota=r.nome_epi_snapshot ~ ' · ' ~ x.rotulo, classe_botao='perigo-discreto') %}
+  <p>A comunicação deixa de valer e a tarefa do almoxarifado se fecha. Ela
+    <strong>continua registrada</strong>, marcada como retirada.</p>
+{% endcall %}
+{% endif %}
+{% if x.pode_tratar %}
+{% call ui.popup_cadastro('tratar-comunicacao-' ~ x.c.id, 'Tratar a comunicação',
+                          '/epis/comunicacoes/' ~ x.c.id ~ '/tratar', 'Gravar',
+                          nota=r.nome_epi_snapshot ~ ' · ' ~ x.rotulo ~ ' · nº ' ~ x.c.id) %}
+  {% if x.c.observacao %}<p class="discreto">O titular escreveu: “{{ x.c.observacao }}”</p>{% endif %}
+  <div class="campo">
+    <label for="trat-{{ x.c.id }}">O que foi feito</label>
+    <input id="trat-{{ x.c.id }}" name="tratamento" required maxlength="500"
+           placeholder="substituto entregue; devolução registrada">
+  </div>
+  <p class="discreto">Tratar não mexe na ficha nem no estoque: a entrega do
+    substituto, a devolução ou o estorno se registram pelos botões da linha.</p>
+{% endcall %}
+{% endif %}
+{% endfor %}
+{% endfor %}

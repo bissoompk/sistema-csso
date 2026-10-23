@@ -13,11 +13,21 @@
 import { Hono } from "hono";
 import { and, asc, count, eq, isNull, ne, type SQL } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
-import { formulario, usuarioLogado } from "../dependencias.js";
+import { PermissaoNegada } from "../nucleo/erros.js";
+import { formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import type { Executor } from "../db/cliente.js";
 import { epi_categoria, epi_item, epi_motivo_recusa } from "../db/esquema/index.js";
-import { EpiCategoria, EpiItem, UNIDADES_MEDIDA } from "../dominio/epi.js";
+import {
+  EPI_CATALOGO_IMAGEM_MAX_BYTES,
+  EPI_CATALOGO_PDF_MAX_BYTES,
+  EpiCategoria,
+  EpiItem,
+  UNIDADES_MEDIDA,
+} from "../dominio/epi.js";
+import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
+import * as catalogo_anexos from "../servicos/epi_catalogo_anexos.js";
+import * as epi_treinamento from "../servicos/epi_treinamento.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as textos from "../servicos/textos.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
@@ -247,6 +257,10 @@ async function _tela_catalogo(
     editando_id?: number | null;
     /** o campo que a recusa aponta (D21: a marca ia sempre para o Nome) */
     campo_erro?: string | null;
+    /** fatia E: abre o popup de treinamentos deste item (e não o de edição) */
+    abrir_treinamentos?: boolean;
+    /** fatia C: abre o popup “Foto e orientação” deste item */
+    abrir_arquivos?: boolean;
   } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
@@ -264,6 +278,16 @@ async function _tela_catalogo(
   // vencido que encolhe ao virar de página é pior do que alerta nenhum.
   const hoje = datas_br.hoje();
   const com_ca_vencido = itens.filter((i) => i.exige_ca && i.ativo && (i.validade_ca === null || i.validade_ca < hoje));
+  // Fatia E: os treinamentos vinculados a cada item (uma consulta para o
+  // catálogo inteiro) e, como o CA vencido, o aviso conta o catálogo inteiro:
+  // item que exige treinamento sem nenhum vinculado é regra que não se confere
+  const vinculos = await epi_treinamento.vinculados(
+    tx,
+    itens.map((i) => i.id),
+  );
+  const treinamentos_de = Object.fromEntries(itens.map((i) => [i.id, vinculos.get(i.id) ?? []]));
+  const ids_vinculados_de = Object.fromEntries(itens.map((i) => [i.id, (vinculos.get(i.id) ?? []).map((t) => t.id)]));
+  const exige_sem_vinculo = itens.filter((i) => i.exige_treinamento && i.ativo && !(vinculos.get(i.id) ?? []).length);
   const so_um = r.item_id ? itens.filter((i) => i.id === r.item_id) : null;
   const recorte = recortar(so_um ?? itens, numeroDaPagina(c));
   // cada item da página em TEXTO, na forma do digitado: o popup de editar é o
@@ -272,6 +296,11 @@ async function _tela_catalogo(
   return pagina(c, "paginas/epis_catalogo.html", usuario, {
     so_um: so_um !== null,
     itens_em_texto,
+    // fatia C: o limite escrito no formulário é o mesmo que o serviço confere
+    limites_arquivo: {
+      imagem: `${EPI_CATALOGO_IMAGEM_MAX_BYTES / 1024 / 1024} MB`,
+      pdf: `${EPI_CATALOGO_PDF_MAX_BYTES / 1024 / 1024} MB`,
+    },
     editando_id: r.editando_id ?? null,
     campo_erro: r.campo_erro ?? null,
     abas: ABAS,
@@ -279,6 +308,13 @@ async function _tela_catalogo(
     itens: recorte.itens,
     recorte,
     com_ca_vencido,
+    treinamentos_de,
+    ids_vinculados_de,
+    exige_sem_vinculo,
+    // a lista para escolher só interessa a quem pode vincular
+    treinamentos_do_catalogo: usuario.pode("epi.catalogo") ? await epi_treinamento.treinamentos_do_catalogo(tx) : [],
+    abrir_treinamentos: r.abrir_treinamentos ?? false,
+    abrir_arquivos: r.abrir_arquivos ?? false,
     categorias,
     unidades: UNIDADES_MEDIDA,
     hoje,
@@ -293,10 +329,23 @@ rotas.get(CATALOGO, async (c) => {
   // abre em leitura para quem tem `epi.ver`; editar pede `epi.catalogo`
   usuario.exigir("epi.ver");
   const item_id = c.req.query("item_id") ?? "";
+  // `?treinamentos=<id>`: a volta do vincular/desvincular reabre o popup de
+  // treinamentos daquele item, e não o de edição (que é o do `item_id`)
+  const do_treinamento = c.req.query("treinamentos") ?? "";
+  // `?arquivos=<id>`: a volta do envio da foto ou do PDF reabre o popup
+  // “Foto e orientação” daquele item
+  const dos_arquivos = c.req.query("arquivos") ?? "";
+  const alvo = /^\d+$/.test(do_treinamento)
+    ? do_treinamento
+    : /^\d+$/.test(dos_arquivos)
+      ? dos_arquivos
+      : item_id;
   return _tela_catalogo(c, usuario, {
     mensagem: c.req.query("mensagem"),
     erro: c.req.query("erro"),
-    item_id: /^\d+$/.test(item_id) ? Number(item_id) : null,
+    item_id: /^\d+$/.test(alvo) ? Number(alvo) : null,
+    abrir_treinamentos: /^\d+$/.test(do_treinamento),
+    abrir_arquivos: !/^\d+$/.test(do_treinamento) && /^\d+$/.test(dos_arquivos),
   });
 });
 
@@ -524,6 +573,167 @@ rotas.post(`${MOTIVOS}/:motivo_id{[0-9]+}`, async (c) => {
 });
 
 // =====================================================================
+// Foto e PDF de orientação do item (fatia C da paridade com o IntegraSST)
+// =====================================================================
+/** O arquivo do formulário, já em bytes — ou `null` quando não veio. */
+async function _arquivo(f: Formulario, nome: string): Promise<catalogo_anexos.ArquivoEnviado | null> {
+  const arquivo = f.arquivo(nome);
+  if (!arquivo) return null;
+  return { conteudo: new Uint8Array(await arquivo.arrayBuffer()), nome_original: arquivo.name || nome };
+}
+
+/** O outro campo de arquivo — o que NÃO pode vir junto. */
+const _OUTRO: Record<catalogo_anexos.QualArquivo, catalogo_anexos.QualArquivo> = {
+  imagem: "orientacao",
+  orientacao: "imagem",
+};
+const _NOME_ARQUIVO: Record<catalogo_anexos.QualArquivo, string> = {
+  imagem: "a foto",
+  orientacao: "o PDF de orientação",
+};
+
+/**
+ * Um envio = UM arquivo (a função do Netlify recusa corpo acima de 6 MB, e a
+ * foto de 2 MB mais o PDF de 4 MB passavam disso). A foto vai por
+ * `POST /epis/catalogo/{id}/imagem` e o PDF por `.../orientacao` — o mesmo
+ * endereço que os SERVE no GET. Veio o outro campo junto: recusa, sem gravar
+ * nenhum dos dois. Veio vazio: o atual continua.
+ */
+async function _receber_arquivo(c: Ctx, qual: catalogo_anexos.QualArquivo): Promise<Response> {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.catalogo");
+  const tx = c.get("tx");
+  const item = await _item(tx, c.req.param("item_id") ?? "");
+  if (!item) return redirecionar(c, comMensagem(CATALOGO, "Item de EPI não encontrado.", "erro"));
+  const destino = `${CATALOGO}?arquivos=${item.id}`;
+  const f = await formulario(c);
+  const outro = _OUTRO[qual];
+  if (f.arquivo(outro)) {
+    return redirecionar(
+      c,
+      comMensagem(
+        destino,
+        `Envie um arquivo por vez: este botão grava só ${_NOME_ARQUIVO[qual]}, e veio também ${_NOME_ARQUIVO[outro]}. ` +
+          "Nada foi gravado — use o botão de cada um.",
+        "erro",
+      ),
+    );
+  }
+  const arquivo = await _arquivo(f, qual);
+  if (!arquivo) {
+    return _volta(
+      c,
+      destino,
+      qual === "imagem"
+        ? "Nenhuma foto nova escolhida: a foto atual continua."
+        : "Nenhum PDF novo escolhido: o PDF de orientação atual continua.",
+    );
+  }
+  const tinha = qual === "imagem" ? item.imagem_anexo_id : item.orientacao_anexo_id;
+  try {
+    await tx.transaction(async (sp) => catalogo_anexos.enviar(sp, usuario, item, qual, arquivo));
+  } catch (falha) {
+    if (falha instanceof catalogo_anexos.ArquivoDoCatalogoRecusado || falha instanceof anexos.AnexoGrandeDemais) {
+      return redirecionar(c, comMensagem(destino, falha.message, "erro"));
+    }
+    throw falha;
+  }
+  const o_que = qual === "imagem" ? "Foto" : "PDF de orientação";
+  return _volta(
+    c,
+    destino,
+    `${o_que} de '${item.nome}' gravado.` + (tinha === null ? "" : " O arquivo anterior continua guardado."),
+  );
+}
+
+async function _item(tx: Executor, bruto: string): Promise<typeof epi_item.$inferSelect | null> {
+  const [item] = await tx.select().from(epi_item).where(eq(epi_item.id, Number(bruto)));
+  return item ?? null;
+}
+
+// =====================================================================
+// Treinamento exigido pelo item (fatia E da paridade com o IntegraSST)
+// =====================================================================
+/**
+ * Vincula ou desvincula um treinamento do catálogo de Certificados ao item. Um
+ * formulário por ato (`acao` = vincular | desvincular), com auditoria no
+ * serviço. Vincular a item que não exigia treinamento passa a exigir.
+ */
+rotas.post(`${CATALOGO}/:item_id{[0-9]+}/treinamentos`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("epi.catalogo");
+  const tx = c.get("tx");
+  const item = await _item(tx, c.req.param("item_id"));
+  if (!item) return redirecionar(c, comMensagem(CATALOGO, "Item de EPI não encontrado.", "erro"));
+  const destino = `${CATALOGO}?treinamentos=${item.id}`;
+  const f = await formulario(c);
+  const acao = f.texto("acao", "").trim();
+  const treinamento_id = _inteiro(f.texto("treinamento_id", ""));
+  if (treinamento_id === null) return redirecionar(c, comMensagem(destino, "Escolha o treinamento.", "erro"));
+  if (acao !== "vincular" && acao !== "desvincular") {
+    return redirecionar(c, comMensagem(destino, "Ação desconhecida.", "erro"));
+  }
+  try {
+    const recado = await tx.transaction(async (sp) => {
+      if (acao === "vincular") {
+        const r = await epi_treinamento.vincular(sp, usuario, item, treinamento_id);
+        return (
+          `'${item.nome}' passa a exigir ${r.treinamento.nome}.` +
+          (r.passou_a_exigir ? " O item foi marcado como “exige treinamento”." : "")
+        );
+      }
+      const r = await epi_treinamento.desvincular(sp, usuario, item, treinamento_id);
+      return (
+        `'${item.nome}' deixa de exigir ${r.treinamento.nome}.` +
+        (r.restam === 0 && item.exige_treinamento
+          ? " Nenhum treinamento vinculado: o item continua marcado como “exige treinamento”, e a entrega não tem o que conferir."
+          : "")
+      );
+    });
+    return _volta(c, destino, recado);
+  } catch (falha) {
+    if (falha instanceof epi_treinamento.VinculoRecusado) return redirecionar(c, comMensagem(destino, falha.message, "erro"));
+    throw falha;
+  }
+});
+
+rotas.post(`${CATALOGO}/:item_id{[0-9]+}/imagem`, (c) => _receber_arquivo(c, "imagem"));
+rotas.post(`${CATALOGO}/:item_id{[0-9]+}/orientacao`, (c) => _receber_arquivo(c, "orientacao"));
+
+/**
+ * A foto e o PDF vigentes do item. Atrás do login, e não por link público
+ * como no legado (Drive "qualquer pessoa com o link"). Lê quem tem `epi.ver`,
+ * quem pede EPI e o titular de uma ficha.
+ */
+async function _servir(c: Ctx, qual: "imagem" | "orientacao"): Promise<Response> {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  if (!(await catalogo_anexos.pode_ler(tx, usuario))) {
+    throw new PermissaoNegada("epi.ver", "A foto e a orientação do catálogo de EPI são para quem usa o módulo de EPI.");
+  }
+  const item = await _item(tx, c.req.param("item_id") ?? "");
+  const anexo = item ? await catalogo_anexos.anexo_vigente(tx, item, qual) : null;
+  if (!anexo) return c.text(qual === "imagem" ? "Este item não tem foto." : "Este item não tem PDF de orientação.", 404);
+  const conteudo = await anexos.ler_conteudo(anexo);
+  return c.body(conteudo as unknown as ArrayBuffer, 200, {
+    "content-type": anexos.tipo_para_servir(anexo.mime_type),
+    "x-content-type-options": "nosniff",
+    // a URL da tela leva `?v=<anexo>`: trocar a foto troca o endereço
+    "cache-control": "private, max-age=3600",
+    "content-disposition": disposicao(anexo.nome_original, qual === "imagem" ? "inline" : "attachment"),
+  });
+}
+
+/** `Content-Disposition` com o nome em RFC 5987. */
+export function disposicao(nome: string, modo: "inline" | "attachment" = "attachment"): string {
+  const ascii = /^[\x20-\x7e]*$/.test(nome) && !nome.includes('"');
+  return ascii ? `${modo}; filename="${nome}"` : `${modo}; filename*=utf-8''${encodeURIComponent(nome)}`;
+}
+
+rotas.get(`${CATALOGO}/:item_id{[0-9]+}/imagem`, (c) => _servir(c, "imagem"));
+rotas.get(`${CATALOGO}/:item_id{[0-9]+}/orientacao`, (c) => _servir(c, "orientacao"));
+
+// =====================================================================
 // Edição do item — por último, pela mesma razão do Python (ordem de declaração)
 // =====================================================================
 /** Renomear é seguro para o que já saiu: a entrega congela nome, CA e lote (RN-15). */
@@ -547,6 +757,17 @@ rotas.post(`${CATALOGO}/:item_id{[0-9]+}`, async (c) => {
     return recusar(`Já existe outro item '${campos.nome}' com esse modelo.`, "modelo");
   }
   campos.ativo = _marcado(f.texto("ativo"));
+  // A edição é formulário comum, sem arquivo: foto e PDF têm envios próprios
+  // (`/imagem`, `/orientacao`), um arquivo por requisição. Arquivo que chegue
+  // aqui (página antiga aberta, envio montado à mão) é RECUSADO, e não
+  // ignorado: ignorar calado faria a pessoa achar que a foto foi trocada. O
+  // popup volta com o digitado, e nada é gravado.
+  if (f.arquivo("imagem") || f.arquivo("orientacao")) {
+    return recusar(
+      "A edição do item não recebe arquivo. Nada foi gravado: salve os dados sem o arquivo " +
+        "e envie a foto ou o PDF pelo botão “Foto e orientação” da linha do item.",
+    );
+  }
   return salvar_com_diff(c, usuario, epi_item, item_id, campos, {
     permissao: "epi.catalogo",
     rotulo: "Item de EPI",

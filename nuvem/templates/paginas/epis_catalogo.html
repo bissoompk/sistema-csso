@@ -129,12 +129,17 @@ placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ v.normas or '' }}</textarea><
     <label class="discreto"><input type="checkbox" name="exige_treinamento" value="1"
       {{- ' checked' if v.exige_treinamento == '1' }}>
       exige treinamento comprovado</label>
+    {# fatia E: QUAL treinamento se escolhe no botão “Treinamentos” da linha do
+       item — marcar aqui sem vincular nenhum deixa a entrega sem o que conferir #}
+    <span class="dica">Qual treinamento: no botão “Treinamentos” da linha do
+      item, depois de salvar.</span>
     {% if edicao %}
     <label class="discreto"><input type="checkbox" name="ativo" value="1"
       {{- ' checked' if v.ativo == '1' }}>
       ativo — desmarcado, o item sai do pedido e do balcão</label>
     {% endif %}
   </div>
+
 {% endmacro %}
 
 {% block acoes_cabecalho %}
@@ -204,8 +209,22 @@ placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ v.normas or '' }}</textarea><
   </div>
   {% endif %}
 
+  {# Fatia E: a mesma lógica do CA vencido — conta o catálogo INTEIRO (vem da
+     rota), porque "exige treinamento" sem treinamento vinculado é regra que a
+     entrega não tem como conferir, e a etiqueta "sem treinamento em vigor"
+     nunca aparece para esse item. #}
+  {% if exige_sem_vinculo %}
+  <div class="aviso aviso-alerta">
+    <strong>{{ exige_sem_vinculo|length }} item(ns) exige(m) treinamento, mas nenhum
+      está vinculado — não dá para conferir:</strong>
+    {% for i in exige_sem_vinculo %}{{ i.nome }}{% if not loop.last %} · {% endif %}{% endfor %}.
+    {% if editavel %}Vincule o treinamento no botão “Treinamentos” da linha, ou
+      desmarque “exige treinamento” na edição.{% endif %}
+  </div>
+  {% endif %}
+
   {% if so_um %}
-  <p class="discreto">Mostrando só o item a corrigir. <a href="/epis/catalogo">Ver o catálogo inteiro</a>.</p>
+  <p class="discreto">Mostrando só {{ "este item" if (abrir_treinamentos or abrir_arquivos) else "o item a corrigir" }}. <a href="/epis/catalogo">Ver o catálogo inteiro</a>.</p>
   {% endif %}
 
   <div class="tabela-cartao lista">
@@ -220,9 +239,13 @@ placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ v.normas or '' }}</textarea><
     <tbody>
     {% for i in itens %}
     <tr>
-      <td class="nome">{{ i.nome }}
+      <td class="nome">
+        {%- if i.imagem_anexo_id %}<img class="epi-miniatura" src="/epis/catalogo/{{ i.id }}/imagem?v={{ i.imagem_anexo_id }}"
+             alt="" width="40" height="40" loading="lazy">{% endif -%}
+        {{ i.nome }}
         {% if i.modelo or i.marca %}<span class="quebra discreto">{{ i.marca or '' }} {{ i.modelo or '' }}</span>{% endif %}
-        {%- if i.lista_de_tamanhos|length %}<span class="quebra discreto">tamanhos: {{ i.lista_de_tamanhos|join(' · ') }}</span>{% endif %}</td>
+        {%- if i.lista_de_tamanhos|length %}<span class="quebra discreto">tamanhos: {{ i.lista_de_tamanhos|join(' · ') }}</span>{% endif %}
+        {%- if i.orientacao_anexo_id %}<span class="quebra"><a href="/epis/catalogo/{{ i.id }}/orientacao?v={{ i.orientacao_anexo_id }}">Orientação (PDF)</a></span>{% endif %}</td>
       <td data-coluna="Categoria (NR-6)">{{ i.categoria.rotulo if i.categoria else '—' }}</td>
       <td data-coluna="CA" class="mono">{{ i.numero_ca or '—' }}
         <span class="quebra">{{ i.validade_ca|data or 'sem validade' }}</span>
@@ -235,10 +258,111 @@ placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ v.normas or '' }}</textarea><
         {% if i.exige_justificativa %}<span class="pilula alerta">justificativa</span>{% endif %}
         {% if i.exige_treinamento %}<span class="pilula alerta">treinamento</span>{% endif %}
         {% if not (i.exige_ca or i.exige_justificativa or i.exige_treinamento) %}<span class="discreto">—</span>{% endif %}
+        {# fatia E: QUAL treinamento — e o aviso quando não há nenhum #}
+        {% set vinc = treinamentos_de[i.id] or [] %}
+        {% if i.exige_treinamento and vinc|length %}
+        <span class="quebra discreto">{% for t in vinc %}{{ t.nome }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        {% elif i.exige_treinamento %}
+        <span class="quebra"><span class="pilula erro">nenhum treinamento vinculado</span></span>
+        {% elif vinc|length %}
+        <span class="quebra discreto">vinculado(s), mas não conferido(s): o item não exige treinamento</span>
+        {% endif %}
       </td>
       <td data-coluna="Situação">{{ ui.pilula_sim_nao(i.ativo, 'ativo', 'inativo') }}</td>
       {% if editavel %}
-      <td class="acao-linha">{{ ui.botao_cadastro('editar-epi-' ~ i.id, 'Editar', 'secundario compacto') }}</td>
+      <td class="acao-linha">{{ ui.botao_cadastro('editar-epi-' ~ i.id, 'Editar', 'secundario compacto') }}
+        {# Fatia C: a foto e o PDF de orientação, cada um no SEU formulário e
+           na sua requisição — a função do Netlify recusa corpo acima de 6 MB, e
+           foto (2 MB) + PDF (4 MB) juntos passavam disso. Por isso também a
+           edição deixou de levar arquivo. Arquivo em branco mantém o atual;
+           trocar guarda um anexo novo e o antigo continua (a ficha de quem já
+           recebeu aponta para o PDF do dia). Atrás do login, sem link público. #}
+        {% set deste_arq = so_um and abrir_arquivos %}
+        {% call ui.popup_gaveta('arq-epi-' ~ i.id, 'Foto e orientação', 'Foto e orientação · ' ~ i.nome,
+                                nota='um arquivo por envio: a foto e o PDF têm cada um o seu botão',
+                                aberto=deste_arq, largo=false) %}
+          {% if deste_arq and erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+          {% if deste_arq and mensagem %}<div class="aviso aviso-ok" role="status">{{ mensagem }}</div>{% endif %}
+          <form method="post" action="/epis/catalogo/{{ i.id }}/imagem" enctype="multipart/form-data">
+            <h3>Foto do EPI</h3>
+            {% if i.imagem_anexo_id %}
+            <img class="epi-foto-atual" src="/epis/catalogo/{{ i.id }}/imagem?v={{ i.imagem_anexo_id }}"
+                 alt="Foto atual de {{ i.nome }}" loading="lazy">
+            {% else %}<p class="discreto">Sem foto cadastrada.</p>{% endif %}
+            <div class="campo">
+              <label for="arq-imagem-{{ i.id }}">{{ 'Trocar a foto' if i.imagem_anexo_id else 'Escolher a foto' }}</label>
+              <input id="arq-imagem-{{ i.id }}" type="file" name="imagem" required
+                     accept="image/jpeg,image/png,image/webp" aria-describedby="arq-dica-imagem-{{ i.id }}">
+              <span class="dica" id="arq-dica-imagem-{{ i.id }}">JPEG, PNG ou WEBP, até {{ limites_arquivo.imagem }}.
+                A foto anterior continua guardada.</span>
+              <span class="dica atencao">Use foto própria ou com autorização: imagem tirada do
+                catálogo ou do site do fabricante tem direito autoral.</span>
+            </div>
+            <div class="acoes"><button type="submit" class="compacto">Enviar foto</button></div>
+          </form>
+          <form method="post" action="/epis/catalogo/{{ i.id }}/orientacao" enctype="multipart/form-data">
+            <h3>PDF de orientação</h3>
+            {% if i.orientacao_anexo_id %}
+            <p><a class="quebra" href="/epis/catalogo/{{ i.id }}/orientacao?v={{ i.orientacao_anexo_id }}">Baixar o PDF atual</a></p>
+            {% else %}<p class="discreto">Sem PDF de orientação cadastrado.</p>{% endif %}
+            <div class="campo">
+              <label for="arq-orientacao-{{ i.id }}">{{ 'Trocar o PDF' if i.orientacao_anexo_id else 'Escolher o PDF' }} (uso, guarda, higienização, CA)</label>
+              <input id="arq-orientacao-{{ i.id }}" type="file" name="orientacao" required
+                     accept="application/pdf" aria-describedby="arq-dica-orientacao-{{ i.id }}">
+              <span class="dica" id="arq-dica-orientacao-{{ i.id }}">Só PDF, até {{ limites_arquivo.pdf }}.
+                Quem já recebeu o EPI continua com o PDF do dia da entrega.</span>
+            </div>
+            <div class="acoes"><button type="submit" class="compacto">Enviar PDF de orientação</button></div>
+          </form>
+        {% endcall %}
+        {# Fatia E: um formulário por ato (vincular, desvincular) — não cabem
+           dentro do formulário de edição, e cada um vai para a trilha. #}
+        {% set vinc = treinamentos_de[i.id] or [] %}
+        {% call ui.popup_gaveta('trein-epi-' ~ i.id, 'Treinamentos', 'Treinamentos · ' ~ i.nome,
+                                nota='quem analisa e quem entrega veem só se a pessoa tem ou não certificado em vigor',
+                                aberto=(so_um and abrir_treinamentos), largo=false) %}
+          <p class="discreto">O treinamento do catálogo de Certificados que este
+            EPI exige. Havendo mais de um, todos são exigidos. Na análise e na
+            entrega aparece a etiqueta “sem treinamento em vigor” para quem não
+            tem certificado válido de algum deles; a entrega não é bloqueada, mas
+            pede uma confirmação, que fica registrada.</p>
+          {% if vinc|length %}
+          <ul class="treinamentos-vinculados">
+            {% for t in vinc %}
+            <li><span>{{ t.nome }} <span class="discreto mono">{{ t.codigo }}</span>
+                <span class="quebra discreto">{{ ('validade ' ~ t.validade_meses ~ ' meses') if t.validade_meses else 'não expira' }}</span></span>
+              <form method="post" action="/epis/catalogo/{{ i.id }}/treinamentos">
+                <input type="hidden" name="acao" value="desvincular">
+                <input type="hidden" name="treinamento_id" value="{{ t.id }}">
+                <button type="submit" class="perigo-discreto compacto">Desvincular</button>
+              </form></li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="discreto">Nenhum treinamento vinculado.{% if i.exige_treinamento %}
+            <strong>O item está marcado como “exige treinamento”, e a entrega não
+            tem o que conferir.</strong>{% endif %}</p>
+          {% endif %}
+          {% set ja = ids_vinculados_de[i.id] or [] %}
+          <form method="post" action="/epis/catalogo/{{ i.id }}/treinamentos">
+            <input type="hidden" name="acao" value="vincular">
+            <div class="campo">
+              <label for="trein-sel-{{ i.id }}">Vincular treinamento</label>
+              <select id="trein-sel-{{ i.id }}" name="treinamento_id" required>
+                <option value="">—</option>
+                {% for t in treinamentos_do_catalogo %}{% if not (t.id in ja) %}
+                <option value="{{ t.id }}">{{ t.nome }} ({{ ('validade ' ~ t.validade_meses ~ ' meses') if t.validade_meses else 'não expira' }})</option>
+                {% endif %}{% endfor %}
+              </select>
+              {% if not treinamentos_do_catalogo|length %}
+              <span class="dica">O catálogo de treinamentos (Certificados) está vazio.</span>
+              {% elif not i.exige_treinamento %}
+              <span class="dica">Vincular marca o item como “exige treinamento”.</span>
+              {% endif %}
+            </div>
+            <div class="acoes"><button type="submit" class="compacto">Vincular</button></div>
+          </form>
+        {% endcall %}</td>
       {% endif %}
     </tr>
     {% else %}
@@ -307,7 +431,7 @@ placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ v.normas or '' }}</textarea><
 {% for i in itens %}
 {% set deste = recusado and editando_id == i.id %}
 {% call ui.popup_cadastro('editar-epi-' ~ i.id, 'Editar · ' ~ i.nome, '/epis/catalogo/' ~ i.id, 'Salvar',
-                          aberto=(deste or (so_um and not recusado)), erro=(erro_popup if deste else none), largo=true,
+                          aberto=(deste or (so_um and not recusado and not abrir_treinamentos and not abrir_arquivos)), erro=(erro_popup if deste else none), largo=true,
                           nota='renomear não reescreve o que já foi entregue: a ficha guarda o nome do dia') %}
   {{ campos_do_item('ed-' ~ i.id, d if deste else itens_em_texto[i.id], campo_erro if deste else none,
                     categorias, 'unidades-epi', edicao=true) }}

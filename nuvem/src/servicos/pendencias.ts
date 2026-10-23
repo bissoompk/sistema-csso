@@ -12,6 +12,7 @@ import {
   agora_utc,
   certificado,
   demanda,
+  epi_comunicacao_titular,
   epi_ficha_registro,
   epi_requisicao,
   epi_requisicao_item,
@@ -56,6 +57,9 @@ export const TIPOS: Record<string, readonly [string, number]> = {
   // os dois avisos do REQUERENTE (fatia do servidor comum)
   EPI_DECISAO_A_LER: ["Ler a decisão do seu pedido de EPI", 15],
   EPI_RETIRADA_DISPONIVEL: ["Retirar o EPI reservado para você", 15],
+  // 0015 (paridade com o IntegraSST): o titular comunicou extravio ou pediu
+  // troca do EPI que está com ele; nasce sem responsável (é do almoxarifado)
+  EPI_COMUNICACAO_A_TRATAR: ["Tratar a comunicação do titular sobre o EPI", 10],
   // a demanda com prazo: sem prazo não abre pendência nenhuma
   DEMANDA_COM_PRAZO: ["Demanda com prazo a cumprir", 15],
   // o aviso de QUEM DEMANDOU, quando a equipe encerra (só se ele tem conta)
@@ -106,6 +110,7 @@ export const PERMISSAO_CONCLUIR_POR_TIPO: Readonly<Record<string, string>> = Obj
   EPI_SEM_ESTOQUE: "epi.entregar",
   EPI_DECISAO_A_LER: "epi.entregar",
   EPI_RETIRADA_DISPONIVEL: "epi.entregar",
+  EPI_COMUNICACAO_A_TRATAR: "epi.entregar",
   DEMANDA_COM_PRAZO: "demanda.registrar",
   DEMANDA_DESFECHO_A_LER: "demanda.registrar",
   // confirmar a inscrição é `turma.inscrever` (é o botão da aba de inscrições);
@@ -333,11 +338,22 @@ export function ve_a_fila_do_setor(usuario: UsuarioAtual): boolean {
 
 // As âncoras de EPI, onde `epi.ficha` é nominal na própria definição; fora
 // delas a família nominal é a das telas que não são de EPI (D15).
-const _ENTIDADES_DE_EPI: readonly string[] = ["epi_requisicao", "epi_requisicao_item", "epi_ficha_registro"];
+const _ENTIDADES_DE_EPI: readonly string[] = [
+  "epi_requisicao",
+  "epi_requisicao_item",
+  "epi_ficha_registro",
+  "epi_comunicacao_titular",
+];
 
 // A âncora que sabe dizer DE QUEM é a tarefa. Entidade nova entra aqui quando
 // tiver como responder a pergunta — chave ausente cai no lado seguro (`null`).
-const _TITULAR_POR_ENTIDADE: readonly string[] = ["epi_requisicao", "epi_requisicao_item", "epi_ficha_registro", "demanda"];
+const _TITULAR_POR_ENTIDADE: readonly string[] = [
+  "epi_requisicao",
+  "epi_requisicao_item",
+  "epi_ficha_registro",
+  "epi_comunicacao_titular",
+  "demanda",
+];
 
 /**
  * `{pendencia.id: servidor_id}` — a outra metade do M-1, do lado da leitura.
@@ -372,6 +388,11 @@ export async function titular_de(tx: Executor, itens: Pendencia[]): Promise<Map<
         .select({ id: demanda.id, servidor_id: demanda.solicitante_servidor_id })
         .from(demanda)
         .where(inArray(demanda.id, ids));
+    } else if (entidade === "epi_comunicacao_titular") {
+      linhas = await tx
+        .select({ id: epi_comunicacao_titular.id, servidor_id: epi_comunicacao_titular.servidor_id })
+        .from(epi_comunicacao_titular)
+        .where(inArray(epi_comunicacao_titular.id, ids));
     } else if (entidade === "epi_requisicao") {
       linhas = await tx
         .select({ id: epi_requisicao.id, servidor_id: epi_requisicao.servidor_id })
@@ -415,6 +436,9 @@ const _LUGAR_DA_ENTIDADE: Readonly<Record<string, readonly [string, string, stri
   epi_entrada_estoque: ["Estoque de EPI — lote nº", "/epis/estoque/", "/movimentos", "epi.ver"],
   epi_requisicao: ["Pedido de EPI nº", "/epis/requisicoes/", "", "epi.ver"],
   epi_requisicao_item: ["Item do pedido de EPI nº", "", "", null],
+  // a comunicação do titular (fatia A) não tem tela própria: a rota leva à
+  // ficha, onde ela aparece na linha da entrega
+  epi_comunicacao_titular: ["Comunicação do titular sobre EPI nº", "/epis/comunicacoes/", "", "epi.ficha"],
   demanda: ["Demanda nº", "/demandas/", "", "demanda.ver"],
   // a tarefa é sobre uma INSCRIÇÃO e a âncora é a TURMA: a inscrição não tem
   // tela própria, e o botão de confirmar mora na aba de inscrições

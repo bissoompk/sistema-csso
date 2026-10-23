@@ -47,6 +47,8 @@ function pedir(cliente: Cliente, servidor_id: number | string, cen: Cenario | nu
       quantidade: cen ? "1" : "",
       tamanho: cen ? "M" : "",
       justificativa: "",
+      motivo: cen ? "DESGASTE" : "",
+      termo_aceito: "1",
       acao,
       ...extra,
     },
@@ -407,7 +409,7 @@ describe("D20 / M26 — o painel e a fila de falta no escopo de quem lê", () =>
       const numero = 900 + servidor_id;
       const [r] = await amb.db
         .insert(e.epi_requisicao)
-        .values({ servidor_id, solicitado_por_id: conta!.id, estado: "ANALISADA", ano: 2026, numero, protocolo: `EPI-2026-${numero}` })
+        .values({ servidor_id, solicitado_por_id: conta!.id, estado: "ANALISADA", ano: 2026, numero, protocolo: `EPI-2026-${numero}`, termo_exigido: false })
         .returning();
       await amb.db
         .insert(e.epi_requisicao_item)

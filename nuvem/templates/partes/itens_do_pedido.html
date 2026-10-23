@@ -80,6 +80,21 @@
       <div class="aviso aviso-erro" role="alert">{{ recusa }}</div>
     </div>
     {% endif %}
+    {% if pode_estocar and separaveis|default(0) > 0 %}
+    {# "Separar todos": reserva num ato cada item aprovado (ou sem estoque) que
+       tem lote com disponível — o lote que vence primeiro, com o CA do LOTE
+       válido e o tamanho do pedido. O que não couber fica como está e sai no
+       recado com o motivo. POST com recarga, e não troca parcial: a primeira
+       reserva move o envelope para "em atendimento", que mora fora desta
+       seção. Reservar item a item, nas ações de cada linha, continua valendo. #}
+    <div class="corpo">
+      <form method="post" action="/epis/requisicoes/{{ requisicao.id }}/separar-todos" class="acoes">
+        <button type="submit">Separar todos</button>
+        <span class="dica">{{ separaveis }} item(ns) com lote disponível. Cada um
+          é reservado no lote que vence primeiro; o que faltar fica como está.</span>
+      </form>
+    </div>
+    {% endif %}
     {# `empilhavel`: abaixo de 600px cada item vira um cartão (eram 847px de
        tabela numa tela de 390). O equipamento, sem `data-coluna`, é o título;
        o botão das ações vai em `acao-linha`, embaixo. #}
@@ -105,8 +120,25 @@
           {% if i.item.modelo %}<span class="discreto"> · {{ i.item.modelo }}</span>{% endif %}
           <span class="quebra discreto">{{ i.item.categoria.nome }} ·
             CA {{ i.item.numero_ca or '—' }}</span>
+          {# fatia B: o motivo da linha — primeira entrega ou troca, e por quê #}
+          {% if i.motivo %}
+          <span class="quebra">Motivo: {{ rotulo_motivo_item.get(i.motivo, i.motivo) }}</span>{% endif %}
           {% if i.justificativa %}
           <span class="quebra discreto texto-literal">{{ i.justificativa }}</span>{% endif %}
+          {# FATIA E: o treinamento que o catálogo exige, conferido em quem
+             recebe. Só "tem ou não tem certificado em vigor" — número, data,
+             nota e turma do certificado não chegam a esta tela. `treinamentos`
+             só vem preenchido para quem analisa ou entrega. #}
+          {% set treino = treinamentos.get(i.id) %}
+          {% if treino and treino.codigo == 'SEM_TREINAMENTO' %}
+          <span class="quebra"><span class="pilula erro">sem treinamento em vigor</span>
+            <span class="discreto">falta: {% for t in treino.faltam %}{{ t.nome }}{% if not loop.last %}, {% endif %}{% endfor %}</span></span>
+          {% elif treino and treino.codigo == 'EM_VIGOR' %}
+          <span class="quebra"><span class="pilula ok">treinamento em vigor</span></span>
+          {% elif treino and treino.codigo == 'SEM_VINCULO' %}
+          <span class="quebra"><span class="pilula alerta">exige treinamento</span>
+            <span class="discreto">o catálogo não diz qual — confira</span></span>
+          {% endif %}
           {% if i.excedeu_maximo %}
           <span class="quebra"><span class="pilula erro"
             title="exceção ao máximo autorizada por {{ nomes.get(i.autorizado_por, 'quem decidiu') }}">
@@ -209,6 +241,16 @@
                   </div>
                 </div>
                 <div class="campo">
+                  <label for="m-{{ i.id }}">Motivo do item</label>
+                  {% set motivo_atual = dl.get('motivo') or i.motivo %}
+                  <select id="m-{{ i.id }}" name="motivo" required>
+                    <option value="">—</option>
+                    {% for codigo, rotulo in motivos_item %}
+                    <option value="{{ codigo }}"{{ ' selected' if motivo_atual == codigo }}>{{ rotulo }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="campo">
                   <label for="j-{{ i.id }}">Justificativa
                     {%- if i.item.exige_justificativa %}
                     <span class="pilula alerta">obrigatória para este item</span>{% endif %}</label>
@@ -281,6 +323,11 @@
                 <p class="discreto">A negativa sai <strong>congelada</strong>: o
                   texto do motivo é copiado para a linha no ato, e editar o
                   catálogo depois não reescreve o que a pessoa recebeu.</p>
+                {% if treino and treino.codigo == 'SEM_TREINAMENTO' %}
+                <p class="dica">Quem recebe não tem treinamento em vigor para este
+                  item: aprovar continua possível (a entrega pede a confirmação),
+                  e recusar sai pelo motivo “Treinamento não comprovado”.</p>
+                {% endif %}
                 {{ ui.seletor_de_motivo('rec-' ~ i.id, 'motivo_id', motivos) }}
                 <div class="acoes">
                   <button type="submit" class="perigo-discreto compacto">Recusar item</button>
@@ -497,6 +544,23 @@
                   <span class="dica" id="dica-obs-{{ i.id }}">Sai impressa no
                     comprovante. Nada sobre a saúde de quem recebe.</span>
                 </div>
+                {# FATIA E (Decisão 2): avisa e não bloqueia — negar o EPI
+                   deixaria a pessoa exposta. Sem a caixa marcada a entrega
+                   volta com o aviso; marcada, a confirmação vai para a trilha
+                   e para a linha da ficha, com o seu nome. #}
+                {% if treino and treino.codigo == 'SEM_TREINAMENTO' %}
+                <div class="aviso aviso-alerta">
+                  <strong>Quem recebe não tem treinamento em vigor</strong> de
+                  {% for t in treino.faltam %}{{ t.nome }}{% if not loop.last %}, {% endif %}{% endfor %}.
+                  <label class="confirmacao-treinamento" for="sem-trein-{{ i.id }}">
+                    <input id="sem-trein-{{ i.id }}" type="checkbox" name="confirmar_sem_treinamento" value="1">
+                    Entrego mesmo sem treinamento em vigor</label>
+                  <span class="dica">A confirmação fica registrada com o seu nome.</span>
+                </div>
+                {% elif treino and treino.codigo == 'SEM_VINCULO' %}
+                <p class="dica"><span class="pilula alerta">exige treinamento</span>
+                  O catálogo não diz qual treinamento: confira antes de entregar.</p>
+                {% endif %}
                 <div class="acoes">
                   {% set travado = (reserva and reservas_impedidas.get(i.id)) or
                                    (not reserva and not disponiveis|length and candidatos|length) %}

@@ -131,6 +131,37 @@
   {{ ui.primeiros_passos('Primeiros passos na gestão de EPI', primeiros_passos) }}
   {% endif %}
 
+  {# Fatia G (o selo de pendentes do IntegraSST, sem ir para o menu — recusado em
+     DESVIOS, 22/10): o que espera a pessoa que abre a tela. Cada cartão só para
+     quem faz o ato (`epi.analisar`, `epi.entregar`), só número (RN-19) e com o
+     link para a lista que tem esse número. #}
+  {% if a_tratar.a_analisar or a_tratar.comunicacoes %}
+  <div class="grade-resumo">
+    {% if a_tratar.a_analisar %}
+    {% set aa = a_tratar.a_analisar %}
+    <section class="cartao-resumo {{ 'atencao' if aa.total }}">
+      <span class="rotulo">Pedidos a analisar</span>
+      <span class="valor">{{ aa.total }}</span>
+      <span class="detalhe">
+        {%- if aa.total -%}
+        <a href="/epis/requisicoes?estado=ENVIADA">{{ aa.enviadas }} {{ 'enviado' if aa.enviadas == 1 else 'enviados' }}</a>
+        · <a href="/epis/requisicoes?estado=EM_ANALISE">{{ aa.em_analise }} em análise</a>
+        {%- else -%}Nenhum pedido esperando decisão.{%- endif -%}</span>
+      {% if aa.total %}<a class="acao" href="{{ aa.link }}">{{ ui.icone('arrow-right') }}Abrir a fila</a>{% endif %}
+    </section>
+    {% endif %}
+    {% if a_tratar.comunicacoes %}
+    {% set cm = a_tratar.comunicacoes %}
+    <section class="cartao-resumo {{ 'atencao' if cm.total }}">
+      <span class="rotulo">Comunicações do titular a tratar</span>
+      <span class="valor">{{ cm.total }}</span>
+      <span class="detalhe">{{ 'extravio ou pedido de troca esperando o almoxarifado' if cm.total else 'Nenhuma comunicação aberta.' }}</span>
+      {% if cm.total %}<a class="acao" href="{{ cm.link }}">{{ ui.icone('arrow-right') }}Ver onde tratar</a>{% endif %}
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="grade grade-kpi">
     <div class="kpi">
       <div class="rotulo">Requisições em trâmite</div>

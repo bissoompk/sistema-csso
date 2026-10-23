@@ -7,6 +7,37 @@
 {% endblock %}
 
 {% block conteudo %}
+{# Fatia G — o que espera a equipe de EPI (o selo de pendentes do IntegraSST).
+   NÃO vai para o menu (recusado em DESVIOS, 22/10): fica aqui, na tela de
+   entrada, e só quando há o que fazer — zero não ocupa a tela de ninguém. Só
+   número (RN-19); quem é a pessoa a fila diz, pela regra dela. `epi.a_analisar`
+   e `epi.comunicacoes` são `null` para quem não tem `epi.analisar` /
+   `epi.entregar`. #}
+{% macro avisos_epi(epi) %}
+{% set aa = epi.a_analisar if epi and epi.a_analisar and epi.a_analisar.total else none %}
+{% set cm = epi.comunicacoes if epi and epi.comunicacoes and epi.comunicacoes.total else none %}
+{% if aa or cm %}
+<div class="grade-resumo">
+  {% if aa %}
+  <section class="cartao-resumo atencao">
+    <span class="rotulo">EPI · pedidos a analisar</span>
+    <span class="valor">{{ aa.total }}</span>
+    <span class="detalhe">{{ aa.enviadas }} {{ 'enviado' if aa.enviadas == 1 else 'enviados' }} ·
+      {{ aa.em_analise }} em análise</span>
+    <a class="acao" href="{{ aa.link }}">{{ ui.icone('arrow-right') }}Abrir a fila</a>
+  </section>
+  {% endif %}
+  {% if cm %}
+  <section class="cartao-resumo atencao">
+    <span class="rotulo">EPI · comunicações do titular</span>
+    <span class="valor">{{ cm.total }}</span>
+    <span class="detalhe">extravio ou pedido de troca esperando o almoxarifado</span>
+    <a class="acao" href="{{ cm.link }}">{{ ui.icone('arrow-right') }}Ver onde tratar</a>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
 {% if inicio_do_servidor %}
 {# ===================================================================
    INÍCIO DO SERVIDOR — o painel de quem só alcança o próprio dado
@@ -25,6 +56,8 @@
       <p class="sub">O que é seu no sistema: adicional, processos, treinamentos e EPI.</p>
     </div>
   </div>
+
+  {{ avisos_epi(epi) }}
 
   {% if not tem_servidor %}
   <div class="aviso aviso-alerta">Esta conta não está vinculada a um cadastro de
@@ -142,6 +175,8 @@
         <span class="nota">IN 15/2022,<br>art. 10, §2º, I</span></div>
     </div>
   </div>
+
+  {{ avisos_epi(epi) }}
 
   <div class="lado-a-lado principal">
     <div class="pilha">

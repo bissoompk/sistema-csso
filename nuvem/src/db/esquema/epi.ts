@@ -36,6 +36,9 @@ import {
 
 import {
   FINALIDADES_REQUISICAO,
+  MOTIVOS_FICHA,
+  MOTIVOS_ITEM_REQUISICAO,
+  TIPOS_COMUNICACAO_TITULAR,
   TIPOS_FICHA,
   TIPOS_MOVIMENTO,
   UNIDADES_MEDIDA,
@@ -46,8 +49,18 @@ import { anexo, historico_evento } from './auditoria';
 import { DataPura, JSONTexto, MomentoUTC, agora_utc, lista_sql } from './base';
 import { campus, posto_trabalho, servidor, unidade_uorg } from './organizacao';
 import { usuario } from './seguranca';
+import { treinamento } from './treinamento';
 
-export { FINALIDADES_REQUISICAO, TIPOS_FICHA, TIPOS_MOVIMENTO, UNIDADES_MEDIDA, URGENCIAS_REQUISICAO };
+export {
+  FINALIDADES_REQUISICAO,
+  MOTIVOS_FICHA,
+  MOTIVOS_ITEM_REQUISICAO,
+  TIPOS_COMUNICACAO_TITULAR,
+  TIPOS_FICHA,
+  TIPOS_MOVIMENTO,
+  UNIDADES_MEDIDA,
+  URGENCIAS_REQUISICAO,
+};
 
 /**
  * A taxonomia do Anexo I da NR-6, semeada. No legado `Categoria` era texto livre
@@ -141,6 +154,12 @@ export const epi_item = pgTable(
     exige_treinamento: boolean('exige_treinamento').notNull().default(false),
     ativo: boolean('ativo').notNull().default(true),
 
+    // Fatia C (0015): a foto e o PDF de orientação VIGENTES. Anexo nunca se
+    // substitui: trocar a foto é apontar para um anexo novo, e a ficha guarda o
+    // PDF que valia na data da entrega (`epi_ficha_registro.orientacao_anexo_id`).
+    imagem_anexo_id: integer('imagem_anexo_id'),
+    orientacao_anexo_id: integer('orientacao_anexo_id'),
+
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
     atualizado_em: MomentoUTC('atualizado_em')
       .notNull()
@@ -152,6 +171,16 @@ export const epi_item = pgTable(
       name: 'fk_epi_item_categoria',
       columns: [t.categoria_id],
       foreignColumns: [epi_categoria.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_item_imagem',
+      columns: [t.imagem_anexo_id],
+      foreignColumns: [anexo.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_item_orientacao',
+      columns: [t.orientacao_anexo_id],
+      foreignColumns: [anexo.id],
     }),
     check('ck_epi_qtd_padrao', sql.raw(`quantidade_padrao > 0`)),
     check(
@@ -241,7 +270,7 @@ export const epi_entrada_estoque = pgTable(
  * A ficha de EPI: o coracao juridico do modulo.
  *
  * Append-only — o banco recusa `DELETE` e `TRUNCATE`, e o `UPDATE` so passa se
- * nao tocar nenhuma das 26 colunas congeladas e se as tres completaveis forem de
+ * nao tocar nenhuma das 28 colunas congeladas e se as tres completaveis forem de
  * nulo para valor, uma unica vez (`src/db/travas.sql`, `src/db/travas.ts`).
  * Correcao NUNCA e rasura: e linha nova de tipo `ESTORNO` apontando para a
  * errada, com motivo.
@@ -290,6 +319,12 @@ export const epi_ficha_registro = pgTable(
     comprovante_anexo_id: integer('comprovante_anexo_id'),
     recebimento_confirmado_em: MomentoUTC('recebimento_confirmado_em'),
     motivo: text('motivo'),
+    // Fatia A (0015): o motivo CODIFICADO (`MOTIVOS_FICHA`), ao lado do texto.
+    // Congelado na trava (`travas.sql`).
+    motivo_codigo: varchar('motivo_codigo', { length: 24 }),
+    // Fatia C (0015, Decisão 4): o PDF de orientação que valia NA ENTREGA.
+    // Congelado na trava: o catálogo de amanhã não troca o que a pessoa recebeu.
+    orientacao_anexo_id: integer('orientacao_anexo_id'),
 
     registro_estornado_id: integer('registro_estornado_id'),
     // o evento da cadeia de hash que registrou esta linha: a prova fica a um
@@ -321,6 +356,11 @@ export const epi_ficha_registro = pgTable(
       foreignColumns: [anexo.id],
     }),
     foreignKey({
+      name: 'fk_epi_ficha_orientacao',
+      columns: [t.orientacao_anexo_id],
+      foreignColumns: [anexo.id],
+    }),
+    foreignKey({
       name: 'fk_epi_ficha_estornado',
       columns: [t.registro_estornado_id],
       foreignColumns: [t.id],
@@ -332,6 +372,10 @@ export const epi_ficha_registro = pgTable(
     }),
     check('ck_ficha_tipo', sql.raw(`tipo IN (${lista_sql(TIPOS_FICHA)})`)),
     check('ck_ficha_quantidade', sql.raw(`quantidade > 0`)),
+    check(
+      'ck_ficha_motivo_codigo',
+      sql.raw(`motivo_codigo IS NULL OR motivo_codigo IN (${lista_sql(MOTIVOS_FICHA)})`),
+    ),
     check(
       'ck_ficha_estorno',
       sql.raw(`tipo <> 'ESTORNO' OR (registro_estornado_id IS NOT NULL AND motivo IS NOT NULL)`),
@@ -474,6 +518,16 @@ export const epi_requisicao = pgTable(
     enviada_em: MomentoUTC('enviada_em'),
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
     versao: integer('versao').notNull().default(1),
+
+    // Fatia B (0015, Decisão 3): o termo NR-06 declarado por QUEM ENVIA — a
+    // conta, o instante e a versão do texto (`dominio/epi.ts`, TERMOS_NR06).
+    // `termo_exigido` é falso só nos pedidos enviados antes da 0015, que não
+    // tinham termo: a CHECK vale para todo pedido novo sem afirmar o que não
+    // aconteceu nos antigos.
+    termo_exigido: boolean('termo_exigido').notNull().default(true),
+    termo_aceito_em: MomentoUTC('termo_aceito_em'),
+    termo_aceito_por: integer('termo_aceito_por'),
+    termo_versao: varchar('termo_versao', { length: 20 }),
   },
   (t) => [
     foreignKey({ name: 'fk_epi_req_servidor', columns: [t.servidor_id], foreignColumns: [servidor.id] }),
@@ -508,6 +562,11 @@ export const epi_requisicao = pgTable(
       columns: [t.motivo_recusa_id],
       foreignColumns: [epi_motivo_recusa.id],
     }),
+    foreignKey({
+      name: 'fk_epi_req_termo_por',
+      columns: [t.termo_aceito_por],
+      foreignColumns: [usuario.id],
+    }),
     check('ck_req_estado', sql.raw(`estado IN (${lista_sql(ESTADOS_EPI_REQUISICAO)})`)),
     check('ck_req_urgencia', sql.raw(`urgencia IN (${lista_sql(URGENCIAS_REQUISICAO)})`)),
     check(
@@ -524,6 +583,19 @@ export const epi_requisicao = pgTable(
     ),
     check('ck_req_indeferida', sql.raw(`estado <> 'INDEFERIDA' OR motivo_recusa_id IS NOT NULL`)),
     check('ck_req_cancelada', sql.raw(`estado <> 'CANCELADA' OR motivo_cancelamento IS NOT NULL`)),
+    // o aceite é um fato só: conta, instante e versão andam juntos
+    check(
+      'ck_req_termo_inteiro',
+      sql.raw(
+        `(termo_aceito_em IS NULL) = (termo_aceito_por IS NULL) ` +
+          `AND (termo_aceito_em IS NULL) = (termo_versao IS NULL)`,
+      ),
+    ),
+    // pedido novo não sai do rascunho sem o termo
+    check(
+      'ck_req_termo',
+      sql.raw(`NOT termo_exigido OR estado = 'RASCUNHO' OR termo_aceito_em IS NOT NULL`),
+    ),
     primaryKey({ name: 'pk_epi_requisicao', columns: [t.id] }),
     unique('uq_req_protocolo').on(t.protocolo),
     unique('uq_req_numero').on(t.ano, t.numero),
@@ -554,6 +626,10 @@ export const epi_requisicao_item = pgTable(
     entrada_id: integer('entrada_id'),
 
     justificativa: text('justificativa'),
+    // Fatia B (0015): o motivo DESTE item (`MOTIVOS_ITEM_REQUISICAO`). Os itens
+    // anteriores à 0015 foram preenchidos pela finalidade do pedido; o serviço
+    // recusa item novo sem motivo.
+    motivo: varchar('motivo', { length: 16 }),
     // excedeu quantidade_maxima e alguem autorizou assumindo o nome (RN-26).
     excedeu_maximo: boolean('excedeu_maximo').notNull().default(false),
     autorizado_por: integer('autorizado_por'),
@@ -598,6 +674,10 @@ export const epi_requisicao_item = pgTable(
     // SQLite, entao a semantica desta UNIQUE nao mudou no porte.
     unique('uq_req_item').on(t.requisicao_id, t.epi_item_id, t.tamanho),
     check('ck_req_item_estado', sql.raw(`estado IN (${lista_sql(ESTADOS_EPI_ITEM)})`)),
+    check(
+      'ck_req_item_motivo',
+      sql.raw(`motivo IS NULL OR motivo IN (${lista_sql(MOTIVOS_ITEM_REQUISICAO)})`),
+    ),
     check('ck_item_solicitada', sql.raw(`quantidade_solicitada > 0`)),
     // aprovar so reduz: aprovar MAIS do que se pediu seria o setor decidindo
     // sozinho o que a pessoa vai receber
@@ -632,5 +712,117 @@ export const epi_requisicao_item = pgTable(
     index('ix_req_item_estado').on(t.estado),
     index('ix_req_item_reserva').on(t.entrada_id, t.estado),
     index('ix_req_item_motivo').on(t.motivo_recusa_id),
+  ],
+);
+
+/**
+ * Fatia A (0015) — o que o TITULAR comunica sobre um EPI que está com ele:
+ * extravio, ou troca por um dos quatro motivos do legado
+ * (`L:EPI_Frontend.html:976-1005`).
+ *
+ * A comunicação NÃO é a devolução: não volta saldo ao estoque e não escreve na
+ * ficha (que é prova, e append-only). Ela abre a pendência
+ * `EPI_COMUNICACAO_A_TRATAR` para o almoxarifado e pode virar pedido de troca.
+ *
+ * Nada se apaga: o titular RETIRA a comunicação (até 24 h depois, conferido no
+ * servidor — `JANELA_RETIRADA_COMUNICACAO_HORAS`), e a equipe a TRATA; as duas
+ * coisas são colunas que se preenchem, e a linha fica. O banco recusa DELETE
+ * (`travas.sql`).
+ */
+export const epi_comunicacao_titular = pgTable(
+  'epi_comunicacao_titular',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    registro_id: bigint('registro_id', { mode: 'number' }).notNull(),
+    servidor_id: integer('servidor_id').notNull(),
+    tipo: varchar('tipo', { length: 24 }).notNull(),
+    observacao: text('observacao'),
+    criado_por: integer('criado_por').notNull(),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+    retirada_em: MomentoUTC('retirada_em'),
+    retirada_por: integer('retirada_por'),
+    tratada_em: MomentoUTC('tratada_em'),
+    tratada_por: integer('tratada_por'),
+    // o que a equipe fez (texto curto, sem dado de saúde)
+    tratamento: text('tratamento'),
+    // o pedido de troca aberto a partir da comunicação, se houver
+    requisicao_id: integer('requisicao_id'),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_epi_comunicacao_titular', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_epi_comunicacao_registro',
+      columns: [t.registro_id],
+      foreignColumns: [epi_ficha_registro.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_comunicacao_servidor',
+      columns: [t.servidor_id],
+      foreignColumns: [servidor.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_comunicacao_criado_por',
+      columns: [t.criado_por],
+      foreignColumns: [usuario.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_comunicacao_retirada_por',
+      columns: [t.retirada_por],
+      foreignColumns: [usuario.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_comunicacao_tratada_por',
+      columns: [t.tratada_por],
+      foreignColumns: [usuario.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_comunicacao_requisicao',
+      columns: [t.requisicao_id],
+      foreignColumns: [epi_requisicao.id],
+    }),
+    check('ck_comunicacao_tipo', sql.raw(`tipo IN (${lista_sql(TIPOS_COMUNICACAO_TITULAR)})`)),
+    check('ck_comunicacao_retirada', sql.raw(`(retirada_em IS NULL) = (retirada_por IS NULL)`)),
+    check('ck_comunicacao_tratada', sql.raw(`(tratada_em IS NULL) = (tratada_por IS NULL)`)),
+    // retirada e tratada são desfechos que se excluem
+    check('ck_comunicacao_desfecho', sql.raw(`retirada_em IS NULL OR tratada_em IS NULL`)),
+    index('ix_comunicacao_registro').on(t.registro_id),
+    index('ix_comunicacao_servidor').on(t.servidor_id),
+    // a fila da equipe: as abertas
+    index('ix_comunicacao_aberta').on(t.tratada_em, t.retirada_em),
+  ],
+);
+
+/**
+ * Fatia E (0015) — o treinamento que o EPI exige (`epi_item.exige_treinamento`).
+ * O vínculo é com o catálogo de Certificados; a equipe de EPI vê só "tem ou não
+ * certificado em vigor", nunca o certificado. Não bloqueia a entrega
+ * (Decisão 2): avisa e pede confirmação, que fica na trilha.
+ */
+export const epi_item_treinamento = pgTable(
+  'epi_item_treinamento',
+  {
+    epi_item_id: integer('epi_item_id').notNull(),
+    treinamento_id: integer('treinamento_id').notNull(),
+    vinculado_por: integer('vinculado_por'),
+    vinculado_em: MomentoUTC('vinculado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_epi_item_treinamento', columns: [t.epi_item_id, t.treinamento_id] }),
+    foreignKey({
+      name: 'fk_epi_item_trein_item',
+      columns: [t.epi_item_id],
+      foreignColumns: [epi_item.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'fk_epi_item_trein_treinamento',
+      columns: [t.treinamento_id],
+      foreignColumns: [treinamento.id],
+    }),
+    foreignKey({
+      name: 'fk_epi_item_trein_por',
+      columns: [t.vinculado_por],
+      foreignColumns: [usuario.id],
+    }),
+    index('ix_epi_item_trein_treinamento').on(t.treinamento_id),
   ],
 );

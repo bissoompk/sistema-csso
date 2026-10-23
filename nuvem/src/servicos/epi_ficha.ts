@@ -26,6 +26,7 @@ import {
   epi_categoria,
   epi_ficha_registro,
   epi_entrada_estoque,
+  epi_item as tabela_epi_item,
   historico_evento,
   pendencia as tabela_pendencia,
   servidor as tabela_servidor,
@@ -39,13 +40,14 @@ import * as auditoria from "./auditoria.js";
 import * as comprovante_epi from "./comprovante_epi.js";
 import { ContextoComprovante } from "./comprovante_epi.js";
 import * as epi_estoque from "./epi_estoque.js";
+import * as epi_treinamento from "./epi_treinamento.js";
 import * as pendencias from "./pendencias.js";
 import * as textos from "./textos.js";
 import { setor_emissor_vigente } from "./parecer.js";
 import { declarar_porta } from "./anexo_acesso.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { PermissaoNegada, RegraViolada } from "../nucleo/erros.js";
-import { EpiItem as DominioItem } from "../dominio/epi.js";
+import { EpiItem as DominioItem, MOTIVOS_FICHA } from "../dominio/epi.js";
 import type { epi_item, epi_motivo_recusa } from "../db/esquema/index.js";
 
 export type EpiFichaRegistro = typeof epi_ficha_registro.$inferSelect;
@@ -88,6 +90,8 @@ export class Validacao {
   bloqueios: string[] = [];
   avisos: string[] = [];
   item_a_corrigir: number | null = null;
+  /** fatia E: o treinamento que o item exige, conferido em quem recebe */
+  treinamento: epi_treinamento.SituacaoTreinamento = epi_treinamento.SEM_EXIGENCIA;
   get ok(): boolean {
     return this.bloqueios.length === 0;
   }
@@ -169,10 +173,26 @@ export class LinhaDaFicha {
     public comprovante: Anexo | null,
     public estornado_por: EpiFichaRegistro | null,
     public estorna: EpiFichaRegistro | null,
+    /** quanto desta entrega já voltou por devolução (0 nas outras linhas) */
+    public devolvido: number = 0,
   ) {}
+
+  /**
+   * A entrega que ainda está com o titular: não estornada e não devolvida por
+   * inteiro. É a linha sobre a qual ele pode comunicar (fatia A).
+   */
+  get vigente(): boolean {
+    return this.registro.tipo === "ENTREGA" && !this.estornado && this.devolvido < this.registro.quantidade;
+  }
 
   get estornado(): boolean {
     return this.estornado_por !== null;
+  }
+
+  /** Fatia E: a entrega saiu sem treinamento em vigor, com confirmação gravada no congelado. */
+  get sem_treinamento_confirmado(): boolean {
+    const congelado = (this.registro.contexto_congelado ?? {}) as Record<string, unknown>;
+    return this.registro.tipo === "ENTREGA" && Boolean(congelado["sem_treinamento_confirmado"]);
   }
 
   /** O nome de quem entregou, como estava no dia — vem do congelado. */
@@ -216,6 +236,13 @@ export async function linha_do_tempo(tx: Executor, servidor_id: number): Promise
   for (const r of registros) {
     if (r.tipo === "ESTORNO" && r.registro_estornado_id !== null) estorno_de.set(r.registro_estornado_id, r);
   }
+  // a devolução aponta para a entrega no congelado (ver `devolucoes_de`)
+  const devolvido = new Map<number, number>();
+  for (const r of registros) {
+    if (r.tipo !== "DEVOLUCAO") continue;
+    const alvo = ((r.contexto_congelado ?? {}) as Record<string, unknown>)["registro_devolvido"];
+    if (typeof alvo === "number") devolvido.set(alvo, (devolvido.get(alvo) ?? 0) + r.quantidade);
+  }
   const anexos_por_id = await _comprovantes_de(
     tx,
     registros.map((r) => r.id),
@@ -227,6 +254,7 @@ export async function linha_do_tempo(tx: Executor, servidor_id: number): Promise
         (r.comprovante_anexo_id !== null ? anexos_por_id.get(r.comprovante_anexo_id) : undefined) ?? null,
         estorno_de.get(r.id) ?? null,
         por_id.get(r.registro_estornado_id ?? -1) ?? null,
+        devolvido.get(r.id) ?? 0,
       ),
   );
 }
@@ -517,7 +545,16 @@ export const VERSAO_FORMA_CANONICA = 2;
 export function forma_canonica(registro: EpiFichaRegistro, versao: number = VERSAO_FORMA_CANONICA): Record<string, unknown> {
   const v1 = forma_canonica_v1(registro);
   if (versao === 1) return v1;
-  return { ...v1, forma: 2, requisicao_item: registro.requisicao_item_id };
+  // o motivo CODIFICADO (fatia A, 0015) entra só quando existe: as linhas v2
+  // gravadas antes dele continuam conferindo sem a chave
+  return {
+    ...v1,
+    forma: 2,
+    requisicao_item: registro.requisicao_item_id,
+    ...(registro.motivo_codigo != null ? { motivo_codigo: registro.motivo_codigo } : {}),
+    // o PDF de orientação congelado (fatia C, 0015): idem, só quando existe
+    ...(registro.orientacao_anexo_id != null ? { orientacao_anexo_id: registro.orientacao_anexo_id } : {}),
+  };
 }
 
 /** A forma das linhas gravadas antes da v2 — só para conferir o que já existe. */
@@ -555,6 +592,8 @@ export interface DadosValidacao {
   quantidade: number;
   quando: string;
   justificativa_excecao?: string;
+  /** fatia E (Decisão 2): "Entrego mesmo sem treinamento em vigor", marcado */
+  confirmar_sem_treinamento?: boolean;
 }
 
 /**
@@ -637,6 +676,30 @@ export async function validar(tx: Executor, d: DadosValidacao): Promise<Validaca
         );
       }
     }
+  }
+
+  // Fatia E (Decisão 2): treinamento exigido sem certificado em vigor AVISA e
+  // pede a confirmação marcada — não bloqueia, porque negar o EPI deixaria a
+  // pessoa exposta. Daqui só sai "tem ou não tem"; o certificado não aparece.
+  v.treinamento = await epi_treinamento.situacao_de_treinamento(tx, servidor.id, item, quando);
+  if (v.treinamento.codigo === "SEM_TREINAMENTO") {
+    const recado =
+      `'${item.nome}' exige treinamento (${epi_treinamento.nomes(v.treinamento.exigidos)}) e quem recebe ` +
+      `não tem certificado em vigor de ${epi_treinamento.nomes(v.treinamento.faltam)}`;
+    if (d.confirmar_sem_treinamento) {
+      v.avisos.push(`${recado} — entrega confirmada assim mesmo, e a confirmação fica registrada com o seu nome`);
+    } else {
+      v.bloqueios.push(
+        `${recado}. Para entregar assim mesmo, marque “Entrego mesmo sem treinamento em vigor”: ` +
+          "a confirmação fica registrada com o seu nome. Para não entregar, recuse pelo motivo " +
+          "“Treinamento não comprovado”",
+      );
+    }
+  } else if (v.treinamento.codigo === "SEM_VINCULO") {
+    v.avisos.push(
+      `'${item.nome}' exige treinamento, mas o catálogo não diz qual: o sistema não tem o que conferir. ` +
+        "Confira antes de entregar e vincule o treinamento no catálogo de EPI",
+    );
   }
   return v;
 }
@@ -784,6 +847,8 @@ export interface DadosEntrega {
   justificativa_excecao?: string;
   tipo?: string;
   requisicao_item_id?: number | null;
+  /** fatia E (Decisão 2): a confirmação marcada de entrega sem treinamento em vigor */
+  confirmar_sem_treinamento?: boolean;
 }
 
 /** As colunas de snapshot, copiadas do MESMO contexto que vai ao congelado. */
@@ -852,7 +917,15 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
     throw new EntregaBloqueada([`'${tamanho}' não é um dos tamanhos de '${item.nome}': ${tamanhos.join(", ")}`]);
   }
 
-  const validacao = await validar(tx, { servidor, item, entrada, quantidade, quando, justificativa_excecao });
+  const validacao = await validar(tx, {
+    servidor,
+    item,
+    entrada,
+    quantidade,
+    quando,
+    justificativa_excecao,
+    confirmar_sem_treinamento: d.confirmar_sem_treinamento ?? false,
+  });
   if (!validacao.ok) throw new EntregaBloqueada(validacao.bloqueios, validacao.item_a_corrigir);
 
   const motivo = [observacao.trim(), justificativa_excecao.trim()].filter((t) => t).join(" ");
@@ -868,6 +941,25 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
     entregue_por: usuario.nome,
     motivo,
   });
+  // Decisão 4 (fatia C): o PDF de orientação que vale NO ATO, lido do banco e
+  // não do `item` que a rota carregou. A coluna é congelada pela trava (só se
+  // grava no INSERT): trocar o PDF do catálogo depois não muda esta ficha.
+  const [vigente] = await tx
+    .select({ orientacao_anexo_id: tabela_epi_item.orientacao_anexo_id })
+    .from(tabela_epi_item)
+    .where(eq(tabela_epi_item.id, item.id));
+  // Fatia E: a entrega confirmada sem treinamento em vigor fica no congelado
+  // da linha (só se grava no INSERT — a trava recusa UPDATE). Só os ids e os
+  // nomes dos TREINAMENTOS que faltaram e quem confirmou: nada do certificado.
+  const sem_treinamento = validacao.treinamento.codigo === "SEM_TREINAMENTO";
+  const congelado = contexto.congelar();
+  if (sem_treinamento) {
+    congelado[epi_treinamento.CHAVE_CONGELADO] = {
+      confirmado_por: usuario.id,
+      treinamento_ids: validacao.treinamento.faltam.map((t) => t.id),
+      treinamentos: validacao.treinamento.faltam.map((t) => t.nome),
+    };
+  }
   const [registro] = await tx
     .insert(epi_ficha_registro)
     .values({
@@ -880,7 +972,8 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
       data_evento: quando,
       entregue_por: usuario.id,
       motivo: motivo || null,
-      contexto_congelado: contexto.congelar(),
+      orientacao_anexo_id: vigente?.orientacao_anexo_id ?? null,
+      contexto_congelado: congelado,
       ..._snapshots(contexto),
     })
     .returning();
@@ -922,6 +1015,27 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
       tipo_evento: EPI_MAXIMO_EXCEDIDO,
       descricao: `Máximo de '${item.nome}' excedido e autorizado por ${usuario.nome}: ${justificativa_excecao.trim()}`,
       comentario: justificativa_excecao.trim(),
+      usuario,
+    });
+  }
+
+  if (sem_treinamento) {
+    // RN-19 na escrita: o servidor por #id; o treinamento pelo nome do
+    // catálogo — e nenhum dado do certificado (que, aliás, não existe)
+    await auditoria.registrar(tx, {
+      entidade: ENTIDADE,
+      entidade_id: registro!.id,
+      tipo_evento: epi_treinamento.EPI_SEM_TREINAMENTO_CONFIRMADO,
+      descricao:
+        `${quantidade} × ${registro!.nome_epi_snapshot} entregue ao servidor #${registro!.servidor_id} sem ` +
+        `treinamento em vigor de ${epi_treinamento.nomes(validacao.treinamento.faltam)} · ` +
+        `confirmado por ${usuario.nome}`,
+      campo: "treinamento",
+      valor_novo: {
+        epi_item_id: item.id,
+        servidor_id: registro!.servidor_id,
+        treinamento_ids: validacao.treinamento.faltam.map((t) => t.id),
+      },
       usuario,
     });
   }
@@ -993,6 +1107,7 @@ export async function estornar(
   // o comprovante de um estorno é o do registro estornado, com outro título e
   // o motivo à mostra — montado ANTES do INSERT
   const congelado: Record<string, unknown> = { ...((registro.contexto_congelado ?? {}) as Record<string, unknown>) };
+  delete congelado[epi_treinamento.CHAVE_CONGELADO];
   if (Object.keys(congelado).length) {
     congelado["tipo"] = "ESTORNO";
     congelado["motivo"] = limpo;
@@ -1049,10 +1164,11 @@ export async function registrar_devolucao(
   tx: Executor,
   usuario: UsuarioAtual,
   registro: EpiFichaRegistro,
-  d: { quantidade: number; motivo: string; data_evento?: string | null },
+  d: { quantidade: number; motivo: string; data_evento?: string | null; motivo_codigo?: string | null },
 ): Promise<EpiFichaRegistro> {
   usuario.exigir("epi.entregar");
   const quantidade = d.quantidade;
+  const motivo_codigo = (d.motivo_codigo ?? "").trim() || null;
   const limpo = textos.exigir_texto_limpo((d.motivo || "").trim(), "motivo da devolução") as string;
   const hoje = datas_br.hoje();
   const quando = d.data_evento || hoje;
@@ -1069,6 +1185,9 @@ export async function registrar_devolucao(
     bloqueios.push(
       `o registro ${registro.id} foi estornado: ele declara que aquela ` + "entrega não vale, e não há o que devolver dela",
     );
+  }
+  if (motivo_codigo !== null && !(MOTIVOS_FICHA as readonly string[]).includes(motivo_codigo)) {
+    bloqueios.push("escolha o motivo da devolução na lista");
   }
   if (quantidade <= 0) bloqueios.push("a quantidade devolvida tem de ser maior que zero");
   if (quando > hoje) {
@@ -1091,6 +1210,8 @@ export async function registrar_devolucao(
   if (bloqueios.length) throw new EntregaBloqueada(bloqueios);
 
   const congelado: Record<string, unknown> = { ...((registro.contexto_congelado ?? {}) as Record<string, unknown>) };
+  // a confirmação de entrega sem treinamento é do ATO da entrega, não desta linha
+  delete congelado[epi_treinamento.CHAVE_CONGELADO];
   if (Object.keys(congelado).length) {
     congelado["tipo"] = "DEVOLUCAO";
     congelado["quantidade"] = quantidade;
@@ -1111,6 +1232,7 @@ export async function registrar_devolucao(
       data_evento: quando,
       entregue_por: usuario.id,
       motivo: limpo,
+      motivo_codigo,
       ..._herdados(registro),
       contexto_congelado: Object.keys(congelado).length ? congelado : null,
     })
@@ -1147,6 +1269,10 @@ export async function registrar_devolucao(
   await _amarrar_evento(tx, devolucao!, evento.id);
   // RN-32: devolução integral tira a entrega da cobrança de troca
   await sincronizar_trocas_do_servidor(tx, registro.servidor_id, usuario);
+  // a devolução trata a comunicação aberta do titular sobre esta entrega
+  // (import tardio: `epi_comunicacao` importa este módulo)
+  const { tratar_pela_devolucao } = await import("./epi_comunicacao.js");
+  await tratar_pela_devolucao(tx, usuario, registro.id, devolucao!.id);
   return devolucao!;
 }
 

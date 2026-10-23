@@ -23,6 +23,15 @@ export interface Config {
   ambiente: string;
   fusoExibicao: string;
   epiLocalRetirada: string;
+  /**
+   * E-mail do pedido de EPI (paridade com o IntegraSST, 22/10/2026). DESLIGADO
+   * por padrão: só vale com `CSSO_EPI_EMAIL=sim` — e, mesmo ligado, a mensagem
+   * só sai quando o SMTP estiver configurado (`email.configurado()`); até lá ela
+   * espera na caixa de saída.
+   */
+  epiEmailLigado: boolean;
+  /** Endereço do SETOR avisado quando chega pedido (`CSSO_EPI_EMAIL_SETOR`). Vazio: não avisa o setor. */
+  epiEmailSetor: string;
   supabaseUrl: string;
   supabaseChaveServico: string;
   bucketArquivos: string;
@@ -138,6 +147,8 @@ export function obterConfig(): Config {
     ambiente: env.CSSO_AMBIENTE ?? "nuvem",
     fusoExibicao: env.CSSO_FUSO_EXIBICAO ?? "America/Sao_Paulo",
     epiLocalRetirada: env.CSSO_EPI_LOCAL_RETIRADA ?? "",
+    epiEmailLigado: (env.CSSO_EPI_EMAIL ?? "").trim().toLowerCase() === "sim",
+    epiEmailSetor: (env.CSSO_EPI_EMAIL_SETOR ?? "").trim(),
     supabaseUrl: env.SUPABASE_URL ?? "",
     supabaseChaveServico: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
     bucketArquivos: env.CSSO_BUCKET ?? "csso",

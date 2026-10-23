@@ -64,7 +64,26 @@
   </div>
   {% else %}
 
+  {# PEDIDO DE TROCA A PARTIR DE UMA COMUNICAÇÃO DO TITULAR (fatia A → B). O
+     vínculo é gravado na criação do rascunho; se não valer mais, o pedido
+     segue sem ele e a tela diz. #}
+  {% if comunicacao %}
+  <div class="aviso aviso-info">
+    <strong>Pedido de troca da comunicação “{{ comunicacao.rotulo }}”</strong>
+    <span class="discreto">de {{ comunicacao.criado_em|momento }}.</span>
+    Equipamento, motivo e finalidade vieram preenchidos: confira antes de enviar.
+    O pedido fica ligado à comunicação.
+  </div>
+  {% elif comunicacao_ignorada %}
+  <div class="aviso aviso-alerta">
+    <strong>A comunicação indicada não pode originar este pedido</strong> — já foi
+    tratada, retirada, já tem pedido de troca, ou é de alguém por quem você não
+    pede. O pedido segue sem o vínculo.
+  </div>
+  {% endif %}
+
   <form method="post" action="/epis/requisicoes">
+    {% if d.get('comunicacao_id') %}<input type="hidden" name="comunicacao_id" value="{{ d.get('comunicacao_id') }}">{% endif %}
     <section class="cartao">
       <div class="titulo-cartao">
         <h2>{{ 'Sobre você e o seu trabalho' if proprio else 'Quem pede, e por quê' }}</h2>
@@ -189,7 +208,7 @@
                 hx-get="/epis/requisicoes/item-opcoes"
                 hx-target="#opcoes-do-item"
                 hx-trigger="change"
-                hx-include="this">
+                hx-include="this, #finalidade">
           <option value="">—</option>
           {% set escolhido_item = d.get('item_id') or (item_escolhido.id if item_escolhido else '') %}
           {% for c in catalogo %}
@@ -202,6 +221,22 @@
         {% set digitado_item = d %}
         {% include "partes/epi_requisicao_opcoes.html" %}
       </div>
+    </section>
+
+    {# O TERMO NR-06 (fatia B, Decisão 3). Desmarcado de saída, sempre — também
+       na recusa: declarar é ato de quem envia, e não do formulário. Vale só para
+       "Enviar pedido"; salvar rascunho não pede a declaração. #}
+    <section class="cartao" id="termo-nr06">
+      <div class="titulo-cartao">
+        <h2>Declaração (NR-06)</h2>
+        <span class="nota">versão {{ termo_nr06_vigente }}</span>
+      </div>
+      <p class="sem-margem">{{ texto_termo_nr06() }}</p>
+      <label for="termo-aceito">
+        <input id="termo-aceito" type="checkbox" name="termo_aceito" value="1">
+        Li e declaro</label>
+      <span class="dica">Obrigatória para enviar. Quem envia é quem declara
+        {%- if not proprio %} — também quando pede por alguém da equipe{% endif %}.</span>
     </section>
 
     <div class="acoes">
