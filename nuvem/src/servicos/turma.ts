@@ -16,7 +16,7 @@
  * `carregar_*` deste arquivo (`TurmaCarregada`, `InscricaoCarregada`), e toda
  * escrita atualiza o banco E o objeto em memória — o que o `flush` fazia.
  */
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   agora_utc,
@@ -58,6 +58,7 @@ import * as setor_equipe from "./setor_equipe.js";
 import { COM_PARTICIPANTE, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import { comparar } from "./presenca.js";
+import { filtro } from "../web.js";
 
 // Abrir inscrição e começar a turma são edição; concluir e cancelar são decisão
 // de quem responde pela turma. Mesma simetria do parecer (§8 do desenho).
@@ -246,6 +247,101 @@ export function conferir_periodo(data_inicio: string, data_fim: string): void {
   if (data_fim < data_inicio) throw new RegraDaTurma("O fim da turma não pode ser anterior ao início.");
 }
 
+// ---------------------------------------------------------------------
+// Hora da turma (22/10/2026): início e fim do dia, opcionais
+// ---------------------------------------------------------------------
+// A turma antiga não tem hora, e continua valendo: sem hora é "dia inteiro"
+// (a agenda .ics a põe como evento de dia todo). Com hora, o mesmo horário
+// vale para todos os dias da turma. A CHECK `ck_turma_horas` repete a regra
+// no banco: fim exige início, e é maior que ele.
+
+/** Turnos do filtro, pela hora de INÍCIO. Lista fechada: valor fora dela é ignorado. */
+export const TURNOS: readonly (readonly [string, string])[] = [
+  ["manha", "Manhã"],
+  ["tarde", "Tarde"],
+  ["noite", "Noite"],
+  ["dia_inteiro", "Dia inteiro"],
+];
+
+/** O turno pedido na URL, ou "" quando não é um dos da lista. */
+export function ler_turno(valor: string | null | undefined): string {
+  const v = (valor ?? "").trim();
+  return TURNOS.some(([codigo]) => codigo === v) ? v : "";
+}
+
+/** Manhã antes das 12h, tarde até 17h59, noite a partir das 18h; sem hora, dia inteiro. */
+export function turno_de(hora_inicio: string | null | undefined): string {
+  if (!hora_inicio) return "dia_inteiro";
+  if (hora_inicio < "12:00") return "manha";
+  if (hora_inicio < "18:00") return "tarde";
+  return "noite";
+}
+
+/** A condição SQL do turno (para a lista de /turmas). `undefined` sem filtro. */
+export function condicao_turno(turno: string) {
+  const h = tabela_turma.hora_inicio;
+  if (turno === "dia_inteiro") return isNull(h);
+  if (turno === "manha") return lt(h, "12:00");
+  if (turno === "tarde") return and(gte(h, "12:00"), lt(h, "18:00"));
+  if (turno === "noite") return gte(h, "18:00");
+  return undefined;
+}
+
+/**
+ * "08:00", "8:00", "08:00:00" e "8h" viram "08:00:00" — o formato em que o
+ * Postgres devolve `time`, para o diff da edição não acusar mudança que não
+ * houve. Vazio é `null`; o resto é recusa com o rótulo do campo.
+ */
+export function normalizar_hora(valor: string | null | undefined, rotulo: string): string | null {
+  const bruto = (valor ?? "").trim().toLowerCase();
+  if (!bruto) return null;
+  const m = /^(\d{1,2})(?::|h)?(\d{2})?(?::(\d{2}))?h?$/.exec(bruto);
+  const hora = m ? Number(m[1]) : NaN;
+  const minuto = m && m[2] !== undefined ? Number(m[2]) : 0;
+  const segundo = m && m[3] !== undefined ? Number(m[3]) : 0;
+  if (!m || hora > 23 || minuto > 59 || segundo > 59) {
+    throw new RegraDaTurma(`${rotulo}: use HH:MM, entre 00:00 e 23:59 (por exemplo, 08:00).`);
+  }
+  const dois = (n: number) => String(n).padStart(2, "0");
+  return `${dois(hora)}:${dois(minuto)}:${dois(segundo)}`;
+}
+
+/** A regra de `ck_turma_horas`, com a frase para quem digitou. */
+export function conferir_horas(hora_inicio: string | null, hora_fim: string | null): void {
+  if (hora_fim !== null && hora_inicio === null) {
+    throw new RegraDaTurma("Informe a hora de início: a hora de término sozinha não diz quando a turma começa.");
+  }
+  if (hora_fim !== null && hora_inicio !== null && hora_fim <= hora_inicio) {
+    throw new RegraDaTurma(
+      `A hora de término (${hora_curta(hora_fim)}) tem de ser depois da hora de início (${hora_curta(hora_inicio)}).`,
+    );
+  }
+}
+
+/** "08:00:00" → "8h"; "08:30:00" → "8h30". */
+export function hora_curta(hora: string | null | undefined): string {
+  if (!hora) return "";
+  const [h, m] = hora.split(":");
+  const minutos = m && m !== "00" ? m : "";
+  return `${Number(h)}h${minutos}`;
+}
+
+/** "8h às 17h", "a partir das 8h", ou "" (dia inteiro). */
+export function horario_curto(t: { hora_inicio?: string | null; hora_fim?: string | null } | null | undefined): string {
+  if (!t || !t.hora_inicio) return "";
+  if (!t.hora_fim) return `a partir das ${hora_curta(t.hora_inicio)}`;
+  return `${hora_curta(t.hora_inicio)} às ${hora_curta(t.hora_fim)}`;
+}
+
+/** O valor do `<input type="time">`: "08:00:00" → "08:00". */
+export function hora_do_campo(hora: string | null | undefined): string {
+  return hora ? hora.slice(0, 5) : "";
+}
+
+// os templates leem `turma|horario_turma` e `turma.hora_inicio|hora_campo`
+filtro("horario_turma", horario_curto);
+filtro("hora_campo", hora_do_campo);
+
 /**
  * O prazo de inscrição é planejamento, e por isso pode ser futuro — mas não
  * depois do início: o link ou o pedido próprio que aceita gente com a turma já
@@ -346,6 +442,10 @@ export interface DadosTurma {
   nota_minima_aprovacao?: string | null;
   frequencia_minima_percentual?: string;
   observacoes?: string | null;
+  /** como digitado ("08:00"); o serviço confere e normaliza */
+  hora_inicio?: string | null;
+  hora_fim?: string | null;
+  aceita_comunidade_externa?: boolean;
 }
 
 /**
@@ -359,6 +459,9 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
     throw new RegraDaTurma(`'${treinamento.nome}' está inativo no catálogo — reative-o antes de abrir turma.`);
   }
   conferir_periodo(d.data_inicio, d.data_fim);
+  const hora_inicio = normalizar_hora(d.hora_inicio, "Hora de início");
+  const hora_fim = normalizar_hora(d.hora_fim, "Hora de término");
+  conferir_horas(hora_inicio, hora_fim);
   _conferir_prazo_de_inscricao({ data_inicio: d.data_inicio, inscricao_aberta_ate: d.inscricao_aberta_ate ?? null }, true);
   const frequencia = d.frequencia_minima_percentual ?? "75";
   _conferir_numeros({
@@ -395,6 +498,9 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
       nota_minima_aprovacao: d.nota_minima_aprovacao ?? null,
       frequencia_minima_percentual: frequencia,
       observacoes: d.observacoes ?? null,
+      hora_inicio,
+      hora_fim,
+      aceita_comunidade_externa: d.aceita_comunidade_externa ?? false,
       situacao: "PLANEJADA",
       criado_por: usuario.id,
     })
@@ -447,6 +553,10 @@ export async function editar_turma(
   const novo_inicio = valor("data_inicio");
   const novo_fim = valor("data_fim");
   conferir_periodo(novo_inicio, novo_fim);
+  // a hora chega como digitada; daqui em diante está no formato do banco
+  if ("hora_inicio" in campos) campos = { ...campos, hora_inicio: normalizar_hora(campos.hora_inicio, "Hora de início") };
+  if ("hora_fim" in campos) campos = { ...campos, hora_fim: normalizar_hora(campos.hora_fim, "Hora de término") };
+  conferir_horas(valor("hora_inicio"), valor("hora_fim"));
   // a turma concluída (retificação) não tem mais prazo de inscrição a respeitar;
   // e o prazo só se confere quando ele ou o início mudam — a turma antiga com o
   // prazo depois do início não trava a correção do local (o link e o pedido
@@ -1148,6 +1258,17 @@ export async function inscricoes_do_titular(tx: Executor, usuario: UsuarioAtual)
   const saida: InscricaoCarregada[] = [];
   for (const { id } of ids) saida.push((await carregar_inscricao(tx, id))!);
   return saida;
+}
+
+/**
+ * A inscrição que dá direito à agenda (.ics) da turma: a vaga é da pessoa
+ * (inscrita, confirmada ou já apurada) e a turma não foi cancelada. O pedido
+ * pelo link ainda em análise e a desistência ficam de fora.
+ */
+const COM_AGENDA: ReadonlySet<string> = new Set(["INSCRITA", "CONFIRMADA", "PRESENTE", "AUSENTE", "APROVADO", "REPROVADO"]);
+
+export function tem_agenda(inscricao: { situacao: string; turma: { situacao: string } }): boolean {
+  return COM_AGENDA.has(inscricao.situacao) && inscricao.turma.situacao !== "CANCELADA";
 }
 
 /**

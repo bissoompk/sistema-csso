@@ -19,6 +19,11 @@
  *   decisão do usuário; no lugar, a sessão parada cai sozinha em 60 minutos,
  *   com aviso aos 55 (DESVIOS.md, "Desligamento por inatividade").
  * - Perfis e vínculo de servidor: só leitura.
+ * - "Meu perfil" do Portal do servidor (22/10/2026): a mesma tela, em seções
+ *   `<details>` — Dados funcionais (só leitura, sem POST), Contato e acesso,
+ *   Segurança, Treinamentos e certificados (resumo de
+ *   `certificados_titular.do_titular`) e Privacidade. Sem CPF, RG ou
+ *   nascimento: o perfil não os mostra.
  *
  * Ver DESVIOS.md, "Minha conta (22/10/2026)".
  */
@@ -26,6 +31,7 @@ import { Hono } from "hono";
 import { deleteCookie } from "hono/cookie";
 import { eq, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
+import { obterConfig } from "../config.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import {
   atribuicao,
@@ -37,6 +43,8 @@ import { hoje_iso } from "../dominio/datas.js";
 import { vigente_em } from "../dominio/organizacao.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as autenticacao from "../servicos/autenticacao.js";
+import * as certificados_titular from "../servicos/certificados_titular.js";
+import { numero as numero_br } from "../servicos/presenca.js";
 import { postos_atuais } from "../servicos/servidores.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { comMensagem, pagina, redirecionar } from "../web.js";
@@ -89,6 +97,16 @@ export function recusa_ramal(valor: string): string | null {
 // A tela
 // ---------------------------------------------------------------------
 
+/** As iniciais do cabeçalho: a primeira e a última palavra com letra ("Mariana Alves Rocha" → "MR"). */
+export function iniciais(nome: string | null | undefined): string {
+  const palavras = (nome ?? "")
+    .split(/\s+/)
+    .filter((p) => /\p{L}/u.test(p) && !/^(d[aeo]s?|e)$/i.test(p));
+  if (!palavras.length) return "?";
+  const letra = (p: string) => ([...p].find((x) => /\p{L}/u.test(x)) ?? "").toLocaleUpperCase("pt-BR");
+  return palavras.length === 1 ? letra(palavras[0]!) : letra(palavras[0]!) + letra(palavras.at(-1)!);
+}
+
 type Digitado = { nome?: string; telefone?: string; ramal?: string; email?: string };
 
 async function _tela(
@@ -130,16 +148,31 @@ async function _tela(
     conta?.servidor_id != null
       ? ((await tx.query.servidor.findFirst({
           where: eq(tabela_servidor.id, conta.servidor_id),
-          with: { cargo: true, unidade: true },
+          with: { cargo: true, unidade: { with: { campus: true } } },
         })) ?? null)
       : null;
-  const postos = servidor ? await postos_atuais(tx, servidor.id) : [];
+  const [postos, certificados] = servidor
+    ? await Promise.all([postos_atuais(tx, servidor.id), certificados_titular.do_titular(tx, servidor.id, hoje)])
+    : [[], null];
+
+  // "Meu perfil" (Portal do servidor, 22/10/2026): o resumo de treinamentos.
+  // Válido é o que ainda vale hoje: no prazo, a vencer, ou sem vencimento.
+  const resumo_certificados = certificados
+    ? {
+        validos: certificados.resumo.validos + certificados.resumo.a_vencer + certificados.resumo.indeterminados,
+        horas: numero_br(String(certificados.resumo.horas)),
+        em_emissao: certificados.em_emissao.length,
+      }
+    : null;
 
   return pagina(c, "paginas/minha_conta.html", usuario, {
     conta,
     perfis,
     servidor,
     postos,
+    iniciais: iniciais(servidor?.nome ?? conta?.nome ?? usuario.nome),
+    resumo_certificados,
+    inatividade_minutos: obterConfig().sessaoInatividadeMinutos,
     mensagem: c.req.query("mensagem") ?? null,
     TELEFONE_MAX,
     RAMAL_MAX,

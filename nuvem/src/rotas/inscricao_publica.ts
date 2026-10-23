@@ -19,7 +19,7 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario } from "../dependencias.js";
-import { ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
+import { ROTULO_VINCULO } from "../dominio/treinamento.js";
 import * as servico from "../servicos/inscricao_publica.js";
 import { RegraDaTurma } from "../servicos/turma.js";
 import { pagina, redirecionar } from "../web.js";
@@ -86,7 +86,11 @@ async function _tela(
       recebido: d.recebido ?? null,
       excedeu: d.excedeu ?? false,
       resposta_padrao: servico.RESPOSTA_PADRAO,
-      vinculos: VINCULOS_PARTICIPANTE,
+      // os vínculos da UFVJM sempre; "Comunidade externa" só na turma marcada
+      vinculos: servico.VINCULOS_DA_UFVJM,
+      vinculos_externos: d.link?.turma.aceita_comunidade_externa ? servico.VINCULOS_COMUNIDADE_EXTERNA : [],
+      rotulo_externos: servico.ROTULO_COMUNIDADE_EXTERNA,
+      publico: d.link ? servico.publico_da_turma(d.link.turma) : "",
       rotulo_vinculo: ROTULO_VINCULO,
       acao: c.req.path,
     },

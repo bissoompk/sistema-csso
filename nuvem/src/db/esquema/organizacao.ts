@@ -17,7 +17,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { PADRAO_SIAPE } from '../../dominio/organizacao';
+import { CORES_SETOR, ICONES_SETOR, PADRAO_SIAPE } from '../../dominio/organizacao';
 import { DataPura, check_regex } from './base';
 import { usuario } from './seguranca';
 
@@ -53,8 +53,20 @@ export const unidade_uorg = pgTable(
     // certificado). Quem decide é o setor, em /treinamentos/setores-promotores;
     // a migração 0011 e a semente marcam os setores da Sisa uma vez só
     promove_treinamento: boolean('promove_treinamento').notNull().default(false),
+    // NUVEM (22/10/2026): a cor e o icone do setor promotor (paleta fechada,
+    // `dominio/organizacao.ts`). NULL = a cor do sistema.
+    cor_setor: varchar('cor_setor', { length: 12 }),
+    icone_setor: varchar('icone_setor', { length: 24 }),
   },
   () => [
+    check(
+      'ck_uorg_cor_setor',
+      sql.raw(`cor_setor IS NULL OR cor_setor IN (${CORES_SETOR.map((c) => `'${c}'`).join(',')})`),
+    ),
+    check(
+      'ck_uorg_icone_setor',
+      sql.raw(`icone_setor IS NULL OR icone_setor IN (${ICONES_SETOR.map((c) => `'${c}'`).join(',')})`),
+    ),
     check(
       'ck_uorg_tipo',
       sql.raw(

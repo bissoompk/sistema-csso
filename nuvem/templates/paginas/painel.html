@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Painel · SISA{% endblock %}
+{% block titulo %}{{ 'Início' if inicio_do_servidor else 'Painel' }} · SISA{% endblock %}
 
 {% block acoes_cabecalho %}
 {% if usuario.pode('processo.criar') %}<a class="botao" href="/processos/novo">Novo processo</a>{% endif %}
@@ -40,22 +40,25 @@
 {% endmacro %}
 {% if inicio_do_servidor %}
 {# ===================================================================
-   INÍCIO DO SERVIDOR — o painel de quem só alcança o próprio dado
+   INÍCIO DO SERVIDOR — o painel do titular (Portal do servidor, 22/10/2026)
    ===================================================================
-   O painel do setor, para o servidor, era KPI da instituição, um gráfico de
-   riscos que não era dele e dez linhas de "conteúdo suprimido" sobre o que ele
-   mesmo fez. Aqui ficam só as cinco perguntas que ele traz: tenho adicional? em
-   que pé estão os meus processos? qual o meu próximo treinamento? algum
-   certificado vencendo? algum EPI para trocar? Cada cartão leva à tela que já
-   é dele (`/processos`, `/certificados/meus`, `/turmas/minhas`,
-   `/epis/fichas/minha`), com a mesma permissão do menu. #}
-<div class="tela">
-  <div class="cabecalho-pagina">
-    <div class="titulo">
-      <h1>Início</h1>
-      <p class="sub">O que é seu no sistema: adicional, processos, treinamentos e EPI.</p>
-    </div>
-  </div>
+   Um olhar responde três perguntas: quem sou (boas-vindas e chips), como
+   estou (avisos e cartões) e o que preciso fazer (o link de cada aviso e os
+   atalhos). Tudo é dele e só dele (`rotas/painel.inicio_do_servidor`): sem
+   SIAPE e sem CPF na tela, e nenhum nome de operador. Sem JavaScript: a grade
+   e as cores são da folha (`csso.css`, PORTAL/PAINEL). #}
+{% from "partes/cartao_certificado.html" import cartao_certificado %}
+<div class="tela inicio-titular">
+
+  <section class="boas-vindas" aria-labelledby="ola">
+    <h1 id="ola">Olá, {{ primeiro_nome }}!</h1>
+    <p>Aqui estão seus treinamentos, certificados, EPI e pedidos.</p>
+    {% if chips|length %}
+    <ul class="chips" aria-label="Seus dados">
+      {% for chip in chips %}<li class="chip">{{ ui.icone(chip.icone) }}<span>{{ chip.texto }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
 
   {{ avisos_epi(epi) }}
 
@@ -64,73 +67,111 @@
     servidor: os cartões abaixo ficam vazios até a equipe responsável fazer o vínculo.</div>
   {% endif %}
 
-  {# O contrato de `.grade-resumo > .cartao-resumo` (csso.css): `.rotulo` diz o
-     que é, `.valor` o estado ou o número, `.detalhe` a frase, `a.acao` para onde
-     ir. `.atencao` (amarelo) é "vence logo"; `.alerta` (vermelho), "venceu". #}
-  <div class="grade-resumo">
-    <section class="cartao-resumo">
-      <span class="rotulo">Meu adicional</span>
-      {% if adicional %}
-      <span class="valor">{{ ui.pilula_direito(adicional.estado) }}
-        {%- if adicional.percentual %} {{ adicional.percentual }}{% endif %}</span>
-      <span class="detalhe">{{ adicional.tipo or 'Adicional ocupacional' }}
-        {%- if adicional.desde %} · desde <span class="mono">{{ adicional.desde|data }}</span>{% endif %}</span>
-      {% else %}
-      <span class="valor">Nenhum</span>
-      <span class="detalhe">Nenhum adicional registrado em seu nome. Se você pediu, o
-        andamento está em Meus processos.</span>
-      {% endif %}
-    </section>
-
-    <section class="cartao-resumo">
-      <span class="rotulo">Meus processos</span>
-      <span class="valor">{{ total_meus }}</span>
-      <span class="detalhe">
-        {%- for r in meus_processos %}
-        <a class="mono" href="/processos/{{ r.processo.id }}">{{ r.processo.nup }}</a> — {{ r.processo.estado_tecnico|estado }}{% if not loop.last %}<br>{% endif %}
-        {%- else %}Nenhum processo em seu nome no fluxo da CSSO.{% endfor %}</span>
-      {% if total_meus %}<a class="acao" href="/processos">{{ ui.icone('arrow-right') }}Ver meus processos</a>{% endif %}
-    </section>
-
-    <section class="cartao-resumo">
-      <span class="rotulo">Próximo treinamento</span>
-      {% if proximo_treinamento %}
-      <span class="valor">{{ proximo_treinamento.data_inicio|data }}</span>
-      <span class="detalhe">{{ proximo_treinamento.treinamento }}
-        {%- if proximo_treinamento.local %} · {{ proximo_treinamento.local }}{% endif %}</span>
-      {% else %}
-      <span class="valor">Nenhum</span>
-      <span class="detalhe">Nenhuma inscrição em turma a vir.</span>
-      {% endif %}
-      {% if usuario.pode('treinamento.ver') %}<a class="acao" href="/turmas/minhas">{{ ui.icone('arrow-right') }}Turmas abertas</a>{% endif %}
-    </section>
-
-    {% set vencido = certificados_a_vencer|length and certificados_a_vencer[0].data_vencimento < hoje %}
-    <section class="cartao-resumo {{ 'alerta' if vencido else ('atencao' if certificados_a_vencer|length) }}">
-      <span class="rotulo">Certificados a vencer</span>
-      <span class="valor">{{ certificados_a_vencer|length }}</span>
-      <span class="detalhe">
-        {%- for cert in certificados_a_vencer.slice(0, 3) %}
-        {{ cert.treinamento }} — {{ 'venceu em' if cert.data_vencimento < hoje else 'vence em' }}
-        <span class="mono">{{ cert.data_vencimento|data }}</span>{% if not loop.last %}<br>{% endif %}
-        {%- else %}Nenhum vencido nem vencendo nos próximos três meses.{% endfor %}</span>
-      {% if usuario.pode('treinamento.ver') %}<a class="acao" href="/certificados/meus">{{ ui.icone('arrow-right') }}Meus certificados</a>{% endif %}
-    </section>
-
-    <section class="cartao-resumo {{ 'alerta' if trocas_vencidas|length }}">
-      <span class="rotulo">EPI com troca vencida</span>
-      <span class="valor">{{ trocas_vencidas|length }}</span>
-      <span class="detalhe">
-        {%- for t in trocas_vencidas.slice(0, 3) %}
-        {{ t.nome }} — troca prevista para <span class="mono">{{ t.previsao_troca|data }}</span>{% if not loop.last %}<br>{% endif %}
-        {%- else %}Nenhum equipamento com a troca vencida.{% endfor %}</span>
-      {% if trocas_vencidas|length and usuario.pode('epi.requisitar') %}
-      <a class="acao" href="/epis/requisicoes/nova">{{ ui.icone('arrow-right') }}Pedir a troca</a>
-      {% elif usuario.pode('epi.ver') %}
-      <a class="acao" href="/epis/fichas/minha">{{ ui.icone('arrow-right') }}Minha ficha de EPI</a>
-      {% endif %}
-    </section>
+  {# Avisos por severidade, só quando existe algo. `role="status"`: o leitor
+     de tela anuncia sem roubar o foco. A cor nunca é o único sinal: cada
+     aviso tem ícone e título que dizem o que é. #}
+  {% if avisos|length %}
+  <div class="avisos-titular" role="status">
+    {% for a in avisos %}
+    <div class="aviso-titular aviso-titular--{{ a.nivel }}">
+      {{ ui.icone(a.icone) }}
+      <div>
+        <strong>{{ a.titulo }}</strong>
+        <p>{{ a.texto }}{% if a.link %} <a href="{{ a.link.href }}">{{ a.link.rotulo }}</a>{% endif %}</p>
+      </div>
+    </div>
+    {% endfor %}
   </div>
+  {% endif %}
+
+  {# Os cartões de status: ícone num quadrado pastel, rótulo, número grande e
+     a frase com o link. 4 na mesa, 2×2 no celular e 1 coluna abaixo de 360px;
+     "Meu adicional" e "Meus processos" entram quando a conta tem
+     `processo.ver`. #}
+  <div class="cartoes-status">
+    {% if ve_treinamento %}
+    <section class="cartao-status cartao-status--ok">
+      <span class="cartao-status-icone">{{ ui.icone('award') }}</span>
+      <h2 class="cartao-status-rotulo">Certificados válidos</h2>
+      <span class="cartao-status-valor">{{ cartoes.validos }}</span>
+      <p>de {{ cartoes.emitidos }} {{ 'emitido' if cartoes.emitidos == 1 else 'emitidos' }} · {{ cartoes.horas }} h</p>
+      <a href="/certificados/meus">Ver certificados <span aria-hidden="true">→</span></a>
+    </section>
+    <section class="cartao-status cartao-status--alerta">
+      <span class="cartao-status-icone">{{ ui.icone('exclamation-triangle') }}</span>
+      <h2 class="cartao-status-rotulo">A vencer (60 dias)</h2>
+      <span class="cartao-status-valor">{{ cartoes.a_vencer }}</span>
+      <p>{% if cartoes.proximo %}Próximo: {{ cartoes.proximo.nome }} em {{ cartoes.proximo.data|data }}{% else %}Nenhum vencimento à vista.{% endif %}</p>
+      <a href="/certificados/meus">Ver certificados <span aria-hidden="true">→</span></a>
+    </section>
+    <section class="cartao-status cartao-status--info">
+      <span class="cartao-status-icone">{{ ui.icone('mortarboard') }}</span>
+      <h2 class="cartao-status-rotulo">Inscrições abertas para você</h2>
+      <span class="cartao-status-valor">{{ cartoes.turmas_abertas }}</span>
+      <p>{{ 'turma' if cartoes.turmas_abertas == 1 else 'turmas' }} · você está inscrito em {{ cartoes.inscrito_em }}</p>
+      <a href="/turmas/minhas">Ver turmas <span aria-hidden="true">→</span></a>
+    </section>
+    {% endif %}
+    {% if ve_epi %}
+    <section class="cartao-status cartao-status--epi">
+      <span class="cartao-status-icone">{{ ui.icone('shield-plus') }}</span>
+      <h2 class="cartao-status-rotulo">EPI</h2>
+      <span class="cartao-status-valor">{{ cartoes.epi_abertos }}</span>
+      <p>{{ 'pedido em aberto' if cartoes.epi_abertos == 1 else 'pedidos em aberto' }} · trocas vencidas: {{ cartoes.trocas_vencidas }}</p>
+      <a href="/epis/fichas/minha">Ver ficha <span aria-hidden="true">→</span></a>
+    </section>
+    {% endif %}
+    {% if ve_processo %}
+    <section class="cartao-status">
+      <span class="cartao-status-icone">{{ ui.icone('cash-coin') }}</span>
+      <h2 class="cartao-status-rotulo">Meu adicional</h2>
+      {% if adicional %}
+      <span class="cartao-status-valor cartao-status-valor--texto">{{ ui.pilula_direito(adicional.estado) }}
+        {%- if adicional.percentual %} {{ adicional.percentual }}{% endif %}</span>
+      <p>{{ adicional.tipo or 'Adicional ocupacional' }}
+        {%- if adicional.desde %} · desde <span class="mono">{{ adicional.desde|data }}</span>{% endif %}</p>
+      {% else %}
+      <span class="cartao-status-valor cartao-status-valor--texto">Nenhum</span>
+      <p>Nenhum adicional registrado em seu nome. Se você pediu, o andamento está em Meus processos.</p>
+      {% endif %}
+      <a href="/adicionais">Ver meu adicional <span aria-hidden="true">→</span></a>
+    </section>
+    <section class="cartao-status">
+      <span class="cartao-status-icone">{{ ui.icone('file-earmark-text') }}</span>
+      <h2 class="cartao-status-rotulo">Meus processos</h2>
+      <span class="cartao-status-valor">{{ total_meus }}</span>
+      <p>
+        {%- for r in meus_processos.slice(0, 2) %}
+        <a class="mono" href="/processos/{{ r.processo.id }}">{{ r.processo.nup }}</a> · {{ r.processo.estado_tecnico|estado }}{% if not loop.last %}<br>{% endif %}
+        {%- else %}Nenhum processo em seu nome.{% endfor %}</p>
+      <a href="/processos">Ver meus processos <span aria-hidden="true">→</span></a>
+    </section>
+    {% endif %}
+  </div>
+
+  {% if ve_treinamento and ultimos_certificados|length %}
+  <section class="ultimos-certificados" aria-labelledby="ultimos-cert">
+    <h2 id="ultimos-cert">Últimos certificados</h2>
+    <ul class="grade-cert">
+      {% for c in ultimos_certificados %}<li>{{ cartao_certificado(c, compacto=true) }}</li>{% endfor %}
+    </ul>
+    <p><a class="todos-cert" href="/certificados/meus">Todos os certificados ({{ total_certificados }}) <span aria-hidden="true">→</span></a></p>
+  </section>
+  {% endif %}
+
+  {% if atalhos|length %}
+  <section class="atalhos-titular" aria-labelledby="atalhos-tit">
+    <h2 id="atalhos-tit">Atalhos</h2>
+    <ul class="atalhos">
+      {% for a in atalhos %}
+      <li><a class="atalho" href="{{ a.caminho }}">
+        <span class="atalho-icone">{{ ui.icone(a.icone) }}</span>
+        <span class="atalho-texto"><strong>{{ a.rotulo }}</strong><span>{{ a.descricao }}</span></span>
+      </a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
 </div>
 {% else %}
 <div class="tela">

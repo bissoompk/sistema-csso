@@ -522,11 +522,13 @@ describe("M18: categoria do anexo", () => {
 describe("D60/M57: início do servidor", () => {
   it("o servidor vê o início dele, sem os blocos do setor", async () => {
     const corpo = (await (await como("servidor_consulta")).get("/")).text;
+    // o painel do titular (Portal do servidor, 22/10/2026): os cartões de
+    // status, e o adicional e os processos para quem tem `processo.ver`
     expect(corpo).toContain("Meu adicional");
     expect(corpo).toContain("Meus processos");
-    expect(corpo).toContain("Próximo treinamento");
-    expect(corpo).toContain("Certificados a vencer");
-    expect(corpo).toContain("EPI com troca vencida");
+    expect(corpo).toContain("Certificados válidos");
+    expect(corpo).toContain("A vencer (60 dias)");
+    expect(corpo).toContain("Inscrições abertas para você");
     expect(corpo).not.toContain("Distribuição por tipo de risco");
     expect(corpo).not.toContain("Últimos eventos");
     expect(corpo).not.toContain("Dias médios até a emissão");

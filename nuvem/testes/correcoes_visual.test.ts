@@ -67,18 +67,22 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
     for (const proibido of ["/kanban", "/laudos", "/catalogos", "/servidores", "/epis/estoque", "/modulos", "/pendencias"]) {
       expect(hrefs(menu), proibido).not.toContain(proibido);
     }
+    // o "Sair" fecha a lista (Portal do servidor, 22/10/2026); "Meus dados"
+    // saiu do menu — a ficha continua acessível pelo Meu perfil
     expect(hrefs(menu).filter((h) => h !== "/inicio")).toEqual([
       "/",
       "/turmas/minhas",
       "/certificados/meus",
+      "/certificados/meus/comprovante",
       "/epis/fichas/minha",
       "/epis/requisicoes",
       "/epis/requisicoes/nova",
       "/adicionais",
       "/processos",
-      `/servidores/${servidor!.id}`,
-      // a Minha conta fecha o bloco (22/10/2026)
+      "/minha-atividade",
+      // o Meu perfil (a Minha conta) fecha o bloco (22/10/2026)
       "/minha-conta",
+      "/sair",
     ]);
     // a engrenagem de /config não é dele
     expect(corpo).not.toContain('href="/config"');
@@ -101,7 +105,8 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
     const cliente = await entrar(novoCliente(), "titular");
     const menu = lateral((await cliente.get("/")).text);
     for (const destino of hrefs(menu)) {
-      if (destino === "/inicio") continue;
+      // `/sair` é a tela que confirma a saída (POST com CSRF): abre, mas não é tela do titular
+      if (destino === "/inicio" || destino === "/sair") continue;
       const r = await cliente.get(destino, { cabecalhos: { accept: "text/html" } });
       expect(r.status, destino).toBe(200);
     }
@@ -111,7 +116,7 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
     const cliente = await entrar(novoCliente(), "servidor_consulta");
     const menu = lateral((await cliente.get("/")).text);
     expect(menu).toContain('aria-label="Meu espaço"');
-    expect(hrefs(menu).filter((h) => h !== "/inicio")).toEqual(["/", "/minha-conta"]);
+    expect(hrefs(menu).filter((h) => h !== "/inicio")).toEqual(["/", "/minha-conta", "/sair"]);
   });
 
   it("a equipe continua com a lateral de sempre", async () => {
@@ -129,8 +134,9 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
     expect(modulos.so_o_proprio(misto)).toBe(false);
     expect(modulos.navegacao("/", misto).so_meu_espaco).toBe(false);
     // o que a lateral da equipe já oferece (Painel, Processos, Adicionais) não
-    // se repete no bloco com nome de "meu": sobra o cadastro dele
-    expect(modulos.meu_espaco_de(misto).map((i) => i.caminho)).toEqual(["/servidores/1", "/minha-conta"]);
+    // se repete no bloco com nome de "meu": sobra o que é da pessoa (a Minha
+    // atividade e o Meu perfil; "Meus dados" saiu do menu em 22/10/2026)
+    expect(modulos.meu_espaco_de(misto).map((i) => i.caminho)).toEqual(["/minha-atividade", "/minha-conta"]);
   });
 
   it("perfil sem escopo declarado não derruba a casca: o menu é o da equipe, e a rota nega", () => {

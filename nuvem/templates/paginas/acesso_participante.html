@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
+{% from "partes/cartao_certificado.html" import cartao_certificado %}
 {# Sem lateral, como /validar: quem abre não tem conta neste sistema. #}
 {% set sem_casca = true %}
 {% block titulo %}Meus certificados · SISA{% endblock %}
@@ -26,25 +27,13 @@
     pela Sisa/UFVJM.{% else %}Os certificados de treinamento emitidos pela Sisa/UFVJM
     para o seu e-mail.{% endif %}
     Este link vence às <strong>{{ vence_as }}</strong> (daqui a {{ falta }}); depois, peça outro.</p>
-  {% if itens|length %}
-  <div class="tabela-cartao">
-  <table class="empilhavel">
-    <thead><tr><th scope="col">Treinamento</th><th scope="col">Período</th>
-        <th scope="col">Certificado</th><th scope="col"><span class="oculto">Ação</span></th></tr></thead>
-    <tbody>
-    {% for x in itens %}
-    <tr>
-      <td>{{ x.treinamento }}<span class="quebra discreto mono">{{ x.turma }}</span></td>
-      <td data-coluna="Período"><span class="mono">{{ x.inicio|data }}{% if x.fim != x.inicio %} a {{ x.fim|data }}{% endif %}</span>
-        {% if x.vencimento %}<span class="quebra discreto">válido até {{ x.vencimento|data }}</span>{% endif %}</td>
-      <td data-coluna="Certificado" class="mono">{{ x.rotulo }}</td>
-      <td class="acao-linha"><a class="botao compacto" href="{{ caminho }}/{{ token }}/{{ x.id }}">
-        {{- 'Baixar (Word)' if x.so_word and not pdf_fiel() else 'Baixar PDF' -}}</a></td>
-    </tr>
+  {% if cartoes|length %}
+  {# os mesmos cartões de "Meus certificados", sem filtros nem "Inscrever-se" #}
+  <ul class="grade-cert" role="list">
+    {% for c in cartoes %}
+    <li>{{ cartao_certificado(c, sem_reciclagem=true, link_baixar=caminho ~ '/' ~ token ~ '/' ~ c.id, com_ficha=false) }}</li>
     {% endfor %}
-    </tbody>
-  </table>
-  </div>
+  </ul>
   {% else %}
   <p>Nenhum certificado em vigor ligado a este e-mail. Se algum foi anulado, a equipe responsável
     emitiu (ou vai emitir) outro no lugar.</p>

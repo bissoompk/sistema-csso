@@ -503,7 +503,7 @@ export async function leitura(tx: Executor, usuario: UsuarioAtual, itens: Penden
   );
   const certificados = await _mapa(ids((p) => p.entidade_id, "certificado"), (l) =>
     tx
-      .select({ id: certificado.id, numero: certificado.numero, ano: certificado.ano })
+      .select({ id: certificado.id, numero: certificado.numero, ano: certificado.ano, numero_impresso: certificado.numero_impresso })
       .from(certificado)
       .where(inArray(certificado.id, l)),
   );
@@ -539,7 +539,7 @@ export async function leitura(tx: Executor, usuario: UsuarioAtual, itens: Penden
         if (p.entidade === "turma") numero = turmas.get(p.entidade_id)?.codigo ?? numero;
         if (p.entidade === "certificado") {
           const ce = certificados.get(p.entidade_id);
-          if (ce) numero = `nº ${ce.numero}/${ce.ano}`;
+          if (ce) numero = `nº ${ce.numero_impresso || `${ce.numero}/${ce.ano}`}`;
         }
         const pode = lugar[3] !== null && usuario.pode(lugar[3]);
         onde.push({ rotulo: `${lugar[0]} ${numero}`, href: pode ? `${lugar[1]}${p.entidade_id}${lugar[2]}` : null });

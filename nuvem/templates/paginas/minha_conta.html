@@ -1,153 +1,232 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
-{% block titulo %}Minha conta · SISA{% endblock %}
+{% block titulo %}Meu perfil · SISA{% endblock %}
 
-{# A conta vista pela própria pessoa (22/10/2026). Abre para toda conta logada:
-   o que muda aqui é sempre a conta da sessão. Perfis e vínculo de servidor
-   ficam só para leitura — quem os corrige é a coordenação, em /usuarios. #}
+{# A conta vista pela própria pessoa (22/10/2026); desde o Portal do servidor
+   (mesmo dia) é o "Meu perfil", em seções. Abre para toda conta logada: o que
+   muda aqui é sempre a conta da sessão. Dados funcionais, perfis e vínculo de
+   servidor ficam só para leitura — quem os corrige é a gestão de pessoas (o
+   cadastro) e a coordenação (a conta, em /usuarios). Sem CPF, RG ou data de
+   nascimento: o perfil não os mostra.
+
+   As seções são `<details>`, sem JS. A primeira vem aberta; com erro num
+   formulário, abre a seção de contato, onde o erro está. #}
 
 {# Quem não tem o "Meu espaço" (a equipe sem vínculo de servidor) chega pelo
    nome no cabeçalho, e a trilha não tem item para nomear a tela: o nome entra
-   aqui. Quem tem o bloco já vê "Meu espaço / Minha conta". #}
+   aqui. Quem tem o bloco já vê "Meu espaço / Meu perfil". #}
 {% block trilha %}
 {%- if not (item_ativo and item_ativo.caminho == '/minha-conta') -%}
-<span class="atual" aria-current="page">Minha conta</span>
+<span class="atual" aria-current="page">Meu perfil</span>
 {%- endif -%}
 {% endblock %}
 
 {% set d = digitado or {} %}
+{% set erro_contato = erro_dados or erro_email %}
+
+{% macro resumo_secao(icone, titulo, extra='') %}
+<summary>
+  <span class="perfil-secao-icone">{{ ui.icone(icone) }}</span>
+  <span class="perfil-secao-titulo">{{ titulo }}</span>
+  {% if extra %}<span class="selo">{{ extra }}</span>{% endif %}
+  <span class="perfil-secao-seta">{{ ui.icone('arrow-right') }}</span>
+</summary>
+{% endmacro %}
 
 {% block conteudo %}
-<div class="tela formulario">
+<div class="tela perfil">
 
-  <div class="cabecalho-pagina">
-    <div class="titulo">
-      <h1>Minha conta</h1>
-      <p class="sub">Seus dados de contato, o e-mail com que você entra, a senha e
-        os perfis que a sua conta tem.</p>
+  <h1 class="oculto">Meu perfil</h1>
+
+  {# ---------- cabeçalho: iniciais, nome e chips ---------- #}
+  <section class="perfil-cabecalho" aria-label="Identificação">
+    <span class="perfil-iniciais" aria-hidden="true">{{ iniciais }}</span>
+    <div class="perfil-identidade">
+      <p class="perfil-nome">{{ servidor.nome if servidor else conta.nome }}</p>
+      <ul class="perfil-chips" aria-label="Resumo funcional">
+        {% if servidor %}
+          {% if servidor.unidade %}<li class="chip" title="Lotação">{{ servidor.unidade.sigla or servidor.unidade.nome_extenso }}</li>{% endif %}
+          {% if servidor.cargo %}<li class="chip" title="Cargo">{{ servidor.cargo.nome }}</li>{% endif %}
+          {% if servidor.unidade and servidor.unidade.campus %}<li class="chip" title="Campus">{{ servidor.unidade.campus.nome }}</li>{% endif %}
+          <li class="chip chip--situacao" title="Situação funcional">{{ ui.pilula_situacao_servidor(servidor.situacao) }}</li>
+        {% else %}
+          <li class="chip">Conta de equipe</li>
+        {% endif %}
+      </ul>
     </div>
-  </div>
+  </section>
 
-  {# ---------- dados pessoais ---------- #}
-  <section class="cartao" aria-labelledby="t-dados">
-    <div class="titulo-cartao"><h2 id="t-dados">Dados pessoais</h2></div>
-    {% if erro_dados %}<div class="aviso aviso-erro" role="alert">{{ erro_dados }}</div>{% endif %}
-    <form method="post" action="/minha-conta/dados">
-      <div class="campo">
-        <label for="nome">Nome</label>
-        <input id="nome" name="nome" type="text" required maxlength="160" autocomplete="name"
-               value="{{ d.nome if d.nome is defined else conta.nome }}">
-      </div>
-      <div class="linha-campos">
-        <div class="campo">
-          <label for="telefone">Telefone <span class="discreto">(opcional)</span></label>
-          <input id="telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel"
-                 maxlength="{{ TELEFONE_MAX }}" pattern="[0-9 \(\)\+\-]*" aria-describedby="dica-telefone"
-                 value="{{ d.telefone if d.telefone is defined else (conta.telefone or '') }}">
-          <span class="dica" id="dica-telefone">Com DDD, por exemplo (38) 99999-1234.</span>
+  {# ---------- 1. Dados funcionais (só leitura; não há formulário nem POST) ---------- #}
+  {% if servidor %}
+  <details class="perfil-secao" id="dados-funcionais"{% if not erro_contato %} open{% endif %}>
+    {{ resumo_secao('person-badge', 'Dados funcionais', 'Só leitura') }}
+    <div class="perfil-secao-corpo">
+      <dl class="dl-rotulo">
+        <div><dt>Matrícula SIAPE</dt><dd class="mono">{{ servidor.siape }}</dd></div>
+        <div><dt>Cargo</dt><dd>{{ servidor.cargo.nome if servidor.cargo else 'não informado' }}</dd></div>
+        <div><dt>Função</dt><dd>{{ servidor.funcao or '—' }}</dd></div>
+        <div><dt>Lotação</dt><dd>{% if servidor.unidade %}{% if servidor.unidade.sigla %}{{ servidor.unidade.sigla }} · {% endif %}{{ servidor.unidade.nome_extenso }}{% else %}não informada{% endif %}</dd></div>
+        <div><dt>Campus</dt><dd>{{ servidor.unidade.campus.nome if (servidor.unidade and servidor.unidade.campus) else 'não informado' }}</dd></div>
+        <div><dt>Situação</dt><dd>{{ ui.pilula_situacao_servidor(servidor.situacao) }}</dd></div>
+        {% if postos|length %}<div><dt>Posto de trabalho</dt><dd>{{ postos|map(attribute='nome')|join(' / ') }}</dd></div>{% endif %}
+      </dl>
+      <p class="perfil-nota">Fonte: SIAPE / Pró-Reitoria de Gestão de Pessoas. Para corrigir, procure a
+        gestão de pessoas. Dados funcionais, só leitura.
+        <a href="/servidores/{{ servidor.id }}">Ver minha ficha completa →</a></p>
+    </div>
+  </details>
+  {% endif %}
+
+  {# ---------- 2. Contato e acesso (o que já existia em Minha conta) ---------- #}
+  <details class="perfil-secao" id="contato"{% if erro_contato or not servidor %} open{% endif %}>
+    {{ resumo_secao('envelope', 'Contato e acesso') }}
+    <div class="perfil-secao-corpo formulario">
+
+      <section aria-labelledby="t-dados">
+        <h2 id="t-dados" class="perfil-subtitulo">Dados pessoais</h2>
+        {% if erro_dados %}<div class="aviso aviso-erro" role="alert">{{ erro_dados }}</div>{% endif %}
+        <form method="post" action="/minha-conta/dados">
+          <div class="campo">
+            <label for="nome">Nome</label>
+            <input id="nome" name="nome" type="text" required maxlength="160" autocomplete="name"
+                   value="{{ d.nome if d.nome is defined else conta.nome }}">
+          </div>
+          <div class="linha-campos">
+            <div class="campo">
+              <label for="telefone">Telefone <span class="discreto">(opcional)</span></label>
+              <input id="telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel"
+                     maxlength="{{ TELEFONE_MAX }}" pattern="[0-9 \(\)\+\-]*" aria-describedby="dica-telefone"
+                     value="{{ d.telefone if d.telefone is defined else (conta.telefone or '') }}">
+              <span class="dica" id="dica-telefone">Com DDD, por exemplo (38) 99999-1234.</span>
+            </div>
+            <div class="campo">
+              <label for="ramal">Ramal <span class="discreto">(opcional)</span></label>
+              <input id="ramal" name="ramal" type="text" inputmode="numeric"
+                     maxlength="{{ RAMAL_MAX }}" pattern="[0-9 \(\)\+\-]*" aria-describedby="dica-ramal"
+                     value="{{ d.ramal if d.ramal is defined else (conta.ramal or '') }}">
+              <span class="dica" id="dica-ramal">O ramal da sua sala, se houver.</span>
+            </div>
+          </div>
+          {# A finalidade, dita antes de a pessoa digitar (LGPD art. 6º, I e art. 9º). #}
+          <p class="aviso-legal sem-margem">Telefone e ramal são usados só para a equipe do
+            setor falar com você sobre treinamentos, EPIs e processos. Não aparecem para
+            outros servidores e podem ser apagados quando quiser: basta deixar o campo em
+            branco e salvar.</p>
+          <div class="acoes">
+            <button type="submit">Salvar dados</button>
+          </div>
+        </form>
+      </section>
+
+      <section aria-labelledby="t-email">
+        <h2 id="t-email" class="perfil-subtitulo">E-mail de entrada</h2>
+        <p class="sub">É com ele que você entra no sistema. Para trocá-lo, confirme a sua
+          senha atual.</p>
+        {% if erro_email %}<div class="aviso aviso-erro" role="alert">{{ erro_email }}</div>{% endif %}
+        <form method="post" action="/minha-conta/email">
+          <div class="linha-campos">
+            <div class="campo">
+              <label for="email">E-mail</label>
+              <input id="email" name="email" type="email" required maxlength="160" autocomplete="email"
+                     value="{{ d.email if d.email is defined else conta.email }}">
+            </div>
+            <div class="campo">
+              <label for="senha-email">Senha atual</label>
+              <input id="senha-email" name="senha_atual" type="password" required
+                     autocomplete="current-password" aria-describedby="dica-senha-email">
+              <span class="dica" id="dica-senha-email">Errar a senha aqui conta como tentativa
+                de entrada, como no login.</span>
+            </div>
+          </div>
+          <div class="acoes">
+            <button type="submit">Trocar e-mail</button>
+          </div>
+        </form>
+      </section>
+
+      {% if not servidor %}
+      <p class="perfil-nota">Esta conta não está ligada a um cadastro de servidor.
+        Dados funcionais, só leitura. Para corrigir, fale com a coordenação.</p>
+      {% endif %}
+    </div>
+  </details>
+
+  {# ---------- 3. Segurança ---------- #}
+  <details class="perfil-secao" id="seguranca">
+    {{ resumo_secao('lock', 'Segurança') }}
+    <div class="perfil-secao-corpo">
+      <p>A senha nova vale na hora. As outras sessões abertas desta conta são
+        encerradas; esta continua aberta.</p>
+      <p class="acoes"><a class="botao secundario" href="/trocar-senha">Trocar senha</a></p>
+      <p class="perfil-nota">{% if inatividade_minutos > 0 %}Por segurança, a sessão parada é
+        encerrada sozinha depois de {{ inatividade_minutos }} minutos sem uso, com um aviso
+        pouco antes. {% endif %}Se você usa um computador compartilhado, saia ao terminar.</p>
+    </div>
+  </details>
+
+  {# ---------- Perfis de acesso (só leitura) ---------- #}
+  <details class="perfil-secao" id="perfis">
+    {{ resumo_secao('key', 'Perfis de acesso', perfis|length) }}
+    <div class="perfil-secao-corpo">
+      {% if perfis|length %}
+      <div class="lista-linhas">
+        {% for p in perfis %}
+        <div>
+          <span class="quem">
+            <strong>{{ p.nome }}</strong>
+            <span class="discreto">{{ p.coordenadoria }}</span>
+          </span>
+          <span class="onde">{{ (p.campus.sigla ~ ' — ' ~ p.campus.nome) if p.campus else 'todos os campi' }}</span>
+          <span class="discreto">
+            {%- if p.futura %}começa em {{ p.vigencia_inicio|data }}
+            {%- else %}desde {{ p.vigencia_inicio|data }}{% if p.vigencia_fim %} até {{ p.vigencia_fim|data }}{% endif %}
+            {%- endif %}</span>
         </div>
-        <div class="campo">
-          <label for="ramal">Ramal <span class="discreto">(opcional)</span></label>
-          <input id="ramal" name="ramal" type="text" inputmode="numeric"
-                 maxlength="{{ RAMAL_MAX }}" pattern="[0-9 \(\)\+\-]*" aria-describedby="dica-ramal"
-                 value="{{ d.ramal if d.ramal is defined else (conta.ramal or '') }}">
-          <span class="dica" id="dica-ramal">O ramal da sua sala, se houver.</span>
-        </div>
+        {% endfor %}
       </div>
-      {# A finalidade, dita antes de a pessoa digitar (LGPD art. 6º, I e art. 9º). #}
-      <p class="aviso-legal sem-margem">Telefone e ramal são usados só para a equipe do
-        setor falar com você sobre treinamentos, EPIs e processos. Não aparecem para
-        outros servidores e podem ser apagados quando quiser: basta deixar o campo em
-        branco e salvar.</p>
-      <div class="acoes">
-        <button type="submit">Salvar dados</button>
-      </div>
-    </form>
-  </section>
-
-  {# ---------- e-mail ---------- #}
-  <section class="cartao" aria-labelledby="t-email">
-    <div class="titulo-cartao"><h2 id="t-email">E-mail de entrada</h2></div>
-    <p class="sub">É com ele que você entra no sistema. Para trocá-lo, confirme a sua
-      senha atual.</p>
-    {% if erro_email %}<div class="aviso aviso-erro" role="alert">{{ erro_email }}</div>{% endif %}
-    <form method="post" action="/minha-conta/email">
-      <div class="linha-campos">
-        <div class="campo">
-          <label for="email">E-mail</label>
-          <input id="email" name="email" type="email" required maxlength="160" autocomplete="email"
-                 value="{{ d.email if d.email is defined else conta.email }}">
-        </div>
-        <div class="campo">
-          <label for="senha-email">Senha atual</label>
-          <input id="senha-email" name="senha_atual" type="password" required
-                 autocomplete="current-password" aria-describedby="dica-senha-email">
-          <span class="dica" id="dica-senha-email">Errar a senha aqui conta como tentativa
-            de entrada, como no login.</span>
-        </div>
-      </div>
-      <div class="acoes">
-        <button type="submit">Trocar e-mail</button>
-      </div>
-    </form>
-  </section>
-
-  {# ---------- senha ---------- #}
-  <section class="cartao" aria-labelledby="t-senha">
-    <div class="titulo-cartao"><h2 id="t-senha">Senha</h2></div>
-    <p class="sub">A senha nova vale na hora. As outras sessões abertas desta conta são
-      encerradas; esta continua aberta.</p>
-    <div class="acoes"><a class="botao secundario" href="/trocar-senha">Trocar senha</a></div>
-  </section>
-
-  {# ---------- perfis ---------- #}
-  <section class="cartao liso" aria-labelledby="t-perfis">
-    <div class="cabecalho-cartao">
-      <h2 id="t-perfis">Perfis e acessos</h2>
-      <span class="contador">{{ perfis|length }}</span>
+      {% else %}
+      <p>Nenhum perfil concedido a esta conta.</p>
+      {% endif %}
+      <p class="perfil-nota">Só leitura. Para corrigir, fale com a coordenação.</p>
     </div>
-    {% if perfis|length %}
-    <div class="lista-linhas">
-      {% for p in perfis %}
-      <div>
-        <span class="quem">
-          <strong>{{ p.nome }}</strong>
-          <span class="discreto">{{ p.coordenadoria }}</span>
-        </span>
-        <span class="onde">{{ (p.campus.sigla ~ ' — ' ~ p.campus.nome) if p.campus else 'todos os campi' }}</span>
-        <span class="discreto">
-          {%- if p.futura %}começa em {{ p.vigencia_inicio|data }}
-          {%- else %}desde {{ p.vigencia_inicio|data }}{% if p.vigencia_fim %} até {{ p.vigencia_fim|data }}{% endif %}
-          {%- endif %}</span>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="corpo"><p class="sem-margem">Nenhum perfil concedido a esta conta.</p></div>
-    {% endif %}
-    <div class="corpo">
-      <p class="discreto sem-margem">Só leitura. Para corrigir, fale com a coordenação.</p>
-    </div>
-  </section>
+  </details>
 
-  {# ---------- vínculo de servidor ---------- #}
-  <section class="cartao liso" aria-labelledby="t-servidor">
-    <div class="cabecalho-cartao"><h2 id="t-servidor">Vínculo de servidor</h2></div>
-    {% if servidor %}
-    <dl class="tabela-dados">
-      <dt>Nome</dt><dd>{{ servidor.nome }}</dd>
-      <dt>SIAPE</dt><dd class="mono">{{ servidor.siape }}</dd>
-      <dt>Cargo</dt><dd>{{ servidor.cargo.nome if servidor.cargo else 'não informado' }}</dd>
-      <dt>Lotação</dt><dd>{{ servidor.unidade.nome_extenso if servidor.unidade else 'não informada' }}</dd>
-      {% if postos|length %}<dt>Posto de trabalho</dt><dd>{{ postos|map(attribute='nome')|join(' / ') }}</dd>{% endif %}
-    </dl>
-    {% else %}
-    <div class="corpo"><p class="sem-margem">Esta conta não está ligada a um cadastro de servidor.</p></div>
-    {% endif %}
-    <div class="corpo">
-      <p class="discreto sem-margem">Dados funcionais, só leitura. Para corrigir, fale com a coordenação.</p>
+  {# ---------- 4. Treinamentos e certificados (resumo) ---------- #}
+  {% if servidor %}
+  <details class="perfil-secao" id="treinamentos">
+    {{ resumo_secao('award', 'Treinamentos e certificados') }}
+    <div class="perfil-secao-corpo">
+      <p class="perfil-resumo"><strong>{{ resumo_certificados.validos }}
+        {{ 'certificado válido' if resumo_certificados.validos == 1 else 'certificados válidos' }}</strong>
+        · {{ resumo_certificados.horas }} h de capacitação</p>
+      {% if resumo_certificados.em_emissao %}
+      <p class="perfil-nota">{{ resumo_certificados.em_emissao }}
+        {{ 'treinamento concluído aguarda' if resumo_certificados.em_emissao == 1 else 'treinamentos concluídos aguardam' }}
+        a emissão do certificado.</p>
+      {% endif %}
+      <p class="perfil-links">
+        <a href="/certificados/meus">Meus certificados →</a>
+        <a href="/turmas/minhas">Meus treinamentos →</a>
+      </p>
     </div>
-  </section>
+  </details>
+  {% endif %}
+
+  {# ---------- 5. Privacidade (LGPD) ---------- #}
+  <details class="perfil-secao" id="privacidade">
+    {{ resumo_secao('eye', 'Privacidade (LGPD)') }}
+    <div class="perfil-secao-corpo">
+      <p>Pela Lei Geral de Proteção de Dados (art. 18), você pode confirmar que a UFVJM trata
+        seus dados, ter acesso a eles, pedir a correção do que estiver incompleto ou
+        errado e saber com quem eles são compartilhados.</p>
+      {% if servidor %}
+      <p>Em <a href="/minha-atividade">Minha atividade</a> você acompanha o que aconteceu
+        com seus treinamentos, certificados, EPIs e a sua conta.</p>
+      {% endif %}
+      <p class="perfil-nota">Para exercer esses direitos, fale com o encarregado pelo
+        tratamento de dados pessoais da UFVJM.</p>
+    </div>
+  </details>
 
 </div>
 {% endblock %}

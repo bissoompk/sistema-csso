@@ -61,6 +61,22 @@
   {% endif %}
 
   <h2 id="abertas">Turmas com inscrições abertas</h2>
+  {# Os filtros são links GET (o turno) e o recorte por treinamento que chega
+     do cartão do certificado ("Inscrever-se na reciclagem"). Um preserva o
+     outro, e a âncora volta para esta seção. #}
+  {% set q_treino = ('treinamento=' ~ treinamento_filtro.id) if treinamento_filtro else '' %}
+  {% if treinamento_filtro %}
+  <p class="turma-filtro-ativo">Mostrando as turmas de <strong>{{ treinamento_filtro.nome }}</strong>.
+    <a href="/turmas/minhas{{ ('?turno=' ~ filtro_turno) if filtro_turno }}#abertas">Ver todas</a></p>
+  {% endif %}
+  {% if total_abertas %}
+  <ul class="filtro-pilulas" aria-label="Filtrar por turno">
+    <li><a href="/turmas/minhas{{ ('?' ~ q_treino) if q_treino }}#abertas"{% if not filtro_turno %} aria-current="true"{% endif %}>Todos os turnos</a></li>
+    {% for codigo, rotulo in turnos %}
+    <li><a href="/turmas/minhas?turno={{ codigo }}{{ ('&' ~ q_treino) if q_treino }}#abertas"{% if filtro_turno == codigo %} aria-current="true"{% endif %}>{{ rotulo }}</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   <div class="tabela-cartao lista sem-altura">
   <table class="empilhavel">
     <thead>
@@ -79,7 +95,8 @@
       <td class="nome">{{ turma.treinamento.nome }}
         <span class="quebra discreto"><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a></span></td>
       <td class="mono" data-coluna="Período">{{ turma.data_inicio|data }}
-        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</td>
+        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
+        {%- if turma|horario_turma %}<span class="quebra discreto turma-horario">{{ turma|horario_turma }}</span>{% endif %}</td>
       <td data-coluna="Local"><span class="recorte" title="{{ turma.local or '' }}">
           {{- turma.local or '—' -}}</span></td>
       <td class="mono" data-coluna="Inscrições até">{{ turma.inscricao_aberta_ate|data if turma.inscricao_aberta_ate else '—' }}</td>
@@ -107,11 +124,18 @@
       </td>
     </tr>
     {% else %}
+    {% if treinamento_filtro or filtro_turno %}
+    {{ ui.vazio_de_lista(
+         'Nenhuma turma aberta nesta seleção.',
+         ('Sem turma aberta de ' ~ treinamento_filtro.nome ~ ' agora: avisaremos por e-mail quando abrir. '
+           if treinamento_filtro else '') ~ '“Ver todas” ou “Todos os turnos” desfazem o recorte.', 6) }}
+    {% else %}
     {{ ui.vazio_de_lista(
          'Nenhuma turma aberta agora.',
          'Veja no catálogo de treinamentos (menu Certificados e Treinamentos) o que os
           setores da Sisa oferecem: a turma é a oferta com data, e aparece aqui quando abre
           inscrições. Turma que já começou é inscrita pela equipe responsável.', 6) }}
+    {% endif %}
     {% endfor %}
     </tbody>
   </table>
@@ -124,7 +148,7 @@
       <tr>
         <th scope="col">Treinamento</th>
         <th scope="col">Período</th><th scope="col">Situação</th>
-        <th scope="col"><span class="oculto">Desistir</span></th>
+        <th scope="col"><span class="oculto">Ações</span></th>
       </tr>
     </thead>
     <tbody>
@@ -133,7 +157,8 @@
       <td class="nome">{{ i.turma.treinamento.nome }}
         <span class="quebra discreto"><a class="mono" href="/turmas/{{ i.turma.id }}">{{ i.turma.codigo }}</a></span></td>
       <td class="mono" data-coluna="Período">{{ i.turma.data_inicio|data }}
-        {%- if i.turma.data_fim != i.turma.data_inicio %} a {{ i.turma.data_fim|data }}{% endif %}</td>
+        {%- if i.turma.data_fim != i.turma.data_inicio %} a {{ i.turma.data_fim|data }}{% endif %}
+        {%- if i.turma|horario_turma %}<span class="quebra discreto turma-horario">{{ i.turma|horario_turma }}</span>{% endif %}</td>
       <td data-coluna="Situação">
         {%- if i.situacao == 'AGUARDANDO_EMAIL' %}<span class="pilula alerta">Pedido em análise</span>
         {%- else %}{{ ui.pilula_inscricao(i.situacao) }}{% endif %}
@@ -144,6 +169,11 @@
         {%- if i.situacao == 'CANCELADA' and i.motivo_cancelamento %}
         <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}</td>
       <td class="acao-linha">
+        {# a agenda (.ics) da turma que ainda vai acontecer, ou está acontecendo #}
+        {% if com_agenda[i.id] and i.turma.data_fim >= hoje %}
+        <a class="botao secundario compacto turma-agenda" href="/turmas/minhas/{{ i.turma.id }}/agenda.ics"
+           download aria-label="Adicionar {{ i.turma.codigo }} à agenda">{{ ui.icone('calendar-event') }} Adicionar à agenda</a>
+        {% endif %}
         {% if desistivel[i.id] and pode_pedir %}
         {# A confirmação vem antes: a desistência é definitiva nesta turma. O
            botão abre a camada; sem JavaScript, a âncora a abre do mesmo jeito. #}

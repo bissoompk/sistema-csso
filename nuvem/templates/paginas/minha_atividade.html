@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Minha atividade · SISA{% endblock %}
+
+{# O que aconteceu com os treinamentos, certificados, EPIs, processos e a conta
+   do PRÓPRIO titular (Portal do servidor, 22/10/2026). A lista vem de
+   `servicos/atividade_titular.ts`: lista branca de eventos, frase própria
+   (nunca a descrição livre da trilha) e agente "Você" ou "Equipe {sigla}" —
+   o nome de quem operou não chega até aqui (RN-19). Consultas aos dados
+   sensíveis não aparecem, por decisão do usuário. #}
+
+{% block trilha %}
+{%- if not (item_ativo and item_ativo.caminho == '/minha-atividade') -%}
+<span class="atual" aria-current="page">Minha atividade</span>
+{%- endif -%}
+{% endblock %}
+
+{% block conteudo %}
+<div class="tela atividade">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Minha atividade</h1>
+      <p class="sub">Acompanhe o que aconteceu com seus treinamentos, certificados, EPI,
+        processos e a sua conta.</p>
+    </div>
+  </div>
+
+  {% if sem_servidor %}
+  <div class="vazio">
+    <p><strong>Esta conta não está ligada a um cadastro de servidor.</strong></p>
+    <p>A atividade mostra o que acontece com os treinamentos, certificados e EPIs de
+      um servidor. Se você é servidor da UFVJM e esperava ver a sua, peça à
+      coordenação que ligue a sua conta ao seu cadastro.</p>
+  </div>
+  {% else %}
+
+  <nav aria-label="Filtrar por tipo">
+    <ul class="filtro-pilulas">
+      <li><a href="/minha-atividade"{% if not grupo %} aria-current="true"{% endif %}>Tudo</a></li>
+      {% for g in grupos %}
+      <li><a href="/minha-atividade?tipo={{ g.codigo }}"{% if grupo == g.codigo %} aria-current="true"{% endif %}>{{ g.rotulo }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+
+  {% if atividade.dias|length %}
+  <div class="linha-tempo">
+    {% for d in atividade.dias %}
+    <section class="linha-tempo-dia" aria-labelledby="dia-{{ d.dia }}">
+      <h3 id="dia-{{ d.dia }}">{{ d.rotulo }}</h3>
+      <ol>
+        {% for it in d.itens %}
+        <li class="evento-titular grupo--{{ it.grupo }}">
+          <span class="evento-icone">{{ ui.icone(it.icone) }}</span>
+          <div class="evento-corpo">
+            <strong class="evento-titulo">{{ it.titulo }}</strong>
+            {% if it.objeto %}<span class="evento-objeto">{{ it.objeto }}</span>{% endif %}
+            <span class="evento-agente">{{ it.agente }}</span>
+          </div>
+          <time class="evento-quando" datetime="{{ it.quando_iso }}" title="{{ it.quando_completo }}">{{ it.quando_relativo }}</time>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endfor %}
+  </div>
+
+  {% if atividade.proximo_antes %}
+  <p class="atividade-mais">
+    <a class="botao secundario" href="/minha-atividade?{% if grupo %}tipo={{ grupo }}&amp;{% endif %}antes={{ atividade.proximo_antes }}">Carregar mais</a>
+  </p>
+  {% endif %}
+
+  {% elif antes %}
+  <div class="vazio">
+    <p>Não há mais nada antes disso.</p>
+    <p><a href="/minha-atividade{% if grupo %}?tipo={{ grupo }}{% endif %}">Voltar ao mais recente</a></p>
+  </div>
+  {% else %}
+  <div class="vazio">
+    <p>Nada por aqui ainda. Quando você se inscrever, receber EPI ou um certificado, aparece aqui.</p>
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+  <p class="atividade-rodape">Seus acessos ficam protegidos e não aparecem aqui. Ações da
+    equipe aparecem com o nome do setor, e não com o nome de quem operou.</p>
+</div>
+{% endblock %}

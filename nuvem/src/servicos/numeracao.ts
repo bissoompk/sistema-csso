@@ -144,3 +144,51 @@ export async function lacunas_de_numeracao(tx: Executor, ano: number): Promise<n
   for (let n = 1; n <= limite; n++) if (!usados.has(n)) lacunas.push(n);
   return lacunas;
 }
+
+// ---------------------------------------------------------------------
+// Portal do servidor (22/10/2026): o número impresso do certificado novo
+// ---------------------------------------------------------------------
+/**
+ * `CSSO-NR35-2026-0001`: a sequência é por PREFIXO (sigla do setor promotor +
+ * código curto do treinamento) e por ano, em `certificado_sequencia_prefixo`.
+ *
+ * Mesma disciplina de `proximo_numero`: nunca MAX()+1. O `UPDATE ... RETURNING`
+ * na linha (prefixo, ano) toma a trava de linha; a segunda emissão do mesmo
+ * prefixo ESPERA o COMMIT da primeira e lê o valor já incrementado — sem
+ * buraco por concorrência. Rodando na transação (ou SAVEPOINT do lote) de quem
+ * emite, o número volta junto com o ROLLBACK de uma emissão que falhou.
+ *
+ * Um número já gravado (`certificado.numero_impresso`) é pulado: protege o
+ * caso de o código curto ter sido editado para um prefixo que já existiu.
+ */
+const _RE_PREFIXO = /^[A-Z0-9]{1,12}-[A-Z0-9]{2,10}$/;
+
+export async function proximo_numero_impresso(
+  tx: Executor,
+  prefixo: string,
+  ano: number,
+  montar: (prefixo: string, ano: number, sequencia: number) => string,
+): Promise<{ sequencia: number; numero_impresso: string }> {
+  // O prefixo vai como parâmetro (não há interpolação), mas um prefixo fora do
+  // formato abriria uma sequência que o CHECK de `certificado.numero_impresso`
+  // recusaria depois — melhor recusar antes de gastar a linha.
+  if (!_RE_PREFIXO.test(prefixo)) throw new NumeracaoIndisponivel(`prefixo de numero fora do formato: '${prefixo}'`);
+  if (!Number.isInteger(ano) || ano < 1000 || ano > 9999) throw new NumeracaoIndisponivel(`ano invalido: ${ano}`);
+  await tx.execute(
+    sql`INSERT INTO certificado_sequencia_prefixo (prefixo, ano, ultimo_numero) VALUES (${prefixo}, ${ano}, 0)
+        ON CONFLICT (prefixo, ano) DO NOTHING`,
+  );
+  for (;;) {
+    const linhas = await tx.execute<{ ultimo_numero: number }>(
+      sql`UPDATE certificado_sequencia_prefixo SET ultimo_numero = ultimo_numero + 1
+          WHERE prefixo = ${prefixo} AND ano = ${ano} RETURNING ultimo_numero`,
+    );
+    const sequencia = linhas[0]?.ultimo_numero;
+    if (sequencia === undefined || sequencia === null) {
+      throw new NumeracaoIndisponivel(`nao foi possivel obter numero de certificado para ${prefixo}/${ano}`);
+    }
+    const numero_impresso = montar(prefixo, ano, Number(sequencia));
+    const ocupado = await tx.execute(sql`SELECT 1 FROM certificado WHERE numero_impresso = ${numero_impresso} LIMIT 1`);
+    if (!ocupado.length) return { sequencia: Number(sequencia), numero_impresso };
+  }
+}

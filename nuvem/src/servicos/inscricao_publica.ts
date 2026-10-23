@@ -32,7 +32,6 @@ import {
   turma as tabela_turma,
 } from "../db/esquema/index.js";
 import { somar_dias } from "../dominio/datas.js";
-import { VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
 import * as servico_participante from "./participante.js";
@@ -53,6 +52,29 @@ const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const RESPOSTA_PADRAO =
   "Pedido recebido. A equipe responsável pela turma confere cada pedido antes de confirmar a vaga; " +
   "se precisar de algo, ela procura você pelos dados informados.";
+
+// ---------------------------------------------------------------------
+// O público da turma (22/10/2026)
+// ---------------------------------------------------------------------
+/** Os vínculos de sempre: a comunidade da UFVJM. */
+export const VINCULOS_DA_UFVJM = ["SERVIDOR", "TERCEIRIZADO", "DISCENTE"] as const;
+/** "Comunidade externa": só na turma marcada com `aceita_comunidade_externa`. */
+export const VINCULOS_COMUNIDADE_EXTERNA = ["VISITANTE", "OUTRO"] as const;
+export const ROTULO_COMUNIDADE_EXTERNA = "Comunidade externa";
+
+/** Os vínculos que a turma aceita no pedido pelo link. */
+export function vinculos_aceitos(turma: { aceita_comunidade_externa: boolean }): string[] {
+  return turma.aceita_comunidade_externa
+    ? [...VINCULOS_DA_UFVJM, ...VINCULOS_COMUNIDADE_EXTERNA]
+    : [...VINCULOS_DA_UFVJM];
+}
+
+/** A frase do público, para a ficha, a tela do link e o cartaz. */
+export function publico_da_turma(turma: { aceita_comunidade_externa: boolean }): string {
+  return turma.aceita_comunidade_externa
+    ? "Servidores, terceirizados e discentes da UFVJM, e a comunidade externa"
+    : "Servidores, terceirizados e discentes da UFVJM";
+}
 
 function _hash(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
@@ -182,7 +204,7 @@ export interface Pedido {
 /** O que a tela devolve ao público: a recusa de digitação, nunca a de quem é quem. */
 export class PedidoInvalido extends Error {}
 
-function _ler(d: Pedido): Pedido {
+function _ler(d: Pedido, turma: { aceita_comunidade_externa: boolean }): Pedido {
   const p = {
     nome: d.nome.trim().replace(/\s+/g, " "),
     vinculo: d.vinculo,
@@ -204,7 +226,17 @@ function _ler(d: Pedido): Pedido {
   if (p.nome.length > 160 || p.organizacao.length > 160 || p.email.length > 160) {
     throw new PedidoInvalido("Algum campo passou de 160 caracteres.");
   }
-  if (!(VINCULOS_PARTICIPANTE as readonly string[]).includes(p.vinculo)) throw new PedidoInvalido("Escolha o vínculo.");
+  // a turma sem "comunidade externa" recusa Visitante e Outro como erro de
+  // formulário: a frase fala do público da turma (que está no cartaz), e não
+  // diz nada de ninguém — não é oráculo
+  if (!vinculos_aceitos(turma).includes(p.vinculo)) {
+    if ((VINCULOS_COMUNIDADE_EXTERNA as readonly string[]).includes(p.vinculo)) {
+      throw new PedidoInvalido(
+        "Esta turma é para a comunidade da UFVJM: escolha Servidor da UFVJM, Terceirizado ou Discente.",
+      );
+    }
+    throw new PedidoInvalido("Escolha o vínculo.");
+  }
   if (p.vinculo === "SERVIDOR" && !RE_SIAPE.test(p.siape)) {
     throw new PedidoInvalido("Servidor da UFVJM: informe o SIAPE (6 ou 7 dígitos).");
   }
@@ -297,7 +329,7 @@ export async function pedir(
   ip: string | null,
   hoje: string | null = null,
 ): Promise<void> {
-  const p = _ler(dados);
+  const p = _ler(dados, turma);
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
   if (impedimento) throw new RegraDaTurma(impedimento.replace(servico_turma.FALE_COM_A_EQUIPE, ""));
   if ((await servico_turma.vagas_restantes(tx, turma)) === 0) {

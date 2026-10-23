@@ -7,9 +7,10 @@
 {% set periodo = (turma.data_inicio|data) ~ ((' a ' ~ (turma.data_fim|data)) if turma.data_fim != turma.data_inicio else '') %}
 {% set mensagem_divulgacao -%}
 Inscrições abertas: {{ turma.treinamento.nome }}
-Data: {{ periodo }}{% if turma.local %}
+Data: {{ periodo }}{% if turma|horario_turma %}, {{ turma|horario_turma }}{% endif %}{% if turma.local %}
 Local: {{ turma.local }}{% endif %}
 Carga horária: {{ turma.carga_efetiva|num }} h
+Para: {{ publico }}
 Inscreva-se até {{ turma.inscricao_aberta_ate|data }} pelo link:
 {{ endereco }}
 {%- endset %}
@@ -21,6 +22,9 @@ Inscreva-se até {{ turma.inscricao_aberta_ate|data }} pelo link:
       <h1>{{ ui.icone('link-45deg') }} Link público de inscrição</h1>
       <p class="sub"><a class="mono" href="/turmas/{{ turma.id }}?aba=inscricoes">{{ turma.codigo }}</a>
         · {{ turma.treinamento.nome }} · vale até {{ turma.inscricao_aberta_ate|data }}</p>
+      <p class="discreto sem-margem turma-publico">{{ ui.icone('people') }} Público: {{ publico }}
+        {%- if not turma.aceita_comunidade_externa %} (visitantes e outros de fora não aparecem no formulário;
+        marque “Aceita comunidade externa” em Editar dados da turma para abri-lo){% endif %}.</p>
     </div>
   </div>
 

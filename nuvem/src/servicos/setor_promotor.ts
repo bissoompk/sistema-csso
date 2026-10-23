@@ -14,6 +14,7 @@
  */
 import { and, asc, eq, inArray, or } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
+import { CORES_SETOR, ICONES_SETOR } from "../dominio/organizacao.js";
 import { unidade_uorg as tabela_unidade } from "../db/esquema/index.js";
 import * as auditoria from "./auditoria.js";
 import type { UsuarioAtual } from "./rbac.js";
@@ -116,6 +117,52 @@ export async function marcar(tx: Executor, usuario: UsuarioAtual, unidade_id: nu
     entidade_id: unidade_id,
     antes: { promove_treinamento: u.promove_treinamento },
     depois: { promove_treinamento: promove },
+    usuario,
+  });
+  return nova!;
+}
+
+// =====================================================================
+// NUVEM (Portal do servidor, 22/10/2026): a aparência do setor promotor
+// =====================================================================
+
+/**
+ * A cor e o ícone do setor (`unidade_uorg.cor_setor`/`icone_setor`), da
+ * paleta FECHADA de `dominio/organizacao.ts`. `null` é a cor do sistema (o
+ * `.setor--padrao` do CSS) e, no ícone, selo sem ícone. O valor de fora da
+ * paleta é recusado aqui, antes do CHECK do banco, para virar aviso e não 500.
+ * A trilha é o `CAMPO_ALTERADO` de sempre, campo a campo.
+ */
+export async function definir_aparencia(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  unidade_id: number,
+  cor: string | null,
+  icone: string | null,
+): Promise<Unidade> {
+  usuario.exigir(PERMISSAO);
+  if (cor !== null && !(CORES_SETOR as readonly string[]).includes(cor)) {
+    throw new SetorPromotorRecusado("Cor fora da paleta do sistema — escolha uma das cores da lista.");
+  }
+  if (icone !== null && !(ICONES_SETOR as readonly string[]).includes(icone)) {
+    throw new SetorPromotorRecusado("Ícone fora da lista do sistema — escolha um dos ícones oferecidos.");
+  }
+  const [u] = await tx.select().from(tabela_unidade).where(eq(tabela_unidade.id, unidade_id));
+  if (!u) throw new SetorPromotorRecusado("Unidade não encontrada.");
+  if (!u.promove_treinamento) {
+    throw new SetorPromotorRecusado(`${u.nome_extenso} não está entre os setores promotores — inclua-a antes.`);
+  }
+  if (u.cor_setor === cor && u.icone_setor === icone) return u;
+  const [nova] = await tx
+    .update(tabela_unidade)
+    .set({ cor_setor: cor, icone_setor: icone })
+    .where(eq(tabela_unidade.id, unidade_id))
+    .returning();
+  await auditoria.registrar_diferencas(tx, {
+    entidade: "unidade_uorg",
+    entidade_id: unidade_id,
+    antes: { cor_setor: u.cor_setor, icone_setor: u.icone_setor },
+    depois: { cor_setor: cor, icone_setor: icone },
     usuario,
   });
   return nova!;

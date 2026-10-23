@@ -1,0 +1,139 @@
+{# NUVEM (Portal do servidor, 22/10/2026): o cartão de um certificado do
+   titular — Meus certificados, o Início do servidor, a ficha leve e o acesso
+   sem conta. `c` é um `CartaoCertificado` (`servicos/certificados_titular.ts`).
+   Tudo vem do congelado (RN-15); nenhum CPF entra aqui.
+
+   Parâmetros:
+   - `compacto`: o Início (só o essencial e o botão de baixar);
+   - `sem_reciclagem`: sem "Inscrever-se na reciclagem" (o acesso sem conta);
+   - `link_baixar`: outro endereço para o papel (o link do e-mail);
+   - `com_ficha`: o título leva à ficha do certificado (falso no acesso sem conta).
+
+   A situação é texto + ícone, nunca só a cor. O superado pela reciclagem perde
+   o destaque de vencido: a pessoa já tem o certificado novo.
+
+   Uso: {% from "partes/cartao_certificado.html" import cartao_certificado %}
+        {{ cartao_certificado(c, compacto=true) }} #}
+
+{% macro selo_situacao_cert(c) %}
+{% import "partes/macros.html" as ui_c %}
+{%- if c.anulado -%}
+<span class="selo erro">{{ ui_c.icone('x-circle') }}Anulado</span>
+{%- elif c.superado_por -%}
+<span class="selo cert-selo-neutro">{{ ui_c.icone('clock-history') }}Substituído pela reciclagem</span>
+{%- elif c.situacao.tipo == 'valido' -%}
+<span class="selo ok">{{ ui_c.icone('check-circle') }}Válido</span>
+{%- elif c.situacao.tipo == 'a_vencer' -%}
+<span class="selo alerta">{{ ui_c.icone('exclamation-triangle') }}{% if c.situacao.dias == 0 %}Vence hoje{% else %}Vence em {{ c.situacao.dias }} {{ 'dia' if c.situacao.dias == 1 else 'dias' }}{% endif %}</span>
+{%- elif c.situacao.tipo == 'vencido' -%}
+<span class="selo erro">{{ ui_c.icone('x-circle') }}Vencido</span>
+{%- else -%}
+<span class="selo cert-selo-neutro">{{ ui_c.icone('info-circle') }}Sem prazo de validade</span>
+{%- endif -%}
+{% endmacro %}
+
+{% macro cartao_certificado(c, compacto=false, sem_reciclagem=false, link_baixar=none, com_ficha=true) %}
+{% import "partes/macros.html" as ui_c %}
+{% set so_word = c.modelo_enviado and not pdf_fiel() %}
+{% set destaque = '' if (c.anulado or c.superado_por) else c.situacao.tipo %}
+<article class="cert{% if destaque == 'vencido' %} cert--vencido{% elif destaque == 'a_vencer' %} cert--avencer{% endif %}{% if c.superado_por or c.anulado %} cert--apagado{% endif %}{% if compacto %} cert--compacto{% endif %}"
+         aria-labelledby="titulo-cert-{{ c.id }}">
+  <div class="cert-selos">
+    {{ selo_situacao_cert(c) }}
+    {% if c.norma %}<span class="selo info cert-norma">{{ c.norma }}</span>{% endif %}
+  </div>
+  <h3 id="titulo-cert-{{ c.id }}" class="cert-titulo" title="{{ c.treinamento }}">
+    {%- if com_ficha %}<a href="/certificados/{{ c.id }}">{{ c.treinamento }}</a>{% else %}{{ c.treinamento }}{% endif -%}
+  </h3>
+  {% if c.setor.sigla or c.setor.nome %}
+  <p class="cert-setor">{{ ui_c.selo_setor(c.setor) }}
+    {%- if c.setor.sigla and c.setor.nome and c.setor.nome != c.setor.sigla %} <span>{{ c.setor.nome }}</span>{% endif %}</p>
+  {% endif %}
+  <ul class="cert-meta" role="list">
+    {% if c.periodo %}
+    <li>{{ ui_c.icone('calendar-event') }}<span class="oculto">Período: </span><time datetime="{{ c.inicio }}">{{ c.periodo }}</time></li>
+    {% endif %}
+    <li>{{ ui_c.icone('clock') }}{{ c.carga_horaria }} h<span class="oculto"> de carga horária</span></li>
+    <li>{{ ui_c.icone('patch-check') }}Emitido em <time datetime="{{ c.data_emissao }}">{{ c.data_emissao|data }}</time></li>
+    {% if c.data_vencimento %}
+    <li class="cert-validade{% if destaque == 'vencido' %} cert-validade--vencido{% elif destaque == 'a_vencer' %} cert-validade--avencer{% endif %}">
+      {{- ui_c.icone('exclamation-triangle' if destaque in ['vencido', 'a_vencer'] else 'shield-plus') -}}
+      {{ 'Venceu em' if c.situacao.tipo == 'vencido' else 'Válido até' }} <time datetime="{{ c.data_vencimento }}">{{ c.data_vencimento|data }}</time></li>
+    {% else %}
+    <li>{{ ui_c.icone('shield-plus') }}Sem prazo de validade</li>
+    {% endif %}
+  </ul>
+
+  {% if c.anulado %}
+  <p class="cert-anulado">{{ ui_c.icone('x-circle') }}Anulado
+    {%- if c.substituido_por %} → substituído por <a href="/certificados/{{ c.substituido_por.id }}">Nº <span class="mono">{{ c.substituido_por.rotulo }}</span></a>
+    {%- else %} · sem substituto apontado{% endif %}</p>
+  {% endif %}
+
+  <div class="cert-acoes">
+    {% set href = link_baixar or ('/certificados/' ~ c.id ~ ('/documento' if so_word else '/pdf')) %}
+    {% if c.anulado %}
+    <a class="botao secundario" href="{{ href }}" aria-label="Baixar cópia anulada do certificado de {{ c.treinamento }}">
+      {{- ui_c.icone('download') }}Baixar cópia anulada</a>
+    {% else %}
+    <a class="botao{% if c.superado_por %} secundario{% endif %}" href="{{ href }}"
+       aria-label="Baixar certificado de {{ c.treinamento }}{% if so_word %} (Word){% endif %}">
+      {{- ui_c.icone('download') }}{{ 'Baixar certificado (Word)' if so_word else 'Baixar certificado' }}</a>
+    {% endif %}
+
+    {% if not compacto and not c.anulado %}
+    {% if c.conteudo|length %}
+    <details class="cert-detalhe">
+      <summary class="botao secundario">{{ ui_c.icone('list-ul') }}Conteúdo programático<span class="oculto"> de {{ c.treinamento }}</span></summary>
+      <ol class="cert-conteudo">
+        {% for t in c.conteudo %}<li>{{ t }}</li>{% endfor %}
+      </ol>
+    </details>
+    {% endif %}
+    <details class="cert-detalhe cert-validar">
+      <summary class="cert-link">{{ ui_c.icone('qr-code') }}Validar<span class="oculto"> o certificado de {{ c.treinamento }}</span></summary>
+      <div class="cert-validar-corpo">
+        <p class="sem-margem"><span class="discreto">Código de validação</span><br>
+          <span class="mono cert-chave">{{ c.chave }}</span></p>
+        <label class="discreto" for="validacao-{{ c.id }}">Link de validação</label>
+        <input type="text" class="mono cert-link-validacao" id="validacao-{{ c.id }}" readonly value="{{ c.url_validacao }}">
+        <button type="button" class="secundario compacto" data-copiar="validacao-{{ c.id }}" hidden
+                aria-label="Copiar o link de validação do certificado de {{ c.treinamento }}">Copiar link</button>
+        {% if c.qr %}<img class="cert-qr" src="{{ c.qr }}" width="132" height="132"
+             alt="QR do link de validação do certificado de {{ c.treinamento }}">{% endif %}
+      </div>
+    </details>
+    {% endif %}
+
+    {% if c.reciclagem and not sem_reciclagem %}
+    {% if c.turma_aberta == false %}
+    <p class="cert-sem-turma">{{ ui_c.icone('info-circle') }}Sem turma aberta de reciclagem. Avisaremos por e-mail.</p>
+    {% else %}
+    <a class="botao cert-reciclagem" href="/turmas/minhas?treinamento={{ c.treinamento_id }}#abertas"
+       aria-label="Inscrever-se na reciclagem de {{ c.treinamento }}">{{ ui_c.icone('clock-history') }}Inscrever-se na reciclagem</a>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <p class="cert-rodape"><span>Nº <span class="mono">{{ c.rotulo }}</span></span>
+    {%- if c.superado_por %}<span>Em vigor: Nº <span class="mono">{{ c.superado_por }}</span></span>{% endif %}</p>
+</article>
+{% endmacro %}
+
+{# "Em emissão": inscrição aprovada sem certificado. Cinza, sem botões. #}
+{% macro cartao_em_emissao(x) %}
+{% import "partes/macros.html" as ui_c %}
+<article class="cert cert--emissao" aria-labelledby="titulo-emissao-{{ x.inscricao_id }}">
+  <div class="cert-selos">
+    <span class="selo cert-selo-neutro">{{ ui_c.icone('hourglass-split') }}Em emissão</span>
+    {% if x.norma %}<span class="selo info cert-norma">{{ x.norma }}</span>{% endif %}
+  </div>
+  <h3 id="titulo-emissao-{{ x.inscricao_id }}" class="cert-titulo" title="{{ x.treinamento }}">{{ x.treinamento }}</h3>
+  {% if x.setor.sigla or x.setor.nome %}<p class="cert-setor">{{ ui_c.selo_setor(x.setor) }}</p>{% endif %}
+  <ul class="cert-meta" role="list">
+    <li>{{ ui_c.icone('calendar-event') }}<span class="oculto">Período: </span><time datetime="{{ x.inicio }}">{{ x.periodo }}</time></li>
+    <li>{{ ui_c.icone('clock') }}{{ x.carga_horaria }} h<span class="oculto"> de carga horária</span></li>
+  </ul>
+  <p class="cert-nota">A equipe {{ ('do ' ~ (x.setor.sigla or x.setor.nome)) if (x.setor.sigla or x.setor.nome) else 'responsável' }} está emitindo o seu certificado.</p>
+</article>
+{% endmacro %}

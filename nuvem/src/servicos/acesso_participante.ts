@@ -32,7 +32,10 @@ import {
   certificado as tabela_certificado,
   participante_email as tabela_email,
 } from "../db/esquema/index.js";
-import { Certificado as C, normalizar_email } from "../dominio/treinamento.js";
+import { Certificado as C, Treinamento, normalizar_email } from "../dominio/treinamento.js";
+import * as certificados_titular from "./certificados_titular.js";
+import type { CartaoCertificado } from "./certificados_titular.js";
+import { numero as numero_br } from "./presenca.js";
 import * as datas_br from "./datas_br.js";
 import * as email from "./email.js";
 import * as servico from "./emissao_certificado.js";
@@ -132,6 +135,10 @@ export async function pedir_link(
   });
 }
 
+/**
+ * O certificado na lista do link. Tudo do congelado (RN-15); nunca entra CPF
+ * — nem o do titular, nem `instrutores[].cpf`.
+ */
 export interface ItemDoTitular {
   id: number;
   rotulo: string;
@@ -142,6 +149,13 @@ export interface ItemDoTitular {
   emissao: string;
   vencimento: string | null;
   so_word: boolean;
+  /** "16" (horas, vírgula decimal) */
+  carga_horaria: string;
+  /** o nome do setor promotor como está no papel */
+  setor_promotor: string;
+  chave_validacao: string;
+  /** os tópicos do conteúdo programático */
+  conteudo: string[];
 }
 
 export interface LinkAberto {
@@ -196,8 +210,21 @@ export function itens(certificados: CertificadoRegistro[]): ItemDoTitular[] {
       emissao: x.data_emissao,
       vencimento: x.data_vencimento || null,
       so_word: servico.do_modelo_enviado(c),
+      carga_horaria: numero_br(x.carga_horaria || null),
+      setor_promotor: x.turma_unidade_promotora ?? "",
+      chave_validacao: c.chave_validacao,
+      conteudo: Treinamento.topicos({ conteudo_programatico: x.treinamento_conteudo || null }),
     };
   });
+}
+
+/**
+ * Os mesmos cartões de "Meus certificados" (`certificados_titular`), com o QR
+ * da validação. Sem "Inscrever-se" (a tela não tem conta) — quem desenha é a
+ * macro, com `sem_reciclagem`.
+ */
+export function cartoes(certificados: CertificadoRegistro[], hoje: string = datas_br.hoje()): CartaoCertificado[] {
+  return certificados_titular.com_qr(certificados_titular.cartoes_de_linhas(certificados, hoje));
 }
 
 /** Apaga o registro dos links (e-mail e IP) passado o prazo. */

@@ -37,7 +37,8 @@ describe("acesso", () => {
     const r = await amb.cliente.get("/minha-conta");
     expect(r.status, login).toBe(200);
     expect(r.text).not.toContain("Template render error");
-    expect(r.text).toContain("<h1>Minha conta</h1>");
+    // desde o Portal do servidor (22/10/2026) a tela é o "Meu perfil", em seções
+    expect(r.text).toContain('<h1 class="oculto">Meu perfil</h1>');
     expect(r.text).toContain('class="conta-propria" href="/minha-conta"');
     expect(r.text).toContain("Para corrigir, fale com a coordenação.");
   });

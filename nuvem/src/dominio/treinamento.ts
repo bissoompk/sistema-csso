@@ -125,7 +125,9 @@ export function gerar_identificador_publico(): string {
 // sorteados valem ~49 bits; o ultimo caractere e o digito verificador.
 export const PREFIXO_CHAVE = 'CSSO';
 export const TAMANHO_SORTEIO_CHAVE = 10;
-export const PADRAO_CHAVE_VALIDACAO =
+// A chave dos certificados emitidos ATE 22/10/2026 (com digito verificador).
+// Continua valendo para sempre em /validar: o papel ja circulou.
+export const PADRAO_CHAVE_ANTIGA =
   String.raw`CSSO-\d{4}-` +
   `[${ALFABETO_IDENTIFICADOR}]{5}-` +
   `[${ALFABETO_IDENTIFICADOR}]{5}-[${ALFABETO_IDENTIFICADOR}]`;
@@ -300,8 +302,14 @@ function decimos_de(valor: string): number {
 }
 
 export const Certificado = {
-  rotulo(certificado: { numero: number; ano: number }): string {
-    return `${certificado.numero}/${certificado.ano}`;
+  /**
+   * O numero que o papel imprime: `CSSO-NR35-2026-0001` no certificado
+   * emitido desde 22/10/2026, e `27/2026` no de antes (`numero_impresso`
+   * nulo). Obrigatorio passar `numero_impresso`: quem seleciona so
+   * numero/ano mostraria o rotulo antigo para o certificado novo.
+   */
+  rotulo(certificado: { numero: number; ano: number; numero_impresso: string | null }): string {
+    return certificado.numero_impresso || `${certificado.numero}/${certificado.ano}`;
   },
   anulado(certificado: { situacao: string }): boolean {
     return certificado.situacao === 'ANULADO';
@@ -336,10 +344,133 @@ export const Certificado = {
   },
 };
 
-export const DIAS_AVISO_RECICLAGEM = 30;
+/**
+ * A janela UNICA de "a vencer" do sistema inteiro: o certificado valido que
+ * vence em ate 60 dias ja pede reciclagem. Substituiu os 30 do aviso de
+ * reciclagem, os 90 do Inicio do servidor e os 60 da lista de certificados
+ * (decisao do usuario, 22/10/2026).
+ */
+export const JANELA_A_VENCER_DIAS = 60;
+
+/** O mesmo prazo, com o nome antigo (o aviso por e-mail e o monitor o usam). */
+export const DIAS_AVISO_RECICLAGEM = JANELA_A_VENCER_DIAS;
 
 export const ROTULO_RECICLAGEM: Readonly<Record<string, string>> = {
   VALIDO: 'Válido',
   A_VENCER: `A vencer (${DIAS_AVISO_RECICLAGEM} dias)`,
   VENCIDO: 'Vencido',
 };
+
+// =====================================================================
+// Portal do servidor (22/10/2026) — numero novo, janela unica e cartao
+// =====================================================================
+
+
+/**
+ * O codigo curto do treinamento, que entra no numero do certificado
+ * (`CSSO-NR35-2026-0001`): so letra e algarismo, 2 a 10, caixa alta.
+ */
+export const PADRAO_CODIGO_CURTO = '[A-Z0-9]{2,10}';
+export const TAMANHO_MAXIMO_CODIGO_CURTO = 10;
+/** A sigla do setor promotor no numero: so letra e algarismo, ate 12. */
+export const TAMANHO_MAXIMO_SIGLA_NUMERO = 12;
+/** Setor promotor sem sigla (ou turma sem setor): o prefixo e o do sistema. */
+export const SIGLA_PADRAO_NUMERO = 'SISA';
+/** Os caracteres sorteados que seguem o numero no QR/link de validacao. */
+export const TAMANHO_SORTEIO_VALIDACAO = 5;
+/** A sequencia anual por setor+treinamento sai com 4 digitos (0001). */
+export const DIGITOS_SEQUENCIA_NUMERO = 4;
+
+/** `CSSO-NR35-2026-0001` — o numero impresso, legivel. */
+export const PADRAO_NUMERO_IMPRESSO = String.raw`[A-Z0-9]{1,12}-[A-Z0-9]{2,10}-\d{4}-\d{4,6}`;
+/** `CSSO-NR35-2026-0001-K7QMX` — o numero e mais 5 sorteados: nao se adivinha. */
+export const PADRAO_CHAVE_NOVA = `${PADRAO_NUMERO_IMPRESSO}-[${ALFABETO_IDENTIFICADOR}]{${TAMANHO_SORTEIO_VALIDACAO}}`;
+/** O que a coluna `chave_validacao` aceita: a antiga OU a nova (CHECK do banco). */
+export const PADRAO_CHAVE_VALIDACAO = `(?:${PADRAO_CHAVE_ANTIGA})|(?:${PADRAO_CHAVE_NOVA})`;
+
+const _PARTICULAS_CODIGO = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'E', 'EM', 'NO', 'NA', 'NOS', 'NAS', 'PARA', 'COM', 'POR', 'A', 'O', 'AS', 'OS']);
+
+/** Caixa alta, sem acento e so com letra/algarismo. */
+export function so_letras_e_algarismos(texto: string | null | undefined): string {
+  return (texto ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+/**
+ * A sugestao do codigo curto a partir do nome (e do codigo do catalogo, quando
+ * ha). E a MESMA regra da migracao 0016 e da trava `csso_treinamento_codigo_curto`
+ * (`travas.sql`):
+ *
+ * 1. citou uma NR ("NR-35", "NR 6", "NR-06") → `NR35`, `NR6`;
+ * 2. senao, o codigo do catalogo sem pontuacao, se tiver 2 caracteres ou mais;
+ * 3. senao, as iniciais das palavras de 3 letras ou mais do nome (ate 6);
+ * 4. e, no fim, as 4 primeiras letras do nome.
+ *
+ * Nao garante unicidade: quem grava confere (a trava acrescenta algarismo).
+ */
+export function sugerir_codigo_curto(nome: string | null | undefined, codigo: string | null | undefined = null): string {
+  const fonte = `${nome ?? ''} ${codigo ?? ''}`;
+  const nr = /\bNR\s*[-–—]?\s*0*(\d{1,2})\b/i.exec(fonte.normalize('NFD').replace(/[̀-ͯ]/g, ''));
+  if (nr) return `NR${nr[1]}`;
+  const do_codigo = so_letras_e_algarismos(codigo).slice(0, TAMANHO_MAXIMO_CODIGO_CURTO);
+  if (do_codigo.length >= 2) return do_codigo;
+  const palavras = (nome ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter((p) => p.length >= 3 && !_PARTICULAS_CODIGO.has(p));
+  const iniciais = palavras.map((p) => p[0]).join('').slice(0, 6);
+  if (iniciais.length >= 2) return iniciais;
+  const letras = so_letras_e_algarismos(nome).slice(0, 4);
+  return letras.length >= 2 ? letras : 'TR';
+}
+
+/** A sigla do setor promotor como entra no numero: `SecSisa` → `SECSISA`. */
+export function sigla_para_numero(sigla: string | null | undefined): string {
+  const limpa = so_letras_e_algarismos(sigla).slice(0, TAMANHO_MAXIMO_SIGLA_NUMERO);
+  return limpa || SIGLA_PADRAO_NUMERO;
+}
+
+/** `CSSO-NR35` — o prefixo da sequencia anual (setor + treinamento). */
+export function prefixo_do_numero(sigla_setor: string | null | undefined, codigo_curto: string): string {
+  return `${sigla_para_numero(sigla_setor)}-${codigo_curto}`;
+}
+
+/** `CSSO-NR35-2026-0001`. */
+export function montar_numero_impresso(prefixo: string, ano: number, sequencia: number): string {
+  return `${prefixo}-${String(ano).padStart(4, '0')}-${String(sequencia).padStart(DIGITOS_SEQUENCIA_NUMERO, '0')}`;
+}
+
+/**
+ * A situacao do certificado no CARTAO do titular, calculada hoje (nunca
+ * congelada). `dias` e quanto falta para vencer (0 = vence hoje).
+ */
+export type SituacaoCartao =
+  | { tipo: 'anulado' }
+  | { tipo: 'indeterminado' }
+  | { tipo: 'vencido'; dias: number }
+  | { tipo: 'a_vencer'; dias: number }
+  | { tipo: 'valido'; dias: number };
+
+/** Dias inteiros de `de` ate `ate` (ISO), negativo quando `ate` ja passou. */
+export function dias_entre(de: string, ate: string): number {
+  const a = Date.UTC(Number(de.slice(0, 4)), Number(de.slice(5, 7)) - 1, Number(de.slice(8, 10)));
+  const b = Date.UTC(Number(ate.slice(0, 4)), Number(ate.slice(5, 7)) - 1, Number(ate.slice(8, 10)));
+  return Math.round((b - a) / 86_400_000);
+}
+
+export function situacao_do_cartao(
+  certificado: { situacao: string; data_vencimento: string | null },
+  hoje: string,
+): SituacaoCartao {
+  if (certificado.situacao === 'ANULADO') return { tipo: 'anulado' };
+  if (certificado.data_vencimento === null) return { tipo: 'indeterminado' };
+  const dias = dias_entre(hoje, certificado.data_vencimento);
+  if (dias < 0) return { tipo: 'vencido', dias };
+  if (dias <= JANELA_A_VENCER_DIAS) return { tipo: 'a_vencer', dias };
+  return { tipo: 'valido', dias };
+}

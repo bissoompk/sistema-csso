@@ -288,6 +288,107 @@ CREATE TRIGGER trg_epi_comunicacao_sem_truncate
   FOR EACH STATEMENT EXECUTE FUNCTION csso_recusar('epi_comunicacao_titular: a comunicacao nao se apaga.');
 
 -- =====================================================================
+-- 0016 (Portal do servidor, 22/10/2026): o codigo curto do treinamento e o
+-- numero impresso do certificado.
+--
+-- 1. O codigo curto e obrigatorio, mas quem cadastra sem ele (ou com '')
+--    recebe a sugestao — a MESMA regra de `sugerir_codigo_curto`
+--    (`dominio/treinamento.ts`) e da migracao 0016 —, com algarismo no fim
+--    quando ja existe.
+-- 2. O numero impresso (`CSSO-NR35-2026-0001`), o numero/ano internos e a
+--    chave de validacao sao CONTEUDO do papel que circula: depois de gravados,
+--    nao mudam. Anular e retificar mexem em outras colunas.
+-- =====================================================================
+CREATE OR REPLACE FUNCTION csso_sem_acento_maiusculo(p text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT upper(translate(coalesce(p, ''),
+    'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ',
+    'aaaaaeeeeiiiiooooouuuucnAAAAAEEEEIIIIOOOOOUUUUCN'))
+$$;
+
+CREATE OR REPLACE FUNCTION csso_sugerir_codigo_curto(p_nome text, p_codigo text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+  fonte text := csso_sem_acento_maiusculo(coalesce(p_nome, '') || ' ' || coalesce(p_codigo, ''));
+  nr text[];
+  base text;
+  iniciais text := '';
+  palavra text;
+BEGIN
+  nr := regexp_match(fonte, '(^|[^A-Z0-9_])NR\s*[-–—]?\s*0*([0-9]{1,2})([^A-Z0-9_]|$)');
+  IF nr IS NOT NULL THEN
+    RETURN 'NR' || nr[2];
+  END IF;
+  base := left(regexp_replace(csso_sem_acento_maiusculo(p_codigo), '[^A-Z0-9]', '', 'g'), 10);
+  IF length(base) >= 2 THEN
+    RETURN base;
+  END IF;
+  FOR palavra IN SELECT w FROM regexp_split_to_table(csso_sem_acento_maiusculo(p_nome), '[^A-Z0-9]+') AS w LOOP
+    IF length(palavra) >= 3 AND palavra NOT IN ('DAS', 'DOS', 'NOS', 'NAS', 'PARA', 'COM', 'POR') THEN
+      iniciais := iniciais || left(palavra, 1);
+    END IF;
+  END LOOP;
+  iniciais := left(iniciais, 6);
+  IF length(iniciais) >= 2 THEN
+    RETURN iniciais;
+  END IF;
+  base := left(regexp_replace(csso_sem_acento_maiusculo(p_nome), '[^A-Z0-9]', '', 'g'), 4);
+  IF length(base) >= 2 THEN
+    RETURN base;
+  END IF;
+  RETURN 'TR';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION csso_codigo_curto_livre(p_base text, p_id integer) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE
+  candidato text := p_base;
+  i integer := 2;
+BEGIN
+  WHILE EXISTS (SELECT 1 FROM treinamento WHERE codigo_curto = candidato AND id IS DISTINCT FROM p_id) LOOP
+    candidato := left(p_base, 10 - length(i::text)) || i::text;
+    i := i + 1;
+  END LOOP;
+  RETURN candidato;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION csso_treinamento_codigo_curto() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.codigo_curto IS NULL OR NEW.codigo_curto = '' THEN
+    NEW.codigo_curto := csso_codigo_curto_livre(csso_sugerir_codigo_curto(NEW.nome, NEW.codigo), NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_treinamento_codigo_curto ON treinamento;
+CREATE TRIGGER trg_treinamento_codigo_curto
+  BEFORE INSERT OR UPDATE OF codigo_curto ON treinamento
+  FOR EACH ROW EXECUTE FUNCTION csso_treinamento_codigo_curto();
+
+CREATE OR REPLACE FUNCTION csso_certificado_numero_imutavel() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.numero_impresso IS DISTINCT FROM OLD.numero_impresso
+     OR NEW.chave_validacao IS DISTINCT FROM OLD.chave_validacao
+     OR NEW.numero IS DISTINCT FROM OLD.numero
+     OR NEW.ano IS DISTINCT FROM OLD.ano THEN
+    RAISE EXCEPTION 'certificado: numero e chave de validacao nao mudam depois de emitidos'
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_certificado_numero_imutavel ON certificado;
+CREATE TRIGGER trg_certificado_numero_imutavel
+  BEFORE UPDATE ON certificado
+  FOR EACH ROW EXECUTE FUNCTION csso_certificado_numero_imutavel();
+
+-- =====================================================================
 -- A API de dados do Supabase fica FORA do sistema.
 --
 -- O Supabase publica toda tabela de `public` numa API REST (PostgREST) para

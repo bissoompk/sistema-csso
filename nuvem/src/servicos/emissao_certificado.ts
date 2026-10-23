@@ -30,7 +30,17 @@ import {
   inscricao as tabela_inscricao,
   parametro as tabela_parametro,
 } from "../db/esquema/index.js";
-import { AssinaturaInstrutor, Certificado as C, CertificadoModelo, ROTULO_VINCULO, Turma as T } from "../dominio/treinamento.js";
+import {
+  AssinaturaInstrutor,
+  Certificado as C,
+  CertificadoModelo,
+  PADRAO_CODIGO_CURTO,
+  ROTULO_VINCULO,
+  Turma as T,
+  montar_numero_impresso,
+  prefixo_do_numero,
+  sugerir_codigo_curto,
+} from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as anexo_acesso from "./anexo_acesso.js";
 import * as auditoria from "./auditoria.js";
@@ -476,7 +486,16 @@ async function _lotacao_na_data(tx: Executor, inscricao: InscricaoCarregada, qua
 export async function montar_contexto_para_emitir(
   tx: Executor,
   inscricao: InscricaoCarregada,
-  d: { numero: number; ano: number; data_emissao: string; chave: string; modelo: ModeloCarregado; avisos?: string[] },
+  d: {
+    numero: number;
+    ano: number;
+    data_emissao: string;
+    chave: string;
+    modelo: ModeloCarregado;
+    avisos?: string[];
+    // NUVEM (22/10/2026): `CSSO-NR35-2026-0001`; ausente = rótulo antigo
+    numero_impresso?: string | null;
+  },
 ): Promise<ContextoCertificado> {
   const turma = inscricao.turma;
   const treinamento = turma.treinamento;
@@ -529,6 +548,7 @@ export async function montar_contexto_para_emitir(
     instrutores,
     numero: d.numero,
     ano: d.ano,
+    numero_impresso: d.numero_impresso ?? null,
     data_emissao: d.data_emissao,
     chave_validacao: d.chave,
     data_vencimento: vencimento,
@@ -576,9 +596,14 @@ export interface ResultadoEmissao {
   avisos: string[];
 }
 
-async function _chave_inedita(tx: Executor, ano: number): Promise<string> {
+/**
+ * NUVEM (22/10/2026): a chave do certificado novo é o número impresso mais 5
+ * sorteados (`CSSO-NR35-2026-0001-K7QMX`). `gerar` existe para o teste; a
+ * chave antiga (`gerar_chave(ano)`) não é mais emitida, só validada.
+ */
+async function _chave_inedita(tx: Executor, numero_impresso: string): Promise<string> {
   for (let i = 0; i < TENTATIVAS_CHAVE; i++) {
-    const chave = servico_certificado.gerar_chave(ano);
+    const chave = servico_certificado.gerar_chave_do_numero(numero_impresso);
     const [ja] = await tx
       .select({ id: tabela_certificado.id })
       .from(tabela_certificado)
@@ -588,6 +613,20 @@ async function _chave_inedita(tx: Executor, ano: number): Promise<string> {
   }
   throw new EmissaoBloqueada(["não foi possível sortear uma chave de validação inédita"]);
 }
+
+/**
+ * O código curto do treinamento como entra no número. A coluna é NOT NULL e a
+ * trava preenche a sugestão, mas o treinamento carregado em memória pode vir
+ * de antes da migração (ou de um teste): fora do formato, vale a sugestão — o
+ * CHECK do número impresso não pode ser o primeiro a reclamar.
+ */
+function _codigo_curto(inscricao: InscricaoCarregada): string {
+  const t = inscricao.turma.treinamento;
+  const gravado = (t.codigo_curto ?? "").trim().toUpperCase();
+  return _RE_CODIGO_CURTO.test(gravado) ? gravado : sugerir_codigo_curto(t.nome, t.codigo);
+}
+
+const _RE_CODIGO_CURTO = new RegExp(`^(?:${PADRAO_CODIGO_CURTO})$`);
 
 /** Emite o certificado da inscrição, na ordem do §4 do desenho. */
 export async function emitir(
@@ -615,15 +654,20 @@ export async function emitir(
   const [modelo] = await modelo_da_turma(tx, inscricao.turma);
   if (modelo === null) throw new EmissaoBloqueada(["não há modelo de certificado para esta turma"]);
 
-  // 4. o número, só agora
+  // 4. o número, só agora. O interno (numero/ano) continua a sequência anual
+  // única; o IMPRESSO (22/10/2026) é sigla do setor promotor + código curto
+  // do treinamento + ano + sequência anual daquele prefixo.
   const numero = await numeracao.proximo_numero_certificado(tx, ano);
-  // 5. a chave
-  const chave = await _chave_inedita(tx, ano);
+  const prefixo = prefixo_do_numero(inscricao.turma.unidade_promotora?.sigla ?? null, _codigo_curto(inscricao));
+  const { numero_impresso } = await numeracao.proximo_numero_impresso(tx, prefixo, ano, montar_numero_impresso);
+  // 5. a chave: o número impresso + 5 sorteados (o QR e o link de validação)
+  const chave = await _chave_inedita(tx, numero_impresso);
 
   // 6. montar e congelar ANTES de renderizar
   const contexto = await montar_contexto_para_emitir(tx, inscricao, {
     numero,
     ano,
+    numero_impresso,
     data_emissao: hoje,
     chave,
     modelo,
@@ -639,6 +683,7 @@ export async function emitir(
       inscricao_id: inscricao.id,
       numero,
       ano,
+      numero_impresso,
       chave_validacao: chave,
       situacao: "EMITIDO",
       data_emissao: hoje,
@@ -678,7 +723,12 @@ export async function emitir(
       `Certificado ${C.rotulo(certificado)} de ${contexto.participante_identificador} · ` +
       `${turma.codigo} · ${contexto.treinamento_nome} · chave ${chave}`,
     usuario,
-    valor_novo: { numero: certificado.numero, ano: certificado.ano, hash_conteudo: certificado.hash_conteudo },
+    valor_novo: {
+      numero: certificado.numero,
+      ano: certificado.ano,
+      numero_impresso: certificado.numero_impresso,
+      hash_conteudo: certificado.hash_conteudo,
+    },
   });
   for (const aviso of validacao.avisos) {
     await auditoria.registrar(tx, {
@@ -834,10 +884,10 @@ export async function tarja_do_anulado(tx: Executor, certificado: CertificadoReg
   let frase = "ANULADO" + (quando ? ` em ${datas_br.numerica(quando)}` : "");
   if (certificado.substituido_por_id) {
     const [s] = await tx
-      .select({ numero: tabela_certificado.numero, ano: tabela_certificado.ano })
+      .select({ numero: tabela_certificado.numero, ano: tabela_certificado.ano, numero_impresso: tabela_certificado.numero_impresso })
       .from(tabela_certificado)
       .where(eq(tabela_certificado.id, certificado.substituido_por_id));
-    if (s) return `${frase} — substituído por ${s.numero}/${s.ano}`;
+    if (s) return `${frase} — substituído por ${C.rotulo(s)}`;
   }
   frase += " — este certificado não vale mais";
   return frase;

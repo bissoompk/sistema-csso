@@ -23,7 +23,9 @@
 
 {% block conteudo %}
 {% set pode_criar = usuario.pode('turma.criar') %}
-{% set treino_atual = '&treinamento_id=' ~ filtro_treinamento if filtro_treinamento else '' %}
+{% set treino_atual = ('&treinamento_id=' ~ filtro_treinamento if filtro_treinamento else '') ~ ('&turno=' ~ filtro_turno if filtro_turno else '') %}
+{# "Todas" desfaz só a situação: o treinamento e o turno ficam #}
+{% set sem_situacao = ('treinamento_id=' ~ filtro_treinamento if filtro_treinamento else '') ~ ('&' if filtro_treinamento and filtro_turno else '') ~ ('turno=' ~ filtro_turno if filtro_turno else '') %}
 
 <div class="tela">
 
@@ -67,7 +69,7 @@
     <div class="fileira rola">
     <span class="rotulo-grupo">Situação</span>
     <a class="ficha-filtro {{ 'ativa' if not filtro_situacao }}"
-       href="/turmas{{ '?treinamento_id=' ~ filtro_treinamento if filtro_treinamento }}">Todas</a>
+       href="/turmas{{ ('?' ~ sem_situacao) if sem_situacao }}">Todas</a>
     {% for codigo, rotulo in situacoes %}
     <a class="ficha-filtro {{ 'ativa' if filtro_situacao == codigo }}"
        href="/turmas?situacao={{ codigo }}{{ treino_atual }}">{{ (ui.ROTULO_TURMA_TELA[codigo] or rotulo) }}</a>
@@ -81,6 +83,14 @@
         <option value="">Treinamento: todos</option>
         {% for t in treinamentos_do_filtro %}
         <option value="{{ t.id }}" {% if filtro_treinamento == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
+        {% endfor %}
+      </select>
+      {# o turno sai da hora de início; a turma sem hora é "dia inteiro" #}
+      <label class="oculto" for="f-turno">Filtrar por turno</label>
+      <select id="f-turno" name="turno" data-envia-ao-mudar>
+        <option value="">Turno: todos</option>
+        {% for codigo, rotulo in turnos %}
+        <option value="{{ codigo }}" {% if filtro_turno == codigo %}selected{% endif %}>{{ rotulo }}</option>
         {% endfor %}
       </select>
       {% if setores_do_filtro|length %}
@@ -125,7 +135,8 @@
           {%- if turma.instrutores|length > 1 %} e mais {{ turma.instrutores|length - 1 }}{% endif %}{% endif %}
         {%- if turma.unidade_promotora %} · {{ ui.icone('building') }} {{ turma.unidade_promotora.sigla or turma.unidade_promotora.nome_extenso }}{% endif %}</span></td>
       <td class="mono curta" data-coluna="Período">{{ turma.data_inicio|data }}
-        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</td>
+        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
+        {%- if turma|horario_turma %}<span class="quebra discreto turma-horario">{{ turma|horario_turma }}</span>{% endif %}</td>
       <td class="curta" data-coluna="Local"><span class="recorte" title="{{ turma.local or '' }}">
           {{- turma.local or '—' -}}</span>
         {%- if turma.campus %}<span class="quebra discreto">{{ turma.campus.sigla }}</span>{% endif %}</td>
@@ -157,7 +168,7 @@
        treinamento escolhido, a lista vazia é recorte; sem nenhum, é o primeiro
        dia. A saída de cada um é outra — no primeiro caso o caminho é desfazer o
        recorte, no segundo é abrir a primeira turma. #}
-    {% if filtro_situacao or filtro_treinamento or filtro_setor %}
+    {% if filtro_situacao or filtro_treinamento or filtro_setor or filtro_turno %}
     {{ ui.vazio_de_lista(
          'Nenhuma turma nesta seleção.',
          'A ficha de situação e o seletor de treinamento valem os dois ao mesmo
@@ -234,6 +245,17 @@
              aria-describedby="dica-carga">
       <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
   </div>
+  {# a hora é opcional: sem ela a turma é de dia inteiro (e a agenda .ics
+     também). O mesmo horário vale para todos os dias da turma. #}
+  <div class="linha-campos">
+    <div class="campo"><label for="nova-hora-inicio">Hora de início</label>
+      <input id="nova-hora-inicio" type="time" name="hora_inicio" step="300"
+             value="{{ d['hora_inicio'] or '' }}" aria-describedby="dica-nova-hora"></div>
+    <div class="campo"><label for="nova-hora-fim">Hora de término</label>
+      <input id="nova-hora-fim" type="time" name="hora_fim" step="300"
+             value="{{ d['hora_fim'] or '' }}" aria-describedby="dica-nova-hora">
+      <span class="dica" id="dica-nova-hora">Opcional. Vazio é dia inteiro; vale para todos os dias.</span></div>
+  </div>
   <div class="linha-campos">
     <div class="campo"><label for="nova-local">Local</label>
       <input id="nova-local" name="local" placeholder="Auditório do Campus JK"
@@ -270,6 +292,12 @@
       <input id="nova-freq" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"
              value="{{ d['frequencia_minima_percentual'] or 75 }}"></div>
   </div>
+  {# Visitante e Outro no link público só com esta marca (`inscricao_publica.vinculos_aceitos`) #}
+  <div class="campo"><label class="turma-marcar" for="nova-comunidade"><input id="nova-comunidade" type="checkbox" name="aceita_comunidade_externa" value="1"
+      {{- ' checked' if d['aceita_comunidade_externa'] == '1' }} aria-describedby="dica-nova-publico">
+      Aceita comunidade externa</label>
+    <span class="dica" id="dica-nova-publico">Marcado, o link público aceita também visitantes e outros
+      de fora da UFVJM. Sem a marca, só servidores, terceirizados e discentes.</span></div>
   <div class="campo"><label for="nova-base">Data base do vencimento</label>
     <input id="nova-base" type="date" name="data_base_vencimento"
            value="{{ d['data_base_vencimento'] or '' }}"

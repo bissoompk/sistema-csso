@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# Comprovante de treinamentos (Portal do servidor, 22/10/2026): o que o
+   titular mostra a um fiscal em campo. Reúne os certificados em vigor, cada
+   um com o QR do próprio link de validação — sem chave própria do
+   comprovante, sem CPF e sem SIAPE. Imprimível: a impressão esconde a casca
+   pelas classes da folha. #}
+{% block titulo %}Comprovante de treinamentos · SISA{% endblock %}
+
+{% block conteudo %}
+<div class="tela comprovante">
+
+  <div class="cabecalho-pagina comprovante-acoes">
+    <div class="titulo">
+      <h1>Comprovante de treinamentos</h1>
+      <p class="sub">Para imprimir ou salvar em PDF pelo navegador (Ctrl+P).</p>
+    </div>
+  </div>
+
+  <div class="comprovante-folha">
+    <section class="comprovante-frente" aria-labelledby="comprovante-titular">
+      <p class="comprovante-faixa">SISA · Superintendência Integrada de Saúde · UFVJM</p>
+      <h2 id="comprovante-titular" class="comprovante-nome">{{ titular.nome }}</h2>
+      <dl class="tabela-dados">
+        {% if titular.lotacao %}<dt>Lotação</dt><dd>{{ titular.lotacao }}</dd>{% endif %}
+        {% if titular.campus %}<dt>Campus</dt><dd>{{ titular.campus }}</dd>{% endif %}
+        <dt>Emitido em</dt><dd>{{ emitido_em }}</dd>
+      </dl>
+      <p class="comprovante-aviso">Documento de conferência. Vale a validação de cada QR na data da consulta.</p>
+    </section>
+
+    <section class="comprovante-verso" aria-labelledby="comprovante-quadro">
+      <h2 id="comprovante-quadro">Treinamentos em vigor</h2>
+      {% if itens|length %}
+      <table class="empilhavel comprovante-tabela">
+        <thead><tr><th scope="col">Norma</th><th scope="col">Treinamento</th>
+          <th scope="col">Validade</th><th scope="col">Validação</th></tr></thead>
+        <tbody>
+        {% for c in itens %}
+        <tr>
+          <td data-coluna="Norma">{{ c.norma or '—' }}</td>
+          <td>{{ c.treinamento }}<span class="quebra discreto mono">Nº {{ c.rotulo }}</span></td>
+          <td data-coluna="Validade">{% if c.data_vencimento %}até <time datetime="{{ c.data_vencimento }}">{{ c.data_vencimento|data }}</time>{% else %}sem prazo{% endif %}</td>
+          <td data-coluna="Validação" class="comprovante-qr">
+            <img src="{{ c.qr }}" width="84" height="84" alt="QR de validação do certificado de {{ c.treinamento }}">
+            <span class="mono comprovante-link">{{ c.url_validacao }}</span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="vazio"><strong>Nenhum treinamento em vigor.</strong>
+        <span>Os certificados vencidos, substituídos ou anulados não entram no comprovante.</span></div>
+      {% endif %}
+    </section>
+  </div>
+
+</div>
+{% endblock %}

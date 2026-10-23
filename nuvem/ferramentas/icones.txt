@@ -83,3 +83,7 @@ list
 person
 layout-sidebar-inset
 person-gear
+inboxes
+journal-album
+file-earmark-person
+bell-fill

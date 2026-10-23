@@ -37,6 +37,8 @@ import { rotas as relatorios } from "./relatorios.js";
 import { rotas as auditoria } from "./auditoria.js";
 import { rotas as configuracao } from "./configuracao.js";
 import { rotas as importacao } from "./importacao.js";
+import { rotas as meu_espaco } from "./meu_espaco.js";
+import { rotas as setores_aparencia } from "./setores_aparencia.js";
 
 export const ROTAS: Hono<Ambiente>[] = [
   saude,
@@ -72,4 +74,6 @@ export const ROTAS: Hono<Ambiente>[] = [
   auditoria,
   configuracao,
   importacao,
+  meu_espaco,
+  setores_aparencia,
 ];

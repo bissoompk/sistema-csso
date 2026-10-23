@@ -49,11 +49,14 @@
     {% for u in promotores %}
     <tr>
       <td class="nome">{{ u.nome_extenso }}</td>
-      <td class="curta" data-coluna="Sigla">{{ u.sigla or '—' }}</td>
+      {# NUVEM (Portal do servidor): a sigla já sai no selo, na cor e com o ícone
+         do setor — é o mesmo selo do certificado e do portal do servidor. #}
+      <td class="curta" data-coluna="Sigla">{% if u.sigla %}{{ ui.selo_setor({sigla: u.sigla, nome: u.nome_extenso, cor: u.cor_setor, icone: u.icone_setor}) }}{% else %}—{% endif %}</td>
       <td class="curta" data-coluna="Campus">{{ u.campus.sigla if u.campus else '—' }}</td>
       <td class="curta" data-coluna="Turmas">{{ u.turmas }}</td>
       {% if gerencia %}
-      <td class="acao-linha"><form method="post" action="/treinamentos/setores-promotores/{{ u.id }}/retirar">
+      <td class="acao-linha acoes-setor">{{ ui.botao_cadastro('aparencia-' ~ u.id, 'Aparência', 'secundario compacto') }}
+        <form method="post" action="/treinamentos/setores-promotores/{{ u.id }}/retirar">
           <button type="submit" class="secundario marcador"
                   aria-label="Retirar {{ u.nome_extenso }} da lista de setores promotores">retirar da lista</button>
         </form></td>
@@ -85,5 +88,54 @@
     <span class="dica" id="dica-setor-unidade">Não está aqui? Cadastre-a antes em Catálogos → Unidades / UORG
       (unidade inativa também não aparece).</span></div>
 {% endcall %}
+{% endif %}
+{# NUVEM (Portal do servidor, 22/10/2026): a aparência de cada setor
+   (`rotas/setores_aparencia.ts`). A paleta é fechada (`PALETA_SETOR`, global do
+   domínio): cada cor vai com o NOME escrito ao lado da amostra, e cada ícone com
+   o nome — a cor nunca é o único sinal. A prévia troca sem JavaScript, pelo
+   `:has()` do CSS (PORTAL/SETOR); no navegador sem `:has()` ela mostra o selo
+   gravado, e a gravação vale do mesmo jeito. #}
+{% if gerencia %}
+{% for u in promotores %}
+{% call ui.popup_cadastro('aparencia-' ~ u.id, 'Aparência de ' ~ (u.sigla or u.nome_extenso),
+                          '/treinamentos/setores-promotores/' ~ u.id ~ '/aparencia', 'Gravar aparência',
+                          nota=u.nome_extenso) %}
+  <div class="aparencia-setor">
+    <fieldset class="escolha-setor cores">
+      <legend>Cor</legend>
+      <label class="opcao-setor">
+        <input type="radio" name="cor" value=""{{ ' checked' if not u.cor_setor }}>
+        <span class="amostra-setor setor--padrao" aria-hidden="true"></span>
+        <span>Cor do sistema</span></label>
+      {% for cor in PALETA_SETOR.cores %}
+      <label class="opcao-setor">
+        <input type="radio" name="cor" value="{{ cor.valor }}"{{ ' checked' if u.cor_setor == cor.valor }}>
+        <span class="amostra-setor setor--{{ cor.valor }}" aria-hidden="true"></span>
+        <span>{{ cor.rotulo }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <fieldset class="escolha-setor icones">
+      <legend>Ícone</legend>
+      <label class="opcao-setor">
+        <input type="radio" name="icone" value=""{{ ' checked' if not u.icone_setor }}>
+        <span>Sem ícone</span></label>
+      {% for ic in PALETA_SETOR.icones %}
+      <label class="opcao-setor">
+        <input type="radio" name="icone" value="{{ ic.valor }}"{{ ' checked' if u.icone_setor == ic.valor }}>
+        {{ ui.icone(ic.valor) }}<span>{{ ic.rotulo }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <div class="previa-setor">
+      <span class="rotulo">Prévia</span>
+      {% for variante in ['', 'solido'] %}
+      <span class="selo-setor setor--{{ u.cor_setor or 'padrao' }} {{ variante }}{{ ' com-icone' if u.icone_setor }}">
+        {%- for ic in PALETA_SETOR.icones %}{{ ui.icone(ic.valor, 'previa-ico previa-ico--' ~ ic.valor ~ (' gravado' if u.icone_setor == ic.valor else '')) }}{% endfor -%}
+        <span>{{ u.sigla or u.nome_extenso }}</span></span>
+      {% endfor %}
+      <span class="dica">O selo sai assim no certificado, na capa da turma e no portal do servidor.</span>
+    </div>
+  </div>
+{% endcall %}
+{% endfor %}
 {% endif %}
 {% endblock %}

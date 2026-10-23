@@ -427,6 +427,12 @@ export interface GanchosDaCasca {
     origem: string | null,
   ) => Record<string, unknown> & { modulo_a_lembrar?: string | null };
   cookieModulo?: string;
+  /**
+   * NUVEM (Portal do servidor, 22/10/2026): o cartão de identificação da
+   * lateral do Meu espaço com a lotação ("ICT · Campus JK"). Só é chamado
+   * quando a navegação trouxe o cartão e a tela não o passou pronto.
+   */
+  cartaoMeuEspaco?: (c: Ctx, usuario: UsuarioAtual) => Promise<unknown>;
 }
 export const ganchos: GanchosDaCasca = {};
 
@@ -459,6 +465,13 @@ export async function pagina(
   const origem = getCookie(c, cookieModulo) ?? null;
   const url = new URL(c.req.url);
   const navegacao = ganchos.navegacao?.(url.pathname, usuario, origem) ?? {};
+  if (usuario && navegacao.cartao_meu_espaco && !("cartao_meu_espaco" in contexto) && ganchos.cartaoMeuEspaco) {
+    try {
+      navegacao.cartao_meu_espaco = await ganchos.cartaoMeuEspaco(c, usuario);
+    } catch {
+      // o cartão, como o sino, nunca derruba a tela que ele decora
+    }
+  }
   const dados: Record<string, unknown> = {
     request: requestParaTemplate(c),
     usuario,

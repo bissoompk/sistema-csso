@@ -37,3 +37,63 @@ export const ServidorLotacao = {
   },
   vigente_em,
 };
+
+// =====================================================================
+// Portal do servidor (22/10/2026) — cor e icone do setor promotor
+// =====================================================================
+
+/**
+ * A paleta FECHADA de cores do setor promotor (proposta em DESVIOS.md, "Portal
+ * do servidor"): o banco guarda a CHAVE, e a cor de verdade mora em
+ * `csso.css` (`.setor--{chave}`), com a versao clara e a escura — cor solta
+ * digitada nao passa pelo contraste AA. Sem cor, o setor usa a do sistema.
+ */
+export const CORES_SETOR = ['azul', 'verde', 'petroleo', 'roxo', 'marinho', 'vinho', 'ambar', 'grafite'] as const;
+export type CorSetor = (typeof CORES_SETOR)[number];
+export const ROTULO_COR_SETOR: Readonly<Record<CorSetor, string>> = {
+  azul: 'Azul',
+  verde: 'Verde',
+  petroleo: 'Verde-petróleo',
+  roxo: 'Roxo',
+  marinho: 'Azul-marinho',
+  vinho: 'Vinho',
+  ambar: 'Âmbar',
+  grafite: 'Grafite',
+};
+
+/** Os icones que o setor pode escolher (todos da folha `icones.svg`). */
+export const ICONES_SETOR = [
+  'shield-plus',
+  'heart-pulse',
+  'clipboard2-check',
+  'mortarboard',
+  'building',
+  'people',
+  'award',
+  'journal-bookmark',
+  'person-badge',
+] as const;
+export type IconeSetor = (typeof ICONES_SETOR)[number];
+export const ROTULO_ICONE_SETOR: Readonly<Record<IconeSetor, string>> = {
+  'shield-plus': 'Escudo (segurança)',
+  'heart-pulse': 'Coração (saúde)',
+  'clipboard2-check': 'Prancheta (perícia)',
+  mortarboard: 'Capelo (educação)',
+  building: 'Prédio (secretaria)',
+  people: 'Pessoas',
+  award: 'Medalha',
+  'journal-bookmark': 'Caderno',
+  'person-badge': 'Crachá',
+};
+
+/**
+ * A proposta inicial (migração 0016 e semente), pelo nome oficial: a equipe
+ * troca em Treinamentos → Setores promotores.
+ */
+export const APARENCIA_SETOR_INICIAL: Readonly<Record<string, { cor: CorSetor; icone: IconeSetor }>> = {
+  'COORDENADORIA DE SEGURANCA E SAUDE OCUPACIONAL': { cor: 'azul', icone: 'shield-plus' },
+  'COORDENADORIA DE SAUDE E QUALIDADE DE VIDA': { cor: 'verde', icone: 'heart-pulse' },
+  'COORDENADORIA DE PERICIA OFICIAL EM SAUDE': { cor: 'petroleo', icone: 'clipboard2-check' },
+  'COORDENADORIA DE PROMOCAO E EDUCACAO EM SAUDE': { cor: 'roxo', icone: 'mortarboard' },
+  'SECRETARIA DA SISA': { cor: 'marinho', icone: 'building' },
+};
