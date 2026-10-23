@@ -147,7 +147,11 @@ export const ROTULO_EVENTO: Record<string, string> = {
   LOGIN_CONVERTIDO_PARA_EMAIL: "Login convertido para o e-mail",
   // Ativar meu acesso / Esqueci minha senha (23/10/2026, `ativar_acesso.ts`): o
   // ator é "o próprio titular" e a descrição nunca leva nome, SIAPE nem e-mail.
-  ACESSO_ATIVADO: "Conta criada pelo próprio titular (Ativar meu acesso)",
+  ACESSO_ATIVADO: "Acesso ativado pelo próprio titular (Ativar meu acesso)",
+  ACESSO_CRIADO_NO_CADASTRO: "Conta criada com o cadastro do servidor, sem senha (o titular a define)",
+  ACESSO_EMAIL_ACOMPANHOU_CADASTRO: "E-mail da conta sem senha acompanhou o cadastro do servidor",
+  ACESSO_ENCERRADO_NA_SAIDA: "Conta inativada: o servidor saiu do quadro",
+  ACESSO_MANTIDO_NA_SAIDA: "Conta de administração mantida apesar da saída do servidor",
   SENHA_REDEFINIDA_POR_LINK: "Senha redefinida pelo próprio titular, por link no e-mail",
   PEDIDO_DE_ACESSO_RECUSADO: "Pedido de ativação de acesso não atendido por esta via",
   CONTA_BLOQUEADA: "Conta bloqueada por tentativas",

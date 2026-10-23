@@ -33,6 +33,7 @@ import {
 } from "../db/esquema/index.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { ArquivoZipRecusado, conferir_zip } from "./arquivo_zip.js";
+import * as ativar_acesso from "./ativar_acesso.js";
 import * as auditoria from "./auditoria.js";
 import * as duplicados from "./duplicados.js";
 import { MAXIMO_LINHAS_PLANILHA, valor_da_celula } from "./importacao_planilha.js";
@@ -411,6 +412,7 @@ export async function importar(tx: Executor, usuario: UsuarioAtual, linhas: Linh
             vigencia_inicio: hoje,
             registrado_por: usuario.id,
           });
+          await ativar_acesso.garantir_acesso(sp, novo, { usuario });
           servidores.set(siape, novo);
           saida.acao = "CRIAR";
           r.criados++;
@@ -447,6 +449,7 @@ export async function importar(tx: Executor, usuario: UsuarioAtual, linhas: Linh
             depois,
             usuario,
           });
+          if (depois.email !== undefined) await ativar_acesso.garantir_acesso(sp, existente, { usuario });
         }
         const troca_cargo = cargo !== null && cargo.id !== existente.cargo_id;
         const troca_unidade =

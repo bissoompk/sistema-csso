@@ -24,6 +24,7 @@ import {
 } from "../db/esquema/index.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { UnidadeUorg } from "../dominio/organizacao.js";
+import * as ativar_acesso from "../servicos/ativar_acesso.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as identificacao from "../servicos/identificacao.js";
 import * as importacao_servidores from "../servicos/importacao_servidores.js";
@@ -206,6 +207,7 @@ rotas.post("/servidores", async (c) => {
   });
   // abre o primeiro período da linha do tempo com o que foi cadastrado
   await servico_servidores.registrar_lotacao_inicial(tx, servidor!, usuario, { postos });
+  await ativar_acesso.garantir_acesso(tx, servidor!, { usuario });
   return redirecionar(c, `/servidores/${servidor!.id}`);
 });
 
@@ -405,6 +407,8 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, servidor_id: number, recado
     .map((l) => ({ ...l, aberta: l.vigencia_fim === null, uorg: com_uorg_bruto(l.uorg), unidade: com_uorg_bruto(l.unidade) }));
   return pagina(c, "paginas/servidor_ficha.html", usuario, {
     servidor,
+    // só a quem edita o cadastro: é a ele que o "sem acesso" pede providência
+    acesso: usuario.pode("processo.editar") ? await ativar_acesso.situacao_do_acesso(tx, achado) : null,
     ve_processos,
     epi_visivel,
     // só as cinco últimas: o resumo aponta para a tela do módulo

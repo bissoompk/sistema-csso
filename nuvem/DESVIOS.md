@@ -1567,6 +1567,17 @@ Pedido do usuário: apagar do sistema de produção as turmas, treinamentos e in
 - **Armazenamento.** Depois do commit: blobs dos anexos apagados (só se nenhum anexo que fica usa o mesmo blob), `certificado.arquivo_docx`, `certificados-pdf/<id>-*.pdf` e as listas de presença `documentos/listas_presenca/...`. Falha vira aviso e código de saída 5; o banco já foi apagado. Arquivo solto, sem referência no banco, não é encontrado.
 - **Cópia local.** JSON com as linhas apagadas, permissão 600, em `--copia` (recusa pasta dentro de um repositório git). Tem dado pessoal. Não inclui os arquivos. A simulação não grava cópia nem pede confirmação.
 
+## Acesso automático do servidor (23/10/2026)
+
+Decisão do usuário: todo servidor pode solicitar EPI e se inscrever em cursos, então **não há separação entre servidor e conta**. Escolhas: o acesso nasce automático no cadastro, e os servidores já cadastrados ganham acesso por ferramenta de uso único.
+
+- **Cadastro.** `ativar_acesso.garantir_acesso` roda ao cadastrar servidor (`POST /servidores`, importação de planilha, correção do cadastro que põe ou muda o e-mail). Servidor **ativo com e-mail institucional válido** e sem conta ganha conta com login = e-mail, perfil `servidor_consulta` e `servidor_id`. Mesma regra de `decidir`: conta que já existe (por vínculo, e-mail ou login) não é tocada, nem a de equipe que usa o mesmo e-mail.
+- **Sem senha utilizável.** `usuario.senha_hash = '!sem-senha'` (`SEM_SENHA`). Não começa com `$argon2`, então `conferir_senha` recusa sem verificar: nenhuma senha digitada entra. Sem migração (a coluna continua `NOT NULL`).
+- **Nenhum e-mail sai.** O titular define a senha por «Ativar meu acesso» ou «Esqueci minha senha». Como a conta já existe, o link cai no ramo «redefinir»; quando a conta ainda está sem senha, o evento é `ACESSO_ATIVADO` (e não `SENHA_REDEFINIDA_POR_LINK`). Evento novo na criação: `ACESSO_CRIADO_NO_CADASTRO`.
+- **Ficha do servidor.** Mostra «Acesso: ativo / aguardando ativação / sem acesso — motivo» (falta e-mail, não está ativo, conta inativa), a quem tem `processo.editar`.
+- **Servidores já cadastrados.** `npm run criar-acessos -- --simular` e depois sem a flag. Idempotente, não envia e-mail, imprime as contagens (criados, já tinham conta, sem e-mail, recusados). Quem escreveu não a rodou em produção.
+- **Não feito.** Mudar o e-mail de um servidor que já tem conta não atualiza o e-mail da conta; servidor sem e-mail institucional segue sem acesso (aparece na ficha e em `/config`).
+
 ## Módulo Acidentes — F0 (23/10/2026)
 
 Fundação do módulo «Análise de Acidentes» (CAT/SP, Lei 8.112 arts. 212-214), fatia F0, feita sobre `especificacao.md` §3, §4 e §7 (decisões D1–D14 do usuário). Migração **0021_acidentes**. O que difere da especificação, ou que a fatia seguinte precisa saber:
@@ -1582,3 +1593,5 @@ Fundação do módulo «Análise de Acidentes» (CAT/SP, Lei 8.112 arts. 212-214
 - **Pendências.** Tipos `ACIDENTE_TRIAR` (2 dias), `PRAZO_COMUNICACAO` (10), `COMPLEMENTACAO` (5), `SAUDE_REGISTRAR` (5), `INVESTIGAR` (30), `ACAO_PRAZO` (30) e `AGUARDA_PERICIA` (60).
 - **Esqueleto.** `rotas/acidentes.ts` (painel, fila, minhas, ficha com as dez abas; comunicar, plano de ação e indicadores respondem 200 com aviso de «próxima etapa»). Cada aba da ficha é um `include ... ignore missing` de `partes/acidente_aba_<nome>.html`: as fatias criam o parcial sem editar a ficha. Sem CSS novo além do cartão do módulo e dos tokens de cor (`.mod-acidentes`); ícones já existentes.
 - **Fora desta fatia (costura final).** `rotinas.ts` (`TIPOS_VARRIDOS`, `EVENTOS_DO_TITULAR`), `atividade_titular`, a política de retenção e o ROPA (`docs/`) não foram editados: a fatia que ativa a gravação e a rotina de privacidade os altera. O `node_modules` do worktree é um link simbólico para o do repositório principal e **não entra em commit**.
+- **E-mail corrigido antes da ativação.** Conta ainda sem senha acompanha a correção do e-mail no cadastro (e-mail e login; evento `ACESSO_EMAIL_ACOMPANHOU_CADASTRO`), salvo colisão com outra conta. Conta com senha não é tocada.
+- **Saída do quadro (decisão do usuário).** Ao corrigir a situação do servidor para APOSENTADO ou EXONERADO (`atualizar_cadastro`), a conta ligada é inativada e as sessões, encerradas (`ACESSO_ENCERRADO_NA_SAIDA`). LICENÇA e CEDIDO não mexem. **Exceção:** conta de administração e a última que concede perfil ficam como estão, com o evento `ACESSO_MANTIDO_NA_SAIDA` e aviso na ficha — inativá-las tira o governo do sistema, e quem decide é quem concede perfil, em Usuários. Voltar a ATIVO no cadastro **não reativa** a conta: reativar é ato da equipe. Importação de planilha não altera situação, então não passa por aqui.

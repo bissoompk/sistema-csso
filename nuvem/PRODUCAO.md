@@ -416,3 +416,14 @@ npm run limpar-treinamentos -- --copia ~/copias-sisa
   código de saída é 5.
 - Aborta sem gravar se alguma tabela fora da lista referencia as apagadas, ou
   se houver gatilho de DELETE nelas. Rodar de novo com tudo vazio não faz nada.
+
+## 10. Criar o acesso dos servidores já cadastrados
+
+Desde 23/10/2026 o cadastro de servidor ativo com e-mail institucional cria a conta sozinho (sem senha utilizável, sem e-mail enviado). Para os que já estavam cadastrados antes, rode uma vez:
+
+```
+npm run criar-acessos -- --simular   # mostra as contagens e desfaz
+npm run criar-acessos
+```
+
+Cada servidor define a senha em «Ativar meu acesso» (ou «Esqueci minha senha») na tela de login. Quem está sem e-mail institucional no cadastro não ganha acesso: a ficha e `/config` mostram quantos são.
