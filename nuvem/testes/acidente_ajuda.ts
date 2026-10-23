@@ -66,3 +66,17 @@ export function envolvido(extra: Partial<comunicacao.Envolvido> = {}): comunicac
   };
 }
 
+
+/** Uma ocorrência comunicada pelo titular e levada à investigação pela equipe. */
+export async function em_investigacao(db: Banco, extra: Partial<comunicacao.DadosComunicacao> = {}) {
+  const comunicar = await import("../src/servicos/acidente_comunicacao.js");
+  const triagem = await import("../src/servicos/acidente_triagem.js");
+  const { usuario } = await titular(db);
+  const oc = await db.transaction((tx) => comunicar.comunicar(tx, usuario, dados(extra)));
+  const equipe = await usuarioAtual(db, "tecnico_seguranca");
+  await db.transaction((tx) => triagem.assumir(tx, equipe, oc, oc.versao));
+  const ler = async () => (await db.select().from(e.acidente_ocorrencia).where(eq(e.acidente_ocorrencia.id, oc.id)))[0]!;
+  const a = await ler();
+  await db.transaction((tx) => triagem.mudar_estado(tx, equipe, a, "EM_INVESTIGACAO", a.versao));
+  return { oc: await ler(), equipe, ler };
+}

@@ -1,0 +1,102 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Investigação (F4): o MAPA, a linha do tempo e as barreiras. Edita quem
+   tem `acidente.investigar`, enquanto não há relatório; os outros da equipe de
+   SST leem. A `versao` oculta é a trava: salvar por cima de quem salvou antes
+   volta com 409 e o que foi digitado ao lado (`nao_gravado`). #}
+{% set oc = ocorrencia %}
+{% if not ve_investigacao %}
+<div class="cartao"><div class="vazio"><strong>Restrito à equipe que investiga</strong>
+  <span>A investigação fica com quem investiga o caso ou o encaminha ao SIASS.</span></div></div>
+{% else %}
+{% set inv = investigacao %}
+{% set d = digitado if digitado else inv %}
+
+{% if nao_gravado %}
+<div class="aviso aviso-alerta" role="alert" id="nao-gravado">
+  <p><strong>Não gravado.</strong> O que você tinha escrito está abaixo; o formulário mostra o que está salvo agora.
+    Copie o que ainda valer para o campo e salve de novo.</p>
+  {% for rotulo, valor in nao_gravado %}<p><strong>{{ rotulo }}:</strong> {{ valor }}</p>{% endfor %}
+</div>
+{% set d = inv %}
+{% endif %}
+
+{% if not investigacao_editavel %}
+<div class="aviso">{% if oc.estado in ['RELATORIO_EMITIDO', 'ENCAMINHADA_SIASS', 'CONCLUIDA'] %}Investigação travada: o relatório já foi emitido.
+  {% elif usuario.pode('acidente.investigar') %}A investigação se edita na triagem e na investigação.
+  {% else %}Somente leitura.{% endif %}</div>
+{% endif %}
+
+<form method="post" action="/acidentes/{{ oc.id }}/investigacao" data-rascunho-local="acidente-mapa-{{ oc.id }}" data-rascunho-versao="{{ inv.versao }}">
+  <input type="hidden" name="versao" value="{{ inv.versao }}">
+  {% for campo, rotulo, ajuda in CAMPOS_TEXTO %}
+  <div class="campo">
+    <label for="mapa-{{ campo }}">{{ rotulo }}</label>
+    {% call ui.info('ajuda-' ~ campo, rotulo|lower) %}<p>{{ ajuda }}</p>{% endcall %}
+    <textarea id="mapa-{{ campo }}" name="{{ campo }}" rows="3" maxlength="8000"{{ ' readonly' if not investigacao_editavel }}>{{ d[campo] or '' }}</textarea>
+  </div>
+  {% endfor %}
+  <div class="linha-campos">
+    {% for campo, rotulo, lista in CAMPOS_ESCOLHA %}
+    <div class="campo">
+      <label for="mapa-{{ campo }}">{{ rotulo }}</label>
+      <select id="mapa-{{ campo }}" name="{{ campo }}"{{ ' disabled' if not investigacao_editavel }}>
+        <option value="">—</option>
+        {% for v in lista %}<option value="{{ v }}"{{ ui.sel(d[campo], v) }}>{{ (ROTULO_CARACTERIZACAO[v] if campo == 'caracterizacao' else ROTULO_SIM_NAO_NAO_SEI[v]) or v }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endfor %}
+  </div>
+  {% if investigacao_editavel %}<div class="acoes"><button type="submit">Salvar a investigação</button></div>{% endif %}
+  <p class="discreto">Versão {{ inv.versao }}{% if inv.atualizado_por %}, salva em {{ inv.atualizado_em|momento }}{% endif %}.</p>
+</form>
+
+<section class="cartao">
+  <h2>Linha do tempo <span class="contador">{{ linha_do_tempo|length }}</span></h2>
+  {% if linha_do_tempo|length %}
+  <ol class="linha-tempo">
+    {% for l in linha_do_tempo %}
+    <li><strong class="mono">{{ l.momento }}</strong> — {{ l.descricao }}
+      {% if investigacao_editavel %}<form method="post" action="/acidentes/{{ oc.id }}/investigacao/linha/{{ l.id }}/desativar" class="em-linha">
+        <button type="submit" class="secundario compacto">Tirar</button></form>{% endif %}</li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="discreto">Nenhum momento ainda. Monte a sequência do que aconteceu, da véspera ao socorro.</p>{% endif %}
+  {% if investigacao_editavel %}
+  <form method="post" action="/acidentes/{{ oc.id }}/investigacao/linha" class="linha-campos">
+    <div class="campo"><label for="linha-momento">Quando</label>
+      <input id="linha-momento" name="momento" maxlength="40" required placeholder="09:40 ou T-10min"></div>
+    <div class="campo"><label for="linha-descricao">O que aconteceu</label>
+      <input id="linha-descricao" name="descricao" maxlength="1000" required></div>
+    <div class="acoes"><button type="submit" class="secundario">Acrescentar</button></div>
+  </form>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Barreiras <span class="contador">{{ barreiras|length }}</span></h2>
+  {% if barreiras|length %}
+  <ul class="linha-tempo">
+    {% for b in barreiras %}
+    <li><strong>{{ ROTULO_TIPO_BARREIRA[b.tipo] }}</strong> — {{ ROTULO_SITUACAO_BARREIRA[b.situacao] }}: {{ b.descricao }}
+      {% if investigacao_editavel %}<form method="post" action="/acidentes/{{ oc.id }}/investigacao/barreiras/{{ b.id }}/desativar" class="em-linha">
+        <button type="submit" class="secundario compacto">Tirar</button></form>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="discreto">Nenhuma barreira registrada.</p>{% endif %}
+  {% if investigacao_editavel %}
+  <form method="post" action="/acidentes/{{ oc.id }}/investigacao/barreiras" class="linha-campos">
+    <div class="campo"><label for="barreira-tipo">Tipo</label>
+      <select id="barreira-tipo" name="tipo" required>
+        {% for t in TIPOS_BARREIRA %}<option value="{{ t }}">{{ ROTULO_TIPO_BARREIRA[t] }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="barreira-situacao">Situação</label>
+      <select id="barreira-situacao" name="situacao" required>
+        {% for s in SITUACOES_BARREIRA %}<option value="{{ s }}">{{ ROTULO_SITUACAO_BARREIRA[s] }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="barreira-descricao">Qual</label>
+      <input id="barreira-descricao" name="descricao" maxlength="1000" required placeholder="Guarda-corpo da escada"></div>
+    <div class="acoes"><button type="submit" class="secundario">Acrescentar</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
