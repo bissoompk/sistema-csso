@@ -10,8 +10,10 @@
  * quando o congelado antigo não o tem.
  *
  * **Só o que é do titular.** Toda consulta é presa ao `servidor_id` da conta
- * (`emissao_certificado.consulta_do_titular`); nenhum CPF sai daqui — nem o do
- * titular, nem o de instrutor (`instrutores[].cpf` fica no congelado).
+ * (`emissao_certificado.consulta_do_titular`) — ou, para o terceirizado e o
+ * discente, ao participante ligado à conta (`titular_externo.ts`); nenhum CPF
+ * sai daqui — nem o do titular, nem o de instrutor (`instrutores[].cpf` fica
+ * no congelado).
  */
 import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
@@ -31,8 +33,23 @@ import { numero as numero_br } from "./presenca.js";
 import { qr_png } from "./qr.js";
 import { chave_busca } from "./textos.js";
 import { aberta_a_pedido_proprio } from "./turma.js";
+import * as titular_externo from "./titular_externo.js";
+import type { UsuarioAtual } from "./rbac.js";
 
 type CertificadoRegistro = typeof tabela_certificado.$inferSelect;
+
+/**
+ * De quem são os certificados: o `servidor_id` (o número sozinho, como sempre
+ * foi) ou, para o titular externo, `{ participante_id }`. `null` é ninguém.
+ */
+export type ChaveDoTitular = number | { participante_id: number } | null;
+
+/** A chave da CONTA: o servidor ligado, ou o participante da conta externa. */
+export async function chave_da_conta(tx: Executor, usuario: UsuarioAtual): Promise<ChaveDoTitular> {
+  if (usuario.servidor_id !== null) return usuario.servidor_id;
+  const participante_id = await titular_externo.id_do_participante_da_conta(tx, usuario);
+  return participante_id === null ? null : { participante_id };
+}
 
 export interface SetorDoCartao {
   nome: string;
@@ -217,14 +234,23 @@ export function ordenar(cartoes: CartaoCertificado[]): CartaoCertificado[] {
 }
 
 /** Os cartões, os anulados, os "em emissão" e o resumo do titular — duas consultas. */
-export async function do_titular(tx: Executor, servidor_id: number | null, hoje: string): Promise<CertificadosDoTitular> {
+export async function do_titular(tx: Executor, titular: ChaveDoTitular, hoje: string): Promise<CertificadosDoTitular> {
   const vazio: CertificadosDoTitular = {
     cartoes: [],
     anulados: [],
     em_emissao: [],
     resumo: { emitidos: 0, horas: 0, validos: 0, a_vencer: 0, vencidos: 0, indeterminados: 0, substituidos: 0, proximo_a_vencer: null },
   };
-  if (servidor_id === null) return vazio;
+  if (titular === null) return vazio;
+  // o certificado e o participante da inscrição presos ao MESMO titular
+  const do_certificado =
+    typeof titular === "number"
+      ? eq(tabela_certificado.servidor_id, titular)
+      : eq(tabela_certificado.participante_id, titular.participante_id);
+  const do_participante =
+    typeof titular === "number"
+      ? eq(tabela_participante.servidor_id, titular)
+      : eq(tabela_participante.id, titular.participante_id);
 
   const [linhas, aprovadas] = await Promise.all([
     tx
@@ -239,7 +265,7 @@ export async function do_titular(tx: Executor, servidor_id: number | null, hoje:
       .leftJoin(tabela_inscricao, eq(tabela_inscricao.id, tabela_certificado.inscricao_id))
       .leftJoin(tabela_turma, eq(tabela_turma.id, tabela_inscricao.turma_id))
       .leftJoin(tabela_unidade, eq(tabela_unidade.id, tabela_turma.unidade_promotora_id))
-      .where(eq(tabela_certificado.servidor_id, servidor_id))
+      .where(do_certificado)
       .orderBy(desc(tabela_certificado.data_emissao), desc(tabela_certificado.id)),
     // inscrição APROVADA sem certificado ativo: "em emissão"
     tx
@@ -268,7 +294,7 @@ export async function do_titular(tx: Executor, servidor_id: number | null, hoje:
       )
       .where(
         and(
-          eq(tabela_participante.servidor_id, servidor_id),
+          do_participante,
           eq(tabela_inscricao.situacao, "APROVADO"),
           isNull(tabela_certificado.id),
         ),
@@ -534,8 +560,17 @@ export function para_o_comprovante(cartoes: readonly CartaoCertificado[]): Carta
  */
 export async function identificacao_do_titular(
   tx: Executor,
-  servidor_id: number,
-): Promise<{ nome: string; lotacao: string; campus: string }> {
+  titular: number | { participante_id: number },
+): Promise<{ nome: string; lotacao: string; campus: string; organizacao: string }> {
+  if (typeof titular !== "number") {
+    // o externo não tem lotação nem campus: tem a organização (a contratada)
+    const [p] = await tx
+      .select({ nome: tabela_participante.nome, organizacao: tabela_participante.organizacao })
+      .from(tabela_participante)
+      .where(eq(tabela_participante.id, titular.participante_id));
+    return { nome: p?.nome ?? "", lotacao: "", campus: "", organizacao: p?.organizacao ?? "" };
+  }
+  const servidor_id = titular;
   const [l] = await tx
     .select({
       nome: tabela_servidor.nome,
@@ -548,5 +583,5 @@ export async function identificacao_do_titular(
     .leftJoin(tabela_campus, eq(tabela_campus.id, tabela_unidade.campus_id))
     .where(eq(tabela_servidor.id, servidor_id));
   const lotacao = l?.unidade ? (l.sigla && l.sigla !== l.unidade ? `${l.sigla} · ${l.unidade}` : l.unidade) : "";
-  return { nome: l?.nome ?? "", lotacao, campus: l?.campus ?? "" };
+  return { nome: l?.nome ?? "", lotacao, campus: l?.campus ?? "", organizacao: "" };
 }
