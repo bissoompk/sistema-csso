@@ -262,18 +262,22 @@ describe("telas", async () => {
     expect((await cliente.get("/modulos")).text).not.toContain(`href="${negado}"`);
   });
 
+  // Início com os cartões dos módulos (23/10/2026): para a equipe, `/inicio`
+  // deixou de ser despachante e é a Visão geral — o cartão de cada módulo leva
+  // à porta de entrada dele (`porta_de_entrada`, a mesma primeira tela de
+  // antes). Ver `testes/home_modulos.test.ts`.
   it.each([
     ["coordenador_csso", "/"],
     ["almoxarife_sesmt", "/epis"],
-    // sem `indicador.ver` (22/10/2026) o admin_ti não tem tela de módulo: entra
-    // pela base, onde está o trabalho dele
-    ["admin_ti", "/auditoria"],
-  ])("/inicio despacha %s para %s", async (perfil, destino) => {
+    // sem `indicador.ver` (22/10/2026) o admin_ti não tem tela de módulo: o
+    // cartão dele é o da Administração
+    ["admin_ti", "/usuarios"],
+  ])("/inicio abre a Visão geral de %s, com o caminho para %s", async (perfil, destino) => {
     const cliente = novoCliente();
     await entrar(cliente, perfil);
     const r = await cliente.get("/inicio", { seguir: false });
-    expect(r.status).toBe(303);
-    expect(r.location).toBe(destino);
+    expect(r.status).toBe(200);
+    expect(r.text).toContain(`class="cartao-mod-botao" href="${destino}"`);
   });
 
   it("o almoxarife ligado a servidor recebe a lateral do EPI e, ao lado, o Meu espaço", async () => {

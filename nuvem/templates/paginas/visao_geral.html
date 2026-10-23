@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# A Visão geral está acima dos módulos: a trilha não diz "Processos SEI". #}
+{% set trilha_raiz = 'Visão geral' %}
+{% set trilha_href = '/inicio' %}
+{% block titulo %}Visão geral · SISA{% endblock %}
+
+{# NUVEM (Início com os cartões dos módulos, 23/10/2026): a `#home-view` do
+   IntegraSST. Um cartão grande por módulo que a pessoa abre
+   (`servicos/visao_geral.ts`, que segue o filtro da lateral), na cor do
+   módulo (tokens `--mod-*` em `csso.css`, nunca `style=`), com o selo do que
+   espera nele e o botão "Acessar módulo". Embaixo, os módulos previstos,
+   cinza e tracejados, sem link: dizem o que vem, e "em desenvolvimento" vai
+   escrito — não depende de cor nem de um aviso de script.
+
+   O cartão inteiro NÃO é link: o link é o botão, e o nome do módulo é o
+   título (<h2>) que o leitor de tela lista. O botão leva o nome do módulo no
+   `aria-label`, para "Acessar módulo" não virar cinco links iguais. O selo
+   (número no canto) é `aria-hidden`: o que ele conta vai escrito por extenso
+   logo abaixo da frase. #}
+
+{% block conteudo %}
+<div class="tela visao-geral">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Bem-vindo(a) ao Sistema SISA{% if primeiro_nome %}, {{ primeiro_nome }}{% endif %}</h1>
+      <p class="sub">Selecione um módulo para começar. Cada cartão diz o que espera por você nele.</p>
+    </div>
+    <div class="ao-lado">
+      <a class="botao secundario" href="/modulos">{{ ui.icone('list-ul') }} Ver todas as telas</a>
+    </div>
+  </div>
+
+  {% if cartoes|length %}
+  <div class="grade-modulos">
+    {% for m in cartoes %}
+    <section class="cartao-mod mod-{{ m.codigo }}" aria-labelledby="mod-{{ m.codigo }}">
+      {% if m.selo %}<span class="selo-mod" aria-hidden="true">{{ m.selo.total }}</span>{% endif %}
+      <div class="cartao-mod-topo">
+        <span class="cartao-mod-ico">{{ ui.icone(m.icone) }}</span>
+        <h2 id="mod-{{ m.codigo }}">{{ m.nome }}</h2>
+      </div>
+      <p class="cartao-mod-frase">{{ m.frase }}</p>
+      {% if m.selo %}<p class="cartao-mod-pendente">{{ ui.icone('bell-fill') }} {{ m.selo.detalhe }}</p>{% endif %}
+      <a class="cartao-mod-botao" href="{{ m.href }}" aria-label="{{ m.rotulo_botao }}: {{ m.nome }}">{{ m.rotulo_botao }} {{ ui.icone('arrow-right') }}</a>
+    </section>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="vazio">
+    <strong>Nenhum módulo abre para você ainda</strong>
+    <span>O acesso a cada módulo vem do perfil, que se concede em Usuários. O
+      <a href="/modulos">mapa das telas</a> diz o que existe em cada um.</span>
+  </div>
+  {% endif %}
+
+  {% if previstos|length %}
+  <h2 class="secao-hub">{{ ui.icone('lock') }} Outros módulos (em desenvolvimento)</h2>
+  <ul class="grade-modulos previstos" role="list">
+    {% for m in previstos %}
+    <li class="cartao-mod previsto">
+      <div class="cartao-mod-topo">
+        <span class="cartao-mod-ico">{{ ui.icone(m.icone) }}</span>
+        <h3>{{ m.nome }}</h3>
+        <span class="cartao-mod-cadeado">{{ ui.icone('lock') }}</span>
+      </div>
+      <p class="cartao-mod-frase">{{ m.frase }}</p>
+      <p class="cartao-mod-status">Em desenvolvimento — ainda não disponível</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+</div>
+{% endblock %}

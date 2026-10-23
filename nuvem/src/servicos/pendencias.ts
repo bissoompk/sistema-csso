@@ -643,6 +643,9 @@ ganchos.anteciparSino = async (c) => {
           responsavel_id: tabela_pendencia.responsavel_id,
           prazo: tabela_pendencia.prazo,
           concluida: tabela_pendencia.concluida,
+          // o tipo vai junto para a Visão geral (`/inicio`) contar as pendências
+          // de cada módulo sem outra ida ao banco (`servicos/visao_geral.ts`)
+          tipo: tabela_pendencia.tipo,
         })
         .from(tabela_pendencia)
         .where(eq(tabela_pendencia.concluida, false)),

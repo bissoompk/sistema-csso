@@ -3836,6 +3836,125 @@ details.ajuste-horas input { margin-top: 4px; }
 }
 /* ---------- fim PORTAL/VALIDACAO ---------- */
 
+/* ---------- VISAO GERAL: o Início com os cartões dos módulos (23/10/2026) ----------
+   A `#home-view` do IntegraSST (`.dashboard-module-card`): um cartão grande por
+   módulo, em gradiente na cor dele, com ícone, nome, uma frase, o selo
+   vermelho do que espera nele e o botão claro "Acessar módulo". Embaixo, os
+   módulos previstos, cinza e tracejados, com cadeado e sem link.
+
+   AS CORES SÃO TOKENS, e o template só escolhe a classe `mod-{codigo}`: a CSP
+   não aceita `style=`. Cada par (de → até) foi escolhido para o texto branco
+   passar em 4,5:1 nas DUAS pontas do gradiente, porque o texto cai em qualquer
+   ponto dele (medido com a fórmula da WCAG 2.1):
+   - Processos SEI  #0058a3 (7,2:1) → #00316b (12,7:1) — o azul da Sisa
+   - Gestão de EPI  #0f766e (5,5:1) → #115e59 (7,6:1) — o teal do IntegraSST
+     (#0d9488) dá 3,7:1 com branco e foi escurecido um passo
+   - Certificados   #6b21a8 (8,7:1) → #7c3aed (5,7:1) — o roxo do IntegraSST
+     ia até #8b5cf6, que dá 4,2:1
+   - Demandas       #9a3412 (7,3:1) → #c2410c (5,2:1)
+   - Meu espaço     #2f6b17 (6,5:1) → #1f4d0f (9,9:1) — o verde-escuro da Sisa
+   - Administração  #334155 (10,4:1) → #475569 (7,6:1) — o cinza-ardósia
+   O botão é branco com o texto na cor "de" do módulo: as mesmas razões.
+   O selo é #b91c1c (`--erro`, 6,5:1 com branco), com borda branca para não
+   se perder no gradiente. */
+:root {
+  --mod-processos-de: #0058a3;  --mod-processos-ate: #00316b;
+  --mod-epis-de: #0f766e;       --mod-epis-ate: #115e59;
+  --mod-cert-de: #6b21a8;       --mod-cert-ate: #7c3aed;
+  --mod-demandas-de: #9a3412;   --mod-demandas-ate: #c2410c;
+  --mod-meu-de: #2f6b17;        --mod-meu-ate: #1f4d0f;
+  --mod-admin-de: #334155;      --mod-admin-ate: #475569;
+  --mod-selo: #b91c1c;
+  --mod-previsto-fundo: #f8fafc;
+  --mod-previsto-borda: #94a3b8;
+  --mod-previsto-texto: #475569;   /* 7,2:1 no fundo acima */
+  --mod-previsto-titulo: #334155;
+}
+.cartao-mod.mod-processos-sei { --mod-de: var(--mod-processos-de); --mod-ate: var(--mod-processos-ate); }
+.cartao-mod.mod-epis { --mod-de: var(--mod-epis-de); --mod-ate: var(--mod-epis-ate); }
+.cartao-mod.mod-certificados { --mod-de: var(--mod-cert-de); --mod-ate: var(--mod-cert-ate); }
+.cartao-mod.mod-demandas { --mod-de: var(--mod-demandas-de); --mod-ate: var(--mod-demandas-ate); }
+.cartao-mod.mod-meu-espaco { --mod-de: var(--mod-meu-de); --mod-ate: var(--mod-meu-ate); }
+.cartao-mod.mod-administracao { --mod-de: var(--mod-admin-de); --mod-ate: var(--mod-admin-ate); }
+
+.visao-geral .grade-modulos {
+  display: grid; gap: 20px; margin: 22px 0 0; padding: 0; list-style: none;
+  /* `min(100%, …)`: no celular a coluna nunca passa da tela (sem rolagem lateral) */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+}
+.cartao-mod {
+  --mod-de: var(--mod-processos-de); --mod-ate: var(--mod-processos-ate);
+  position: relative; display: flex; flex-direction: column; gap: 12px;
+  min-height: 210px; min-width: 0; margin: 0; padding: 24px 22px 22px;
+  color: #fff; border-radius: 14px;
+  background: linear-gradient(135deg, var(--mod-de) 0%, var(--mod-ate) 100%);
+  box-shadow: 0 4px 10px -2px rgba(15, 23, 42, .18);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.cartao-mod-topo { display: flex; align-items: center; gap: 14px; min-width: 0; padding-right: 36px; }
+.cartao-mod-ico {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 52px; height: 52px; border-radius: 12px; background: rgba(255, 255, 255, .16);
+}
+.cartao-mod-ico .ico { font-size: 28px; color: #fff; }
+.cartao-mod h2, .cartao-mod h3 {
+  margin: 0; font-size: 19px; font-weight: 800; line-height: 1.25; color: #fff; overflow-wrap: anywhere;
+}
+.cartao-mod-frase { margin: 0; font-size: 14px; line-height: 1.5; color: #fff; }
+.cartao-mod-pendente {
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 6px 10px;
+  border-radius: 8px; background: rgba(0, 0, 0, .22); font-size: 13px; font-weight: 700; color: #fff;
+}
+.cartao-mod-pendente .ico { flex: none; }
+.selo-mod {
+  position: absolute; top: 14px; right: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px;
+  background: var(--mod-selo); color: #fff; border: 2px solid #fff;
+  font-size: 14px; font-weight: 800; line-height: 1;
+}
+.cartao-mod-botao {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  align-self: flex-start; margin-top: auto; min-height: 44px; padding: 10px 18px;
+  border-radius: 10px; background: #fff; color: var(--mod-de);
+  font-size: 14px; font-weight: 800; text-decoration: none;
+}
+.cartao-mod-botao:hover { text-decoration: none; }
+.cartao-mod-botao:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+@media (hover: hover) {
+  .cartao-mod:not(.previsto):hover { transform: translateY(-5px); box-shadow: 0 16px 28px -8px rgba(15, 23, 42, .35); }
+  .cartao-mod-botao:hover { background: #f1f5f9; }
+}
+
+/* Os previstos: cinza, tracejados, com cadeado. Não são link nem foco. */
+.visao-geral .secao-hub { margin-top: 34px; }
+.visao-geral .grade-modulos.previstos { margin-top: 0; }
+.cartao-mod.previsto {
+  min-height: 0; color: var(--mod-previsto-texto); background: var(--mod-previsto-fundo);
+  border: 2px dashed var(--mod-previsto-borda); box-shadow: none;
+}
+.cartao-mod.previsto h3 { color: var(--mod-previsto-titulo); font-size: 17px; }
+.cartao-mod.previsto .cartao-mod-ico { background: #e2e8f0; }
+.cartao-mod.previsto .cartao-mod-ico .ico { color: var(--mod-previsto-texto); }
+.cartao-mod.previsto .cartao-mod-frase { color: var(--mod-previsto-texto); font-size: 13px; }
+.cartao-mod-cadeado { position: absolute; top: 16px; right: 16px; color: var(--mod-previsto-texto); }
+.cartao-mod-cadeado .ico { font-size: 20px; }
+.cartao-mod-status {
+  margin: auto 0 0; font-size: 12px; font-weight: 800; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--mod-previsto-texto);
+}
+
+@media (max-width: 600px) {
+  .visao-geral .grade-modulos { gap: 14px; }
+  .cartao-mod { min-height: 0; padding: 20px 16px 18px; }
+  .cartao-mod-botao { align-self: stretch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cartao-mod { transition: none; }
+  .cartao-mod:not(.previsto):hover { transform: none; }
+}
+/* ---------- fim VISAO GERAL ---------- */
+
 /* ===== CELULAR (lote 0) =====
    O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
    com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o
