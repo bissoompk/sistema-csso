@@ -105,11 +105,14 @@ describe("matriz de perfis", () => {
     }
   });
 
-  it("módulo da permissão: EPI, treinamento, base e o padrão", () => {
-    expect(modulo_da_permissao("epi.ver")).toBe("EPI");
-    expect(modulo_da_permissao("turma.criar")).toBe("TREINAMENTOS");
-    expect(modulo_da_permissao("demanda.ver")).toBe("BASE");
-    expect(modulo_da_permissao("processo.ver")).toBe("ADICIONAL");
+  it("módulo da permissão: derivado dos módulos nivelados", () => {
+    // D7 (23/10/2026): derivado de MODULOS_NIVELADOS; "PERFIL" = só do perfil
+    expect(modulo_da_permissao("epi.ver")).toBe("epis");
+    expect(modulo_da_permissao("turma.criar")).toBe("certificados");
+    expect(modulo_da_permissao("demanda.ver")).toBe("demandas");
+    expect(modulo_da_permissao("processo.ver")).toBe("processos-sei");
+    expect(modulo_da_permissao("perfil.conceder")).toBe("PERFIL");
+    expect(modulo_da_permissao("turma.inscrever_se")).toBe("PERFIL");
   });
 
   it("a PermissaoNegada do RBAC é a do núcleo (a que o onError trata)", () => {

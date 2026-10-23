@@ -20,7 +20,7 @@ import type { Ctx } from "./nucleo/contexto.js";
 import { obterConfig, RODAPE_INSTITUCIONAL, VERSAO } from "./config.js";
 import { cookieSeguro } from "./nucleo/seguranca.js";
 import { getCookie, setCookie } from "hono/cookie";
-import { GRUPOS_PERMISSAO_TELA, type UsuarioAtual } from "./servicos/rbac.js";
+import { TEXTO_PERMISSAO, type UsuarioAtual } from "./servicos/rbac.js";
 import { COLUNAS_KANBAN, ROTULO_ESTADO_TELA } from "./dominio/estados.js";
 import * as datas_br from "./servicos/datas_br.js";
 import * as auditoria from "./servicos/auditoria.js";
@@ -306,10 +306,6 @@ global("range", (a: number, b?: number, passo = 1) => {
 
 // O texto de tela de uma permissão (o de /perfis): a tela que diz "somente
 // leitura" explica o que falta em português, e não com o código interno.
-const TEXTO_PERMISSAO: Readonly<Record<string, string>> = Object.assign(
-  {},
-  ...GRUPOS_PERMISSAO_TELA.map(([, textos]) => textos),
-);
 global("texto_permissao", (codigo: string) =>
   Object.hasOwn(TEXTO_PERMISSAO, codigo) ? TEXTO_PERMISSAO[codigo]! : "uma permissão que você não tem",
 );

@@ -107,7 +107,7 @@ describe("sementes", () => {
     const [p] = await db.select().from(e.permissao).where(eq(e.permissao.codigo, "epi.ver"));
     expect(p!.descricao).toBe(PERMISSOES["epi.ver"]);
     expect(p!.modulo).toBe(modulo_da_permissao("epi.ver"));
-    expect(p!.modulo).toBe("EPI");
+    expect(p!.modulo).toBe("epis");
   });
 
   it("banco de produção com o superintendente antigo ganha as permissões novas no próximo seed", async () => {

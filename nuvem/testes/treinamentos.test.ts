@@ -781,19 +781,20 @@ describe("permissões", () => {
     expect((await cliente.get(caminho)).status).toBe(esperado);
   });
 
-  it("permissões novas nascem no módulo TREINAMENTOS", async () => {
+  it("permissões novas nascem no módulo Certificados (derivado, D7)", async () => {
     const por_codigo = Object.fromEntries((await db.select().from(e.permissao)).map((p) => [p.codigo, p.modulo]));
     for (const codigo of [
       "treinamento.ver",
       "treinamento.gerenciar",
-      "assinatura.gerenciar",
       "turma.criar",
       "turma.inscrever",
       "turma.concluir",
     ]) {
-      expect(por_codigo[codigo], codigo).toBe("TREINAMENTOS");
+      expect(por_codigo[codigo], codigo).toBe("certificados");
     }
-    expect(por_codigo["parecer.emitir"]).toBe("ADICIONAL");
+    // só do perfil: não é de módulo nenhum
+    expect(por_codigo["assinatura.gerenciar"]).toBe("PERFIL");
+    expect(por_codigo["parecer.emitir"]).toBe("processos-sei");
   });
 });
 

@@ -210,7 +210,7 @@ export const acesso_dado_sensivel = pgTable('acesso_dado_sensivel', {
 });
 
 /**
- * Liberação por módulo (22/10/2026): o nível que a coordenação escolheu para um
+ * Liberação por módulo (22/10/2026): o nível que quem administra acesso (o Administrador do sistema ou o Superintendente) escolheu para um
  * módulo inteiro num PERFIL — "sem acesso", "consulta" ou "operação". A linha
  * ausente é o padrão do perfil (as permissões de `perfil_permissao`, como
  * sempre foram): por isso a implantação não muda o acesso de ninguém, e o

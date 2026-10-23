@@ -428,7 +428,7 @@ describe("D24: a matriz de perfis", () => {
     const r = await amb.cliente.get("/perfis");
     expect(r.status).toBe(200);
     expect(r.text).toContain("Alcance:");
-    expect(r.text).toContain("agregado — só contagens; nenhuma linha");
+    expect(r.text).toContain("sem dado — só a administração técnica");
     expect((await amb.cliente.get("/usuarios")).text).toContain('href="/perfis"');
   });
 });

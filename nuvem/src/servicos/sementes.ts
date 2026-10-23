@@ -139,8 +139,13 @@ export async function semear_rbac(tx: Executor): Promise<void> {
       { codigo },
       { nome: dados.nome, base_normativa: dados.base_normativa ?? null },
     );
-    // o nome é o rótulo da tela e pertence ao código, como a descrição da permissão
-    if (pf.nome !== dados.nome) await tx.update(perfil).set({ nome: dados.nome }).where(eq(perfil.id, pf.id));
+    // o nome e a base normativa são texto de tela e pertencem ao código, como a
+    // descrição da permissão (D8, 23/10/2026): corrigir um texto em `rbac.ts` chega ao
+    // banco já semeado no próximo deploy, e não só ao que nasce
+    const base_normativa = dados.base_normativa ?? null;
+    if (pf.nome !== dados.nome || (pf.base_normativa ?? null) !== base_normativa) {
+      await tx.update(perfil).set({ nome: dados.nome, base_normativa }).where(eq(perfil.id, pf.id));
+    }
     const atuais = new Set(
       (
         await tx

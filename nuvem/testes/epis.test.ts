@@ -427,10 +427,10 @@ describe("permissões", () => {
     expect((await _cadastrar(cliente, { nome: "Outra luva" })).status).toBe(403);
   });
 
-  it("as permissões novas nascem no módulo EPI", async () => {
+  it("as permissões novas nascem no módulo de EPI (derivado, D7)", async () => {
     for (const codigo of ["epi.ver", "epi.catalogo"]) {
       const [p] = await db.select().from(e.permissao).where(eq(e.permissao.codigo, codigo));
-      expect(p!.modulo).toBe("EPI");
+      expect(p!.modulo).toBe("epis");
     }
   });
 

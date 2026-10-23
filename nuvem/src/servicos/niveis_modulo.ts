@@ -1,11 +1,15 @@
 /**
  * Liberação de módulo por módulo (22/10/2026) — O MAPA, num lugar só.
  *
- * A coordenação escolhe, para cada módulo do menu, um de três níveis:
+ * Quem administra acesso (o Administrador do sistema e o Superintendente)
+ * escolhe, para cada módulo do menu, um de três níveis:
  *
  * - **Sem acesso**: nenhuma permissão do módulo;
  * - **Consulta**: as permissões de LEITURA do módulo (`*.ver` e equivalentes);
- * - **Operação**: todas as do módulo — a consulta e as de escrita.
+ * - **Operação**: todas as do módulo — a consulta e as de escrita — ATÉ O TETO
+ *   DO PERFIL (`NUNCA_POR_NIVEL`): o que a matriz tirou de propósito do perfil
+ *   (o técnico não anula certificado, o almoxarife não lê parecer, a secretaria
+ *   não analisa EPI) nenhum nível devolve.
  *
  * O nível vale por PERFIL (`perfil_nivel_modulo`) e, por cima dele, por PESSOA
  * (`usuario_nivel_modulo`, a exceção que dá ou retira). Linha ausente é "o
@@ -150,6 +154,78 @@ export const PERFIS_NO_NIVEL_MAIS_ALTO: Readonly<Record<string, Readonly<Record<
   ),
 });
 
+/**
+ * O TETO de cada perfil que aceita nível (23/10/2026, D1): as permissões que
+ * NENHUM nível devolve, porque a matriz as tirou do perfil de propósito (cada
+ * exclusão tem a razão no comentário do perfil em `rbac.ts`). "Operação" é o
+ * módulo MENOS o teto; "Consulta", a leitura do módulo menos o teto.
+ *
+ * - `consulta_progep` e `auditor_interno`: TODA a escrita de todos os módulos
+ *   (D2: no máximo Consulta, "escrita nenhuma");
+ * - o técnico "emite e não anula" (certificado, parecer) e não atribui;
+ * - o engenheiro e o médico "não operam o balcão" do almoxarifado;
+ * - a secretaria: decidir (parecer, EPI) é ato técnico, e a ficha nominal de
+ *   EPI fica fora da base dela (D3: `epi.ficha` segue sendo consulta, e é o
+ *   teto que a exclui);
+ * - o almoxarife "não lê parecer" e "não decide o direito ao item".
+ *
+ * Perfil de equipe SEM entrada aqui derruba a importação (`rbac._conferir_niveis`);
+ * `[]` é a declaração de que não há teto (superintendente e coordenador).
+ * O Administrador do sistema não aceita nível (`PERFIS_NO_NIVEL_MAIS_ALTO`):
+ * é o único perfil sem teto e sem nível, sempre em Operação.
+ */
+const _TODA_A_ESCRITA: readonly string[] = MODULOS_NIVELADOS.flatMap((m) => m.escrita);
+
+export const NUNCA_POR_NIVEL: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  superintendente: Object.freeze([] as string[]),
+  coordenador_csso: Object.freeze([] as string[]),
+  engenheiro_seguranca: Object.freeze(["epi.entregar", "epi.estoque"]),
+  medico_trabalho: Object.freeze(["epi.catalogo", "epi.entregar", "epi.estoque"]),
+  tecnico_seguranca: Object.freeze(["processo.atribuir", "parecer.anular", "certificado.anular", "participante.mesclar"]),
+  secretaria_csso: Object.freeze([
+    "processo.atribuir",
+    "parecer.criar",
+    "parecer.editar",
+    "parecer.emitir",
+    "parecer.anular",
+    "treinamento.gerenciar",
+    "certificado.anular",
+    "participante.mesclar",
+    "epi.ficha",
+    "epi.catalogo",
+    "epi.entregar",
+    "epi.estoque",
+    "epi.analisar",
+  ]),
+  almoxarife_sesmt: Object.freeze([
+    "parecer.ver",
+    "parecer.criar",
+    "parecer.editar",
+    "parecer.emitir",
+    "parecer.anular",
+    "epi.catalogo",
+    "epi.requisitar",
+    "epi.analisar",
+  ]),
+  consulta_progep: Object.freeze([..._TODA_A_ESCRITA]),
+  auditor_interno: Object.freeze([..._TODA_A_ESCRITA]),
+});
+
+/** O teto do perfil (vazio quando não há: o perfil não aceita nível, ou não tem exclusão). */
+export function teto_do_perfil(perfil: string | null | undefined): readonly string[] {
+  return perfil && Object.hasOwn(NUNCA_POR_NIVEL, perfil) ? NUNCA_POR_NIVEL[perfil]! : [];
+}
+
+/** As permissões de leitura do módulo que o teto deixa. */
+function _consulta_ate_o_teto(m: ModuloNivelado, teto: readonly string[]): string[] {
+  return m.consulta.filter((p) => !teto.includes(p));
+}
+
+/** O nível mais alto que o perfil alcança no módulo: Operação, ou só Consulta (PROGEP, auditor). */
+export function nivel_maximo(m: ModuloNivelado, teto: readonly string[]): Nivel {
+  return m.escrita.every((p) => teto.includes(p)) ? CONSULTA : OPERACAO;
+}
+
 export function modulo_nivelado(codigo: string): ModuloNivelado | null {
   return MODULOS_NIVELADOS.find((m) => m.codigo === codigo) ?? null;
 }
@@ -160,10 +236,11 @@ export function permissoes_do_modulo(m: ModuloNivelado): readonly string[] {
 }
 
 /** O que um nível dá num módulo. */
-export function permissoes_do_nivel(m: ModuloNivelado, nivel: Nivel): readonly string[] {
+export function permissoes_do_nivel(m: ModuloNivelado, nivel: Nivel, teto: readonly string[] = []): readonly string[] {
   if (nivel === SEM_ACESSO) return [];
-  if (nivel === CONSULTA) return m.consulta;
-  return permissoes_do_modulo(m);
+  const tiradas = (lista: readonly string[]) => lista.filter((p) => !teto.includes(p));
+  if (nivel === CONSULTA) return tiradas(m.consulta);
+  return tiradas(permissoes_do_modulo(m));
 }
 
 const _niveladas = new Map<string, ModuloNivelado>(
@@ -187,31 +264,80 @@ export function permissoes_com_niveis(
   cruas: Iterable<string>,
   do_perfil: NiveisPorModulo = {},
   da_pessoa: NiveisPorModulo = {},
+  perfil: string | null = null,
 ): string[] {
+  const teto = teto_do_perfil(perfil);
   const base = new Set(cruas);
   const saida = new Set<string>();
   for (const p of base) if (!_niveladas.has(p)) saida.add(p);
   for (const m of MODULOS_NIVELADOS) {
     const nivel = da_pessoa[m.codigo] ?? do_perfil[m.codigo];
-    const dele = nivel === undefined ? permissoes_do_modulo(m).filter((p) => base.has(p)) : permissoes_do_nivel(m, nivel);
+    const dele = nivel === undefined ? permissoes_do_modulo(m).filter((p) => base.has(p)) : permissoes_do_nivel(m, nivel, teto);
     for (const p of dele) saida.add(p);
   }
   return [...saida];
 }
 
 /**
- * Como o padrão de um perfil se lê no módulo: um dos três níveis quando bate
- * exatamente, ou `PARCIAL` (o perfil tem só um pedaço — o técnico, que emite e
- * não anula certificado).
+ * Como o que o perfil tem se lê no módulo, JÁ DESCONTADO o teto dele: um dos
+ * três níveis quando bate exatamente com o que o nível dá a esse perfil
+ * (Consulta = a leitura menos o teto; Operação = o módulo menos o teto), ou
+ * `PARCIAL` quando é um pedaço que nenhum nível dá. Com o teto, o técnico que
+ * "emite e não anula" lê Operação, e não mais Parcial.
  */
-export function nivel_lido(cruas: Iterable<string>, m: ModuloNivelado): Nivel | typeof PARCIAL {
+export function nivel_lido(
+  cruas: Iterable<string>,
+  m: ModuloNivelado,
+  teto: readonly string[] = [],
+): Nivel | typeof PARCIAL {
   const tem = new Set(cruas);
   const dele = permissoes_do_modulo(m).filter((p) => tem.has(p));
   if (!dele.length) return SEM_ACESSO;
   const iguais = (lista: readonly string[]) => lista.length === dele.length && lista.every((p) => tem.has(p));
-  if (iguais(m.consulta)) return CONSULTA;
-  if (iguais(permissoes_do_modulo(m))) return OPERACAO;
+  if (iguais(_consulta_ate_o_teto(m, teto))) return CONSULTA;
+  if (iguais(permissoes_do_nivel(m, OPERACAO, teto))) return OPERACAO;
   return PARCIAL;
+}
+
+/** O rótulo curto do que o teto tira, para "Operação (sem anular certificado)". */
+const RESUMO_DO_TETO: Readonly<Record<string, string>> = Object.freeze({
+  "processo.atribuir": "atribuir",
+  "parecer.ver": "parecer",
+  "parecer.criar": "parecer",
+  "parecer.editar": "parecer",
+  "parecer.emitir": "parecer",
+  "parecer.anular": "anular parecer",
+  "treinamento.gerenciar": "gerenciar o catálogo",
+  "certificado.anular": "anular certificado",
+  "participante.mesclar": "juntar cadastros",
+  "epi.ficha": "ficha nominal",
+  "epi.catalogo": "catálogo de EPI",
+  "epi.entregar": "entregar",
+  "epi.estoque": "estoque",
+  "epi.requisitar": "pedir EPI",
+  "epi.analisar": "analisar pedido",
+});
+
+/**
+ * O nível como a tela o escreve (D10), nas DUAS telas: "Sem acesso", "Consulta",
+ * "Operação", "Parcial" — e, quando o teto do perfil tira algo do que o nível
+ * daria, "Operação (sem anular certificado, juntar cadastros)". `PARCIAL` fica
+ * "Parcial" (um pedaço que nenhum nível dá).
+ */
+export function rotulo_do_nivel(nivel: string, m: ModuloNivelado, perfil: string | null): string {
+  const base = ROTULO_NIVEL[nivel] ?? nivel;
+  if (nivel !== CONSULTA && nivel !== OPERACAO) return base;
+  const teto = teto_do_perfil(perfil);
+  const deste_nivel = nivel === CONSULTA ? m.consulta : permissoes_do_modulo(m);
+  const tiradas = deste_nivel.filter((p) => teto.includes(p));
+  // o perfil que só chega à Consulta não tem teto "a mostrar" em Consulta: o teto é a escrita inteira
+  if (!tiradas.length) return base;
+  if (nivel === OPERACAO && tiradas.length === m.escrita.length && tiradas.every((p) => m.escrita.includes(p))) {
+    return `${base} (sem escrita)`;
+  }
+  const textos = [...new Set(tiradas.map((p) => RESUMO_DO_TETO[p] ?? p))];
+  const sem = textos.includes("parecer") ? textos.filter((t) => t !== "anular parecer") : textos;
+  return `${base} (sem ${sem.join(", ")})`;
 }
 
 /** As permissões de um módulo que `cruas` tem. */
