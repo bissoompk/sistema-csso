@@ -58,6 +58,8 @@ describe("menu de Certificados e Treinamentos em grupos", () => {
       "/treinamentos/indicadores",
       "/treinamentos/catalogo",
       "/treinamentos/setores-promotores",
+      // o seletor de módulos da lateral: a secretaria também triaria acidentes (23/10/2026)
+      "/acidentes",
     ]);
   });
 

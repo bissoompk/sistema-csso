@@ -181,6 +181,24 @@ export const PERMISSOES: Record<string, string> = {
   // e quem le o modulo inteiro por ofício (auditoria, PROGEP). Nao se libera
   // por modulo (`niveis_modulo.PERMISSOES_SO_DO_PERFIL`).
   "turma.todos_os_setores": "Alcançar as turmas de todos os setores promotores (gerir exige as permissões de turma)",
+  // --- Acidentes (CAT/SP, 23/10/2026) ---
+  // Nove permissões, e a divisão segue quem faz o quê: `ver` e `comunicar` são
+  // largas (todo servidor com conta comunica e vê a própria ocorrência); triar,
+  // investigar e encaminhar ao SIASS são da equipe; emitir o relatório é ato
+  // técnico assinado (segue o cargo, como a assinatura); e a saúde tem três
+  // permissões próprias — ver o nível 1, ver o nível 2 e registrar — porque
+  // dado de saúde é sensível (LGPD art. 5º, II; ROPA §4.4): quem investiga o
+  // acidente NÃO lê, por isso, o detalhe clínico. `acidente.ver` nunca mostra
+  // saúde. O auditor interno e a PROGEP não leem o módulo (decisão D10).
+  "acidente.ver": "Ver ocorrencias de acidente (a saude nunca vem junto)",
+  "acidente.comunicar": "Comunicar acidente de trabalho (CAT/SP) e responder pedido de complementacao",
+  "acidente.triar": "Triar ocorrencia: assumir, mudar estado, pedir complementacao, cancelar e retificar a CAT/SP",
+  "acidente.investigar": "Investigar acidente: MAPA, checklist, entrevistas, evidencias e plano de acao",
+  "acidente.siass": "Encaminhar ao SIASS, registrar a decisao pericial e concluir a ocorrencia",
+  "acidente.relatorio_emitir": "Emitir e retificar o relatorio tecnico do acidente",
+  "acidente.saude_ver": "Ver a saude do acidentado, nivel 1 (lesao em categoria fechada e fatos administrativos)",
+  "acidente.saude_detalhe_ver": "Ver a saude do acidentado, nivel 2 (dias, datas e atendimento)",
+  "acidente.saude_registrar": "Registrar e corrigir os dados de saude do acidentado",
 };
 
 /**
@@ -257,6 +275,20 @@ export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<
     },
   ],
   [
+    "Acidentes",
+    {
+      "acidente.ver": "Ver as ocorrências de acidente (sem os dados de saúde)",
+      "acidente.comunicar": "Comunicar acidente de trabalho e responder pedido de complementação",
+      "acidente.triar": "Triar a ocorrência: assumir, mudar a situação, pedir complementação, cancelar e retificar",
+      "acidente.investigar": "Investigar o acidente: análise MAPA, checklist, entrevistas, evidências e plano de ação",
+      "acidente.siass": "Encaminhar ao SIASS, registrar a decisão pericial e concluir",
+      "acidente.relatorio_emitir": "Emitir e retificar o relatório técnico (exige o cargo técnico)",
+      "acidente.saude_ver": "Ver a saúde do acidentado, nível 1 (lesão em categoria e fatos administrativos)",
+      "acidente.saude_detalhe_ver": "Ver a saúde do acidentado, nível 2 (dias, datas e atendimento)",
+      "acidente.saude_registrar": "Registrar e corrigir os dados de saúde do acidentado",
+    },
+  ],
+  [
     "Catálogos, indicadores e exportação",
     {
       "catalogo.gerenciar": "Gerenciar os catálogos e a configuração do setor",
@@ -330,6 +362,17 @@ const PERMISSOES_COORDENADOR: string[] = [
   "demanda.registrar",
   // a coordenacao ve as turmas de todos os setores promotores (22/10/2026)
   "turma.todos_os_setores",
+  // acidentes (23/10/2026): a coordenacao tem as nove, saude inclusive; o
+  // superintendente parte desta lista e o Administrador do sistema as deriva
+  "acidente.ver",
+  "acidente.comunicar",
+  "acidente.triar",
+  "acidente.investigar",
+  "acidente.siass",
+  "acidente.relatorio_emitir",
+  "acidente.saude_ver",
+  "acidente.saude_detalhe_ver",
+  "acidente.saude_registrar",
 ];
 
 /**
@@ -466,6 +509,16 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       // e eu preciso nao perder" +
       "demanda.ver",
       "demanda.registrar",
+      // acidentes (D10, 23/10/2026): conduz a triagem, investiga, encaminha ao
+      // SIASS, emite o relatorio tecnico (ato dele, e nao so do engenheiro) e le
+      // a saude no nivel 1. O detalhe clinico (nivel 2) e do medico.
+      "acidente.ver",
+      "acidente.comunicar",
+      "acidente.triar",
+      "acidente.investigar",
+      "acidente.siass",
+      "acidente.relatorio_emitir",
+      "acidente.saude_ver",
     ],
   },
   medico_trabalho: {
@@ -512,6 +565,15 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "epi.analisar",
       "demanda.ver",
       "demanda.registrar",
+      // acidentes (D10, 23/10/2026): confirma e registra a saude (os dois niveis),
+      // encaminha ao SIASS e instrui a pericia; nao tria nem investiga o
+      // acidente, que e trabalho da engenharia e da seguranca
+      "acidente.ver",
+      "acidente.comunicar",
+      "acidente.siass",
+      "acidente.saude_ver",
+      "acidente.saude_detalhe_ver",
+      "acidente.saude_registrar",
     ],
   },
   tecnico_seguranca: {
@@ -559,6 +621,16 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "epi.analisar",
       "demanda.ver",
       "demanda.registrar",
+      // acidentes (D10, 23/10/2026): conduz a triagem, investiga, encaminha ao
+      // SIASS, emite o relatorio tecnico (ato dele, e nao so do engenheiro) e le
+      // a saude no nivel 1. O detalhe clinico (nivel 2) e do medico.
+      "acidente.ver",
+      "acidente.comunicar",
+      "acidente.triar",
+      "acidente.investigar",
+      "acidente.siass",
+      "acidente.relatorio_emitir",
+      "acidente.saude_ver",
     ],
   },
   almoxarife_sesmt: {
@@ -592,6 +664,13 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     // pedido que chega andando, e mandar essa pessoa "avisar alguem da CSSO"
     // e exatamente o caminho por onde a demanda se perde hoje. Ele registra
     // e ve a fila; o que ele continua nao tendo e todo o resto.
+    //
+    // Acidentes (D10, 23/10/2026): quem presencia um acidente no almoxarifado
+    // comunica, como qualquer servidor — e isso ja vem das funcoes do titular
+    // (`PERMISSOES_DO_TITULAR`), sem estar na matriz do perfil. Na matriz,
+    // `acidente.comunicar` sozinho (sem `acidente.ver`) faria o modulo do perfil
+    // ler como "Parcial" (a harmonia da matriz, `matriz_harmonia.test`) e daria
+    // ao almoxarife o modulo de acidentes na lateral, que ele nao opera.
     permissoes: ["epi.ver", "epi.estoque", "epi.entregar", "epi.ficha", "demanda.ver", "demanda.registrar"],
   },
   secretaria_csso: {
@@ -635,6 +714,11 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       // esta hoje
       "demanda.ver",
       "demanda.registrar",
+      // acidentes (D10, 23/10/2026): a secretaria recebe e TRIA a comunicacao,
+      // sem ver saude; investigar e encaminhar ao SIASS nao sao dela
+      "acidente.ver",
+      "acidente.comunicar",
+      "acidente.triar",
     ],
   },
   consulta_progep: {
@@ -720,6 +804,9 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "turma.inscrever_se",
       "epi.ver",
       "epi.requisitar",
+      // acidentes (D10): comunica e ve as proprias ocorrencias (escopo proprio)
+      "acidente.comunicar",
+      "acidente.ver",
     ],
   },
   auditor_interno: {
@@ -1112,6 +1199,11 @@ export const PERMISSOES_DO_TITULAR: ReadonlySet<string> = new Set([
   "turma.inscrever_se",
   "epi.ver",
   "epi.requisitar",
+  // acidentes (D10, 23/10/2026): toda conta ligada a servidor comunica acidente
+  // e ve as PROPRIAS ocorrencias (o servidor_id da ocorrencia e o do acidentado
+  // principal); a saude do proprio caso o servico le pela relacao de titular
+  "acidente.comunicar",
+  "acidente.ver",
 ]);
 
 /**
@@ -1138,6 +1230,10 @@ export const PERMISSAO_DE_LEITURA_POR_TABELA: Readonly<Record<string, readonly s
   turma: ["treinamento.ver"],
   epi_requisicao: ["epi.ver"],
   epi_ficha_registro: ["epi.ficha", "epi.ver"],
+  // acidentes: a ocorrencia recorta por campus (do local) e, no escopo proprio,
+  // por `servidor_id` (o acidentado principal)
+  acidente_ocorrencia: ["acidente.ver"],
+  acidentado: ["acidente.ver"],
 };
 
 /** As permissões que mostram a pessoa pelo nome (RN-19), por família de tela. */

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}{{ ocorrencia.protocolo }} · SISA{% endblock %}
+
+{# A ficha da ocorrência. Cada aba é um `include` de um parcial que a fatia dona
+   dela cria (`partes/acidente_aba_<nome>.html`); sem o parcial a aba fica vazia
+   e a ficha continua abrindo. Nenhuma fatia edita este arquivo. #}
+
+{% block trilha %}<a href="/acidentes/{{ ocorrencia.id }}">{{ ocorrencia.protocolo }}</a>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ ocorrencia.protocolo }}</h1>
+      <p class="sub">{{ ROTULO_ESPECIE[ocorrencia.especie] or ocorrencia.especie }}
+        · acidente em {{ ocorrencia.data_evento|data }}
+        · {{ ROTULO_ACIDENTE[ocorrencia.estado] or ocorrencia.estado }}
+        · prazo de comunicação {{ (ocorrencia.prazo_prorrogado_ate or ocorrencia.prazo_comunicacao)|data }}</p>
+    </div>
+  </div>
+
+  <nav class="abas" aria-label="Abas da ocorrência">
+    {% for chave, rotulo in abas %}
+    <a href="/acidentes/{{ ocorrencia.id }}?aba={{ chave }}"
+       class="{{ 'ativa' if aba == chave }}"
+       {% if aba == chave %}aria-current="page"{% endif %}>{{ rotulo }}</a>
+    {% endfor %}
+  </nav>
+
+  <section class="aba-conteudo">
+    {% if aba == "comunicacao" %}{% include "partes/acidente_aba_comunicacao.html" ignore missing %}
+    {% elif aba == "envolvidos" %}{% include "partes/acidente_aba_envolvidos.html" ignore missing %}
+    {% elif aba == "saude" %}{% include "partes/acidente_aba_saude.html" ignore missing %}
+    {% elif aba == "investigacao" %}{% include "partes/acidente_aba_investigacao.html" ignore missing %}
+    {% elif aba == "checklist" %}{% include "partes/acidente_aba_checklist.html" ignore missing %}
+    {% elif aba == "entrevistas" %}{% include "partes/acidente_aba_entrevistas.html" ignore missing %}
+    {% elif aba == "relatorios" %}{% include "partes/acidente_aba_relatorios.html" ignore missing %}
+    {% elif aba == "acoes" %}{% include "partes/acidente_aba_acoes.html" ignore missing %}
+    {% elif aba == "siass" %}{% include "partes/acidente_aba_siass.html" ignore missing %}
+    {% elif aba == "historico" %}{% include "partes/acidente_aba_historico.html" ignore missing %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

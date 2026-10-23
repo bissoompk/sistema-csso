@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}{{ titulo_tela }} · SISA{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ titulo_tela }}</h1>
+      <p class="sub">{{ texto }}</p>
+    </div>
+  </div>
+  <p><a class="botao secundario" href="/acidentes">Voltar ao painel</a></p>
+</div>
+{% endblock %}

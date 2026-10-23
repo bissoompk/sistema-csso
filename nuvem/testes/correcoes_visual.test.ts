@@ -77,6 +77,8 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
       "/epis/fichas/minha",
       "/epis/requisicoes",
       "/epis/requisicoes/nova",
+      // Acidentes (CAT/SP, 23/10/2026): o que ele comunicou
+      "/acidentes/minhas",
       "/adicionais",
       "/processos",
       "/minha-atividade",

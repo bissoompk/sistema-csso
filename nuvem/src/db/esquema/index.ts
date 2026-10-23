@@ -13,6 +13,7 @@ export * from './processo';
 export * from './auditoria';
 export * from './demanda';
 export * from './epi';
+export * from './acidente';
 export * from './treinamento';
 export * from './operacao';
 export * from './privacidade';
