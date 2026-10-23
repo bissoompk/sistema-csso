@@ -102,6 +102,8 @@ describe("Editar conta", () => {
     const alvo = await criarUsuario(amb.db, { login: "titular", email: "titular@teste.ufvjm.edu.br" });
     await entrar(amb.cliente, "titular");
     await amb.cliente.post("/minha-conta/email", { email: "Titular.Novo@ufvjm.edu.br", senha_atual: SENHA_TESTE });
+    const [m] = await amb.db.select().from(e.email_saida).where(eq(e.email_saida.tipo, "TROCA_EMAIL"));
+    await amb.cliente.get(m!.corpo!.match(/\/minha-conta\/email\/[A-Za-z0-9_-]+/)![0]);
     expect((await conta(alvo.id)).login).toBe("titular.novo@ufvjm.edu.br");
   });
 });

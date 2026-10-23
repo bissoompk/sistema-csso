@@ -2,7 +2,7 @@
 {% import "partes/senha.html" as senha with context %}
 {# Sem lateral: quem abre não tem conta (ou esqueceu a senha). #}
 {% set sem_casca = true %}
-{% block titulo %}Ativar meu acesso · SISA{% endblock %}
+{% block titulo %}Primeiro acesso do servidor · SISA{% endblock %}
 {% block classe_conteudo %}tela-auxiliar estreita{% endblock %}
 
 {% block conteudo %}
@@ -52,9 +52,9 @@
 
 {% else %}
 <div class="cartao">
-  <h1>Ativar meu acesso</h1>
-  <p class="sub">Para servidores da UFVJM: crie o seu acesso ao Sistema SISA ou, se já tem, redefina a
-    senha esquecida.</p>
+  <h1>Primeiro acesso do servidor</h1>
+  <p class="sub">Para servidores da UFVJM: a sua conta nasce com o cadastro de servidores. Confirme o
+    SIAPE e o e-mail institucional para definir a senha (serve também para a senha esquecida).</p>
   {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
   <form method="post" action="{{ caminho }}">
     <div class="campo"><label for="ativar-siape">SIAPE</label>
@@ -68,7 +68,9 @@
         para ele um link para você definir a senha.</span></div>
     <div class="acoes"><button type="submit" class="largo">Receber o link</button></div>
   </form>
-  <p class="discreto rodape-cartao sem-margem"><a href="/login">Já tenho acesso: entrar</a></p>
+  <p class="discreto rodape-cartao sem-margem"><a href="/login">Já tenho acesso: entrar</a> ·
+    <a href="/esqueci-senha">Esqueci minha senha</a> ·
+    <a href="/cadastre-se">Não sou servidor</a></p>
 </div>
 {% endif %}
 

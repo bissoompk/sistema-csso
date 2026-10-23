@@ -37,6 +37,8 @@
 {{ ui.botao_cadastro('conceder-perfil', CONCEDER_PERFIL, 'secundario') }}
 {% endif %}
 {% if usuario.pode('usuario.criar_conta') %}
+{# os pedidos do Cadastre-se (terceirizado e discente) que a equipe confere #}
+<a class="botao secundario" href="/usuarios/pedidos">Pedidos de conta</a>
 {{ ui.botao_cadastro('nova-conta', CADASTRAR_CONTA) }}
 {% endif %}
 {% endblock %}

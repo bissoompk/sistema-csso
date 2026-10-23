@@ -375,8 +375,9 @@ describe("auditoria", () => {
 
 describe("telas", () => {
   it("o login tem o link, e nenhuma tela do fluxo mostra código (RN-xx)", async () => {
-    expect((await cliente.get("/login")).text).toContain('href="/ativar-acesso"');
-    expect((await cliente.get("/login")).text).toContain("Ativar meu acesso / Esqueci minha senha");
+    expect((await cliente.get("/login")).text).toContain('href="/cadastre-se"');
+    expect((await cliente.get("/login")).text).toContain("Primeiro acesso / Cadastre-se");
+    expect((await cliente.get("/cadastre-se")).text).toContain('href="/ativar-acesso"');
     await servidor();
     const telas = [
       (await cliente.get("/ativar-acesso")).text,

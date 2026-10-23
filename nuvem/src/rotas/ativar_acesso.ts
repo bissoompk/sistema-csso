@@ -1,5 +1,7 @@
 /**
- * /ativar-acesso — "Ativar meu acesso" e "Esqueci minha senha"
+ * /ativar-acesso — o primeiro acesso do servidor (SIAPE + e-mail do cadastro),
+ * /esqueci-senha — "Esqueci minha senha" para qualquer conta, só com o e-mail,
+ * e /ativar-acesso/:token, o link de uso único dos dois
  * (`servicos/ativar_acesso.ts`).
  *
  * Como /certificados/acesso: sem sessão, `noindex`, `no-store`, e o token vai
@@ -84,6 +86,43 @@ rotas.post(servico.CAMINHO, async (c) => {
   }
   await servico.esperar_piso(inicio);
   return _tela(c, { recebido: true });
+});
+
+// "Esqueci minha senha" só com o e-mail, para qualquer conta
+async function _tela_esqueci(c: Ctx, d: { email?: string; erro?: string | null; recebido?: boolean; status?: number } = {}) {
+  return _sem_rastro(
+    await pagina(
+      c,
+      "paginas/esqueci_senha.html",
+      null,
+      {
+        digitado: d.email ?? "",
+        erro: d.erro ?? null,
+        recebido: d.recebido ?? false,
+        resposta_padrao: servico.RESPOSTA_ESQUECI,
+        caminho: servico.CAMINHO_ESQUECI,
+      },
+      d.status ?? 200,
+    ),
+  );
+}
+
+rotas.get(servico.CAMINHO_ESQUECI, (c) => _tela_esqueci(c));
+
+rotas.post(servico.CAMINHO_ESQUECI, async (c) => {
+  const inicio = Date.now();
+  const f = await formulario(c);
+  const digitado = f.texto("email").trim().slice(0, 160);
+  const tx = c.get("tx");
+  try {
+    await servico.pedir_por_email(tx, digitado, ipDoCliente(c), await emissao.url_base_validacao(tx));
+  } catch (erro) {
+    if (erro instanceof servico.DadosInvalidos) return _tela_esqueci(c, { email: digitado, erro: erro.message, status: 422 });
+    throw erro;
+  }
+  await email.acordar_envio();
+  await servico.esperar_piso(inicio);
+  return _tela_esqueci(c, { recebido: true });
 });
 
 rotas.get(`${servico.CAMINHO}/:token`, async (c) => {

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{# A fila dos pedidos de conta do Cadastre-se (terceirizado e discente). Aprovar
+   cria a conta com o perfil do vínculo e manda o link da senha ao e-mail do
+   pedido; recusar avisa a pessoa sem o motivo, que fica no registro. #}
+{% block titulo %}Pedidos de conta · SISA{% endblock %}
+{% block conteudo %}
+<h1>Pedidos de conta</h1>
+<p class="sub">Terceirizados e discentes que pediram conta pelo "Primeiro acesso". Confira o vínculo
+  (empresa contratada, curso) antes de aprovar.</p>
+<p><a href="/usuarios">Voltar para Usuários</a></p>
+
+<section class="cartao">
+  <h2>A conferir <span class="contador">{{ pendentes|length }}</span></h2>
+  {% if pendentes|length %}
+  <table>
+    <thead><tr><th>Nº</th><th>Vínculo</th><th>Nome</th><th>E-mail</th><th>Empresa ou curso</th><th>Setor ou matrícula</th><th>Pedido em</th><th></th></tr></thead>
+    <tbody>
+    {% for p in pendentes %}
+    <tr id="pedido-{{ p.id }}">
+      <td class="mono">{{ p.id }}</td>
+      <td>{{ ROTULO_VINCULO[p.vinculo] }}</td>
+      <td>{{ p.nome }}</td>
+      <td>{{ p.email }}</td>
+      <td>{{ p.organizacao }}</td>
+      <td>{{ p.matricula or '—' }}</td>
+      <td>{{ p.criado_em|momento }}</td>
+      <td>
+        <form method="post" action="/usuarios/pedidos/{{ p.id }}/aprovar" class="em-linha">
+          <button type="submit" class="compacto">Aprovar</button></form>
+        <form method="post" action="/usuarios/pedidos/{{ p.id }}/recusar" class="em-linha">
+          <input name="motivo" maxlength="500" required placeholder="motivo da recusa" aria-label="Motivo da recusa do pedido {{ p.id }}">
+          <button type="submit" class="secundario compacto">Recusar</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="discreto">Nenhum pedido a conferir.</p>{% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Decididos recentemente</h2>
+  {% if decididos|length %}
+  <ul class="linha-tempo">
+    {% for p in decididos %}
+    <li><span class="mono">{{ p.id }}</span> · {{ ROTULO_VINCULO[p.vinculo] }} · {{ p.nome }} —
+      {{ 'aprovado' if p.situacao == 'APROVADO' else 'recusado' }} em {{ p.decidido_em|momento }}
+      {%- if p.motivo %} ({{ p.motivo }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="discreto">Nenhum.</p>{% endif %}
+  <p class="dica">Os pedidos são apagados 90 dias depois de feitos.</p>
+</section>
+{% endblock %}

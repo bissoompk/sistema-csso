@@ -143,6 +143,12 @@ export const ativacao_acesso = pgTable(
     id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
     token_hash: varchar('token_hash', { length: 64 }).unique('uq_ativacao_acesso_token'),
     servidor_id: integer('servidor_id'),
+    // o link de uma CONTA (Esqueci minha senha por e-mail; a conta aprovada do
+    // Cadastre-se): o alvo é a conta, não o cadastro de servidor
+    usuario_id: integer('usuario_id'),
+    // a troca de e-mail em Meus dados: o endereço novo só vale quando o link
+    // enviado a ELE é aberto pela própria conta (resultado EMAIL)
+    email_novo: varchar('email_novo', { length: 160 }),
     // o que o pedido virou: LINK (e-mail com link na fila), NEUTRO (e-mail "procure a
     // equipe"), SEM_EMAIL (SIAPE e e-mail batem, mas o cadastro não tem e-mail — a
     // equipe vê), NADA (não casou, ou passou do teto por destinatário)
@@ -155,5 +161,44 @@ export const ativacao_acesso = pgTable(
   (t) => [
     index('ix_ativacao_acesso_ip').on(t.ip, t.criado_em),
     index('ix_ativacao_acesso_servidor').on(t.servidor_id, t.criado_em),
+    index('ix_ativacao_acesso_usuario').on(t.usuario_id, t.criado_em),
+  ],
+);
+
+/**
+ * O pedido de conta do Cadastre-se (terceirizado e discente; 23/10/2026,
+ * `servicos/pedido_conta.ts`). Nada nasce dele sozinho: a equipe confere e
+ * aprova (cria a conta, `usuario_id`) ou recusa. DESCARTADO é o pedido de
+ * e-mail que já estava no sistema: fica só para o teto por endereço de rede,
+ * sem nada da pessoa. A rotina de privacidade apaga em 90 dias.
+ */
+export const pedido_conta = pgTable(
+  'pedido_conta',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    vinculo: varchar('vinculo', { length: 12 }).notNull(),
+    nome: varchar('nome', { length: 160 }).notNull(),
+    email: varchar('email', { length: 160 }).notNull(),
+    email_normalizado: varchar('email_normalizado', { length: 160 }).notNull(),
+    // a empresa do terceirizado ou o curso do discente
+    organizacao: varchar('organizacao', { length: 160 }).notNull(),
+    // o setor do terceirizado ou a matrícula do discente (opcional)
+    matricula: varchar('matricula', { length: 30 }),
+    situacao: varchar('situacao', { length: 12 }).notNull().default('PENDENTE'),
+    motivo: text('motivo'),
+    decidido_por: integer('decidido_por'),
+    decidido_em: MomentoUTC('decidido_em'),
+    usuario_id: integer('usuario_id'),
+    ip: text('ip'),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    foreignKey({ name: 'fk_pedido_conta_decidido_por', columns: [t.decidido_por], foreignColumns: [usuario.id] }),
+    foreignKey({ name: 'fk_pedido_conta_usuario', columns: [t.usuario_id], foreignColumns: [usuario.id] }).onDelete('set null'),
+    check('ck_pedido_conta_vinculo', sql.raw(`vinculo IN ('TERCEIRIZADO','DISCENTE')`)),
+    check('ck_pedido_conta_situacao', sql.raw(`situacao IN ('PENDENTE','APROVADO','RECUSADO','DESCARTADO')`)),
+    index('ix_pedido_conta_situacao').on(t.situacao, t.criado_em),
+    index('ix_pedido_conta_ip').on(t.ip, t.criado_em),
+    index('ix_pedido_conta_email').on(t.email_normalizado),
   ],
 );

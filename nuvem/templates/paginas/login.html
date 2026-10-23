@@ -43,8 +43,10 @@
   </form>
   <p class="discreto rodape-cartao sem-margem">Tentativas malsucedidas seguidas
     bloqueiam a conta por alguns minutos.</p>
-  {# servidor sem conta, ou com a senha esquecida: o link vai ao e-mail do cadastro #}
-  <p class="discreto sem-margem"><a href="/ativar-acesso">Ativar meu acesso / Esqueci minha senha</a></p>
+  {# Primeiro acesso: o servidor ativa pelo cadastro; terceirizado e discente
+     pedem a conta, que a equipe confere. "Esqueci" serve a qualquer conta. #}
+  <p class="discreto sem-margem"><a href="/cadastre-se">Primeiro acesso / Cadastre-se</a> ·
+    <a href="/esqueci-senha">Esqueci minha senha</a></p>
 </div>
 {# quem fez treinamento e não tem conta não precisa de uma: o link vai por e-mail #}
 <p class="discreto">Fez treinamento com a Sisa e não tem conta?

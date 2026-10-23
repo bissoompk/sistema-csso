@@ -63,6 +63,7 @@ export const PERMISSAO_RETIRADA_DO_PERFIL = "PERMISSAO_RETIRADA_DO_PERFIL";
 // Telefone e ramal entram só como NOME de campo — o número nunca vai à trilha.
 export const CONTA_DADOS_ALTERADOS_PELO_TITULAR = "CONTA_DADOS_ALTERADOS_PELO_TITULAR";
 export const EMAIL_ALTERADO_PELO_TITULAR = "EMAIL_ALTERADO_PELO_TITULAR";
+export const TROCA_DE_EMAIL_PEDIDA = "TROCA_DE_EMAIL_PEDIDA";
 // Login é o e-mail (23/10/2026): a conversão das contas antigas, na
 // publicação, só no banco com a marca de produção (`login_email.ts`). Tipo
 // novo: os textos já gravados na trilha não mudam (a cadeia é por hash).
@@ -144,6 +145,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   SENHA_TROCADA: "Senha trocada pelo próprio dono",
   CONTA_DADOS_ALTERADOS_PELO_TITULAR: "Dados da conta alterados pelo próprio titular",
   EMAIL_ALTERADO_PELO_TITULAR: "E-mail da conta alterado pelo próprio titular",
+  TROCA_DE_EMAIL_PEDIDA: "Troca do e-mail da conta pedida (aguarda o link no e-mail novo)",
   LOGIN_CONVERTIDO_PARA_EMAIL: "Login convertido para o e-mail",
   // Ativar meu acesso / Esqueci minha senha (23/10/2026, `ativar_acesso.ts`): o
   // ator é "o próprio titular" e a descrição nunca leva nome, SIAPE nem e-mail.
@@ -154,6 +156,11 @@ export const ROTULO_EVENTO: Record<string, string> = {
   ACESSO_MANTIDO_NA_SAIDA: "Conta de administração mantida apesar da saída do servidor",
   SENHA_REDEFINIDA_POR_LINK: "Senha redefinida pelo próprio titular, por link no e-mail",
   PEDIDO_DE_ACESSO_RECUSADO: "Pedido de ativação de acesso não atendido por esta via",
+  // Cadastre-se do terceirizado e do discente (`pedido_conta.ts`): a descrição
+  // leva o número do pedido e o vínculo, nunca o nome nem o e-mail.
+  PEDIDO_DE_CONTA_RECEBIDO: "Pedido de conta recebido pelo Cadastre-se",
+  PEDIDO_DE_CONTA_APROVADO: "Pedido de conta aprovado: conta criada",
+  PEDIDO_DE_CONTA_RECUSADO: "Pedido de conta recusado",
   CONTA_BLOQUEADA: "Conta bloqueada por tentativas",
   PERMISSAO_ACRESCENTADA_AO_PERFIL: "Permissão acrescentada ao perfil",
   PERMISSAO_RETIRADA_DO_PERFIL: "Permissão retirada do perfil",

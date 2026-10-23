@@ -291,6 +291,25 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Registro da junção (23/10/2026) | Cada junção guarda o que moveu (`participante_mesclagem`: ids de inscrições, certificados e e-mails, campos herdados e se havia CPF — o booleano, nunca o número), para poder ser desfeita. "Não é a mesma pessoa" fica gravado como par (`participante_par_distinto`), só com os ids, quem decidiu e quando |
 | Efeito no §5.10 | A junção resolve o limite conhecido do acesso por link: depois dela, o e-mail aponta para uma pessoa só |
 
+### 5.12 Cadastre-se do terceirizado e do discente, e Esqueci minha senha (23/10/2026)
+
+| Item | Registro |
+|---|---|
+| O que é | Em `/cadastre-se` ("Primeiro acesso / Cadastre-se" no login) a pessoa escolhe o vínculo. O servidor segue para o primeiro acesso pelo cadastro de servidores (§ "Ativar meu acesso"). Terceirizado e discente fazem um **pedido de conta** (`servicos/pedido_conta.ts`) |
+| Dados do pedido | Nome, e-mail, empresa (terceirizado) ou curso (discente), setor ou matrícula (opcional), a declaração de ter 18 anos ou mais e o IP do pedido. CPF não entra (recusado na tela) |
+| Finalidade | A equipe conferir o vínculo e criar a conta, com que a pessoa se inscreve em treinamento, vê os certificados e comunica acidente. Pedido de EPI continua só de servidor |
+| Quem confere | Quem cria conta (`usuario.criar_conta`), na fila "Pedidos de conta" de Usuários, avisada por pendência. **Nenhuma conta nasce do pedido sozinho**; aprovada, nasce sem senha, com o perfil do vínculo, nunca ligada a servidor, e o link de definir a senha (3 dias, uso único) vai ao e-mail do pedido |
+| Quem prova ser o titular | A posse da caixa de e-mail: quem digitou o e-mail de outra pessoa não ganha acesso, porque o link vai ao dono. Discente só com e-mail institucional (@ufvjm.edu.br) |
+| Menores de idade | Fora deste fluxo (LGPD art. 14): o pedido exige a declaração de 18 anos ou mais; menor procura a equipe |
+| Sem oráculo | A tela responde a mesma frase a todo pedido, com piso de tempo; e-mail que já está no sistema (conta, servidor, pedido na fila) não abre pedido: o dono recebe uma mensagem neutra com o caminho certo |
+| Abuso | 5 pedidos por hora por IP; o teto por destinatário dos e-mails de acesso |
+| Recusa | A pessoa recebe um aviso neutro, **sem o motivo**; o motivo fica no pedido, para a equipe, até o expurgo |
+| Esqueci minha senha | `/esqueci-senha`, só com o e-mail, para qualquer conta: o link (1 h, uso único) vai ao e-mail **da conta**. Conta inativa e de administração recebem o aviso neutro de "procure a equipe" |
+| Troca do e-mail em Meus dados | O endereço novo só vale depois que o link enviado a ele (24 h) é aberto pela própria conta |
+| Trilha | Número do pedido e vínculo; nunca nome nem e-mail |
+| Retenção | O pedido (qualquer situação) é apagado 90 dias depois de feito; a conta criada segue a política das contas |
+| Base legal | Execução de política pública e obrigação de SST da UFVJM em relação a quem trabalha ou estuda nela (como §4); depende da autorização do §7 |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -307,6 +326,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Participante e pedido recusado pelo link (§5.8) | Os da inscrição (POLITICA §2) | O pedido recusado fica cancelado com o motivo, como a inscrição interna |
 | Texto do e-mail na caixa de saída (§5.9) | 90 dias do pedido (enviado, falhado ou cancelado) | Rotina noturna (`EXPURGO_PRIVACIDADE`, `email.expurgar_corpos`); a linha fica sem o texto, como registro do envio |
 | Pedido de link de acesso do participante (§5.10): e-mail, IP, horários | 7 dias | Rotina noturna (`EXPURGO_PRIVACIDADE`, `acesso_participante.expurgar`) |
+| Pedido de conta do Cadastre-se (§5.12): nome, e-mail, empresa ou curso, matrícula, IP, motivo da recusa | 90 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `pedido_conta.expurgar`) |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 
