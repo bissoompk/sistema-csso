@@ -63,7 +63,9 @@ describe("o Secure do cookie sai da conexão (T-2)", () => {
   it("e a sessão vale na requisição seguinte, por http", async () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
-    expect((await cliente.get("/inicio", { seguir: false })).status).toBe(303);
+    // a Visão geral (23/10/2026): para a equipe, `/inicio` abre a tela, e não
+    // o 303 — que, sem sessão, seria o desvio para o login
+    expect((await cliente.get("/inicio", { seguir: false })).status).toBe(200);
     expect((await cliente.get("/modulos")).status).toBe(200);
   });
 

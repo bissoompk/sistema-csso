@@ -220,6 +220,16 @@
   {# Os módulos ficam todos à vista, e o ativo abre as suas telas logo abaixo
      dele: escondidos num seletor, o de treinamentos não era achado. Módulo
      previsto ("em breve") só aparece no mapa de /modulos, não aqui. #}
+  {# A VISÃO GERAL (Início com os cartões dos módulos, 23/10/2026): o primeiro
+     item da lateral da equipe, como a "Visão Geral" do IntegraSST. Leva a
+     `/inicio`, que para a equipe é a tela dos cartões. Chama-se "Visão geral",
+     e não "Início", porque o "Início" do bloco "Meu espaço" (`/`) é outra tela
+     — a do titular — e os dois apareceriam lado a lado. Tem o desenho de um
+     link de módulo (`a.modulo`), inclusive na lateral recolhida. #}
+  <nav class="modulos-lateral lateral-visao" aria-label="Visão geral">
+    <a href="/inicio" class="modulo {{ 'atual' if na_visao_geral }}" {% if na_visao_geral %}aria-current="page"{% endif %} data-rotulo="Visão geral">{{ ico('grid-1x2') }}<span>Visão geral</span></a>
+  </nav>
+
   {% if modulo_ativo %}
   <nav class="modulos-lateral" aria-label="Módulos" id="lateral-modulos">
     <span class="rotulo-secao">Módulos</span>
@@ -339,7 +349,7 @@
       {% if (so_meu_espaco or (item_ativo and item_ativo in meu_espaco)) and not trilha_raiz %}
       <a href="/inicio">Meu espaço</a>
       {% else %}
-      <a href="/modulos">{{ trilha_raiz or ('Base compartilhada' if na_base else (modulo_ativo.nome if no_modulo else 'Módulos')) }}</a>
+      <a href="{{ trilha_href or '/modulos' }}">{{ trilha_raiz or ('Base compartilhada' if na_base else (modulo_ativo.nome if no_modulo else 'Módulos')) }}</a>
       {% endif %}
       {% if item_ativo %}<a href="{{ item_ativo.caminho }}">{{ item_ativo.rotulo }}</a>{% endif %}
       {% block trilha %}{% endblock %}
