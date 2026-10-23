@@ -1595,3 +1595,20 @@ Fundação do módulo «Análise de Acidentes» (CAT/SP, Lei 8.112 arts. 212-214
 - **Fora desta fatia (costura final).** `rotinas.ts` (`TIPOS_VARRIDOS`, `EVENTOS_DO_TITULAR`), `atividade_titular`, a política de retenção e o ROPA (`docs/`) não foram editados: a fatia que ativa a gravação e a rotina de privacidade os altera. O `node_modules` do worktree é um link simbólico para o do repositório principal e **não entra em commit**.
 - **E-mail corrigido antes da ativação.** Conta ainda sem senha acompanha a correção do e-mail no cadastro (e-mail e login; evento `ACESSO_EMAIL_ACOMPANHOU_CADASTRO`), salvo colisão com outra conta. Conta com senha não é tocada.
 - **Saída do quadro (decisão do usuário).** Ao corrigir a situação do servidor para APOSENTADO ou EXONERADO (`atualizar_cadastro`), a conta ligada é inativada e as sessões, encerradas (`ACESSO_ENCERRADO_NA_SAIDA`). LICENÇA e CEDIDO não mexem. **Exceção:** conta de administração e a última que concede perfil ficam como estão, com o evento `ACESSO_MANTIDO_NA_SAIDA` e aviso na ficha — inativá-las tira o governo do sistema, e quem decide é quem concede perfil, em Usuários. Voltar a ATIVO no cadastro **não reativa** a conta: reativar é ato da equipe. Importação de planilha não altera situação, então não passa por aqui.
+
+## Análise de Acidentes — F1: comunicar, fila e triagem (23/10/2026)
+
+Feita sobre `entrada/acidentes_especificacao.md` §3, §4 e §7. O que difere ou precisa de aval:
+
+- **Origem.** TITULAR quando a própria pessoa é um dos envolvidos («sou eu»); CHEFIA com «sou a chefia imediata» (D9); SST quando quem comunica tria; o colega que viu e comunica com a própria conta fica como TITULAR (o legado não tinha origem para ele). **Confirmar.**
+- **Escopo próprio alargado.** O servidor comum vê a ocorrência em que é o acidentado principal E a que ele mesmo comunicou (`criado_por`), em `acidente_acesso.escopo_ocorrencias`. Sem isso, a chefia e o colega perdiam de vista o que enviaram.
+- **Menor de idade (D14a).** A ocorrência fica restrita; quem comunicou sem ser da SST é levado a «Minhas comunicações» (a ficha é 404 para ele) com o aviso. `responsavel_legal_solicitado_em` fica nulo: o pedido ao responsável legal não tem fluxo ainda.
+- **Saúde declarada (D4)** vai só na CAT/SP congelada, chave `saude_declarada` (origem DECLARADO_COMUNICANTE). Nenhuma linha em `acidente_saude` e nenhuma pendência ACIDENTE_SAUDE_REGISTRAR: as duas são da F3, que lê dali.
+- **CPF.** A borda (`dependencias.formulario`) já mascara CPF em todo campo; o serviço recusa o que sobrar (número ou o termo) e a recusa devolve o digitado JÁ mascarado.
+- **Retificação** muda os fatos do evento e o relato (CAT/SP N+1, origem RETIFICACAO_SST, motivo obrigatório); envolvidos e testemunhas ainda não se retificam por tela. Data do acidente nova move o prazo legal e a pendência.
+- **Prorrogação do prazo** (D13): fica ao lado do prazo legal, com motivo, e move a pendência; evento ACIDENTE_PRAZO_PRORROGADO.
+- **Complementação** só se pede quando a comunicação veio de uma conta (é ela que responde). A resposta vira CAT/SP N+1 (origem COMPLEMENTACAO) e volta à triagem; a equipe pode retomar sem resposta, e a tarefa do comunicante fecha.
+- **Ir à investigação** abre a pendência ACIDENTE_INVESTIGAR (30 dias); quem fecha é o relatório (F6).
+- **E-mail** (`acidente_email.ts`), atrás de `CSSO_ACIDENTE_EMAIL=sim` e `CSSO_ACIDENTE_EMAIL_SETOR` (config nova): comunicação nova ao setor e confirmação ao comunicante; pedido de complementação ao comunicante. Só protocolo e link.
+- **Não feito nesta fatia.** O anexo opcional na comunicação (≤4 MB) e o autocompletar de servidor (o servidor entra pelo SIAPE); a varredura noturna do prazo (`TIPOS_VARRIDOS`) e `EVENTOS_DO_TITULAR` ficam para a costura, que é dona desses arquivos.
+- **Armadilha de template.** `base.html` faz `{% set partes = ... %}` com o nome do usuário; uma variável de contexto `partes` é sobrescrita em toda página logada. O catálogo de partes do corpo se chama `partes_corpo`.
