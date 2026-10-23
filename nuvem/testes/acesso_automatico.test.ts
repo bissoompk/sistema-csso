@@ -163,4 +163,14 @@ describe("a saída do quadro encerra o acesso", () => {
     await rotas_do_cadastro(s.id, "LICENCA");
     expect((await contas_de(EMAIL))[0]!.ativo).toBe(true);
   });
+
+  it("conta de administração é mantida, com o motivo na trilha", async () => {
+    const s = await servidor();
+    await db.update(e.usuario).set({ servidor_id: s.id }).where(eq(e.usuario.login, "superintendente"));
+    const r = await servico.encerrar_acesso(db, { ...s, situacao: "APOSENTADO" }, ORIGEM);
+    expect(r).toBe("mantida");
+    const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.login, "superintendente"));
+    expect(conta!.ativo).toBe(true);
+    expect(await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, servico.ACESSO_MANTIDO_NA_SAIDA))).toHaveLength(1);
+  });
 });
