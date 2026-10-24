@@ -38,7 +38,7 @@
 {% endif %}
 {% if usuario.pode('usuario.criar_conta') %}
 {# os pedidos do Cadastre-se (terceirizado e discente) que a equipe confere #}
-<a class="botao secundario" href="/usuarios/pedidos">Pedidos de conta</a>
+<a class="botao secundario" href="/usuarios/pedidos">Contas do Cadastre-se</a>
 {{ ui.botao_cadastro('nova-conta', CADASTRAR_CONTA) }}
 {% endif %}
 {% endblock %}

@@ -1664,3 +1664,12 @@ Pedido do usuário: "no cadastro já não seria melhor o usuário escolher a sua
 - **Esqueci minha senha** não muda: o link pede a senha nova (a conta já existe; uma senha escolhida antes do link seria trocada por um clique).
 - **Testes.** `testes/cadastre_se.test.ts` cobre os dois fluxos (abrir não confirma, o botão confirma, senha fraca, o não confirmado que dá lugar ao novo, conta com senha que não troca por clique, aviso depois da ativação, expurgo em 3 dias).
 
+## A conta do Cadastre-se é liberada sozinha; a equipe bloqueia ou exclui (24/10/2026)
+
+Pedido do usuário: "aprove automaticamente todo pedido de conta, não preciso autorizar todos, pode colocar a possibilidade de bloquear ou excluir".
+
+- **Liberação automática.** Ao clicar em "Confirmar o e-mail", o pedido vira conta na hora (`pedido_conta.confirmar_email` → `_liberar`): senha escolhida, perfil do vínculo, sem servidor, ator «liberação automática do Cadastre-se» na trilha (`concedido_por` e `decidido_por` nulos). A tela diz «Conta liberada» e leva à entrada; não sai e-mail de aprovação (a pessoa está na tela). Não abre mais a pendência `CONTA_A_CONFERIR`. O link do e-mail continua sendo a prova da posse do e-mail; o vínculo declarado deixa de ser conferido antes.
+- **Contas do Cadastre-se** (`/usuarios/pedidos`, era «Pedidos de conta»; botão em Usuários): lista as contas de terceirizado e discente (perfil vigente, sem servidor), com a empresa ou o curso do pedido, e as ações **Bloquear / Desbloquear** (inativa e encerra as sessões; eventos `USUARIO_INATIVADO`/`USUARIO_ATIVADO`) e **Excluir**. Só para conta externa pura: conta de servidor ou com outro perfil é recusada (422) e fica em Usuários.
+- **Excluir** apaga, num savepoint, as atribuições, as sessões e a conta; o pedido perde o elo (`usuario_id` nulo) e o evento `USUARIO_EXCLUIDO` leva só o número. Se algum registro aponta para a conta (inscrição, certificado, comunicação, trilha — 70 chaves estrangeiras), o banco recusa e a conta é **bloqueada no lugar**, com a mensagem dizendo por quê.
+- **Pedidos antigos** que ficaram `PENDENTE` (de antes desta mudança) ainda aparecem em «A conferir», com Aprovar e Recusar.
+

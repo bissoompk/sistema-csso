@@ -305,6 +305,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Sem oráculo | A tela responde a mesma frase a todo pedido, com piso de tempo; e-mail que já está no sistema (conta, servidor, pedido na fila) não abre pedido: o dono recebe uma mensagem neutra com o caminho certo |
 | Abuso | 5 pedidos por hora por IP; o teto por destinatário dos e-mails de acesso |
 | Recusa | A pessoa recebe um aviso neutro, **sem o motivo**; o motivo fica no pedido, para a equipe, até o expurgo |
+| Liberação automática (24/10/2026) | Por decisão da coordenação, a conta é liberada assim que a pessoa confirma o e-mail, sem a conferência prévia da equipe. A posse do e-mail continua provada pelo link; o vínculo declarado (empresa, curso) não é conferido antes. Quem cria conta bloqueia, desbloqueia ou exclui depois, em "Contas do Cadastre-se". Excluir apaga a conta sem registros (perfil, sessões e a própria conta, com um evento só com o número); a que já tem registros é bloqueada, e os registros ficam pela política deles |
 | Esqueci minha senha | `/esqueci-senha`, só com o e-mail, para qualquer conta: o link (1 h, uso único) vai ao e-mail **da conta**. Conta inativa e de administração recebem o aviso neutro de "procure a equipe" |
 | Troca do e-mail em Meus dados | O endereço novo só vale depois que o link enviado a ele (24 h) é aberto pela própria conta |
 | Trilha | Número do pedido e vínculo; nunca nome nem e-mail |
