@@ -1,0 +1,19 @@
+{# O painel da marca das telas de acesso (entrar, primeiro acesso, cadastre-se,
+   esqueci minha senha): quem é o sistema e o que se faz nele, à esquerda do
+   formulário. No celular vira uma faixa curta no alto (`csso.css`, ACESSO). #}
+{% macro ico_acesso(nome) %}<svg class="ico" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>{% endmacro %}
+<aside class="acesso-marca" aria-label="Sistema SISA">
+  <div class="acesso-marca-topo">
+    <span class="acesso-selo" aria-hidden="true"><img src="/estaticos/img/marca-sisa.png" width="80" height="80" alt=""></span>
+    <div>
+      <p class="acesso-nome">Sistema SISA</p>
+      <p class="acesso-instituicao">Superintendência Integrada de Saúde · UFVJM</p>
+    </div>
+  </div>
+  <ul class="acesso-recursos">
+    <li>{{ ico_acesso('mortarboard') }}<span><strong>Treinamentos</strong> inscrições, presença e certificados</span></li>
+    <li>{{ ico_acesso('heart-pulse') }}<span><strong>Acidentes</strong> comunicação e acompanhamento</span></li>
+    <li>{{ ico_acesso('box-seam') }}<span><strong>EPI</strong> pedidos e ficha do servidor</span></li>
+  </ul>
+  <p class="acesso-rodape">Saúde e segurança de quem trabalha e estuda na UFVJM.</p>
+</aside>
