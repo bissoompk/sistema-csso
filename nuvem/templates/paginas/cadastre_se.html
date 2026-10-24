@@ -98,14 +98,14 @@
       {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
       <div class="campo">
         <label for="nova">Senha</label>
-        <input id="nova" name="nova" type="password" required autocomplete="new-password" aria-describedby="dica-nova">
+        <input id="nova" name="nova" type="password" data-mostrar-senha required autocomplete="new-password" aria-describedby="dica-nova">
         {{ senha.barra('nova') }}
         <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. É com ela que você
           vai entrar depois que a conta for liberada.</span>
       </div>
       <div class="campo">
         <label for="confirmacao">Repita a senha</label>
-        <input id="confirmacao" name="confirmacao" type="password" required autocomplete="new-password">
+        <input id="confirmacao" name="confirmacao" type="password" data-mostrar-senha required autocomplete="new-password">
         {{ senha.confere_com('nova', erro_confirma) }}
       </div>
       <div class="campo campo-caixa">

@@ -1095,6 +1095,161 @@
   })();
 
   // -------------------------------------------------------------------
+  // 13. A trava do envio duplicado (24/10/2026)
+  //
+  // O clique duplo em "Salvar", "Inscrever" ou "Entrar" mandava o formulário
+  // duas vezes — duas inscrições, dois registros, duas mensagens na trilha.
+  // Agora, enviado o formulário, o botão que o enviou vira "Aguarde…"
+  // (`aria-busy`, anunciado ao leitor de tela) e o segundo envio do mesmo
+  // formulário é recusado até a página trocar.
+  //
+  // - Só trava o que de fato saiu: se outro tratador cancelou o envio (o HTMX,
+  //   uma conferência), nada muda.
+  // - Não usa `disabled` (o botão desabilitado some do envio e da navegação
+  //   por teclado); usa `aria-disabled` e a recusa do segundo envio.
+  // - Formulário GET (filtros, busca) não trava: repetir não grava nada.
+  // - Quem não quer a trava escreve `data-sem-trava` no form ou no botão.
+  // - Formulário que responde com um arquivo não troca de página: a trava se
+  //   desfaz sozinha em `DESTRAVA_EM`; voltar pelo navegador (bfcache) também
+  //   desfaz. O servidor continua sendo quem impede o registro repetido; isto
+  //   só tira o clique duplo do caminho.
+  //
+  // O HTMX tem a fila dele por elemento; aqui ele só ganha o "Aguarde…"
+  // enquanto a requisição está no ar.
+  // -------------------------------------------------------------------
+  var DESTRAVA_EM = 8000;
+  var formsEmVoo = new WeakSet();
+  var travados = [];
+
+  var anuncioEnvio = null;
+  function anunciarEnvio(texto) {
+    if (!anuncioEnvio) {
+      anuncioEnvio = document.createElement('span');
+      anuncioEnvio.className = 'oculto';
+      anuncioEnvio.setAttribute('role', 'status');
+      anuncioEnvio.setAttribute('aria-live', 'polite');
+      document.body.appendChild(anuncioEnvio);
+    }
+    anuncioEnvio.textContent = texto;
+  }
+
+  function travarBotao(botao) {
+    if (!botao || botao.getAttribute('aria-busy') === 'true') return;
+    botao.setAttribute('data-trava-texto', botao.tagName === 'INPUT' ? botao.value : botao.innerHTML);
+    botao.setAttribute('aria-busy', 'true');
+    botao.setAttribute('aria-disabled', 'true');
+    botao.classList.add('enviando');
+    if (botao.tagName === 'INPUT') botao.value = 'Aguarde…';
+    else botao.innerHTML = '<span class="enviando-giro" aria-hidden="true"></span>Aguarde…';
+    travados.push(botao);
+    anunciarEnvio('Enviando. Aguarde.');
+  }
+
+  function destravarBotao(botao) {
+    if (!botao || !botao.hasAttribute('data-trava-texto')) return;
+    var original = botao.getAttribute('data-trava-texto');
+    if (botao.tagName === 'INPUT') botao.value = original;
+    else botao.innerHTML = original;
+    botao.removeAttribute('data-trava-texto');
+    botao.removeAttribute('aria-busy');
+    botao.removeAttribute('aria-disabled');
+    botao.classList.remove('enviando');
+  }
+
+  function destravarTudo() {
+    for (var i = 0; i < travados.length; i++) {
+      destravarBotao(travados[i]);
+      if (travados[i].form) formsEmVoo.delete(travados[i].form);
+    }
+    travados = [];
+  }
+
+  function semTrava(form, botao) {
+    return form.hasAttribute('data-sem-trava') || (botao && botao.hasAttribute('data-sem-trava'))
+      || (form.getAttribute('method') || 'get').toLowerCase() !== 'post'
+      || (form.getAttribute('target') || '') !== '';
+  }
+
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM') return;
+    var botao = e.submitter || form.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
+    if (semTrava(form, botao)) return;
+    if (formsEmVoo.has(form)) { e.preventDefault(); return; }
+    formsEmVoo.add(form);
+    // decide depois dos outros tratadores: se algum cancelou, não houve envio
+    setTimeout(function () {
+      if (e.defaultPrevented) { formsEmVoo.delete(form); return; }
+      travarBotao(botao);
+      setTimeout(function () { destravarBotao(botao); formsEmVoo.delete(form); }, DESTRAVA_EM);
+    }, 0);
+  });
+
+  document.addEventListener('htmx:beforeRequest', function (e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || elt.tagName !== 'FORM' || elt.hasAttribute('data-sem-trava')) return;
+    var botao = elt.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
+    if (botao && !botao.hasAttribute('data-sem-trava')) travarBotao(botao);
+  });
+  document.addEventListener('htmx:afterRequest', function (e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || elt.tagName !== 'FORM') return;
+    var botoes = elt.querySelectorAll('[data-trava-texto]');
+    for (var i = 0; i < botoes.length; i++) destravarBotao(botoes[i]);
+  });
+  window.addEventListener('pageshow', function (e) { if (e.persisted) destravarTudo(); });
+
+  // -------------------------------------------------------------------
+  // 14. Mostrar ou ocultar a senha (24/10/2026)
+  //
+  // Contrato: `<input type="password" data-mostrar-senha>`. O script põe ao
+  // lado um botão "Mostrar"/"Ocultar" (`aria-pressed`, com o nome do campo
+  // para o leitor de tela) que troca o tipo do campo. Sem script o campo é o
+  // de sempre. Ao enviar, o campo volta a `password`, para o navegador não
+  // guardar a senha como texto comum no histórico do formulário.
+  // -------------------------------------------------------------------
+  function prepararMostrarSenha(raiz) {
+    var campos = (raiz || document).querySelectorAll('input[data-mostrar-senha]');
+    for (var i = 0; i < campos.length; i++) {
+      var campo = campos[i];
+      if (campo.hasAttribute('data-mostrar-pronto')) continue;
+      campo.setAttribute('data-mostrar-pronto', '');
+      var caixa = document.createElement('span');
+      caixa.className = 'campo-senha';
+      campo.parentNode.insertBefore(caixa, campo);
+      caixa.appendChild(campo);
+      var botao = document.createElement('button');
+      botao.type = 'button';
+      botao.className = 'mostrar-senha';
+      botao.setAttribute('aria-pressed', 'false');
+      var rotulo = campo.id && document.querySelector('label[for="' + campo.id + '"]');
+      botao.setAttribute('aria-label', 'Mostrar ' + (rotulo ? rotulo.textContent.trim().toLowerCase() : 'senha'));
+      botao.textContent = 'Mostrar';
+      caixa.appendChild(botao);
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    var botao = e.target.closest && e.target.closest('button.mostrar-senha');
+    if (!botao) return;
+    var campo = botao.parentNode.querySelector('input[data-mostrar-senha]');
+    if (!campo) return;
+    var mostrar = campo.type === 'password';
+    campo.type = mostrar ? 'text' : 'password';
+    botao.textContent = mostrar ? 'Ocultar' : 'Mostrar';
+    botao.setAttribute('aria-pressed', mostrar ? 'true' : 'false');
+    botao.setAttribute('aria-label', botao.getAttribute('aria-label').replace(/^(Mostrar|Ocultar)/, mostrar ? 'Ocultar' : 'Mostrar'));
+    campo.focus();
+  });
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || !form.querySelectorAll) return;
+    var abertos = form.querySelectorAll('input[data-mostrar-senha][type="text"]');
+    for (var i = 0; i < abertos.length; i++) abertos[i].type = 'password';
+  }, true);
+  document.addEventListener('htmx:afterSwap', function (e) { prepararMostrarSenha(e.target); });
+
+  // -------------------------------------------------------------------
   // O local da turma segue o campus (24/10/2026)
   //
   // Contrato: `<select data-filtra-campus="<id do select de campus>">`, com
@@ -1233,6 +1388,7 @@
     aplicarCorTipo(document);
     marcarCodigosCurtosPreenchidos();
     filtrarLocaisDe(null);
+    prepararMostrarSenha(document);
   }
   // A cor do tipo de processo no cartao do kanban vem em `data-cor-tipo` (sem
   // `style=` no HTML, pela CSP). A folha ja traduz as cores semeadas; aqui

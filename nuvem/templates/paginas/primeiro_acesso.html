@@ -45,7 +45,7 @@
 
     <div class="campo {{ 'com-erro' if erro_senha }}">
       <label for="senha">Senha</label>
-      <input id="senha" name="senha" type="password" required
+      <input id="senha" name="senha" type="password" data-mostrar-senha required
              autocomplete="new-password" aria-describedby="dica-senha">
       {{ senha.barra('senha') }}
       {% if erro_senha %}<span class="erro-campo">{{ erro_senha }}</span>{% endif %}

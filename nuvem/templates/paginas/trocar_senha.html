@@ -47,14 +47,14 @@
   <form method="post" action="/trocar-senha">
     <div class="campo {{ 'com-erro' if erro_atual }}">
       <label for="atual">Senha atual</label>
-      <input id="atual" name="senha_atual" type="password" required autofocus
+      <input id="atual" name="senha_atual" type="password" data-mostrar-senha required autofocus
              autocomplete="current-password">
       {% if erro_atual %}<span class="erro-campo">{{ erro_atual }}</span>{% endif %}
     </div>
 
     <div class="campo {{ 'com-erro' if erro_nova }}">
       <label for="nova">Nova senha</label>
-      <input id="nova" name="nova" type="password" required
+      <input id="nova" name="nova" type="password" data-mostrar-senha required
              autocomplete="new-password" aria-describedby="dica-nova">
       {{ senha.barra('nova') }}
       {% if erro_nova %}<span class="erro-campo">{{ erro_nova }}</span>{% endif %}
@@ -64,7 +64,7 @@
 
     <div class="campo {{ 'com-erro' if erro_conf }}">
       <label for="conf">Confirme a nova senha</label>
-      <input id="conf" name="confirmacao" type="password" required
+      <input id="conf" name="confirmacao" type="password" data-mostrar-senha required
              autocomplete="new-password">
       {{ senha.confere_com('nova', erro_conf) }}
     </div>

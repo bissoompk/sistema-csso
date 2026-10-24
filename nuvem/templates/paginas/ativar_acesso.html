@@ -35,7 +35,7 @@
     <form method="post" action="{{ caminho }}/{{ token }}">
       <div class="campo {{ 'com-erro' if erro_senha and not erro_confirma }}">
         <label for="nova">Senha nova</label>
-        <input id="nova" name="nova" type="password" required autofocus
+        <input id="nova" name="nova" type="password" data-mostrar-senha required autofocus
                autocomplete="new-password" aria-describedby="dica-nova">
         {{ senha.barra('nova') }}
         {% if erro_senha and not erro_confirma %}<span class="erro-campo">{{ erro_senha }}</span>{% endif %}
@@ -44,7 +44,7 @@
       </div>
       <div class="campo {{ 'com-erro' if erro_confirma }}">
         <label for="confirmacao">Repita a senha</label>
-        <input id="confirmacao" name="confirmacao" type="password" required autocomplete="new-password">
+        <input id="confirmacao" name="confirmacao" type="password" data-mostrar-senha required autocomplete="new-password">
         {{ senha.confere_com('nova', erro_confirma) }}
       </div>
       <div class="acoes"><button type="submit" class="largo">Salvar a senha</button></div>
@@ -81,14 +81,14 @@
       {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
       <div class="campo">
         <label for="nova">Senha</label>
-        <input id="nova" name="nova" type="password" required autocomplete="new-password" aria-describedby="dica-nova">
+        <input id="nova" name="nova" type="password" data-mostrar-senha required autocomplete="new-password" aria-describedby="dica-nova">
         {{ senha.barra('nova') }}
         <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase curta
           é mais fácil de lembrar e mais difícil de adivinhar.</span>
       </div>
       <div class="campo">
         <label for="confirmacao">Repita a senha</label>
-        <input id="confirmacao" name="confirmacao" type="password" required autocomplete="new-password">
+        <input id="confirmacao" name="confirmacao" type="password" data-mostrar-senha required autocomplete="new-password">
         {{ senha.confere_com('nova', erro_confirma) }}
       </div>
       <div class="acoes"><button type="submit" class="largo">Continuar</button></div>

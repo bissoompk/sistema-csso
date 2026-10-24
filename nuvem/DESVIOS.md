@@ -1713,3 +1713,11 @@ Pedido: NR-10, NR-33 e NR-35 cobram que o instrutor do treinamento seja comprova
 - **Privacidade**: ROPA §5.13 e a linha de retenção.
 - **Testes**: `testes/qualificacao_instrutor.test.ts` (novo); `limpar_treinamentos` com a qualificação no cenário.
 
+
+## Trava do envio duplicado e mostrar/ocultar senha (24/10/2026)
+
+Pedido do usuário ("faça as melhorias"), a partir da comparação com o eSocial Brasil (só a ideia; nenhum código de lá).
+
+- **Trava do envio duplicado** (`csso.js`, bloco 13). Enviado um formulário POST, o botão que o enviou vira «Aguarde…» (`aria-busy`, `aria-disabled`, anúncio `role=status`) e o segundo envio do mesmo formulário é recusado até a página trocar. Só trava o que saiu de fato: se outro tratador cancelou o envio (o HTMX, uma conferência) ou se a validação do navegador barrou, nada muda. Não usa `disabled` (o botão sumiria do envio e do teclado). Formulário GET (filtros, busca) e com `target` não travam; `data-sem-trava` no form ou no botão desliga. Formulário que responde com arquivo não troca de página: a trava se desfaz em 8 s; voltar pelo navegador (bfcache) também desfaz. No HTMX, só o «Aguarde…» enquanto a requisição está no ar. É uma exceção consciente à regra 4 do cabeçalho do `csso.js` («nenhum bloqueia um envio»): o que se recusa é o REPETIDO, não o primeiro; o servidor continua sendo quem impede o registro em dobro.
+- **Mostrar/ocultar senha** (bloco 14). Contrato `data-mostrar-senha` nos campos de senha (entrar, primeiro acesso, cadastre-se, definir senha, trocar senha, Meus dados e o bootstrap): um botão «Mostrar»/«Ocultar» dentro do campo, com `aria-pressed` e o nome do campo para o leitor de tela. Ao enviar, o campo volta a `password`. Sem script, o campo é o de sempre.
+- **CSS** antes do bloco de impressão (`@page`/`@media print` continuam os últimos, como o teste de `celular_casca` exige); o giro do «Aguarde…» herda a cor da letra e para com `prefers-reduced-motion`.
