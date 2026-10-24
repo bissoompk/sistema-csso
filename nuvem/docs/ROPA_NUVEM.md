@@ -312,6 +312,31 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Retenção | O pedido (qualquer situação) é apagado 90 dias depois de feito; a conta criada segue a política das contas |
 | Base legal | Execução de política pública e obrigação de SST da UFVJM em relação a quem trabalha ou estuda nela (como §4); depende da autorização do §7 |
 
+### 5.13 Avaliação de reação do treinamento (24/10/2026)
+
+| Item | Registro |
+|---|---|
+| O que é | A pesquisa de satisfação do fim da turma (`servicos/avaliacao_reacao.ts`): seis notas de 1 a 5 e um comentário opcional, respondida por quem frequentou, pela conta (Meus treinamentos) ou por um link de uso único enviado por e-mail na conclusão da turma (§5.9) |
+| Dado pessoal novo | Nenhum na resposta: ela é **anônima por construção** — só turma, versão do questionário, notas, comentário e o dia, sem ligação com inscrição, participante ou conta, com chave sorteada. Na inscrição fica só o fato "já respondeu" (sem hora). O convite guarda a inscrição e o SHA-256 do token até o fim do prazo |
+| Comentário | Texto livre opcional, até 1000 caracteres; recusa CPF e termo de saúde (RN-21). A tela pede que não se escrevam nomes; quem escreve pode, mesmo assim, se identificar no texto — é a única porta para dado pessoal, e é escolha do titular |
+| Quem lê | Só quem opera turmas (`turma.criar`, `turma.inscrever`, `turma.avaliar`, `turma.concluir`), no escopo e no setor; **piso de 3 respostas** por turma (e por linha do consolidado) antes de qualquer média ou comentário; comentários em ordem embaralhada |
+| Trilha | "A turma recebeu uma avaliação de reação", sem conta e sem IP; e quantos convites saíram, sem endereço |
+| Base legal | Execução de política pública de capacitação em SST (como §4): avaliar o treinamento para melhorá-lo; responder é voluntário |
+| Retenção | Resposta: a da turma (sai com ela e com a limpeza do módulo). Convite: até o fim do prazo da avaliação (60 dias após o fim da turma), apagado pela rotina noturna; o texto do e-mail, como os demais (§5.9) |
+
+### 5.14 Comprovante de qualificação do instrutor (24/10/2026)
+
+| Item | Registro |
+|---|---|
+| Titulares | Instrutores de treinamento, servidores da UFVJM ou externos |
+| Dado | A qualificação (descrição, treinamento ou norma que habilita, instituição, emissão e validade) e o **comprovante** em PDF ou imagem (diploma, certificado de formação), que traz o nome e às vezes outros dados da pessoa |
+| Onde | `instrutor_qualificacao`; o arquivo é anexo `QUALIFICACAO_INSTRUTOR`, nível **RESTRITO**, no Storage privado (`anexos/`) |
+| Finalidade | Demonstrar que o instrutor é qualificado, como cobram a NR-10, a NR-33 e a NR-35, e avisar o setor quando a qualificação vence |
+| Base legal | Art. 7º, II (obrigação legal/regulatória das NRs) e art. 23 (competência legal do serviço público) |
+| Quem cadastra, inativa e baixa | Só `assinatura.gerenciar` com acesso ao módulo Certificados (a tela de Instrutores). Quem vê turma ou certificado não baixa o comprovante; a turma mostra só o aviso "sem qualificação" a quem a gerencia |
+| Registro | Cadastro e inativação na trilha; cada download em `historico_evento` (`ANEXO_BAIXADO`) e, para instrutor servidor, em `acesso_dado_sensivel`. A pendência de vencimento não leva o nome do instrutor |
+| Retenção | Enquanto a turma e o certificado que o instrutor assinou forem guardados (é a prova de que o certificado foi dado por pessoa qualificada); inativar não apaga. Sem expurgo automático |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -329,7 +354,9 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Texto do e-mail na caixa de saída (§5.9) | 90 dias do pedido (enviado, falhado ou cancelado) | Rotina noturna (`EXPURGO_PRIVACIDADE`, `email.expurgar_corpos`); a linha fica sem o texto, como registro do envio |
 | Pedido de link de acesso do participante (§5.10): e-mail, IP, horários | 7 dias | Rotina noturna (`EXPURGO_PRIVACIDADE`, `acesso_participante.expurgar`) |
 | Pedido de conta do Cadastre-se (§5.12): nome, e-mail, empresa ou curso, matrícula, IP, motivo da recusa | 90 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `pedido_conta.expurgar`) |
+| Convite da avaliação de reação (§5.13): inscrição e hash do token | Até o fim do prazo da avaliação (60 dias após o fim da turma) | Rotina noturna (`EXPURGO_PRIVACIDADE`, `avaliacao_reacao.expurgar_convites`) |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
+| Comprovante de qualificação do instrutor (§5.14) | O dos certificados que o instrutor assinou | Manual: inativar não apaga; o arquivo segue a política do anexo |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 
 ## 7. O que falta providenciar (responsável: controlador)

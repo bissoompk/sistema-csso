@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# A avaliação de reação (`servicos/avaliacao_reacao.ts`), pelas duas portas:
+   pela conta (`pela_conta`, com a casca) e pelo link do e-mail (sem sessão:
+   sem `usuario`, a casca não sai, como em /validar).
+
+   O formulário não tem campo de "quem": a resposta vai sem nome, e a tela diz
+   isso antes da primeira pergunta. Toda nota é obrigatória; o comentário não. #}
+{% block titulo %}Avaliação do treinamento · SISA{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{% block conteudo %}
+<div class="cartao">
+
+{% if invalido %}
+  {# desconhecido, já usado ou vencido: a mesma frase para os três #}
+  <h1>Este link não vale mais</h1>
+  <p>O link da avaliação vale para uma resposta só, até o prazo dito no e-mail.
+    Se você já respondeu, obrigado: a resposta está guardada.</p>
+  <p class="discreto">Tem conta no Sistema SISA? A avaliação também fica em
+    <a href="/turmas/minhas">Meus treinamentos</a>.</p>
+
+{% elif obrigado %}
+  <h1>Obrigado!</h1>
+  <div class="aviso aviso-ok" role="status">
+    <p>Sua avaliação de <strong>{{ turma.treinamento.nome }}</strong> ({{ turma.codigo }}) foi
+      registrada, sem o seu nome. Este link deixou de valer.</p>
+  </div>
+  <p class="discreto">A equipe vê só o conjunto das respostas da turma, e só a partir de
+    três respostas.</p>
+
+{% else %}
+  <h1>Como foi o treinamento?</h1>
+  <p class="sub"><strong>{{ turma.treinamento.nome }}</strong> · <span class="mono">{{ turma.codigo }}</span> ·
+    {{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
+    {%- if instrutores|length %}<br>Instrutor(es): {{ instrutores|join(', ') }}{% endif %}</p>
+
+  {% if impedimento %}
+  <div class="aviso aviso-info" role="status"><p>{{ impedimento }}</p></div>
+  {% if pela_conta %}<p><a class="botao secundario" href="/turmas/minhas#minhas">Voltar a Meus treinamentos</a></p>{% endif %}
+  {% else %}
+
+  <div class="aviso aviso-info" role="note">
+    <p><strong>A resposta é anônima.</strong> O sistema anota só que você já respondeu, para
+      não contar duas vezes; as notas e o comentário ficam guardados sem o seu nome. A equipe
+      vê o conjunto da turma, e só a partir de três respostas.</p>
+  </div>
+
+  {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+
+  <form method="post" action="{{ acao }}">
+    <p class="discreto">De 1 a 5. Responda até {{ prazo|data }}.</p>
+    {% for item in itens %}
+    <fieldset class="avaliacao-item">
+      <legend>{{ loop.index }}. {{ item.rotulo }}</legend>
+      <div class="escala-notas">
+        {% for n in notas %}
+        <label><input type="radio" name="{{ item.campo }}" value="{{ n }}" required
+          {%- if marcado[item.campo] == (n|string) %} checked{% endif %}
+          aria-label="{{ n }}{% if loop.first %} — {{ item.extremos[0] }}{% elif loop.last %} — {{ item.extremos[1] }}{% endif %}"><span aria-hidden="true">{{ n }}</span></label>
+        {% endfor %}
+      </div>
+      <p class="escala-extremos" aria-hidden="true">1 = {{ item.extremos[0] }} · 5 = {{ item.extremos[1] }}</p>
+    </fieldset>
+    {% endfor %}
+
+    <div class="campo"><label for="avaliacao-comentario">{{ rotulo_comentario }} <span class="discreto">(opcional)</span></label>
+      <textarea id="avaliacao-comentario" name="comentario" rows="4" maxlength="{{ tamanho_comentario }}"
+                aria-describedby="dica-comentario">{{ marcado.comentario or '' }}</textarea>
+      <span class="dica" id="dica-comentario">O que funcionou e o que pode melhorar, em até
+        {{ tamanho_comentario }} caracteres. Não escreva nomes, documentos nem dado de saúde: o
+        comentário é lido pela equipe como está.</span></div>
+
+    <div class="acoes"><button type="submit" class="largo">Enviar a avaliação</button></div>
+  </form>
+  {% if pela_conta %}<p class="discreto"><a href="/turmas/minhas#minhas">Voltar sem responder</a></p>{% endif %}
+  {% endif %}
+{% endif %}
+
+</div>
+{% endblock %}

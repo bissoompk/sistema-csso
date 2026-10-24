@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Locais de treinamento · SISA{% endblock %}
+
+{# NUVEM (24/10/2026): onde as turmas acontecem (`servicos/local_treinamento.ts`).
+   A turma escolhe daqui no campo "Local" (ou escreve "outro local"); a
+   capacidade e o choque de sala viram AVISO na turma, nunca recusa.
+   Mesmo padrão do catálogo: popup de cadastro, popup "Editar" por linha, e a
+   recusa reabre o popup de onde veio com o que foi digitado. #}
+{% set CADASTRAR = 'Cadastrar local' %}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and digitado) else false %}
+{% set erro_popup = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+
+{% block acoes_cabecalho %}
+{% if editavel %}{{ ui.botao_cadastro('novo-local', CADASTRAR) }}{% endif %}
+{% endblock %}
+
+{% macro campos_local(p, v, com_erro) %}
+  <div class="campo{{ ' com-erro' if com_erro }}"><label for="{{ p }}-nome">Nome</label>
+    <input id="{{ p }}-nome" name="nome" required maxlength="160" placeholder="Auditório do Campus JK"
+           value="{{ v.nome or '' }}"{{ ' autofocus' if com_erro }}></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="{{ p }}-campus">Campus</label>
+      <select id="{{ p }}-campus" name="campus_id" aria-describedby="dica-{{ p }}-campus"><option value="">— qualquer campus</option>
+        {% for c in campi %}
+        <option value="{{ c.id }}"
+          {{- ' selected' if v.campus_id != none and v.campus_id !== '' and v.campus_id|string == c.id|string }}>{{ c.nome }}</option>
+        {% endfor %}
+      </select>
+      <span class="dica" id="dica-{{ p }}-campus">A turma de um campus só oferece os locais dele (e os sem campus).</span></div>
+    <div class="campo"><label for="{{ p }}-capacidade">Capacidade (pessoas)</label>
+      <input id="{{ p }}-capacidade" name="capacidade" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+             placeholder="não informada" value="{{ v.capacidade if v.capacidade is not none else '' }}"
+             aria-describedby="dica-{{ p }}-capacidade">
+      <span class="dica" id="dica-{{ p }}-capacidade">Turma com mais vagas recebe aviso, não recusa.</span></div>
+  </div>
+  <div class="campo"><label for="{{ p }}-endereco">Endereço, bloco ou sala</label>
+    <input id="{{ p }}-endereco" name="endereco" placeholder="Prédio da Reitoria, 2º andar, sala 204"
+           value="{{ v.endereco or '' }}"></div>
+  <div class="campo"><label for="{{ p }}-observacoes">Observações</label>
+    <textarea id="{{ p }}-observacoes" name="observacoes" rows="2"
+              placeholder="projetor, acesso para cadeira de rodas, quem libera a chave">{{ v.observacoes or '' }}</textarea></div>
+{% endmacro %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Locais de treinamento</h1>
+      <p class="sub">
+        {%- if itens %}{{ itens|length }} local(is). {% endif -%}
+        Onde as turmas acontecem: a turma escolhe daqui, e a capacidade e o choque de
+        sala viram aviso na ficha dela.</p>
+    </div>
+    {% if not editavel %}
+    <div class="ao-lado">{{ ui.pilula_somente_leitura('treinamento.gerenciar') }}</div>
+    {% endif %}
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table class="empilhavel">
+    <thead>
+      <tr><th scope="col">Local</th><th scope="col">Campus</th><th scope="col">Capacidade</th>
+          <th scope="col">Turmas</th><th scope="col">Situação</th>
+          {% if editavel %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}</tr>
+    </thead>
+    {% for l in itens %}
+    <tr>
+      <td class="nome">{{ l.nome }}
+        {% if l.endereco %}<span class="quebra discreto">{{ l.endereco }}</span>{% endif %}
+        {% if l.observacoes %}<span class="quebra discreto">{{ l.observacoes }}</span>{% endif %}</td>
+      <td class="curta" data-coluna="Campus">{{ l.campus.sigla if l.campus else 'qualquer' }}</td>
+      <td class="curta mono" data-coluna="Capacidade">{{ l.capacidade if l.capacidade is not none else '—' }}</td>
+      <td class="curta" data-coluna="Turmas">{{ l.turmas }}</td>
+      <td data-coluna="Situação">{{ ui.pilula_sim_nao(l.ativo, 'ativo', 'inativo') }}</td>
+      {% if editavel %}
+      <td class="acao-linha">{{ ui.botao_cadastro('editar-local-' ~ l.id, 'Editar', 'secundario compacto') }}
+        <form method="post" action="/treinamentos/locais/{{ l.id }}/{{ 'inativar' if l.ativo else 'reativar' }}">
+          <button type="submit" class="secundario marcador"
+                  aria-label="{{ 'Inativar' if l.ativo else 'Reativar' }} {{ l.nome }}">{{ 'inativar' if l.ativo else 'reativar' }}</button>
+        </form></td>
+      {% endif %}
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhum local cadastrado.',
+         ('Enquanto a lista estiver vazia, o local da turma é o texto livre de sempre. Use “'
+          ~ CADASTRAR ~ '”, no canto superior direito.')
+         if editavel else 'Cadastrar local pede a permissão treinamento.gerenciar.',
+         6 if editavel else 5) }}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+
+{% if editavel %}
+{% set do_cadastro = recusado and not editando_id %}
+{% call ui.popup_cadastro('novo-local', CADASTRAR, '/treinamentos/locais', CADASTRAR,
+                          aberto=do_cadastro, erro=(erro_popup if do_cadastro else none),
+                          nota='o nome basta; o resto ajuda quem vai ao local') %}
+  {{ campos_local('novo-local', d if do_cadastro else {}, do_cadastro) }}
+{% endcall %}
+{% for l in itens %}
+{% set deste = recusado and editando_id == l.id %}
+{% call ui.popup_cadastro('editar-local-' ~ l.id, 'Editar · ' ~ l.nome, '/treinamentos/locais/' ~ l.id, 'Salvar',
+                          aberto=deste, erro=(erro_popup if deste else none),
+                          nota='o nome novo vai para as turmas ainda não encerradas') %}
+  {{ campos_local('ed-local-' ~ l.id, d if deste else l, deste) }}
+{% endcall %}
+{% endfor %}
+{% endif %}
+{% endblock %}

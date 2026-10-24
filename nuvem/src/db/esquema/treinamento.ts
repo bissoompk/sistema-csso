@@ -36,6 +36,7 @@ import {
   time,
   unique,
   uniqueIndex,
+  uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
 
@@ -284,6 +285,68 @@ export const assinatura_instrutor = pgTable(
   ],
 );
 
+/**
+ * NUVEM (24/10/2026): a qualificacao do instrutor — a formacao que o habilita a
+ * ministrar um treinamento (NR-10, NR-33 e NR-35 cobram que o instrutor seja
+ * comprovadamente qualificado). Habilita um treinamento do catalogo
+ * (`treinamento_id`), uma norma (`norma`, comparada com
+ * `treinamento.norma_referencia` por `servicos/qualificacao_instrutor.ts`), ou
+ * os dois. `valida_ate` nulo = sem validade.
+ *
+ * O comprovante (PDF ou imagem) e anexo `QUALIFICACAO_INSTRUTOR`, RESTRITO, que
+ * so quem gerencia instrutores baixa (`anexo_acesso.ts`). A coluna e nula so no
+ * instante entre o INSERT e o anexo, que pede o id da linha; a rota grava os
+ * dois na mesma transacao e recusa o cadastro sem arquivo.
+ *
+ * Nao se apaga: inativa (quem e quando), e a trilha guarda o cadastro.
+ */
+export const instrutor_qualificacao = pgTable(
+  'instrutor_qualificacao',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    instrutor_id: integer('instrutor_id').notNull(),
+    // "Formacao de instrutor NR-35", como esta no comprovante
+    descricao: varchar('descricao', { length: 200 }).notNull(),
+    treinamento_id: integer('treinamento_id'),
+    norma: varchar('norma', { length: 120 }),
+    instituicao: varchar('instituicao', { length: 160 }).notNull(),
+    data_emissao: DataPura('data_emissao').notNull(),
+    valida_ate: DataPura('valida_ate'),
+    comprovante_anexo_id: integer('comprovante_anexo_id'),
+    ativo: boolean('ativo').notNull().default(true),
+    criado_por: integer('criado_por').notNull(),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+    inativado_por: integer('inativado_por'),
+    inativado_em: MomentoUTC('inativado_em'),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_instrutor_qualificacao', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_qualificacao_instrutor',
+      columns: [t.instrutor_id],
+      foreignColumns: [assinatura_instrutor.id],
+    }),
+    foreignKey({
+      name: 'fk_qualificacao_treinamento',
+      columns: [t.treinamento_id],
+      foreignColumns: [treinamento.id],
+    }),
+    foreignKey({
+      name: 'fk_qualificacao_comprovante',
+      columns: [t.comprovante_anexo_id],
+      foreignColumns: [anexo.id],
+    }),
+    foreignKey({ name: 'fk_qualificacao_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
+    foreignKey({ name: 'fk_qualificacao_inativado_por', columns: [t.inativado_por], foreignColumns: [usuario.id] }),
+    // habilita alguma coisa: um treinamento, uma norma, ou os dois
+    check('ck_qualificacao_fim', sql.raw(`treinamento_id IS NOT NULL OR norma IS NOT NULL`)),
+    check('ck_qualificacao_validade', sql.raw(`valida_ate IS NULL OR valida_ate >= data_emissao`)),
+    check('ck_qualificacao_inativacao', sql.raw(`ativo OR inativado_em IS NOT NULL`)),
+    index('ix_qualificacao_instrutor').on(t.instrutor_id),
+    index('ix_qualificacao_treinamento').on(t.treinamento_id),
+  ],
+);
+
 // =====================================================================
 // Fatia 2 — participante, turma e inscricao
 // =====================================================================
@@ -502,6 +565,39 @@ export const participante_mesclagem = pgTable(
   ],
 );
 
+/**
+ * NUVEM (24/10/2026): onde a turma acontece, cadastrado uma vez
+ * (`servicos/local_treinamento.ts`). A turma aponta para cá por `local_id`;
+ * o texto livre `turma.local` continua, e leva o nome do local escolhido (o
+ * que o certificado, a agenda e o e-mail já liam). Não se apaga: inativo sai
+ * da escolha, e a turma que já o tem fica com ele.
+ */
+export const local_treinamento = pgTable(
+  'local_treinamento',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    nome: varchar('nome', { length: 160 }).notNull(),
+    // vazio = serve a qualquer campus (o auditório da reitoria, o local de
+    // fora da UFVJM)
+    campus_id: integer('campus_id'),
+    // o bloco, o andar, a sala: o que leva a pessoa até a porta
+    endereco: text('endereco'),
+    // quantas pessoas cabem; vazio = não informado. Só gera aviso na turma.
+    capacidade: integer('capacidade'),
+    observacoes: text('observacoes'),
+    ativo: boolean('ativo').notNull().default(true),
+    criado_por: integer('criado_por'),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_local_treinamento', columns: [t.id] }),
+    foreignKey({ name: 'fk_local_treinamento_campus', columns: [t.campus_id], foreignColumns: [campus.id] }),
+    foreignKey({ name: 'fk_local_treinamento_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
+    check('ck_local_treinamento_capacidade', sql.raw(`capacidade IS NULL OR capacidade > 0`)),
+    index('ix_local_treinamento_campus').on(t.campus_id),
+  ],
+);
+
 /** Mesma disciplina da RN-03: nunca MAX(numero)+1. */
 export const turma_sequencia = pgTable(
   'turma_sequencia',
@@ -537,6 +633,10 @@ export const turma = pgTable(
     carga_horaria_horas: numeric('carga_horaria_horas', { precision: 5, scale: 1, mode: 'string' }),
 
     local: varchar('local', { length: 160 }),
+    // NUVEM (24/10/2026): o local cadastrado (`local_treinamento`). Com ele,
+    // `local` guarda o nome do local; sem ele (turma antiga, "outro local"),
+    // `local` é o texto livre de sempre.
+    local_id: integer('local_id'),
     // o que o evento é, em texto livre (o "sobre o curso" do cartaz e do
     // certificado); a turma seguinte do mesmo treinamento costuma reaproveitar
     descricao: text('descricao'),
@@ -581,6 +681,7 @@ export const turma = pgTable(
       foreignColumns: [treinamento.id],
     }),
     foreignKey({ name: 'fk_turma_campus', columns: [t.campus_id], foreignColumns: [campus.id] }),
+    foreignKey({ name: 'fk_turma_local', columns: [t.local_id], foreignColumns: [local_treinamento.id] }),
     foreignKey({
       name: 'fk_turma_unidade',
       columns: [t.unidade_promotora_id],
@@ -625,6 +726,8 @@ export const turma = pgTable(
     index('ix_turma_treinamento').on(t.treinamento_id),
     index('ix_turma_situacao').on(t.situacao),
     index('ix_turma_data_fim').on(t.data_fim),
+    // o choque de sala procura as turmas do mesmo local
+    index('ix_turma_local').on(t.local_id),
   ],
 );
 
@@ -721,6 +824,11 @@ export const inscricao = pgTable(
     nota_final: numeric('nota_final', { precision: 5, scale: 2, mode: 'string' }),
     observacao: text('observacao'),
     motivo_cancelamento: text('motivo_cancelamento'),
+    // NUVEM (24/10/2026): a pessoa já respondeu a avaliação de reação desta
+    // turma (`servicos/avaliacao_reacao.ts`). Só o fato, SEM hora: a resposta
+    // mora em `avaliacao_reacao_resposta`, sem ligação com a inscrição, e uma
+    // hora aqui seria o elo para casar as duas.
+    avaliacao_respondida: boolean('avaliacao_respondida').notNull().default(false),
   },
   (t) => [
     foreignKey({
@@ -1054,5 +1162,79 @@ export const certificado_valor_inscricao = pgTable(
     }).onDelete('cascade'),
     foreignKey({ name: 'fk_valor_inscricao_usuario', columns: [t.atualizado_por], foreignColumns: [usuario.id] }),
     unique('uq_valor_inscricao').on(t.inscricao_id, t.marcador),
+  ],
+);
+
+// =====================================================================
+// NUVEM (24/10/2026) — avaliação de reação (`servicos/avaliacao_reacao.ts`)
+// =====================================================================
+
+/**
+ * O convite por link de uso único, um por inscrição, para quem avalia sem
+ * entrar no sistema. Só o SHA-256 do token (o token vai no e-mail). Abrir o
+ * link não gasta nada; responder APAGA a linha — é isso o "uso único". O
+ * convite que venceu (`expira_em`, o fim do prazo da avaliação) sai pela rotina
+ * de privacidade.
+ */
+export const avaliacao_reacao_convite = pgTable(
+  'avaliacao_reacao_convite',
+  {
+    inscricao_id: integer('inscricao_id').notNull(),
+    token_hash: varchar('token_hash', { length: 64 }).notNull(),
+    // o último dia em que o link vale (o mesmo prazo da avaliação pela conta)
+    expira_em: DataPura('expira_em').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_avaliacao_reacao_convite', columns: [t.inscricao_id] }),
+    foreignKey({
+      name: 'fk_avaliacao_convite_inscricao',
+      columns: [t.inscricao_id],
+      foreignColumns: [inscricao.id],
+    }).onDelete('cascade'),
+    unique('uq_avaliacao_convite_token').on(t.token_hash),
+    index('ix_avaliacao_convite_expira').on(t.expira_em),
+  ],
+);
+
+/**
+ * A resposta, ANÔNIMA por construção: nenhuma coluna aponta para inscrição,
+ * participante ou conta, a data vai sem hora e a chave é sorteada (um número
+ * sequencial diria a ordem em que as respostas chegaram, e a ordem casaria com
+ * a trilha). Quem respondeu fica marcado só na inscrição
+ * (`inscricao.avaliacao_respondida`).
+ */
+export const avaliacao_reacao_resposta = pgTable(
+  'avaliacao_reacao_resposta',
+  {
+    id: uuid('id').notNull().defaultRandom(),
+    turma_id: integer('turma_id').notNull(),
+    // a versão do questionário fixo (`avaliacao_reacao.VERSAO`)
+    versao: varchar('versao', { length: 10 }).notNull(),
+    nota_conteudo: smallint('nota_conteudo').notNull(),
+    nota_instrutor: smallint('nota_instrutor').notNull(),
+    nota_material: smallint('nota_material').notNull(),
+    nota_local: smallint('nota_local').notNull(),
+    nota_carga: smallint('nota_carga').notNull(),
+    nota_recomendaria: smallint('nota_recomendaria').notNull(),
+    comentario: text('comentario'),
+    respondida_em: DataPura('respondida_em').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_avaliacao_reacao_resposta', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_avaliacao_resposta_turma',
+      columns: [t.turma_id],
+      foreignColumns: [turma.id],
+    }).onDelete('cascade'),
+    check(
+      'ck_avaliacao_resposta_notas',
+      sql.raw(
+        ['nota_conteudo', 'nota_instrutor', 'nota_material', 'nota_local', 'nota_carga', 'nota_recomendaria']
+          .map((c) => `${c} BETWEEN 1 AND 5`)
+          .join(' AND '),
+      ),
+    ),
+    check('ck_avaliacao_resposta_comentario', sql.raw(`comentario IS NULL OR char_length(comentario) <= 1000`)),
+    index('ix_avaliacao_resposta_turma').on(t.turma_id),
   ],
 );

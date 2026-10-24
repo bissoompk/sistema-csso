@@ -29,6 +29,7 @@ export const ROTULO_CATEGORIA_ANEXO_TELA: Readonly<Record<string, string>> = Obj
   FICHA_EPI: "Ficha de EPI",
   EPI_CATALOGO: "Foto ou orientação do catálogo de EPI",
   RUBRICA_INSTRUTOR: "Rubrica do instrutor",
+  QUALIFICACAO_INSTRUTOR: "Comprovante de qualificação do instrutor",
   LISTA_PRESENCA: "Lista de presença",
   CERTIFICADO: "Certificado",
   CAT_SP: "CAT / Comunicação de acidente",

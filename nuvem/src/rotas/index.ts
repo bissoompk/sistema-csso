@@ -12,6 +12,7 @@ import { rotas as celular } from "./celular.js";
 import { rotas as validacao } from "./validacao.js";
 import { rotas as inscricao_publica } from "./inscricao_publica.js";
 import { rotas as acesso_participante } from "./acesso_participante.js";
+import { rotas as avaliacao_reacao } from "./avaliacao_reacao.js";
 import { rotas as ativar_acesso } from "./ativar_acesso.js";
 import { rotas as pedido_conta } from "./pedido_conta.js";
 import { rotas as painel } from "./painel.js";
@@ -26,6 +27,7 @@ import { rotas as servidores } from "./servidores.js";
 import { rotas as catalogos } from "./catalogos.js";
 import { rotas as duplicados } from "./duplicados.js";
 import { rotas as treinamentos } from "./treinamentos.js";
+import { rotas as locais_treinamento } from "./locais_treinamento.js";
 import { rotas as turmas } from "./turmas.js";
 import { rotas as certificados } from "./certificados.js";
 import { rotas as acidentes } from "./acidentes.js";
@@ -55,6 +57,7 @@ export const ROTAS: Hono<Ambiente>[] = [
   validacao,
   inscricao_publica,
   acesso_participante,
+  avaliacao_reacao,
   ativar_acesso,
   pedido_conta,
   painel,
@@ -69,6 +72,7 @@ export const ROTAS: Hono<Ambiente>[] = [
   catalogos,
   duplicados,
   treinamentos,
+  locais_treinamento,
   turmas,
   certificados,
   acidentes,

@@ -28,6 +28,7 @@ import {
   turma as tabela_turma,
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
+import * as avaliacao_reacao from "../servicos/avaliacao_reacao.js";
 import * as duplicados from "../servicos/duplicados.js";
 import * as mesclagem from "../servicos/mesclagem.js";
 import {
@@ -49,6 +50,7 @@ import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as ics from "../servicos/ics.js";
 import * as inscricao_lote from "../servicos/inscricao_lote.js";
 import * as inscricao_publica from "../servicos/inscricao_publica.js";
+import * as local_treinamento from "../servicos/local_treinamento.js";
 import * as retificacao from "../servicos/retificacao.js";
 import * as dono_turma from "../servicos/dono_turma.js";
 import * as email from "../servicos/email.js";
@@ -60,6 +62,7 @@ import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js"
 import * as pedidos_link from "../servicos/pedidos_link.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as servico_presenca from "../servicos/presenca.js";
+import * as qualificacao_instrutor from "../servicos/qualificacao_instrutor.js";
 import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as setor_equipe from "../servicos/setor_equipe.js";
 import * as servico_turma from "../servicos/turma.js";
@@ -334,6 +337,8 @@ async function _tela_lista(
     dica_setor_promotor: meus === null ? setor_promotor.DICA : setor_promotor.DICA_DOS_MEUS,
     sem_setor_promotor: setor_equipe.sem_setor(usuario),
     descricoes: await _ultimas_descricoes(tx),
+    // NUVEM (24/10/2026): os locais cadastrados ativos, para o seletor "Local"
+    locais: await local_treinamento.opcoes(tx),
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
@@ -504,6 +509,8 @@ rotas.get(MINHAS, async (c) => {
     total_abertas: todas_abertas.length,
     // "Adicionar à agenda": a inscrição viva de turma que não foi cancelada
     com_agenda: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, servico_turma.tem_agenda(i)])),
+    // a avaliação de reação: o botão na turma que terminou e que ele frequentou
+    avaliavel: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, avaliacao_reacao.pode_avaliar(i, hoje)])),
     // conta sem titular (nem servidor ligado, nem terceirizado/discente) não é
     // erro: é a tela dizendo por que está vazia
     sem_servidor: !titular_externo.tem_titular(usuario),
@@ -591,6 +598,7 @@ rotas.post(TURMAS, async (c) => {
     "data_inicio",
     "data_fim",
     "local",
+    "local_id",
     "descricao",
     "campus_id",
     "unidade_promotora_id",
@@ -634,6 +642,7 @@ rotas.post(TURMAS, async (c) => {
         data_inicio: inicio,
         data_fim: fim,
         local: texto_ou_nulo(digitado.local),
+        local_id: id_opcional(digitado.local_id),
         descricao: texto_ou_nulo(digitado.descricao),
         campus_id: id_opcional(digitado.campus_id),
         unidade_promotora_id: id_opcional(digitado.unidade_promotora_id),
@@ -662,7 +671,9 @@ rotas.post(TURMAS, async (c) => {
     throw erro;
   }
   if (token) return _tela_link(c, usuario, turma, token);
-  return _volta(c, `${TURMAS}/${turma.id}`, `Turma ${turma.codigo} aberta.`);
+  // os avisos do local (capacidade, choque de sala) não impedem: vão no recado
+  const avisos = await local_treinamento.avisos_da_turma(tx, turma);
+  return _volta(c, `${TURMAS}/${turma.id}`, `Turma ${turma.codigo} aberta.${local_treinamento.frase_dos_avisos(avisos)}`);
 });
 
 // =====================================================================
@@ -843,6 +854,15 @@ async function _tela_ficha(
       ? "Defina antes até quando a turma recebe inscrição (“inscrições até”, em Editar dados da turma)."
       : servico_turma.aberta_a_pedido_proprio(turma, hoje).replace(servico_turma.FALE_COM_A_EQUIPE, "");
   const destinos_possiveis = destinos_de_turma(turma.situacao);
+  // NUVEM (24/10/2026): o instrutor sem qualificação que o habilite a este
+  // treinamento nas datas da turma — aviso, não bloqueio (`qualificacao_instrutor.ts`).
+  // Vale para os vinculados e para os da lista de escolha do "Vincular".
+  const avisos_qualificacao = gerencia
+    ? await qualificacao_instrutor.avisos_da_turma(tx, turma, [
+        ...turma.instrutores.map((v) => v.instrutor),
+        ...(instrutores_livres as { id: number; nome: string; servidor: { nome: string } | null }[]),
+      ])
+    : {};
 
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
@@ -865,6 +885,10 @@ async function _tela_ficha(
     avisos_linha,
     impedimentos_exclusao,
     descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
+    // NUVEM (24/10/2026): o seletor de local da edição e os avisos do local
+    // (capacidade e choque de sala), que não impedem nada
+    locais: aba === "turma" ? await local_treinamento.opcoes(tx, turma.local_id) : [],
+    avisos_local: aba === "turma" ? await local_treinamento.avisos_da_turma(tx, turma) : [],
     link_no_ar: inscricao_publica.link_no_ar(turma),
     publico: inscricao_publica.publico_da_turma(turma),
     certificados_em_word,
@@ -893,6 +917,7 @@ async function _tela_ficha(
     lancamento_aberto: turma.situacao === "CONCLUIDA" || servico_presenca.aceita_lancamento(turma),
     permissao_por_destino: servico_turma.PERMISSAO_POR_SITUACAO_TURMA,
     instrutores_livres,
+    avisos_qualificacao,
     achados,
     servidores_achados,
     busca,
@@ -923,6 +948,8 @@ async function _tela_ficha(
     // NUVEM: o dono, o direito de quem lê e os ajudantes (`dono_turma.ts`)
     direito,
     pode_aqui,
+    // a aba "Avaliação de reação" (página própria, `rotas/avaliacao_reacao.ts`)
+    ve_avaliacao_reacao: avaliacao_reacao.ve_resultado(usuario),
     ajudantes,
     candidatos_ajudante,
     papeis_ajudante: dono_turma.PAPEIS_DE_AJUDANTE,
@@ -972,13 +999,17 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
       if (f.tem("publico_no_formulario")) {
         campos.aceita_comunidade_externa = marcado(f.texto("aceita_comunidade_externa"));
       }
+      // o local cadastrado só muda quando o formulário traz o seletor (vazio =
+      // "outro local"); sem ele, vale o texto (`servico_turma.editar_turma`)
+      if (f.tem("local_id")) campos.local_id = id_opcional(f.texto("local_id"));
       await servico_turma.editar_turma(sp, usuario, turma, campos);
     });
   } catch (erro) {
     if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma) return _erro(c, destino, erro.message);
     throw erro;
   }
-  return _volta(c, destino, "Turma atualizada.");
+  const avisos = await local_treinamento.avisos_da_turma(tx, turma);
+  return _volta(c, destino, `Turma atualizada.${local_treinamento.frase_dos_avisos(avisos)}`);
 });
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
@@ -1180,6 +1211,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
   const alvo = id_opcional(f.texto("assinatura_instrutor_id"));
   if (alvo === null) return _erro(c, volta, "Escolha o instrutor.");
   let nome = "";
+  let aviso = "";
   try {
     if (marcado(f.texto("remover"))) {
       await _no_savepoint(c, (sp) => servico_turma.desvincular_instrutor(sp, usuario, turma, alvo));
@@ -1196,11 +1228,13 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
         assina_certificado: marcado(f.texto("assina_certificado")),
       }),
     );
+    // a qualificação não bloqueia: o aviso vai junto da confirmação, e fica na ficha
+    aviso = (await qualificacao_instrutor.aviso_ao_escalar(tx, turma, instrutor)) ?? "";
   } catch (erro) {
     if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
     throw erro;
   }
-  return _volta(c, volta, `${nome} vinculado à turma.`);
+  return _volta(c, volta, `${nome} vinculado à turma.` + (aviso ? ` Atenção: ${aviso}` : ""));
 });
 
 // =====================================================================

@@ -819,6 +819,8 @@ describe("o módulo no menu e no mapa", () => {
       ["/treinamentos/modelos", "treinamento.gerenciar"],
       ["/treinamentos/assinaturas", "assinatura.gerenciar"],
       ["/treinamentos/setores-promotores", "treinamento.ver"],
+      // NUVEM (24/10/2026): os locais de treinamento
+      ["/treinamentos/locais", "treinamento.ver"],
       // "Juntar duplicados" saiu do menu (23/10/2026): abre pelo cartão
       // "Possíveis duplicados" do Início e pelo atalho da ficha da turma
       ["/turmas/minhas", "treinamento.ver"],

@@ -255,6 +255,10 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // --- certificados e treinamentos ---
   TREINAMENTO_CRIADO: "Treinamento cadastrado",
   TREINAMENTO_EXCLUIDO: "Treinamento excluído do catálogo",
+  // NUVEM (24/10/2026): os locais de treinamento (`local_treinamento.ts`)
+  LOCAL_TREINAMENTO_CRIADO: "Local de treinamento cadastrado",
+  LOCAL_TREINAMENTO_INATIVADO: "Local de treinamento inativado",
+  LOCAL_TREINAMENTO_REATIVADO: "Local de treinamento reativado",
   TURMA_CRIADA: "Turma criada",
   TURMA_EXCLUIDA: "Turma excluída",
   TURMA_RETIFICADA: "Turma concluída corrigida",
@@ -285,6 +289,10 @@ export const ROTULO_EVENTO: Record<string, string> = {
   PARTICIPANTE_SUSPEITO_DUPLICADO: "Participante cadastrado sem conferência de duplicidade",
   AVISO_CADASTRO_EXISTENTE: "Aviso de pedido pelo link enviado ao e-mail do cadastro",
   EMAIL_CONFIRMADO_PELO_LINK: "E-mail do participante confirmado pelo link de acesso",
+  // Avaliação de reação (24/10/2026, `servicos/avaliacao_reacao.ts`): a turma
+  // recebeu uma resposta — nunca de quem
+  AVALIACAO_REACAO_RECEBIDA: "Avaliação de reação recebida",
+  AVALIACAO_REACAO_CONVITES: "Convites da avaliação de reação enviados",
   PRESENCA_LANCADA: "Presença lançada",
   PRESENCA_EM_LOTE: "Presença lançada em lote",
   NOTA_LANCADA: "Nota lançada",
@@ -307,6 +315,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   ASSINATURA_INSTRUTOR_EXCLUIDA: "Instrutor excluído",
   RUBRICA_INSTRUTOR_DEFINIDA: "Rubrica do instrutor enviada",
   RUBRICA_INSTRUTOR_REMOVIDA: "Rubrica do instrutor retirada",
+  INSTRUTOR_QUALIFICACAO_CADASTRADA: "Qualificação do instrutor cadastrada",
+  INSTRUTOR_QUALIFICACAO_INATIVADA: "Qualificação do instrutor inativada",
   MODELO_TAG_MAPEADA: "Marcador do modelo mapeado",
   MODELO_TAG_REMOVIDA: "Marcador do modelo removido",
   CERTIFICADO_CAMPO_TURMA_ALTERADO: "Campo do certificado preenchido na turma",

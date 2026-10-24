@@ -42,7 +42,7 @@ export const CATEGORIAS_PROCESSO = [
 // eliminado (`docs/POLITICA_RETENCAO.md` §2.1) — daí RUBRICA_INSTRUTOR ter
 // nome próprio em vez de 'FOTO'.
 export const CATEGORIAS_EPI = ["MANUAL_EPI", "FICHA_EPI", "EPI_CATALOGO"] as const;
-export const CATEGORIAS_CERTIFICADOS = ["RUBRICA_INSTRUTOR", "LISTA_PRESENCA", "CERTIFICADO"] as const;
+export const CATEGORIAS_CERTIFICADOS = ["RUBRICA_INSTRUTOR", "LISTA_PRESENCA", "CERTIFICADO", "QUALIFICACAO_INSTRUTOR"] as const;
 export const CATEGORIAS_ACIDENTES = ["CAT_SP", "RELATORIO_INVESTIGACAO", "EVIDENCIA_ACIDENTE"] as const;
 
 // O conjunto que `guardar` aceita e que `ck_anexo_cat` admite — as duas listas
@@ -95,6 +95,8 @@ export const NIVEL_POR_CATEGORIA: Readonly<Record<string, string>> = {
   CAT_SP: "RESTRITO",
   RELATORIO_INVESTIGACAO: "RESTRITO",
   EVIDENCIA_ACIDENTE: "RESTRITO",
+  // o diploma ou certificado do instrutor: documento pessoal dele
+  QUALIFICACAO_INSTRUTOR: "RESTRITO",
 };
 
 /**

@@ -236,6 +236,10 @@ const ABERTAS_SEM_SESSAO: Record<string, string> = {
     "o Esqueci minha senha de qualquer conta, só com o e-mail (`servicos/ativar_acesso.ts`): o link vai ao e-mail da conta e a resposta é a mesma para e-mail conhecido ou não",
   "/sw.js":
     "o service worker da tela de bolso: o navegador o baixa ANTES de haver sessão (é assim que a casca abre sem rede), e ele é código, não dado — a lista do que ele guarda não tem /api/ e há teste disso",
+  // `/avaliacao/{token}` (avaliação de reação pelo link do e-mail) não pede
+  // sessão, mas não entra aqui: o token desconhecido responde 404 com a frase
+  // de "link não vale mais", como `/certificados/acesso/{token}` — sem token
+  // válido, nada abre (`testes/avaliacao_reacao.test.ts`)
   "/validar/{chave}":
     "a resposta da validação: existe uma decisão escrita em `src/rotas/validacao.ts` para ela não pedir sessão — quem valida um certificado é justamente quem não tem conta neste sistema",
 };

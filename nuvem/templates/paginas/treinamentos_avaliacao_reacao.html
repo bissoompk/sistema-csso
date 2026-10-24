@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# O consolidado da avaliação de reação (`avaliacao_reacao.consolidado`): a
+   média por treinamento e por instrutor, ao longo das turmas que quem lê
+   alcança. O mesmo piso da turma, linha a linha: abaixo de {{ r.piso }}
+   respostas, só a contagem. #}
+{% block titulo %}Avaliação de reação · SISA{% endblock %}
+
+{% macro tabela(linhas, rotulo, vazio, itens, piso) %}
+<div class="tabela-cartao lista sem-altura">
+<table class="avaliacao-distribuicao">
+  <thead>
+    <tr>
+      <th scope="col">{{ rotulo }}</th>
+      <th scope="col">Turmas</th>
+      <th scope="col">Respostas</th>
+      {% for item in itens %}<th scope="col">{{ item.curto }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for l in linhas %}
+  <tr>
+    <th scope="row">{{ l.nome }}</th>
+    <td class="mono">{{ l.turmas }}</td>
+    <td class="mono">{{ l.respostas }}</td>
+    {% if l.abaixo_do_piso %}
+    <td colspan="{{ itens|length }}" class="discreto">menos de {{ piso }} respostas: médias não exibidas</td>
+    {% else %}
+    {% for m in l.medias %}<td class="mono">{{ m }}</td>{% endfor %}
+    {% endif %}
+  </tr>
+  {% else %}
+  <tr><td colspan="{{ itens|length + 3 }}">
+    <div class="vazio">
+      <strong>{{ vazio }}</strong>
+      <span>As respostas chegam depois que a turma termina, por Meus treinamentos ou pelo link enviado por e-mail.</span>
+    </div>
+  </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Avaliação de reação</h1>
+      <p class="sub">A média das notas (de 1 a 5) ao longo das turmas, por treinamento e por
+        instrutor. Sem nome de quem respondeu; abaixo de {{ r.piso }} respostas, só a contagem.</p>
+    </div>
+  </div>
+
+  <h2>Por treinamento</h2>
+  {{ tabela(r.por_treinamento, 'Treinamento', 'Nenhuma avaliação recebida ainda.', itens, r.piso) }}
+
+  <h2>Por instrutor</h2>
+  <p class="discreto">Cada instrutor responde pelas turmas em que esteve; na turma com mais de um,
+    a mesma nota conta para todos.</p>
+  {{ tabela(r.por_instrutor, 'Instrutor', 'Nenhuma avaliação recebida ainda.', itens, r.piso) }}
+
+  <p class="discreto">Questionário {{ versao }}. O resultado de cada turma fica na ficha dela,
+    na aba “Avaliação de reação”.</p>
+</div>
+{% endblock %}

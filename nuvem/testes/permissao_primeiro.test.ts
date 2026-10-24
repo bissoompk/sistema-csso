@@ -41,6 +41,7 @@ export const SEM_PERMISSAO_DE_RBAC: readonly (readonly [string, string])[] = [
   ["/certificados/acesso", "o participante externo pede o link de acesso pelo e-mail, sem conta"],
   ["/cadastre-se", "o terceirizado ou discente pede a conta, sem conta; nada nasce antes da conferência da equipe"],
   ["/esqueci-senha", "qualquer conta pede o link de redefinição pelo e-mail, sem sessão"],
+  ["/avaliacao/", "o participante responde a avaliação de reação pelo link de uso único do e-mail, sem conta; o token é a autorização"],
 ];
 
 /**

@@ -117,6 +117,7 @@ import {
   certificado_modelo,
   certificado_modelo_tag,
   inscricao,
+  local_treinamento,
   participante,
   participante_email,
   treinamento,
@@ -591,9 +592,15 @@ export const participante_email_relacoes = relations(participante_email, ({ one 
   }),
 }));
 
+export const local_treinamento_relacoes = relations(local_treinamento, ({ one }) => ({
+  campus: one(campus, { fields: [local_treinamento.campus_id], references: [campus.id] }),
+}));
+
 export const turma_relacoes = relations(turma, ({ one, many }) => ({
   treinamento: one(treinamento, { fields: [turma.treinamento_id], references: [treinamento.id] }),
   campus: one(campus, { fields: [turma.campus_id], references: [campus.id] }),
+  // NUVEM (24/10/2026): o local cadastrado (`local_treinamento`)
+  local_cadastrado: one(local_treinamento, { fields: [turma.local_id], references: [local_treinamento.id] }),
   unidade_promotora: one(unidade_uorg, {
     fields: [turma.unidade_promotora_id],
     references: [unidade_uorg.id],
