@@ -1,71 +1,85 @@
 {% extends "base.html" %}
 {# Sem lateral: quem abre ainda não tem conta. O servidor segue para o
    primeiro acesso pelo cadastro (SIAPE + e-mail); terceirizado e discente
-   fazem um PEDIDO, que a equipe confere antes de a conta existir. #}
+   fazem um PEDIDO, que a equipe confere antes de a conta existir. Desenho das
+   telas de acesso: painel da Sisa à esquerda, formulário à direita. #}
 {% set sem_casca = true %}
 {% block titulo %}Primeiro acesso · SISA{% endblock %}
-{% block classe_conteudo %}tela-auxiliar estreita{% endblock %}
+{% block classe_conteudo %}tela-auxiliar tela-acesso{% endblock %}
+{% macro ico_acesso(nome) %}<svg class="ico" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>{% endmacro %}
 
 {% block conteudo %}
+<div class="acesso">
+  {% include "partes/acesso_marca.html" %}
+  <div class="acesso-corpo">
 
 {% if recebido %}
-<div class="cartao">
-  <h1>Pedido recebido</h1>
-  <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
-  <p class="discreto">Enquanto isso, comunicar acidente e se inscrever em treinamento não pedem conta:
-    use o link que o seu setor ou a turma divulgar.</p>
-  <p><a href="/login">Voltar para a entrada</a></p>
-</div>
+    <span class="acesso-icone-ok" aria-hidden="true">{{ ico_acesso('check-circle-fill') }}</span>
+    <h1>Pedido recebido</h1>
+    <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
+    <p class="acesso-nota">Enquanto isso, comunicar acidente e se inscrever em treinamento não pedem conta:
+      use o link que o seu setor ou a turma divulgar.</p>
+    <a class="botao secundario largo" href="/login">Voltar para a entrada</a>
 
 {% elif not vinculo %}
-<div class="cartao">
-  <h1>Primeiro acesso</h1>
-  <p class="sub">Qual é o seu vínculo com a UFVJM?</p>
-  <ul class="lista-opcoes">
-    <li><a class="botao largo" href="{{ caminho_servidor }}">Servidor</a>
-      <span class="dica">A sua conta já existe pelo cadastro de servidores: confirme o SIAPE e o e-mail
-        institucional e receba o link para definir a senha.</span></li>
-    <li><a class="botao secundario largo" href="{{ caminho }}?vinculo=TERCEIRIZADO">Terceirizado</a>
-      <span class="dica">Trabalha na UFVJM por empresa contratada.</span></li>
-    <li><a class="botao secundario largo" href="{{ caminho }}?vinculo=DISCENTE">Discente</a>
-      <span class="dica">Estudante da UFVJM, com o e-mail @{{ dominio_discente }}.</span></li>
-  </ul>
-  <p class="discreto rodape-cartao sem-margem">Terceirizado e discente fazem um pedido: a equipe da Sisa
-    confere e, se aprovar, envia o link para definir a senha.</p>
-  <p class="discreto sem-margem"><a href="/login">Já tenho acesso: entrar</a> ·
-    <a href="/esqueci-senha">Esqueci minha senha</a></p>
-</div>
+    <h1>Primeiro acesso</h1>
+    <p class="sub">Qual é o seu vínculo com a UFVJM?</p>
+    <nav class="opcoes-vinculo" aria-label="Escolha o vínculo">
+      <a class="opcao-vinculo" href="{{ caminho_servidor }}">
+        <span class="opcao-icone">{{ ico_acesso('person-badge') }}</span>
+        <span class="opcao-texto"><strong>Servidor</strong>
+          <span>Informe o SIAPE e o e-mail institucional para receber o link e criar a senha.</span></span>
+        <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
+      </a>
+      <a class="opcao-vinculo" href="{{ caminho }}?vinculo=TERCEIRIZADO">
+        <span class="opcao-icone">{{ ico_acesso('building') }}</span>
+        <span class="opcao-texto"><strong>Terceirizado</strong>
+          <span>Trabalha na UFVJM por empresa contratada.</span></span>
+        <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
+      </a>
+      <a class="opcao-vinculo" href="{{ caminho }}?vinculo=DISCENTE">
+        <span class="opcao-icone">{{ ico_acesso('mortarboard') }}</span>
+        <span class="opcao-texto"><strong>Discente</strong>
+          <span>Estudante da UFVJM, com o e-mail @{{ dominio_discente }}.</span></span>
+        <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
+      </a>
+    </nav>
+    <p class="acesso-nota">Terceirizado e discente fazem um pedido: a equipe da Sisa confere e, se aprovar,
+      envia o link para definir a senha.</p>
+    <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
+      <a href="/esqueci-senha">Esqueci minha senha</a></p>
 
 {% else %}
 {% set terc = vinculo == 'TERCEIRIZADO' %}
-<div class="cartao">
-  <h1>Pedido de conta · {{ ROTULO_VINCULO[vinculo] }}</h1>
-  <p class="sub">Com a conta você se inscreve em treinamentos, vê os seus certificados e comunica
-    acidentes. Pedido de EPI é só para servidores.</p>
-  {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
-  <form method="post" action="{{ caminho }}">
-    <input type="hidden" name="vinculo" value="{{ vinculo }}">
-    <div class="campo"><label for="cad-nome">Nome completo</label>
-      <input id="cad-nome" name="nome" value="{{ d.nome or '' }}" required maxlength="160" autocomplete="name"></div>
-    <div class="campo"><label for="cad-email">{{ 'E-mail' if terc else 'E-mail institucional' }}</label>
-      <input id="cad-email" name="email" type="email" value="{{ d.email or '' }}" required maxlength="160"
-             autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
-             placeholder="{{ 'nome@empresa.com.br' if terc else 'nome@' ~ dominio_discente }}" aria-describedby="dica-cad-email">
-      <span class="dica" id="dica-cad-email">Ele será o seu login, e o link para definir a senha vai para ele.</span></div>
-    <div class="campo"><label for="cad-org">{{ 'Empresa' if terc else 'Curso' }}</label>
-      <input id="cad-org" name="organizacao" value="{{ d.organizacao or '' }}" required maxlength="160"></div>
-    <div class="campo"><label for="cad-matricula">{{ 'Setor ou local de trabalho na UFVJM' if terc else 'Matrícula' }} <span class="discreto">(opcional)</span></label>
-      <input id="cad-matricula" name="matricula" value="{{ d.matricula or '' }}" maxlength="30"></div>
-    <div class="campo">
-      <label><input type="checkbox" name="maior_de_idade" value="1" required{{ ' checked' if d.maior_de_idade }}>
-        Tenho 18 anos ou mais</label>
-    </div>
-    <p class="dica">Os dados servem só para a equipe conferir o seu vínculo e criar a conta. O pedido é
-      apagado em até 90 dias depois da decisão.</p>
-    <div class="acoes"><button type="submit" class="largo">Enviar o pedido</button></div>
-  </form>
-  <p class="discreto rodape-cartao sem-margem"><a href="{{ caminho }}">Voltar</a></p>
-</div>
+    <a class="acesso-voltar" href="{{ caminho }}">{{ ico_acesso('arrow-left') }} Voltar</a>
+    <h1>Pedido de conta</h1>
+    <p class="sub"><span class="pilula">{{ ROTULO_VINCULO[vinculo] }}</span> Com a conta você se inscreve em
+      treinamentos, vê os seus certificados e comunica acidentes.</p>
+    {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+    <form method="post" action="{{ caminho }}">
+      <input type="hidden" name="vinculo" value="{{ vinculo }}">
+      <div class="campo"><label for="cad-nome">Nome completo</label>
+        <input id="cad-nome" name="nome" value="{{ d.nome or '' }}" required maxlength="160" autocomplete="name"></div>
+      <div class="campo"><label for="cad-email">{{ 'E-mail' if terc else 'E-mail institucional' }}</label>
+        <input id="cad-email" name="email" type="email" value="{{ d.email or '' }}" required maxlength="160"
+               autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+               placeholder="{{ 'nome@empresa.com.br' if terc else 'nome@' ~ dominio_discente }}" aria-describedby="dica-cad-email">
+        <span class="dica" id="dica-cad-email">Será o seu login; o link para definir a senha vai para ele.</span></div>
+      <div class="acesso-dois-campos">
+        <div class="campo"><label for="cad-org">{{ 'Empresa' if terc else 'Curso' }}</label>
+          <input id="cad-org" name="organizacao" value="{{ d.organizacao or '' }}" required maxlength="160"></div>
+        <div class="campo"><label for="cad-matricula">{{ 'Setor na UFVJM' if terc else 'Matrícula' }} <span class="opcional">(opcional)</span></label>
+          <input id="cad-matricula" name="matricula" value="{{ d.matricula or '' }}" maxlength="30"></div>
+      </div>
+      <div class="campo campo-caixa">
+        <label><input type="checkbox" name="maior_de_idade" value="1" required{{ ' checked' if d.maior_de_idade }}>
+          Tenho 18 anos ou mais</label>
+      </div>
+      <div class="acoes"><button type="submit" class="largo">Enviar o pedido</button></div>
+    </form>
+    <p class="acesso-nota">Os dados servem só para a equipe conferir o seu vínculo e criar a conta. O pedido
+      é apagado em até 90 dias. Pedido de EPI é só para servidores.</p>
 {% endif %}
-
+  </div>
+</div>
 {% endblock %}

@@ -1,77 +1,80 @@
 {% extends "base.html" %}
 {% import "partes/senha.html" as senha with context %}
-{# Sem lateral: quem abre não tem conta (ou esqueceu a senha). #}
+{# Sem lateral: quem abre não tem conta (ou esqueceu a senha). Desenho das
+   telas de acesso: painel da Sisa à esquerda, formulário à direita. #}
 {% set sem_casca = true %}
 {% block titulo %}Primeiro acesso do servidor · SISA{% endblock %}
-{% block classe_conteudo %}tela-auxiliar estreita{% endblock %}
+{% block classe_conteudo %}tela-auxiliar tela-acesso{% endblock %}
+{% macro ico_acesso(nome) %}<svg class="ico" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>{% endmacro %}
 
 {% block conteudo %}
+<div class="acesso">
+  {% include "partes/acesso_marca.html" %}
+  <div class="acesso-corpo">
 
 {% if invalido %}
-<div class="cartao">
-  <h1>Link vencido ou inválido</h1>
-  <p>O link para definir a senha vale por 1 hora e só pode ser usado uma vez. Peça outro.</p>
-  <p><a class="botao" href="{{ caminho }}">Pedir um link novo</a></p>
-</div>
+    <h1>Link vencido ou inválido</h1>
+    <p class="sub">O link para definir a senha vale por tempo limitado e só pode ser usado uma vez. Peça outro.</p>
+    <a class="botao largo" href="/esqueci-senha">Pedir um link novo</a>
+    <p class="acesso-links"><a href="{{ caminho }}">Sou servidor e ainda não ativei o acesso</a></p>
 
 {% elif definir %}
 {% set erro_confirma = erro_senha if erro_senha and erro_senha.startsWith('A confirmação') else none %}
-<div class="cartao">
-  <h1>Defina a sua senha</h1>
-  <p class="sub">Escolha a senha com que você vai entrar no Sistema SISA.</p>
-  <form method="post" action="{{ caminho }}/{{ token }}">
-    <div class="campo {{ 'com-erro' if erro_senha and not erro_confirma }}">
-      <label for="nova">Senha nova</label>
-      <input id="nova" name="nova" type="password" required autofocus
-             autocomplete="new-password" aria-describedby="dica-nova">
-      {{ senha.barra('nova') }}
-      {% if erro_senha and not erro_confirma %}<span class="erro-campo">{{ erro_senha }}</span>{% endif %}
-      <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase
-        curta é mais fácil de lembrar e mais difícil de adivinhar.</span>
-    </div>
-    <div class="campo {{ 'com-erro' if erro_confirma }}">
-      <label for="confirmacao">Repita a senha</label>
-      <input id="confirmacao" name="confirmacao" type="password" required autocomplete="new-password">
-      {{ senha.confere_com('nova', erro_confirma) }}
-    </div>
-    <div class="acoes"><button type="submit" class="largo">Salvar a senha</button></div>
-  </form>
-  <p class="discreto rodape-cartao sem-margem">Depois de salvar, você volta à tela de entrada.
-    As sessões abertas em outros aparelhos, se houver, são encerradas.</p>
-</div>
+    <h1>Defina a sua senha</h1>
+    <p class="sub">Escolha a senha com que você vai entrar no Sistema SISA.</p>
+    <form method="post" action="{{ caminho }}/{{ token }}">
+      <div class="campo {{ 'com-erro' if erro_senha and not erro_confirma }}">
+        <label for="nova">Senha nova</label>
+        <input id="nova" name="nova" type="password" required autofocus
+               autocomplete="new-password" aria-describedby="dica-nova">
+        {{ senha.barra('nova') }}
+        {% if erro_senha and not erro_confirma %}<span class="erro-campo">{{ erro_senha }}</span>{% endif %}
+        <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase
+          curta é mais fácil de lembrar e mais difícil de adivinhar.</span>
+      </div>
+      <div class="campo {{ 'com-erro' if erro_confirma }}">
+        <label for="confirmacao">Repita a senha</label>
+        <input id="confirmacao" name="confirmacao" type="password" required autocomplete="new-password">
+        {{ senha.confere_com('nova', erro_confirma) }}
+      </div>
+      <div class="acoes"><button type="submit" class="largo">Salvar a senha</button></div>
+    </form>
+    <p class="acesso-nota">Depois de salvar, você volta à tela de entrada. As sessões abertas em outros
+      aparelhos, se houver, são encerradas.</p>
 {{ senha.script() }}
 
 {% elif recebido %}
-<div class="cartao">
-  <h1>Verifique o seu e-mail</h1>
-  <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
-  <p class="discreto">O link só vai para o e-mail institucional que está no cadastro de servidores.
-    Se o seu cadastro não tem e-mail, ou ele mudou, procure a equipe responsável.</p>
-  <p><a href="/login">Voltar para a entrada</a></p>
-</div>
+    <h1>Verifique o seu e-mail</h1>
+    <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
+    <p class="acesso-nota">O link só vai para o e-mail que está no cadastro de servidores da Sisa. Se não
+      chegar em alguns minutos, o seu cadastro pode ainda não existir ou estar sem e-mail: procure a equipe
+      da Sisa.</p>
+    <a class="botao secundario largo" href="/login">Voltar para a entrada</a>
 
 {% else %}
-<div class="cartao">
-  <h1>Primeiro acesso do servidor</h1>
-  <p class="sub">Para servidores da UFVJM: a sua conta nasce com o cadastro de servidores. Confirme o
-    SIAPE e o e-mail institucional para definir a senha (serve também para a senha esquecida).</p>
-  {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
-  <form method="post" action="{{ caminho }}">
-    <div class="campo"><label for="ativar-siape">SIAPE</label>
-      <input id="ativar-siape" name="siape" value="{{ siape }}" required inputmode="numeric"
-             pattern="[0-9]{7}" maxlength="7" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
-    <div class="campo"><label for="ativar-email">E-mail institucional</label>
-      <input id="ativar-email" name="email" type="email" value="{{ digitado }}" required
-             maxlength="160" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
-             placeholder="nome@ufvjm.edu.br" aria-describedby="dica-ativar">
-      <span class="dica" id="dica-ativar">O mesmo que está no seu cadastro de servidor. Vamos enviar
-        para ele um link para você definir a senha.</span></div>
-    <div class="acoes"><button type="submit" class="largo">Receber o link</button></div>
-  </form>
-  <p class="discreto rodape-cartao sem-margem"><a href="/login">Já tenho acesso: entrar</a> ·
-    <a href="/esqueci-senha">Esqueci minha senha</a> ·
-    <a href="/cadastre-se">Não sou servidor</a></p>
-</div>
+    <a class="acesso-voltar" href="/cadastre-se">{{ ico_acesso('arrow-left') }} Voltar</a>
+    <h1>Primeiro acesso do servidor</h1>
+    <p class="sub">Informe o SIAPE e o e-mail institucional. Se eles conferirem com o cadastro de
+      servidores da Sisa, enviamos a esse e-mail o link para você criar a senha.</p>
+    {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+    <form method="post" action="{{ caminho }}">
+      <div class="campo"><label for="ativar-siape">SIAPE</label>
+        <input id="ativar-siape" name="siape" value="{{ siape }}" required inputmode="numeric"
+               pattern="[0-9]{7}" maxlength="7" autocomplete="off" autocapitalize="none" spellcheck="false"
+               placeholder="7 dígitos"></div>
+      <div class="campo"><label for="ativar-email">E-mail institucional</label>
+        <input id="ativar-email" name="email" type="email" value="{{ digitado }}" required
+               maxlength="160" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+               placeholder="nome@ufvjm.edu.br" aria-describedby="dica-ativar">
+        <span class="dica" id="dica-ativar">Use o e-mail @ufvjm.edu.br, o mesmo informado à Sisa.</span></div>
+      <div class="acoes"><button type="submit" class="largo">Receber o link</button></div>
+    </form>
+    <p class="acesso-nota">Não recebeu o link? O seu cadastro pode ainda não estar na Sisa, ou estar sem
+      e-mail. Procure a equipe da Sisa para fazer ou corrigir o cadastro.</p>
+    <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
+      <a href="/esqueci-senha">Esqueci minha senha</a>
+      <a href="/cadastre-se">Não sou servidor</a></p>
 {% endif %}
-
+  </div>
+</div>
 {% endblock %}
