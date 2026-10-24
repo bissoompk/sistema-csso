@@ -28,6 +28,8 @@ const MARCA = {
   onde_mora: "<h2>Onde o dado mora</h2>",
   backup: 'action="/config/backup"',
   exportar_tudo: 'action="/config/exportar-tudo"',
+  // só o Administrador do sistema (24/10/2026, `testes/limpar_dados.test.ts`)
+  limpar_dados: 'href="/config/limpar-dados"',
 } as const;
 type Bloco = keyof typeof MARCA;
 
@@ -40,7 +42,16 @@ const ESPERADO: Record<string, Bloco[] | null> = {
   secretaria_csso: [...PROCESSOS],
   auditor_interno: null,
   superintendente: [...PROCESSOS, "editar_sla", "retirada_epi", "secao_sistema", "onde_mora", "backup", "exportar_tudo"],
-  administrador_sistema: [...PROCESSOS, "editar_sla", "retirada_epi", "secao_sistema", "onde_mora", "backup", "exportar_tudo"],
+  administrador_sistema: [
+    ...PROCESSOS,
+    "editar_sla",
+    "retirada_epi",
+    "secao_sistema",
+    "onde_mora",
+    "backup",
+    "exportar_tudo",
+    "limpar_dados",
+  ],
   admin_ti: ["secao_sistema", "onde_mora", "backup"],
   consulta_progep: null,
   servidor_consulta: null,
@@ -152,6 +163,10 @@ describe("as rotas POST não confiam no template", () => {
     ["/config/exportar-tudo", "admin_ti"],
     ["/config/exportar-tudo", "almoxarife_sesmt"],
     ["/config/exportar-tudo", "servidor_consulta"],
+    ["/config/limpar-dados/simular", "superintendente"],
+    ["/config/limpar-dados/simular", "admin_ti"],
+    ["/config/limpar-dados/executar", "superintendente"],
+    ["/config/limpar-dados/executar", "coordenador_csso"],
   ];
   it.each(CASOS)("%s recusa %s com 403", async (rota, perfil) => {
     const c = await entrar(amb.novoCliente(), perfil);

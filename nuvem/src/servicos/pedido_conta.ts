@@ -32,6 +32,7 @@ import { and, count, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm"
 import type { Executor } from "../db/cliente.js";
 import {
   atribuicao,
+  historico_evento,
   sessao as tabela_sessao,
   pedido_conta as tabela,
   pendencia as tabela_pendencia,
@@ -615,6 +616,18 @@ function _violou_chave(erro: unknown): boolean {
 export async function excluir(tx: Executor, usuario: UsuarioAtual, id: number): Promise<{ resultado: "excluida" | "bloqueada"; nome: string }> {
   usuario.exigir("usuario.criar_conta");
   const conta = await _conta_externa(tx, id);
+  // A conta citada na trilha não se apaga. Era a chave estrangeira de
+  // `historico_evento.usuario_id` que recusava; ela saiu na migração 0026
+  // (limpeza de dados de teste), e a recusa ficou escrita aqui.
+  const [citada] = await tx
+    .select({ id: historico_evento.id })
+    .from(historico_evento)
+    .where(eq(historico_evento.usuario_id, conta.id))
+    .limit(1);
+  if (citada) {
+    await bloquear(tx, usuario, conta.id, true);
+    return { resultado: "bloqueada", nome: conta.nome };
+  }
   try {
     await tx.transaction(async (sp) => {
       await sp.delete(atribuicao).where(eq(atribuicao.usuario_id, conta.id));

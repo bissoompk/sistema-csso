@@ -141,6 +141,17 @@ export const pendencia = pgTable(
  * `id` e bigint (o `BigInteger().with_variant(Integer, "sqlite")` do Python: no
  * SQLite so o INTEGER vira rowid autoincrementado). `mode: 'number'` porque o
  * id entra no digest e em URL; 2^53 eventos nao e horizonte deste sistema.
+ *
+ * **Sem FK em `processo_id` e `usuario_id`** (migracao 0026, limpeza de dados
+ * de teste, 24/10/2026), pelo mesmo motivo de `conferencia_cadeia`: a trilha e
+ * o LAUDO sobre o que aconteceu, e nao pode impedir que o objeto do laudo saia
+ * — nem ser reescrita para deixar de apontar (e append-only). Com a chave, o
+ * processo e a conta citados na trilha nao se apagavam nunca, e a limpeza dos
+ * dados de teste (`servicos/limpeza.ts`) nao tinha como sair. O evento antigo
+ * fica com o numero; quem le a trilha ja trata o alvo ausente. Nenhuma das
+ * duas colunas entra no digest. A recusa de excluir conta citada na trilha,
+ * que a chave fazia sozinha, virou conferencia explicita em
+ * `pedido_conta.excluir`.
  */
 export const historico_evento = pgTable(
   'historico_evento',
@@ -148,14 +159,16 @@ export const historico_evento = pgTable(
     id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     entidade: varchar('entidade', { length: 30 }).notNull(),
     entidade_id: integer('entidade_id').notNull(),
-    processo_id: integer('processo_id').references((): AnyPgColumn => processo.id),
+    // sem FK (ver acima): o processo citado pode ter saído
+    processo_id: integer('processo_id'),
     tipo_evento: varchar('tipo_evento', { length: 40 }).notNull(),
     descricao: text('descricao').notNull(),
     comentario: text('comentario'),
     campo: varchar('campo', { length: 60 }),
     valor_anterior: JSONTexto('valor_anterior'),
     valor_novo: JSONTexto('valor_novo'),
-    usuario_id: integer('usuario_id').references((): AnyPgColumn => usuario.id),
+    // sem FK (ver acima): a conta citada pode ter saído; `usuario_nome` fica
+    usuario_id: integer('usuario_id'),
     usuario_nome: varchar('usuario_nome', { length: 160 }).notNull(),
     ocorrido_em: MomentoUTC('ocorrido_em').notNull().$defaultFn(agora_utc),
     registrado_em: MomentoUTC('registrado_em').notNull().$defaultFn(agora_utc),

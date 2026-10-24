@@ -199,6 +199,12 @@ export const PERMISSOES: Record<string, string> = {
   "acidente.saude_ver": "Ver a saude do acidentado, nivel 1 (lesao em categoria fechada e fatos administrativos)",
   "acidente.saude_detalhe_ver": "Ver a saude do acidentado, nivel 2 (dias, datas e atendimento)",
   "acidente.saude_registrar": "Registrar e corrigir os dados de saude do acidentado",
+  // --- Limpar dados de teste (24/10/2026) ---
+  // Apaga os dados de movimento dos modulos (e, se marcado, servidores e
+  // contas) depois dos testes em producao. So o Administrador do sistema: nao
+  // entra em perfil nenhum da matriz, e `permissoes_do_administrador_sistema`
+  // a deriva sozinha. A rota confere tambem o perfil vigente (dupla tranca).
+  "dados.limpar": "Limpar dados de teste (apaga dados de movimento dos modulos)",
 };
 
 /**
@@ -305,6 +311,7 @@ export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<
       "habilitacao.atestar": "Atestar habilitação técnica",
       "auditoria.ver": "Ver a trilha de auditoria",
       "backup.executar": "Fazer backup do sistema",
+      "dados.limpar": "Limpar os dados de teste (só o Administrador do sistema)",
     },
   ],
 ];
@@ -1636,6 +1643,7 @@ export const PERMISSOES_DE_GOVERNO: ReadonlySet<string> = new Set([
   "usuario.criar_conta",
   "usuario.resetar_senha",
   "backup.executar",
+  "dados.limpar",
 ]);
 
 /** A conta tem (nas concessões dadas) o perfil Administrador do sistema? */

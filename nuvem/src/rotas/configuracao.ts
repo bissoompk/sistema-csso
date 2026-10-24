@@ -37,6 +37,7 @@ import { obterArmazenamento, pastaLocal } from "../servicos/armazenamento.js";
 import { dicionario } from "../dicionario.js";
 import "../servicos/pendencias.js"; // liga o sino da casca
 import { global, marcarDownload, pagina, redirecionar } from "../web.js";
+import { pode_limpar } from "./limpar_dados.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -75,6 +76,8 @@ export interface BlocosConfig {
   backup: boolean;
   /** o botão e o POST da exportação completa */
   exportar_tudo: boolean;
+  /** o link para Limpar dados de teste (só o Administrador do sistema) */
+  limpar_dados: boolean;
   /** a seção "Configuração do setor" tem algum bloco */
   secao_setor: boolean;
   /** a seção "Sistema" tem algum bloco */
@@ -100,8 +103,9 @@ export function blocos_config(usuario: UsuarioAtual): BlocosConfig {
   const backup = usuario.pode("backup.executar");
   const envio_email = usuario.pode("backup.executar");
   const exportar_tudo = pode_exportar_tudo(usuario) && usuario.pode("exposicao.ver");
+  const limpar_dados = pode_limpar(usuario);
   const secao_setor = do_setor || retirada_epi;
-  const secao_sistema = onde_mora || backup || exportar_tudo || envio_email;
+  const secao_sistema = onde_mora || backup || exportar_tudo || envio_email || limpar_dados;
   return {
     setor_emissor: do_setor,
     sla: do_setor,
@@ -113,6 +117,7 @@ export function blocos_config(usuario: UsuarioAtual): BlocosConfig {
     envio_email,
     backup,
     exportar_tudo,
+    limpar_dados,
     secao_setor,
     secao_sistema,
     algum: secao_setor || secao_sistema,

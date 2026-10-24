@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{# Limpar dados de teste (24/10/2026) — só o Administrador do sistema. Três
+   passos na mesma página: escolher e SIMULAR (nada é gravado), conferir as
+   contagens e CONFIRMAR (frase, senha atual, identidade do banco), e o
+   RESULTADO, com o lugar do backup feito antes. A rota e o motor estão em
+   `rotas/limpar_dados.ts` e `servicos/limpeza.ts`; a tela não é a barreira:
+   o POST revalida tudo. #}
+{% set trilha_raiz = 'Sistema' %}
+{% block titulo %}Limpar dados de teste · SISA{% endblock %}
+{% block trilha %}<a href="/config">Configuração</a> <span class="atual" aria-current="page">Limpar dados de teste</span>{% endblock %}
+
+{% macro tabela_contagens(linhas, vazio) %}
+  <table class="tabela-dados">
+    <thead><tr><th scope="col">Tabela</th><th scope="col">Linhas</th></tr></thead>
+    {% for l in linhas %}
+    <tr><td class="mono">{{ l.tabela }}</td><td class="mono">{{ l.n }}</td></tr>
+    {% else %}<tr><td colspan="2" class="nada">{{ vazio }}</td></tr>{% endfor %}
+  </table>
+{% endmacro %}
+
+{% macro escolha_oculta(escolha) %}
+  {% for m in escolha.modulos %}<input type="hidden" name="modulo" value="{{ m }}">{% endfor %}
+  {% if escolha.contas %}<input type="hidden" name="contas" value="1">{% endif %}
+{% endmacro %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Limpar dados de teste</h1>
+      <p class="sub">Apaga os dados de movimento dos módulos marcados depois dos testes no ambiente de
+        produção. Primeiro simula; só depois, com a frase, a sua senha e a identidade do banco, apaga —
+        e faz o backup cifrado antes.</p>
+    </div>
+    <div class="ao-lado"><span class="selo mono">{{ identidade }}</span></div>
+  </div>
+
+  {% if erro %}<div class="aviso aviso-erro" role="alert"><p>{{ erro }}</p></div>{% endif %}
+
+  {% if resultado %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Limpeza feita</h2>
+      <span class="pilula ok">gravada</span>
+    </div>
+    <p>Módulos: <strong>{{ resultado.modulos|join(', ') }}</strong>. {{ resultado.total }} linha(s) apagada(s)
+      ou desvinculada(s), em {{ resultado.ms }} ms, numa transação só. A trilha ganhou um evento
+      «Dados de teste apagados» com estas contagens.</p>
+    {% if resultado.backup %}
+    <p>Backup cifrado feito antes, no armazenamento: <code class="mono">{{ resultado.backup.chave }}</code>
+      ({{ resultado.backup.tamanho }} bytes, com {{ resultado.backup.arquivos }} arquivo(s) de anexo). Ele abre com a
+      senha de backup desta instalação (<code>npm run backup:restaurar</code>, PRODUCAO.md §5).</p>
+    {% endif %}
+    <p class="discreto">Os arquivos que ficaram órfãos no armazenamento ({{ resultado.arquivos }} chave(s) ou pasta(s)
+      a conferir) são apagados logo depois da gravação; falha ali não desfaz o banco e vai ao log da função.</p>
+    {{ tabela_contagens(resultado.apagar, 'Nada havia a apagar.') }}
+    {% if resultado.desvincular|length %}
+    <div class="corpo"><h3>Ficaram, sem o vínculo</h3></div>
+    {{ tabela_contagens(resultado.desvincular, '') }}
+    {% endif %}
+    <div class="acoes"><a class="botao secundario" href="/config">Voltar à configuração</a></div>
+  </section>
+  {% else %}
+
+  {% if sem_backup %}
+  <div class="aviso aviso-erro">
+    <p><strong>Backup indisponível neste ambiente</strong>: {{ sem_backup }} A simulação funciona; a
+      limpeza é recusada até o armazenamento estar configurado.</p>
+  </div>
+  {% endif %}
+
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>1. O que apagar</h2>
+      <span class="nota">a simulação não grava nada</span>
+    </div>
+    <form method="post" action="/config/limpar-dados/simular">
+      {% for m in modulos %}
+      <div class="campo">
+        <label><input type="checkbox" name="modulo" value="{{ m.codigo }}"{{ ' checked' if m.codigo in escolha.modulos }}>
+          <strong>{{ m.nome }}</strong></label>
+        <p class="dica">Apaga {{ m.apaga }}. Fica: {{ m.mantem }}.</p>
+      </div>
+      {% endfor %}
+      <div class="campo">
+        <label><input type="checkbox" name="contas" value="1"{{ ' checked' if escolha.contas }}>
+          <strong>Apagar também {{ contas_texto.nome|lower }}</strong> (só com os quatro módulos marcados)</label>
+        <p class="dica">Apaga {{ contas_texto.apaga }}. Fica: {{ contas_texto.mantem }}.</p>
+      </div>
+      <p class="discreto">Sem a caixa acima, os cadastros de base (servidores, contas, perfis, setores, campi,
+        catálogos e configurações) ficam sempre. A trilha de auditoria nunca se apaga: os eventos antigos ficam,
+        e a limpeza grava mais um.</p>
+      <div class="acoes"><button type="submit" class="secundario">Simular</button></div>
+    </form>
+  </section>
+
+  {% if problemas|length %}
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>O grafo de chaves não confere</h2><span class="pilula alerta">não segue</span></div>
+    <p>Alguma linha que fica aponta para o que sairia, ou há trava fora da lista. Nada foi alterado, e a
+      limpeza não pode seguir até o plano cobrir isso (avise quem mantém o sistema):</p>
+    <ul>{% for p in problemas %}<li class="mono">{{ p }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if simulacao %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>2. O que sairia</h2>
+      <span class="nota">simulado e desfeito em {{ simulacao.ms }} ms</span>
+    </div>
+    <p>Módulos: <strong>{{ simulacao.modulos|join(', ') }}</strong>. {{ simulacao.total }} linha(s) no total.
+      {{ simulacao.mantidas }} outra(s) tabela(s) foram conferidas e ficariam como estão.</p>
+    {{ tabela_contagens(simulacao.apagar, 'Nada a apagar: os módulos marcados já estão vazios.') }}
+    {% if simulacao.desvincular|length %}
+    <div class="corpo"><h3>Ficam, sem o vínculo com o que sai</h3></div>
+    {{ tabela_contagens(simulacao.desvincular, '') }}
+    {% endif %}
+  </section>
+
+  {% if simulacao.total > 0 %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>3. Confirmar e apagar</h2>
+      <span class="pilula alerta">apaga de verdade</span>
+    </div>
+    <div class="aviso aviso-erro">
+      <p>Isto <strong>apaga</strong> o que está na tabela acima do banco <code class="mono">{{ identidade }}</code>.
+        Antes, o sistema faz o backup cifrado (o mesmo de Configuração); se ele não terminar bem, nada é apagado.</p>
+    </div>
+    <form method="post" action="/config/limpar-dados/executar">
+      {{ escolha_oculta(escolha) }}
+      <div class="campo">
+        <label for="frase">Digite <span class="mono">{{ frase }}</span></label>
+        <input id="frase" name="frase" type="text" autocomplete="off" required>
+      </div>
+      <div class="campo">
+        <label for="identidade">Digite a identidade do banco: <span class="mono">{{ identidade }}</span></label>
+        <input id="identidade" name="identidade" type="text" autocomplete="off" required>
+      </div>
+      <div class="campo">
+        <label for="senha_atual">A sua senha atual</label>
+        <input id="senha_atual" name="senha_atual" type="password" data-mostrar-senha required
+               autocomplete="current-password">
+      </div>
+      <div class="acoes"><button type="submit" class="perigo">Fazer o backup e apagar</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}
