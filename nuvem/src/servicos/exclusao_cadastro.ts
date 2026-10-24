@@ -12,6 +12,7 @@ import {
   assinatura_instrutor as tabela_assinatura,
   certificado as tabela_certificado,
   certificado_modelo as tabela_modelo,
+  instrutor_qualificacao as tabela_qualificacao,
   treinamento as tabela_treinamento,
   turma as tabela_turma,
   turma_instrutor as tabela_turma_instrutor,
@@ -56,6 +57,17 @@ export async function excluir_treinamento(tx: Executor, usuario: UsuarioAtual, t
         "desmarque “ativo”.",
     );
   }
+  // a qualificação de instrutor que aponta para ele é comprovante guardado: não some junto
+  const qualificacoes = await _quantos(
+    tx,
+    tx.select({ n: count() }).from(tabela_qualificacao).where(eq(tabela_qualificacao.treinamento_id, alvo.id)),
+  );
+  if (qualificacoes) {
+    throw new ExclusaoRecusada(
+      `${alvo.codigo} é o treinamento de ${qualificacoes} qualificação(ões) de instrutor: não se exclui. ` +
+        "Desmarque “ativo” para tirá-lo das listas de escolha.",
+    );
+  }
   await tx.delete(tabela_treinamento).where(eq(tabela_treinamento.id, alvo.id));
   await auditoria.registrar(tx, {
     entidade: "treinamento",
@@ -87,6 +99,16 @@ export async function excluir_instrutor(tx: Executor, usuario: UsuarioAtual, ass
     throw new ExclusaoRecusada(
       `${nome} está em ${turmas} turma(s): não se exclui. Desmarque “ativo”, ou feche a vigência, ` +
         "para tirá-lo das próximas turmas.",
+    );
+  }
+  // o comprovante de qualificação é guardado: quem o tem não se apaga
+  const qualificacoes = await _quantos(
+    tx,
+    tx.select({ n: count() }).from(tabela_qualificacao).where(eq(tabela_qualificacao.instrutor_id, alvo.id)),
+  );
+  if (qualificacoes) {
+    throw new ExclusaoRecusada(
+      `${nome} tem ${qualificacoes} qualificação(ões) cadastrada(s): não se exclui. Desmarque “ativo” para tirá-lo das próximas turmas.`,
     );
   }
   // instrutor padrão de algum treinamento: o treinamento só perde a sugestão

@@ -8,12 +8,12 @@
  * APAGA (tudo do módulo): treinamento, turma, inscrição (com a situação, a
  * nota/frequência e os pedidos pelo link), presença, certificados emitidos
  * (e os valores por turma/inscrição), participantes e e-mails, mesclagens e
- * pares de duplicados, instrutores/assinaturas, turma_instrutor/ajudante,
- * `acesso_participante`, o vínculo EPI x treinamento (`epi_item_treinamento`),
- * os avisos na fila de e-mail e as pendências ligados a isso e os anexos do
- * módulo (rubricas, PDFs). Os arquivos do armazenamento que ficariam órfãos
- * (PDF/DOCX de certificado, lista de presença, blobs de anexo) são apagados
- * DEPOIS do commit do banco.
+ * pares de duplicados, instrutores/assinaturas e as qualificações deles,
+ * turma_instrutor/ajudante, `acesso_participante`, o vínculo EPI x treinamento
+ * (`epi_item_treinamento`), os avisos na fila de e-mail e as pendências ligados
+ * a isso e os anexos do módulo (rubricas, comprovantes de qualificação, PDFs).
+ * Os arquivos do armazenamento que ficariam órfãos (PDF/DOCX de certificado,
+ * lista de presença, blobs de anexo) são apagados DEPOIS do commit do banco.
  *
  * MANTÉM: modelos de certificado (`certificado_modelo` e `_tag`; o vínculo do
  * modelo com um treinamento é desfeito — passa a modelo genérico), a numeração
@@ -75,11 +75,20 @@ export const TABELAS_APAGAR: readonly string[] = [
   "certificado_valor_turma",
   "certificado_valor_inscricao",
   "assinatura_instrutor",
+  "instrutor_qualificacao",
   "acesso_participante",
   "epi_item_treinamento",
 ];
 
-const ENTIDADES_DO_MODULO = ["certificado", "assinatura_instrutor", "turma", "inscricao", "treinamento", "participante"];
+const ENTIDADES_DO_MODULO = [
+  "certificado",
+  "assinatura_instrutor",
+  "instrutor_qualificacao",
+  "turma",
+  "inscricao",
+  "treinamento",
+  "participante",
+];
 const TIPOS_DE_EMAIL = ["CERTIFICADO", "RECICLAGEM_AVISO", "AVISO_CADASTRO_EXISTENTE", "AVISO_PEDIDO_REPETIDO"];
 
 /** Tabelas apagadas só em parte: o filtro (SQL fixo; `{anexos}` = ids de anexo do módulo). */

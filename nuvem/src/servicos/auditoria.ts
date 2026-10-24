@@ -307,6 +307,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   ASSINATURA_INSTRUTOR_EXCLUIDA: "Instrutor excluído",
   RUBRICA_INSTRUTOR_DEFINIDA: "Rubrica do instrutor enviada",
   RUBRICA_INSTRUTOR_REMOVIDA: "Rubrica do instrutor retirada",
+  INSTRUTOR_QUALIFICACAO_CADASTRADA: "Qualificação do instrutor cadastrada",
+  INSTRUTOR_QUALIFICACAO_INATIVADA: "Qualificação do instrutor inativada",
   MODELO_TAG_MAPEADA: "Marcador do modelo mapeado",
   MODELO_TAG_REMOVIDA: "Marcador do modelo removido",
   CERTIFICADO_CAMPO_TURMA_ALTERADO: "Campo do certificado preenchido na turma",

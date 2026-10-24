@@ -29,6 +29,9 @@ export const CATEGORIAS_ANEXO = [
   // 22/10/2026 (paridade com o IntegraSST, migração 0015): a foto e o PDF de
   // orientação do catálogo de EPI. Público dentro do sistema: não nomeia pessoa.
   'EPI_CATALOGO',
+  // 24/10/2026: o comprovante da qualificacao do instrutor (NR-10/33/35).
+  // Restrito: e documento pessoal do instrutor (diploma, certificado).
+  'QUALIFICACAO_INSTRUTOR',
 ] as const;
 
 export const Pendencia = {

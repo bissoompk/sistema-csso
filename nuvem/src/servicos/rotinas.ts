@@ -30,6 +30,7 @@ import * as backup from "./backup.js";
 import * as epi_estoque from "./epi_estoque.js";
 import * as epi_ficha from "./epi_ficha.js";
 import * as reciclagem from "./reciclagem.js";
+import * as qualificacao_instrutor from "./qualificacao_instrutor.js";
 import * as governanca from "./governanca.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { obterArmazenamento, type Armazenamento } from "./armazenamento.js";
@@ -102,12 +103,18 @@ async function rodar<T>(
 // ---------------------------------------------------------------------
 // Varredura das pendências de EPI (porte de ferramentas/varrer_pendencias.py)
 // ---------------------------------------------------------------------
-export const TIPOS_VARRIDOS = [epi_estoque.TIPO_PENDENCIA_CA, epi_ficha.TIPO_PENDENCIA_TROCA, reciclagem.TIPO_PENDENCIA] as const;
+export const TIPOS_VARRIDOS = [
+  epi_estoque.TIPO_PENDENCIA_CA,
+  epi_ficha.TIPO_PENDENCIA_TROCA,
+  reciclagem.TIPO_PENDENCIA,
+  qualificacao_instrutor.TIPO_PENDENCIA,
+] as const;
 
 export interface ResultadoVarredura {
   lotes: number;
   servidores: number;
   certificados: reciclagem.ResultadoVarredura;
+  qualificacoes: qualificacao_instrutor.ResultadoVarredura;
   antes: Record<string, number>;
   depois: Record<string, number>;
 }
@@ -135,6 +142,7 @@ export async function varrer_pendencias(tx: Executor, quando: string | null = nu
     lotes: 0,
     servidores: 0,
     certificados: { abertas: 0, fechadas: 0, avisados: 0 },
+    qualificacoes: { abertas: 0, fechadas: 0 },
     antes: await _contar(tx),
     depois: {},
   };
@@ -153,6 +161,8 @@ export async function varrer_pendencias(tx: Executor, quando: string | null = nu
   }
   // o certificado que entra na janela de 30 dias da reciclagem
   resultado.certificados = await reciclagem.varrer(tx, quando ?? hoje_iso());
+  // a qualificação de instrutor que entra na janela de 30 dias do vencimento
+  resultado.qualificacoes = await qualificacao_instrutor.sincronizar_pendencias(tx, quando ?? hoje_iso());
   // D17: a concessão de `perfil.conceder` que vence pela data sem ninguém escrever nada
   await governanca.sincronizar_aviso_de_cobertura(tx, quando ?? hoje_iso());
   resultado.depois = await _contar(tx);
@@ -202,6 +212,7 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
       `${r.lotes} lote(s) com CA e ${r.servidores} servidor(es) com troca prevista revistos; ` +
         `reciclagem: ${r.certificados.abertas} aviso(s) aberto(s), ${r.certificados.fechadas} fechado(s), ` +
         `${r.certificados.avisados} e-mail(s) ao participante; ` +
+        `qualificação de instrutor: ${r.qualificacoes.abertas} aviso(s) aberto(s), ${r.qualificacoes.fechadas} fechado(s); ` +
         TIPOS_VARRIDOS.map((t) => `${t}: ${r.depois[t] ?? 0} aberta(s) (${(r.depois[t] ?? 0) - (r.antes[t] ?? 0)} nesta passada)`).join("; "),
     ],
   );

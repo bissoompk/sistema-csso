@@ -79,6 +79,12 @@
         <img class="rubrica-miniatura quebra" src="/treinamentos/assinaturas/{{ a.id }}/rubrica"
              alt="Rubrica de {{ a.nome_exibicao }}" loading="lazy">
         {% endif %}
+        {# a qualificação (NR-10/33/35) mora na ficha do instrutor; a linha diz
+           quantas há e se alguma vence ou venceu #}
+        {% set ql = qualificacoes[a.id] %}
+        <a class="quebra" href="/treinamentos/assinaturas/{{ a.id }}/qualificacoes">
+          {%- if ql %}{{ ql.ativas }} qualificação(ões){% else %}qualificações{% endif %}</a>
+        {% if ql and ql.atencao %}<span class="pilula alerta" title="vencida ou vence em até 30 dias">{{ ql.atencao }} a renovar</span>{% endif %}
         {% if em_uso[a.id] %}
         <span class="quebra discreto"
               title="treinamentos que a têm como instrutor padrão">

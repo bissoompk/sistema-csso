@@ -284,6 +284,68 @@ export const assinatura_instrutor = pgTable(
   ],
 );
 
+/**
+ * NUVEM (24/10/2026): a qualificacao do instrutor — a formacao que o habilita a
+ * ministrar um treinamento (NR-10, NR-33 e NR-35 cobram que o instrutor seja
+ * comprovadamente qualificado). Habilita um treinamento do catalogo
+ * (`treinamento_id`), uma norma (`norma`, comparada com
+ * `treinamento.norma_referencia` por `servicos/qualificacao_instrutor.ts`), ou
+ * os dois. `valida_ate` nulo = sem validade.
+ *
+ * O comprovante (PDF ou imagem) e anexo `QUALIFICACAO_INSTRUTOR`, RESTRITO, que
+ * so quem gerencia instrutores baixa (`anexo_acesso.ts`). A coluna e nula so no
+ * instante entre o INSERT e o anexo, que pede o id da linha; a rota grava os
+ * dois na mesma transacao e recusa o cadastro sem arquivo.
+ *
+ * Nao se apaga: inativa (quem e quando), e a trilha guarda o cadastro.
+ */
+export const instrutor_qualificacao = pgTable(
+  'instrutor_qualificacao',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    instrutor_id: integer('instrutor_id').notNull(),
+    // "Formacao de instrutor NR-35", como esta no comprovante
+    descricao: varchar('descricao', { length: 200 }).notNull(),
+    treinamento_id: integer('treinamento_id'),
+    norma: varchar('norma', { length: 120 }),
+    instituicao: varchar('instituicao', { length: 160 }).notNull(),
+    data_emissao: DataPura('data_emissao').notNull(),
+    valida_ate: DataPura('valida_ate'),
+    comprovante_anexo_id: integer('comprovante_anexo_id'),
+    ativo: boolean('ativo').notNull().default(true),
+    criado_por: integer('criado_por').notNull(),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+    inativado_por: integer('inativado_por'),
+    inativado_em: MomentoUTC('inativado_em'),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_instrutor_qualificacao', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_qualificacao_instrutor',
+      columns: [t.instrutor_id],
+      foreignColumns: [assinatura_instrutor.id],
+    }),
+    foreignKey({
+      name: 'fk_qualificacao_treinamento',
+      columns: [t.treinamento_id],
+      foreignColumns: [treinamento.id],
+    }),
+    foreignKey({
+      name: 'fk_qualificacao_comprovante',
+      columns: [t.comprovante_anexo_id],
+      foreignColumns: [anexo.id],
+    }),
+    foreignKey({ name: 'fk_qualificacao_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
+    foreignKey({ name: 'fk_qualificacao_inativado_por', columns: [t.inativado_por], foreignColumns: [usuario.id] }),
+    // habilita alguma coisa: um treinamento, uma norma, ou os dois
+    check('ck_qualificacao_fim', sql.raw(`treinamento_id IS NOT NULL OR norma IS NOT NULL`)),
+    check('ck_qualificacao_validade', sql.raw(`valida_ate IS NULL OR valida_ate >= data_emissao`)),
+    check('ck_qualificacao_inativacao', sql.raw(`ativo OR inativado_em IS NOT NULL`)),
+    index('ix_qualificacao_instrutor').on(t.instrutor_id),
+    index('ix_qualificacao_treinamento').on(t.treinamento_id),
+  ],
+);
+
 // =====================================================================
 // Fatia 2 — participante, turma e inscricao
 // =====================================================================

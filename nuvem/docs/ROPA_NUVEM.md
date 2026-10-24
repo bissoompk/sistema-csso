@@ -312,6 +312,19 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Retenção | O pedido (qualquer situação) é apagado 90 dias depois de feito; a conta criada segue a política das contas |
 | Base legal | Execução de política pública e obrigação de SST da UFVJM em relação a quem trabalha ou estuda nela (como §4); depende da autorização do §7 |
 
+### 5.13 Comprovante de qualificação do instrutor (24/10/2026)
+
+| Item | Registro |
+|---|---|
+| Titulares | Instrutores de treinamento, servidores da UFVJM ou externos |
+| Dado | A qualificação (descrição, treinamento ou norma que habilita, instituição, emissão e validade) e o **comprovante** em PDF ou imagem (diploma, certificado de formação), que traz o nome e às vezes outros dados da pessoa |
+| Onde | `instrutor_qualificacao`; o arquivo é anexo `QUALIFICACAO_INSTRUTOR`, nível **RESTRITO**, no Storage privado (`anexos/`) |
+| Finalidade | Demonstrar que o instrutor é qualificado, como cobram a NR-10, a NR-33 e a NR-35, e avisar o setor quando a qualificação vence |
+| Base legal | Art. 7º, II (obrigação legal/regulatória das NRs) e art. 23 (competência legal do serviço público) |
+| Quem cadastra, inativa e baixa | Só `assinatura.gerenciar` com acesso ao módulo Certificados (a tela de Instrutores). Quem vê turma ou certificado não baixa o comprovante; a turma mostra só o aviso "sem qualificação" a quem a gerencia |
+| Registro | Cadastro e inativação na trilha; cada download em `historico_evento` (`ANEXO_BAIXADO`) e, para instrutor servidor, em `acesso_dado_sensivel`. A pendência de vencimento não leva o nome do instrutor |
+| Retenção | Enquanto a turma e o certificado que o instrutor assinou forem guardados (é a prova de que o certificado foi dado por pessoa qualificada); inativar não apaga. Sem expurgo automático |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -330,6 +343,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Pedido de link de acesso do participante (§5.10): e-mail, IP, horários | 7 dias | Rotina noturna (`EXPURGO_PRIVACIDADE`, `acesso_participante.expurgar`) |
 | Pedido de conta do Cadastre-se (§5.12): nome, e-mail, empresa ou curso, matrícula, IP, motivo da recusa | 90 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `pedido_conta.expurgar`) |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
+| Comprovante de qualificação do instrutor (§5.13) | O dos certificados que o instrutor assinou | Manual: inativar não apaga; o arquivo segue a política do anexo |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |
 
 ## 7. O que falta providenciar (responsável: controlador)
