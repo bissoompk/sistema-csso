@@ -258,6 +258,21 @@
   </section>
   {% endif %}
 
+  {# Só o Administrador do sistema (`dados.limpar` e o perfil vigente): a tela
+     própria tem a simulação, a confirmação forte e o backup antes. #}
+  {% if blocos.limpar_dados %}
+  <section class="cartao">
+    <div class="titulo-cartao">
+      <h2>Limpar dados de teste</h2>
+      <span class="nota">só o Administrador do sistema</span>
+    </div>
+    <p>Apaga os dados de movimento dos módulos (e, se marcado, servidores e contas) depois dos
+      testes no ambiente de produção. Simula antes, pede a frase, a sua senha e a identidade do
+      banco, e faz o backup cifrado antes de apagar.</p>
+    <div class="acoes"><a class="botao perigo" href="/config/limpar-dados">Abrir a limpeza</a></div>
+  </section>
+  {% endif %}
+
 
 </div>
 

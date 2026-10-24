@@ -142,6 +142,7 @@ export const PERMISSOES_SO_DO_PERFIL: Readonly<Record<string, string>> = Object.
   "perfil.conceder": "administração de acesso",
   "auditoria.ver": "administração do sistema — a trilha",
   "backup.executar": "administração do sistema",
+  "dados.limpar": "administração do sistema — apaga dado de movimento; só o Administrador do sistema",
   "exposicao.ver": "dado nominal e de exposição: segue o cargo, não o módulo",
   "indicador.ver": "transversal — indicadores de todos os módulos",
   exportar: "transversal — exportação de todos os módulos",

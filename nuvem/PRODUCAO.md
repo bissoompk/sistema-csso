@@ -417,6 +417,28 @@ npm run limpar-treinamentos -- --copia ~/copias-sisa
 - Aborta sem gravar se alguma tabela fora da lista referencia as apagadas, ou
   se houver gatilho de DELETE nelas. Rodar de novo com tudo vazio não faz nada.
 
+### 9.1 Limpar os dados de teste pela tela (Administrador do sistema)
+
+Depois de testar no ambiente de produção, quem tem o perfil **Administrador do
+sistema** abre **Configuração → Limpar dados de teste** (`/config/limpar-dados`;
+nenhum outro perfil vê o link nem abre a tela). Marque os módulos —
+*Treinamentos e certificados*, *Acidentes*, *EPI* (o catálogo fica),
+*Processos e demandas* — e, se quiser, *Apagar também servidores e contas*
+(só junto com os quatro; ficam a sua conta, as contas com Administrador do
+sistema, Superintendente ou perfil que concede perfil, e os servidores
+ligados a elas). Clique **Simular**: a tela mostra, por tabela, o que sairia
+(tudo numa transação desfeita) e, se o grafo de chaves estrangeiras não
+fechar, os problemas — aí não há como seguir. Para apagar, digite a frase
+`APAGAR DADOS DE TESTE`, a identidade do banco mostrada na tela e a sua senha
+atual (errar a senha conta como tentativa de login). O sistema faz o **backup
+cifrado** (o mesmo do botão de Configuração) antes de apagar e só apaga se ele
+terminar bem; a tela de resultado diz a chave do backup em `backups/`. Sem o
+Storage configurado (`SUPABASE_URL`) a limpeza é recusada. Perfis, setores,
+campi, catálogos, configurações, a numeração (número usado não se
+reaproveita) e a trilha de auditoria ficam sempre; a trilha ganha um evento
+«Dados de teste apagados» com as contagens. Os arquivos órfãos do
+armazenamento saem logo depois da gravação.
+
 ## 10. Criar o acesso dos servidores já cadastrados
 
 Desde 23/10/2026 o cadastro de servidor ativo com e-mail institucional cria a conta sozinho (sem senha utilizável, sem e-mail enviado). Para os que já estavam cadastrados antes, rode uma vez:

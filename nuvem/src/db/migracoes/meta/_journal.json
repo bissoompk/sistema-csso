@@ -183,6 +183,13 @@
       "when": 1792838198504,
       "tag": "0025_treinamentos_reacao_locais_instrutor",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792842462238,
+      "tag": "0026_trilha_sem_chave_estrangeira",
+      "breakpoints": true
     }
   ]
 }

@@ -120,6 +120,15 @@ export function criarApp(): Hono<Ambiente> {
       });
     } catch (erro) {
       if (!(erro instanceof Desfeita)) throw erro;
+      return;
+    }
+    // gravou: o que esperava o COMMIT (`depoisDoCommit`) roda agora
+    for (const f of c.get("depois_do_commit") ?? []) {
+      try {
+        await f();
+      } catch (falha) {
+        console.error("depois do commit falhou", resumoDoErro(falha));
+      }
     }
   });
 

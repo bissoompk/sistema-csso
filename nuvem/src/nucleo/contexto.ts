@@ -21,10 +21,21 @@ export type Variaveis = {
   sino_antecipado?: { responsavel_id: number | null; prazo: string | null; concluida: boolean; tipo?: string }[];
   /** marcado por `desfazer()`: a rota pede ROLLBACK mesmo retornando normalmente */
   desfazer?: boolean;
+  /**
+   * O que só pode rodar DEPOIS do COMMIT da requisição (`depoisDoCommit`): o
+   * arquivo que a limpeza deixou órfão sai do armazenamento só quando o banco
+   * já não aponta para ele. Não roda no ROLLBACK.
+   */
+  depois_do_commit?: (() => Promise<void>)[];
 };
 
 export type Ambiente = { Variables: Variaveis };
 export type Ctx = Context<Ambiente>;
+
+/** Agenda `f` para depois do COMMIT da requisição (falha ali vai ao log, não à resposta). */
+export function depoisDoCommit(c: Ctx, f: () => Promise<void>): void {
+  c.set("depois_do_commit", [...(c.get("depois_do_commit") ?? []), f]);
+}
 
 /** O `s.rollback()` da recusa que já escreveu. */
 export function desfazer(c: Ctx): void {

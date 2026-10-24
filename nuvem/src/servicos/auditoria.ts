@@ -83,6 +83,9 @@ export const PDF_NAO_GERADO = "PDF_NAO_GERADO";
 // (23/10/2026, `ferramentas/limpar-treinamentos.ts`): um evento só, com as
 // contagens por tabela e sem dado pessoal.
 export const DADOS_DE_TREINAMENTO_APAGADOS = "DADOS_DE_TREINAMENTO_APAGADOS";
+// A limpeza dos dados de teste pela tela (24/10/2026, `/config/limpar-dados`):
+// um evento por limpeza, com os módulos, as contagens e o backup feito antes.
+export const DADOS_DE_TESTE_APAGADOS = "DADOS_DE_TESTE_APAGADOS";
 // RN-21 em aviso: o termo de saúde ficou no texto porque quem escreveu confirmou
 export const MENCAO_SAUDE_CONFIRMADA = "MENCAO_SAUDE_CONFIRMADA";
 
@@ -368,6 +371,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   EPI_ITEM_IMAGEM_ENVIADA: "Foto do EPI enviada ao catálogo",
   EPI_ITEM_ORIENTACAO_ENVIADA: "Orientação (PDF) do EPI enviada ao catálogo",
   DADOS_DE_TREINAMENTO_APAGADOS: "Dados de treinamento apagados (limpeza pela linha de comando)",
+  DADOS_DE_TESTE_APAGADOS: "Dados de teste apagados (limpeza pela tela do Administrador do sistema)",
   // E: treinamento exigido pelo EPI (avisa, não bloqueia — Decisão 2)
   EPI_ITEM_TREINAMENTO_VINCULADO: "Treinamento exigido vinculado ao EPI",
   EPI_ITEM_TREINAMENTO_DESVINCULADO: "Treinamento exigido desvinculado do EPI",
