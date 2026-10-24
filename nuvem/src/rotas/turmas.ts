@@ -62,6 +62,7 @@ import { DadosDoParticipante, nome_exibicao } from "../servicos/participante.js"
 import * as pedidos_link from "../servicos/pedidos_link.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as servico_presenca from "../servicos/presenca.js";
+import * as qualificacao_instrutor from "../servicos/qualificacao_instrutor.js";
 import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as setor_equipe from "../servicos/setor_equipe.js";
 import * as servico_turma from "../servicos/turma.js";
@@ -853,6 +854,15 @@ async function _tela_ficha(
       ? "Defina antes até quando a turma recebe inscrição (“inscrições até”, em Editar dados da turma)."
       : servico_turma.aberta_a_pedido_proprio(turma, hoje).replace(servico_turma.FALE_COM_A_EQUIPE, "");
   const destinos_possiveis = destinos_de_turma(turma.situacao);
+  // NUVEM (24/10/2026): o instrutor sem qualificação que o habilite a este
+  // treinamento nas datas da turma — aviso, não bloqueio (`qualificacao_instrutor.ts`).
+  // Vale para os vinculados e para os da lista de escolha do "Vincular".
+  const avisos_qualificacao = gerencia
+    ? await qualificacao_instrutor.avisos_da_turma(tx, turma, [
+        ...turma.instrutores.map((v) => v.instrutor),
+        ...(instrutores_livres as { id: number; nome: string; servidor: { nome: string } | null }[]),
+      ])
+    : {};
 
   return pagina(c, "paginas/turma_ficha.html", usuario, {
     turma,
@@ -907,6 +917,7 @@ async function _tela_ficha(
     lancamento_aberto: turma.situacao === "CONCLUIDA" || servico_presenca.aceita_lancamento(turma),
     permissao_por_destino: servico_turma.PERMISSAO_POR_SITUACAO_TURMA,
     instrutores_livres,
+    avisos_qualificacao,
     achados,
     servidores_achados,
     busca,
@@ -1200,6 +1211,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
   const alvo = id_opcional(f.texto("assinatura_instrutor_id"));
   if (alvo === null) return _erro(c, volta, "Escolha o instrutor.");
   let nome = "";
+  let aviso = "";
   try {
     if (marcado(f.texto("remover"))) {
       await _no_savepoint(c, (sp) => servico_turma.desvincular_instrutor(sp, usuario, turma, alvo));
@@ -1216,11 +1228,13 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/instrutores`, async (c) => {
         assina_certificado: marcado(f.texto("assina_certificado")),
       }),
     );
+    // a qualificação não bloqueia: o aviso vai junto da confirmação, e fica na ficha
+    aviso = (await qualificacao_instrutor.aviso_ao_escalar(tx, turma, instrutor)) ?? "";
   } catch (erro) {
     if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
     throw erro;
   }
-  return _volta(c, volta, `${nome} vinculado à turma.`);
+  return _volta(c, volta, `${nome} vinculado à turma.` + (aviso ? ` Atenção: ${aviso}` : ""));
 });
 
 // =====================================================================

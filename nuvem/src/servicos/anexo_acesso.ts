@@ -20,10 +20,17 @@
  */
 import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { acidente_ocorrencia, acidente_relatorio, epi_ficha_registro } from "../db/esquema/index.js";
+import {
+  acidente_ocorrencia,
+  acidente_relatorio,
+  assinatura_instrutor,
+  epi_ficha_registro,
+  instrutor_qualificacao,
+} from "../db/esquema/index.js";
 import * as auditoria from "./auditoria.js";
 import type { Anexo } from "./anexos.js";
 import { pode_ver_restrita_sst } from "./acidente_acesso.js";
+import { exigir_acesso_ao_modulo } from "./acesso_modulo.js";
 import { PermissaoNegada, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 
 export const ANEXO_BAIXADO = "ANEXO_BAIXADO";
@@ -197,6 +204,31 @@ async function dono_acidente(tx: Executor, usuario: UsuarioAtual, anexo: Anexo):
   };
 }
 
+/**
+ * O comprovante da qualificação do instrutor (24/10/2026): diploma ou
+ * certificado da pessoa, RESTRITO. Baixa quem gerencia instrutores — a mesma
+ * porta da tela deles (`assinatura.gerenciar` mais o acesso ao módulo), e não
+ * a de quem só vê a turma ou o certificado. O "sobre quem" é o servidor, quando
+ * o instrutor é da casa; o externo não tem `servidor_id`, e o download fica na
+ * trilha do anexo.
+ */
+async function dono_qualificacao_instrutor(tx: Executor, usuario: UsuarioAtual, anexo: Anexo): Promise<Dono> {
+  usuario.exigir("assinatura.gerenciar");
+  exigir_acesso_ao_modulo(usuario, "certificados");
+  const [linha] = await tx
+    .select({ servidor_id: assinatura_instrutor.servidor_id })
+    .from(instrutor_qualificacao)
+    .innerJoin(assinatura_instrutor, eq(assinatura_instrutor.id, instrutor_qualificacao.instrutor_id))
+    .where(eq(instrutor_qualificacao.id, anexo.entidade_id));
+  if (!linha) throw new AnexoForaDeAlcance();
+  return {
+    entidade: "instrutor_qualificacao",
+    servidor_id: linha.servidor_id,
+    processo_id: null,
+    finalidade: "conferência do comprovante de qualificação do instrutor de treinamento",
+  };
+}
+
 // A lista fechada. O que não está aqui não desce.
 export const RESOLVEDORES: Readonly<Record<string, (tx: Executor, usuario: UsuarioAtual, anexo: Anexo) => Promise<Dono>>> =
   Object.freeze({
@@ -205,6 +237,7 @@ export const RESOLVEDORES: Readonly<Record<string, (tx: Executor, usuario: Usuar
     epi_ficha_registro: dono_ficha_epi,
     certificado: dono_certificado,
     acidente_ocorrencia: dono_acidente,
+    instrutor_qualificacao: dono_qualificacao_instrutor,
   });
 
 /** Devolve o dono, ou levanta. Não escreve nada. */

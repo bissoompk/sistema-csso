@@ -1,5 +1,5 @@
 {
-  "id": "2313dcdf-6c92-4802-a1ff-36d3dd4b5282",
+  "id": "a4abcad2-06b1-4341-aad8-ce116cb0cf6e",
   "prevId": "f051ddce-194f-4777-b183-2cc1fd2bcc1d",
   "version": "7",
   "dialect": "postgresql",
@@ -5202,7 +5202,7 @@
       "checkConstraints": {
         "ck_anexo_cat": {
           "name": "ck_anexo_cat",
-          "value": "categoria IN ('PARECER_ASSINADO','LAUDO','PORTARIA','DESPACHO','FORMULARIO','RELATORIO_CAMPO','FOTO','OUTRO','MANUAL_EPI','FICHA_EPI','RUBRICA_INSTRUTOR','LISTA_PRESENCA','CERTIFICADO','CAT_SP','RELATORIO_INVESTIGACAO','EVIDENCIA_ACIDENTE','EPI_CATALOGO')"
+          "value": "categoria IN ('PARECER_ASSINADO','LAUDO','PORTARIA','DESPACHO','FORMULARIO','RELATORIO_CAMPO','FOTO','OUTRO','MANUAL_EPI','FICHA_EPI','RUBRICA_INSTRUTOR','LISTA_PRESENCA','CERTIFICADO','CAT_SP','RELATORIO_INVESTIGACAO','EVIDENCIA_ACIDENTE','EPI_CATALOGO','QUALIFICACAO_INSTRUTOR')"
         }
       },
       "isRLSEnabled": false
@@ -15096,6 +15096,232 @@
         "ck_inscricao_email_confirmado": {
           "name": "ck_inscricao_email_confirmado",
           "value": "origem = 'INTERNA' OR situacao IN ('AGUARDANDO_EMAIL','CANCELADA') OR email_confirmado_em IS NOT NULL OR conferida_por IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.instrutor_qualificacao": {
+      "name": "instrutor_qualificacao",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "instrutor_qualificacao_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "instrutor_id": {
+          "name": "instrutor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "descricao": {
+          "name": "descricao",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "treinamento_id": {
+          "name": "treinamento_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "norma": {
+          "name": "norma",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "instituicao": {
+          "name": "instituicao",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_emissao": {
+          "name": "data_emissao",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valida_ate": {
+          "name": "valida_ate",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comprovante_anexo_id": {
+          "name": "comprovante_anexo_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "criado_por": {
+          "name": "criado_por",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inativado_por": {
+          "name": "inativado_por",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inativado_em": {
+          "name": "inativado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ix_qualificacao_instrutor": {
+          "name": "ix_qualificacao_instrutor",
+          "columns": [
+            {
+              "expression": "instrutor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ix_qualificacao_treinamento": {
+          "name": "ix_qualificacao_treinamento",
+          "columns": [
+            {
+              "expression": "treinamento_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fk_qualificacao_instrutor": {
+          "name": "fk_qualificacao_instrutor",
+          "tableFrom": "instrutor_qualificacao",
+          "tableTo": "assinatura_instrutor",
+          "columnsFrom": [
+            "instrutor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fk_qualificacao_treinamento": {
+          "name": "fk_qualificacao_treinamento",
+          "tableFrom": "instrutor_qualificacao",
+          "tableTo": "treinamento",
+          "columnsFrom": [
+            "treinamento_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fk_qualificacao_comprovante": {
+          "name": "fk_qualificacao_comprovante",
+          "tableFrom": "instrutor_qualificacao",
+          "tableTo": "anexo",
+          "columnsFrom": [
+            "comprovante_anexo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fk_qualificacao_criado_por": {
+          "name": "fk_qualificacao_criado_por",
+          "tableFrom": "instrutor_qualificacao",
+          "tableTo": "usuario",
+          "columnsFrom": [
+            "criado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fk_qualificacao_inativado_por": {
+          "name": "fk_qualificacao_inativado_por",
+          "tableFrom": "instrutor_qualificacao",
+          "tableTo": "usuario",
+          "columnsFrom": [
+            "inativado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pk_instrutor_qualificacao": {
+          "name": "pk_instrutor_qualificacao",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ck_qualificacao_fim": {
+          "name": "ck_qualificacao_fim",
+          "value": "treinamento_id IS NOT NULL OR norma IS NOT NULL"
+        },
+        "ck_qualificacao_validade": {
+          "name": "ck_qualificacao_validade",
+          "value": "valida_ate IS NULL OR valida_ate >= data_emissao"
+        },
+        "ck_qualificacao_inativacao": {
+          "name": "ck_qualificacao_inativacao",
+          "value": "ativo OR inativado_em IS NOT NULL"
         }
       },
       "isRLSEnabled": false

@@ -347,7 +347,14 @@
         </thead>
         {% for vinculo in turma.instrutores %}
         <tr>
-          <td class="nome">{{ vinculo.instrutor.nome_exibicao }}</td>
+          <td class="nome">{{ vinculo.instrutor.nome_exibicao }}
+            {# a qualificação que a norma cobra (NR-10/33/35): aviso, não bloqueio #}
+            {% if avisos_qualificacao[vinculo.assinatura_instrutor_id] %}
+            <span class="quebra aviso-qualificacao"><span class="pilula alerta">sem qualificação</span>
+              <span class="discreto">{{ avisos_qualificacao[vinculo.assinatura_instrutor_id] }}</span>
+              {%- if usuario.pode('assinatura.gerenciar') %}
+              <a href="/treinamentos/assinaturas/{{ vinculo.assinatura_instrutor_id }}/qualificacoes">ficha do instrutor</a>{% endif %}</span>
+            {% endif %}</td>
           <td class="curta" data-coluna="Título">{{ vinculo.instrutor.titulo or '—' }}</td>
           <td class="curta" data-coluna="Certificado">{% if vinculo.assina_certificado %}<span class="pilula ok">assina</span>
               {% else %}<span class="pilula sem-ponto">não assina</span>{% endif %}</td>
@@ -1534,13 +1541,15 @@
             aria-describedby="dica-instrutor">
       <option value="">escolha a assinatura</option>
       {% for i in instrutores_livres %}
-      <option value="{{ i.id }}">{{ i.nome_exibicao }}{% if i.titulo %} · {{ i.titulo }}{% endif %}</option>
+      <option value="{{ i.id }}">{{ i.nome_exibicao }}{% if i.titulo %} · {{ i.titulo }}{% endif %}
+        {%- if avisos_qualificacao[i.id] %} · sem qualificação para este treinamento{% endif %}</option>
       {% endfor %}
     </select>
     <span class="dica" id="dica-instrutor">Só assinatura ativa e vigente em
       {{ turma.data_inicio|data }}, que é o dia em que a turma começa: assinatura
       fora de vigência seria recusada na emissão, com a turma inteira já
-      realizada.</span></div>
+      realizada. Quem não tem qualificação cadastrada para este treinamento nas datas da
+      turma vem marcado: pode ser vinculado, e a turma mostra o aviso.</span></div>
   <div class="campo">
     <label class="discreto"><input type="checkbox" name="assina_certificado" value="1" checked>
       assina o certificado</label></div>

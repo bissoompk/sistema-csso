@@ -13,6 +13,7 @@ import type { Executor } from "../db/cliente.js";
 import {
   anexo as tabela_anexo,
   assinatura_instrutor as tabela_assinatura,
+  instrutor_qualificacao as tabela_qualificacao,
   certificado_modelo as tabela_modelo,
   certificado_modelo_tag as tabela_tag,
   confere_regex,
@@ -39,6 +40,7 @@ import {
 import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado, type Formulario } from "../dependencias.js";
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as anexos from "../servicos/anexos.js";
+import * as qualificacao from "../servicos/qualificacao_instrutor.js";
 import * as auditoria from "../servicos/auditoria.js";
 import * as dono_turma from "../servicos/dono_turma.js";
 import * as exclusao_cadastro from "../servicos/exclusao_cadastro.js";
@@ -1212,6 +1214,8 @@ async function _tela_assinaturas(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) 
     servidores: await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)),
     vinculos: VINCULOS_INSTRUTOR,
     em_uso,
+    // quantas qualificações ativas cada um tem, e quantas vencem ou venceram
+    qualificacoes: await qualificacao.resumo_por_instrutor(tx, datas_br.hoje()),
     hoje: datas_br.hoje(),
     // o início gravado quando o campo veio em branco: a tela o escreve "desde sempre"
     desde_sempre: VIGENCIA_DESDE_SEMPRE,
@@ -1478,6 +1482,130 @@ rotas.get(`${ASSINATURAS}/:assinatura_id{[0-9]+}/rubrica`, async (c) => {
     "content-type": anexos.tipo_para_servir(anexo.mime_type),
     "cache-control": "private, no-store",
   });
+});
+
+// =====================================================================
+// Qualificações do instrutor (24/10/2026, `servicos/qualificacao_instrutor.ts`)
+// =====================================================================
+/** A ficha do instrutor: as qualificações dele, com o comprovante. */
+export function qualificacoes_de(instrutor_id: number): string {
+  return `${ASSINATURAS}/${instrutor_id}/qualificacoes`;
+}
+
+async function _tela_qualificacoes(
+  c: Ctx,
+  usuario: UsuarioAtual,
+  instrutor: NonNullable<Awaited<ReturnType<typeof _assinatura>>>,
+  d: Recado = {},
+) {
+  const tx = c.get("tx");
+  const hoje = datas_br.hoje();
+  const treinamentos = await tx
+    .select({ id: tabela_treinamento.id, codigo: tabela_treinamento.codigo, nome: tabela_treinamento.nome, ativo: tabela_treinamento.ativo })
+    .from(tabela_treinamento)
+    .orderBy(asc(tabela_treinamento.nome));
+  const nome_do_treinamento = new Map(treinamentos.map((t) => [t.id, `${t.codigo} · ${t.nome}`]));
+  const itens = (await qualificacao.do_instrutor(tx, instrutor.id)).map((q) => ({
+    ...q,
+    treinamento_rotulo: q.treinamento_id !== null ? (nome_do_treinamento.get(q.treinamento_id) ?? null) : null,
+    situacao: qualificacao.situacao(q, hoje),
+  }));
+  // o cadastro escolhe entre os ativos; o inativo só aparece no rótulo de quem já aponta para ele
+  const { cpf: _cpf, ...sem_cpf } = instrutor;
+  return pagina(c, "paginas/instrutor_qualificacoes.html", usuario, {
+    instrutor: vista_assinatura(sem_cpf),
+    itens,
+    treinamentos: treinamentos.filter((t) => t.ativo),
+    hoje,
+    dias_aviso: qualificacao.DIAS_AVISO,
+    mensagem: d.mensagem ?? null,
+    erro: d.erro ?? null,
+    digitado: d.digitado ?? {},
+  });
+}
+
+rotas.get(`${ASSINATURAS}/:assinatura_id{[0-9]+}/qualificacoes`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  _exigir_instrutores(usuario);
+  const instrutor = await _assinatura(c.get("tx"), Number(c.req.param("assinatura_id")));
+  if (!instrutor) return _erro(c, ASSINATURAS, "Instrutor não encontrado.");
+  return _tela_qualificacoes(c, usuario, instrutor, recados(c));
+});
+
+rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}/qualificacoes`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  _exigir_instrutores(usuario);
+  const tx = c.get("tx");
+  const instrutor = await _assinatura(tx, Number(c.req.param("assinatura_id")));
+  if (!instrutor) return _erro(c, ASSINATURAS, "Instrutor não encontrado.");
+  const f = await formulario(c);
+  const digitado = {
+    descricao: f.texto("descricao"),
+    treinamento_id: f.texto("treinamento_id"),
+    norma: f.texto("norma"),
+    instituicao: f.texto("instituicao"),
+    data_emissao: f.texto("data_emissao"),
+    valida_ate: f.texto("valida_ate"),
+  };
+  const recusar = (mensagem: string) => _tela_qualificacoes(c, usuario, instrutor, { erro: mensagem, digitado });
+  const valida_ate = digitado.valida_ate.trim() ? data_iso(digitado.valida_ate) : null;
+  if (digitado.valida_ate.trim() && valida_ate === null) return recusar("Válida até: data inválida (ou deixe vazio para sem validade).");
+  const arquivo = f.arquivo("comprovante");
+  const comprovante =
+    arquivo && arquivo.size > 0 ? { nome: arquivo.name, conteudo: new Uint8Array(await arquivo.arrayBuffer()) } : null;
+  try {
+    // num savepoint: a recusa depois do INSERT (o comprovante) não deixa a linha sem arquivo
+    await tx.transaction((sp) =>
+      qualificacao.cadastrar(
+        sp as Executor,
+        usuario,
+        instrutor.id,
+        {
+          descricao: digitado.descricao,
+          treinamento_id: id_opcional(digitado.treinamento_id),
+          norma: texto_ou_nulo(digitado.norma),
+          instituicao: digitado.instituicao,
+          data_emissao: data_iso(digitado.data_emissao),
+          valida_ate,
+        },
+        comprovante,
+      ),
+    );
+  } catch (erro) {
+    if (erro instanceof qualificacao.QualificacaoRecusada || erro instanceof anexos.AnexoGrandeDemais) {
+      return recusar(erro.message);
+    }
+    throw erro;
+  }
+  return _volta(c, qualificacoes_de(instrutor.id), `Qualificação «${digitado.descricao.trim()}» cadastrada.`);
+});
+
+rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}/qualificacoes/:qualificacao_id{[0-9]+}/inativar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  _exigir_instrutores(usuario);
+  const instrutor_id = Number(c.req.param("assinatura_id"));
+  const volta = qualificacoes_de(instrutor_id);
+  try {
+    const q = await qualificacao.inativar(c.get("tx"), usuario, instrutor_id, Number(c.req.param("qualificacao_id")));
+    return _volta(c, volta, `Qualificação «${q.descricao}» inativada.`);
+  } catch (erro) {
+    if (erro instanceof qualificacao.QualificacaoRecusada) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+});
+
+// o endereço da qualificação (o link da pendência): a linha dela na ficha do instrutor
+rotas.get("/treinamentos/qualificacoes/:qualificacao_id{[0-9]+}", async (c) => {
+  const usuario = await usuarioLogado(c);
+  _exigir_instrutores(usuario);
+  const id = Number(c.req.param("qualificacao_id"));
+  const [q] = await c
+    .get("tx")
+    .select({ instrutor_id: tabela_qualificacao.instrutor_id })
+    .from(tabela_qualificacao)
+    .where(eq(tabela_qualificacao.id, id));
+  if (!q) return _erro(c, ASSINATURAS, "Qualificação não encontrada.");
+  return redirecionar(c, `${qualificacoes_de(q.instrutor_id)}#qualificacao-${id}`);
 });
 
 // =====================================================================

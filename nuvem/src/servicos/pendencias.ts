@@ -92,6 +92,10 @@ export const TIPOS: Record<string, readonly [string, number]> = {
   // o Cadastre-se do terceirizado e do discente (`pedido_conta.ts`): nasce sem
   // responsável e se fecha sozinha quando o pedido é aprovado ou recusado
   CONTA_A_CONFERIR: ["Conferir pedido de conta de terceirizado ou discente", 5],
+  // a qualificação do instrutor (NR-10/33/35) que vence: o prazo real é a
+  // própria validade; nasce sem responsável (é do setor) e se fecha sozinha na
+  // renovação ou na inativação (`qualificacao_instrutor.ts`)
+  INSTRUTOR_QUALIFICACAO_A_VENCER: ["Renovar a qualificação de instrutor a vencer", 30],
 };
 
 // ---------------------------------------------------------------------
@@ -148,6 +152,8 @@ export const PERMISSAO_CONCLUIR_POR_TIPO: Readonly<Record<string, string>> = Obj
   ACIDENTE_ACAO_PRAZO: "acidente.investigar",
   ACIDENTE_AGUARDA_PERICIA: "acidente.siass",
   CONTA_A_CONFERIR: "usuario.criar_conta",
+  // cadastrar a qualificação renovada é da tela de instrutores
+  INSTRUTOR_QUALIFICACAO_A_VENCER: "assinatura.gerenciar",
 });
 
 export function pode_ver(usuario: UsuarioAtual | null | undefined): boolean {
@@ -484,6 +490,9 @@ const _LUGAR_DA_ENTIDADE: Readonly<Record<string, readonly [string, string, stri
   acidente_ocorrencia: ["Ocorrência de acidente", "/acidentes/", "", "acidente.ver"],
   // a fila é uma tela só; o número leva à linha do pedido
   pedido_conta: ["Pedido de conta nº", "/usuarios/pedidos#pedido-", "", "usuario.criar_conta"],
+  // a qualificação não tem tela própria: o endereço dela leva à ficha do
+  // instrutor, na linha da qualificação (`rotas/treinamentos.ts`)
+  instrutor_qualificacao: ["Qualificação de instrutor nº", "/treinamentos/qualificacoes/", "", "assinatura.gerenciar"],
 };
 
 async function _mapa<T extends { id: number }>(

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Qualificações · {{ instrutor.nome_exibicao }} · SISA{% endblock %}
+
+{# A ficha do instrutor (24/10/2026): a formação que o habilita a ministrar —
+   NR-10, NR-33 e NR-35 cobram instrutor comprovadamente qualificado. As regras
+   moram em `servicos/qualificacao_instrutor.ts`. #}
+{% set CADASTRAR = 'Cadastrar qualificação' %}
+{% set d = digitado or {} %}
+{% set recusado = true if (erro and digitado) else false %}
+{% set erro_popup = erro if recusado else none %}
+{% set erro = none if recusado else erro %}
+{% set NATUREZA = {'VALIDA': 'ok', 'A_VENCER': 'alerta', 'VENCIDA': 'erro', 'SEM_VALIDADE': 'sem-ponto', 'INATIVA': 'sem-ponto'} %}
+
+{% block acoes_cabecalho %}
+<a class="botao secundario" href="/treinamentos/assinaturas">Instrutores</a>
+{% if usuario.pode('assinatura.gerenciar') %}
+{{ ui.botao_cadastro('nova-qualificacao', CADASTRAR) }}
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% set editavel = usuario.pode('assinatura.gerenciar') %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>{{ instrutor.nome_exibicao }}</h1>
+      <p class="identificacao">
+        {%- if instrutor.titulo %}<strong>{{ instrutor.titulo }}</strong><span class="ponto">·</span>{% endif %}
+        {% if instrutor.externo %}<span class="pilula sem-ponto">externo</span>
+        {% else %}<span class="pilula ok">servidor</span>{% endif %}
+        {{ ui.pilula_sim_nao(instrutor.ativo, 'ativo', 'inativo') }}
+      </p>
+      <p class="sub">A formação que o habilita a ministrar cada treinamento, com o comprovante.</p>
+      {% call ui.info('qualificacao-instrutor', 'o que a qualificação faz') %}
+        <p>Ao escalar o instrutor numa turma, o sistema confere se ele tem qualificação
+          <strong>ativa</strong> que habilite aquele treinamento — pelo treinamento escolhido
+          aqui ou pela norma (a “norma de referência” do catálogo) — e <strong>válida em todo o
+          período da turma</strong>. Sem ela, a turma mostra um aviso, mas não bloqueia: há
+          treinamento que a norma não exige de instrutor formado.</p>
+        <p>{{ dias_aviso }} dias antes do vencimento nasce uma tarefa para o setor. Ela se fecha
+          sozinha quando a qualificação renovada (para o mesmo treinamento ou a mesma norma) é
+          cadastrada, ou quando esta é inativada.</p>
+        <p>O comprovante é documento pessoal do instrutor: só quem gerencia instrutores o baixa,
+          e cada download fica na trilha.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  <div class="tabela-cartao lista">
+  <table class="empilhavel">
+    <thead>
+      <tr><th scope="col">Qualificação</th><th scope="col">Habilita</th><th scope="col">Emissão</th>
+          <th scope="col">Validade</th><th scope="col">Comprovante</th>
+          {% if editavel %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}</tr>
+    </thead>
+    {% for q in itens %}
+    <tr id="qualificacao-{{ q.id }}">
+      <td class="nome">{{ q.descricao }}
+        <span class="quebra discreto">{{ q.instituicao }}</span></td>
+      <td data-coluna="Habilita">
+        {%- if q.treinamento_rotulo %}{{ q.treinamento_rotulo }}{% endif %}
+        {%- if q.norma %}<span class="{{ 'quebra ' if q.treinamento_rotulo }}mono">{{ q.norma }}</span>{% endif %}</td>
+      <td data-coluna="Emissão" class="mono">{{ q.data_emissao|data }}</td>
+      <td data-coluna="Validade">
+        {%- if q.valida_ate %}<span class="mono">até {{ q.valida_ate|data }}</span>{% endif %}
+        <span class="quebra"><span class="pilula {{ NATUREZA[q.situacao.codigo] }}">{{ q.situacao.rotulo }}</span></span></td>
+      <td data-coluna="Comprovante">
+        {%- if q.comprovante_anexo_id %}<a href="/anexos/{{ q.comprovante_anexo_id }}">baixar</a>
+        {%- else %}<span class="pilula alerta">sem comprovante</span>{% endif %}</td>
+      {% if editavel %}
+      <td class="acao-linha">
+        {% if q.ativo %}
+        {% call ui.popup_gaveta('inativar-qualif-' ~ q.id, 'inativar', 'Inativar · ' ~ q.descricao, largo=false) %}
+          <form method="post" action="/treinamentos/assinaturas/{{ instrutor.id }}/qualificacoes/{{ q.id }}/inativar">
+            <p class="discreto">A qualificação deixa de valer para as turmas e o aviso de
+              vencimento dela se fecha. Não se apaga: a linha e o comprovante ficam, como registro.</p>
+            <div class="acoes"><button type="submit" class="perigo compacto">Inativar</button></div>
+          </form>
+        {% endcall %}
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% else %}
+    {{ ui.vazio_de_lista(
+         'Nenhuma qualificação cadastrada.',
+         'Use “' ~ CADASTRAR ~ '”, no canto superior direito, com o comprovante em PDF ou imagem.',
+         6 if editavel else 5) }}
+    {% endfor %}
+  </table>
+  </div>
+
+</div>
+
+{% if editavel %}
+{% call ui.popup_cadastro('nova-qualificacao', CADASTRAR,
+                          '/treinamentos/assinaturas/' ~ instrutor.id ~ '/qualificacoes', CADASTRAR,
+                          aberto=recusado, erro=erro_popup, enctype='multipart/form-data',
+                          nota=instrutor.nome_exibicao) %}
+  <div class="campo"><label for="qualif-descricao">Descrição</label>
+    <input id="qualif-descricao" name="descricao" required maxlength="200"
+           placeholder="Formação de instrutor NR-35" value="{{ d['descricao'] or '' }}"{{ ' autofocus' if recusado }}></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="qualif-treinamento">Treinamento que habilita</label>
+      <select id="qualif-treinamento" name="treinamento_id" aria-describedby="qualif-dica-fim">
+        <option value="">— (só pela norma)</option>
+        {% for t in treinamentos %}
+        <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}>{{ t.codigo }} · {{ t.nome }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="campo codigo"><label for="qualif-norma">Norma</label>
+      <input id="qualif-norma" name="norma" maxlength="120" placeholder="NR-35"
+             value="{{ d['norma'] or '' }}" aria-describedby="qualif-dica-fim"></div>
+  </div>
+  <span class="dica" id="qualif-dica-fim">Um dos dois, ou os dois. A norma vale para todo
+    treinamento do catálogo com a mesma norma de referência.</span>
+  <div class="campo"><label for="qualif-instituicao">Instituição emissora</label>
+    <input id="qualif-instituicao" name="instituicao" required maxlength="160"
+           value="{{ d['instituicao'] or '' }}"></div>
+  <div class="linha-campos">
+    <div class="campo"><label for="qualif-emissao">Data de emissão</label>
+      <input id="qualif-emissao" type="date" name="data_emissao" required max="{{ hoje }}"
+             value="{{ d['data_emissao'] or '' }}"></div>
+    <div class="campo"><label for="qualif-validade">Válida até</label>
+      <input id="qualif-validade" type="date" name="valida_ate"
+             value="{{ d['valida_ate'] or '' }}" aria-describedby="qualif-dica-validade">
+      <span class="dica" id="qualif-dica-validade">Vazio: sem validade.</span></div>
+  </div>
+  <div class="campo"><label for="qualif-comprovante">Comprovante (PDF, PNG ou JPEG)</label>
+    <input id="qualif-comprovante" type="file" name="comprovante" required
+           accept="application/pdf,image/png,image/jpeg" aria-describedby="qualif-dica-comprovante">
+    <span class="dica" id="qualif-dica-comprovante">Até 4 MB. O tipo é conferido pelo conteúdo do
+      arquivo, não pelo nome.{% if recusado %} Escolha o arquivo de novo: ele não volta na recusa.{% endif %}</span></div>
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -106,6 +106,33 @@ async function montar(): Promise<Montado> {
     }),
   );
   await db.update(e.assinatura_instrutor).set({ imagem_anexo_id: rubrica.anexo.id }).where(eq(e.assinatura_instrutor.id, cen.instrutor.id));
+  // a qualificação do instrutor e o comprovante dela (saem com o instrutor)
+  const [qualificacao] = await db
+    .insert(e.instrutor_qualificacao)
+    .values({
+      instrutor_id: cen.instrutor.id,
+      descricao: "Formação de instrutor NR-35",
+      treinamento_id: cen.treinamento.id,
+      instituicao: "SENAI",
+      data_emissao: "2025-01-10",
+      criado_por: usuario.id,
+    })
+    .returning();
+  const comprovante = await naTransacao((tx) =>
+    anexos.guardar(tx, {
+      entidade: "instrutor_qualificacao",
+      entidade_id: qualificacao!.id,
+      nome_original: "diploma.pdf",
+      conteudo: new Uint8Array([37, 80, 68, 70, 45, 1]),
+      mime_type: "application/pdf",
+      categoria: "QUALIFICACAO_INSTRUTOR",
+      usuario,
+    }),
+  );
+  await db
+    .update(e.instrutor_qualificacao)
+    .set({ comprovante_anexo_id: comprovante.anexo.id })
+    .where(eq(e.instrutor_qualificacao.id, qualificacao!.id));
   const manter = await naTransacao((tx) =>
     anexos.guardar(tx, {
       entidade: "processo",
@@ -254,7 +281,8 @@ describe("limpar-treinamentos", () => {
     expect(depois.email_saida).toBe(1);
     expect((await db.select().from(e.email_saida))[0]!.tipo).toBe("EPI_DECISAO");
     expect(depois.pendencia).toBe(antes.pendencia! - 1);
-    expect(depois.anexo).toBe(antes.anexo! - 1);
+    // a rubrica e o comprovante de qualificação do instrutor
+    expect(depois.anexo).toBe(antes.anexo! - 2);
     // nada mais mexeu, exceto a trilha (+1)
     const mexidas = new Set([...TABELAS_ZERO, "email_saida", "pendencia", "anexo", "historico_evento"]);
     for (const [t, n] of Object.entries(antes)) if (!mexidas.has(t)) expect(depois[t], t).toBe(n);
