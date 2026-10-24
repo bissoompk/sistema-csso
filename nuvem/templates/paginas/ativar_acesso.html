@@ -18,6 +18,16 @@
     <a class="botao largo" href="/esqueci-senha">Pedir um link novo</a>
     <p class="acesso-links"><a href="{{ caminho }}">Sou servidor e ainda não ativei o acesso</a></p>
 
+{% elif confirmar %}
+    <h1>Confirme o seu e-mail</h1>
+    <p class="sub">Falta um passo: confirme que este e-mail é seu para ativar o acesso com a senha que
+      você escolheu no pedido.</p>
+    <form method="post" action="{{ caminho }}/{{ token }}">
+      <div class="acoes"><button type="submit" class="largo">Confirmar e ativar o acesso</button></div>
+    </form>
+    <div class="aviso aviso-alerta" role="note"><p>Não foi você que pediu? Não confirme: feche esta página
+      e nada muda.</p></div>
+
 {% elif definir %}
 {% set erro_confirma = erro_senha if erro_senha and erro_senha.startsWith('A confirmação') else none %}
     <h1>Defina a sua senha</h1>
@@ -54,8 +64,9 @@
 {% else %}
     <a class="acesso-voltar" href="/cadastre-se">{{ ico_acesso('arrow-left') }} Voltar</a>
     <h1>Primeiro acesso do servidor</h1>
-    <p class="sub">Informe o SIAPE e o e-mail institucional. Se eles conferirem com o cadastro de
-      servidores da Sisa, enviamos a esse e-mail o link para você criar a senha.</p>
+    <p class="sub">Informe o SIAPE, o e-mail institucional e a senha que quer usar. Se o SIAPE e o
+      e-mail conferirem com o cadastro de servidores da Sisa, enviamos a esse e-mail um link para você
+      confirmar e ativar o acesso.</p>
     {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
     <form method="post" action="{{ caminho }}">
       <div class="campo"><label for="ativar-siape">SIAPE</label>
@@ -67,10 +78,25 @@
                maxlength="160" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
                placeholder="nome@ufvjm.edu.br" aria-describedby="dica-ativar">
         <span class="dica" id="dica-ativar">Use o e-mail @ufvjm.edu.br, o mesmo informado à Sisa.</span></div>
-      <div class="acoes"><button type="submit" class="largo">Receber o link</button></div>
+      {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
+      <div class="campo">
+        <label for="nova">Senha</label>
+        <input id="nova" name="nova" type="password" required autocomplete="new-password" aria-describedby="dica-nova">
+        {{ senha.barra('nova') }}
+        <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase curta
+          é mais fácil de lembrar e mais difícil de adivinhar.</span>
+      </div>
+      <div class="campo">
+        <label for="confirmacao">Repita a senha</label>
+        <input id="confirmacao" name="confirmacao" type="password" required autocomplete="new-password">
+        {{ senha.confere_com('nova', erro_confirma) }}
+      </div>
+      <div class="acoes"><button type="submit" class="largo">Continuar</button></div>
     </form>
     <p class="acesso-nota">Não recebeu o link? O seu cadastro pode ainda não estar na Sisa, ou estar sem
-      e-mail. Procure a equipe da Sisa para fazer ou corrigir o cadastro.</p>
+      e-mail. Procure a equipe da Sisa para fazer ou corrigir o cadastro. Se você já tem senha, o link
+      pede a senha de novo: use "Esqueci minha senha".</p>
+{{ senha.script() }}
     <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
       <a href="/esqueci-senha">Esqueci minha senha</a>
       <a href="/cadastre-se">Não sou servidor</a></p>

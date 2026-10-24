@@ -37,6 +37,7 @@ async function _tela(
     recebido?: boolean;
     token?: string;
     definir?: boolean;
+    confirmar?: boolean;
     invalido?: boolean;
     erro_senha?: string | null;
     status?: number;
@@ -54,6 +55,7 @@ async function _tela(
         recebido: d.recebido ?? false,
         resposta_padrao: servico.RESPOSTA_PADRAO,
         definir: d.definir ?? false,
+        confirmar: d.confirmar ?? false,
         invalido: d.invalido ?? false,
         erro_senha: d.erro_senha ?? null,
         token: d.token ?? "",
@@ -73,7 +75,12 @@ rotas.post(servico.CAMINHO, async (c) => {
   const digitado = f.texto("email").trim().slice(0, 160);
   const tx = c.get("tx");
   try {
-    await servico.pedir(tx, { siape, email: digitado }, ipDoCliente(c), await emissao.url_base_validacao(tx));
+    await servico.pedir(
+      tx,
+      { siape, email: digitado, nova: f.texto("nova"), confirmacao: f.texto("confirmacao") },
+      ipDoCliente(c),
+      await emissao.url_base_validacao(tx),
+    );
   } catch (erro) {
     if (erro instanceof servico.DadosInvalidos) return _tela(c, { siape, email: digitado, erro: erro.message, status: 422 });
     throw erro;
@@ -127,8 +134,9 @@ rotas.post(servico.CAMINHO_ESQUECI, async (c) => {
 
 rotas.get(`${servico.CAMINHO}/:token`, async (c) => {
   const token = c.req.param("token");
-  if (!(await servico.link_vale(c.get("tx"), token))) return _tela(c, { invalido: true, status: 404 });
-  return _tela(c, { definir: true, token });
+  const pede = await servico.o_que_o_link_pede(c.get("tx"), token);
+  if (!pede) return _tela(c, { invalido: true, status: 404 });
+  return _tela(c, pede === "confirmar" ? { confirmar: true, token } : { definir: true, token });
 });
 
 rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
@@ -139,6 +147,7 @@ rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
     const feito = await servico.definir_senha(tx, token, f.texto("nova"), f.texto("confirmacao"), {
       ip: ipDoCliente(c),
       user_agent: c.req.header("user-agent") ?? null,
+      base_url: await emissao.url_base_validacao(tx),
     });
     return _sem_rastro(redirecionar(c, `/login?motivo=${feito === "criada" ? "ativada" : "redefinida"}`));
   } catch (erro) {

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partes/senha.html" as senha with context %}
 {# Sem lateral: quem abre ainda não tem conta. O servidor segue para o
    primeiro acesso pelo cadastro (SIAPE + e-mail); terceirizado e discente
    fazem um PEDIDO, que a equipe confere antes de a conta existir. Desenho das
@@ -13,9 +14,31 @@
   {% include "partes/acesso_marca.html" %}
   <div class="acesso-corpo">
 
-{% if recebido %}
+{% if invalido %}
+    <h1>Link vencido ou inválido</h1>
+    <p class="sub">O link de confirmação vale por 24 horas e serve uma vez só. Se ele venceu, faça o pedido
+      de novo.</p>
+    <a class="botao largo" href="{{ caminho }}">Fazer o pedido de novo</a>
+
+{% elif confirmar %}
+    <h1>Confirme o seu e-mail</h1>
+    <p class="sub">Confirme que este e-mail é seu para enviar o pedido de conta à equipe da Sisa.</p>
+    <form method="post" action="{{ caminho_confirmar }}/{{ confirmar }}">
+      <div class="acoes"><button type="submit" class="largo">Confirmar o e-mail</button></div>
+    </form>
+    <div class="aviso aviso-alerta" role="note"><p>Não foi você que pediu? Não confirme: feche esta página e
+      o pedido é apagado.</p></div>
+
+{% elif confirmado %}
     <span class="acesso-icone-ok" aria-hidden="true">{{ ico_acesso('check-circle-fill') }}</span>
-    <h1>Pedido recebido</h1>
+    <h1>E-mail confirmado</h1>
+    <div class="aviso aviso-ok" role="status"><p>O seu pedido foi para a equipe da Sisa. Quando a conta for
+      liberada, você recebe um e-mail e entra com este e-mail e a senha que escolheu.</p></div>
+    <a class="botao secundario largo" href="/login">Ir para a entrada</a>
+
+{% elif recebido %}
+    <span class="acesso-icone-ok" aria-hidden="true">{{ ico_acesso('envelope') }}</span>
+    <h1>Confirme o seu e-mail</h1>
     <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
     <p class="acesso-nota">Enquanto isso, comunicar acidente e se inscrever em treinamento não pedem conta:
       use o link que o seu setor ou a turma divulgar.</p>
@@ -28,7 +51,7 @@
       <a class="opcao-vinculo" href="{{ caminho_servidor }}">
         <span class="opcao-icone">{{ ico_acesso('person-badge') }}</span>
         <span class="opcao-texto"><strong>Servidor</strong>
-          <span>Informe o SIAPE e o e-mail institucional para receber o link e criar a senha.</span></span>
+          <span>Informe o SIAPE, o e-mail institucional e a senha que quer usar.</span></span>
         <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
       </a>
       <a class="opcao-vinculo" href="{{ caminho }}?vinculo=TERCEIRIZADO">
@@ -44,8 +67,8 @@
         <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
       </a>
     </nav>
-    <p class="acesso-nota">Terceirizado e discente fazem um pedido: a equipe da Sisa confere e, se aprovar,
-      envia o link para definir a senha.</p>
+    <p class="acesso-nota">Terceirizado e discente fazem um pedido com a senha que vão usar: confirmam o
+      e-mail, a equipe da Sisa confere e avisa quando a conta for liberada.</p>
     <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
       <a href="/esqueci-senha">Esqueci minha senha</a></p>
 
@@ -64,12 +87,25 @@
         <input id="cad-email" name="email" type="email" value="{{ d.email or '' }}" required maxlength="160"
                autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
                placeholder="{{ 'nome@empresa.com.br' if terc else 'nome@' ~ dominio_discente }}" aria-describedby="dica-cad-email">
-        <span class="dica" id="dica-cad-email">Será o seu login; o link para definir a senha vai para ele.</span></div>
+        <span class="dica" id="dica-cad-email">Será o seu login; o link para confirmar o pedido vai para ele.</span></div>
       <div class="acesso-dois-campos">
         <div class="campo"><label for="cad-org">{{ 'Empresa' if terc else 'Curso' }}</label>
           <input id="cad-org" name="organizacao" value="{{ d.organizacao or '' }}" required maxlength="160"></div>
         <div class="campo"><label for="cad-matricula">{{ 'Setor na UFVJM' if terc else 'Matrícula' }} <span class="opcional">(opcional)</span></label>
           <input id="cad-matricula" name="matricula" value="{{ d.matricula or '' }}" maxlength="30"></div>
+      </div>
+      {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
+      <div class="campo">
+        <label for="nova">Senha</label>
+        <input id="nova" name="nova" type="password" required autocomplete="new-password" aria-describedby="dica-nova">
+        {{ senha.barra('nova') }}
+        <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. É com ela que você
+          vai entrar depois que a conta for liberada.</span>
+      </div>
+      <div class="campo">
+        <label for="confirmacao">Repita a senha</label>
+        <input id="confirmacao" name="confirmacao" type="password" required autocomplete="new-password">
+        {{ senha.confere_com('nova', erro_confirma) }}
       </div>
       <div class="campo campo-caixa">
         <label><input type="checkbox" name="maior_de_idade" value="1" required{{ ' checked' if d.maior_de_idade }}>
@@ -77,8 +113,10 @@
       </div>
       <div class="acoes"><button type="submit" class="largo">Enviar o pedido</button></div>
     </form>
-    <p class="acesso-nota">Os dados servem só para a equipe conferir o seu vínculo e criar a conta. O pedido
-      é apagado em até 90 dias. Pedido de EPI é só para servidores.</p>
+    <p class="acesso-nota">Depois de enviar, confirme o e-mail pelo link que chega a ele; a equipe da Sisa
+      confere o pedido e avisa quando a conta for liberada. Os dados servem só para conferir o seu vínculo
+      e criar a conta, e o pedido é apagado em até 90 dias. Pedido de EPI é só para servidores.</p>
+{{ senha.script() }}
 {% endif %}
   </div>
 </div>
