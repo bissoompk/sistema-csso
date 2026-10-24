@@ -4515,6 +4515,27 @@ details.cartao.perfil[open] > summary::after { content: "▴"; }
 .marca-papel { margin: 0 0 8px; }
 .marca-papel img { display: block; width: 45mm; height: auto; }
 
+/* ---------- a trava do envio duplicado e o mostrar senha (24/10/2026) ----------
+ `csso.js`, blocos 13 e 14. O giro herda a cor da letra do botão
+ (`currentColor`), então serve ao primário, ao secundário e ao de perigo. */
+button.enviando, .botao.enviando, input.enviando { cursor: progress; opacity: .85; }
+.enviando-giro {
+display: inline-block; width: 1em; height: 1em; margin-right: 8px; vertical-align: -0.15em;
+border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+animation: giro-envio .7s linear infinite;
+}
+@keyframes giro-envio { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .enviando-giro { animation: none; border-right-color: currentColor; opacity: .5; } }
+
+.campo-senha { position: relative; display: block; }
+.campo-senha input { width: 100%; padding-right: 86px; }
+.campo-senha button.mostrar-senha {
+position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+min-height: 0; padding: 6px 10px; border: 0; border-radius: 6px;
+background: transparent; color: var(--acento); font-size: 13px; font-weight: 600; box-shadow: none;
+}
+.campo-senha button.mostrar-senha:hover { background: var(--acento-suave); color: var(--acento-forte); }
+
 /* ---------- impressao ----------
    A previa do parecer e impressa. Sem isto a lateral escura vira uma faixa de
    252px em branco na esquerda de toda folha.
@@ -4625,6 +4646,7 @@ details.cartao.perfil[open] > summary::after { content: "▴"; }
      E `position: sticky` num <thead> impede o navegador de REPETIR o cabecalho
      na pagina 2, que e justamente o que o <thead> veio trazer para a guia de
      entrega: sete colunas de numeros sem nome no alto da segunda folha era o
+
      defeito, e ele nao esta no @media print - esta na falta do <thead>.
      O fio de `inset` sai junto: no papel a borda de `collapse` e pintada
      normalmente, e as duas somadas dobrariam a espessura da linha. */
@@ -4657,6 +4679,7 @@ details.cartao.perfil[open] > summary::after { content: "▴"; }
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+
 
   /* A folha precisa se identificar. `.rodape` e escondido e `.rodape-lateral`
      mora dentro da lateral, tambem escondida — entao a guia de entrega, que
