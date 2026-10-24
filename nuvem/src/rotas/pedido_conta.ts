@@ -110,7 +110,8 @@ rotas.get(`${servico.CAMINHO_CONFIRMAR}/:token`, async (c) => {
 });
 
 rotas.post(`${servico.CAMINHO_CONFIRMAR}/:token`, async (c) => {
-  const feito = await servico.confirmar_email(c.get("tx"), c.req.param("token"), ipDoCliente(c));
+  const tx = c.get("tx");
+  const feito = await servico.confirmar_email(tx, c.req.param("token"), ipDoCliente(c), await emissao.url_base_validacao(tx));
   if (!feito) return _tela(c, { invalido: true, status: 404 });
   return _tela(c, { confirmado: true });
 });
@@ -123,12 +124,14 @@ const FILA = "/usuarios/pedidos";
 async function _fila(c: Ctx, erro: string | null = null, status = 200): Promise<Response> {
   const usuario = await usuarioLogado(c);
   usuario.exigir("usuario.criar_conta");
-  const { pendentes, decididos } = await servico.fila(c.get("tx"));
+  const tx = c.get("tx");
+  const { pendentes } = await servico.fila(tx);
+  const contas = await servico.contas_externas(tx);
   return pagina(
     c,
     "paginas/pedidos_conta.html",
     usuario,
-    { pendentes, decididos, ROTULO_VINCULO: servico.ROTULO_VINCULO, mensagem: c.req.query("mensagem") ?? null, erro },
+    { pendentes, contas, ROTULO_VINCULO: servico.ROTULO_VINCULO, mensagem: c.req.query("mensagem") ?? null, erro },
     status,
   );
 }
@@ -171,3 +174,30 @@ rotas.post(`${FILA}/:id{[0-9]+}/recusar`, async (c) => {
     throw erro;
   }
 });
+
+// bloquear, desbloquear e excluir as contas de terceirizado e discente
+for (const [acao, fazer] of [
+  ["bloquear", async (c: Ctx, id: number) => `Conta de ${await servico.bloquear(c.get("tx"), await usuarioLogado(c), id, true)} bloqueada: ela não entra mais e as sessões abertas foram encerradas.`],
+  ["desbloquear", async (c: Ctx, id: number) => `Conta de ${await servico.bloquear(c.get("tx"), await usuarioLogado(c), id, false)} desbloqueada.`],
+  [
+    "excluir",
+    async (c: Ctx, id: number) => {
+      const r = await servico.excluir(c.get("tx"), await usuarioLogado(c), id);
+      return r.resultado === "excluida"
+        ? `Conta de ${r.nome} excluída.`
+        : `A conta de ${r.nome} já tem registros no sistema (inscrição, certificado, comunicação ou trilha) e não pode ser apagada: foi bloqueada no lugar.`;
+    },
+  ],
+] as const) {
+  rotas.post(`${FILA}/contas/:id{[0-9]+}/${acao}`, async (c) => {
+    const usuario = await usuarioLogado(c);
+    usuario.exigir("usuario.criar_conta");
+    try {
+      return redirecionar(c, comMensagem(FILA, await fazer(c, _id(c))));
+    } catch (erro) {
+      if (erro instanceof servico.DecisaoRecusada) return _fila(c, erro.message, 422);
+      throw erro;
+    }
+  });
+}
+

@@ -2,7 +2,8 @@
 {% import "partes/senha.html" as senha with context %}
 {# Sem lateral: quem abre ainda não tem conta. O servidor segue para o
    primeiro acesso pelo cadastro (SIAPE + e-mail); terceirizado e discente
-   fazem um PEDIDO, que a equipe confere antes de a conta existir. Desenho das
+   fazem um PEDIDO, e a conta é liberada quando o e-mail é confirmado (24/10/2026).
+    Desenho das
    telas de acesso: painel da Sisa à esquerda, formulário à direita. #}
 {% set sem_casca = true %}
 {% block titulo %}Primeiro acesso · SISA{% endblock %}
@@ -22,7 +23,7 @@
 
 {% elif confirmar %}
     <h1>Confirme o seu e-mail</h1>
-    <p class="sub">Confirme que este e-mail é seu para enviar o pedido de conta à equipe da Sisa.</p>
+    <p class="sub">Confirme que este e-mail é seu para liberar a sua conta.</p>
     <form method="post" action="{{ caminho_confirmar }}/{{ confirmar }}">
       <div class="acoes"><button type="submit" class="largo">Confirmar o e-mail</button></div>
     </form>
@@ -32,9 +33,9 @@
 {% elif confirmado %}
     <span class="acesso-icone-ok" aria-hidden="true">{{ ico_acesso('check-circle-fill') }}</span>
     <h1>E-mail confirmado</h1>
-    <div class="aviso aviso-ok" role="status"><p>O seu pedido foi para a equipe da Sisa. Quando a conta for
-      liberada, você recebe um e-mail e entra com este e-mail e a senha que escolheu.</p></div>
-    <a class="botao secundario largo" href="/login">Ir para a entrada</a>
+    <div class="aviso aviso-ok" role="status"><p>Conta liberada. Entre com este e-mail e a senha que você
+      escolheu no pedido.</p></div>
+    <a class="botao largo" href="/login">Entrar</a>
 
 {% elif recebido %}
     <span class="acesso-icone-ok" aria-hidden="true">{{ ico_acesso('envelope') }}</span>
@@ -67,8 +68,8 @@
         <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
       </a>
     </nav>
-    <p class="acesso-nota">Terceirizado e discente fazem um pedido com a senha que vão usar: confirmam o
-      e-mail, a equipe da Sisa confere e avisa quando a conta for liberada.</p>
+    <p class="acesso-nota">Terceirizado e discente preenchem os dados e a senha que vão usar; a conta é liberada
+      assim que confirmarem o e-mail.</p>
     <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
       <a href="/esqueci-senha">Esqueci minha senha</a></p>
 
@@ -113,9 +114,9 @@
       </div>
       <div class="acoes"><button type="submit" class="largo">Enviar o pedido</button></div>
     </form>
-    <p class="acesso-nota">Depois de enviar, confirme o e-mail pelo link que chega a ele; a equipe da Sisa
-      confere o pedido e avisa quando a conta for liberada. Os dados servem só para conferir o seu vínculo
-      e criar a conta, e o pedido é apagado em até 90 dias. Pedido de EPI é só para servidores.</p>
+    <p class="acesso-nota">Depois de enviar, confirme o e-mail pelo link que chega a ele: a conta é liberada
+      na hora. Os dados servem só para criar a conta e identificar o seu vínculo; o pedido é apagado em até
+      90 dias. Pedido de EPI é só para servidores.</p>
 {{ senha.script() }}
 {% endif %}
   </div>

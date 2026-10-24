@@ -2723,6 +2723,8 @@ tbody[data-carregando] td, tr[data-carregando] td { color: var(--tinta-dica); }
 .decisao-pedido form + form { margin-top: 8px; }
 .recusa-pedido { display: flex; gap: 6px; }
 .recusa-pedido input { flex: 1; min-width: 0; }
+.acoes-conta { white-space: nowrap; }
+.acoes-conta form { display: inline-block; margin: 0 4px 0 0; }
 
 @media (max-width: 820px) {
   .tela-auxiliar.tela-acesso { margin-top: 16px; }

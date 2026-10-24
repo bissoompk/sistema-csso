@@ -140,6 +140,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   USUARIO_CRIADO: "Conta criada",
   USUARIO_ATIVADO: "Conta ativada",
   USUARIO_INATIVADO: "Conta inativada",
+  USUARIO_EXCLUIDO: "Conta excluída (sem registros no sistema)",
   SENHA_RESETADA: "Senha redefinida",
   SENHA_RESET_RECUSADO: "Redefinição de senha recusada",
   SENHA_TROCADA: "Senha trocada pelo próprio dono",

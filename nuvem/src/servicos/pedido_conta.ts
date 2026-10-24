@@ -1,22 +1,21 @@
 /**
- * "Cadastre-se" do terceirizado e do discente (23/10/2026): o PEDIDO de conta,
- * que a equipe confere antes de a conta existir.
+ * "Cadastre-se" do terceirizado e do discente (23/10/2026): o PEDIDO de conta.
  *
  * O servidor não passa por aqui: o cadastro de servidores já diz quem ele é, e
  * o primeiro acesso dele é o de `ativar_acesso.ts` (SIAPE + e-mail do
- * cadastro). Terceirizado e discente não têm cadastro que prove o vínculo, por
- * isso o desenho é:
+ * cadastro). Para terceirizado e discente o desenho é:
  *
  * - **A pessoa escolhe a senha no pedido (24/10/2026) e confirma o e-mail.**
  *   O pedido nasce `AGUARDANDO_EMAIL`, com a senha em hash, e um link
- *   "Confirmar e-mail" vai ao endereço digitado. Só depois do clique (um botão:
- *   abrir o link não confirma) ele vai à fila "Pedidos de conta" (Usuários),
- *   com a pendência `CONTA_A_CONFERIR`. Quem digitou o e-mail de outra pessoa
- *   não passa daqui: a confirmação está na caixa do dono.
- * - **Nada nasce sem a equipe.** Só quem cria conta (`usuario.criar_conta`)
- *   aprova. Aprovada, a conta nasce com a senha escolhida, o perfil do vínculo
- *   (`terceirizado` ou `discente`) e NUNCA ligada a servidor, e a pessoa é
- *   avisada de que já pode entrar. A senha guardada sai do pedido na decisão.
+ *   "Confirmar e-mail" vai ao endereço digitado. Quem digitou o e-mail de outra
+ *   pessoa não passa daqui: a confirmação está na caixa do dono.
+ * - **Confirmado, a conta é liberada na hora** (24/10/2026, a pedido da
+ *   coordenação: "não preciso autorizar todos"). Nasce com a senha escolhida, o
+ *   perfil do vínculo (`terceirizado` ou `discente`) e NUNCA ligada a servidor.
+ *   Quem cria conta (`usuario.criar_conta`) bloqueia, desbloqueia ou exclui em
+ *   "Contas do Cadastre-se"; excluir só apaga a conta sem registros, e a que
+ *   tem é bloqueada no lugar. Os pedidos de antes, que ficaram na fila, ainda se
+ *   aprovam ou recusam ali.
  * - **Sem oráculo.** A tela responde a mesma frase a todo pedido, com piso de
  *   tempo. E-mail que já tem conta, que é de servidor ou que já tem pedido na
  *   fila não abre outro pedido: o dono recebe uma mensagem neutra dizendo o
@@ -29,10 +28,11 @@
  *   houve, guarda o que precisa).
  */
 import { createHash, randomBytes } from "node:crypto";
-import { and, count, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   atribuicao,
+  sessao as tabela_sessao,
   pedido_conta as tabela,
   pendencia as tabela_pendencia,
   perfil as tabela_perfil,
@@ -46,7 +46,7 @@ import * as auditoria from "./auditoria.js";
 import * as autenticacao from "./autenticacao.js";
 import * as email from "./email.js";
 import * as pendencias from "./pendencias.js";
-import { PERFIL_POR_VINCULO, type UsuarioAtual } from "./rbac.js";
+import { PERFIL_POR_VINCULO, PERFIS_EXTERNOS, perfis_vigentes, type UsuarioAtual } from "./rbac.js";
 
 export const CAMINHO = "/cadastre-se";
 export const VINCULOS = ["TERCEIRIZADO", "DISCENTE"] as const;
@@ -72,9 +72,8 @@ export const PEDIDO_DE_CONTA_APROVADO = "PEDIDO_DE_CONTA_APROVADO";
 export const PEDIDO_DE_CONTA_RECUSADO = "PEDIDO_DE_CONTA_RECUSADO";
 
 export const RESPOSTA_PADRAO =
-  "Enviamos ao e-mail informado um link para você confirmar que ele é seu. Depois da confirmação, a " +
-  "equipe da Sisa confere o pedido e avisa por e-mail quando a conta estiver liberada. Confira também a " +
-  "caixa de spam.";
+  "Enviamos ao e-mail informado um link para você confirmar que ele é seu. A conta é liberada assim " +
+  "que você confirmar. Confira também a caixa de spam.";
 
 export class DadosInvalidos extends Error {
   constructor(
@@ -182,7 +181,7 @@ export function corpo_neutro(): string {
     "(numa conta, num pedido em análise ou no cadastro de servidores).\n\n" +
     "- Se você já tem conta, use \"Esqueci minha senha\" na tela de entrada.\n" +
     "- Se você é servidor da UFVJM, use \"Primeiro acesso\" e escolha \"Servidor\".\n" +
-    "- Se já pediu a conta, aguarde: a equipe confere e responde por este e-mail.\n\n" +
+    "- Se a conta foi bloqueada, procure a equipe da Sisa.\n\n" +
     "Se não foi você, ignore esta mensagem.\n\n" +
     ASSINATURA
   );
@@ -194,7 +193,7 @@ export function corpo_da_confirmacao(link: string): string {
     "Foi feito um pedido de conta no Sistema SISA com este e-mail. Para confirmar que ele é seu, abra o " +
     "link abaixo nas próximas 24 horas e clique em \"Confirmar\":\n\n" +
     `${link}\n\n` +
-    "Depois disso, a equipe da Sisa confere o pedido e avisa por e-mail quando a conta estiver liberada.\n\n" +
+    "Confirmado, a conta é liberada na hora: entre com este e-mail e a senha que você escolheu.\n\n" +
     "SE NÃO FOI VOCÊ QUE PEDIU, NÃO CONFIRME: ignore esta mensagem e o pedido é apagado.\n\n" +
     ASSINATURA
   );
@@ -309,45 +308,41 @@ export async function pedido_a_confirmar(tx: Executor, token: string, agora: Dat
 }
 
 /**
- * O clique em "Confirmar" (POST: abrir o link não confirma). O pedido vai à fila
- * da equipe com a pendência; se o e-mail entrou no sistema nesse meio-tempo, o
- * pedido é descartado e a resposta é a mesma.
+ * O clique em "Confirmar" (POST: abrir o link não confirma). Desde 24/10/2026
+ * a conta é LIBERADA na hora, sem a conferência da equipe: quem cuida das
+ * contas bloqueia ou exclui depois, em "Contas do Cadastre-se". Se o e-mail
+ * entrou no sistema nesse meio-tempo, o pedido é descartado.
  */
 export async function confirmar_email(
   tx: Executor,
   token: string,
   ip: string | null,
+  base_url: string,
   agora: Date = new Date(),
-): Promise<boolean> {
+): Promise<"liberada" | "descartado" | null> {
   const achado = await pedido_a_confirmar(tx, token, agora);
-  if (!achado) return false;
+  if (!achado) return null;
   const [pedido] = await tx.select().from(tabela).where(eq(tabela.id, achado.id)).for("update");
-  if (!pedido || pedido.situacao !== "AGUARDANDO_EMAIL") return false;
+  if (!pedido || pedido.situacao !== "AGUARDANDO_EMAIL") return null;
   if (await _ja_existe(tx, pedido.email_normalizado)) {
     await _descartar(tx, eq(tabela.id, pedido.id));
-    return true;
+    return "descartado";
   }
-  await tx
+  const [confirmado] = await tx
     .update(tabela)
     .set({ situacao: "PENDENTE", email_confirmado_em: agora, token_hash: null, token_expira_em: null })
-    .where(eq(tabela.id, pedido.id));
-  const vinculo = ROTULO_VINCULO[pedido.vinculo as Vinculo].toLowerCase();
-  await pendencias.abrir(tx, {
-    tipo: TIPO_PENDENCIA,
-    chave: `pedido_conta:${pedido.id}`,
-    descricao: `Pedido de conta nº ${pedido.id} (${vinculo}) a conferir.`,
-    entidade: "pedido_conta",
-    entidade_id: pedido.id,
-  });
+    .where(eq(tabela.id, pedido.id))
+    .returning();
   await auditoria.registrar(tx, {
     entidade: "pedido_conta",
     entidade_id: pedido.id,
     tipo_evento: PEDIDO_DE_CONTA_RECEBIDO,
-    descricao: `Pedido de conta nº ${pedido.id} (${vinculo}) recebido pelo Cadastre-se, com o e-mail confirmado.`,
+    descricao: `Pedido de conta nº ${pedido.id} (${ROTULO_VINCULO[pedido.vinculo as Vinculo].toLowerCase()}) recebido pelo Cadastre-se, com o e-mail confirmado.`,
     usuario_nome: ativar_acesso.ATOR,
     ip,
   });
-  return true;
+  await _liberar(tx, confirmado!, null, base_url);
+  return "liberada";
 }
 
 export async function fila(tx: Executor): Promise<{ pendentes: Pedido[]; decididos: Pedido[] }> {
@@ -378,10 +373,16 @@ async function _fechar_pendencia(tx: Executor, pedido: Pedido, motivo: string): 
   if (p && !p.concluida) await pendencias.concluir_pela_rotina(tx, p, motivo);
 }
 
-/** Aprova: a conta nasce sem senha, com o perfil do vínculo, e o link vai ao e-mail do pedido. */
-export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, base_url: string): Promise<Pedido> {
-  usuario.exigir("usuario.criar_conta");
-  const pedido = await _pendente(tx, id);
+/** Quem libera a conta: a pessoa da equipe, ou a liberação automática do Cadastre-se. */
+export const ATOR_AUTOMATICO = "liberação automática do Cadastre-se";
+
+/**
+ * Cria a conta do pedido: a senha escolhida (o pedido de antes de 24/10/2026,
+ * sem ela, nasce sem senha e recebe o link para defini-la), o perfil do
+ * vínculo e nunca servidor. `ator` nulo é a liberação automática.
+ */
+async function _liberar(tx: Executor, pedido: Pedido, ator: UsuarioAtual | null, base_url: string): Promise<Pedido> {
+  const quem = ator ? { usuario: ator } : { usuario_nome: ATOR_AUTOMATICO };
   const alvo = pedido.email_normalizado;
   const [conta_igual] = await tx
     .select({ id: tabela_usuario.id })
@@ -405,8 +406,6 @@ export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, b
       login: autenticacao.login_do_email(pedido.email),
       nome: pedido.nome,
       email: pedido.email,
-      // a senha escolhida no pedido; o pedido de antes de 24/10/2026, sem ela,
-      // nasce sem senha e recebe o link para defini-la
       senha_hash: pedido.senha_hash ?? ativar_acesso.SEM_SENHA,
       servidor_id: null,
       precisa_trocar_senha: false,
@@ -416,37 +415,43 @@ export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, b
     usuario_id: conta!.id,
     perfil_id: perfil.id,
     vigencia_inicio: hoje_iso(),
-    ato_normativo: `Pedido de conta nº ${pedido.id} conferido pela equipe (${vinculo.toLowerCase()})`,
-    concedido_por: usuario.id,
+    ato_normativo: ator
+      ? `Pedido de conta nº ${pedido.id} conferido pela equipe (${vinculo.toLowerCase()})`
+      : `Pedido de conta nº ${pedido.id} com o e-mail confirmado, liberado automaticamente (${vinculo.toLowerCase()})`,
+    concedido_por: ator?.id ?? null,
   });
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: conta!.id,
     tipo_evento: "USUARIO_CRIADO",
-    descricao: `Conta '${conta!.login}' criada pela aprovação do pedido de conta nº ${pedido.id}, sem senha utilizável.`,
-    usuario,
+    descricao: `Conta '${conta!.login}' criada pelo pedido de conta nº ${pedido.id}${pedido.senha_hash ? ", com a senha escolhida no pedido" : ", sem senha utilizável"}.`,
+    ...quem,
   });
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: conta!.id,
     tipo_evento: "PERFIL_CONCEDIDO",
     descricao: `Perfil ${codigo} concedido a '${conta!.login}' pelo vínculo do pedido de conta nº ${pedido.id} (${vinculo.toLowerCase()}).`,
-    usuario,
+    ...quem,
   });
   const [feito] = await tx
     .update(tabela)
-    .set({ situacao: "APROVADO", decidido_por: usuario.id, decidido_em: new Date(), usuario_id: conta!.id, senha_hash: null })
+    .set({ situacao: "APROVADO", decidido_por: ator?.id ?? null, decidido_em: new Date(), usuario_id: conta!.id, senha_hash: null })
     .where(eq(tabela.id, pedido.id))
     .returning();
   await auditoria.registrar(tx, {
     entidade: "pedido_conta",
     entidade_id: pedido.id,
     tipo_evento: PEDIDO_DE_CONTA_APROVADO,
-    descricao: `Pedido de conta nº ${pedido.id} aprovado: conta nº ${conta!.id} criada; link para definir a senha enviado ao e-mail do pedido.`,
-    usuario,
+    descricao: `Pedido de conta nº ${pedido.id} ${ator ? "aprovado" : "liberado automaticamente"}: conta nº ${conta!.id} criada.`,
+    ...quem,
   });
   await _fechar_pendencia(tx, pedido, "pedido de conta aprovado");
-  if (pedido.senha_hash) {
+  if (!pedido.senha_hash) {
+    await ativar_acesso.emitir_link_da_conta(tx, conta!, base_url, { validade_ms: VALIDADE_DO_LINK_MS, corpo: corpo_da_aprovacao });
+  } else if (ator) {
+    // a liberação automática acontece na tela da própria pessoa, que já lê
+    // "conta liberada"; o e-mail é para quem esperava a equipe
     await email.enfileirar(tx, {
       tipo: TIPO_APROVADO,
       destinatario: pedido.email,
@@ -454,13 +459,14 @@ export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, b
       corpo: corpo_da_liberacao(base_url),
       expira_em: new Date(Date.now() + 72 * 3_600_000),
     });
-  } else {
-    await ativar_acesso.emitir_link_da_conta(tx, conta!, base_url, {
-      validade_ms: VALIDADE_DO_LINK_MS,
-      corpo: corpo_da_aprovacao,
-    });
   }
   return feito!;
+}
+
+/** Aprova o pedido que ficou na fila (os de antes da liberação automática). */
+export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, base_url: string): Promise<Pedido> {
+  usuario.exigir("usuario.criar_conta");
+  return _liberar(tx, await _pendente(tx, id), usuario, base_url);
 }
 
 export async function recusar(tx: Executor, usuario: UsuarioAtual, id: number, motivo: string): Promise<Pedido> {
@@ -509,3 +515,126 @@ export async function expurgar(tx: Executor, agora: Date = new Date(), dias = DI
     .returning({ id: tabela.id });
   return r.length + sem_confirmacao.length;
 }
+
+// ---------------------------------------------------------------------
+// Contas do Cadastre-se: bloquear, desbloquear, excluir (24/10/2026)
+// ---------------------------------------------------------------------
+export const CONTA_BLOQUEADA = "USUARIO_INATIVADO";
+export const CONTA_DESBLOQUEADA = "USUARIO_ATIVADO";
+export const CONTA_EXCLUIDA = "USUARIO_EXCLUIDO";
+
+export interface ContaExterna {
+  id: number;
+  nome: string;
+  email: string;
+  ativo: boolean;
+  vinculo: Vinculo;
+  organizacao: string | null;
+  criado_em: Date | null;
+}
+
+/** As contas de terceirizado e discente (do Cadastre-se ou criadas pela equipe), mais novas primeiro. */
+export async function contas_externas(tx: Executor): Promise<ContaExterna[]> {
+  const linhas = await tx
+    .select({
+      id: tabela_usuario.id,
+      nome: tabela_usuario.nome,
+      email: tabela_usuario.email,
+      ativo: tabela_usuario.ativo,
+      codigo: tabela_perfil.codigo,
+      criado_em: tabela_usuario.criado_em,
+    })
+    .from(tabela_usuario)
+    .innerJoin(atribuicao, eq(atribuicao.usuario_id, tabela_usuario.id))
+    .innerJoin(tabela_perfil, eq(tabela_perfil.id, atribuicao.perfil_id))
+    .where(and(isNull(tabela_usuario.servidor_id), inArray(tabela_perfil.codigo, [...PERFIS_EXTERNOS]), isNull(atribuicao.vigencia_fim)))
+    .orderBy(desc(tabela_usuario.id))
+    .limit(300);
+  const ids = [...new Set(linhas.map((l) => l.id))];
+  const pedidos = ids.length
+    ? await tx.select({ usuario_id: tabela.usuario_id, organizacao: tabela.organizacao }).from(tabela).where(inArray(tabela.usuario_id, ids))
+    : [];
+  const org = new Map(pedidos.map((p) => [p.usuario_id, p.organizacao]));
+  const vistas = new Set<number>();
+  const contas: ContaExterna[] = [];
+  for (const l of linhas) {
+    if (vistas.has(l.id)) continue;
+    vistas.add(l.id);
+    contas.push({
+      id: l.id,
+      nome: l.nome,
+      email: l.email,
+      ativo: l.ativo,
+      vinculo: l.codigo === "discente" ? "DISCENTE" : "TERCEIRIZADO",
+      organizacao: org.get(l.id) ?? null,
+      criado_em: l.criado_em ?? null,
+    });
+  }
+  return contas;
+}
+
+/** Só a conta de terceirizado ou discente, sem servidor, se bloqueia ou exclui por aqui. */
+async function _conta_externa(tx: Executor, id: number) {
+  const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, id)).for("update");
+  if (!conta) throw new DecisaoRecusada("Conta não encontrada.");
+  const { perfis } = await perfis_vigentes(tx, conta.id, null, { incluir_futuras: true });
+  const externa = perfis.some((p) => PERFIS_EXTERNOS.includes(p));
+  const outros = perfis.filter((p) => !PERFIS_EXTERNOS.includes(p));
+  if (conta.servidor_id !== null || !externa || outros.length) {
+    throw new DecisaoRecusada("Por aqui só se cuida de conta de terceirizado ou discente. As outras ficam em Usuários.");
+  }
+  return conta;
+}
+
+export async function bloquear(tx: Executor, usuario: UsuarioAtual, id: number, bloquear_sim = true): Promise<string> {
+  usuario.exigir("usuario.criar_conta");
+  const conta = await _conta_externa(tx, id);
+  if (conta.ativo === !bloquear_sim) return conta.nome;
+  await tx.update(tabela_usuario).set({ ativo: !bloquear_sim }).where(eq(tabela_usuario.id, conta.id));
+  if (bloquear_sim) await autenticacao.revogar_do_usuario(tx, conta.id);
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: bloquear_sim ? CONTA_BLOQUEADA : CONTA_DESBLOQUEADA,
+    descricao: `Conta '${conta.login}' ${bloquear_sim ? "bloqueada (inativada)" : "desbloqueada"} em Contas do Cadastre-se.`,
+    usuario,
+  });
+  return conta.nome;
+}
+
+function _violou_chave(erro: unknown): boolean {
+  for (let e: any = erro; e; e = e.cause) if (e.code === "23503") return true;
+  return false;
+}
+
+/**
+ * Exclui a conta que ainda não tem registro no sistema (inscrição, comunicação,
+ * certificado, trilha). Com registro, ela não se apaga — a trilha é encadeada e
+ * os registros apontam para ela —, e é BLOQUEADA no lugar.
+ */
+export async function excluir(tx: Executor, usuario: UsuarioAtual, id: number): Promise<{ resultado: "excluida" | "bloqueada"; nome: string }> {
+  usuario.exigir("usuario.criar_conta");
+  const conta = await _conta_externa(tx, id);
+  try {
+    await tx.transaction(async (sp) => {
+      await sp.delete(atribuicao).where(eq(atribuicao.usuario_id, conta.id));
+      await sp.delete(tabela_sessao).where(eq(tabela_sessao.usuario_id, conta.id));
+      await sp.update(tabela).set({ usuario_id: null }).where(eq(tabela.usuario_id, conta.id));
+      await sp.delete(tabela_usuario).where(eq(tabela_usuario.id, conta.id));
+    });
+  } catch (erro) {
+    if (!_violou_chave(erro)) throw erro;
+    await bloquear(tx, usuario, conta.id, true);
+    return { resultado: "bloqueada", nome: conta.nome };
+  }
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: CONTA_EXCLUIDA,
+    // o número da conta, sem nome nem e-mail: a conta e o dado dela saíram
+    descricao: `Conta nº ${conta.id} (terceirizado ou discente, sem registros no sistema) excluída em Contas do Cadastre-se.`,
+    usuario,
+  });
+  return { resultado: "excluida", nome: conta.nome };
+}
+

@@ -9,6 +9,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Banco } from "../src/db/cliente.js";
 import * as e from "../src/db/esquema/index.js";
 import * as ativar_acesso from "../src/servicos/ativar_acesso.js";
+import * as auditoria from "../src/servicos/auditoria.js";
 import * as servico from "../src/servicos/pedido_conta.js";
 import { carregar_usuario_atual } from "../src/servicos/rbac.js";
 import { bancoLimpo, contas, criarUsuario, entrar, type Cliente } from "./ajuda.js";
@@ -88,7 +89,7 @@ describe("o pedido", () => {
     expect(t).toContain('href="/esqueci-senha"');
   });
 
-  it("o pedido espera a confirmação do e-mail; abrir o link não confirma; o botão leva à fila", async () => {
+  it("o pedido espera a confirmação do e-mail; abrir o link não confirma; o botão libera a conta", async () => {
     const r = await pedir(TERC);
     expect(r.status).toBe(200);
     expect(r.text).toContain("Confirme o seu e-mail");
@@ -96,25 +97,33 @@ describe("o pedido", () => {
     let [p] = await pedidos();
     expect(p).toMatchObject({ situacao: "AGUARDANDO_EMAIL", vinculo: "TERCEIRIZADO", nome: TERC.nome });
     expect(p!.senha_hash).toMatch(/^\$argon2/);
-    expect(await db.select().from(e.pendencia).where(eq(e.pendencia.chave, `pedido_conta:${p!.id}`))).toHaveLength(0);
+    expect(await conta(TERC.email)).toBeUndefined();
     const caminho = await link_de_confirmacao(TERC.email);
     // abrir (o leitor de e-mail pré-visualiza) não confirma
     expect((await cliente.get(caminho)).text).toContain("Confirmar o e-mail");
     expect((await pedidos())[0]!.situacao).toBe("AGUARDANDO_EMAIL");
-    expect((await cliente.post(caminho, {})).text).toContain("E-mail confirmado");
+    const ok = await cliente.post(caminho, {});
+    expect(ok.text).toContain("Conta liberada");
     [p] = await pedidos();
-    expect(p).toMatchObject({ situacao: "PENDENTE", token_hash: null });
+    expect(p).toMatchObject({ situacao: "APROVADO", token_hash: null, senha_hash: null, decidido_por: null });
     expect(p!.email_confirmado_em).not.toBeNull();
-    const [pend] = await db.select().from(e.pendencia).where(eq(e.pendencia.chave, `pedido_conta:${p!.id}`));
-    expect(pend).toMatchObject({ tipo: "CONTA_A_CONFERIR", concluida: false, responsavel_id: null });
-    expect(pend!.descricao).not.toContain("Joana");
-    const ev = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, servico.PEDIDO_DE_CONTA_RECEBIDO));
-    expect(ev).toHaveLength(1);
-    expect(ev[0]!.descricao).not.toContain("Joana");
-    expect(ev[0]!.descricao).not.toContain("@");
+    // a conta nasce na hora, com a senha escolhida e o perfil do vínculo, sem servidor
+    const c = (await conta(TERC.email))!;
+    expect(c).toMatchObject({ servidor_id: null, nome: TERC.nome, ativo: true });
+    const atual = await carregar_usuario_atual(db, c.id);
+    expect(atual.pode("treinamento.ver")).toBe(true);
+    expect(atual.pode("acidente.comunicar")).toBe(true);
+    expect(atual.pode("epi.requisitar")).toBe(false);
+    await entrar(novoCliente(), c.login, SENHA);
+    // nenhuma tarefa para a equipe, e a trilha sem nome nem e-mail
+    expect(await db.select().from(e.pendencia).where(eq(e.pendencia.tipo, "CONTA_A_CONFERIR"))).toHaveLength(0);
+    for (const tipo of [servico.PEDIDO_DE_CONTA_RECEBIDO, servico.PEDIDO_DE_CONTA_APROVADO]) {
+      const [ev] = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, tipo));
+      expect(ev!.descricao).not.toContain("Joana");
+      expect(ev!.descricao).not.toContain("@");
+    }
     // o link não serve de novo
     expect((await cliente.get(caminho)).status).toBe(404);
-    expect(await conta(TERC.email)).toBeUndefined();
   });
 
   it("senha fraca ou que não confere é recusada, e a senha não volta para a tela", async () => {
@@ -144,9 +153,9 @@ describe("o pedido", () => {
     const r = await pedir({ ...DISC, email: "serv.ficticia@ufvjm.edu.br" });
     expect(r.text).toContain("Confirme o seu e-mail");
     await pedir_e_confirmar(TERC);
-    const r3 = await pedir(TERC); // o segundo pedido do mesmo e-mail, já na fila
+    const r3 = await pedir(TERC); // o segundo pedido do mesmo e-mail, que já tem conta
     expect(r3.text).toContain("Confirme o seu e-mail");
-    expect((await pedidos()).filter((p) => p.situacao === "PENDENTE")).toHaveLength(1);
+    expect((await pedidos()).filter((p) => p.situacao === "APROVADO")).toHaveLength(1);
     const neutros = (await caixa()).filter((m) => m.tipo === servico.TIPO_NEUTRO);
     expect(neutros.map((m) => m.destinatario).sort()).toEqual([TERC.email, "serv.ficticia@ufvjm.edu.br"].sort());
   });
@@ -172,77 +181,81 @@ describe("o pedido", () => {
   });
 });
 
-describe("a conferência da equipe", () => {
-  it("quem não cria conta não abre a fila", async () => {
+describe("Contas do Cadastre-se: bloquear, desbloquear, excluir", () => {
+  const conta_de = async (mail: string) => (await conta(mail))!;
+  const acao = async (c: Cliente, id: number, qual: string) => c.post(`/usuarios/pedidos/contas/${id}/${qual}`, {});
+
+  it("quem não cria conta não abre a tela", async () => {
     const r = await (await entrar(novoCliente(), "secretaria_csso")).get("/usuarios/pedidos", { seguir: false });
     expect(r.status).toBe(403);
   });
 
-  it("a fila só mostra o pedido com o e-mail confirmado", async () => {
-    await pedir(TERC);
-    const sup = await entrar(novoCliente(), "superintendente");
-    expect((await sup.get("/usuarios/pedidos")).text).not.toContain(TERC.nome);
-  });
-
-  it("aprovar cria a conta com a senha escolhida e o perfil do vínculo, e avisa que já pode entrar", async () => {
+  it("a tela lista as contas, com o vínculo e a empresa ou o curso", async () => {
     await pedir_e_confirmar(DISC);
-    const [p] = await pedidos();
     const sup = await entrar(novoCliente(), "superintendente");
     expect((await sup.get("/usuarios")).text).toContain('href="/usuarios/pedidos"');
-    expect((await sup.get("/usuarios/pedidos")).text).toContain(DISC.nome);
-    const r = await sup.post(`/usuarios/pedidos/${p!.id}/aprovar`, {});
-    expect(r.status).toBe(200);
-    expect(r.text).toContain("aprovado");
-    const c = (await conta(DISC.email))!;
-    expect(c).toMatchObject({ servidor_id: null, nome: DISC.nome });
-    const atual = await carregar_usuario_atual(db, c.id);
-    expect(atual.pode("treinamento.ver")).toBe(true);
-    expect(atual.pode("acidente.comunicar")).toBe(true);
-    expect(atual.pode("epi.requisitar")).toBe(false);
-    const [pend] = await db.select().from(e.pendencia).where(eq(e.pendencia.chave, `pedido_conta:${p!.id}`));
-    expect(pend!.concluida).toBe(true);
-    // a senha saiu do pedido; o aviso vai, sem link de senha
-    expect((await pedidos())[0]!.senha_hash).toBeNull();
-    const aviso = (await caixa()).find((m) => m.tipo === servico.TIPO_APROVADO)!;
-    expect(aviso.destinatario).toBe(DISC.email);
-    expect(aviso.corpo).toContain("/login");
-    expect((await caixa()).filter((m) => m.tipo === ativar_acesso.TIPO_LINK)).toHaveLength(0);
+    const t = (await sup.get("/usuarios/pedidos")).text;
+    expect(t).toContain(DISC.nome);
+    expect(t).toContain("Engenharia Civil");
+    expect(t).toContain("Bloquear");
+  });
+
+  it("bloquear tira o acesso e encerra a sessão; desbloquear devolve", async () => {
+    await pedir_e_confirmar(TERC);
+    const c = await conta_de(TERC.email);
+    const dele = await entrar(novoCliente(), c.login, SENHA);
+    const sup = await entrar(novoCliente(), "superintendente");
+    expect((await acao(sup, c.id, "bloquear")).text).toContain("bloqueada");
+    expect((await conta_de(TERC.email)).ativo).toBe(false);
+    expect((await dele.get("/turmas/minhas", { seguir: false })).status).toBe(303);
+    expect((await novoCliente().post("/login", { login: c.login, senha: SENHA }, { seguir: false })).status).not.toBe(303);
+    await acao(sup, c.id, "desbloquear");
     await entrar(novoCliente(), c.login, SENHA);
   });
 
-  it("recusar avisa a pessoa sem o motivo e não cria conta", async () => {
-    await pedir_e_confirmar(TERC);
-    const [p] = await pedidos();
+  it("excluir apaga a conta sem registros", async () => {
+    await pedir_e_confirmar(DISC);
+    const c = await conta_de(DISC.email);
     const sup = await entrar(novoCliente(), "superintendente");
-    expect((await sup.post(`/usuarios/pedidos/${p!.id}/recusar`, { motivo: "" })).status).toBe(422);
-    await sup.post(`/usuarios/pedidos/${p!.id}/recusar`, { motivo: "Empresa sem contrato vigente" });
-    expect(await conta(TERC.email)).toBeUndefined();
-    const [r] = await pedidos();
-    expect(r).toMatchObject({ situacao: "RECUSADO", motivo: "Empresa sem contrato vigente", senha_hash: null });
-    const aviso = (await caixa()).find((m) => m.tipo === servico.TIPO_RECUSA)!;
-    expect(aviso.destinatario).toBe(TERC.email);
-    expect(aviso.corpo).not.toContain("contrato");
-    // decidido não se decide de novo
-    expect((await sup.post(`/usuarios/pedidos/${p!.id}/aprovar`, {})).status).toBe(422);
+    expect((await acao(sup, c.id, "excluir")).text).toContain("excluída");
+    expect(await conta(DISC.email)).toBeUndefined();
+    const [ev] = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, servico.CONTA_EXCLUIDA));
+    expect(ev!.descricao).not.toContain(DISC.nome);
+    expect(ev!.descricao).not.toContain("@");
+    // o e-mail fica livre para um pedido novo
+    await pedir_e_confirmar(DISC);
+    expect(await conta(DISC.email)).toBeDefined();
   });
 
-  it("aprovar recusa o e-mail que ganhou conta depois do pedido", async () => {
-    await pedir_e_confirmar(TERC);
-    const [p] = await pedidos();
-    await criarUsuario(db, { login: "outra", email: TERC.email });
+  it("a conta com registros não se apaga: é bloqueada no lugar", async () => {
+    await pedir_e_confirmar(DISC);
+    const c = await conta_de(DISC.email);
+    // um registro que aponta para a conta (a trilha encadeada não se apaga)
+    await auditoria.registrar(db, { entidade: "usuario", entidade_id: c.id, tipo_evento: "PERFIL_CONCEDIDO", descricao: "teste", usuario: await carregar_usuario_atual(db, c.id) });
     const sup = await entrar(novoCliente(), "superintendente");
-    const r = await sup.post(`/usuarios/pedidos/${p!.id}/aprovar`, {});
+    const r = await acao(sup, c.id, "excluir");
+    expect(r.text).toContain("foi bloqueada no lugar");
+    expect((await conta_de(DISC.email)).ativo).toBe(false);
+  });
+
+  it("por aqui não se bloqueia nem exclui conta de servidor ou de equipe", async () => {
+    const [coord] = await db.select().from(e.usuario).where(eq(e.usuario.login, "coordenador_csso"));
+    const sup = await entrar(novoCliente(), "superintendente");
+    const r = await acao(sup, coord!.id, "excluir");
     expect(r.status).toBe(422);
-    expect(r.text).toContain("Já existe uma conta");
+    expect(r.text).toContain("só se cuida de conta de terceirizado ou discente");
+    expect((await db.select().from(e.usuario).where(eq(e.usuario.id, coord!.id)))[0]!.ativo).toBe(true);
   });
 
   it("o pedido velho é apagado pela rotina, e o não confirmado sai em 3 dias", async () => {
     await pedir_e_confirmar(TERC);
     await pedir(DISC);
     expect(await servico.expurgar(db, new Date(Date.now() + 4 * 86_400_000))).toBe(1);
-    expect((await pedidos()).map((p) => p.situacao)).toEqual(["PENDENTE"]);
+    expect((await pedidos()).map((p) => p.situacao)).toEqual(["APROVADO"]);
     expect(await servico.expurgar(db, new Date(Date.now() + 91 * 86_400_000))).toBe(1);
     expect(await pedidos()).toHaveLength(0);
+    // a conta continua
+    expect(await conta(TERC.email)).toBeDefined();
   });
 });
 
