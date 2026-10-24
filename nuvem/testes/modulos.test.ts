@@ -380,6 +380,7 @@ describe("grupos do menu do módulo", () => {
         "/treinamentos/modelos",
         "/treinamentos/assinaturas",
         "/treinamentos/setores-promotores",
+        "/treinamentos/locais",
       ],
       ["/turmas/minhas", "/certificados/meus"],
     ]);
@@ -416,7 +417,7 @@ describe("grupos do menu do módulo", () => {
       "Acompanhamento",
       "Cadastros",
     ]);
-    expect(caminhos(grupos)[4]).toEqual(["/treinamentos/catalogo", "/treinamentos/setores-promotores"]);
+    expect(caminhos(grupos)[4]).toEqual(["/treinamentos/catalogo", "/treinamentos/setores-promotores", "/treinamentos/locais"]);
   });
 
   it("grupo único perde o subtítulo: quem só confere pedidos do link vê só eles", () => {
@@ -452,6 +453,7 @@ describe("grupos do menu do módulo", () => {
       "/treinamentos/indicadores",
       "/treinamentos/catalogo",
       "/treinamentos/setores-promotores",
+      "/treinamentos/locais",
     ]);
   });
 

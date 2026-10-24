@@ -103,6 +103,8 @@ export const TABELAS_MANTIDAS: readonly string[] = [
   "certificado_sequencia",
   "certificado_sequencia_prefixo",
   "turma_sequencia",
+  // NUVEM (24/10/2026): os locais são cadastro, como os modelos — ficam
+  "local_treinamento",
   "servidor",
   "usuario",
   "perfil",

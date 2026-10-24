@@ -1,5 +1,5 @@
 {
-  "id": "e40ba247-8342-4027-96e0-057bbdbe5867",
+  "id": "2313dcdf-6c92-4802-a1ff-36d3dd4b5282",
   "prevId": "f051ddce-194f-4777-b183-2cc1fd2bcc1d",
   "version": "7",
   "dialect": "postgresql",
@@ -15100,6 +15100,140 @@
       },
       "isRLSEnabled": false
     },
+    "public.local_treinamento": {
+      "name": "local_treinamento",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "local_treinamento_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "nome": {
+          "name": "nome",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campus_id": {
+          "name": "campus_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "endereco": {
+          "name": "endereco",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "capacidade": {
+          "name": "capacidade",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observacoes": {
+          "name": "observacoes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "criado_por": {
+          "name": "criado_por",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ix_local_treinamento_campus": {
+          "name": "ix_local_treinamento_campus",
+          "columns": [
+            {
+              "expression": "campus_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fk_local_treinamento_campus": {
+          "name": "fk_local_treinamento_campus",
+          "tableFrom": "local_treinamento",
+          "tableTo": "campus",
+          "columnsFrom": [
+            "campus_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fk_local_treinamento_criado_por": {
+          "name": "fk_local_treinamento_criado_por",
+          "tableFrom": "local_treinamento",
+          "tableTo": "usuario",
+          "columnsFrom": [
+            "criado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pk_local_treinamento": {
+          "name": "pk_local_treinamento",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ck_local_treinamento_capacidade": {
+          "name": "ck_local_treinamento_capacidade",
+          "value": "capacidade IS NULL OR capacidade > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.participante": {
       "name": "participante",
       "schema": "",
@@ -16016,6 +16150,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "local_id": {
+          "name": "local_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "descricao": {
           "name": "descricao",
           "type": "text",
@@ -16168,6 +16308,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "ix_turma_local": {
+          "name": "ix_turma_local",
+          "columns": [
+            {
+              "expression": "local_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -16190,6 +16345,19 @@
           "tableTo": "campus",
           "columnsFrom": [
             "campus_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fk_turma_local": {
+          "name": "fk_turma_local",
+          "tableFrom": "turma",
+          "tableTo": "local_treinamento",
+          "columnsFrom": [
+            "local_id"
           ],
           "columnsTo": [
             "id"

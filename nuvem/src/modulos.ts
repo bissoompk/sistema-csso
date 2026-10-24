@@ -527,6 +527,14 @@ export const MODULOS: readonly Modulo[] = [
             "treinamento.ver",
             "Os setores que aparecem em “Unidade promotora” da turma.",
           ),
+          // NUVEM (24/10/2026): onde a turma acontece (`local_treinamento.ts`);
+          // a leitura é da equipe, cadastrar pede `treinamento.gerenciar`
+          new Item(
+            "Locais",
+            "/treinamentos/locais",
+            "treinamento.ver",
+            "Onde as turmas acontecem: campus, sala e capacidade.",
+          ),
           // "Juntar duplicados" (/treinamentos/participantes) saiu do menu em
           // 23/10/2026: juntar é exceção, e a tela abre pelo contador
           // "possíveis duplicados" do Início de Treinamentos
@@ -1223,6 +1231,7 @@ const ICONES: Readonly<Record<string, string>> = {
   "/treinamentos/indicadores": "bar-chart",
   "/treinamentos/catalogo": "journal-bookmark",
   "/treinamentos/setores-promotores": "building",
+  "/treinamentos/locais": "geo-alt",
   "/treinamentos/modelos": "file-earmark-easel",
   "/treinamentos/assinaturas": "pen",
   "/pendencias": "bell",

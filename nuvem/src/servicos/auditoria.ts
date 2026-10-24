@@ -255,6 +255,10 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // --- certificados e treinamentos ---
   TREINAMENTO_CRIADO: "Treinamento cadastrado",
   TREINAMENTO_EXCLUIDO: "Treinamento excluído do catálogo",
+  // NUVEM (24/10/2026): os locais de treinamento (`local_treinamento.ts`)
+  LOCAL_TREINAMENTO_CRIADO: "Local de treinamento cadastrado",
+  LOCAL_TREINAMENTO_INATIVADO: "Local de treinamento inativado",
+  LOCAL_TREINAMENTO_REATIVADO: "Local de treinamento reativado",
   TURMA_CRIADA: "Turma criada",
   TURMA_EXCLUIDA: "Turma excluída",
   TURMA_RETIFICADA: "Turma concluída corrigida",

@@ -1,0 +1,33 @@
+{# NUVEM (24/10/2026): o campo "Local" da turma, na turma nova e na edição.
+
+   Com locais cadastrados (`servicos/local_treinamento.ts`), um seletor: os
+   locais ativos (e o da turma, se inativo) e "outro local", que abre o texto
+   livre de sempre. A lista segue o campus escolhido no formulário
+   (`data-filtra-campus`, csso.js); o servidor confere de novo. Sem nenhum
+   local cadastrado, o campo é o texto livre, como antes.
+
+   `escolhido` é o `local_id` (texto ou número), `texto` o local digitado. #}
+{% macro campo_local(id_select, id_texto, id_campus, locais, escolhido, texto) %}
+{% if locais|length %}
+  <div class="campo"><label for="{{ id_select }}">Local</label>
+    <select id="{{ id_select }}" name="local_id" data-filtra-campus="{{ id_campus }}"
+            aria-describedby="dica-{{ id_select }}">
+      <option value="">outro local (escrever o nome)</option>
+      {% for l in locais %}
+      <option value="{{ l.id }}" data-campus="{{ l.campus_id if l.campus_id is not none else '' }}"
+              {{- ' selected' if escolhido != none and escolhido !== '' and escolhido|string == l.id|string }}>
+        {{- l.nome }}{% if l.campus %} ({{ l.campus.sigla }}){% endif %}
+        {%- if l.capacidade %} · {{ l.capacidade }} pessoas{% endif %}{% if not l.ativo %} (inativo){% endif %}</option>
+      {% endfor %}
+    </select>
+    <span class="dica" id="dica-{{ id_select }}">Os cadastrados em Locais, do campus escolhido.
+      Não está na lista? “Outro local” e escreva onde.</span></div>
+  <div class="campo" data-mostra-quando="local_id="><label for="{{ id_texto }}">Outro local</label>
+    <input id="{{ id_texto }}" name="local" maxlength="160" placeholder="Auditório do Campus JK"
+           value="{{ texto or '' }}"></div>
+{% else %}
+  <div class="campo"><label for="{{ id_texto }}">Local</label>
+    <input id="{{ id_texto }}" name="local" maxlength="160" placeholder="Auditório do Campus JK"
+           value="{{ texto or '' }}"></div>
+{% endif %}
+{% endmacro %}

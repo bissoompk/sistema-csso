@@ -7,18 +7,23 @@
  * contagens são as delas (a fila de emissão, o monitor de reciclagem, a caixa
  * de e-mails), para que o número do cartão e o da tela nunca discordem.
  */
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, lte, ne } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
+  certificado as tabela_certificado,
   inscricao as tabela_inscricao,
   treinamento as tabela_treinamento,
   turma as tabela_turma,
+  turma_presenca as tabela_presenca,
 } from "../db/esquema/index.js";
+import { INSCRICAO_OCUPA_VAGA } from "../dominio/estados.js";
+import * as datas_br from "./datas_br.js";
 import * as duplicados from "./duplicados.js";
 import * as envio_certificado from "./envio_certificado.js";
 import * as fila_emissao from "./fila_emissao.js";
 import type { UsuarioAtual } from "./rbac.js";
 import * as reciclagem from "./reciclagem.js";
+import * as servico_presenca from "./presenca.js";
 import * as servico_turma from "./turma.js";
 
 /** Quantas turmas a vir a página lista abaixo dos cartões. */
@@ -34,6 +39,117 @@ export interface ProximaTurma {
   situacao: string;
 }
 
+// ---------------------------------------------------------------------
+// NUVEM (24/10/2026): "Turmas encerrando" — o que falta para fechar a turma
+// ---------------------------------------------------------------------
+/** Quantos dias à frente o término conta como "encerrando". */
+export const JANELA_ENCERRANDO_DIAS = 30;
+/** Quantas a página lista; o resto vira "e mais N". */
+export const ENCERRANDO_NO_PAINEL = 15;
+
+export interface TurmaEncerrando {
+  id: number;
+  codigo: string;
+  treinamento: string;
+  data_inicio: string;
+  data_fim: string;
+  local: string | null;
+  situacao: string;
+  /** terminou e ainda não foi concluída */
+  atrasada: boolean;
+  /** quem ocupa vaga (inscrita, confirmada, presente...) */
+  inscritos: number;
+  /** inscritos sem lançamento em algum dia da turma */
+  sem_presenca: number;
+  /** inscritos sem nota; `null` quando a turma não avalia por nota */
+  sem_nota: number | null;
+  /** inscritos sem certificado em vigor (a reprovada e o ausente não contam) */
+  sem_certificado: number;
+}
+
+// quem não vai receber certificado não é pendência de certificado
+const SEM_CERTIFICADO_A_EMITIR = new Set(["AUSENTE", "REPROVADO"]);
+
+/**
+ * As turmas não concluídas nem canceladas que terminam de hoje a 30 dias, e as
+ * que já terminaram sem ser concluídas (atrasadas, primeiro), cada uma com o
+ * que falta: presença, nota (se a turma avalia por nota) e certificado. O
+ * escopo é o da lista de turmas (`treinamento.ver`, campus e setor promotor),
+ * como as "Próximas turmas" logo abaixo.
+ */
+export async function turmas_encerrando(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  hoje: string,
+): Promise<{ itens: TurmaEncerrando[]; total: number }> {
+  const limite = datas_br.somar_dias(hoje, JANELA_ENCERRANDO_DIAS);
+  const turmas = await tx
+    .select({
+      id: tabela_turma.id,
+      codigo: tabela_turma.codigo,
+      treinamento: tabela_treinamento.nome,
+      data_inicio: tabela_turma.data_inicio,
+      data_fim: tabela_turma.data_fim,
+      local: tabela_turma.local,
+      situacao: tabela_turma.situacao,
+      nota_minima: tabela_turma.nota_minima_aprovacao,
+    })
+    .from(tabela_turma)
+    .innerJoin(tabela_treinamento, eq(tabela_treinamento.id, tabela_turma.treinamento_id))
+    .where(
+      and(
+        servico_turma.consulta_no_escopo(usuario, "treinamento.ver"),
+        inArray(tabela_turma.situacao, ["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"]),
+        lte(tabela_turma.data_fim, limite),
+      ),
+    )
+    .orderBy(asc(tabela_turma.data_fim), asc(tabela_turma.id));
+  const total = turmas.length;
+  const mostradas = turmas.slice(0, ENCERRANDO_NO_PAINEL);
+  if (!mostradas.length) return { itens: [], total };
+  const ids = mostradas.map((t) => t.id);
+  // uma ida por pergunta, para todas as turmas da lista
+  const [inscricoes, certificados] = await Promise.all([
+    tx
+      .select({
+        id: tabela_inscricao.id,
+        turma_id: tabela_inscricao.turma_id,
+        situacao: tabela_inscricao.situacao,
+        nota_final: tabela_inscricao.nota_final,
+        dias: count(tabela_presenca.id),
+      })
+      .from(tabela_inscricao)
+      .leftJoin(tabela_presenca, eq(tabela_presenca.inscricao_id, tabela_inscricao.id))
+      .where(and(inArray(tabela_inscricao.turma_id, ids), inArray(tabela_inscricao.situacao, [...INSCRICAO_OCUPA_VAGA])))
+      .groupBy(tabela_inscricao.id),
+    tx
+      .select({ inscricao_id: tabela_certificado.inscricao_id })
+      .from(tabela_certificado)
+      .innerJoin(tabela_inscricao, eq(tabela_inscricao.id, tabela_certificado.inscricao_id))
+      .where(and(inArray(tabela_inscricao.turma_id, ids), ne(tabela_certificado.situacao, "ANULADO"))),
+  ]);
+  const com_certificado = new Set(certificados.map((c) => c.inscricao_id));
+  const itens = mostradas.map((t): TurmaEncerrando => {
+    const dias = servico_presenca.dias_da_turma(t as never).length;
+    const delas = inscricoes.filter((i) => i.turma_id === t.id);
+    return {
+      id: t.id,
+      codigo: t.codigo,
+      treinamento: t.treinamento,
+      data_inicio: t.data_inicio,
+      data_fim: t.data_fim,
+      local: t.local,
+      situacao: t.situacao,
+      atrasada: t.data_fim < hoje,
+      inscritos: delas.length,
+      sem_presenca: delas.filter((i) => Number(i.dias) < dias).length,
+      sem_nota: t.nota_minima === null ? null : delas.filter((i) => i.nota_final === null).length,
+      sem_certificado: delas.filter((i) => !SEM_CERTIFICADO_A_EMITIR.has(i.situacao) && !com_certificado.has(i.id)).length,
+    };
+  });
+  return { itens, total };
+}
+
 export interface ResumoHub {
   turmas: Record<string, number>;
   pedidos_a_conferir: number;
@@ -43,6 +159,8 @@ export interface ResumoHub {
   /** grupos de "possíveis duplicados" (só com `participante.mesclar`; `null` sem ela) */
   duplicados: number | null;
   proximas: ProximaTurma[];
+  /** NUVEM (24/10/2026): as turmas encerrando e o que falta em cada uma */
+  encerrando: { itens: TurmaEncerrando[]; total: number };
 }
 
 export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string): Promise<ResumoHub> {
@@ -98,6 +216,7 @@ export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string):
     // cartão e o da tela nunca discordarem
     duplicados: usuario.pode("participante.mesclar") ? await duplicados.contar(tx) : null,
     proximas,
+    encerrando: await turmas_encerrando(tx, usuario, hoje),
   };
 }
 

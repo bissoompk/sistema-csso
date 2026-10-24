@@ -37,7 +37,8 @@ describe("idas ao banco", () => {
     ["/", 30],
     ["/processos", 20],
     ["/kanban", 16],
-    ["/turmas", 20],
+    // NUVEM (24/10/2026): +1, os locais cadastrados do seletor "Local" da turma nova
+    ["/turmas", 21],
     ["/processos/1", 20],
   ])("%s fica em até %i consultas", async (caminho, teto) => {
     expect((await consultas(caminho)).length).toBeLessThanOrEqual(teto);

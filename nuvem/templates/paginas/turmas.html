@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
+{% import "partes/local_turma.html" as lt %}
 {% block titulo %}Turmas · SISA{% endblock %}
 
 {# O verbo do botão e o do título do popup num lugar só — ver `popup_cadastro`
@@ -257,9 +258,7 @@
       <span class="dica" id="dica-nova-hora">Opcional. Vazio é dia inteiro; vale para todos os dias.</span></div>
   </div>
   <div class="linha-campos">
-    <div class="campo"><label for="nova-local">Local</label>
-      <input id="nova-local" name="local" placeholder="Auditório do Campus JK"
-             value="{{ d['local'] or '' }}"></div>
+    {{ lt.campo_local('nova-local-id', 'nova-local', 'nova-campus', locais, d['local_id'], d['local']) }}
     <div class="campo"><label for="nova-campus">Campus</label>
       <select id="nova-campus" name="campus_id"><option value="">—</option>
         {% for c in campi %}
