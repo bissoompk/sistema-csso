@@ -169,6 +169,13 @@
       "when": 1792787898839,
       "tag": "0023_pedido_conta",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792802155989,
+      "tag": "0024_senha_no_pedido",
+      "breakpoints": true
     }
   ]
 }

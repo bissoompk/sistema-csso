@@ -7,13 +7,16 @@
  * cadastro). Terceirizado e discente não têm cadastro que prove o vínculo, por
  * isso o desenho é:
  *
- * - **Nada nasce do que foi digitado.** O pedido fica na fila "Pedidos de
- *   conta" (Usuários) com uma pendência `CONTA_A_CONFERIR`; só quem cria conta
- *   (`usuario.criar_conta`) aprova. Aprovado, a conta nasce sem senha
- *   utilizável, com o perfil do vínculo (`terceirizado` ou `discente`) e NUNCA
- *   ligada a servidor; o link para definir a senha vai ao e-mail do pedido.
- *   Quem digitou o e-mail de outra pessoa não ganha nada: o link vai para a
- *   caixa do dono.
+ * - **A pessoa escolhe a senha no pedido (24/10/2026) e confirma o e-mail.**
+ *   O pedido nasce `AGUARDANDO_EMAIL`, com a senha em hash, e um link
+ *   "Confirmar e-mail" vai ao endereço digitado. Só depois do clique (um botão:
+ *   abrir o link não confirma) ele vai à fila "Pedidos de conta" (Usuários),
+ *   com a pendência `CONTA_A_CONFERIR`. Quem digitou o e-mail de outra pessoa
+ *   não passa daqui: a confirmação está na caixa do dono.
+ * - **Nada nasce sem a equipe.** Só quem cria conta (`usuario.criar_conta`)
+ *   aprova. Aprovada, a conta nasce com a senha escolhida, o perfil do vínculo
+ *   (`terceirizado` ou `discente`) e NUNCA ligada a servidor, e a pessoa é
+ *   avisada de que já pode entrar. A senha guardada sai do pedido na decisão.
  * - **Sem oráculo.** A tela responde a mesma frase a todo pedido, com piso de
  *   tempo. E-mail que já tem conta, que é de servidor ou que já tem pedido na
  *   fila não abre outro pedido: o dono recebe uma mensagem neutra dizendo o
@@ -25,6 +28,7 @@
  *   vínculo. O pedido decidido é apagado em `DIAS_DO_PEDIDO` (a conta, se
  *   houve, guarda o que precisa).
  */
+import { createHash, randomBytes } from "node:crypto";
 import { and, count, desc, eq, gt, lt, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -56,14 +60,21 @@ export const VALIDADE_DO_LINK_MS = 72 * 3_600_000;
 export const TIPO_PENDENCIA = "CONTA_A_CONFERIR";
 export const TIPO_NEUTRO = "PEDIDO_CONTA_NEUTRO";
 export const TIPO_RECUSA = "PEDIDO_CONTA_RECUSADO";
+export const TIPO_CONFIRMAR = "PEDIDO_CONTA_CONFIRMAR";
+export const TIPO_APROVADO = "PEDIDO_CONTA_APROVADO";
+export const CAMINHO_CONFIRMAR = `${CAMINHO}/confirmar`;
+export const VALIDADE_CONFIRMACAO_MS = 24 * 3_600_000;
+/** O pedido que ninguém confirmou sai antes do prazo geral. */
+export const DIAS_SEM_CONFIRMACAO = 3;
 
 export const PEDIDO_DE_CONTA_RECEBIDO = "PEDIDO_DE_CONTA_RECEBIDO";
 export const PEDIDO_DE_CONTA_APROVADO = "PEDIDO_DE_CONTA_APROVADO";
 export const PEDIDO_DE_CONTA_RECUSADO = "PEDIDO_DE_CONTA_RECUSADO";
 
 export const RESPOSTA_PADRAO =
-  "Pedido recebido. A equipe da Sisa confere os dados e, se aprovar, envia ao e-mail informado um link " +
-  "para você definir a senha. Confira também a caixa de spam.";
+  "Enviamos ao e-mail informado um link para você confirmar que ele é seu. Depois da confirmação, a " +
+  "equipe da Sisa confere o pedido e avisa por e-mail quando a conta estiver liberada. Confira também a " +
+  "caixa de spam.";
 
 export class DadosInvalidos extends Error {
   constructor(
@@ -84,12 +95,16 @@ export interface DadosPedido {
   organizacao: string;
   matricula: string;
   maior_de_idade: boolean;
+  nova?: string;
+  confirmacao?: string;
 }
 
 const _CPF = /(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)/;
 
 /** Confere e limpa o que foi digitado; o erro diz o campo (é igual para todo mundo). */
-export function limpar(d: DadosPedido): Omit<DadosPedido, "vinculo" | "maior_de_idade"> & { vinculo: Vinculo } {
+export function limpar(
+  d: DadosPedido,
+): Omit<DadosPedido, "vinculo" | "maior_de_idade" | "nova" | "confirmacao"> & { vinculo: Vinculo } {
   const vinculo = d.vinculo.trim() as Vinculo;
   if (!VINCULOS.includes(vinculo)) throw new DadosInvalidos("Escolha o vínculo: terceirizado ou discente.", "o vínculo");
   const nome = d.nome.replace(/\s+/g, " ").trim();
@@ -121,6 +136,19 @@ export function limpar(d: DadosPedido): Omit<DadosPedido, "vinculo" | "maior_de_
     );
   }
   return { vinculo, nome, email: mail, organizacao, matricula };
+}
+
+async function _hash_da_senha(d: DadosPedido): Promise<string> {
+  try {
+    return await ativar_acesso.hash_da_senha_escolhida(d.nova ?? "", d.confirmacao ?? "");
+  } catch (erro) {
+    if (erro instanceof ativar_acesso.DadosInvalidos) throw new DadosInvalidos(erro.message, "a senha");
+    throw erro;
+  }
+}
+
+function _hash(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
 /** O e-mail já está no sistema: conta, cadastro de servidor ou pedido na fila. */
@@ -160,6 +188,28 @@ export function corpo_neutro(): string {
   );
 }
 
+export function corpo_da_confirmacao(link: string): string {
+  return (
+    "Olá.\n\n" +
+    "Foi feito um pedido de conta no Sistema SISA com este e-mail. Para confirmar que ele é seu, abra o " +
+    "link abaixo nas próximas 24 horas e clique em \"Confirmar\":\n\n" +
+    `${link}\n\n` +
+    "Depois disso, a equipe da Sisa confere o pedido e avisa por e-mail quando a conta estiver liberada.\n\n" +
+    "SE NÃO FOI VOCÊ QUE PEDIU, NÃO CONFIRME: ignore esta mensagem e o pedido é apagado.\n\n" +
+    ASSINATURA
+  );
+}
+
+export function corpo_da_liberacao(base_url: string): string {
+  return (
+    "Olá.\n\n" +
+    "O seu pedido de conta no Sistema SISA foi aprovado pela equipe da Sisa. A conta já está liberada: " +
+    `entre em ${base_url}/login com este e-mail e a senha que você escolheu no pedido.\n\n` +
+    "Esqueceu a senha? Use \"Esqueci minha senha\" na tela de entrada.\n\n" +
+    ASSINATURA
+  );
+}
+
 export function corpo_da_aprovacao(link: string): string {
   return (
     "Olá.\n\n" +
@@ -185,10 +235,18 @@ export function corpo_da_recusa(): string {
 
 /**
  * O pedido. Não devolve nada de propósito: a rota responde sempre
- * `RESPOSTA_PADRAO`. Lança `DadosInvalidos` só para o que está mal digitado.
+ * `RESPOSTA_PADRAO`. Lança `DadosInvalidos` só para o que está mal digitado
+ * (a senha incluída: a política é a mesma para todo mundo).
  */
-export async function pedir(tx: Executor, d: DadosPedido, ip: string | null, agora: Date = new Date()): Promise<void> {
+export async function pedir(
+  tx: Executor,
+  d: DadosPedido,
+  ip: string | null,
+  base_url: string,
+  agora: Date = new Date(),
+): Promise<void> {
   const limpo = limpar(d);
+  const senha_hash = await _hash_da_senha(d);
   const [recentes] = await tx
     .select({ n: count() })
     .from(tabela)
@@ -208,25 +266,88 @@ export async function pedir(tx: Executor, d: DadosPedido, ip: string | null, ago
     });
     return;
   }
-  const [pedido] = await tx
-    .insert(tabela)
-    .values({ ...limpo, matricula: limpo.matricula || null, email_normalizado: alvo, ip, criado_em: agora })
-    .returning();
+  // o pedido anterior do mesmo e-mail que ninguém confirmou dá lugar a este:
+  // ninguém bloqueia o e-mail de outra pessoa pedindo antes dela
+  await _descartar(tx, and(eq(tabela.email_normalizado, alvo), eq(tabela.situacao, "AGUARDANDO_EMAIL")));
+  if (await ativar_acesso.no_teto_do_destinatario(tx, limpo.email, agora)) return;
+  const token = randomBytes(24).toString("base64url");
+  await tx.insert(tabela).values({
+    ...limpo,
+    matricula: limpo.matricula || null,
+    email_normalizado: alvo,
+    situacao: "AGUARDANDO_EMAIL",
+    senha_hash,
+    token_hash: _hash(token),
+    token_expira_em: new Date(agora.getTime() + VALIDADE_CONFIRMACAO_MS),
+    ip,
+    criado_em: agora,
+  });
+  await email.enfileirar(tx, {
+    tipo: TIPO_CONFIRMAR,
+    destinatario: limpo.email,
+    assunto: ativar_acesso.ASSUNTO,
+    corpo: corpo_da_confirmacao(`${base_url}${CAMINHO_CONFIRMAR}/${token}`),
+    expira_em: new Date(agora.getTime() + VALIDADE_CONFIRMACAO_MS),
+  });
+}
+
+/** Apaga o dado da pessoa e deixa a linha só para o teto por IP. */
+async function _descartar(tx: Executor, onde: ReturnType<typeof and>): Promise<void> {
+  await tx
+    .update(tabela)
+    .set({ situacao: "DESCARTADO", nome: "", email: "", email_normalizado: "", organizacao: "", matricula: null, senha_hash: null, token_hash: null })
+    .where(onde);
+}
+
+/** O pedido à espera da confirmação deste link, ou `null` (vencido, usado, inventado). */
+export async function pedido_a_confirmar(tx: Executor, token: string, agora: Date = new Date()): Promise<Pedido | null> {
+  if (!token || token.length > 64) return null;
+  const [pedido] = await tx.select().from(tabela).where(eq(tabela.token_hash, _hash(token)));
+  if (!pedido || pedido.situacao !== "AGUARDANDO_EMAIL") return null;
+  if (!pedido.token_expira_em || pedido.token_expira_em <= agora) return null;
+  return pedido;
+}
+
+/**
+ * O clique em "Confirmar" (POST: abrir o link não confirma). O pedido vai à fila
+ * da equipe com a pendência; se o e-mail entrou no sistema nesse meio-tempo, o
+ * pedido é descartado e a resposta é a mesma.
+ */
+export async function confirmar_email(
+  tx: Executor,
+  token: string,
+  ip: string | null,
+  agora: Date = new Date(),
+): Promise<boolean> {
+  const achado = await pedido_a_confirmar(tx, token, agora);
+  if (!achado) return false;
+  const [pedido] = await tx.select().from(tabela).where(eq(tabela.id, achado.id)).for("update");
+  if (!pedido || pedido.situacao !== "AGUARDANDO_EMAIL") return false;
+  if (await _ja_existe(tx, pedido.email_normalizado)) {
+    await _descartar(tx, eq(tabela.id, pedido.id));
+    return true;
+  }
+  await tx
+    .update(tabela)
+    .set({ situacao: "PENDENTE", email_confirmado_em: agora, token_hash: null, token_expira_em: null })
+    .where(eq(tabela.id, pedido.id));
+  const vinculo = ROTULO_VINCULO[pedido.vinculo as Vinculo].toLowerCase();
   await pendencias.abrir(tx, {
     tipo: TIPO_PENDENCIA,
-    chave: `pedido_conta:${pedido!.id}`,
-    descricao: `Pedido de conta nº ${pedido!.id} (${ROTULO_VINCULO[limpo.vinculo].toLowerCase()}) a conferir.`,
+    chave: `pedido_conta:${pedido.id}`,
+    descricao: `Pedido de conta nº ${pedido.id} (${vinculo}) a conferir.`,
     entidade: "pedido_conta",
-    entidade_id: pedido!.id,
+    entidade_id: pedido.id,
   });
   await auditoria.registrar(tx, {
     entidade: "pedido_conta",
-    entidade_id: pedido!.id,
+    entidade_id: pedido.id,
     tipo_evento: PEDIDO_DE_CONTA_RECEBIDO,
-    descricao: `Pedido de conta nº ${pedido!.id} (${ROTULO_VINCULO[limpo.vinculo].toLowerCase()}) recebido pelo Cadastre-se.`,
+    descricao: `Pedido de conta nº ${pedido.id} (${vinculo}) recebido pelo Cadastre-se, com o e-mail confirmado.`,
     usuario_nome: ativar_acesso.ATOR,
     ip,
   });
+  return true;
 }
 
 export async function fila(tx: Executor): Promise<{ pendentes: Pedido[]; decididos: Pedido[] }> {
@@ -284,7 +405,9 @@ export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, b
       login: autenticacao.login_do_email(pedido.email),
       nome: pedido.nome,
       email: pedido.email,
-      senha_hash: ativar_acesso.SEM_SENHA,
+      // a senha escolhida no pedido; o pedido de antes de 24/10/2026, sem ela,
+      // nasce sem senha e recebe o link para defini-la
+      senha_hash: pedido.senha_hash ?? ativar_acesso.SEM_SENHA,
       servidor_id: null,
       precisa_trocar_senha: false,
     })
@@ -312,7 +435,7 @@ export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, b
   });
   const [feito] = await tx
     .update(tabela)
-    .set({ situacao: "APROVADO", decidido_por: usuario.id, decidido_em: new Date(), usuario_id: conta!.id })
+    .set({ situacao: "APROVADO", decidido_por: usuario.id, decidido_em: new Date(), usuario_id: conta!.id, senha_hash: null })
     .where(eq(tabela.id, pedido.id))
     .returning();
   await auditoria.registrar(tx, {
@@ -323,10 +446,20 @@ export async function aprovar(tx: Executor, usuario: UsuarioAtual, id: number, b
     usuario,
   });
   await _fechar_pendencia(tx, pedido, "pedido de conta aprovado");
-  await ativar_acesso.emitir_link_da_conta(tx, conta!, base_url, {
-    validade_ms: VALIDADE_DO_LINK_MS,
-    corpo: corpo_da_aprovacao,
-  });
+  if (pedido.senha_hash) {
+    await email.enfileirar(tx, {
+      tipo: TIPO_APROVADO,
+      destinatario: pedido.email,
+      assunto: ativar_acesso.ASSUNTO,
+      corpo: corpo_da_liberacao(base_url),
+      expira_em: new Date(Date.now() + 72 * 3_600_000),
+    });
+  } else {
+    await ativar_acesso.emitir_link_da_conta(tx, conta!, base_url, {
+      validade_ms: VALIDADE_DO_LINK_MS,
+      corpo: corpo_da_aprovacao,
+    });
+  }
   return feito!;
 }
 
@@ -337,7 +470,7 @@ export async function recusar(tx: Executor, usuario: UsuarioAtual, id: number, m
   if (!texto) throw new DecisaoRecusada("Escreva o motivo da recusa (fica no registro; não vai no e-mail).");
   const [feito] = await tx
     .update(tabela)
-    .set({ situacao: "RECUSADO", decidido_por: usuario.id, decidido_em: new Date(), motivo: texto })
+    .set({ situacao: "RECUSADO", decidido_por: usuario.id, decidido_em: new Date(), motivo: texto, senha_hash: null })
     .where(eq(tabela.id, pedido.id))
     .returning();
   await auditoria.registrar(tx, {
@@ -364,5 +497,15 @@ export async function expurgar(tx: Executor, agora: Date = new Date(), dias = DI
   const velhos = await tx.select().from(tabela).where(lt(tabela.criado_em, limite));
   for (const p of velhos) if (p.situacao === "PENDENTE") await _fechar_pendencia(tx, p, "pedido de conta expirou sem decisão");
   const r = await tx.delete(tabela).where(lt(tabela.criado_em, limite)).returning({ id: tabela.id });
-  return r.length;
+  // o que ninguém confirmou sai antes, com a senha guardada
+  const sem_confirmacao = await tx
+    .delete(tabela)
+    .where(
+      and(
+        eq(tabela.situacao, "AGUARDANDO_EMAIL"),
+        lt(tabela.criado_em, new Date(agora.getTime() - DIAS_SEM_CONFIRMACAO * 86_400_000)),
+      ),
+    )
+    .returning({ id: tabela.id });
+  return r.length + sem_confirmacao.length;
 }

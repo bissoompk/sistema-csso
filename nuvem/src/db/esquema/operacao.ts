@@ -149,6 +149,10 @@ export const ativacao_acesso = pgTable(
     // a troca de e-mail em Meus dados: o endereço novo só vale quando o link
     // enviado a ELE é aberto pela própria conta (resultado EMAIL)
     email_novo: varchar('email_novo', { length: 160 }),
+    // a senha que a pessoa escolheu na tela do pedido (24/10/2026), em hash:
+    // o link só confirma o e-mail, e é esta senha que a conta recebe. Apagada
+    // quando o link é usado
+    senha_hash: text('senha_hash'),
     // o que o pedido virou: LINK (e-mail com link na fila), NEUTRO (e-mail "procure a
     // equipe"), SEM_EMAIL (SIAPE e e-mail batem, mas o cadastro não tem e-mail — a
     // equipe vê), NADA (não casou, ou passou do teto por destinatário)
@@ -184,11 +188,17 @@ export const pedido_conta = pgTable(
     organizacao: varchar('organizacao', { length: 160 }).notNull(),
     // o setor do terceirizado ou a matrícula do discente (opcional)
     matricula: varchar('matricula', { length: 30 }),
-    situacao: varchar('situacao', { length: 12 }).notNull().default('PENDENTE'),
+    situacao: varchar('situacao', { length: 16 }).notNull().default('PENDENTE'),
     motivo: text('motivo'),
     decidido_por: integer('decidido_por'),
     decidido_em: MomentoUTC('decidido_em'),
     usuario_id: integer('usuario_id'),
+    // a senha escolhida no pedido (24/10/2026), em hash; apagada na decisão
+    senha_hash: text('senha_hash'),
+    // o link "Confirmar e-mail": o pedido só vai à fila da equipe depois dele
+    token_hash: varchar('token_hash', { length: 64 }).unique('uq_pedido_conta_token'),
+    token_expira_em: MomentoUTC('token_expira_em'),
+    email_confirmado_em: MomentoUTC('email_confirmado_em'),
     ip: text('ip'),
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
   },
@@ -196,7 +206,7 @@ export const pedido_conta = pgTable(
     foreignKey({ name: 'fk_pedido_conta_decidido_por', columns: [t.decidido_por], foreignColumns: [usuario.id] }),
     foreignKey({ name: 'fk_pedido_conta_usuario', columns: [t.usuario_id], foreignColumns: [usuario.id] }).onDelete('set null'),
     check('ck_pedido_conta_vinculo', sql.raw(`vinculo IN ('TERCEIRIZADO','DISCENTE')`)),
-    check('ck_pedido_conta_situacao', sql.raw(`situacao IN ('PENDENTE','APROVADO','RECUSADO','DESCARTADO')`)),
+    check('ck_pedido_conta_situacao', sql.raw(`situacao IN ('AGUARDANDO_EMAIL','PENDENTE','APROVADO','RECUSADO','DESCARTADO')`)),
     index('ix_pedido_conta_situacao').on(t.situacao, t.criado_em),
     index('ix_pedido_conta_ip').on(t.ip, t.criado_em),
     index('ix_pedido_conta_email').on(t.email_normalizado),

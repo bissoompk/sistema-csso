@@ -57,10 +57,13 @@ import { PERFIS_EXTERNOS, TOPO_DA_HIERARQUIA, eh_conta_de_governo, perfis_vigent
 
 export const CAMINHO = "/ativar-acesso";
 export const VALIDADE_MS = 3_600_000;
+/** O link que só confirma o e-mail (a senha já foi escolhida na tela) vale um dia. */
+export const VALIDADE_CONFIRMACAO_MS = 24 * 3_600_000;
+export const TIPO_AVISO_ATIVADO = "ACESSO_ATIVADO_AVISO";
 export const TIPO_LINK = "ATIVAR_ACESSO";
 export const TIPO_NEUTRO = "ATIVAR_ACESSO_NEUTRO";
 /** Os e-mails que contam para o teto por destinatário (inclui o neutro do Cadastre-se). */
-export const TIPOS: readonly string[] = [TIPO_LINK, TIPO_NEUTRO, "PEDIDO_CONTA_NEUTRO"];
+export const TIPOS: readonly string[] = [TIPO_LINK, TIPO_NEUTRO, "PEDIDO_CONTA_NEUTRO", "PEDIDO_CONTA_CONFIRMAR"];
 export const CAMINHO_ESQUECI = "/esqueci-senha";
 export const PEDIDOS_POR_HORA_POR_IP = 8;
 export const ENVIOS_POR_HORA = 2;
@@ -91,7 +94,7 @@ export const ajuste = { piso_ms: 1200 };
 
 export const RESPOSTA_PADRAO =
   "Se os dados conferem com o cadastro de servidores, enviamos ao e-mail institucional cadastrado " +
-  "um link para definir a senha, válido por 1 hora e de uso único. Confira também a caixa de spam. " +
+  "um link de uso único para confirmar e ativar o acesso. Confira também a caixa de spam. " +
   "Se não chegar, procure a equipe responsável.";
 
 export const RESPOSTA_ESQUECI =
@@ -175,6 +178,30 @@ export function corpo_do_link(link: string, expira_em: Date): string {
   );
 }
 
+export function corpo_da_confirmacao(link: string, expira_em: Date): string {
+  return (
+    "Olá.\n\n" +
+    "Foi pedido o acesso ao Sistema SISA com este e-mail institucional, com uma senha escolhida na tela " +
+    "do pedido. Para confirmar que este e-mail é seu e ativar o acesso, abra o link abaixo e clique em " +
+    `"Confirmar" até ${datas_br.numerica(datas_br.hoje(expira_em))}, às ` +
+    `${expira_em.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}:\n\n` +
+    `${link}\n\n` +
+    "SE NÃO FOI VOCÊ QUE PEDIU, NÃO CONFIRME: ignore esta mensagem e nada muda.\n\n" +
+    ASSINATURA
+  );
+}
+
+export function corpo_do_aviso_ativado(base_url: string): string {
+  return (
+    "Olá.\n\n" +
+    "O acesso ao Sistema SISA com este e-mail foi ativado agora, com a senha escolhida no pedido. Entre em " +
+    `${base_url}/login com este e-mail e essa senha.\n\n` +
+    "Se não foi você, use \"Esqueci minha senha\" na tela de entrada para definir uma senha nova (as " +
+    "sessões abertas são encerradas) e avise a equipe da Sisa.\n\n" +
+    ASSINATURA
+  );
+}
+
 export function corpo_neutro(): string {
   return (
     "Olá.\n\n" +
@@ -210,7 +237,7 @@ export async function no_teto_do_destinatario(tx: Executor, para: string, agora:
  */
 export async function pedir(
   tx: Executor,
-  d: { siape: string; email: string },
+  d: { siape: string; email: string; nova?: string; confirmacao?: string },
   ip: string | null,
   base_url: string,
   agora: Date = new Date(),
@@ -218,11 +245,25 @@ export async function pedir(
   const siape = d.siape.trim();
   if (!/^\d{7}$/.test(siape)) throw new DadosInvalidos("Digite o SIAPE com 7 dígitos.");
   if (!email.email_valido(d.email)) throw new DadosInvalidos("Digite o e-mail institucional completo.");
+  // a senha escolhida na tela (24/10/2026): o link do e-mail só confirma. Sem
+  // ela, o link pede a senha (o caminho antigo, que o "Esqueci" ainda usa)
+  const senha_hash = d.nova || d.confirmacao ? await hash_da_senha_escolhida(d.nova ?? "", d.confirmacao ?? "") : null;
   const marcar = await _registrar_pedido(tx, ip, agora);
   if (!marcar) return;
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
   if (!servidor) return;
-  await _atender_servidor(tx, servidor, d.email, ip, base_url, agora, marcar);
+  await _atender_servidor(tx, servidor, d.email, ip, base_url, agora, marcar, senha_hash);
+}
+
+/**
+ * Confere a senha escolhida na tela (a confirmação e a política) e devolve o
+ * hash. O erro é de digitação, igual para todo mundo: não diz nada do cadastro.
+ */
+export async function hash_da_senha_escolhida(nova: string, confirmacao: string): Promise<string> {
+  if (nova !== confirmacao) throw new DadosInvalidos("A confirmação da senha não confere.");
+  const problemas = autenticacao.politica_de_senha(nova);
+  if (problemas.length) throw new DadosInvalidos("Senha fraca: " + problemas.join("; "));
+  return autenticacao.gerar_hash(nova);
 }
 
 type Marcar = (v: Partial<typeof tabela.$inferInsert>) => Promise<unknown>;
@@ -261,6 +302,7 @@ async function _atender_servidor(
   base_url: string,
   agora: Date,
   marcar: Marcar,
+  senha_hash: string | null = null,
 ): Promise<void> {
   const cadastrado = (servidor.email ?? "").trim();
   if (!cadastrado || !email.email_valido(cadastrado)) {
@@ -285,14 +327,20 @@ async function _atender_servidor(
     });
     return;
   }
+  // A senha escolhida na tela só vale para o PRIMEIRO acesso (conta a criar ou
+  // ainda sem senha). Conta que já tem senha não a troca por um clique: o link
+  // volta a pedir a senha, como o "Esqueci" — senão bastava alguém pedir com o
+  // SIAPE e o e-mail de outra pessoa e convencê-la a clicar em "Confirmar".
+  if (decisao.tipo === "redefinir" && decisao.conta.senha_hash !== SEM_SENHA) senha_hash = null;
   const token = randomBytes(24).toString("base64url");
-  const expira_em = new Date(agora.getTime() + VALIDADE_MS);
-  await marcar({ token_hash: _hash(token), servidor_id: servidor.id, resultado: "LINK", expira_em });
+  const expira_em = new Date(agora.getTime() + (senha_hash ? VALIDADE_CONFIRMACAO_MS : VALIDADE_MS));
+  await marcar({ token_hash: _hash(token), servidor_id: servidor.id, resultado: "LINK", expira_em, senha_hash });
+  const link = `${base_url}${CAMINHO}/${token}`;
   await email.enfileirar(tx, {
     tipo: TIPO_LINK,
     destinatario: cadastrado,
     assunto: ASSUNTO,
-    corpo: corpo_do_link(`${base_url}${CAMINHO}/${token}`, expira_em),
+    corpo: senha_hash ? corpo_da_confirmacao(link, expira_em) : corpo_do_link(link, expira_em),
     expira_em,
   });
 }
@@ -561,9 +609,26 @@ export async function link_vale(tx: Executor, token: string, agora: Date = new D
   return (await decidir(tx, servidor)).tipo !== "recusar";
 }
 
+/**
+ * O que a tela do link mostra: "confirmar" (a senha foi escolhida no pedido e o
+ * link só confirma o e-mail, com um botão — abrir não confirma, porque leitor
+ * de e-mail pré-visualiza links), "definir" (o link pede a senha) ou `null`.
+ */
+export async function o_que_o_link_pede(
+  tx: Executor,
+  token: string,
+  agora: Date = new Date(),
+): Promise<"confirmar" | "definir" | null> {
+  if (!(await link_vale(tx, token, agora))) return null;
+  const linha = await _linha_valida(tx, token, agora);
+  return linha?.senha_hash ? "confirmar" : "definir";
+}
+
 export interface Contexto {
   ip?: string | null;
   user_agent?: string | null;
+  /** para o link da tela de entrada no aviso de acesso ativado */
+  base_url?: string;
 }
 
 /**
@@ -580,9 +645,13 @@ export async function definir_senha(
 ): Promise<"criada" | "redefinida"> {
   const linha = await _linha_valida(tx, token, agora);
   if (!linha) throw new LinkInvalido("link inválido ou vencido");
-  if (nova !== confirmacao) throw new autenticacao.SenhaRecusada("A confirmação não confere.");
-  const problemas = autenticacao.politica_de_senha(nova);
-  if (problemas.length) throw new autenticacao.SenhaRecusada("Senha fraca: " + problemas.join("; "));
+  // a senha escolhida no pedido já foi conferida lá; o link só confirma
+  const escolhida = linha.senha_hash;
+  if (!escolhida) {
+    if (nova !== confirmacao) throw new autenticacao.SenhaRecusada("A confirmação não confere.");
+    const problemas = autenticacao.politica_de_senha(nova);
+    if (problemas.length) throw new autenticacao.SenhaRecusada("Senha fraca: " + problemas.join("; "));
+  }
   if (linha.usuario_id !== null) return _definir_da_conta(tx, linha, nova, contexto, agora);
   // um servidor por vez: dois links do mesmo servidor não criam duas contas
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!)).for("update");
@@ -596,14 +665,26 @@ export async function definir_senha(
     .where(and(eq(tabela.id, linha.id), isNull(tabela.usado_em)))
     .returning({ id: tabela.id });
   if (!gasto.length) throw new LinkInvalido("link inválido ou vencido");
-  // os outros links do mesmo servidor caem junto
+  // os outros links do mesmo servidor caem junto, e a senha guardada sai do registro
   await tx
     .update(tabela)
     .set({ usado_em: agora_utc() })
     .where(and(eq(tabela.servidor_id, servidor.id), isNull(tabela.usado_em)));
+  await tx.update(tabela).set({ senha_hash: null }).where(eq(tabela.servidor_id, servidor.id));
 
   const origem = { usuario_nome: ATOR, ip: contexto.ip ?? null, user_agent: contexto.user_agent ?? null };
-  const senha_hash = await autenticacao.gerar_hash(nova);
+  const senha_hash = escolhida ?? (await autenticacao.gerar_hash(nova));
+  // quem confirma só com um clique recebe o aviso: se não foi ele que pediu,
+  // o "Esqueci minha senha" desfaz (o link vai ao mesmo e-mail)
+  if (escolhida) {
+    await email.enfileirar(tx, {
+      tipo: TIPO_AVISO_ATIVADO,
+      destinatario: servidor.email.trim(),
+      assunto: ASSUNTO,
+      corpo: corpo_do_aviso_ativado(contexto.base_url ?? ""),
+      expira_em: new Date(agora.getTime() + 72 * 3_600_000),
+    });
+  }
   if (decisao.tipo === "criar") {
     const perfil = await _perfil_do_titular(tx);
     const cadastrado = servidor.email.trim();
