@@ -35,6 +35,44 @@
     {% endfor %}
   </div>
 
+  {# NUVEM (24/10/2026): as turmas que terminam nos próximos 30 dias e as que
+     já terminaram sem ser concluídas, com o que falta para fechar cada uma
+     (`hub_treinamentos.turmas_encerrando`). A atrasada vem primeiro. #}
+  <h2 class="secao-hub" id="encerrando">{{ ui.icone('hourglass-split') }} Turmas encerrando</h2>
+  {% if r.encerrando.itens|length %}
+  <div class="tabela-cartao">
+    <table class="empilhavel">
+      <thead><tr><th>Turma</th><th>Treinamento</th><th>Término</th><th>Inscritos</th><th>O que falta</th></tr></thead>
+      <tbody>
+      {% for t in r.encerrando.itens %}
+      <tr>
+        <td><a class="mono" href="/turmas/{{ t.id }}">{{ t.codigo }}</a>
+          <span class="quebra">{{ ui.pilula_turma(t.situacao) }}</span></td>
+        <td data-coluna="Treinamento">{{ t.treinamento }}{% if t.local %}<span class="quebra discreto">{{ t.local }}</span>{% endif %}</td>
+        <td class="mono curta" data-coluna="Término">{{ t.data_fim|data }}
+          {%- if t.atrasada %}<span class="quebra"><span class="pilula erro">atrasada</span></span>{% endif %}</td>
+        <td class="curta" data-coluna="Inscritos">{{ t.inscritos }}</td>
+        <td data-coluna="O que falta">
+          {%- set faltas = [] %}
+          {%- if t.sem_presenca %}{% set _ = faltas.push('presença não lançada de ' ~ t.sem_presenca ~ ' inscrito(s)') %}{% endif %}
+          {%- if t.sem_nota %}{% set _ = faltas.push('nota faltando de ' ~ t.sem_nota) %}{% endif %}
+          {%- if t.sem_certificado %}{% set _ = faltas.push(t.sem_certificado ~ ' certificado(s) não emitido(s)') %}{% endif %}
+          {%- if t.atrasada %}{% set _ = faltas.push('concluir a turma') %}{% endif %}
+          {{ faltas|join('; ') if faltas|length else 'nada pendente: só concluir no término' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if r.encerrando.total > r.encerrando.itens|length %}
+  <p class="discreto">E mais {{ r.encerrando.total - r.encerrando.itens|length }} turma(s) —
+    veja a <a href="/turmas">lista de turmas</a>.</p>
+  {% endif %}
+  {% else %}
+  <div class="vazio"><strong>Nenhuma turma encerrando.</strong>
+    <span>As que terminam nos próximos 30 dias, e as que já terminaram sem ser concluídas, aparecem aqui.</span></div>
+  {% endif %}
+
   <h2 class="secao-hub">{{ ui.icone('calendar-event') }} Próximas turmas</h2>
   {% if r.proximas|length %}
   <div class="tabela-cartao">

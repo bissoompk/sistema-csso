@@ -27,6 +27,7 @@ import {
   certificado_modelo_tag as tabela_tag,
   email_saida as tabela_email_saida,
   inscricao as tabela_inscricao,
+  local_treinamento as tabela_local,
   participante as tabela_participante,
   pendencia as tabela_pendencia,
   servidor as tabela_servidor,
@@ -50,6 +51,7 @@ import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
 import * as avisos_inscricao from "./avisos_inscricao.js";
 import * as datas_br from "./datas_br.js";
+import * as local_treinamento from "./local_treinamento.js";
 import * as numeracao from "./numeracao.js";
 import * as pendencias from "./pendencias.js";
 import * as servico_participante from "./participante.js";
@@ -107,6 +109,8 @@ export type VinculoInstrutor = typeof tabela_turma_instrutor.$inferSelect & { in
 export type TurmaCarregada = TurmaRegistro & {
   treinamento: TreinamentoCarregado;
   campus: typeof tabela_campus.$inferSelect | null;
+  // NUVEM (24/10/2026): o local cadastrado; `local` (texto) leva o nome dele
+  local_cadastrado: typeof tabela_local.$inferSelect | null;
   unidade_promotora: typeof tabela_unidade.$inferSelect | null;
   instrutores: VinculoInstrutor[];
 };
@@ -124,6 +128,7 @@ export const COM_TAGS = {
 export const COM_TURMA = {
   treinamento: { with: { modelo_vigente: { with: COM_TAGS }, instrutor_padrao: true } },
   campus: true,
+  local_cadastrado: true,
   unidade_promotora: true,
   instrutores: {
     orderBy: (v: typeof tabela_turma_instrutor, { asc: a }: { asc: typeof asc }) => [a(v.ordem)],
@@ -428,11 +433,29 @@ function _conferir_setor_na_edicao(usuario: UsuarioAtual, nova: number | null, a
   if (!usuario.setores_promotores.includes(nova)) throw new RegraDaTurma(RECUSA_SETOR_ALHEIO);
 }
 
+/**
+ * NUVEM (24/10/2026): o local cadastrado escolhido, conferido
+ * (`local_treinamento.conferir_para_turma`); `null` é "outro local", o texto livre.
+ */
+async function _local_escolhido(
+  tx: Executor,
+  local_id: number | null,
+  campus_id: number | null,
+  atual_id: number | null,
+): Promise<local_treinamento.LocalCarregado | null> {
+  if (local_id === null) return null;
+  const r = await local_treinamento.conferir_para_turma(tx, local_id, campus_id, atual_id);
+  if (typeof r === "string") throw new RegraDaTurma(r);
+  return r;
+}
+
 export interface DadosTurma {
   treinamento: TreinamentoRegistro;
   data_inicio: string;
   data_fim: string;
   local?: string | null;
+  /** o local cadastrado; com ele, `local` é ignorado e vira o nome do local */
+  local_id?: number | null;
   descricao?: string | null;
   campus_id?: number | null;
   unidade_promotora_id?: number | null;
@@ -476,6 +499,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
   }
   const unidade_promotora_id = setor_da_turma_nova(usuario, d.unidade_promotora_id ?? null);
   await _conferir_unidade_promotora(tx, unidade_promotora_id, null);
+  const local = await _local_escolhido(tx, d.local_id ?? null, d.campus_id ?? null, null);
 
   const ano = datas_br.partes(d.data_inicio)[0];
   const numero = await numeracao.proximo_numero_turma(tx, ano);
@@ -490,7 +514,8 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
       data_fim: d.data_fim,
       data_base_vencimento: d.data_base_vencimento ?? null,
       carga_horaria_horas: d.carga_horaria_horas ?? null,
-      local: d.local ?? null,
+      local: local ? local.nome : (d.local ?? null),
+      local_id: local ? local.id : null,
       descricao: d.descricao ?? null,
       campus_id: d.campus_id ?? null,
       unidade_promotora_id,
@@ -574,6 +599,20 @@ export async function editar_turma(
       `Adiar a turma para ${ano_novo} mudaria o ano de ${turma.codigo}, ` +
         "que já foi divulgado. Cancele esta turma e abra outra.",
     );
+  }
+  // NUVEM (24/10/2026): o local. `local_id` no formulário decide (vazio =
+  // "outro local", o texto livre); sem ele (formulário antigo, a retificação),
+  // o texto digitado diferente do atual é outro local e solta o cadastrado.
+  // Com local cadastrado, o texto é sempre o nome dele.
+  const escolheu_local = "local_id" in campos;
+  let local_final = escolheu_local ? (campos.local_id ?? null) : turma.local_id;
+  if (!escolheu_local && local_final !== null && "local" in campos && (campos.local ?? null) !== turma.local) {
+    local_final = null;
+  }
+  if (local_final !== turma.local_id) campos = { ...campos, local_id: local_final };
+  if (local_final !== null && (escolheu_local || local_final !== turma.local_id || valor("campus_id") !== turma.campus_id)) {
+    const local = (await _local_escolhido(tx, local_final, valor("campus_id"), turma.local_id))!;
+    campos = { ...campos, local: local.nome };
   }
   _conferir_setor_na_edicao(usuario, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   await _conferir_unidade_promotora(tx, valor("unidade_promotora_id"), turma.unidade_promotora_id);

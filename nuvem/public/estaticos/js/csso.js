@@ -1095,6 +1095,43 @@
   })();
 
   // -------------------------------------------------------------------
+  // O local da turma segue o campus (24/10/2026)
+  //
+  // Contrato: `<select data-filtra-campus="<id do select de campus>">`, com
+  // `data-campus` em cada opcao (vazio = serve a qualquer campus). Com um
+  // campus escolhido, os locais de outro campus somem da lista; se o
+  // escolhido sumiu, volta para a primeira opcao ("outro local"). Sem
+  // JavaScript a lista vem inteira, e o servidor recusa o local de outro campus.
+  // -------------------------------------------------------------------
+  function filtrarLocais(select) {
+    var campus = document.getElementById(select.getAttribute('data-filtra-campus'));
+    var valor = campus ? campus.value : '';
+    var sumiu = false;
+    for (var i = 0; i < select.options.length; i++) {
+      var opcao = select.options[i];
+      var dele = opcao.getAttribute('data-campus');
+      var esconde = Boolean(valor && dele && dele !== valor);
+      opcao.hidden = esconde;
+      opcao.disabled = esconde;
+      if (esconde && opcao.selected) sumiu = true;
+    }
+    if (sumiu) {
+      select.value = '';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  function filtrarLocaisDe(campus) {
+    var selects = document.querySelectorAll('select[data-filtra-campus]');
+    for (var i = 0; i < selects.length; i++) {
+      if (!campus || selects[i].getAttribute('data-filtra-campus') === campus.id) filtrarLocais(selects[i]);
+    }
+  }
+  document.addEventListener('change', function (e) {
+    var alvo = e.target;
+    if (alvo && alvo.tagName === 'SELECT' && alvo.id) filtrarLocaisDe(alvo);
+  });
+
+  // -------------------------------------------------------------------
   // arranque
   // -------------------------------------------------------------------
   // ---------------------------------------------------------------------
@@ -1195,6 +1232,7 @@
     atualizarBarrasDeLote();
     aplicarCorTipo(document);
     marcarCodigosCurtosPreenchidos();
+    filtrarLocaisDe(null);
   }
   // A cor do tipo de processo no cartao do kanban vem em `data-cor-tipo` (sem
   // `style=` no HTML, pela CSP). A folha ja traduz as cores semeadas; aqui

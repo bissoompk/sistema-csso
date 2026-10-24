@@ -49,6 +49,7 @@ import { TIPO_PDF } from "../servicos/certificado_pdf.js";
 import * as ics from "../servicos/ics.js";
 import * as inscricao_lote from "../servicos/inscricao_lote.js";
 import * as inscricao_publica from "../servicos/inscricao_publica.js";
+import * as local_treinamento from "../servicos/local_treinamento.js";
 import * as retificacao from "../servicos/retificacao.js";
 import * as dono_turma from "../servicos/dono_turma.js";
 import * as email from "../servicos/email.js";
@@ -334,6 +335,8 @@ async function _tela_lista(
     dica_setor_promotor: meus === null ? setor_promotor.DICA : setor_promotor.DICA_DOS_MEUS,
     sem_setor_promotor: setor_equipe.sem_setor(usuario),
     descricoes: await _ultimas_descricoes(tx),
+    // NUVEM (24/10/2026): os locais cadastrados ativos, para o seletor "Local"
+    locais: await local_treinamento.opcoes(tx),
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
     filtro_situacao: situacao,
     filtro_treinamento: treinamento_id,
@@ -591,6 +594,7 @@ rotas.post(TURMAS, async (c) => {
     "data_inicio",
     "data_fim",
     "local",
+    "local_id",
     "descricao",
     "campus_id",
     "unidade_promotora_id",
@@ -634,6 +638,7 @@ rotas.post(TURMAS, async (c) => {
         data_inicio: inicio,
         data_fim: fim,
         local: texto_ou_nulo(digitado.local),
+        local_id: id_opcional(digitado.local_id),
         descricao: texto_ou_nulo(digitado.descricao),
         campus_id: id_opcional(digitado.campus_id),
         unidade_promotora_id: id_opcional(digitado.unidade_promotora_id),
@@ -662,7 +667,9 @@ rotas.post(TURMAS, async (c) => {
     throw erro;
   }
   if (token) return _tela_link(c, usuario, turma, token);
-  return _volta(c, `${TURMAS}/${turma.id}`, `Turma ${turma.codigo} aberta.`);
+  // os avisos do local (capacidade, choque de sala) não impedem: vão no recado
+  const avisos = await local_treinamento.avisos_da_turma(tx, turma);
+  return _volta(c, `${TURMAS}/${turma.id}`, `Turma ${turma.codigo} aberta.${local_treinamento.frase_dos_avisos(avisos)}`);
 });
 
 // =====================================================================
@@ -865,6 +872,10 @@ async function _tela_ficha(
     avisos_linha,
     impedimentos_exclusao,
     descricao_anterior: (await _ultimas_descricoes(tx, turma.id))[turma.treinamento_id] ?? "",
+    // NUVEM (24/10/2026): o seletor de local da edição e os avisos do local
+    // (capacidade e choque de sala), que não impedem nada
+    locais: aba === "turma" ? await local_treinamento.opcoes(tx, turma.local_id) : [],
+    avisos_local: aba === "turma" ? await local_treinamento.avisos_da_turma(tx, turma) : [],
     link_no_ar: inscricao_publica.link_no_ar(turma),
     publico: inscricao_publica.publico_da_turma(turma),
     certificados_em_word,
@@ -972,13 +983,17 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
       if (f.tem("publico_no_formulario")) {
         campos.aceita_comunidade_externa = marcado(f.texto("aceita_comunidade_externa"));
       }
+      // o local cadastrado só muda quando o formulário traz o seletor (vazio =
+      // "outro local"); sem ele, vale o texto (`servico_turma.editar_turma`)
+      if (f.tem("local_id")) campos.local_id = id_opcional(f.texto("local_id"));
       await servico_turma.editar_turma(sp, usuario, turma, campos);
     });
   } catch (erro) {
     if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma) return _erro(c, destino, erro.message);
     throw erro;
   }
-  return _volta(c, destino, "Turma atualizada.");
+  const avisos = await local_treinamento.avisos_da_turma(tx, turma);
+  return _volta(c, destino, `Turma atualizada.${local_treinamento.frase_dos_avisos(avisos)}`);
 });
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {

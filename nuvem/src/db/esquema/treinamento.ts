@@ -502,6 +502,39 @@ export const participante_mesclagem = pgTable(
   ],
 );
 
+/**
+ * NUVEM (24/10/2026): onde a turma acontece, cadastrado uma vez
+ * (`servicos/local_treinamento.ts`). A turma aponta para cá por `local_id`;
+ * o texto livre `turma.local` continua, e leva o nome do local escolhido (o
+ * que o certificado, a agenda e o e-mail já liam). Não se apaga: inativo sai
+ * da escolha, e a turma que já o tem fica com ele.
+ */
+export const local_treinamento = pgTable(
+  'local_treinamento',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    nome: varchar('nome', { length: 160 }).notNull(),
+    // vazio = serve a qualquer campus (o auditório da reitoria, o local de
+    // fora da UFVJM)
+    campus_id: integer('campus_id'),
+    // o bloco, o andar, a sala: o que leva a pessoa até a porta
+    endereco: text('endereco'),
+    // quantas pessoas cabem; vazio = não informado. Só gera aviso na turma.
+    capacidade: integer('capacidade'),
+    observacoes: text('observacoes'),
+    ativo: boolean('ativo').notNull().default(true),
+    criado_por: integer('criado_por'),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_local_treinamento', columns: [t.id] }),
+    foreignKey({ name: 'fk_local_treinamento_campus', columns: [t.campus_id], foreignColumns: [campus.id] }),
+    foreignKey({ name: 'fk_local_treinamento_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
+    check('ck_local_treinamento_capacidade', sql.raw(`capacidade IS NULL OR capacidade > 0`)),
+    index('ix_local_treinamento_campus').on(t.campus_id),
+  ],
+);
+
 /** Mesma disciplina da RN-03: nunca MAX(numero)+1. */
 export const turma_sequencia = pgTable(
   'turma_sequencia',
@@ -537,6 +570,10 @@ export const turma = pgTable(
     carga_horaria_horas: numeric('carga_horaria_horas', { precision: 5, scale: 1, mode: 'string' }),
 
     local: varchar('local', { length: 160 }),
+    // NUVEM (24/10/2026): o local cadastrado (`local_treinamento`). Com ele,
+    // `local` guarda o nome do local; sem ele (turma antiga, "outro local"),
+    // `local` é o texto livre de sempre.
+    local_id: integer('local_id'),
     // o que o evento é, em texto livre (o "sobre o curso" do cartaz e do
     // certificado); a turma seguinte do mesmo treinamento costuma reaproveitar
     descricao: text('descricao'),
@@ -581,6 +618,7 @@ export const turma = pgTable(
       foreignColumns: [treinamento.id],
     }),
     foreignKey({ name: 'fk_turma_campus', columns: [t.campus_id], foreignColumns: [campus.id] }),
+    foreignKey({ name: 'fk_turma_local', columns: [t.local_id], foreignColumns: [local_treinamento.id] }),
     foreignKey({
       name: 'fk_turma_unidade',
       columns: [t.unidade_promotora_id],
@@ -625,6 +663,8 @@ export const turma = pgTable(
     index('ix_turma_treinamento').on(t.treinamento_id),
     index('ix_turma_situacao').on(t.situacao),
     index('ix_turma_data_fim').on(t.data_fim),
+    // o choque de sala procura as turmas do mesmo local
+    index('ix_turma_local').on(t.local_id),
   ],
 );
 

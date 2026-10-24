@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
+{% import "partes/local_turma.html" as lt %}
 {% block titulo %}{{ turma.codigo }} · SISA{% endblock %}
 {# o código da turma em mono: número que se confere dígito a dígito nunca sai em
    texto corrido — nem no h1, nem na trilha #}
@@ -176,7 +177,12 @@
       <dt>Horário</dt>
       <dd>{{ turma|horario_turma or 'dia inteiro (sem hora definida)' }}</dd>
       <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
-      <dt>Local</dt><dd>{{ turma.local or '—' }}</dd>
+      <dt>Local</dt><dd>{{ turma.local or '—' }}
+        {#- NUVEM (24/10/2026): do local cadastrado, o que leva até a porta #}
+        {%- if turma.local_cadastrado %}
+        {%- if turma.local_cadastrado.endereco %}<span class="quebra discreto">{{ turma.local_cadastrado.endereco }}</span>{% endif %}
+        {%- if turma.local_cadastrado.capacidade %}<span class="quebra discreto">comporta {{ turma.local_cadastrado.capacidade }} pessoas</span>{% endif %}
+        {%- endif %}</dd>
       <dt>Campus</dt><dd>{{ turma.campus.nome if turma.campus else '—' }}</dd>
       <dt>Unidade promotora</dt>
       <dd>{{ turma.unidade_promotora.nome_extenso if turma.unidade_promotora else '—' }}</dd>
@@ -191,6 +197,16 @@
       <dt>Data base do vencimento</dt><dd class="mono">{{ turma.data_base|data }}</dd>
       <dt>Observações</dt><dd>{{ turma.observacoes or '—' }}</dd>
     </dl>
+    {# NUVEM (24/10/2026): vagas acima da capacidade e choque de sala — não
+       impedem nada; quem planeja decide (`local_treinamento.avisos_da_turma`) #}
+    {% if gerencia and avisos_local and avisos_local|length %}
+    <div class="corpo">
+      <div class="aviso aviso-alerta" role="status">
+        <strong>{{ 'Aviso' if avisos_local|length == 1 else 'Avisos' }} do local</strong>
+        <ul class="sem-margem">{% for a in avisos_local %}<li>{{ a }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    {% endif %}
     {% if turma.encerrada and pode_editar %}
     {# FICA: quem tem `turma.criar` e não acha o botão de editar precisa saber que
        a ausência dele é regra, e não permissão que falta. #}
@@ -1447,8 +1463,7 @@
       <span class="dica" id="dica-hora">Opcional. Vazio é dia inteiro; vale para todos os dias.</span></div>
   </div>
   <div class="linha-campos">
-    <div class="campo"><label for="local">Local</label>
-      <input id="local" name="local" value="{{ turma.local or '' }}"></div>
+    {{ lt.campo_local('local_id', 'local', 'campus_id', locais, turma.local_id, '' if turma.local_id else turma.local) }}
     <div class="campo"><label for="campus_id">Campus</label>
       <select id="campus_id" name="campus_id"><option value="">—</option>
         {% for c in campi %}
