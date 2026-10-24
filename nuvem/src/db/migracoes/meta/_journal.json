@@ -176,6 +176,13 @@
       "when": 1792802155989,
       "tag": "0024_senha_no_pedido",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792806240912,
+      "tag": "0025_avaliacao_reacao",
+      "breakpoints": true
     }
   ]
 }

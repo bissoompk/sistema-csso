@@ -2629,6 +2629,27 @@ tbody[data-carregando] td, tr[data-carregando] td { color: var(--tinta-dica); }
    pequeno encostado a esquerda de um formulario inteiro. */
 .botao.largo, button.largo { width: 100%; }
 
+/* AVALIACAO DE REACAO (24/10/2026, `avaliacao_reacao.html`): a escala de 1 a
+   5 em quadrados que se clicam inteiros (44px, o alvo de toque), o 1 e o 5
+   ditos por extenso logo abaixo. O radio continua no lugar, so invisivel: o
+   teclado e o leitor de tela o usam como sempre. */
+.avaliacao-item { border: 0; padding: 0; margin: 0 0 20px; min-width: 0; }
+.avaliacao-item legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
+.escala-notas { display: flex; flex-wrap: wrap; gap: 8px; }
+.escala-notas label {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; height: 44px; border: 1px solid var(--borda); border-radius: 10px;
+  background: var(--cartao); font-weight: 600; cursor: pointer;
+}
+.escala-notas input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.escala-notas label:has(input:checked) { border-color: var(--acento); background: var(--acento-suave); color: var(--acento); }
+.escala-notas label:has(input:focus-visible) { outline: 2px solid var(--acento); outline-offset: 2px; }
+.escala-extremos { font-size: 13px; color: var(--tinta-dica); margin-top: 4px; }
+.avaliacao-distribuicao td, .avaliacao-distribuicao th { text-align: center; }
+.avaliacao-distribuicao td:first-child, .avaliacao-distribuicao th:first-child { text-align: left; }
+.avaliacao-comentarios { display: grid; gap: 10px; padding: 0; list-style: none; }
+.avaliacao-comentarios li { padding: 12px 14px; border: 1px solid var(--borda); border-radius: 10px; white-space: pre-line; }
+
 /* ---------- telas de acesso: entrar, primeiro acesso, cadastre-se, esqueci ----------
    (24/10/2026) Um cartao largo partido em dois: o painel da Sisa a esquerda
    (quem e o sistema e o que se faz nele) e o formulario a direita. Era um

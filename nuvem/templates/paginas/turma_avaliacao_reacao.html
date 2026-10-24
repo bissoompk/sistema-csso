@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{# A aba "Avaliação de reação" da turma, em página própria
+   (`rotas/avaliacao_reacao.ts`): o cabeçalho e as abas da ficha, e o resultado.
+
+   O PISO é a regra da tela: com menos de {{ r.piso }} respostas sai só a
+   contagem — nem média, nem distribuição, nem comentário —, porque com uma ou
+   duas respostas quem deu a aula sabe quem escreveu. Os comentários vêm
+   embaralhados do serviço: a ordem não diz a ordem de chegada. #}
+{% block titulo %}{{ turma.codigo }} · Avaliação de reação · SISA{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1 class="mono">{{ turma.codigo }}</h1>
+      <p class="identificacao">
+        <strong>{{ turma.treinamento.nome }}</strong>
+        <span class="ponto">·</span>
+        <span class="mono">{{ turma.data_inicio|data }}
+          {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
+        {{ ui.pilula_turma(turma.situacao) }}
+      </p>
+    </div>
+  </div>
+
+  <nav class="abas" aria-label="Seções da turma">
+    {% for chave, rotulo in abas %}
+    <a href="/turmas/{{ turma.id }}?aba={{ chave }}">{{ rotulo }}</a>
+    {% endfor %}
+    <a href="/turmas/{{ turma.id }}/avaliacao" class="ativa" aria-current="page">Avaliação de reação</a>
+  </nav>
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Avaliação de reação</h2>
+      <a href="{{ consolidado }}">Ver por treinamento e por instrutor</a>
+    </div>
+
+    <p><strong>{{ r.respostas }}</strong> resposta(s) de <strong>{{ r.elegiveis }}</strong>
+      participante(s) que frequentaram a turma.
+      {%- if not terminou %} A avaliação abre quando a turma terminar.
+      {%- else %} Recebe respostas até {{ prazo|data }}.{% endif %}</p>
+
+    {% if r.abaixo_do_piso %}
+    <div class="aviso aviso-info" role="note">
+      <p><strong>Ainda sem resultado para mostrar.</strong> Médias, distribuição e comentários
+        aparecem a partir de {{ r.piso }} respostas: com menos, daria para saber quem respondeu o quê.</p>
+    </div>
+    {% else %}
+    <div class="tabela-cartao lista sem-altura">
+    <table class="avaliacao-distribuicao">
+      <caption class="oculto">Média e distribuição das notas, por item</caption>
+      <thead>
+        <tr>
+          <th scope="col">Item</th>
+          <th scope="col">Média</th>
+          {% for n in notas %}<th scope="col">Nota {{ n }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in r.itens %}
+      <tr>
+        <th scope="row">{{ item.rotulo }}</th>
+        <td class="mono"><strong>{{ item.media }}</strong></td>
+        {% for q in item.distribuicao %}
+        <td class="mono">{{ q }} <span class="discreto">({{ item.percentuais[loop.index0] }}%)</span></td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Comentários</h3>
+    {% if r.comentarios|length %}
+    <ul class="avaliacao-comentarios">
+      {% for texto in r.comentarios %}<li>{{ texto }}</li>{% endfor %}
+    </ul>
+    <p class="discreto">Em ordem embaralhada, a cada abertura da página.</p>
+    {% else %}
+    <p class="discreto">Nenhum comentário escrito.</p>
+    {% endif %}
+    {% endif %}
+
+    <p class="discreto">Questionário {{ versao }}: notas de 1 a 5. A resposta não tem nome nem hora;
+      a inscrição guarda só que a pessoa já respondeu.</p>
+  </section>
+
+</div>
+{% endblock %}

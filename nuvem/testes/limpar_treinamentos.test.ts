@@ -153,6 +153,19 @@ async function montar(): Promise<Montado> {
     email_normalizado: "ana.sigilosa@empresa.com.br",
     expira_em: new Date(Date.now() + 3600_000),
   });
+  // avaliação de reação: um convite por link e uma resposta anônima
+  await db.insert(e.avaliacao_reacao_convite).values({ inscricao_id: cen.inscricao.id, token_hash: "b".repeat(64), expira_em: "2099-12-31" });
+  await db.insert(e.avaliacao_reacao_resposta).values({
+    turma_id: cen.turma.id,
+    versao: "v1",
+    nota_conteudo: 5,
+    nota_instrutor: 5,
+    nota_material: 4,
+    nota_local: 4,
+    nota_carga: 3,
+    nota_recomendaria: 5,
+    respondida_em: "2026-10-24",
+  });
   await db.insert(e.pendencia).values({
     tipo: "RECICLAGEM",
     descricao: "reciclagem a vencer",

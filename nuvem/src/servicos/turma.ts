@@ -685,6 +685,10 @@ export async function mudar_situacao(
     // do import local do Python: `presenca` importa daqui.
     const presenca = await import("./presenca.js");
     await presenca.apurar_turma(tx, usuario, turma);
+    // NUVEM (24/10/2026): o convite da avaliação de reação a quem frequentou,
+    // por e-mail, depois da apuração (idempotente: concluir de novo não repete)
+    const avaliacao = await import("./avaliacao_reacao.js");
+    await avaliacao.convidar_turma(tx, usuario, turma);
   }
   return turma;
 }

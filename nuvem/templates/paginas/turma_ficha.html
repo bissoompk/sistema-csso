@@ -142,6 +142,10 @@
        {% if aba == chave %}aria-current="page"{% endif %}>{{ rotulo }}
       {%- if chave == 'inscricoes' %} <span class="conta">{{ inscricoes|length }}</span>{% endif %}</a>
     {% endfor %}
+    {# a avaliação de reação mora em página própria (`rotas/avaliacao_reacao.ts`) #}
+    {% if ve_avaliacao_reacao %}
+    <a href="/turmas/{{ turma.id }}/avaliacao">Avaliação de reação</a>
+    {% endif %}
     {# declaradas e não clicáveis: quem usa o sistema precisa saber o que ainda
        não está aqui, mesma regra dos módulos previstos em /modulos #}
     {% for rotulo, fatia in abas_previstas %}

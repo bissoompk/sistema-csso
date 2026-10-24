@@ -28,6 +28,7 @@ import {
   turma as tabela_turma,
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
+import * as avaliacao_reacao from "../servicos/avaliacao_reacao.js";
 import * as duplicados from "../servicos/duplicados.js";
 import * as mesclagem from "../servicos/mesclagem.js";
 import {
@@ -504,6 +505,8 @@ rotas.get(MINHAS, async (c) => {
     total_abertas: todas_abertas.length,
     // "Adicionar à agenda": a inscrição viva de turma que não foi cancelada
     com_agenda: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, servico_turma.tem_agenda(i)])),
+    // a avaliação de reação: o botão na turma que terminou e que ele frequentou
+    avaliavel: Object.fromEntries(minhas_inscricoes.map((i) => [i.id, avaliacao_reacao.pode_avaliar(i, hoje)])),
     // conta sem titular (nem servidor ligado, nem terceirizado/discente) não é
     // erro: é a tela dizendo por que está vazia
     sem_servidor: !titular_externo.tem_titular(usuario),
@@ -923,6 +926,8 @@ async function _tela_ficha(
     // NUVEM: o dono, o direito de quem lê e os ajudantes (`dono_turma.ts`)
     direito,
     pode_aqui,
+    // a aba "Avaliação de reação" (página própria, `rotas/avaliacao_reacao.ts`)
+    ve_avaliacao_reacao: avaliacao_reacao.ve_resultado(usuario),
     ajudantes,
     candidatos_ajudante,
     papeis_ajudante: dono_turma.PAPEIS_DE_AJUDANTE,

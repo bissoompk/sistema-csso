@@ -36,6 +36,7 @@ import {
   time,
   unique,
   uniqueIndex,
+  uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
 
@@ -721,6 +722,11 @@ export const inscricao = pgTable(
     nota_final: numeric('nota_final', { precision: 5, scale: 2, mode: 'string' }),
     observacao: text('observacao'),
     motivo_cancelamento: text('motivo_cancelamento'),
+    // NUVEM (24/10/2026): a pessoa já respondeu a avaliação de reação desta
+    // turma (`servicos/avaliacao_reacao.ts`). Só o fato, SEM hora: a resposta
+    // mora em `avaliacao_reacao_resposta`, sem ligação com a inscrição, e uma
+    // hora aqui seria o elo para casar as duas.
+    avaliacao_respondida: boolean('avaliacao_respondida').notNull().default(false),
   },
   (t) => [
     foreignKey({
@@ -1054,5 +1060,79 @@ export const certificado_valor_inscricao = pgTable(
     }).onDelete('cascade'),
     foreignKey({ name: 'fk_valor_inscricao_usuario', columns: [t.atualizado_por], foreignColumns: [usuario.id] }),
     unique('uq_valor_inscricao').on(t.inscricao_id, t.marcador),
+  ],
+);
+
+// =====================================================================
+// NUVEM (24/10/2026) — avaliação de reação (`servicos/avaliacao_reacao.ts`)
+// =====================================================================
+
+/**
+ * O convite por link de uso único, um por inscrição, para quem avalia sem
+ * entrar no sistema. Só o SHA-256 do token (o token vai no e-mail). Abrir o
+ * link não gasta nada; responder APAGA a linha — é isso o "uso único". O
+ * convite que venceu (`expira_em`, o fim do prazo da avaliação) sai pela rotina
+ * de privacidade.
+ */
+export const avaliacao_reacao_convite = pgTable(
+  'avaliacao_reacao_convite',
+  {
+    inscricao_id: integer('inscricao_id').notNull(),
+    token_hash: varchar('token_hash', { length: 64 }).notNull(),
+    // o último dia em que o link vale (o mesmo prazo da avaliação pela conta)
+    expira_em: DataPura('expira_em').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_avaliacao_reacao_convite', columns: [t.inscricao_id] }),
+    foreignKey({
+      name: 'fk_avaliacao_convite_inscricao',
+      columns: [t.inscricao_id],
+      foreignColumns: [inscricao.id],
+    }).onDelete('cascade'),
+    unique('uq_avaliacao_convite_token').on(t.token_hash),
+    index('ix_avaliacao_convite_expira').on(t.expira_em),
+  ],
+);
+
+/**
+ * A resposta, ANÔNIMA por construção: nenhuma coluna aponta para inscrição,
+ * participante ou conta, a data vai sem hora e a chave é sorteada (um número
+ * sequencial diria a ordem em que as respostas chegaram, e a ordem casaria com
+ * a trilha). Quem respondeu fica marcado só na inscrição
+ * (`inscricao.avaliacao_respondida`).
+ */
+export const avaliacao_reacao_resposta = pgTable(
+  'avaliacao_reacao_resposta',
+  {
+    id: uuid('id').notNull().defaultRandom(),
+    turma_id: integer('turma_id').notNull(),
+    // a versão do questionário fixo (`avaliacao_reacao.VERSAO`)
+    versao: varchar('versao', { length: 10 }).notNull(),
+    nota_conteudo: smallint('nota_conteudo').notNull(),
+    nota_instrutor: smallint('nota_instrutor').notNull(),
+    nota_material: smallint('nota_material').notNull(),
+    nota_local: smallint('nota_local').notNull(),
+    nota_carga: smallint('nota_carga').notNull(),
+    nota_recomendaria: smallint('nota_recomendaria').notNull(),
+    comentario: text('comentario'),
+    respondida_em: DataPura('respondida_em').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_avaliacao_reacao_resposta', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_avaliacao_resposta_turma',
+      columns: [t.turma_id],
+      foreignColumns: [turma.id],
+    }).onDelete('cascade'),
+    check(
+      'ck_avaliacao_resposta_notas',
+      sql.raw(
+        ['nota_conteudo', 'nota_instrutor', 'nota_material', 'nota_local', 'nota_carga', 'nota_recomendaria']
+          .map((c) => `${c} BETWEEN 1 AND 5`)
+          .join(' AND '),
+      ),
+    ),
+    check('ck_avaliacao_resposta_comentario', sql.raw(`comentario IS NULL OR char_length(comentario) <= 1000`)),
+    index('ix_avaliacao_resposta_turma').on(t.turma_id),
   ],
 );
