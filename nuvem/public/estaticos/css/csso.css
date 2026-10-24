@@ -2717,6 +2717,13 @@ tbody[data-carregando] td, tr[data-carregando] td { color: var(--tinta-dica); }
 .opcao-seta .ico { width: 18px; height: 18px; }
 .opcao-vinculo:hover .opcao-seta { color: var(--acento); }
 
+/* a fila "Pedidos de conta": aprovar em cima, a recusa (com o motivo) embaixo */
+.decisao-pedido { min-width: 260px; }
+.decisao-pedido form { margin: 0; }
+.decisao-pedido form + form { margin-top: 8px; }
+.recusa-pedido { display: flex; gap: 6px; }
+.recusa-pedido input { flex: 1; min-width: 0; }
+
 @media (max-width: 820px) {
   .tela-auxiliar.tela-acesso { margin-top: 16px; }
   .acesso { grid-template-columns: 1fr; border-radius: 14px; }

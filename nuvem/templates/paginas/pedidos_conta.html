@@ -24,11 +24,11 @@
       <td>{{ p.organizacao }}</td>
       <td>{{ p.matricula or '—' }}</td>
       <td>{{ p.criado_em|momento }}</td>
-      <td>
-        <form method="post" action="/usuarios/pedidos/{{ p.id }}/aprovar" class="em-linha">
+      <td class="decisao-pedido">
+        <form method="post" action="/usuarios/pedidos/{{ p.id }}/aprovar">
           <button type="submit" class="compacto">Aprovar</button></form>
-        <form method="post" action="/usuarios/pedidos/{{ p.id }}/recusar" class="em-linha">
-          <input name="motivo" maxlength="500" required placeholder="motivo da recusa" aria-label="Motivo da recusa do pedido {{ p.id }}">
+        <form method="post" action="/usuarios/pedidos/{{ p.id }}/recusar" class="recusa-pedido">
+          <input name="motivo" maxlength="500" required placeholder="Motivo da recusa" aria-label="Motivo da recusa do pedido {{ p.id }}">
           <button type="submit" class="secundario compacto">Recusar</button></form>
       </td>
     </tr>
