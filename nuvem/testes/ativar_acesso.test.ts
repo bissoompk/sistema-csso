@@ -113,7 +113,7 @@ describe("a resposta é a mesma, sempre", () => {
     await servidor();
     expect(email.configurado()).toBe(false);
     const r = await pedir(SIAPE, EMAIL);
-    expect(r.text).toContain("enviamos ao e-mail institucional cadastrado");
+    expect(r.text).toContain("Enviamos um link de uso único ao e-mail institucional");
     const [linha] = await caixa();
     expect(linha!.situacao).toBe("PENDENTE");
   });

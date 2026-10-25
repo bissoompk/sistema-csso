@@ -67,9 +67,13 @@ describe("a ficha da ocorrência", () => {
     expect(r.status).toBe(200);
     expect(r.text).toContain("CAT-2031-0001");
     expect(r.text).toContain('aria-current="page">Saúde');
+    // sem o parcial, a aba diz que chega depois (em branco parecia defeito)
+    expect(r.text).toContain('id="aba-em-construcao"');
     const r2 = await get("coordenador_csso", `/acidentes/${id}?aba=inventada`);
     expect(r2.status).toBe(200);
     expect(r2.text).toContain('aria-current="page">Comunicação');
+    // a aba que tem parcial não recebe o aviso
+    expect(r2.text).not.toContain('id="aba-em-construcao"');
   });
 
   it("ocorrência inexistente é 404", async () => {

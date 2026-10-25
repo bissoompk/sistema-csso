@@ -7,7 +7,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, check, foreignKey, index, integer, pgTable, smallint, text, varchar } from 'drizzle-orm/pg-core';
+import { boolean, check, foreignKey, index, integer, jsonb, pgTable, smallint, text, varchar } from 'drizzle-orm/pg-core';
 
 import { MomentoUTC, agora_utc } from './base';
 import { usuario } from './seguranca';
@@ -153,6 +153,11 @@ export const ativacao_acesso = pgTable(
     // o link só confirma o e-mail, e é esta senha que a conta recebe. Apagada
     // quando o link é usado
     senha_hash: text('senha_hash'),
+    // o AUTOCADASTRO do servidor que ainda não está no cadastro (25/10/2026):
+    // SIAPE, nome, e-mail, cargo e lotação digitados no primeiro acesso. O
+    // cadastro de servidor só nasce quando o link enviado a esse e-mail é
+    // confirmado; apagado ao usar o link, e a linha sai no expurgo
+    dados_cadastro: jsonb('dados_cadastro'),
     // o que o pedido virou: LINK (e-mail com link na fila), NEUTRO (e-mail "procure a
     // equipe"), SEM_EMAIL (SIAPE e e-mail batem, mas o cadastro não tem e-mail — a
     // equipe vê), NADA (não casou, ou passou do teto por destinatário)

@@ -1,6 +1,7 @@
 /**
  * NUVEM (Portal do servidor, 22/10/2026): "Meu perfil" é `/minha-conta` em
- * seções `<details>` — Dados funcionais (só leitura), Contato e acesso,
+ * seções `<details>` — Dados funcionais (o próprio servidor corrige cargo, função
+ * e lotação desde 25/10/2026), Contato e acesso,
  * Segurança, Treinamentos e certificados (resumo) e Privacidade. Sem CPF, RG ou
  * nascimento; conta de equipe sem servidor continua com Contato e Segurança.
  */
@@ -11,7 +12,7 @@ import path from "node:path";
 process.env.CSSO_DIR_ARQUIVOS = mkdtempSync(path.join(tmpdir(), "csso-portal-perfil-"));
 
 import { describe, expect, it } from "vitest";
-import { eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import { definirArmazenamento } from "../src/servicos/armazenamento.js";
 import * as emissao from "../src/servicos/emissao_certificado.js";
@@ -84,7 +85,10 @@ describe("Meu perfil: cabeçalho e seções", () => {
     expect(tela.text).toContain("<dt>Função</dt><dd>Chefe de Laboratório</dd>");
     expect(tela.text).toContain(`<dt>Lotação</dt><dd>${unidade!.sigla} · ${unidade!.nome_extenso}</dd>`);
     expect(tela.text).toContain(`<dt>Campus</dt><dd>${campus!.nome}</dd>`);
-    expect(tela.text).toContain("Fonte: SIAPE / Pró-Reitoria de Gestão de Pessoas.");
+    // o sistema não lê o SIAPE (25/10/2026): os dados são do servidor ou da equipe
+    expect(tela.text).toContain("Informados por você ou pela equipe da Sisa — o sistema não lê o SIAPE.");
+    expect(tela.text).not.toContain("Fonte: SIAPE");
+    expect(tela.text).toContain('action="/minha-conta/funcionais"');
     expect(tela.text).toContain(`<a href="/servidores/${cen.servidor.id}">Ver minha ficha completa →</a>`);
   });
 
@@ -115,7 +119,7 @@ describe("Meu perfil: cabeçalho e seções", () => {
     expect(tela.text).not.toMatch(/nascimento/i);
   });
 
-  it("dados funcionais não aceitam POST: não há rota, e o formulário de contato ignora o SIAPE", async () => {
+  it("o SIAPE não se muda por aqui: o formulário de contato o ignora e não há campo dele", async () => {
     for (const caminho of ["/minha-conta/dados-funcionais", "/minha-conta/servidor"]) {
       const r = await cliente.post(caminho, { siape: "9999999", cargo: "outro" }, { seguir: false });
       expect(r.status, caminho).toBe(404);
@@ -125,6 +129,40 @@ describe("Meu perfil: cabeçalho e seções", () => {
     expect(s!.siape).toBe("1110654");
     expect(s!.funcao).toBe("Chefe de Laboratório");
     expect(tela.text).not.toMatch(/<input[^>]+name="siape"/);
+  });
+
+  it("o próprio servidor corrige cargo, função e lotação: período novo, trilha, e o SIAPE não muda", async () => {
+    const [novo_cargo] = await db.insert(e.cargo).values({ nome: "Assistente em Administração" }).returning();
+    const [outra] = await db
+      .select()
+      .from(e.unidade_uorg)
+      .where(sql`${e.unidade_uorg.id} <> ${unidade!.id}`)
+      .limit(1);
+    // sem mudança nenhuma: "Nada mudou", e nada é gravado
+    const igual = await cliente.post(
+      "/minha-conta/funcionais",
+      { cargo_id: String(cargo!.id), funcao: "Chefe de Laboratório", unidade_uorg_id: String(unidade!.id) },
+      { seguir: false },
+    );
+    expect(decodeURIComponent(igual.location!)).toContain("Nada mudou");
+    const r = await cliente.post(
+      "/minha-conta/funcionais",
+      { cargo_id: String(novo_cargo!.id), funcao: "Secretário do Departamento", unidade_uorg_id: String(outra!.id), siape: "9999999" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    expect(decodeURIComponent(r.location!)).toContain("Dados funcionais atualizados");
+    const [s] = await db.select().from(e.servidor).where(eq(e.servidor.id, cen.servidor.id));
+    expect([s!.siape, s!.cargo_id, s!.funcao, s!.unidade_uorg_id]).toEqual(["1110654", novo_cargo!.id, "Secretário do Departamento", outra!.id]);
+    const periodos = await db.select().from(e.servidor_lotacao).where(eq(e.servidor_lotacao.servidor_id, cen.servidor.id));
+    expect(periodos.at(-1)!.observacao).toBe("Informado pelo próprio servidor em Meu perfil.");
+    const trilha = await db
+      .select()
+      .from(e.historico_evento)
+      .where(and(eq(e.historico_evento.entidade, "servidor"), eq(e.historico_evento.tipo_evento, "LOTACAO_ALTERADA")));
+    expect(trilha.some((t) => t.entidade_id === cen.servidor.id)).toBe(true);
+    const depois = (await cliente.get("/minha-conta")).text;
+    expect(depois).toContain("<dt>Função</dt><dd>Secretário do Departamento</dd>");
   });
 });
 

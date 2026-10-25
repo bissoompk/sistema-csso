@@ -56,10 +56,11 @@
     </div>
   </section>
 
-  {# ---------- 1. Dados funcionais (só leitura; não há formulário nem POST) ---------- #}
+  {# ---------- 1. Dados funcionais (25/10/2026: o sistema não lê o SIAPE — o
+     próprio servidor corrige cargo, função e lotação; SIAPE e nome são da equipe) ---------- #}
   {% if servidor %}
   <details class="perfil-secao" id="dados-funcionais"{% if not erro_contato %} open{% endif %}>
-    {{ resumo_secao('person-badge', 'Dados funcionais', 'Só leitura') }}
+    {{ resumo_secao('person-badge', 'Dados funcionais') }}
     <div class="perfil-secao-corpo">
       <dl class="dl-rotulo">
         <div><dt>Matrícula SIAPE</dt><dd class="mono">{{ servidor.siape }}</dd></div>
@@ -70,12 +71,41 @@
         <div><dt>Situação</dt><dd>{{ ui.pilula_situacao_servidor(servidor.situacao) }}</dd></div>
         {% if postos|length %}<div><dt>Posto de trabalho</dt><dd>{{ postos|map(attribute='nome')|join(' / ') }}</dd></div>{% endif %}
       </dl>
-      <p class="perfil-nota">Fonte: SIAPE / Pró-Reitoria de Gestão de Pessoas. Para corrigir, procure a
-        gestão de pessoas. Dados funcionais, só leitura.
+      {% if erro_funcionais %}<div class="aviso aviso-erro" role="alert">{{ erro_funcionais }}</div>{% endif %}
+      <p class="perfil-nota">Informados por você ou pela equipe da Sisa — o sistema não lê o SIAPE.
+        Cargo, função e lotação você mesmo corrige; o campus vem da lotação. Para o SIAPE ou o nome,
+        procure a equipe da Sisa.
         <a href="/servidores/{{ servidor.id }}">Ver minha ficha completa →</a></p>
+      <div class="acoes">{{ ui.botao_cadastro('corrigir-funcionais', 'Corrigir cargo, função ou lotação', 'secundario') }}</div>
     </div>
   </details>
+  {% set df = digitado or {} %}
+  {% call ui.popup_cadastro('corrigir-funcionais', 'Corrigir dados funcionais', '/minha-conta/funcionais',
+                            'Salvar', aberto=erro_funcionais, erro=erro_funcionais or '',
+                            nota='entra no histórico de lotação a partir de hoje') %}
+    <div class="campo"><label for="f-cargo">Cargo</label>
+      <select id="f-cargo" name="cargo_id">
+        <option value="">— não informado</option>
+        {% set atual_cargo = df.cargo_id if df.cargo_id is defined else (('' ~ servidor.cargo_id) if servidor.cargo_id else '') %}
+        {% for cg in cargos %}<option value="{{ cg.id }}"{{ ' selected' if (cg.id | string) == atual_cargo }}>{{ cg.nome }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="f-funcao">Função <span class="discreto">(opcional)</span></label>
+      <input id="f-funcao" name="funcao" maxlength="120"
+             value="{{ df.funcao if df.funcao is defined else (servidor.funcao or '') }}"
+             placeholder="por exemplo, Chefe do Laboratório de Química"></div>
+    <div class="campo"><label for="f-lotacao">Lotação</label>
+      <select id="f-lotacao" name="unidade_uorg_id" aria-describedby="dica-f-lotacao">
+        <option value="">— não informada</option>
+        {% set atual_un = df.unidade_uorg_id if df.unidade_uorg_id is defined else (('' ~ servidor.unidade_uorg_id) if servidor.unidade_uorg_id else '') %}
+        {% for u in lotacoes %}<option value="{{ u.id }}"{{ ' selected' if (u.id | string) == atual_un }}>{{ u.rotulo }}</option>{% endfor %}
+      </select>
+      <span class="dica" id="dica-f-lotacao">A unidade onde você está lotado; o campus vem com ela. Não achou a
+        sua? Procure a equipe da Sisa.</span></div>
+    <p class="discreto">A mudança vale a partir de hoje e o período anterior fica guardado no histórico. O que já foi
+      registrado antes (um pedido de EPI enviado, um processo) guarda os dados daquela data.</p>
+  {% endcall %}
   {% endif %}
+
 
   {# ---------- 2. Contato e acesso (o que já existia em Minha conta) ---------- #}
   <details class="perfil-secao" id="contato"{% if erro_contato or not servidor %} open{% endif %}>

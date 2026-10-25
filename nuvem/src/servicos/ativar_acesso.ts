@@ -41,9 +41,11 @@ import {
   agora_utc,
   ativacao_acesso as tabela,
   atribuicao,
+  cargo as tabela_cargo,
   email_saida,
   perfil as tabela_perfil,
   servidor as tabela_servidor,
+  unidade_uorg as tabela_unidade,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import { hoje_iso } from "../dominio/datas.js";
@@ -53,6 +55,7 @@ import * as autenticacao from "./autenticacao.js";
 import * as datas_br from "./datas_br.js";
 import * as email from "./email.js";
 import * as governanca from "./governanca.js";
+import { registrar_lotacao_inicial } from "./servidores.js";
 import { PERFIS_EXTERNOS, TOPO_DA_HIERARQUIA, eh_conta_de_governo, perfis_vigentes } from "./rbac.js";
 
 export const CAMINHO = "/ativar-acesso";
@@ -87,15 +90,18 @@ export const ACESSO_EMAIL_ACOMPANHOU_CADASTRO = "ACESSO_EMAIL_ACOMPANHOU_CADASTR
 
 export const PEDIDO_DE_ACESSO_RECUSADO = "PEDIDO_DE_ACESSO_RECUSADO";
 export const ACESSO_ATIVADO = "ACESSO_ATIVADO";
+export const SERVIDOR_AUTOCADASTRADO = "SERVIDOR_AUTOCADASTRADO";
+/** O e-mail do servidor no primeiro acesso: o institucional. */
+export const DOMINIO_SERVIDOR = "ufvjm.edu.br";
 export const SENHA_REDEFINIDA_POR_LINK = "SENHA_REDEFINIDA_POR_LINK";
 
 /** O piso do tempo de resposta do pedido; o teste o baixa. */
 export const ajuste = { piso_ms: 1200 };
 
 export const RESPOSTA_PADRAO =
-  "Se os dados conferem com o cadastro de servidores, enviamos ao e-mail institucional cadastrado " +
-  "um link de uso único para confirmar e ativar o acesso. Confira também a caixa de spam. " +
-  "Se não chegar, procure a equipe responsável.";
+  "Enviamos um link de uso único ao e-mail institucional para você confirmar e ativar o acesso " +
+  "(se você já está no cadastro de servidores da Sisa, o link vai ao e-mail que está lá). Confira também " +
+  "a caixa de spam. Se não chegar, procure a equipe da Sisa.";
 
 export const RESPOSTA_ESQUECI =
   "Se este e-mail é o de uma conta do Sistema SISA, enviamos para ele um link para definir a senha, " +
@@ -191,6 +197,20 @@ export function corpo_da_confirmacao(link: string, expira_em: Date): string {
   );
 }
 
+export function corpo_do_autocadastro(link: string, expira_em: Date): string {
+  return (
+    "Olá.\n\n" +
+    "Foi pedido, com este e-mail institucional, o cadastro de servidor e o acesso ao Sistema SISA, com uma " +
+    "senha escolhida na tela do pedido. Para confirmar que este e-mail é seu, abra o link abaixo e clique em " +
+    `"Confirmar" até ${datas_br.numerica(datas_br.hoje(expira_em))}, às ` +
+    `${expira_em.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}. ` +
+    "O cadastro só é criado quando você confirma:\n\n" +
+    `${link}\n\n` +
+    "SE NÃO FOI VOCÊ QUE PEDIU, NÃO CONFIRME: ignore esta mensagem e nada é criado.\n\n" +
+    ASSINATURA
+  );
+}
+
 export function corpo_do_aviso_ativado(base_url: string): string {
   return (
     "Olá.\n\n" +
@@ -235,9 +255,29 @@ export async function no_teto_do_destinatario(tx: Executor, para: string, agora:
  * `RESPOSTA_PADRAO`. Lança `DadosInvalidos` só para o que nem parece SIAPE ou
  * e-mail (erro de digitação, igual para todo mundo).
  */
+export interface DadosDoPedido {
+  siape: string;
+  email: string;
+  nova?: string;
+  confirmacao?: string;
+  /** o autocadastro (25/10/2026): só vale para o SIAPE que ainda não está no cadastro */
+  nome?: string;
+  cargo_id?: number | null;
+  unidade_uorg_id?: number | null;
+}
+
+/** O que o autocadastro guarda até a confirmação do e-mail. */
+export interface DadosCadastro {
+  siape: string;
+  nome: string;
+  email: string;
+  cargo_id: number | null;
+  unidade_uorg_id: number | null;
+}
+
 export async function pedir(
   tx: Executor,
-  d: { siape: string; email: string; nova?: string; confirmacao?: string },
+  d: DadosDoPedido,
   ip: string | null,
   base_url: string,
   agora: Date = new Date(),
@@ -245,14 +285,99 @@ export async function pedir(
   const siape = d.siape.trim();
   if (!/^\d{7}$/.test(siape)) throw new DadosInvalidos("Digite o SIAPE com 7 dígitos.");
   if (!email.email_valido(d.email)) throw new DadosInvalidos("Digite o e-mail institucional completo.");
+  // Com o nome, o pedido também serve de autocadastro. O nome e o domínio são
+  // conferidos para TODO pedido que o traz, igual: conferir só no autocadastro
+  // diria de fora que o SIAPE não está no cadastro. Sem o nome (o formulário o
+  // exige; só chega assim de fora da tela), só ativa quem já está no cadastro.
+  const nome = (d.nome ?? "").trim().replace(/\s+/g, " ");
+  if (nome && [...nome].length > 160) throw new DadosInvalidos("O nome tem mais de 160 caracteres.");
+  if (nome && !normalizar_email(d.email).endsWith(`@${DOMINIO_SERVIDOR}`)) {
+    throw new DadosInvalidos(`Use o seu e-mail institucional (@${DOMINIO_SERVIDOR}).`);
+  }
   // a senha escolhida na tela (24/10/2026): o link do e-mail só confirma. Sem
   // ela, o link pede a senha (o caminho antigo, que o "Esqueci" ainda usa)
   const senha_hash = d.nova || d.confirmacao ? await hash_da_senha_escolhida(d.nova ?? "", d.confirmacao ?? "") : null;
   const marcar = await _registrar_pedido(tx, ip, agora);
   if (!marcar) return;
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
-  if (!servidor) return;
+  if (!servidor) {
+    // o SIAPE ainda não está no cadastro: o próprio servidor se cadastra
+    // (25/10/2026 — o sistema não lê o SIAPE), quando o pedido trouxe o nome
+    if (nome && senha_hash) {
+      await _autocadastro(tx, { siape, nome, email: d.email.trim(), cargo_id: d.cargo_id ?? null, unidade_uorg_id: d.unidade_uorg_id ?? null }, {
+        senha_hash,
+        ip,
+        base_url,
+        agora,
+        marcar,
+      });
+    }
+    return;
+  }
   await _atender_servidor(tx, servidor, d.email, ip, base_url, agora, marcar, senha_hash);
+}
+
+/**
+ * O e-mail ou o SIAPE do autocadastro já são de alguém? Conferido no pedido e
+ * de novo na confirmação (entre os dois, a equipe pode ter cadastrado).
+ */
+async function _colisao_do_autocadastro(tx: Executor, dados: DadosCadastro): Promise<string | null> {
+  const alvo = normalizar_email(dados.email);
+  const [siape] = await tx.select({ id: tabela_servidor.id }).from(tabela_servidor).where(eq(tabela_servidor.siape, dados.siape));
+  if (siape) return "o SIAPE já está no cadastro";
+  const [servidor] = await tx
+    .select({ id: tabela_servidor.id })
+    .from(tabela_servidor)
+    .where(sql`lower(btrim(${tabela_servidor.email})) = ${alvo}`)
+    .limit(1);
+  if (servidor) return "o e-mail já é o de outro servidor do cadastro";
+  const [conta] = await tx
+    .select({ id: tabela_usuario.id })
+    .from(tabela_usuario)
+    .where(sql`lower(${tabela_usuario.email}) = ${alvo} OR lower(${tabela_usuario.login}) = ${alvo}`)
+    .limit(1);
+  if (conta) return "o e-mail já é o de uma conta";
+  return null;
+}
+
+async function _autocadastro(
+  tx: Executor,
+  dados: DadosCadastro,
+  o: { senha_hash: string; ip: string | null; base_url: string; agora: Date; marcar: Marcar },
+): Promise<void> {
+  if (await no_teto_do_destinatario(tx, dados.email, o.agora)) return;
+  const colisao = await _colisao_do_autocadastro(tx, dados);
+  if (colisao) {
+    // quem tem a caixa fica sabendo que alguém tentou; a tela respondeu igual
+    await o.marcar({ resultado: "NEUTRO" });
+    await _neutro(tx, dados.email, o.agora);
+    await auditoria.registrar(tx, {
+      entidade: "servidor",
+      // ainda não há cadastro: o evento não aponta para linha nenhuma
+      entidade_id: 0,
+      tipo_evento: PEDIDO_DE_ACESSO_RECUSADO,
+      descricao: `Autocadastro de servidor não atendido: ${colisao}. A tela respondeu como a todos.`,
+      usuario_nome: ATOR,
+      ip: o.ip,
+    });
+    return;
+  }
+  // cargo e lotação que não existem (formulário adulterado) ficam em branco
+  const [cargo] = dados.cargo_id ? await tx.select({ id: tabela_cargo.id }).from(tabela_cargo).where(eq(tabela_cargo.id, dados.cargo_id)) : [];
+  const [unidade] = dados.unidade_uorg_id
+    ? await tx.select({ id: tabela_unidade.id }).from(tabela_unidade).where(eq(tabela_unidade.id, dados.unidade_uorg_id))
+    : [];
+  const guardados: DadosCadastro = { ...dados, cargo_id: cargo?.id ?? null, unidade_uorg_id: unidade?.id ?? null };
+  const token = randomBytes(24).toString("base64url");
+  const expira_em = new Date(o.agora.getTime() + VALIDADE_CONFIRMACAO_MS);
+  await o.marcar({ token_hash: _hash(token), resultado: "LINK", expira_em, senha_hash: o.senha_hash, dados_cadastro: guardados });
+  await email.enfileirar(tx, {
+    tipo: TIPO_LINK,
+    destinatario: dados.email,
+    assunto: ASSUNTO,
+    corpo: corpo_do_autocadastro(`${o.base_url}${CAMINHO}/${token}`, expira_em),
+    expira_em,
+  });
 }
 
 /**
@@ -590,7 +715,7 @@ async function _linha_valida(tx: Executor, token: string, agora: Date) {
   const [linha] = await tx.select().from(tabela).where(eq(tabela.token_hash, _hash(token)));
   if (!linha || linha.usado_em !== null || !linha.expira_em || linha.expira_em <= agora) return null;
   // o link de troca de e-mail não define senha
-  if ((linha.servidor_id === null && linha.usuario_id === null) || linha.email_novo !== null) {
+  if ((linha.servidor_id === null && linha.usuario_id === null && linha.dados_cadastro === null) || linha.email_novo !== null) {
     return null;
   }
   return linha;
@@ -604,6 +729,7 @@ export async function link_vale(tx: Executor, token: string, agora: Date = new D
     const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, linha.usuario_id));
     return !!conta && (await decidir_conta(tx, conta)).tipo !== "recusar";
   }
+  if (linha.servidor_id === null) return (await _colisao_do_autocadastro(tx, linha.dados_cadastro as DadosCadastro)) === null;
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!));
   if (!servidor?.email) return false;
   return (await decidir(tx, servidor)).tipo !== "recusar";
@@ -653,6 +779,7 @@ export async function definir_senha(
     if (problemas.length) throw new autenticacao.SenhaRecusada("Senha fraca: " + problemas.join("; "));
   }
   if (linha.usuario_id !== null) return _definir_da_conta(tx, linha, nova, contexto, agora);
+  if (linha.servidor_id === null) linha.servidor_id = await _criar_do_autocadastro(tx, linha, contexto);
   // um servidor por vez: dois links do mesmo servidor não criam duas contas
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!)).for("update");
   if (!servidor?.email) throw new LinkInvalido("link inválido ou vencido");
@@ -670,7 +797,7 @@ export async function definir_senha(
     .update(tabela)
     .set({ usado_em: agora_utc() })
     .where(and(eq(tabela.servidor_id, servidor.id), isNull(tabela.usado_em)));
-  await tx.update(tabela).set({ senha_hash: null }).where(eq(tabela.servidor_id, servidor.id));
+  await tx.update(tabela).set({ senha_hash: null, dados_cadastro: null }).where(eq(tabela.servidor_id, servidor.id));
 
   const origem = { usuario_nome: ATOR, ip: contexto.ip ?? null, user_agent: contexto.user_agent ?? null };
   const senha_hash = escolhida ?? (await autenticacao.gerar_hash(nova));
@@ -743,6 +870,44 @@ export async function definir_senha(
     ...origem,
   });
   return "redefinida";
+}
+
+/**
+ * A confirmação do autocadastro cria o cadastro de servidor com o que foi
+ * digitado no pedido; daí em diante o link segue como o de qualquer servidor
+ * (a conta nasce com a senha escolhida). O SIAPE ou o e-mail que viraram de
+ * outro entre o pedido e a confirmação invalidam o link.
+ */
+async function _criar_do_autocadastro(tx: Executor, linha: typeof tabela.$inferSelect, contexto: Contexto): Promise<number> {
+  const dados = linha.dados_cadastro as DadosCadastro | null;
+  if (!dados || (await _colisao_do_autocadastro(tx, dados))) throw new LinkInvalido("link inválido ou vencido");
+  const [novo] = await tx
+    .insert(tabela_servidor)
+    .values({
+      siape: dados.siape,
+      nome: dados.nome,
+      email: dados.email,
+      cargo_id: dados.cargo_id,
+      unidade_uorg_id: dados.unidade_uorg_id,
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (!novo) throw new LinkInvalido("link inválido ou vencido");
+  await auditoria.registrar(tx, {
+    entidade: "servidor",
+    entidade_id: novo.id,
+    tipo_evento: SERVIDOR_AUTOCADASTRADO,
+    descricao:
+      // como os outros eventos deste fluxo: sem nome, SIAPE nem e-mail (a ficha os tem)
+      "Servidor cadastrado pelo próprio servidor no primeiro acesso, ao confirmar o e-mail institucional. " +
+      "A equipe da Sisa confere e corrige na ficha.",
+    usuario_nome: ATOR,
+    ip: contexto.ip ?? null,
+    user_agent: contexto.user_agent ?? null,
+  });
+  await registrar_lotacao_inicial(tx, novo, null, { documento: "Autocadastro no primeiro acesso" });
+  await tx.update(tabela).set({ servidor_id: novo.id }).where(eq(tabela.id, linha.id));
+  return novo.id;
 }
 
 /** O link de uma conta (Esqueci por e-mail, conta aprovada no Cadastre-se): só define a senha. */

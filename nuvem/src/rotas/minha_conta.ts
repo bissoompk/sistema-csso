@@ -30,13 +30,14 @@
  */
 import { Hono } from "hono";
 import { deleteCookie } from "hono/cookie";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { obterConfig } from "../config.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import {
   atribuicao,
   campus as tabela_campus,
+  cargo as tabela_cargo,
   servidor as tabela_servidor,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
@@ -49,7 +50,7 @@ import * as certificados_titular from "../servicos/certificados_titular.js";
 import * as email_saida from "../servicos/email.js";
 import * as emissao from "../servicos/emissao_certificado.js";
 import { numero as numero_br } from "../servicos/presenca.js";
-import { postos_atuais } from "../servicos/servidores.js";
+import { LotacaoInvalida, corrigir_pelo_titular, opcoes_de_lotacao, postos_atuais } from "../servicos/servidores.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { comMensagem, pagina, redirecionar } from "../web.js";
 import { INICIO, ipDoCliente } from "./autenticacao.js";
@@ -112,12 +113,20 @@ export function iniciais(nome: string | null | undefined): string {
   return palavras.length === 1 ? letra(palavras[0]!) : letra(palavras[0]!) + letra(palavras.at(-1)!);
 }
 
-type Digitado = { nome?: string; telefone?: string; ramal?: string; email?: string };
+type Digitado = {
+  nome?: string;
+  telefone?: string;
+  ramal?: string;
+  email?: string;
+  cargo_id?: string;
+  funcao?: string;
+  unidade_uorg_id?: string;
+};
 
 async function _tela(
   c: Ctx,
   usuario: UsuarioAtual,
-  extra: { erro_dados?: string; erro_email?: string; digitado?: Digitado } = {},
+  extra: { erro_dados?: string; erro_email?: string; erro_funcionais?: string; digitado?: Digitado } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id));
@@ -159,6 +168,10 @@ async function _tela(
   const [postos, certificados] = servidor
     ? await Promise.all([postos_atuais(tx, servidor.id), certificados_titular.do_titular(tx, servidor.id, hoje)])
     : [[], null];
+  // o próprio servidor corrige cargo, função e lotação (25/10/2026)
+  const [cargos, lotacoes] = servidor
+    ? await Promise.all([tx.select().from(tabela_cargo).orderBy(asc(tabela_cargo.nome)), opcoes_de_lotacao(tx)])
+    : [[], []];
 
   // "Meu perfil" (Portal do servidor, 22/10/2026): o resumo de treinamentos.
   // Válido é o que ainda vale hoje: no prazo, a vencer, ou sem vencimento.
@@ -175,6 +188,8 @@ async function _tela(
     perfis,
     servidor,
     postos,
+    cargos,
+    lotacoes,
     iniciais: iniciais(servidor?.nome ?? conta?.nome ?? usuario.nome),
     resumo_certificados,
     // terceirizado ou discente: não há cadastro funcional a mostrar, e o aviso
@@ -229,6 +244,38 @@ rotas.post(`${CAMINHO}/dados`, async (c) => {
     user_agent: c.req.header("user-agent") ?? null,
   });
   return redirecionar(c, comMensagem(CAMINHO, "Dados atualizados."));
+});
+
+/**
+ * Cargo, função e lotação, pelo próprio servidor (25/10/2026). O sistema não lê
+ * o SIAPE: o cadastro funcional é do servidor ou da equipe da Sisa. A mudança
+ * abre um período na linha do tempo de lotação (`corrigir_pelo_titular`).
+ */
+rotas.post(`${CAMINHO}/funcionais`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  if (usuario.servidor_id === null) return redirecionar(c, CAMINHO);
+  const f = await formulario(c);
+  const digitado = { cargo_id: f.texto("cargo_id"), funcao: f.texto("funcao").trim(), unidade_uorg_id: f.texto("unidade_uorg_id") };
+  const inteiro = (v: string) => (/^\d+$/.test(v) ? Number(v) : null);
+  const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id)).for("update");
+  if (!servidor) return redirecionar(c, CAMINHO);
+  if ([...digitado.funcao].length > 120) {
+    return _tela(c, usuario, { erro_funcionais: "A função tem mais de 120 caracteres.", digitado });
+  }
+  try {
+    await corrigir_pelo_titular(tx, servidor, usuario, {
+      cargo_id: inteiro(digitado.cargo_id),
+      funcao: digitado.funcao || null,
+      unidade_uorg_id: inteiro(digitado.unidade_uorg_id),
+    });
+  } catch (erro) {
+    if (!(erro instanceof LotacaoInvalida)) throw erro;
+    if (/^nada mudou/.test(erro.message)) return redirecionar(c, comMensagem(CAMINHO, "Nada mudou."));
+    const motivo = erro.message.charAt(0).toUpperCase() + erro.message.slice(1);
+    return _tela(c, usuario, { erro_funcionais: `${motivo}.`, digitado });
+  }
+  return redirecionar(c, comMensagem(CAMINHO, "Dados funcionais atualizados."));
 });
 
 /**
