@@ -32,6 +32,7 @@ import {
   unidade_uorg,
 } from "../db/esquema/index.js";
 import { hoje_iso } from "../dominio/datas.js";
+import { decodificar_windows_1252 } from "../dominio/winansi.js";
 import { ArquivoZipRecusado, conferir_zip } from "./arquivo_zip.js";
 import * as ativar_acesso from "./ativar_acesso.js";
 import * as auditoria from "./auditoria.js";
@@ -135,7 +136,7 @@ function decodificar(bytes: Uint8Array): string {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^﻿/, "");
   } catch {
-    return new TextDecoder("windows-1252").decode(bytes);
+    return decodificar_windows_1252(bytes);
   }
 }
 

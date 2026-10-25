@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import type { Banco } from "../src/db/cliente.js";
+import { decodificar_windows_1252 } from "../src/dominio/winansi.js";
 import { definirArmazenamento } from "../src/servicos/armazenamento.js";
 import * as acesso from "../src/servicos/acesso_participante.js";
 import * as aviso_reciclagem from "../src/servicos/aviso_reciclagem.js";
@@ -89,7 +90,7 @@ function _texto_pdf(bytes: Uint8Array): string {
       // stream sem compressão
     }
     for (const m of conteudo.toString("latin1").matchAll(/<([0-9A-Fa-f]*)>\s*Tj/g)) {
-      pedacos.push(new TextDecoder("windows-1252").decode(Buffer.from(m[1]!, "hex")));
+      pedacos.push(decodificar_windows_1252(Buffer.from(m[1]!, "hex")));
     }
     inicio = bruto.indexOf("stream", fim + 9);
   }
