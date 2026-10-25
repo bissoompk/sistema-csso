@@ -18,9 +18,9 @@
  */
 import type { Executor } from "../db/cliente.js";
 
-export const AVISO_SEM_PDF =
-  "PDF indisponível — abra o .docx no Word e use Salvar como PDF. " +
-  "Instale o LibreOffice para gerar o PDF automaticamente.";
+// Sem "instale o LibreOffice": na nuvem não há o que instalar, e a frase mandava
+// a equipe atrás de um programa que não resolveria nada.
+export const AVISO_SEM_PDF = "PDF indisponível — abra o .docx no Word e use Salvar como PDF.";
 
 export const TEMPO_LIMITE = 180;
 

@@ -155,10 +155,13 @@
          recarga que as camadas ao lado provocam (acrescentar exposição,
          cadastrar portaria, avaliar EPI). A versão é a trava — o servidor a
          incrementa a cada salvamento, e um rascunho de versão velha não se
-         sobrepõe ao que foi gravado depois. Ver `csso.js`, bloco 2. #}
+         sobrepõe ao que foi gravado depois. Ver `csso.js`, bloco 2. Só no
+         parecer editável: a emissão não muda a versão, e o rascunho guardado
+         pelo envio da camada «Emitir» reaparecia no parecer já imutável. #}
       <form method="post" action="/pareceres/{{ parecer.id }}"
+            {%- if not somente_leitura %}
             data-rascunho-local="parecer-{{ parecer.id }}"
-            data-rascunho-versao="{{ parecer.versao }}">
+            data-rascunho-versao="{{ parecer.versao }}"{% endif %}>
         {# A trava contra salvar por cima de quem salvou antes: a rota compara com
            a versão gravada e recusa se mudou. Oculto de propósito — o rascunho
            local ignora `hidden`, então ele nunca repõe uma versão velha. #}

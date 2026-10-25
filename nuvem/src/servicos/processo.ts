@@ -184,7 +184,7 @@ export async function fluxo_curto_de(tx: Executor, processo: ComTipo): Promise<b
 // ---------------------------------------------------------------------
 // Sair da triagem para estes destinos não cobra documento: arquivar, sobrestar,
 // pedir o documento que falta e (de RECEBIDO) entrar na triagem.
-const SAIDAS_DA_TRIAGEM_SEM_DOCUMENTO = new Set(["ARQUIVADO", "SOBRESTADO", "PENDENTE_DOCUMENTO", "EM_TRIAGEM"]);
+export const SAIDAS_DA_TRIAGEM_SEM_DOCUMENTO: ReadonlySet<string> = new Set(["ARQUIVADO", "SOBRESTADO", "PENDENTE_DOCUMENTO", "EM_TRIAGEM"]);
 
 // A justificativa da avaliação qualitativa (sem relatório de ensaio) é escrita
 // NA transição, no comentário — e não basta uma palavra: é o registro que a
@@ -540,6 +540,8 @@ export async function acompanhar_parecer(
 export class ProcessoRecusado extends RegraViolada {
   /** o campo da tela de onde a recusa veio (sem ele, o NUP) */
   campo: string | null = null;
+  /** o NUP repetido: o processo que já o tem, para a tela levar até ele */
+  existente_id: number | null = null;
   constructor(mensagem: string, campo: string | null = null) {
     super(mensagem);
     this.campo = campo;
@@ -575,7 +577,11 @@ export async function criar(tx: Executor, usuario: UsuarioAtual, d: DadosProcess
     .select({ id: tabela_processo.id })
     .from(tabela_processo)
     .where(eq(tabela_processo.nup, resultado.valor));
-  if (ja) throw new ProcessoRecusado("já existe processo com este NUP");
+  if (ja) {
+    const recusa = new ProcessoRecusado("já existe processo com este NUP");
+    recusa.existente_id = ja.id;
+    throw recusa;
+  }
   // A autuação é fato ocorrido. Data no futuro deixava negativo o "dias até a
   // emissão" do painel de todo mundo (a demanda que vira processo passa aqui
   // também, e por isso a regra mora no serviço, e não só na rota).
@@ -635,6 +641,94 @@ export async function criar(tx: Executor, usuario: UsuarioAtual, d: DadosProcess
     });
   }
   return processo!;
+}
+
+export interface DadosCorrigidos {
+  /** `undefined`: o formulário não trouxe o campo (o processo já tem parecer) */
+  servidor_id?: number | null;
+  unidade_uorg_id: number | null;
+  data_autuacao: string | null;
+  data_solicitacao_sest: string | null;
+  observacoes: string | null;
+  confirmo_mencao_saude?: boolean;
+}
+
+/**
+ * Corrige a identificação do processo depois de criado. Antes não havia como:
+ * o processo autuado sem unidade nunca alcançava "Laudo emitido" (o laudo vale
+ * pela unidade), e uma data digitada errada ficava para sempre. NUP e tipo
+ * ficam de fora — o NUP é a identidade, e o tipo escolhe a máquina de estados.
+ * O servidor só muda enquanto não há parecer: o parecer já o traz no corpo.
+ * Cada campo alterado vai para a trilha (RN-14). Devolve quantos mudaram.
+ */
+export async function corrigir_dados(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  processo: Processo,
+  d: DadosCorrigidos,
+): Promise<number> {
+  usuario.exigir("processo.editar");
+  for (const [campo, rotulo] of [
+    ["data_autuacao", "Data de autuação"],
+    ["data_solicitacao_sest", "Solicitação no SEST"],
+  ] as const) {
+    const valor = d[campo];
+    if (valor && valor > datas_br.hoje()) {
+      throw new ProcessoRecusado(
+        `${rotulo}: ${datas_br.numerica(valor)} ainda não chegou — é fato ocorrido, use a data do SEI.`,
+        campo,
+      );
+    }
+  }
+  const observacoes = (d.observacoes ?? "").trim() || null;
+  textos.exigir_texto_limpo(observacoes, "observações", textos.CONTEXTO_AVISO_SAUDE, d.confirmo_mencao_saude ?? false);
+  const novo: Partial<Processo> = {
+    unidade_uorg_id: d.unidade_uorg_id,
+    data_autuacao: d.data_autuacao,
+    data_solicitacao_sest: d.data_solicitacao_sest,
+    observacoes,
+  };
+  if (d.servidor_id !== undefined && d.servidor_id !== processo.servidor_id) {
+    const [parecer] = await tx
+      .select({ id: parecer_tecnico.id })
+      .from(parecer_tecnico)
+      .where(and(eq(parecer_tecnico.processo_id, processo.id), ne(parecer_tecnico.situacao, "ANULADO")))
+      .limit(1);
+    if (parecer) {
+      throw new ProcessoRecusado(
+        "O servidor não muda depois do parecer: ele já sai no corpo do documento. Anule o parecer antes de trocar.",
+        "servidor",
+      );
+    }
+    novo.servidor_id = d.servidor_id;
+  }
+  const antes: Record<string, unknown> = {};
+  const depois: Record<string, unknown> = {};
+  for (const [campo, valor] of Object.entries(novo)) {
+    antes[campo] = processo[campo as keyof Processo] ?? null;
+    depois[campo] = valor ?? null;
+  }
+  const eventos = await auditoria.registrar_diferencas(tx, {
+    entidade: "processo",
+    entidade_id: processo.id,
+    antes,
+    depois,
+    usuario,
+    processo_id: processo.id,
+  });
+  if (!eventos.length) return 0;
+  await tx.update(tabela_processo).set(novo).where(eq(tabela_processo.id, processo.id));
+  if (d.confirmo_mencao_saude && antes.observacoes !== observacoes) {
+    await auditoria.registrar_mencao_de_saude(tx, {
+      entidade: "processo",
+      entidade_id: processo.id,
+      processo_id: processo.id,
+      campo: "observações",
+      texto: observacoes,
+      usuario,
+    });
+  }
+  return eventos.length;
 }
 
 export async function voltar_do_sobrestamento<P extends Processo>(

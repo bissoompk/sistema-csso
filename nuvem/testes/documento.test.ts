@@ -388,6 +388,8 @@ describe("pdf (sem LibreOffice na nuvem)", () => {
     const r = pdf.converter();
     expect(r).toEqual({ gerado: false, caminho: null, aviso: pdf.AVISO_SEM_PDF, indisponivel: true });
     expect(pdf.AVISO_SEM_PDF).toContain("Salvar como PDF");
+    // na nuvem não há o que instalar
+    expect(pdf.AVISO_SEM_PDF).not.toMatch(/instale|LibreOffice/i);
   });
 
   it("converter_fora_da_transacao não comita nada e devolve o mesmo", () => {
