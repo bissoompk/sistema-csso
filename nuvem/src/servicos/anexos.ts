@@ -189,7 +189,7 @@ export async function guardar(
         `'${existente.nome_original}' (mesmo SHA-256).`,
       usuario: d.usuario,
     });
-    return { anexo: existente, duplicado: true, tambem_em: await quantos_processos(tx, sha256) };
+    return { anexo: existente, duplicado: true, tambem_em: await quantos_processos(tx, sha256, d.entidade) };
   }
 
   if (d.categoria === "PARECER_ASSINADO") {
@@ -243,7 +243,7 @@ export async function guardar(
     descricao: `'${d.nome_original}' (${d.categoria}, ${d.conteudo.byteLength} bytes).`,
     usuario: d.usuario,
   });
-  return { anexo: anexo!, duplicado: false, tambem_em: await quantos_processos(tx, sha256) };
+  return { anexo: anexo!, duplicado: false, tambem_em: await quantos_processos(tx, sha256, d.entidade) };
 }
 
 /** O `guardar_arquivo` do Python, a partir do `File` do formulário. */
@@ -312,12 +312,15 @@ export async function guardar_arquivo(
   });
 }
 
-async function quantos_processos(tx: Executor, sha256: string): Promise<number> {
+// Só os donos da MESMA entidade: o comprovante de EPI digitalizado ou a CAT
+// com o mesmo arquivo entravam na conta, e a ficha do processo dizia "também
+// está em 2 processos" sem outro processo nenhum com ele.
+async function quantos_processos(tx: Executor, sha256: string, entidade: string): Promise<number> {
   const linhas = await tx
-    .select({ entidade: tabela_anexo.entidade, entidade_id: tabela_anexo.entidade_id })
+    .select({ entidade_id: tabela_anexo.entidade_id })
     .from(tabela_anexo)
-    .where(eq(tabela_anexo.sha256, sha256));
-  return new Set(linhas.map((l) => `${l.entidade}\u0000${l.entidade_id}`)).size;
+    .where(and(eq(tabela_anexo.sha256, sha256), eq(tabela_anexo.entidade, entidade)));
+  return new Set(linhas.map((l) => l.entidade_id)).size;
 }
 
 export async function listar(tx: Executor, entidade: string, entidade_id: number): Promise<Anexo[]> {

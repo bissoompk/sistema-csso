@@ -11,7 +11,7 @@ import { asc, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import * as servico from "../src/servicos/busca.js";
 import { UsuarioAtual } from "../src/servicos/rbac.js";
-import { bancoLimpo, contas, entrar, type AmbienteDeTeste, type Cliente } from "./ajuda";
+import { bancoLimpo, contas, entrar, liberarProcessos, type AmbienteDeTeste, type Cliente } from "./ajuda";
 
 const NOME = "Marco Antônio Alves Schetino";
 const SIAPE = "1110654";
@@ -138,6 +138,8 @@ describe("RN-19", () => {
     const amb = await novo();
     const id = await servidor_sem_processo(amb);
     await amb.db.update(e.usuario).set({ servidor_id: id }).where(eq(e.usuario.login, "servidor_consulta"));
+    // a busca de servidor é do Processos SEI: o titular a tem liberado (25/10/2026)
+    await liberarProcessos(amb.db, "servidor_consulta");
     const c = await como(amb, "servidor_consulta");
     expect(_corpo_principal((await c.get("/buscar?q=Marco")).text)).toContain(NOME);
   });

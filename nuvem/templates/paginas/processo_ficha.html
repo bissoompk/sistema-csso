@@ -19,6 +19,7 @@
    tempo, um por aba; agora cada um é a camada de um botão. #}
 {% set MOVER = 'Mover de estado' %}
 {% set SALVAR_LINK = 'Salvar link do SEI' %}
+{% set CORRIGIR_DADOS = 'Corrigir dados' %}
 {% set ENVIAR_ANEXO = 'Enviar anexo' %}
 {% set APLICAR_MODELO = 'Aplicar um modelo de checklist' %}
 {% set CRIAR_CHECKLIST = 'Criar checklist avulso' %}
@@ -74,7 +75,8 @@
   <div class="lado-a-lado igual">
     <div class="pilha">
       <section class="cartao liso">
-        <div class="cabecalho-cartao"><h2>Identificação</h2></div>
+        <div class="cabecalho-cartao"><h2>Identificação</h2>
+          {% if usuario.pode('processo.editar') %}{{ ui.botao_cadastro('corrigir-dados', CORRIGIR_DADOS, 'secundario') }}{% endif %}</div>
         <dl class="tabela-dados">
           <dt>NUP</dt>
           <dd><span class="mono">{{ processo.nup }}</span>
@@ -128,7 +130,9 @@
           <strong>Pendências para sair deste estado:</strong>
           <ul>{% for f in faltas_saida %}<li>{{ f }}</li>{% endfor %}</ul>
           <p>Enquanto elas existirem, a máquina de estados recusa a saída — o
-             processo volta para cá com o motivo, e nada é gravado.</p>
+             processo volta para cá com o motivo, e nada é gravado.
+             {%- if livres_das_faltas %} Continuam abertos, sem elas:
+             {{ livres_das_faltas | join(', ') }}.{% endif %}</p>
         </div>
         {% endif %}
 
@@ -454,6 +458,53 @@
     <ul>{% for f in faltas_saida %}<li>{{ f }}</li>{% endfor %}</ul>
   </div>
   {% endif %}
+{% endcall %}
+{% endif %}
+
+{% if usuario.pode('processo.editar') %}
+{# Corrigir a identificação depois de criado. NUP e tipo não entram: o NUP é a
+   identidade e o tipo escolhe a máquina de estados. O servidor só aparece
+   enquanto não há parecer — o parecer já o traz no corpo. #}
+{% set dd = dados_digitados %}
+{% set cd = campo_dados if erro_dados else none %}
+{% call ui.popup_cadastro('corrigir-dados', CORRIGIR_DADOS,
+                          '/processos/' ~ processo.id ~ '/dados', 'Salvar',
+                          aberto=(true if erro_dados else false), erro=erro_dados,
+                          nota='cada campo alterado fica no Histórico') %}
+  {% if servidor_trocavel %}
+  {% if usuario.pode('processo.criar') %}
+  {# a busca é a do processo novo (`/processos/novo/servidores`), que troca só a lista #}
+  <div class="campo"><label for="cd-busca-servidor">Trocar o servidor</label>
+    <input id="cd-busca-servidor" type="search" name="q"
+           placeholder="{{ 'SIAPE' if busca_so_siape else 'Nome ou SIAPE' }}"
+           {%- if busca_so_siape %} inputmode="numeric"{% endif %}
+           hx-get="/processos/novo/servidores" hx-target="#cd-lista-servidores"
+           hx-trigger="input changed delay:300ms, search" hx-include="this"></div>
+  {% endif %}
+  <div class="campo {{ 'com-erro' if cd == 'servidor' }}" id="cd-lista-servidores">
+    {% include "partes/processo_servidores.html" %}
+  </div>
+  {% else %}
+  <p class="nota">O servidor não muda depois do parecer: ele já sai no corpo do documento.</p>
+  {% endif %}
+  <div class="campo {{ 'com-erro' if cd == 'unidade' }}"><label for="cd-unidade">Unidade / UORG</label>
+    {% set u_atual = dd.get('unidade_uorg_id') if dd else processo.unidade_uorg_id %}
+    <select id="cd-unidade" name="unidade_uorg_id"><option value="">—</option>
+      {% for u in unidades %}<option value="{{ u.id }}"{{ ui.sel(u_atual, u.id) }}>{{ u.nome_extenso }}</option>{% endfor %}
+    </select>
+    <span class="dica">O laudo vale pela unidade: sem ela, o processo não chega a “Laudo emitido”.</span></div>
+  <div class="linha-campos">
+    <div class="campo {{ 'com-erro' if cd == 'data_autuacao' }}"><label for="cd-autuacao">Data de autuação</label>
+      <input id="cd-autuacao" type="date" name="data_autuacao" max="{{ hoje_iso }}"
+             value="{{ dd.get('data_autuacao') if dd else (processo.data_autuacao or '') }}"></div>
+    <div class="campo {{ 'com-erro' if cd == 'data_solicitacao_sest' }}"><label for="cd-sest">Solicitação no SEST</label>
+      <input id="cd-sest" type="date" name="data_solicitacao_sest" max="{{ hoje_iso }}"
+             value="{{ dd.get('data_solicitacao_sest') if dd else (processo.data_solicitacao_sest or '') }}"></div>
+  </div>
+  <div class="campo {{ 'com-erro' if cd == 'observacoes' }}"><label for="cd-obs">Observações</label>
+    <textarea id="cd-obs" name="observacoes">{{ dd.get('observacoes') if dd else (processo.observacoes or '') }}</textarea>
+    <span class="dica atencao">Evite estado de saúde, diagnóstico ou gestação; CPF e CID nunca.</span></div>
+  {{ ui.confirmar_mencao_saude(aviso_saude_dados, 'cd-confirmo-saude') }}
 {% endcall %}
 {% endif %}
 

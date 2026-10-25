@@ -101,6 +101,31 @@ describe("anexos", () => {
     expect(r3.tambem_em).toBe(2);
     expect(r3.anexo.storage_key).toBe(r1.anexo.storage_key);
     expect(r3.anexo.nivel_acesso).toBe("RESTRITO");
+    // o mesmo arquivo fora de processo (o comprovante de EPI) não entra na conta
+    const r4 = await naTransacao((tx) =>
+      anexos.guardar(tx, {
+        entidade: "epi_ficha_registro",
+        entidade_id: 300 + n,
+        nome_original: "x.pdf",
+        conteudo,
+        mime_type: "application/pdf",
+        categoria: "FICHA_EPI",
+        usuario: quem([]),
+      }),
+    );
+    expect(r4.tambem_em).toBe(1);
+    const r5 = await naTransacao((tx) =>
+      anexos.guardar(tx, {
+        entidade: "processo",
+        entidade_id: 400 + n,
+        nome_original: "x.pdf",
+        conteudo,
+        mime_type: "application/pdf",
+        categoria: "FORMULARIO",
+        usuario: quem([]),
+      }),
+    );
+    expect(r5.tambem_em).toBe(3);
   });
 
   it("rn12: um PARECER_ASSINADO ativo por parecer — o novo desativa o anterior", async () => {

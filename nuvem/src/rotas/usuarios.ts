@@ -42,6 +42,7 @@ import {
   PERMISSOES_DO_TITULAR,
   SO_DO_TECNICO_HABILITADO,
   aceita_nivel_modulo,
+  MODULO_LIBERAVEL_AO_TITULAR,
   alcance_da_concessao,
   cobre_inteiro,
   eh_conta_de_governo,
@@ -255,6 +256,16 @@ async function _tela_lista(
         }),
       ]),
     ),
+    // a conta do servidor sem perfil de equipe: a exceção só libera os próprios
+    // processos e o adicional (Processos SEI), que por padrão ela não vê
+    titular_liberavel: Object.fromEntries(
+      usuarios.map((u) => [
+        u.id,
+        u.servidor_id !== null &&
+          !valem_ou_vao_valer(u).some((a) => PERFIS_EXTERNOS.includes(perfis_completos.get(a.perfil_id)?.codigo ?? "")),
+      ]),
+    ),
+    modulo_liberavel_ao_titular: MODULO_LIBERAVEL_AO_TITULAR,
     usuarios,
     // quem pode RECEBER perfil (D13): ativa e não a própria (D2)
     contas_que_recebem: usuarios.filter((u) => u.ativo && u.id !== usuario.id),

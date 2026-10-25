@@ -28,6 +28,7 @@ import { ChecklistModelo } from "../dominio/dominios.js";
 import {
   CADEIA_ADICIONAL,
   INCISOS_ART11,
+  ORIGENS_DA_TRIAGEM,
   ROTULO_ESTADO_TELA,
   TransicaoInvalida,
   destinos_do_processo,
@@ -48,6 +49,7 @@ import * as sei from "../servicos/sei.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import { ESCOPO_PROPRIO } from "../servicos/rbac.js";
 import * as textos from "../servicos/textos.js";
+import { alteracao_na_tela } from "../servicos/trilha_tela.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import {
   CHAVES_AGRUPAMENTO,
@@ -55,11 +57,13 @@ import {
   agrupar,
   ProcessoRecusado,
   aplicar_checklist_modelo,
+  corrigir_dados,
   criar as criar_processo,
   estados_sem_documento_de,
   fluxo_curto_de,
   mover,
   requisitos_de_saida,
+  SAIDAS_DA_TRIAGEM_SEM_DOCUMENTO,
   responsaveis_possiveis,
   resumir,
   resumir_varios,
@@ -306,6 +310,8 @@ async function _tela_novo(
   aviso_saude = false,
   // o campo de onde a recusa veio: a tela escreve a frase ao lado dele
   campo_do_erro: string | null = null,
+  // o NUP digitado já é de outro processo: a tela oferece abri-lo
+  processo_existente_id: number | null = null,
 ) {
   const tx = c.get("tx");
   const tipos = await tx.select().from(tipo_processo).orderBy(asc(tipo_processo.nome));
@@ -317,6 +323,7 @@ async function _tela_novo(
   return pagina(c, "paginas/processo_novo.html", usuario, {
     erro,
     campo_do_erro,
+    processo_existente_id: usuario.pode("processo.ver") ? processo_existente_id : null,
     hoje_iso: datas_br.hoje(),
     // RN-21 em aviso: a tela oferece "confirmo que a menção é necessária"
     aviso_saude,
@@ -346,6 +353,21 @@ function _contexto_servidores(
     // RN-19: quem não lê nome procura pelo SIAPE, e a dica diz isso
     busca_so_siape: !usuario.ve_dado_nominal,
   };
+}
+
+/** O `<select>` de "Corrigir dados" abre só com o servidor escolhido. */
+async function _servidor_da_correcao(
+  tx: Ctx["var"]["tx"],
+  usuario: UsuarioAtual,
+  processo: { servidor_id: number | null; servidor: { id: number } | null },
+  digitado: string | undefined,
+): Promise<Record<string, unknown>> {
+  const escolhido = digitado !== undefined ? digitado : processo.servidor_id;
+  let lista: { id: number }[] = processo.servidor ? [processo.servidor] : [];
+  if (escolhido && /^\d+$/.test(String(escolhido)) && Number(escolhido) !== processo.servidor_id) {
+    lista = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, Number(escolhido)));
+  }
+  return { ..._contexto_servidores(usuario, lista, "", escolhido), servidores_so_o_escolhido: true };
 }
 
 /**
@@ -430,7 +452,8 @@ rotas.post("/processos/novo", async (c) => {
   } catch (erro) {
     if (!(erro instanceof ProcessoRecusado || erro instanceof textos.TextoProibido)) throw erro;
     const campo = erro instanceof textos.TextoProibido ? "observacoes" : erro.campo ?? "nup";
-    return _tela_novo(c, usuario, erro.message, digitado, erro instanceof textos.MencaoDeSaude, campo);
+    const existente = erro instanceof ProcessoRecusado ? erro.existente_id : null;
+    return _tela_novo(c, usuario, erro.message, digitado, erro instanceof textos.MencaoDeSaude, campo, existente);
   }
   return redirecionar(c, `/processos/${processo.id}`);
 });
@@ -470,6 +493,11 @@ interface OpcoesFicha {
   /** a recusa do link do SEI, também dentro da própria camada */
   erro_sei?: string | null;
   sei_digitado?: string;
+  /** a recusa de "Corrigir dados", dentro da camada reaberta com o digitado */
+  erro_dados?: string | null;
+  campo_dados?: string | null;
+  dados_digitados?: Record<string, string>;
+  aviso_saude_dados?: boolean;
   /** o anexo idêntico que voltou em OUTRA categoria: a tela oferece reclassificar */
   reclassificar?: { anexo_id: number; de: string; para: string; nome: string } | null;
   /** o comentário que a RN-21 recusou, de volta para dentro do campo */
@@ -572,16 +600,51 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
   const seguinte = CADEIA_ADICIONAL[CADEIA_ADICIONAL.indexOf(origem) + 1];
   const proximos = curto || !seguinte || !diretos.includes(seguinte) ? diretos : [seguinte, ...diretos.filter((d) => d !== seguinte)];
   const saltos = destinos_do_processo(origem, curto, sem_documento).filter((d) => !diretos.includes(d));
+  // As pendências da triagem (portaria e formulário) não travam TODA saída:
+  // entrar na triagem, pedir o documento, sobrestar e arquivar continuam
+  // abertos. O aviso dizia "a máquina recusa a saída" no Recebido, e o
+  // "Em triagem" passava — a tela desmentia o próprio aviso.
+  const livres_das_faltas =
+    faltas_saida.length && ORIGENS_DA_TRIAGEM.has(origem)
+      ? [...proximos, ...saltos, "SOBRESTADO"]
+          .filter((d, i, todos) => SAIDAS_DA_TRIAGEM_SEM_DOCUMENTO.has(d) && todos.indexOf(d) === i)
+          .map((d) => ROTULO_ESTADO_TELA[d] ?? d)
+      : [];
   // O texto da trilha de estado é gravado em ASCII e com "->" (é digerido pela
   // cadeia de hash): a tela acentua na exibição, sem tocar no gravado.
   const eventos_tela = eventos_legiveis.map((ev) => ({
     ...ev,
-    descricao_tela: ev.tipo_evento === auditoria.ESTADO_ALTERADO ? rotulo_tela_do_ascii(ev.descricao) : ev.descricao,
+    descricao_tela:
+      ev.tipo_evento === auditoria.ESTADO_ALTERADO
+        ? rotulo_tela_do_ascii(ev.descricao)
+        : ev.tipo_evento === "CAMPO_ALTERADO"
+          ? alteracao_na_tela(ev)
+          : ev.descricao,
   }));
+  // "Corrigir dados": as listas só quando a camada vai ser desenhada
+  const aba = o.aba ?? c.req.query("aba") ?? "dados";
+  const com_correcao = aba === "dados" && usuario.pode("processo.editar");
+  const servidor_trocavel = !pareceres.some((p) => p.situacao !== "ANULADO");
+  const correcao = com_correcao
+    ? {
+        unidades: await tx.select().from(unidade_uorg).orderBy(asc(unidade_uorg.nome_extenso)),
+        // Só o servidor de hoje (ou o escolhido na recusa): a lista inteira
+        // custava uma consulta grande a cada abertura da ficha, e a busca da
+        // camada (a mesma do processo novo) traz os outros quando se digita.
+        ...(servidor_trocavel ? await _servidor_da_correcao(tx, usuario, processo, o.dados_digitados?.servidor_id) : {}),
+      }
+    : {};
   return pagina(c, "paginas/processo_ficha.html", usuario, {
     processo,
     resumo,
-    aba: o.aba ?? c.req.query("aba") ?? "dados",
+    ...correcao,
+    servidor_trocavel,
+    hoje_iso: datas_br.hoje(),
+    erro_dados: o.erro_dados ?? null,
+    campo_dados: o.campo_dados ?? null,
+    dados_digitados: o.dados_digitados ? dicionario(o.dados_digitados) : null,
+    aviso_saude_dados: o.aviso_saude_dados ?? false,
+    aba,
     pareceres: pareceres_tela,
     eventos: eventos_tela,
     checklists,
@@ -592,6 +655,7 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
     rotulos_categoria: dicionario(ROTULO_CATEGORIA_ANEXO_TELA),
     proximos,
     saltos,
+    livres_das_faltas,
     sem_documento: [...sem_documento],
     incisos: dicionario(INCISOS_ART11),
     faltas_saida,
@@ -704,6 +768,61 @@ rotas.post("/processos/:processo_id{[0-9]+}/sei", async (c) => {
   return redirecionar(c, `/processos/${processo_id}?aba=dados&mensagem=${encodeURIComponent(mensagem)}`);
 });
 
+rotas.post("/processos/:processo_id{[0-9]+}/dados", async (c) => {
+  const usuario = await usuarioCom(c, "processo.editar");
+  const tx = c.get("tx");
+  const processo_id = _id(c);
+  const processo = await repo.por_id(tx, usuario, processo_id);
+  if (processo === null) return redirecionar(c, "/processos");
+  const f = await formulario(c);
+  const digitado: Record<string, string> = {};
+  for (const campo of ["servidor_id", "unidade_uorg_id", "data_autuacao", "data_solicitacao_sest", "observacoes"]) {
+    digitado[campo] = f.texto(campo);
+  }
+  const recusar = (erro: string, campo: string, aviso_saude = false) =>
+    _ficha(c, usuario, processo_id, {
+      aba: "dados",
+      erro_dados: erro,
+      campo_dados: campo,
+      dados_digitados: digitado,
+      aviso_saude_dados: aviso_saude,
+    });
+  // sem o campo no formulário (o processo já tem parecer), o servidor não muda
+  const traz_servidor = f.tem("servidor_id");
+  const servidor = traz_servidor ? await _id_existente(tx, digitado.servidor_id!, "servidor") : null;
+  if (servidor === undefined) return recusar("Servidor inválido: escolha um da lista.", "servidor");
+  const unidade = await _id_existente(tx, digitado.unidade_uorg_id!, "unidade");
+  if (unidade === undefined) return recusar("Unidade inválida: escolha uma da lista.", "unidade");
+  let autuacao: string | null;
+  let solicitacao: string | null;
+  try {
+    autuacao = datas_br.ler_data_formulario(digitado.data_autuacao!, "Data de autuação");
+    solicitacao = datas_br.ler_data_formulario(digitado.data_solicitacao_sest!, "Solicitação no SEST");
+  } catch (erro) {
+    if (!(erro instanceof RegraViolada)) throw erro;
+    return recusar(erro.message, "data_autuacao");
+  }
+  let alterados: number;
+  try {
+    alterados = await corrigir_dados(tx, usuario, processo, {
+      ...(traz_servidor ? { servidor_id: servidor } : {}),
+      unidade_uorg_id: unidade,
+      data_autuacao: autuacao,
+      data_solicitacao_sest: solicitacao,
+      observacoes: digitado.observacoes!,
+      confirmo_mencao_saude: f.texto("confirmo_mencao_saude") === "1",
+    });
+  } catch (erro) {
+    if (erro instanceof textos.TextoProibido) {
+      return recusar(erro.message, "observacoes", erro instanceof textos.MencaoDeSaude);
+    }
+    if (!(erro instanceof ProcessoRecusado)) throw erro;
+    return recusar(erro.message, erro.campo ?? "observacoes");
+  }
+  const mensagem = alterados ? "Dados do processo corrigidos." : "Nada mudou: os dados já eram esses.";
+  return redirecionar(c, `/processos/${processo_id}?aba=dados&mensagem=${encodeURIComponent(mensagem)}`);
+});
+
 rotas.post("/processos/:processo_id{[0-9]+}/anexos", async (c) => {
   const usuario = await usuarioCom(c, "anexo.enviar");
   const tx = c.get("tx");
@@ -752,7 +871,9 @@ rotas.post("/processos/:processo_id{[0-9]+}/anexos", async (c) => {
     };
   } else if (resultado.duplicado) mensagem = "Arquivo idêntico já anexado neste processo — ignorado.";
   else if (resultado.tambem_em > 1) {
-    mensagem = `Anexado. Este mesmo arquivo também está em ${resultado.tambem_em} processos.`;
+    // `tambem_em` conta este processo junto
+    const outros = resultado.tambem_em - 1;
+    mensagem = `Anexado. Este mesmo arquivo também está em ${outros === 1 ? "outro processo" : `outros ${outros} processos`}.`;
   } else mensagem = "Anexo enviado.";
   return _ficha(c, usuario, processo_id, { aba: "anexos", mensagem, reclassificar });
 });

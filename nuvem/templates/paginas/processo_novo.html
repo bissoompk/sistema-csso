@@ -69,6 +69,8 @@
         <strong class="fato">{{ partes_nup[0] }}</strong>
         {%- if partes_nup|length > 1 %}
         <span class="explicacao">{{ partes_nup.slice(1).join(' — ') }}</span>{% endif %}
+        {%- if processo_existente_id %}
+        <a href="/processos/{{ processo_existente_id }}">Abrir o processo que já tem este NUP</a>{% endif %}
       </span>
       {% else %}
       <span class="dica" id="dica-nup">Cole do SEI: pontuação, espaço e traço são

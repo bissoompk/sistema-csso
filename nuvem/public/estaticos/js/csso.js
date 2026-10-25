@@ -167,7 +167,9 @@
     for (var i = 0; i < todos.length; i++) {
       var c = todos[i];
       if (!c.name || !/^(INPUT|SELECT|TEXTAREA)$/.test(c.tagName)) continue;
-      if (c.type === 'hidden' || c.type === 'password' || c.type === 'file' || c.disabled) continue;
+      // `:disabled`, e não `.disabled`: o campo dentro de `<fieldset disabled>`
+      // tem a propriedade falsa e, mesmo assim, não é editável nem enviado
+      if (c.type === 'hidden' || c.type === 'password' || c.type === 'file' || c.matches(':disabled')) continue;
       saida.push(c);
     }
     return saida;

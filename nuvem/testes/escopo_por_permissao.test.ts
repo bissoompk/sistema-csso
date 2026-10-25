@@ -27,6 +27,7 @@ import {
   MATRIZ_PERFIS,
   PERMISSOES,
   PERMISSOES_DO_TITULAR,
+  PERMISSOES_DO_TITULAR_LIBERAVEIS,
   PermissaoNegada,
   UsuarioAtual,
   aplicar_escopo,
@@ -35,7 +36,7 @@ import {
   type Concessao,
 } from "../src/servicos/rbac.js";
 import * as identificacao from "../src/servicos/identificacao.js";
-import { bancoLimpo, contas, criarUsuario, entrar, type AmbienteDeTeste } from "./ajuda";
+import { bancoLimpo, contas, criarUsuario, entrar, liberarProcessos, type AmbienteDeTeste } from "./ajuda";
 import { cenario } from "./ajuda_processos";
 
 const dialeto = new PgDialect();
@@ -44,16 +45,18 @@ const emSql = (c: ReturnType<typeof aplicar_escopo>) => (c ? dialeto.sqlToQuery(
 /**
  * Uma conta montada como `carregar_usuario_atual` monta: uma concessão por
  * `[perfil, campus]`, com as permissões da matriz, e a do titular quando há
- * servidor ligado.
+ * servidor ligado — com os próprios processos e pareceres quando `liberado`
+ * (a exceção «Consulta» em Processos SEI; por padrão, desde 25/10/2026, não).
  */
-function conta(atribuicoes: [string, number | null][], servidor_id: number | null = null): UsuarioAtual {
+function conta(atribuicoes: [string, number | null][], servidor_id: number | null = null, liberado = false): UsuarioAtual {
   const concessoes: Concessao[] = atribuicoes.map(([perfil, campus_id]) => ({
     perfil,
     campus_id,
     permissoes: MATRIZ_PERFIS[perfil]!.permissoes,
   }));
   if (servidor_id !== null) {
-    concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: PERMISSOES_DO_TITULAR });
+    const do_titular = liberado ? [...PERMISSOES_DO_TITULAR, ...PERMISSOES_DO_TITULAR_LIBERAVEIS] : [...PERMISSOES_DO_TITULAR];
+    concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: do_titular });
   }
   return new UsuarioAtual({
     id: 1,
@@ -68,7 +71,7 @@ function conta(atribuicoes: [string, number | null][], servidor_id: number | nul
 
 describe("o alcance é da permissão, não da conta (sem banco)", () => {
   it("admin_ti + servidor_consulta: processo e parecer só do próprio, nunca 'sem filtro'", () => {
-    const u = conta([["admin_ti", null], ["servidor_consulta", null]], 42);
+    const u = conta([["admin_ti", null], ["servidor_consulta", null]], 42, true);
     expect(u.escopo).toBe(ESCOPO_AGREGADO); // o da conta, que é do menu
     expect(u.escopo_de("processo.ver")).toBe(ESCOPO_PROPRIO);
     expect(u.escopo_de("parecer.ver")).toBe(ESCOPO_PROPRIO);
@@ -95,7 +98,7 @@ describe("o alcance é da permissão, não da conta (sem banco)", () => {
   });
 
   it("almoxarife + servidor_consulta: o parecer é só o dele, e o nome dos outros não aparece", () => {
-    const u = conta([["almoxarife_sesmt", null], ["servidor_consulta", null]], 7);
+    const u = conta([["almoxarife_sesmt", null], ["servidor_consulta", null]], 7, true);
     expect(u.escopo).toBe(ESCOPO_UNIDADE);
     expect(u.escopo_de("parecer.ver")).toBe(ESCOPO_PROPRIO);
     expect(emSql(aplicar_escopo(u, e.parecer_tecnico, "parecer.ver"))!.params).toEqual([7]);
@@ -144,7 +147,7 @@ describe("o alcance é da permissão, não da conta (sem banco)", () => {
   });
 
   it("dois perfis com a mesma permissão somam o alcance dela (OR), sem alargar a outra", () => {
-    const u = conta([["secretaria_csso", 1]], 5);
+    const u = conta([["secretaria_csso", 1]], 5, true);
     // processo.ver da secretaria (campus 1, e `processo` não tem campus) e do titular
     expect(aplicar_escopo(u, e.processo, "processo.ver")).toBeUndefined();
     // parecer: o campus 1 OU o próprio
@@ -172,8 +175,18 @@ describe("funções do titular (D16, sem banco)", () => {
     for (const p of PERMISSOES_DO_TITULAR) expect(Object.hasOwn(PERMISSOES, p), p).toBe(true);
   });
 
+  it("por padrão o titular não vê processo nem parecer (25/10/2026)", () => {
+    const u = conta([], 11);
+    expect(u.pode("processo.ver")).toBe(false);
+    expect(u.pode("parecer.ver")).toBe(false);
+    expect(MATRIZ_PERFIS["servidor_consulta"]!.permissoes).not.toContain("processo.ver");
+    const liberado = conta([], 11, true);
+    expect(liberado.escopo_de("processo.ver")).toBe(ESCOPO_PROPRIO);
+    expect(emSql(aplicar_escopo(liberado, e.processo, "processo.ver"))!.params).toEqual([11]);
+  });
+
   it("o almoxarife ligado a servidor pede EPI só para si e se inscreve, sem ampliar a equipe", () => {
-    const u = conta([["almoxarife_sesmt", null]], 11);
+    const u = conta([["almoxarife_sesmt", null]], 11, true);
     for (const p of PERMISSOES_DO_TITULAR) expect(u.pode(p), p).toBe(true);
     expect(u.escopo_de("epi.requisitar")).toBe(ESCOPO_PROPRIO);
     expect(u.escopo_de("turma.inscrever_se")).toBe(ESCOPO_PROPRIO);
@@ -218,7 +231,13 @@ describe("com banco e pelas rotas", () => {
     const u = await carregar_usuario_atual(amb.db, ligado.id);
     expect(u.perfis).toEqual(["almoxarife_sesmt"]);
     expect(u.pode("turma.inscrever_se")).toBe(true);
-    expect(u.escopo_de("processo.ver")).toBe(ESCOPO_PROPRIO);
+    // os próprios processos só com a exceção da pessoa (25/10/2026); na conta de
+    // equipe a exceção vale também sobre o perfil, com o alcance dele
+    expect(u.pode("processo.ver")).toBe(false);
+    await liberarProcessos(amb.db, ligado.id);
+    expect((await carregar_usuario_atual(amb.db, ligado.id)).escopo_de("processo.ver")).toBe(ESCOPO_UNIDADE);
+    const so_titular = await criarUsuario(amb.db, { login: "so_titular", servidor_id: s.id, processos_liberados: true });
+    expect((await carregar_usuario_atual(amb.db, so_titular.id)).escopo_de("processo.ver")).toBe(ESCOPO_PROPRIO);
     const v = await carregar_usuario_atual(amb.db, solto.id);
     expect(v.pode("turma.inscrever_se")).toBe(false);
     expect(v.pode("processo.ver")).toBe(false);
@@ -227,7 +246,7 @@ describe("com banco e pelas rotas", () => {
   it("admin_ti + servidor_consulta não abre o parecer nem o processo de outra pessoa", async () => {
     const caso = await cenario(amb.db);
     const s = await servidor_novo("7654321", "Admin Servidor");
-    await criarUsuario(amb.db, { login: "admin_srv", perfis: ["admin_ti", "servidor_consulta"], servidor_id: s.id });
+    await criarUsuario(amb.db, { login: "admin_srv", perfis: ["admin_ti", "servidor_consulta"], servidor_id: s.id, processos_liberados: true });
     await entrar(amb.cliente, "admin_srv");
     const parecer = await amb.cliente.get(`/pareceres/${caso.parecer_id}`, { seguir: false });
     expect(parecer.status).toBe(303);
@@ -242,7 +261,7 @@ describe("com banco e pelas rotas", () => {
   it("almoxarife + servidor_consulta não lê o parecer de outra pessoa", async () => {
     const caso = await cenario(amb.db);
     const s = await servidor_novo("7654321", "Almoxarife Servidor");
-    await criarUsuario(amb.db, { login: "alm_srv", perfis: ["almoxarife_sesmt", "servidor_consulta"], servidor_id: s.id });
+    await criarUsuario(amb.db, { login: "alm_srv", perfis: ["almoxarife_sesmt", "servidor_consulta"], servidor_id: s.id, processos_liberados: true });
     await entrar(amb.cliente, "alm_srv");
     const r = await amb.cliente.get(`/pareceres/${caso.parecer_id}`, { seguir: false });
     expect(r.status).toBe(303);
@@ -298,10 +317,12 @@ describe("com banco e pelas rotas", () => {
     const s = await servidor_novo("7654321", "Almoxarife Vinculado");
     await criarUsuario(amb.db, { login: "alm_ligado", perfis: ["almoxarife_sesmt"], servidor_id: s.id });
     await entrar(amb.cliente, "alm_ligado");
-    for (const caminho of ["/turmas/minhas", "/certificados/meus", "/epis/requisicoes/nova", "/adicionais", "/"]) {
+    for (const caminho of ["/turmas/minhas", "/certificados/meus", "/epis/requisicoes/nova", "/"]) {
       const r = await amb.cliente.get(caminho);
       expect(r.status, caminho).toBe(200);
     }
+    // o adicional, só com a exceção da pessoa (25/10/2026)
+    expect((await amb.cliente.get("/adicionais")).status).toBe(403);
     // o pedido é dele: o formulário vem travado no próprio nome, sem a busca de servidor
     const nova = await amb.cliente.get("/epis/requisicoes/nova");
     expect(nova.text).toContain("Almoxarife Vinculado");

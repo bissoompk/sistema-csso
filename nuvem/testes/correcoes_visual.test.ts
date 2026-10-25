@@ -80,8 +80,7 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
       // Acidentes (CAT/SP, 23/10/2026): comunicar e o que ele comunicou
       "/acidentes/comunicar",
       "/acidentes/minhas",
-      "/adicionais",
-      "/processos",
+      // "/adicionais" e "/processos" só com a exceção da pessoa (25/10/2026)
       "/minha-atividade",
       // o Meu perfil (a Minha conta) fecha o bloco (22/10/2026)
       "/minha-conta",
@@ -198,14 +197,19 @@ describe("a tela de bolso (M53, D59)", () => {
   it("o servidor sem balcão nem chamada recebe atalhos, sem código de permissão", async () => {
     const cliente = await entrar(novoCliente(), "titular");
     const corpo = (await cliente.get("/celular")).text;
-    for (const a of ATALHOS) expect(corpo, a.caminho).toContain(`href="${a.caminho}"`);
+    // os próprios processos e o adicional só com a exceção da pessoa (25/10/2026)
+    const do_processo = (c: string) => c === "/adicionais" || c === "/processos";
+    for (const a of ATALHOS.filter((a) => !do_processo(a.caminho))) expect(corpo, a.caminho).toContain(`href="${a.caminho}"`);
+    for (const a of ATALHOS.filter((a) => do_processo(a.caminho))) expect(corpo, a.caminho).not.toContain(`href="${a.caminho}"`);
     expect(corpo).not.toContain("epi.entregar");
     expect(corpo).not.toContain("turma.avaliar");
     expect(corpo).not.toContain("ainda não tem trabalho");
     // nem o cache HTTP do navegador guarda a página com o nome (revisão, D59)
     expect((await cliente.get("/celular")).cabecalho("cache-control")).toBe("no-store");
     // cada atalho abre
-    for (const a of ATALHOS) expect((await cliente.get(a.caminho)).status, a.caminho).toBe(200);
+    for (const a of ATALHOS.filter((a) => !do_processo(a.caminho))) {
+      expect((await cliente.get(a.caminho)).status, a.caminho).toBe(200);
+    }
   });
 
   it("sem vínculo, a caixa vazia também não cita permissão", async () => {

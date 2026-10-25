@@ -830,9 +830,10 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     // (`PERMISSOES_DO_TITULAR`): ninguem precisa mais somar este perfil a um
     // de equipe para se inscrever ou pedir EPI. Ele continua existindo para a
     // conta que so tem isso.
+    //
+    // `processo.ver` e `parecer.ver` sairam em 25/10/2026 (PERMISSOES_RETIRADAS):
+    // por padrao o servidor nao ve Processos SEI nem Adicionais.
     permissoes: [
-      "processo.ver",
-      "parecer.ver",
       "treinamento.ver",
       "turma.inscrever_se",
       "epi.ver",
@@ -923,6 +924,14 @@ export const PERMISSOES_RETIRADAS: readonly PermissaoRetirada[] = [
       "o administrador de TI governa a conta e não lê o trabalho do setor; os indicadores " +
       "de processos, certificados e EPI deixam de ser dele",
   },
+  ...["processo.ver", "parecer.ver"].map((permissao) => ({
+    perfil: "servidor_consulta",
+    permissao,
+    desde: "25/10/2026",
+    motivo:
+      "por padrão o servidor não vê Processos SEI nem Adicionais; a exceção da pessoa " +
+      "(«Consulta» em Processos SEI, em Usuários) devolve os próprios",
+  })),
 ];
 
 export function _conferir_retiradas(): void {
@@ -1231,8 +1240,9 @@ export interface Concessao {
  * As funções do titular (D16): o que toda conta ligada a um servidor
  * (`usuario.servidor_id`) faz sobre SI MESMA, tenha o perfil que tiver —
  * inscrever-se em turma e desistir, ver os próprios treinamentos e
- * certificados, pedir e acompanhar o próprio EPI, ver o próprio adicional e os
- * próprios processos e pareceres.
+ * certificados, pedir e acompanhar o próprio EPI. Ver o próprio adicional e os
+ * próprios processos e pareceres saiu do padrão em 25/10/2026: vem só com a
+ * exceção da pessoa (`permissoes_do_titular`).
  *
  * Antes só o `servidor_consulta` as tinha, e o almoxarife ou o `admin_ti` que
  * quisesse se inscrever num curso precisava somar aquele perfil — o que, com o
@@ -1246,8 +1256,8 @@ export interface Concessao {
  * 18, II da LGPD, e as rotas dele já estão escritas para o escopo próprio.
  */
 export const PERMISSOES_DO_TITULAR: ReadonlySet<string> = new Set([
-  "processo.ver",
-  "parecer.ver",
+  // `processo.ver` e `parecer.ver` saíram em 25/10/2026: por padrão o servidor
+  // não vê Processos SEI nem Adicionais (`PERMISSOES_DO_TITULAR_LIBERAVEIS`)
   "treinamento.ver",
   "turma.inscrever_se",
   "epi.ver",
@@ -1258,6 +1268,21 @@ export const PERMISSOES_DO_TITULAR: ReadonlySet<string> = new Set([
   "acidente.comunicar",
   "acidente.ver",
 ]);
+
+/**
+ * O que o titular só tem quando quem administra acesso libera (25/10/2026):
+ * os próprios processos, pareceres e o adicional (Processos SEI). Por padrão o
+ * servidor e o discente não veem o módulo; a exceção da PESSOA em Usuários
+ * («Consulta» em Processos SEI) devolve, sempre em escopo próprio.
+ */
+export const MODULO_LIBERAVEL_AO_TITULAR = "processos-sei";
+export const PERMISSOES_DO_TITULAR_LIBERAVEIS: readonly string[] = Object.freeze(["processo.ver", "parecer.ver"]);
+
+/** As permissões do titular, com as liberáveis quando a conta tem a exceção. */
+export function permissoes_do_titular(niveis_da_pessoa: { modulo: string; nivel: string }[]): ReadonlySet<string> {
+  const liberado = niveis_da_pessoa.some((n) => n.modulo === MODULO_LIBERAVEL_AO_TITULAR && n.nivel !== "SEM_ACESSO");
+  return liberado ? new Set([...PERMISSOES_DO_TITULAR, ...PERMISSOES_DO_TITULAR_LIBERAVEIS]) : PERMISSOES_DO_TITULAR;
+}
 
 /**
  * O "perfil" da concessão do titular. Não é perfil do banco (não se concede
@@ -1756,7 +1781,11 @@ export async function carregar_usuario_atual(
     tx.query.usuario.findFirst({
       where: eq(tabela_usuario.id, usuario_id),
       // os setores promotores vêm junto com a conta: nenhuma ida a mais
-      with: { setores_promotores: { with: { unidade: { columns: { id: true, nome_oficial: true } } } } },
+      // a exceção da pessoa por módulo também: ela libera ao titular o Processos SEI
+      with: {
+        setores_promotores: { with: { unidade: { columns: { id: true, nome_oficial: true } } } },
+        niveis_modulo: { columns: { modulo: true, nivel: true } },
+      },
       // na mesma consulta: só a conta externa tem participante ligado (`usuario_id`)
       extras: {
         com_certificado_externo: sql<boolean>`exists (select 1 from certificado cx join participante px on px.id = cx.participante_id where px.usuario_id = ${tabela_usuario.id})`.as(
@@ -1774,8 +1803,9 @@ export async function carregar_usuario_atual(
   // o terceirizado e o discente não recebem a concessão do titular (ela traz o
   // pedido de EPI), mesmo que a conta tenha ficado ligada a um servidor
   if (usuario.servidor_id !== null && !perfis.some((p) => PERFIS_EXTERNOS.includes(p))) {
-    concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: PERMISSOES_DO_TITULAR });
-    for (const p of PERMISSOES_DO_TITULAR) permissoes.add(p);
+    const do_titular = permissoes_do_titular(usuario.niveis_modulo);
+    concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: do_titular });
+    for (const p of do_titular) permissoes.add(p);
   }
 
   return new UsuarioAtual({

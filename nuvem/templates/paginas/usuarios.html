@@ -231,6 +231,24 @@
               {% if u.id == usuario.id %}
               <p class="discreto">O acesso da sua própria conta só outra pessoa que
                 administra acesso altera.</p>
+              {% elif not tem_perfil_de_equipe[u.id] and titular_liberavel[u.id] %}
+              {# 25/10/2026: por padrão o servidor não vê Processos SEI nem Adicionais.
+                 A exceção desta conta devolve os PRÓPRIOS processos, pareceres e o
+                 adicional — nunca os dos outros (escopo próprio). #}
+              {% set escolhido = (excecoes[u.id] or {})[modulo_liberavel_ao_titular] or 'PADRAO' %}
+              <form method="post" action="/usuarios/{{ u.id }}/niveis">
+                <p class="discreto">Esta conta não tem perfil de equipe: ela usa o sistema para os
+                  próprios dados. Por padrão não vê Processos SEI nem Adicionais.</p>
+                <fieldset class="nivel-escolha campo">
+                  <legend>Processos SEI e Adicionais (os próprios)</legend>
+                  <label><input type="radio" name="nivel_{{ modulo_liberavel_ao_titular }}" value="PADRAO"{{ ' checked' if escolhido != 'CONSULTA' }}>
+                    <span>Sem acesso (padrão)</span></label>
+                  <label><input type="radio" name="nivel_{{ modulo_liberavel_ao_titular }}" value="CONSULTA"{{ ' checked' if escolhido == 'CONSULTA' }}>
+                    <span>Consulta dos próprios</span></label>
+                </fieldset>
+                <div class="acoes"><button type="submit" class="secundario compacto">
+                  Salvar acesso por módulo</button></div>
+              </form>
               {% elif not tem_perfil_de_equipe[u.id] %}
               {# D9 (23/10/2026): o nível de um módulo vale sobre o alcance de um perfil de
                  equipe; sem ele, Consulta e Operação são recusadas e "Sem acesso" não muda

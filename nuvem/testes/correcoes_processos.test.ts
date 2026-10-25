@@ -534,9 +534,10 @@ describe("D60/M57: início do servidor", () => {
   it("o servidor vê o início dele, sem os blocos do setor", async () => {
     const corpo = (await (await como("servidor_consulta")).get("/")).text;
     // o painel do titular (Portal do servidor, 22/10/2026): os cartões de
-    // status, e o adicional e os processos para quem tem `processo.ver`
-    expect(corpo).toContain("Meu adicional");
-    expect(corpo).toContain("Meus processos");
+    // status; o adicional e os processos só para quem tem `processo.ver`, que
+    // por padrão o servidor já não tem (25/10/2026)
+    expect(corpo).not.toContain("Meu adicional");
+    expect(corpo).not.toContain("Meus processos");
     expect(corpo).toContain("Certificados válidos");
     expect(corpo).toContain("A vencer (60 dias)");
     expect(corpo).toContain("Inscrições abertas para você");
@@ -557,7 +558,7 @@ describe("D60/M57: início do servidor", () => {
       estado: "VIGENTE",
       data_inicio: "2025-03-01",
     });
-    await criarUsuario(db, { login: "titular_adicional", perfis: ["servidor_consulta"], servidor_id: c.servidor_id });
+    await criarUsuario(db, { login: "titular_adicional", perfis: ["servidor_consulta"], servidor_id: c.servidor_id, processos_liberados: true });
     const corpo = (await (await como("titular_adicional")).get("/")).text;
     expect(corpo).toContain(percentual!.rotulo);
     expect(corpo).toContain("vigente");

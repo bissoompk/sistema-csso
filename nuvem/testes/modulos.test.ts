@@ -489,8 +489,10 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
 
   it("o almoxarife ligado a servidor não vê Kanban, Processos nem Catálogos da equipe", () => {
     const almoxarife = montada(["almoxarife_sesmt"], 7);
-    // ele TEM as permissões — pela concessão do titular, em escopo próprio
-    for (const p of ["processo.ver", "treinamento.ver"]) expect(almoxarife.pode(p), p).toBe(true);
+    // ele TEM as permissões — pela concessão do titular, em escopo próprio; os
+    // próprios processos, só com a exceção da pessoa (25/10/2026)
+    expect(almoxarife.pode("treinamento.ver")).toBe(true);
+    expect(almoxarife.pode("processo.ver")).toBe(false);
     const caminhos = caminhos_da_equipe(almoxarife);
     for (const proibido of ["/kanban", "/processos", "/catalogos", "/servidores", "/turmas", "/treinamentos/catalogo", "/laudos"]) {
       expect(caminhos, proibido).not.toContain(proibido);
@@ -513,8 +515,7 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
       // pela concessão do titular: a lateral dele não tem o módulo de acidentes
       "Comunicar acidente",
       "Minhas comunicações",
-      "Meu adicional",
-      "Meus processos",
+      // "Meu adicional" e "Meus processos" só com a exceção da pessoa (25/10/2026)
       "Minha atividade",
       "Meu perfil",
     ]);

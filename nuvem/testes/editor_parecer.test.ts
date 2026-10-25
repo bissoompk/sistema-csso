@@ -22,7 +22,7 @@ import * as servico from "../src/servicos/parecer.js";
 import * as epi_ficha from "../src/servicos/epi_ficha.js";
 import * as datas_br from "../src/servicos/datas_br.js";
 import { UsuarioAtual } from "../src/servicos/rbac.js";
-import { bancoLimpo, contas, entrar, naTransacao, type AmbienteDeTeste, type Cliente } from "./ajuda";
+import { bancoLimpo, contas, entrar, liberarProcessos, naTransacao, type AmbienteDeTeste, type Cliente } from "./ajuda";
 import { atores, cenario, parecerDe } from "./ajuda_processos";
 
 let amb: AmbienteDeTeste;
@@ -557,6 +557,8 @@ describe("id inexistente e escopo do titular", () => {
         .update(e.usuario)
         .set({ servidor_id: ids.servidor_titular })
         .where(eq(e.usuario.login, "servidor_consulta"));
+      // o próprio parecer só com a exceção da pessoa (25/10/2026)
+      await liberarProcessos(tx, "servidor_consulta");
       return ids;
     });
   }
@@ -650,6 +652,7 @@ describe("RN-19 na prévia do parecer", () => {
     expect(corpo).toContain(NOME);
     expect(corpo).toContain(SIAPE);
     await db.update(e.usuario).set({ servidor_id: servidor }).where(eq(e.usuario.login, "servidor_consulta"));
+    await liberarProcessos(db, "servidor_consulta");
     const titular = await entrar(amb.novoCliente(), "servidor_consulta");
     expect((await titular.get(`/pareceres/${parecer}/previa`)).text).toContain(NOME);
   });
