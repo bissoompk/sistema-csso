@@ -744,3 +744,28 @@ describe("ficha no cadastro do servidor", () => {
     expect(corpo).not.toContain("EPI recebido");
   });
 });
+
+describe("comprovante: a quantidade no plural (25/10/2026)", () => {
+  it("diz «2 unidades», «3 pares» e «1 caixa»", async () => {
+    const { unidade_no_plural } = await import("../src/servicos/comprovante_epi.js");
+    expect(unidade_no_plural("unidade", 2)).toBe("unidades");
+    expect(unidade_no_plural("unidade", 1)).toBe("unidade");
+    expect(unidade_no_plural("par", 3)).toBe("pares");
+    expect(unidade_no_plural("caixa", 1)).toBe("caixa");
+    expect(unidade_no_plural("conjunto", 2)).toBe("conjuntos");
+    expect(unidade_no_plural("", 2)).toBe("");
+  });
+});
+
+describe("catálogo: os tamanhos digitados com vírgula (25/10/2026)", () => {
+  it("«P, M, G» vira três tamanhos; a vírgula do número (8,5) fica", async () => {
+    const { tamanhos_digitados } = await import("../src/rotas/epis.js");
+    expect(tamanhos_digitados("P, M, G")).toBe("P\nM\nG");
+    expect(tamanhos_digitados("P,M,G")).toBe("P\nM\nG");
+    expect(tamanhos_digitados("P\nM\nG")).toBe("P\nM\nG");
+    expect(tamanhos_digitados("8,5; 9; 9,5")).toBe("8,5\n9\n9,5");
+    expect(tamanhos_digitados("38, 39, 40")).toBe("38\n39\n40");
+    expect(tamanhos_digitados("P, P, M")).toBe("P\nM");
+    expect(tamanhos_digitados("  ")).toBeNull();
+  });
+});
