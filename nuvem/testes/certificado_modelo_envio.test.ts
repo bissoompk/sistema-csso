@@ -479,6 +479,10 @@ describe("emissão com o modelo enviado", () => {
     const segunda = await servico.segunda_via(db, usuario, emitido.certificado);
     expect(segunda.confere).toBe(true);
     expect(servico.do_modelo_enviado(emitido.certificado)).toBe(true);
+    // o titular (o link do e-mail) baixa só PDF: sem conversor, o da casa
+    const do_titular = await servico.arquivo_do_titular(db, emitido.certificado);
+    expect(do_titular.tipo).toBe("application/pdf");
+    expect(do_titular.nome).toMatch(/\.pdf$/);
 
     // o papel é o Word: o PDF da casa não tem o layout nem os campos dele
     await entrar(cliente, "coordenador_csso");

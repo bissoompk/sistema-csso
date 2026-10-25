@@ -32,7 +32,7 @@ const EXTERNOS = [
   ["discente", "ESTUDANTE", "Discente de Teste"],
 ] as const;
 
-const DELE = ["Meus treinamentos", "Meus certificados", "Comprovante de treinamentos", "Comunicar acidente", "Minhas comunicações", "Meu perfil"];
+const DELE = ["Meus treinamentos", "Meus certificados", "Comunicar acidente", "Minhas comunicações", "Meu perfil"];
 const NAO_DELE = ["Pedir EPI", "Minha ficha de EPI", "Meus pedidos de EPI", "Meus processos", "Meu adicional"];
 
 function formulario(extra: Campos = {}): Campos {
@@ -70,6 +70,9 @@ describe.each(EXTERNOS)("conta %s", (login, vinculo, nome) => {
     const rotulos = meu_espaco_de(u).map((i) => i.rotulo);
     for (const r of DELE) expect(rotulos).toContain(r);
     for (const r of NAO_DELE) expect(rotulos).not.toContain(r);
+    // sem certificado, nada a comprovar: o comprovante aparece com o primeiro
+    // (`titular_externo_treinamento.test.ts`)
+    expect(rotulos).not.toContain("Comprovante de treinamentos");
     // o Início do servidor e a Minha atividade moram no cadastro de servidor
     expect(rotulos).not.toContain("Início");
     expect(rotulos).not.toContain("Minha atividade");

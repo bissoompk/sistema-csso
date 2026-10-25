@@ -1369,6 +1369,11 @@ export interface DadosUsuarioAtual {
   setores_promotores?: readonly number[];
   /** Vinculada à CSSO — a dona das turmas sem setor promotor (as de antes de 0011). */
   setor_csso?: boolean;
+  /**
+   * O participante ligado à conta (o do terceirizado e do discente) tem algum
+   * certificado: sem ele, o menu não oferece o comprovante (25/10/2026).
+   */
+  com_certificado_externo?: boolean;
 }
 
 /**
@@ -1396,6 +1401,7 @@ export class UsuarioAtual {
   readonly concessoes: readonly Concessao[] | null;
   readonly setores_promotores: readonly number[];
   readonly setor_csso: boolean;
+  readonly com_certificado_externo: boolean;
   readonly #cache = new Map<string, Alcance>();
 
   constructor(d: DadosUsuarioAtual) {
@@ -1424,6 +1430,7 @@ export class UsuarioAtual {
       : null;
     this.setores_promotores = Object.freeze([...(d.setores_promotores ?? [])]);
     this.setor_csso = d.setor_csso ?? false;
+    this.com_certificado_externo = d.com_certificado_externo ?? false;
   }
 
   pode(codigo: string): boolean {
@@ -1750,6 +1757,12 @@ export async function carregar_usuario_atual(
       where: eq(tabela_usuario.id, usuario_id),
       // os setores promotores vêm junto com a conta: nenhuma ida a mais
       with: { setores_promotores: { with: { unidade: { columns: { id: true, nome_oficial: true } } } } },
+      // na mesma consulta: só a conta externa tem participante ligado (`usuario_id`)
+      extras: {
+        com_certificado_externo: sql<boolean>`exists (select 1 from certificado cx join participante px on px.id = cx.participante_id where px.usuario_id = ${tabela_usuario.id})`.as(
+          "com_certificado_externo",
+        ),
+      },
     }),
     perfis_vigentes(tx, usuario_id, dia),
     tx.query.profissional_habilitado.findMany({ where: eq(profissional_habilitado.usuario_id, usuario_id) }),
@@ -1778,6 +1791,7 @@ export async function carregar_usuario_atual(
     concessoes,
     setores_promotores: usuario.setores_promotores.map((s) => s.unidade_uorg_id).sort((x, y) => x - y),
     setor_csso: usuario.setores_promotores.some((s) => s.unidade?.nome_oficial === NOME_OFICIAL_CSSO),
+    com_certificado_externo: Boolean(usuario.com_certificado_externo),
   });
 }
 
