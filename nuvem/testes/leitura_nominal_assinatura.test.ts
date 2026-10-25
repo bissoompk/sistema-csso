@@ -22,10 +22,11 @@ import {
   CONCESSAO_DO_TITULAR,
   MATRIZ_PERFIS,
   PERMISSOES_DO_TITULAR,
+  PERMISSOES_DO_TITULAR_LIBERAVEIS,
   UsuarioAtual,
   type Concessao,
 } from "../src/servicos/rbac.js";
-import { bancoLimpo, contas, criarUsuario, entrar, usuarioAtual, type Cliente } from "./ajuda";
+import { bancoLimpo, contas, criarUsuario, entrar, liberarProcessos, usuarioAtual, type Cliente } from "./ajuda";
 import { cenario } from "./ajuda_processos.js";
 
 const { db, novoCliente } = await bancoLimpo();
@@ -71,7 +72,8 @@ function conta(atribuicoes: [string, number | null][], servidor_id: number | nul
     permissoes: MATRIZ_PERFIS[perfil]!.permissoes,
   }));
   if (servidor_id !== null) {
-    concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: PERMISSOES_DO_TITULAR });
+    // com os próprios processos e pareceres liberados (a exceção da pessoa, 25/10/2026)
+    concessoes.push({ perfil: CONCESSAO_DO_TITULAR, campus_id: null, permissoes: [...PERMISSOES_DO_TITULAR, ...PERMISSOES_DO_TITULAR_LIBERAVEIS] });
   }
   return new UsuarioAtual({
     id: 1,
@@ -119,11 +121,14 @@ describe("D14 — a Consulta PROGEP lê o parecer como documento", () => {
   it("a PROGEP que é a titular lê o próprio rascunho pela concessão do titular", async () => {
     const c = await caso();
     await db.update(e.usuario).set({ servidor_id: c.servidor_id }).where(eq(e.usuario.login, "consulta_progep"));
+    // a PROGEP é equipe: a exceção «Consulta» em Processos SEI já é o que o perfil dela tem
+    await liberarProcessos(db, "consulta_progep");
     try {
       const r = await (await cliente("consulta_progep")).get(`/pareceres/${c.parecer_id}`, { ...HTML, seguir: false });
       expect(r.status).toBe(200);
     } finally {
       await db.update(e.usuario).set({ servidor_id: null }).where(eq(e.usuario.login, "consulta_progep"));
+      await liberarProcessos(db, "consulta_progep", false);
     }
   });
 

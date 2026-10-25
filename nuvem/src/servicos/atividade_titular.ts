@@ -202,6 +202,12 @@ export const POR_PAGINA = 30;
 
 export interface FiltroAtividade {
   grupo?: GrupoAtividade | null;
+  /**
+   * Os eventos dos próprios processos. Desde 25/10/2026 o servidor só os vê com
+   * `processo.ver` (a exceção da pessoa em Processos SEI); sem ela, nada de
+   * processo entra na linha do tempo.
+   */
+  com_processos?: boolean;
 }
 
 export interface PaginaAtividade {
@@ -290,6 +296,7 @@ async function _linhas(
   grupo: GrupoAtividade | null,
   antes: number | null,
   limite: number,
+  com_processos = true,
 ): Promise<LinhaBruta[]> {
   const cursor = antes
     ? sql`AND (h.ocorrido_em, h.id) < (SELECT a.ocorrido_em, a.id FROM historico_evento a WHERE a.id = ${antes})`
@@ -386,13 +393,15 @@ async function _linhas(
       LEFT JOIN epi_ficha_registro f ON f.id = ct.registro_id
       WHERE h.entidade = 'epi_comunicacao_titular' AND h.tipo_evento IN (${tipos}) ${cursor}`,
     );
-    ramo(
-      "processo",
-      (tipos) => sql`SELECT ${col({ pedido: sql`p.nup::text` })}
-      FROM historico_evento h
-      JOIN processo p ON p.id = h.entidade_id AND p.servidor_id = ${servidor_id}
-      WHERE h.entidade = 'processo' AND h.tipo_evento IN (${tipos}) ${cursor}`,
-    );
+    if (com_processos) {
+      ramo(
+        "processo",
+        (tipos) => sql`SELECT ${col({ pedido: sql`p.nup::text` })}
+        FROM historico_evento h
+        JOIN processo p ON p.id = h.entidade_id AND p.servidor_id = ${servidor_id}
+        WHERE h.entidade = 'processo' AND h.tipo_evento IN (${tipos}) ${cursor}`,
+      );
+    }
   }
   ramo(
     "usuario",
@@ -486,6 +495,7 @@ export async function atividade_do_titular(
     filtro.grupo ?? null,
     pagina.antes ?? null,
     tamanho + 1,
+    filtro.com_processos ?? true,
   );
   const ha_mais = linhas.length > tamanho;
   const visiveis = linhas.slice(0, tamanho);

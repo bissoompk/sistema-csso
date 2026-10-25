@@ -320,6 +320,11 @@ export interface NovaConta {
   vigencia_inicio?: string;
   vigencia_fim?: string | null;
   /**
+   * O servidor vê os próprios processos e o adicional (25/10/2026: por padrão
+   * não vê): grava a exceção «Consulta» em Processos SEI (`usuario_nivel_modulo`).
+   */
+  processos_liberados?: boolean;
+  /**
    * Siglas dos setores promotores da conta (`equipe_setor_promotor`). Omitido:
    * a conta com perfil da equipe da CSSO entra na CSSO, como a migração 0014
    * fez com as contas que já existiam; `[]` = nenhum setor.
@@ -367,7 +372,32 @@ export async function criarUsuario(db: Executor, c: NovaConta) {
     if (!unidade) throw new Error(`setor promotor inexistente: ${sigla}`);
     await db.insert(esquema.equipe_setor_promotor).values({ usuario_id: conta!.id, unidade_uorg_id: unidade.id });
   }
+  if (c.processos_liberados) await liberarProcessos(db, conta!.id);
   return conta!;
+}
+
+/**
+ * Libera ao titular os próprios processos, pareceres e o adicional: a exceção
+ * «Consulta» em Processos SEI, como Usuários grava (`rbac.permissoes_do_titular`).
+ */
+export async function liberarProcessos(db: Executor, usuario: number | string, liberar = true): Promise<void> {
+  let id = typeof usuario === "number" ? usuario : null;
+  if (id === null) {
+    const [conta] = await db.select().from(esquema.usuario).where(eq(esquema.usuario.login, usuario as string));
+    if (!conta) throw new Error(`conta inexistente: ${usuario}`);
+    id = conta.id;
+  }
+  if (!liberar) {
+    await db.delete(esquema.usuario_nivel_modulo).where(eq(esquema.usuario_nivel_modulo.usuario_id, id));
+    return;
+  }
+  await db
+    .insert(esquema.usuario_nivel_modulo)
+    .values({ usuario_id: id, modulo: "processos-sei", nivel: "CONSULTA" })
+    .onConflictDoUpdate({
+      target: [esquema.usuario_nivel_modulo.usuario_id, esquema.usuario_nivel_modulo.modulo],
+      set: { nivel: "CONSULTA" },
+    });
 }
 
 /** Os perfis do fixture `contas` do Python, com o nome de cada conta. */

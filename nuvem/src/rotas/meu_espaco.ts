@@ -31,17 +31,20 @@ rotas.get(MINHA_ATIVIDADE, async (c) => {
       // pedir à coordenação o que ela não pode fazer
       externo: e_externo(usuario),
       com_acidentes: acidentesLiberado(),
-      grupos: GRUPOS_ATIVIDADE,
+      grupos: GRUPOS_ATIVIDADE.filter((g) => g.codigo !== "processos" || usuario.pode("processo.ver")),
       grupo,
       atividade: null,
     });
   }
   const bruto = c.req.query("antes") ?? "";
   const antes = /^\d{1,15}$/.test(bruto) ? Number(bruto) : null;
-  const atividade = await atividade_do_titular(c.get("tx"), usuario, { grupo }, { antes });
+  // os próprios processos só com `processo.ver` (25/10/2026: por padrão o
+  // servidor não vê Processos SEI)
+  const com_processos = usuario.pode("processo.ver");
+  const atividade = await atividade_do_titular(c.get("tx"), usuario, { grupo, com_processos }, { antes });
   return pagina(c, "paginas/minha_atividade.html", usuario, {
     sem_servidor: false,
-    grupos: GRUPOS_ATIVIDADE,
+    grupos: com_processos ? GRUPOS_ATIVIDADE : GRUPOS_ATIVIDADE.filter((g) => g.codigo !== "processos"),
     grupo,
     antes,
     atividade,

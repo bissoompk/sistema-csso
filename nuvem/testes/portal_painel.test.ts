@@ -22,7 +22,7 @@ import * as datas_br from "../src/servicos/datas_br.js";
 import * as servico_certificado from "../src/servicos/certificado.js";
 import * as servico_participante from "../src/servicos/participante.js";
 import { UsuarioAtual } from "../src/servicos/rbac.js";
-import { bancoLimpo, contas, criarUsuario, entrar, usuarioAtual } from "./ajuda";
+import { bancoLimpo, contas, criarUsuario, entrar, liberarProcessos, usuarioAtual } from "./ajuda";
 
 const { db, novoCliente } = await bancoLimpo();
 await contas(db);
@@ -193,15 +193,25 @@ describe("menu do Meu espaço", () => {
   it("grupos com subtítulo, itens novos, Meu perfil e nada de Meus dados", async () => {
     const u = await usuarioAtual(db, "titular_mariana");
     const nav = modulos.navegacao("/", u);
-    expect(nav.grupos_meu_espaco.map((g) => g.titulo)).toEqual([null, "Treinamentos", "EPI", "Acidentes", "Adicional", "Eu"]);
+    // o grupo "Adicional" só com a exceção da pessoa em Processos SEI (25/10/2026)
+    expect(nav.grupos_meu_espaco.map((g) => g.titulo)).toEqual([null, "Treinamentos", "EPI", "Acidentes", "Eu"]);
     expect(nav.grupos_meu_espaco.map((g) => g.itens.map((i) => i.rotulo))).toEqual([
       ["Início"],
       ["Meus treinamentos", "Meus certificados", "Comprovante de treinamentos"],
       ["Minha ficha de EPI", "Meus pedidos de EPI", "Pedir EPI"],
       ["Comunicar acidente", "Minhas comunicações"],
-      ["Meu adicional", "Meus processos"],
       ["Minha atividade", "Meu perfil"],
     ]);
+    await liberarProcessos(db, "titular_mariana");
+    try {
+      const liberada = modulos.navegacao("/", await usuarioAtual(db, "titular_mariana"));
+      expect(liberada.grupos_meu_espaco.find((g) => g.titulo === "Adicional")?.itens.map((i) => i.rotulo)).toEqual([
+        "Meu adicional",
+        "Meus processos",
+      ]);
+    } finally {
+      await liberarProcessos(db, "titular_mariana", false);
+    }
     const corpo = (await (await entrar(novoCliente(), "titular_mariana")).get("/")).text;
     const meu = bloco_meu(corpo);
     expect(meu).toMatch(/<span class="rotulo-grupo" id="grupo-meu-\d+">Treinamentos<\/span>/);

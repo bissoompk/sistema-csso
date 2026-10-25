@@ -23,9 +23,10 @@
  *   perfil de técnico está "Sem acesso" a EPI, o de almoxarife ainda dá o EPI
  *   (a exceção da PESSOA vale para todas as concessões dela);
  * - EXCEÇÃO consciente: o que é do titular (`rbac.PERMISSOES_DO_TITULAR` — a
- *   própria ficha de EPI, os próprios pedidos, treinamentos, certificados,
- *   processos e adicional) continua no "Meu espaço" e no portal do servidor:
- *   é dele, e não do trabalho do módulo.
+ *   própria ficha de EPI, os próprios pedidos, treinamentos e certificados)
+ *   continua no "Meu espaço" e no portal do servidor: é dele, e não do
+ *   trabalho do módulo. Os próprios processos e o adicional, desde 25/10/2026,
+ *   só com a exceção da pessoa em Processos SEI (`rbac.permissoes_do_titular`).
  *
  * Usada pelo menu lateral, pelo seletor de módulos, pelo mapa `/modulos`, pelo
  * despachante `/inicio` (`modulos.ts`) e pelas rotas (`exigir_acesso_ao_modulo`).

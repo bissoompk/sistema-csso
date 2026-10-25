@@ -250,7 +250,7 @@ describe("o que é do titular fica no Meu espaço", () => {
     expect((await eng.get("/certificados/meus")).status).toBe(200);
   });
 
-  it("processos-sei: o Início e os próprios processos continuam; exportar, não", async () => {
+  it("processos-sei: o Início continua; os próprios processos já não vinham por padrão (25/10/2026)", async () => {
     const sid = await servidor_novo("7001003", "Técnico Titular");
     await criarUsuario(amb.db, { login: "tec", perfis: ["tecnico_seguranca"], servidor_id: sid });
     const tec = amb.novoCliente();
@@ -258,11 +258,11 @@ describe("o que é do titular fica no Meu espaço", () => {
     await no_perfil("tecnico_seguranca", "processos-sei", SEM_ACESSO);
     await some_da_navegacao("tec", tec, "processos-sei");
     const meu = meu_espaco_de(await usuarioAtual(amb.db, "tec")).map((i) => i.caminho);
-    expect(meu).toEqual(expect.arrayContaining(["/", "/processos", "/adicionais"]));
+    expect(meu).toContain("/");
+    expect(meu).not.toContain("/processos");
+    expect(meu).not.toContain("/adicionais");
     expect((await tec.get("/")).status).toBe(200);
-    const lista = await tec.get("/processos");
-    expect(lista.status).toBe(200);
-    expect(lista.text).not.toContain("/relatorios/exportar-processos");
+    expect((await tec.get("/processos")).status).toBe(403);
     expect((await tec.get("/relatorios/exportar-processos")).status).toBe(403);
   });
 });

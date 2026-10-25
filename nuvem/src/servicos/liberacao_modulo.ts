@@ -49,7 +49,16 @@ import {
   type Nivel,
   type NiveisPorModulo,
 } from "./niveis_modulo.js";
-import { ESCOPO_POR_PERFIL, aceita_nivel_modulo, alcance_da_concessao, cobre_inteiro, type UsuarioAtual } from "./rbac.js";
+import {
+  ESCOPO_POR_PERFIL,
+  MODULO_LIBERAVEL_AO_TITULAR,
+  PERFIS_EXTERNOS,
+  PERMISSOES_DO_TITULAR_LIBERAVEIS,
+  aceita_nivel_modulo,
+  alcance_da_concessao,
+  cobre_inteiro,
+  type UsuarioAtual,
+} from "./rbac.js";
 
 /** O valor que a trilha grava para "linha ausente". */
 export const PADRAO = "PADRAO";
@@ -336,7 +345,20 @@ export async function alterar_nivel_pessoa(
       with: { perfil: { with: { perfil_permissoes: { with: { permissao: true } }, niveis_modulo: true } } },
     })
   ).filter((a) => a.perfil && a.perfil.ativo && aceita_nivel_modulo(a.perfil.codigo));
-  if (nivel !== null && nivel !== "SEM_ACESSO" && !concessoes.length) {
+  // Sem perfil de equipe, só o titular em Processos SEI (25/10/2026): por padrão
+  // o servidor não vê os próprios processos nem o adicional, e «Consulta» aqui
+  // os devolve — sempre os DELE (`rbac.permissoes_do_titular`).
+  if (nivel !== null && nivel !== "SEM_ACESSO" && !concessoes.length && m.codigo === MODULO_LIBERAVEL_AO_TITULAR) {
+    const externa = (
+      await tx.query.atribuicao.findMany({ where: eq(atribuicao.usuario_id, alvo.id), with: { perfil: true } })
+    ).some((a) => a.perfil && PERFIS_EXTERNOS.includes(a.perfil.codigo));
+    if (alvo.servidor_id === null || externa) {
+      return "Só a conta ligada a um servidor vê os próprios processos e o adicional: ligue a conta ao servidor antes.";
+    }
+    if (nivel === OPERACAO) return "Sem perfil de equipe, a conta só consulta os próprios processos: escolha Consulta.";
+    const falta = PERMISSOES_DO_TITULAR_LIBERAVEIS.filter((p) => !usuario.pode(p));
+    if (falta.length) return `Você não tem o que este nível daria: ${falta.join(", ")}.`;
+  } else if (nivel !== null && nivel !== "SEM_ACESSO" && !concessoes.length) {
     return (
       "A conta não tem perfil de equipe vigente: o nível de um módulo vale sobre o alcance de um perfil " +
       "(campus, equipe), e sem ele não daria nada. Conceda um perfil antes."

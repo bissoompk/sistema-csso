@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import * as auditoria from "../src/servicos/auditoria.js";
-import { bancoLimpo, contas, entrar, usuarioAtual, type AmbienteDeTeste } from "./ajuda";
+import { bancoLimpo, contas, entrar, liberarProcessos, usuarioAtual, type AmbienteDeTeste } from "./ajuda";
 
 const NOME = "Marco Antônio Alves Schetino";
 const SIAPE = "1110654";
@@ -29,6 +29,8 @@ beforeEach(async () => {
 
 async function titular() {
   await amb.db.update(e.usuario).set({ servidor_id: servidor }).where(eq(e.usuario.login, "servidor_consulta"));
+  // a ficha de servidor é do Processos SEI: o titular a tem liberado (25/10/2026)
+  await liberarProcessos(amb.db, "servidor_consulta");
 }
 
 describe("CA-18 e RN-19 em /servidores", () => {

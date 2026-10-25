@@ -148,15 +148,17 @@ describe.each(EXTERNOS)("conta %s", (login, vinculo, nome) => {
 });
 
 describe("o servidor comum continua como era", () => {
-  it("o Meu espaço tem o EPI, o adicional e agora o Comunicar acidente", async () => {
+  it("o Meu espaço tem o EPI e o Comunicar acidente; o adicional, só liberado (25/10/2026)", async () => {
     const { usuario } = await titular(db);
     expect(tem_titular(usuario)).toBe(true);
     const rotulos = meu_espaco_de(usuario).map((i) => i.rotulo);
     for (const r of ["Início", "Meus treinamentos", "Meus certificados", "Comprovante de treinamentos", "Minha ficha de EPI",
-      "Meus pedidos de EPI", "Pedir EPI", "Comunicar acidente", "Minhas comunicações", "Meu adicional", "Meus processos",
+      "Meus pedidos de EPI", "Pedir EPI", "Comunicar acidente", "Minhas comunicações",
       "Minha atividade", "Meu perfil"]) {
       expect(rotulos).toContain(r);
     }
+    expect(rotulos).not.toContain("Meu adicional");
+    expect(rotulos).not.toContain("Meus processos");
     expect(primeira_tela(usuario)).toBe("/");
   });
 

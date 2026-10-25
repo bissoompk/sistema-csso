@@ -11,7 +11,7 @@ import * as e from "../src/db/esquema/index.js";
 import { hoje_iso, somar_dias } from "../src/dominio/datas.js";
 import * as direito from "../src/servicos/direito.js";
 import * as pendencias from "../src/servicos/pendencias.js";
-import { bancoLimpo, contas, entrar, usuarioAtual, type Cliente } from "./ajuda";
+import { bancoLimpo, contas, entrar, liberarProcessos, usuarioAtual, type Cliente } from "./ajuda";
 import { cenario, parecerDe } from "./ajuda_processos.js";
 
 const { db, novoCliente } = await bancoLimpo();
@@ -422,6 +422,8 @@ describe("M58 — o titular lê o próprio adicional num cartão", () => {
   it("a frase no lugar da tabela, sem filtros nem coluna de ações", async () => {
     const { c } = await vigencia_vigente();
     await db.update(e.usuario).set({ servidor_id: c.servidor_id }).where(eq(e.usuario.login, "servidor_consulta"));
+    // os próprios processos e o adicional só com a exceção da pessoa (25/10/2026)
+    await liberarProcessos(db, "servidor_consulta");
     try {
       const tela = (await (await cliente("servidor_consulta")).get("/adicionais", HTML)).text;
       expect(tela).toContain("cartao-resumo");
@@ -431,6 +433,7 @@ describe("M58 — o titular lê o próprio adicional num cartão", () => {
       expect(tela).not.toContain("?estado=PROPOSTO");
     } finally {
       await db.update(e.usuario).set({ servidor_id: null }).where(eq(e.usuario.login, "servidor_consulta"));
+      await liberarProcessos(db, "servidor_consulta", false);
     }
   });
 });
@@ -453,6 +456,8 @@ describe("D4/M79 — o editor de quem não edita", () => {
   it("o titular lê a prévia, sem o editor nem a validação", async () => {
     const c = await caso();
     await db.update(e.usuario).set({ servidor_id: c.servidor_id }).where(eq(e.usuario.login, "servidor_consulta"));
+    // os próprios processos e o adicional só com a exceção da pessoa (25/10/2026)
+    await liberarProcessos(db, "servidor_consulta");
     try {
       const tela = (await (await cliente("servidor_consulta")).get(`/pareceres/${c.parecer_id}`, HTML)).text;
       expect(tela).toContain("Ainda não emitido.");
@@ -461,6 +466,7 @@ describe("D4/M79 — o editor de quem não edita", () => {
       expect(tela).not.toContain('<fieldset class="campos"');
     } finally {
       await db.update(e.usuario).set({ servidor_id: null }).where(eq(e.usuario.login, "servidor_consulta"));
+      await liberarProcessos(db, "servidor_consulta", false);
     }
   });
 

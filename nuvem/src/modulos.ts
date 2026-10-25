@@ -897,6 +897,9 @@ export function so_o_proprio(usuario: UsuarioAtual | null | undefined): boolean 
  */
 function _abre_no_meu_espaco(item: Item, usuario: UsuarioAtual): boolean {
   if (item.titular && usuario.servidor_id !== null) return true;
+  // o Início do servidor ainda sem vínculo: antes vinha do `processo.ver`, que o
+  // servidor já não tem por padrão (25/10/2026)
+  if (item === INICIO && !e_externo(usuario) && so_o_proprio(usuario)) return true;
   if (item.do_titular) return item.visivel_para(usuario);
   if (item.permissao === null) return !item.titular;
   return item.exigidas.some((p) => usuario.pode(p));

@@ -47,7 +47,7 @@ import * as epi_contagens from "../servicos/epi_contagens.js";
 import type { Executor } from "../db/cliente.js";
 import * as certificados_titular from "../servicos/certificados_titular.js";
 import { turmas_abertas } from "../servicos/turma.js";
-import { cartao_meu_espaco, e_externo, icone_de, meu_espaco_de, primeira_tela } from "../modulos.js";
+import { cartao_meu_espaco, e_externo, icone_de, meu_espaco_de, primeira_tela, so_o_proprio as so_tem_o_proprio } from "../modulos.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -89,7 +89,10 @@ rotas.get("/", async (c) => {
         const destino = primeira_tela(usuario);
         if (destino !== "/") return redirecionar(c, destino);
       }
-      exigir(usuario, "processo.ver");
+      // a conta de servidor ainda sem vínculo também abre o Início dela
+      // (25/10/2026: o servidor já não tem `processo.ver` por padrão); a da
+      // equipe sem a permissão continua no 403
+      if (e_externo(usuario) || !so_tem_o_proprio(usuario)) exigir(usuario, "processo.ver");
     }
     return pagina(c, "paginas/painel.html", usuario, await inicio_do_servidor(tx, usuario, hoje));
   }
