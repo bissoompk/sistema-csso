@@ -1764,3 +1764,7 @@ O teste das telas do usuário no navegador achou, na lista de processos do servi
 ## A janela de concluir turma prevê a apuração (25/10/2026)
 
 No teste das telas da equipe, concluir uma turma sem presença lançada reprovou todo mundo, e a janela só avisava em geral ("quem não tiver presença lançada é apurado com o que há"). Agora ela mostra a prévia com os lançamentos de agora — quantos sairão aprovados e reprovados, a lista dos reprovados com o motivo (até 10; o nome segue a mesma regra nominal da ficha) e, em vermelho, quantos ainda não têm nenhuma presença, com o link para a aba Presença e notas. A conta é a da grade (`presenca.avaliar`), a mesma da apuração; só tela, sem mudança de regra. Teste em `turmas.test.ts`.
+
+## A aba da ocorrência ainda sem parcial avisa que chega depois (25/10/2026)
+
+No teste das telas de acidentes, as abas Saúde, Relatórios, Ações, SIASS e Histórico (fatias seguintes) abriam em branco, só com o cabeçalho, o que parecia defeito. A ficha (`acidente_ficha.html`) agora captura o `include ... ignore missing` e, se ele não desenha nada, mostra «Esta parte da ocorrência chega numa etapa seguinte do módulo» — o mesmo tom de Plano de ação e Indicadores. A regra das fatias continua: quem criar o parcial não edita a ficha, e o aviso some sozinho. Teste em `acidente_rotas.test.ts`.
