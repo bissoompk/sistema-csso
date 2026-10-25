@@ -1624,11 +1624,39 @@
       calcula a frequência de cada um a partir dos lançamentos que existem
       hoje e grava aprovado ou reprovado. Quem não tiver presença lançada é
       apurado com o que há.</p>
-    <p class="discreto">Corrigir presença ou nota continua possível depois, na
-      aba <em>Presença e notas</em>, como retificação com motivo — mas quem
-      já tiver certificado emitido não se corrige mais: o documento se anula e
-      se reemite.</p>
   </div>
+  {# A prévia da apuração (25/10/2026): a mesma conta da grade
+     (`presenca.avaliar`), com os lançamentos de agora. Concluir sem presença
+     lançada reprovava a turma inteira, e a janela só dizia isso em geral. #}
+  {% set reprovados = [] %}{% set sem_presenca = [] %}
+  {% for linha in grade %}{% if not linha.avaliacao.aprovado %}{% set _ = reprovados.push(linha) %}
+    {%- if 'não há presença registrada' in linha.avaliacao.motivos %}{% set _ = sem_presenca.push(linha) %}{% endif %}{% endif %}{% endfor %}
+  {% if grade|length %}
+  <div class="aviso {{ 'aviso-erro' if sem_presenca|length else ('aviso-alerta' if reprovados|length else 'aviso-ok') }}" role="status" id="previa-apuracao">
+    <p><strong>Com os lançamentos de agora:</strong>
+      {{ grade|length - reprovados|length }} aprovado(s) e {{ reprovados|length }} reprovado(s).</p>
+    {% if sem_presenca|length %}
+    <p><strong>{{ sem_presenca|length }} inscrito(s) ainda sem nenhuma presença lançada</strong>
+      {{- ' — sairá reprovado' if sem_presenca|length == 1 else ' — sairão reprovados' }}.
+      Se a folha de presença já existe, lance-a antes na aba
+      <a href="/turmas/{{ turma.id }}?aba=presencas">Presença e notas</a>.</p>
+    {% endif %}
+    {% if reprovados|length %}
+    <ul class="motivos">
+      {% for linha in reprovados %}{% if loop.index <= 10 %}
+      {% set quem = identificar(linha.inscricao.participante.servidor, vazio=SUPRIMIDO) %}
+      <li>{{ linha.inscricao.participante.nome_exibicao if (pode_nominal or quem.nominal) else linha.inscricao.participante.identificador_publico }}:
+        {{ linha.avaliacao.motivos | join('; ') }}</li>
+      {% endif %}{% endfor %}
+      {% if reprovados|length > 10 %}<li>e mais {{ reprovados|length - 10 }} — a lista inteira está na aba Presença e notas.</li>{% endif %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+  <p class="discreto">Corrigir presença ou nota continua possível depois, na
+    aba <em>Presença e notas</em>, como retificação com motivo — mas quem
+    já tiver certificado emitido não se corrige mais: o documento se anula e
+    se reemite.</p>
 {% endcall %}
 {% endif %}
 {% endif %}

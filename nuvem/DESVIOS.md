@@ -1760,3 +1760,7 @@ Os testes D28–D31 falhavam só em alguns ambientes (a nuvem do Claude Code) e 
 ## O "Quadro" de /processos só para a equipe (25/10/2026)
 
 O teste das telas do usuário no navegador achou, na lista de processos do servidor, o alternador "Quadro | Tabela", cujo link (`/kanban`) dava 403: o quadro é da equipe (`exigir_na_equipe("processo.ver")`). O alternador agora só aparece com `pode_na_equipe("processo.ver")` (`com_quadro`); teste em `correcoes_processos.test.ts`.
+
+## A janela de concluir turma prevê a apuração (25/10/2026)
+
+No teste das telas da equipe, concluir uma turma sem presença lançada reprovou todo mundo, e a janela só avisava em geral ("quem não tiver presença lançada é apurado com o que há"). Agora ela mostra a prévia com os lançamentos de agora — quantos sairão aprovados e reprovados, a lista dos reprovados com o motivo (até 10; o nome segue a mesma regra nominal da ficha) e, em vermelho, quantos ainda não têm nenhuma presença, com o link para a aba Presença e notas. A conta é a da grade (`presenca.avaliar`), a mesma da apuração; só tela, sem mudança de regra. Teste em `turmas.test.ts`.
