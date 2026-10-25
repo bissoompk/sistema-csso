@@ -305,12 +305,23 @@ export async function buscar(
   })) as ProcessoCarregado[];
 }
 
-export async function por_id(tx: Executor, usuario: UsuarioAtual, processo_id: number): Promise<ProcessoCarregado | null> {
+export async function por_id(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  processo_id: number,
+): Promise<(ProcessoCarregado & { demanda_de_origem_id: number | null }) | null> {
   const achado = await tx.query.processo.findFirst({
     where: and(eq(tabela_processo.id, processo_id), aplicar_escopo(usuario, tabela_processo, "processo.ver")),
     with: COM_PROCESSO,
+    // a demanda que virou este processo, na MESMA consulta: a ficha dizia a
+    // origem só na trilha, sem levar de volta à demanda
+    extras: {
+      demanda_de_origem_id: sql<number | null>`(select d.id from demanda d where d.desfecho_processo_id = ${tabela_processo.id} order by d.id limit 1)`.as(
+        "demanda_de_origem_id",
+      ),
+    },
   });
-  return (achado as ProcessoCarregado | undefined) ?? null;
+  return (achado as (ProcessoCarregado & { demanda_de_origem_id: number | null }) | undefined) ?? null;
 }
 
 export async function por_nup(tx: Executor, usuario: UsuarioAtual, nup: string): Promise<ProcessoCarregado | null> {

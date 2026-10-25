@@ -330,6 +330,18 @@ describe("VIROU_PROCESSO", () => {
     // e a ficha oferece o link, que é a razão de a FK existir
     const corpo = (await cliente.get(`/demandas/${id}`)).text;
     expect(corpo).toContain(`href="/processos/${proc!.id}"`);
+    // e o processo leva de volta à demanda que o gerou (teste no navegador, 25/10/2026)
+    const ficha = (await cliente.get(`/processos/${proc!.id}`)).text;
+    expect(ficha).toContain(`href="/demandas/${id}"`);
+  });
+
+  it("com tudo encerrado, a fila padrão diz «nenhuma em aberto», e não «nenhuma registrada»", async () => {
+    const id = await _demanda_criada();
+    await cliente.post(`/demandas/${id}/encerrar`, { desfecho: "RESOLVIDA", relato: "feito" }, { seguir: false });
+    const fila = (await cliente.get("/demandas")).text;
+    expect(fila).toContain("Nenhuma demanda em aberto.");
+    expect(fila).not.toContain("Nenhuma demanda registrada.");
+    expect(fila).toContain("estão em “Encerradas”");
   });
 
   it("NUP de processo inexistente, sem tipo, pede o tipo no mesmo formulário", async () => {
