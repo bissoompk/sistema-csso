@@ -405,6 +405,25 @@ describe("máquina E", () => {
     expect((await _turma(turma_id)).situacao, "concluiu sozinha").toBe("EM_ANDAMENTO");
   });
 
+  it("a confirmação de concluir prevê a apuração e avisa de quem está sem presença", async () => {
+    const { turma_id } = await turma_aberta(DE_HOJE);
+    const servidor_id = await _criar_servidor();
+    await passar(turma_id, "INSCRICOES_ABERTAS");
+    await cliente.post(`/turmas/${turma_id}/inscricoes`, { servidor_id: String(servidor_id) }, { seguir: false });
+    await passar(turma_id, "EM_ANDAMENTO");
+    const antes = (await cliente.get(`/turmas/${turma_id}`)).text;
+    expect(antes).toContain('id="previa-apuracao"');
+    expect(antes).toContain("0 aprovado(s) e 1 reprovado(s)");
+    expect(antes).toContain("1 inscrito(s) ainda sem nenhuma presença lançada");
+    expect(antes).toContain("não há presença registrada");
+    expect(antes).toContain(`href="/turmas/${turma_id}?aba=presencas"`);
+
+    await cliente.post(`/turmas/${turma_id}/presencas/todos`, {}, { seguir: false });
+    const depois = (await cliente.get(`/turmas/${turma_id}`)).text;
+    expect(depois).toContain("1 aprovado(s) e 0 reprovado(s)");
+    expect(depois).not.toContain("sem nenhuma presença lançada");
+  });
+
   it("a confirmação de concluir some quando não há para onde ir", async () => {
     const { turma_id } = await turma_aberta(DE_HOJE);
     for (const destino of ["INSCRICOES_ABERTAS", "EM_ANDAMENTO", "CONCLUIDA"]) await passar(turma_id, destino);
