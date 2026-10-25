@@ -430,6 +430,17 @@ describe("M4/M78/M0: lista e ficha", () => {
     const coord = (await (await como("coordenador_csso")).get("/processos")).text;
     expect(coord).toContain('id="form-lote"');
     expect(coord).toContain("Precisam de você hoje");
+    // o quadro é da equipe: o titular não ganha o "Quadro", que dava 403
+    expect(coord).toContain('href="/kanban?');
+  });
+
+  it("o servidor ligado ao cadastro vê os próprios processos sem o link do quadro", async () => {
+    const [sv] = await db.insert(e.servidor).values({ siape: "7000009", nome: "Titular do Quadro" }).returning();
+    await db.update(e.usuario).set({ servidor_id: sv!.id }).where(eq(e.usuario.login, "servidor_consulta"));
+    const cli = await como("servidor_consulta");
+    const corpo = (await cli.get("/processos")).text;
+    expect(corpo).not.toContain('href="/kanban');
+    expect((await cli.get("/kanban")).status).toBe(403);
   });
 
   it("o lote recusa quem não tem ação de lote antes de ler o formulário", async () => {

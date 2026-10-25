@@ -70,12 +70,14 @@
         {%- elif resumos|length < total %}{{ resumos|length }} de {{ total }} processo(s) no filtro atual — esta é uma página.
         {%- else %}{{ total }} processo(s) no filtro atual.{% endif %}</p>
     </div>
+    {% if com_quadro %}
     <div class="ao-lado">
       <div class="alternador" role="group" aria-label="Ver a lista como">
         <a href="/kanban?{{ filtro.como_query_string() }}">Quadro</a>
         <span class="ativo" aria-current="page">Tabela</span>
       </div>
     </div>
+    {% endif %}
   </div>
 
   {# Visões salvas: cada uma é um filtro que a URL sabe reproduzir. A que está
