@@ -28,11 +28,14 @@
  * qualquer outro (o CPF só entra pela tela interna, e só para o certificado).
  */
 import { createHash, randomBytes } from "node:crypto";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
+  agora_utc,
+  email_saida,
   inscricao as tabela_inscricao,
   limite_login_ip,
+  pendencia as tabela_pendencia,
   servidor as tabela_servidor,
   turma as tabela_turma,
 } from "../db/esquema/index.js";
@@ -40,6 +43,8 @@ import { somar_dias } from "../dominio/datas.js";
 import * as auditoria from "./auditoria.js";
 import * as aviso_cadastro from "./aviso_cadastro_existente.js";
 import * as datas_br from "./datas_br.js";
+import * as email from "./email.js";
+import * as pendencias from "./pendencias.js";
 import { nomes_parecidos } from "./duplicados.js";
 import * as servico_participante from "./participante.js";
 import { DadosDoParticipante, mesmo_nome, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
@@ -57,8 +62,147 @@ const RE_SIAPE = /^\d{6,7}$/;
 const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const RESPOSTA_PADRAO =
-  "Pedido recebido. A equipe responsável pela turma confere cada pedido antes de confirmar a vaga; " +
-  "se precisar de algo, ela procura você pelos dados informados.";
+  "Pedido recebido. Se você informou e-mail, enviamos a ele um link para confirmar: confirmado, e havendo " +
+  "vaga, a inscrição fica garantida na hora. Sem a confirmação, a equipe responsável confere o pedido.";
+
+// ---------------------------------------------------------------------
+// A confirmação pelo e-mail (25/10/2026): quem confirma o e-mail do pedido tem
+// a inscrição confirmada sozinha, havendo vaga — sem a equipe decidir. O
+// pedido sem e-mail, o que casou com um servidor por outro endereço e o que
+// chegou sem vaga continuam para a equipe conferir.
+// ---------------------------------------------------------------------
+export const CAMINHO_CONFIRMAR = "/inscricao/confirmar";
+export const TIPO_EMAIL_CONFIRMAR = "INSCRICAO_CONFIRMAR";
+export const VALIDADE_CONFIRMACAO_MS = 48 * 3_600_000;
+/** O teto por destinatário: o link não vira canhão de e-mail para o endereço de outra pessoa. */
+export const CONFIRMACOES_POR_DIA = 3;
+export const ATOR_CONFIRMACAO = "o próprio participante (e-mail confirmado)";
+
+function _hash_token(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+export function corpo_da_confirmacao(turma: TurmaCarregada, link: string, expira_em: Date): string {
+  return (
+    "Olá.\n\n" +
+    `Foi pedida, com este e-mail, uma vaga na turma ${turma.codigo} de ${turma.treinamento.nome} ` +
+    `(${datas_br.numerica(turma.data_inicio)}). Para confirmar que o e-mail é seu e garantir a vaga, abra o link ` +
+    `abaixo e clique em "Confirmar" até ${datas_br.numerica(datas_br.hoje(expira_em))}:\n\n` +
+    `${link}\n\n` +
+    "Se não foi você que pediu, ignore esta mensagem: sem a confirmação, a equipe confere o pedido.\n\n" +
+    "Superintendência Integrada de Saúde (Sisa) — UFVJM\nMensagem enviada pelo Sistema SISA.\n"
+  );
+}
+
+async function _no_teto(tx: Executor, para: string, agora: Date): Promise<boolean> {
+  const [r] = await tx
+    .select({ n: count() })
+    .from(email_saida)
+    .where(
+      and(
+        eq(email_saida.tipo, TIPO_EMAIL_CONFIRMAR),
+        sql`lower(${email_saida.destinatario}) = ${para.trim().toLowerCase()}`,
+        gt(email_saida.criado_em, new Date(agora.getTime() - 86_400_000)),
+      ),
+    );
+  return Number(r?.n ?? 0) >= CONFIRMACOES_POR_DIA;
+}
+
+async function _enviar_confirmacao(
+  tx: Executor,
+  turma: TurmaCarregada,
+  inscricao_id: number,
+  para: string,
+  base_url: string,
+  agora: Date,
+): Promise<boolean> {
+  if (!email.email_valido(para) || (await _no_teto(tx, para, agora))) return false;
+  const token = randomBytes(24).toString("base64url");
+  // vencer não estraga nada: o pedido continua para a equipe, e a turma que
+  // fechou antes do clique é conferida de novo na confirmação
+  const expira_em = new Date(agora.getTime() + VALIDADE_CONFIRMACAO_MS);
+  await tx
+    .update(tabela_inscricao)
+    .set({ confirmacao_token_hash: _hash_token(token), confirmacao_expira_em: expira_em })
+    .where(eq(tabela_inscricao.id, inscricao_id));
+  await email.enfileirar(tx, {
+    tipo: TIPO_EMAIL_CONFIRMAR,
+    destinatario: para,
+    assunto: `Confirme a sua inscrição · ${turma.codigo}`,
+    corpo: corpo_da_confirmacao(turma, `${base_url}${CAMINHO_CONFIRMAR}/${token}`, expira_em),
+    inscricao_id,
+    expira_em,
+  });
+  return true;
+}
+
+/** O pedido que o link de confirmação alcança (ainda a conferir, no prazo), ou `null`. */
+export async function pedido_do_token(tx: Executor, token: string, agora: Date = new Date()) {
+  if (!token || token.length > 64) return null;
+  const [linha] = await tx
+    .select({ id: tabela_inscricao.id, expira_em: tabela_inscricao.confirmacao_expira_em, situacao: tabela_inscricao.situacao })
+    .from(tabela_inscricao)
+    .where(eq(tabela_inscricao.confirmacao_token_hash, _hash_token(token)));
+  if (!linha || linha.situacao !== "AGUARDANDO_EMAIL" || !linha.expira_em || linha.expira_em <= agora) return null;
+  return servico_turma.carregar_inscricao(tx, linha.id);
+}
+
+export type ResultadoDaConfirmacao = "CONFIRMADA" | "SEM_VAGA" | "FECHADA";
+
+/**
+ * O clique em "Confirmar" do e-mail. O e-mail fica confirmado de qualquer jeito
+ * (a CHECK `ck_inscricao_email_confirmado` o pede para a inscrição pública
+ * sair da espera); havendo vaga e a turma ainda recebendo pedido, a inscrição
+ * sai CONFIRMADA e a tarefa da equipe fecha. Sem vaga ou com a turma fechada, o
+ * pedido fica para a equipe, já com o e-mail confirmado.
+ */
+export async function confirmar_pelo_email(
+  tx: Executor,
+  token: string,
+  ip: string | null,
+  agora: Date = new Date(),
+): Promise<ResultadoDaConfirmacao | null> {
+  const inscricao = await pedido_do_token(tx, token, agora);
+  if (!inscricao) return null;
+  const turma = inscricao.turma;
+  // a última vaga disputada: a turma travada antes da conta (`_conferir_vaga`)
+  await tx.select({ id: tabela_turma.id }).from(tabela_turma).where(eq(tabela_turma.id, turma.id)).for("update");
+  const restantes = await servico_turma.vagas_restantes(tx, turma);
+  const fechada = servico_turma.aberta_a_pedido_proprio(turma);
+  const resultado: ResultadoDaConfirmacao = fechada ? "FECHADA" : restantes !== null && restantes <= 0 ? "SEM_VAGA" : "CONFIRMADA";
+  const gasto = await tx
+    .update(tabela_inscricao)
+    .set({
+      email_confirmado_em: agora,
+      confirmacao_token_hash: null,
+      confirmacao_expira_em: null,
+      ...(resultado === "CONFIRMADA" ? { situacao: "CONFIRMADA", confirmada_em: agora } : {}),
+    })
+    .where(and(eq(tabela_inscricao.id, inscricao.id), eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL"), isNull(tabela_inscricao.email_confirmado_em)))
+    .returning({ id: tabela_inscricao.id });
+  if (!gasto.length) return null;
+  await auditoria.registrar(tx, {
+    entidade: "inscricao",
+    entidade_id: inscricao.id,
+    tipo_evento: resultado === "CONFIRMADA" ? auditoria.ESTADO_ALTERADO : "INSCRICAO_EMAIL_CONFIRMADO",
+    descricao:
+      `${turma.codigo} · ${inscricao.participante.identificador_publico}: ` +
+      (resultado === "CONFIRMADA"
+        ? "pedido pelo link -> Confirmada (e-mail confirmado, havia vaga)"
+        : `e-mail confirmado; ${resultado === "SEM_VAGA" ? "sem vaga" : "a turma não recebe mais pedido"}, o pedido fica para a equipe`),
+    ...(resultado === "CONFIRMADA" ? { campo: "situacao", valor_anterior: "AGUARDANDO_EMAIL", valor_novo: "CONFIRMADA" } : {}),
+    usuario_nome: ATOR_CONFIRMACAO,
+    ip,
+  });
+  if (resultado === "CONFIRMADA") {
+    const [tarefa] = await tx
+      .select()
+      .from(tabela_pendencia)
+      .where(eq(tabela_pendencia.chave, servico_turma.chave_da_pendencia_de_confirmacao(inscricao)));
+    if (tarefa) await pendencias.concluir_pela_rotina(tx, tarefa, "inscrição confirmada pelo e-mail do participante");
+  }
+  return resultado;
+}
 
 /**
  * A linha que vem junto, IGUAL para todos (23/10/2026): não diz "você já tem
@@ -365,6 +509,7 @@ export async function pedir(
   ip: string | null,
   hoje: string | null = null,
   agora: Date = new Date(),
+  base_url: string | null = null,
 ): Promise<void> {
   const p = _ler(dados, turma);
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
@@ -424,7 +569,17 @@ export async function pedir(
     usuario: null,
   });
   await servico_turma.abrir_pendencia_de_confirmacao(tx, inscricao, null, true);
-  if (casou) await aviso_cadastro.avisar(tx, pessoa, { chave: casou, digitado: p.email, ja_na_turma: false }, agora);
+  // o link de confirmação vai ao e-mail digitado quando ele é o da pessoa do
+  // pedido: a nova, ou a que casou PELO e-mail. A que casou pelo SIAPE com outro
+  // endereço fica com a equipe (o e-mail digitado não prova ser o do servidor)
+  const enviado =
+    base_url !== null && p.email && casou !== "SIAPE"
+      ? await _enviar_confirmacao(tx, turma, inscricao.id, p.email, base_url, agora)
+      : false;
+  // o aviso de cadastro existente iria ao mesmo endereço: a confirmação basta
+  if (casou && !(enviado && casou === "EMAIL")) {
+    await aviso_cadastro.avisar(tx, pessoa, { chave: casou, digitado: p.email, ja_na_turma: false }, agora);
+  }
 }
 
 // ---------------------------------------------------------------------

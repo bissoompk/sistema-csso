@@ -512,7 +512,8 @@ describe("a aprovação do pedido feito pelo link público", () => {
     const a = await _cliente("coordenador_csso");
     expect((await a.get("/turmas/pedidos")).text).toContain(`name="inscricao_id" value="${pedido!.id}"`);
     await a.post("/turmas/pedidos", { inscricao_id: String(pedido!.id), acao: "aceitar" });
-    expect((await db.select().from(e.inscricao).where(eq(e.inscricao.id, pedido!.id)))[0]!.situacao).toBe("INSCRITA");
+    // aceitar já confirma a vaga (25/10/2026)
+    expect((await db.select().from(e.inscricao).where(eq(e.inscricao.id, pedido!.id)))[0]!.situacao).toBe("CONFIRMADA");
   });
 });
 

@@ -31,12 +31,9 @@
         {%- else %}Nenhuma turma aberta agora — veja o <a href="/treinamentos/catalogo">catálogo de treinamentos</a>.{% endif %}
         {% if inscricoes|length %}Abaixo, as suas inscrições.{% endif %}</p>
       {% call ui.info('pedir-vaga', 'como funciona pedir a própria vaga') %}
-        <p>Pedir vaga é ato seu; <strong>confirmar é ato da equipe responsável</strong> — a mesma
-          divisão do pedido de EPI, em que quem pede não decide. Enquanto a equipe não
-          confirma, sua inscrição fica como <strong>inscrita</strong>.</p>
-        <p><strong>A vaga já é sua desde o pedido.</strong> Ela sai da conta de vagas
-          no mesmo instante, e não só na confirmação: segurar a vaga só depois faria o
-          sistema aceitar trinta pedidos para vinte lugares.</p>
+        <p><strong>Havendo vaga, a inscrição já sai confirmada</strong>: ninguém precisa aprovar.
+          A vaga sai da conta no mesmo instante, e o sistema não aceita mais inscrições do que
+          lugares.</p>
         <p>Só a turma com <strong>inscrições abertas</strong>, dentro do prazo e que
           ainda não começou recebe pedido seu. Turma planejada ou já em andamento
           continua recebendo inscrição <em>pela equipe responsável</em>, que tem o contexto na mão.</p>
@@ -165,7 +162,7 @@
         {%- if i.situacao == 'INSCRITA' %}
         <span class="quebra discreto">aguardando confirmação{% if i.turma.unidade_promotora %} da {{ i.turma.unidade_promotora.sigla or i.turma.unidade_promotora.nome_extenso }}{% endif %}</span>{% endif %}
         {%- if i.situacao == 'AGUARDANDO_EMAIL' %}
-        <span class="quebra discreto">pedido pelo link: a equipe confere antes de reservar a vaga</span>{% endif %}
+        <span class="quebra discreto">pedido pelo link: confirme o e-mail pelo link que enviamos, ou a equipe confere</span>{% endif %}
         {%- if i.situacao == 'CANCELADA' and i.motivo_cancelamento %}
         <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}</td>
       <td class="acao-linha">

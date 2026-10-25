@@ -253,36 +253,39 @@ describe("link público: resposta idêntica e aviso só ao e-mail do cadastro", 
     expect(telas[2]).toBe(telas[0]);
   });
 
-  it("casou por e-mail + nome: o aviso vai ao e-mail DO CADASTRO, sem nome, turma nem dado digitado; vence em 24 h", async () => {
-    const { turma_id, token } = await _com_link();
+  // 25/10/2026: o pedido com e-mail recebe o link de confirmação NO ENDEREÇO
+  // DIGITADO (confirmado, havendo vaga, a inscrição sai confirmada sozinha).
+  // Quando o pedido casou pelo e-mail, é o mesmo endereço do cadastro, e o
+  // aviso de cadastro existente não vai junto: a confirmação basta.
+  async function _confirmacoes() {
+    return db.select().from(e.email_saida).where(eq(e.email_saida.tipo, inscricao_publica.TIPO_EMAIL_CONFIRMAR));
+  }
+
+  it("casou por e-mail + nome: vai só o link de confirmação, sem nome nem dado digitado", async () => {
+    const { token } = await _com_link();
     await _externo("Joana da Silva", "Joana@Empresa.com.br");
     const r = await novoCliente().post(`/inscricao/${token}`, PEDIDO, { seguir: false });
     expect(r.status).toBe(303);
-    const [aviso, ...resto] = await _avisos();
+    expect(await _todos_avisos()).toHaveLength(0);
+    const [confirmacao, ...resto] = await _confirmacoes();
     expect(resto).toHaveLength(0);
-    expect(aviso!.destinatario).toBe("Joana@Empresa.com.br");
-    const [turma] = await db.select().from(e.turma).where(eq(e.turma.id, turma_id));
-    for (const proibido of ["Joana", "Prestes", "Silva", turma!.codigo, "Trabalho em Altura", "Limpeza", "PTC-"]) {
-      expect(aviso!.corpo).not.toContain(proibido);
-      expect(aviso!.assunto).not.toContain(proibido);
+    expect(confirmacao!.destinatario.toLowerCase()).toBe("joana@empresa.com.br");
+    for (const proibido of ["Joana", "Prestes", "Silva", "Limpeza", "PTC-"]) {
+      expect(confirmacao!.corpo).not.toContain(proibido);
+      expect(confirmacao!.assunto).not.toContain(proibido);
     }
-    expect(aviso!.expira_em).not.toBeNull();
-    const horas = (aviso!.expira_em!.getTime() - aviso!.criado_em.getTime()) / 3_600_000;
-    expect(horas).toBeGreaterThan(23.9);
-    expect(horas).toBeLessThan(24.1);
-    // vencido sem sair: cancelado, mesmo com o envio desligado
-    expect(await naTransacao((tx) => email.vencer(tx, new Date(Date.now() + 25 * 3_600_000)))).toBe(1);
-    const [depois] = await db.select().from(e.email_saida).where(eq(e.email_saida.id, aviso!.id));
-    expect(depois!.situacao).toBe("CANCELADO");
   });
 
-  it("e-mail digitado que não é do cadastro, ou só o nome parecido: nenhum aviso sai", async () => {
+  it("e-mail digitado que não é do cadastro, ou só o nome parecido: nada vai ao cadastro de ninguém", async () => {
     const { token } = await _com_link();
     await _externo("Joana da Silva", "joana@empresa.com.br");
     await novoCliente().post(`/inscricao/${token}`, { ...PEDIDO, email: "outra@gmail.com" }, { seguir: false });
     await novoCliente().post(`/inscricao/${token}`, { ...PEDIDO, nome: "Joana Silva", email: "" }, { seguir: false });
     expect(await _todos_avisos()).toHaveLength(0);
-    expect((await db.select().from(e.email_saida)).map((m) => m.destinatario)).not.toContain("outra@gmail.com");
+    // só o link de confirmação do próprio pedido, ao endereço digitado nele
+    expect((await db.select().from(e.email_saida)).map((m) => [m.tipo, m.destinatario])).toEqual([
+      [inscricao_publica.TIPO_EMAIL_CONFIRMAR, "outra@gmail.com"],
+    ]);
   });
 
   it("casou por SIAPE + nome: o aviso vai ao institucional, nunca ao digitado, e no máximo 1 por 24 h", async () => {
@@ -307,8 +310,10 @@ describe("link público: resposta idêntica e aviso só ao e-mail do cadastro", 
     await _externo("Joana da Silva", "joana@empresa.com.br");
     await novoCliente().post(`/inscricao/${token}`, PEDIDO, { seguir: false });
     await novoCliente().post(`/inscricao/${token}`, PEDIDO, { seguir: false });
+    // o primeiro pedido levou o link de confirmação (no lugar do aviso); o repetido, o aviso
     const tipos = (await _todos_avisos()).map((m) => m.tipo).sort();
-    expect(tipos).toEqual([aviso_cadastro.TIPO_AVISO, aviso_cadastro.TIPO_REPETIDO].sort());
+    expect(tipos).toEqual([aviso_cadastro.TIPO_REPETIDO]);
+    expect(await _confirmacoes()).toHaveLength(1);
     const repetido = (await _todos_avisos()).find((m) => m.tipo === aviso_cadastro.TIPO_REPETIDO)!;
     expect(repetido.corpo).toContain("não é preciso pedir de novo");
   });

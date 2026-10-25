@@ -12,7 +12,7 @@
  * teste chama `bancoLimpo()` no `beforeEach` — é um CREATE DATABASE TEMPLATE,
  * barato.
  */
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as e from "../src/db/esquema/index.js";
 import { hoje_iso, somar_dias } from "../src/dominio/datas.js";
@@ -715,22 +715,29 @@ describe("inscrição — máquina F", () => {
   const mudar = (turma_id: number, inscricao_id: number, dados: Campos) =>
     cliente.post(`/turmas/${turma_id}/inscricoes/${inscricao_id}`, dados, { seguir: false });
 
-  it("inscrever e confirmar", async () => {
+  it("inscrever já confirma a vaga, sem segundo clique", async () => {
     const { turma_id } = await turma_aberta();
     await inscrever(turma_id, { servidor_id: String(await _criar_servidor()) });
     const [inscricao] = await _inscricoes();
-    expect([inscricao!.situacao, inscricao!.origem]).toEqual(["INSCRITA", "INTERNA"]);
+    // 25/10/2026: com a vaga conferida, não há o que a equipe decidir depois
+    expect([inscricao!.situacao, inscricao!.origem]).toEqual(["CONFIRMADA", "INTERNA"]);
+    expect(inscricao!.confirmada_em).not.toBeNull();
+    expect(inscricao!.confirmada_por).not.toBeNull();
+  });
+
+  it("a inscrição antiga ainda INSCRITA continua se confirmando pela linha", async () => {
+    const { turma_id } = await turma_aberta();
+    await inscrever(turma_id, { servidor_id: String(await _criar_servidor()) });
+    const [inscricao] = await _inscricoes();
+    await db.update(e.inscricao).set({ situacao: "INSCRITA", confirmada_em: null, confirmada_por: null }).where(eq(e.inscricao.id, inscricao!.id));
     await mudar(turma_id, inscricao!.id, { destino: "CONFIRMADA" });
     const [depois] = await _inscricoes();
     expect(depois!.situacao).toBe("CONFIRMADA");
-    expect(depois!.confirmada_em).not.toBeNull();
-    expect(depois!.confirmada_por).not.toBeNull();
     const eventos = await db
       .select()
       .from(e.historico_evento)
       .where(sql`${e.historico_evento.entidade} = 'inscricao' AND ${e.historico_evento.campo} = 'situacao'`);
-    expect(eventos).toHaveLength(1);
-    expect([eventos[0]!.valor_anterior, eventos[0]!.valor_novo]).toEqual(["INSCRITA", "CONFIRMADA"]);
+    expect(eventos.map((ev) => [ev.valor_anterior, ev.valor_novo])).toEqual([["INSCRITA", "CONFIRMADA"]]);
   });
 
   it("inscrição duplicada é recusada", async () => {
@@ -757,7 +764,7 @@ describe("inscrição — máquina F", () => {
     await mudar(turma_id, inscricao!.id, { destino: "CANCELADA", motivo: "desistiu" });
     const r = await inscrever(turma_id, { servidor_id: String(await _criar_servidor("2165804", "Fabrício")) });
     expect(r.status).toBe(303);
-    expect((await _inscricoes()).map((i) => i.situacao).sort()).toEqual(["CANCELADA", "INSCRITA"]);
+    expect((await _inscricoes()).map((i) => i.situacao).sort()).toEqual(["CANCELADA", "CONFIRMADA"]);
   });
 
   it("cancelar inscrição sem motivo é recusado", async () => {
@@ -765,7 +772,7 @@ describe("inscrição — máquina F", () => {
     await inscrever(turma_id, { servidor_id: String(await _criar_servidor()) });
     const [inscricao] = await _inscricoes();
     expect(await _msg(cliente, await mudar(turma_id, inscricao!.id, { destino: "CANCELADA" }))).toContain("exige o motivo");
-    expect((await _inscricoes())[0]!.situacao).toBe("INSCRITA");
+    expect((await _inscricoes())[0]!.situacao).toBe("CONFIRMADA");
   });
 
   it("confirmar inscrição cancelada é recusado", async () => {
@@ -856,7 +863,7 @@ describe("permissão", () => {
     expect(r.status).toBe(303);
     const inscricoes = await _inscricoes();
     expect(inscricoes).toHaveLength(1);
-    expect(inscricoes[0]!.situacao).toBe("INSCRITA");
+    expect(inscricoes[0]!.situacao).toBe("CONFIRMADA");
   });
 
   it("a CSSO continua achando participante pelo nome na ficha", async () => {
@@ -1178,16 +1185,16 @@ describe("inscrição pública por link", () => {
     expect(await _inscricoes()).toHaveLength(0);
   });
 
-  it("aceitar põe a pessoa como inscrita, diz quem conferiu e fecha a pendência; sem vaga, recusa", async () => {
+  it("aceitar já confirma a vaga, diz quem conferiu e fecha a pendência; sem vaga, recusa", async () => {
     const { turma_id, token } = await com_link({ vagas: 1 });
     const publico = novoCliente();
     await publico.post(`/inscricao/${token}`, PEDIDO);
     await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Pedro Alvares Cabral", email: "pedro@x.com" });
     const [a, b] = await _inscricoes();
     const r = await cliente.post(`/turmas/${turma_id}/inscricoes/${a!.id}`, { destino: "INSCRITA" }, { seguir: false });
-    expect(await _msg(cliente, r)).toContain("inscrita");
+    expect(await _msg(cliente, r)).toContain("confirmada");
     const [aceita] = await db.select().from(e.inscricao).where(eq(e.inscricao.id, a!.id));
-    expect(aceita!.situacao).toBe("INSCRITA");
+    expect(aceita!.situacao).toBe("CONFIRMADA");
     expect(aceita!.conferida_por).not.toBeNull();
     expect(aceita!.conferida_em).not.toBeNull();
     const pendencias = await _pendencias_da_turma(turma_id);
@@ -1201,13 +1208,85 @@ describe("inscrição pública por link", () => {
     expect(recusada!.situacao).toBe("CANCELADA");
     expect(recusada!.conferida_por).toBeNull();
     // quem deixou e-mail fica sabendo; o motivo escrito para a trilha não vai
-    const avisos = await db.select().from(e.email_saida).orderBy(asc(e.email_saida.id));
+    const todos = await db.select().from(e.email_saida).orderBy(asc(e.email_saida.id));
+    // cada pedido com e-mail recebeu antes o link de confirmação (25/10/2026)
+    expect(todos.filter((x) => x.tipo === "INSCRICAO_CONFIRMAR").map((x) => x.inscricao_id)).toEqual([a!.id, b!.id]);
+    const avisos = todos.filter((x) => x.tipo !== "INSCRICAO_CONFIRMAR");
     expect(avisos.map((x) => [x.tipo, x.destinatario, x.inscricao_id])).toEqual([
       ["INSCRICAO_ACEITA", "joana@empresa.com.br", a!.id],
       ["INSCRICAO_RECUSADA", "pedro@x.com", b!.id],
     ]);
     expect(avisos[0]!.corpo).toContain("A vaga é sua");
     expect(avisos[1]!.corpo).not.toContain("turma cheia");
+  });
+
+  async function token_da_confirmacao(para: string): Promise<string> {
+    const [m] = await db
+      .select()
+      .from(e.email_saida)
+      .where(and(eq(e.email_saida.tipo, "INSCRICAO_CONFIRMAR"), eq(e.email_saida.destinatario, para)))
+      .orderBy(desc(e.email_saida.id))
+      .limit(1);
+    return m!.corpo!.match(/\/inscricao\/confirmar\/([A-Za-z0-9_-]+)/)![1]!;
+  }
+
+  it("quem confirma o e-mail do pedido tem a inscrição confirmada sozinha, e a tarefa da equipe fecha", async () => {
+    const { turma_id, token } = await com_link({ vagas: 5 });
+    const publico = novoCliente();
+    await publico.post(`/inscricao/${token}`, PEDIDO);
+    const [pedido] = await _inscricoes();
+    expect(pedido!.situacao).toBe("AGUARDANDO_EMAIL");
+    const link = await token_da_confirmacao(PEDIDO.email);
+    // abrir não confirma (leitor de e-mail pré-visualiza links)
+    const tela = await publico.get(`/inscricao/confirmar/${link}`);
+    expect(tela.status).toBe(200);
+    expect(tela.text).toContain("Confirmar a inscrição");
+    expect((await db.select().from(e.inscricao).where(eq(e.inscricao.id, pedido!.id)))[0]!.situacao).toBe("AGUARDANDO_EMAIL");
+    const ok = await publico.post(`/inscricao/confirmar/${link}`, {});
+    expect(ok.status).toBe(200);
+    expect(ok.text).toContain("Inscrição confirmada");
+    const [depois] = await db.select().from(e.inscricao).where(eq(e.inscricao.id, pedido!.id));
+    expect(depois!.situacao).toBe("CONFIRMADA");
+    expect(depois!.email_confirmado_em).not.toBeNull();
+    expect(depois!.confirmacao_token_hash).toBeNull();
+    const pendencias = await _pendencias_da_turma(turma_id);
+    expect(pendencias.find((x) => x.chave === `inscricao-${pedido!.id}-a-confirmar`)!.concluida).toBe(true);
+    // o link serve uma vez
+    expect((await publico.post(`/inscricao/confirmar/${link}`, {})).status).toBe(404);
+  });
+
+  it("sem vaga na hora de confirmar, o e-mail fica confirmado e o pedido continua com a equipe", async () => {
+    const { turma_id, token } = await com_link({ vagas: 1 });
+    const publico = novoCliente();
+    await publico.post(`/inscricao/${token}`, PEDIDO);
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, nome: "Pedro Alvares Cabral", email: "pedro@x.com" });
+    await publico.post(`/inscricao/confirmar/${await token_da_confirmacao(PEDIDO.email)}`, {});
+    const r = await publico.post(`/inscricao/confirmar/${await token_da_confirmacao("pedro@x.com")}`, {});
+    expect(r.text).toContain("As vagas de");
+    const situacoes = (await _inscricoes()).map((i) => [i.situacao, i.email_confirmado_em !== null]);
+    expect(situacoes).toEqual([
+      ["CONFIRMADA", true],
+      ["AGUARDANDO_EMAIL", true],
+    ]);
+    const pendencias = await _pendencias_da_turma(turma_id);
+    expect(pendencias.filter((x) => !x.concluida)).toHaveLength(1);
+  });
+
+  it("o pedido sem e-mail e o que casou com um servidor por outro e-mail não recebem o link", async () => {
+    const { token } = await com_link({ vagas: 5 });
+    await _criar_servidor("1234567", "Servidora do Cadastro", "servidora@ufvjm.edu.br");
+    const publico = novoCliente();
+    await publico.post(`/inscricao/${token}`, { ...PEDIDO, email: "" });
+    await publico.post(`/inscricao/${token}`, {
+      ...PEDIDO,
+      nome: "Servidora do Cadastro",
+      vinculo: "SERVIDOR",
+      siape: "1234567",
+      email: "outro.endereco@gmail.com",
+    });
+    const confirmacoes = await db.select().from(e.email_saida).where(eq(e.email_saida.tipo, "INSCRICAO_CONFIRMAR"));
+    expect(confirmacoes).toEqual([]);
+    expect((await _inscricoes()).every((i) => i.situacao === "AGUARDANDO_EMAIL")).toBe(true);
   });
 
   it("aceita os pedidos marcados de uma vez; mais pedidos do que vagas não aceita nenhum da turma", async () => {
@@ -1229,7 +1308,7 @@ describe("inscrição pública por link", () => {
     const r = await cliente.post("/turmas/pedidos", { acao: "aceitar", inscricao_id: [String(a!.id), String(b!.id)] });
     expect(_texto(r.text)).toContain("2 pedido(s) aceito(s)");
     const situacoes = (await _inscricoes()).map((x) => x.situacao);
-    expect(situacoes).toEqual(["INSCRITA", "INSCRITA", "AGUARDANDO_EMAIL"]);
+    expect(situacoes).toEqual(["CONFIRMADA", "CONFIRMADA", "AGUARDANDO_EMAIL"]);
     // recusar sem motivo não passa; com motivo, cancela
     const sem = await cliente.post("/turmas/pedidos", { acao: "recusar", inscricao_id: String(c!.id) }, { seguir: false });
     expect(await _msg(cliente, sem)).toContain("escreva o motivo");

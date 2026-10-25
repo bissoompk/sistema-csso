@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{# O link do e-mail do pedido pelo link público (25/10/2026). Abrir não
+   confirma — leitor de e-mail pré-visualiza links —; o botão confirma, e,
+   havendo vaga, a inscrição sai confirmada na hora. Sem lateral, como o cartaz. #}
+{% set sem_casca = true %}
+{% block titulo %}Confirmar inscrição · SISA{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{% block conteudo %}
+{% if not turma %}
+<div class="cartao">
+  <h1>Link vencido ou já usado</h1>
+  <p>Este link de confirmação não vale mais: ele serve uma vez só e por 48 horas. Se você já confirmou,
+    a sua inscrição está registrada. Senão, o pedido continua com a equipe responsável, que o confere.</p>
+</div>
+
+{% elif resultado == 'CONFIRMADA' %}
+<div class="cartao">
+  <h1>Inscrição confirmada</h1>
+  <div class="aviso aviso-ok" role="status">
+    <p><strong>A vaga é sua</strong> em {{ turma.treinamento.nome }}
+      (<span class="mono">{{ turma.codigo }}</span>), em
+      <span class="mono">{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
+      {%- if turma|horario_turma %}, <span class="mono">{{ turma|horario_turma }}</span>{% endif %}
+      {%- if turma.local %}, {{ turma.local }}{% endif %}.</p>
+    <p>Se não puder ir, avise a equipe responsável para liberar a vaga a outra pessoa.</p>
+  </div>
+</div>
+
+{% elif resultado %}
+<div class="cartao">
+  <h1>E-mail confirmado</h1>
+  <div class="aviso aviso-alerta" role="status">
+    <p>{% if resultado == 'SEM_VAGA' %}As vagas de {{ turma.treinamento.nome }} acabaram antes da confirmação.
+      {%- else %}A turma {{ turma.codigo }} não recebe mais pedido de vaga.{% endif %}
+      O seu pedido continua com a equipe responsável, que decide e procura você pelo e-mail informado.</p>
+  </div>
+</div>
+
+{% else %}
+<div class="cartao">
+  <h1>Confirmar a inscrição</h1>
+  <p class="sub">{{ turma.treinamento.nome }} · <span class="mono">{{ turma.codigo }}</span> ·
+    <span class="mono">{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span></p>
+  <p>Confirme que este e-mail é seu. Havendo vaga, a inscrição fica garantida na hora.</p>
+  <form method="post" action="{{ caminho }}/{{ token }}">
+    <div class="acoes"><button type="submit" class="largo">Confirmar</button></div>
+  </form>
+  <div class="aviso aviso-alerta" role="note"><p>Não foi você que pediu? Não confirme: feche esta página.</p></div>
+</div>
+{% endif %}
+{% endblock %}
