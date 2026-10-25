@@ -21,6 +21,7 @@ import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario } from "../dependencias.js";
 import { ROTULO_VINCULO } from "../dominio/treinamento.js";
 import * as email from "../servicos/email.js";
+import * as emissao from "../servicos/emissao_certificado.js";
 import * as servico from "../servicos/inscricao_publica.js";
 import { RegraDaTurma } from "../servicos/turma.js";
 import { pagina, redirecionar } from "../web.js";
@@ -136,7 +137,8 @@ rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
   // o campo que gente não vê: robô preenche, e recebe a mesma resposta
   if (!f.texto("site").trim()) {
     try {
-      await tx.transaction((sp) => servico.pedir(sp as typeof tx, link.turma, pedido, ip));
+      const base_url = await emissao.url_base_validacao(tx);
+      await tx.transaction((sp) => servico.pedir(sp as typeof tx, link.turma, pedido, ip, null, new Date(), base_url));
     } catch (erro) {
       if (erro instanceof servico.PedidoInvalido || erro instanceof RegraDaTurma) {
         return _tela(c, { link, pedido, erro: erro.message, status: 422 });
@@ -159,4 +161,45 @@ rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
     maxAge: VIDA_RECEBIDO_S,
   });
   return _sem_rastro(redirecionar(c, c.req.path));
+});
+
+// ---------------------------------------------------------------------
+// A confirmação pelo e-mail (25/10/2026): abrir o link NÃO confirma — leitor de
+// e-mail pré-visualiza links —; o botão confirma. Confirmado, havendo vaga, a
+// inscrição sai confirmada sozinha.
+// ---------------------------------------------------------------------
+async function _tela_confirmar(
+  c: Ctx,
+  d: { inscricao?: Awaited<ReturnType<typeof servico.pedido_do_token>>; resultado?: servico.ResultadoDaConfirmacao | null; token?: string; status?: number },
+): Promise<Response> {
+  return _sem_rastro(
+    await pagina(
+      c,
+      "paginas/inscricao_confirmar.html",
+      null,
+      {
+        turma: d.inscricao ? vista_turma(d.inscricao.turma) : null,
+        resultado: d.resultado ?? null,
+        token: d.token ?? "",
+        caminho: servico.CAMINHO_CONFIRMAR,
+      },
+      d.status ?? 200,
+    ),
+  );
+}
+
+rotas.get(`${servico.CAMINHO_CONFIRMAR}/:token`, async (c) => {
+  const inscricao = await servico.pedido_do_token(c.get("tx"), c.req.param("token"));
+  if (!inscricao) return _tela_confirmar(c, { status: 404 });
+  return _tela_confirmar(c, { inscricao, token: c.req.param("token") });
+});
+
+rotas.post(`${servico.CAMINHO_CONFIRMAR}/:token`, async (c) => {
+  const tx = c.get("tx");
+  const token = c.req.param("token");
+  const inscricao = await servico.pedido_do_token(tx, token);
+  if (!inscricao) return _tela_confirmar(c, { status: 404 });
+  const resultado = await servico.confirmar_pelo_email(tx, token, ipDoCliente(c));
+  if (!resultado) return _tela_confirmar(c, { status: 404 });
+  return _tela_confirmar(c, { inscricao, resultado });
 });

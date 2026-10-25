@@ -405,7 +405,8 @@ describe("conclusão", () => {
         .orderBy(asc(e.historico_evento.id))
     ).map((ev) => [ev.valor_anterior, ev.valor_novo]);
     expect(estados).toEqual([
-      ["INSCRITA", "AUSENTE"],
+      // a inscrição nasce confirmada (25/10/2026)
+      ["CONFIRMADA", "AUSENTE"],
       ["AUSENTE", "REPROVADO"],
     ]);
     const resumos = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "TURMA_APURADA"));
@@ -511,7 +512,7 @@ describe("recusa não grava", () => {
     expect(await algumaPresenca()).toBeNull();
     const i = await inscricao(inscricao_id);
     expect(i.frequencia_percentual).toBeNull();
-    expect(i.situacao).toBe("INSCRITA");
+    expect(i.situacao).toBe("CONFIRMADA");
   });
 
   it("recusa de nota não deixa nada gravado", async () => {

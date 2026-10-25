@@ -175,7 +175,7 @@ describe("o terceirizado e o discente pedem a própria vaga", () => {
     const id = await turma_aberta();
     const c = await logado("terceirizado");
     const r = await c.post(`/turmas/${id}/inscrever-me`, {}, { seguir: false });
-    expect(await msg(c, r)).toContain("Inscrição pedida em");
+    expect(await msg(c, r)).toContain("Inscrição confirmada em");
 
     const terceirizado = await conta("terceirizado");
     const [p, ...resto] = await participantes();
@@ -189,7 +189,8 @@ describe("o terceirizado e o discente pedem a própria vaga", () => {
 
     const [i] = await inscricoes();
     expect(i!.participante_id).toBe(p!.id);
-    expect(i!.situacao).toBe("INSCRITA");
+    // havendo vaga, a inscrição já nasce confirmada (25/10/2026)
+    expect(i!.situacao).toBe("CONFIRMADA");
     expect(i!.inscrito_por).toBe(terceirizado.id);
 
     // a trilha da criação não leva o nome da pessoa
@@ -458,7 +459,7 @@ describe("o servidor segue pelo servidor_id", () => {
     const id = await turma_aberta();
     const c = await logado("servidor_consulta");
     const r = await c.post(`/turmas/${id}/inscrever-me`, {}, { seguir: false });
-    expect(await msg(c, r)).toContain("Inscrição pedida em");
+    expect(await msg(c, r)).toContain("Inscrição confirmada em");
     const [p] = await participantes();
     expect(p!.servidor_id).toBe(s!.id);
     expect(p!.usuario_id).toBeNull();

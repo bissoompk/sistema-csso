@@ -155,6 +155,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // ator é "o próprio titular" e a descrição nunca leva nome, SIAPE nem e-mail.
   ACESSO_ATIVADO: "Acesso ativado pelo próprio titular (Ativar meu acesso)",
   SERVIDOR_AUTOCADASTRADO: "Servidor cadastrado pelo próprio servidor no primeiro acesso",
+  INSCRICAO_EMAIL_CONFIRMADO: "E-mail do pedido pelo link confirmado (sem vaga ou turma fechada: fica para a equipe)",
   ACESSO_CRIADO_NO_CADASTRO: "Conta criada com o cadastro do servidor, sem senha (o titular a define)",
   ACESSO_EMAIL_ACOMPANHOU_CADASTRO: "E-mail da conta sem senha acompanhou o cadastro do servidor",
   ACESSO_ENCERRADO_NA_SAIDA: "Conta inativada: o servidor saiu do quadro",

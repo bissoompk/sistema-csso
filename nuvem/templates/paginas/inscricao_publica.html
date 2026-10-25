@@ -63,7 +63,9 @@
     <p><strong>{{ resposta_padrao }}</strong></p>
     <p>Recebemos o pedido de <strong>{{ recebido.nome }}</strong>
       {%- if recebido.email %}, com o e-mail <strong>{{ recebido.email }}</strong>{% endif %}.
-      O pedido ainda não é a vaga: ela só fica garantida quando a equipe{{ equipe_de }} confirmar.</p>
+      {%- if recebido.email %} Abra o e-mail que enviamos e clique em «Confirmar»: havendo vaga, ela fica
+      garantida na hora.{% else %} Sem e-mail, o pedido ainda não é a vaga: ela fica garantida quando a
+      equipe{{ equipe_de }} confirmar.{% endif %}</p>
     {# a mesma linha para todos: nunca diz "você já tem cadastro"
        (`aviso_cadastro_existente.ts`) #}
     <p>{{ linha_neutra }}</p>

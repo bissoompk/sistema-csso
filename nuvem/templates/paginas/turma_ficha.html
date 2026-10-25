@@ -254,7 +254,7 @@
       {% elif pode_pedir_aqui %}
       <form method="post" action="/turmas/{{ turma.id }}/inscrever-me" class="acoes">
         <button type="submit">Quero me inscrever</button>
-        <span class="dica">A vaga fica reservada; a equipe confirma depois.</span>
+        <span class="dica">Havendo vaga, a inscrição já sai confirmada.</span>
       </form>
       {% endif %}
 
@@ -462,10 +462,11 @@
     {% elif turma.inscricao_publica %}<span class="pilula alerta">ligado, mas fora do prazo ou da situação</span>
     {% else %}<span class="pilula sem-ponto">desligado</span>{% endif %}
   </div>
-  <p class="discreto">Quem tem o link pede a vaga sem conta. Cada pedido entra aqui como
-    <strong>pedido pelo link, a conferir</strong>, não ocupa vaga e abre uma pendência;
-    vira inscrição quando alguém o aceita. Só funciona com a turma em “inscrições
-    abertas” e até a data de “inscrições até”.</p>
+  <p class="discreto">Quem tem o link pede a vaga sem conta. Quem informa e-mail recebe um link
+    para confirmá-lo: confirmado, havendo vaga, a inscrição sai <strong>confirmada sozinha</strong>.
+    O pedido sem e-mail (ou que casou com o cadastro de um servidor por outro e-mail) entra aqui
+    como <strong>pedido pelo link, a conferir</strong>, não ocupa vaga e vira inscrição quando
+    alguém o aceita. Só funciona com a turma em “inscrições abertas” e até a data de “inscrições até”.</p>
   {# "Gerar" só onde daria certo: com a turma fechada, encerrada ou fora do
      prazo o botão sempre falhava. O motivo fica escrito no lugar dele, e o
      "Desligar" continua — é o que se faz com o link de uma turma que acabou. #}

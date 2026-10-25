@@ -555,8 +555,8 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscrever-me`, async (c) => {
   return _volta(
     c,
     MINHAS,
-    `Inscrição pedida em ${turma.codigo}. A vaga já está reservada para você ` +
-      "e a equipe responsável confirma — enquanto isso a inscrição fica como “inscrita”.",
+    `Inscrição confirmada em ${turma.codigo}. A vaga é sua; se não puder ir, desista até a véspera ` +
+      "para liberá-la a outra pessoa.",
   );
 });
 

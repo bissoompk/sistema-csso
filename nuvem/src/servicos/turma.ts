@@ -1006,7 +1006,11 @@ async function _conferir_vaga(tx: Executor, turma: TurmaRegistro): Promise<void>
   }
 }
 
-/** Põe a pessoa na turma. Inscrição interna nasce INSCRITA e já ocupa vaga. */
+/**
+ * Põe a pessoa na turma. Desde 25/10/2026 a inscrição nasce CONFIRMADA: com a
+ * vaga conferida sob trava, não há o que a equipe decidir depois (antes nascia
+ * INSCRITA e esperava o clique em "Confirmar").
+ */
 export async function inscrever(
   tx: Executor,
   usuario: UsuarioAtual,
@@ -1032,10 +1036,12 @@ export async function inscrever(
     .values({
       turma_id: turma.id,
       participante_id: participante.id,
-      situacao: "INSCRITA",
+      situacao: "CONFIRMADA",
       origem: "INTERNA",
       observacao: (opcoes.observacao ?? "").trim() || null,
       inscrito_por: usuario.id,
+      confirmada_em: agora_utc(),
+      confirmada_por: usuario.id,
     })
     .returning();
   await auditoria.registrar(tx, {
@@ -1100,15 +1106,18 @@ export async function mudar_situacao_inscricao(
     await _conferir_vaga(tx, inscricao.turma);
   }
 
+  // aceitar o pedido do link já confirma a vaga (25/10/2026): a conferência é
+  // a decisão, e um segundo clique em "Confirmar" não acrescentava nada
+  const final = aceitando_pedido ? "CONFIRMADA" : destino;
   const campos: Partial<InscricaoRegistro> = {
-    situacao: destino,
+    situacao: final,
     motivo_cancelamento: destino === "CANCELADA" ? limpo : null,
   };
   if (aceitando_pedido) {
     campos.conferida_em = opcoes.quando ?? agora_utc();
     campos.conferida_por = usuario.id;
   }
-  if (destino === "CONFIRMADA") {
+  if (final === "CONFIRMADA") {
     campos.confirmada_em = opcoes.quando ?? agora_utc();
     campos.confirmada_por = usuario.id;
   }
@@ -1119,11 +1128,11 @@ export async function mudar_situacao_inscricao(
     tipo_evento: auditoria.ESTADO_ALTERADO,
     descricao:
       `${inscricao.turma.codigo} · ${inscricao.participante.identificador_publico}: ` +
-      `${ROTULO_INSCRICAO[origem] ?? origem} -> ${ROTULO_INSCRICAO[destino] ?? destino}` +
+      `${ROTULO_INSCRICAO[origem] ?? origem} -> ${ROTULO_INSCRICAO[final] ?? final}` +
       (limpo ? ` — ${limpo}` : ""),
     campo: "situacao",
     valor_anterior: origem,
-    valor_novo: destino,
+    valor_novo: final,
     comentario: limpo,
     usuario,
   });
@@ -1346,8 +1355,9 @@ export function tem_agenda(inscricao: { situacao: string; turma: { situacao: str
 }
 
 /**
- * O servidor pede a própria vaga. Nasce INSCRITA; a equipe confirma. A vaga é
- * ocupada desde já (`INSCRITA` está em `INSCRICAO_OCUPA_VAGA`).
+ * O servidor pede a própria vaga. Desde 25/10/2026 a inscrição nasce
+ * CONFIRMADA: a vaga foi conferida sob trava e ninguém precisa decidir nada
+ * (antes nascia INSCRITA e abria a tarefa de confirmar para a equipe).
  */
 export async function inscrever_se(
   tx: Executor,
@@ -1373,10 +1383,12 @@ export async function inscrever_se(
     .values({
       turma_id: turma.id,
       participante_id: pessoa.id,
-      situacao: "INSCRITA",
+      situacao: "CONFIRMADA",
       origem: "INTERNA",
       // quem pediu foi ele: `inscrito_por` é a conta do próprio titular
       inscrito_por: usuario.id,
+      confirmada_em: agora_utc(),
+      confirmada_por: usuario.id,
     })
     .returning();
   const inscricao: InscricaoCarregada = { ...linha!, turma, participante: pessoa, presencas: [] };
@@ -1384,10 +1396,9 @@ export async function inscrever_se(
     entidade: "inscricao",
     entidade_id: inscricao.id,
     tipo_evento: "INSCRICAO_PEDIDA_PELO_TITULAR",
-    descricao: `${turma.codigo}: ${pessoa.identificador_publico} pediu a própria vaga`,
+    descricao: `${turma.codigo}: ${pessoa.identificador_publico} pediu a própria vaga (confirmada: havia vaga)`,
     usuario,
   });
-  await abrir_pendencia_de_confirmacao(tx, inscricao, usuario);
   return inscricao;
 }
 
