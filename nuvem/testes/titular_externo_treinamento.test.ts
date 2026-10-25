@@ -19,6 +19,7 @@ import type { Banco } from "../src/db/cliente.js";
 import * as e from "../src/db/esquema/index.js";
 import { hoje_iso, somar_dias } from "../src/dominio/datas.js";
 import { definirArmazenamento } from "../src/servicos/armazenamento.js";
+import * as anexos from "../src/servicos/anexos.js";
 import * as servico from "../src/servicos/emissao_certificado.js";
 import * as servico_participante from "../src/servicos/participante.js";
 import * as servico_presenca from "../src/servicos/presenca.js";
@@ -397,6 +398,44 @@ describe("Meus certificados da conta externa", () => {
     expect(via.status).toBe(303);
     // a segunda via pelo serviço também recusa (pede `certificado.ver`)
     await expect(servico.segunda_via(db, usuario_d, alheio)).rejects.toThrow();
+  });
+});
+
+describe("o anexo do certificado da conta externa (25/10/2026)", () => {
+  it("baixa o anexo do próprio certificado e não o do certificado de outra pessoa", async () => {
+    const operador = await _usuario(db);
+    const coordenador = await usuarioAtual(db, "coordenador_csso");
+    const usuario_t = await usuarioAtual(db, "terceirizado");
+    const pessoa = await naTransacao((tx) => titular_externo.garantir_participante_da_conta(tx, usuario_t));
+    const meu = await certificado_de(pessoa, operador, "BRIGC");
+    const outro = await naTransacao((tx) =>
+      servico_participante.criar_externo(tx, { nome: "Pessoa Sem Conta", vinculo: "TERCEIRIZADO", usuario: coordenador }),
+    );
+    const alheio = await certificado_de(outro, operador, "BRIGD");
+    const pdf = new TextEncoder().encode("%PDF-1.4\n% anexo de teste\n");
+    const anexar = (certificado_id: number, nome: string) =>
+      naTransacao((tx) =>
+        anexos.guardar(tx, {
+          entidade: "certificado",
+          entidade_id: certificado_id,
+          nome_original: nome,
+          conteudo: Uint8Array.from([...pdf, ...new TextEncoder().encode(nome)]),
+          mime_type: "application/pdf",
+          categoria: "CERTIFICADO",
+          usuario: operador,
+        }),
+      );
+    const do_meu = await anexar(meu.id, "lista-assinada.pdf");
+    const do_alheio = await anexar(alheio.id, "lista-alheia.pdf");
+
+    const t = await logado("terceirizado");
+    const baixado = await t.get(`/anexos/${do_meu.anexo.id}`, { seguir: false });
+    expect(baixado.status).toBe(200);
+    const recusado = await t.get(`/anexos/${do_alheio.anexo.id}`, { seguir: false });
+    expect([403, 404]).toContain(recusado.status);
+    // a conta sem participante (a discente que nunca se inscreveu) também não baixa
+    const d = await logado("discente");
+    expect([403, 404]).toContain((await d.get(`/anexos/${do_meu.anexo.id}`, { seguir: false })).status);
   });
 });
 

@@ -9,6 +9,7 @@
  *
  * NUNCA toca banco de produção: roda no clone de teste do `bancoLimpo()`.
  */
+import * as numeracao from "../src/servicos/numeracao.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -347,8 +348,12 @@ describe("cada módulo apaga o seu e mantém os outros", () => {
     expect(leituras.every((l) => l.acidente_id === null && l.processo_id === null && l.acidentado_id === null)).toBe(true);
     // o modelo de certificado ficou, genérico
     expect((await db.select().from(e.certificado_modelo)).every((x) => x.treinamento_id === null)).toBe(true);
-    // a numeração não volta
-    expect(depois.certificado_sequencia).toBe(antes.certificado_sequencia);
+    // a numeração volta a zero (25/10/2026): as tabelas de sequência ficaram vazias
+    for (const modulo of TODOS) for (const t of limpeza.NUMERACAO[modulo]) expect(depois[t], t).toBe(0);
+    expect(antes.turma_sequencia! + antes.epi_requisicao_sequencia! + antes.acidente_cat_sp_sequencia!).toBeGreaterThan(0);
+    const ano = new Date().getFullYear();
+    expect(await numeracao.proximo_numero_turma(db, ano)).toBe(1);
+    expect(await numeracao.proximo_numero_requisicao_epi(db, ano)).toBe(1);
     // as travas do módulo voltaram ligadas: apagar a ficha de EPI à mão continua proibido
     const ligadas = (await db.execute(
       sql`SELECT count(*)::int AS n FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'O'`,

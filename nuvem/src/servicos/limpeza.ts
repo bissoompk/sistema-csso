@@ -189,6 +189,19 @@ async function arquivos_de_processos(tx: Executor): Promise<ArquivosOrfaos> {
   return { chaves: [], listagens: [...por_ano].map(([ano, inicios]) => ({ prefixo: `documentos/${ano}`, inicios })) };
 }
 
+/**
+ * A numeração de cada módulo (`servicos/numeracao.ts`). Apagar a linha do ano
+ * faz o próximo número ser o 1: depois da limpeza dos testes os protocolos
+ * recomeçam (decisão de 25/10/2026). Quem quer manter passa as tabelas em
+ * `manter` — a ferramenta de linha de comando faz isso.
+ */
+export const NUMERACAO: Readonly<Record<CodigoModulo, readonly string[]>> = {
+  treinamentos: ["turma_sequencia", "certificado_sequencia", "certificado_sequencia_prefixo"],
+  acidentes: ["acidente_cat_sp_sequencia"],
+  epi: ["epi_requisicao_sequencia"],
+  processos: ["parecer_sequencia"],
+};
+
 export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
   treinamentos: {
     codigo: "treinamentos",
@@ -197,9 +210,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "treinamentos, turmas, inscrições, presenças, certificados emitidos, participantes (e e-mails, juntados e " +
       "pares), instrutores e as qualificações deles, locais de treinamento, avaliação de reação, o vínculo EPI × " +
       "treinamento, os links de acesso do participante, e os anexos, pendências e e-mails do módulo",
-    mantem:
-      "os modelos de certificado (perdem só o vínculo com o treinamento) e a numeração (número usado não se " +
-      "reaproveita)",
+    mantem: "os modelos de certificado (perdem só o vínculo com o treinamento). A numeração das turmas e dos certificados volta a zero",
     apagar: [
       "treinamento",
       "turma",
@@ -221,6 +232,9 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "avaliacao_reacao_convite",
       "avaliacao_reacao_resposta",
       "local_treinamento",
+      // a numeração volta a zero (decisão de 25/10/2026): os arquivos com o
+      // número antigo saem junto, depois do commit
+      ...NUMERACAO.treinamentos,
     ],
     tipos_email: [
       envio_certificado.TIPO,
@@ -245,7 +259,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "triagem e complementação, CAT/SP, investigação (MAPA, linha do tempo, barreiras, checklist, entrevistas, " +
       "evidências, plano de ação), relatório, encaminhamento ao SIASS, decisão pericial, os links públicos de " +
       "comunicação, e os anexos, pendências e e-mails do módulo",
-    mantem: "os catálogos (parte do corpo, agente, situação, natureza da lesão) e a numeração da CAT/SP",
+    mantem: "os catálogos (parte do corpo, agente, situação, natureza da lesão). A numeração da CAT/SP volta a zero",
     apagar: [
       "acidente_ocorrencia",
       "acidentado",
@@ -267,6 +281,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "acidente_encaminhamento",
       "acidente_decisao_pericial",
       "acidente_link_publico",
+      ...NUMERACAO.acidentes,
     ],
     tipos_email: [acidente_email.TIPO_NOVA_SETOR, acidente_email.TIPO_CONFIRMACAO, acidente_email.TIPO_COMPLEMENTACAO],
     desvincular: ["acesso_dado_sensivel.acidente_id", "acesso_dado_sensivel.acidentado_id"],
@@ -291,7 +306,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
     apaga:
       "as requisições e os itens delas, as fichas (entregas, devoluções, estornos), as entradas de estoque " +
       "(lotes) e os movimentos, as comunicações do titular, e os anexos (comprovantes), pendências e e-mails do módulo",
-    mantem: "o catálogo de EPI (itens, categorias, motivos de recusa, foto e orientação) e a numeração das requisições",
+    mantem: "o catálogo de EPI (itens, categorias, motivos de recusa, foto e orientação). A numeração dos pedidos volta a zero",
     apagar: [
       "epi_requisicao",
       "epi_requisicao_item",
@@ -299,6 +314,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "epi_entrada_estoque",
       "epi_movimento_estoque",
       "epi_comunicacao_titular",
+      ...NUMERACAO.epi,
     ],
     tipos_email: [
       epi_email.TIPO_ABERTURA_SETOR,
@@ -318,7 +334,8 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "demandas e encaminhamentos, e os anexos, pendências e documentos gerados deles",
     mantem:
       "os catálogos do adicional (agentes, fundamentação, percentuais, textos), setor emissor, autoridade, " +
-      "profissionais habilitados, portarias de localização, a numeração dos pareceres e as tabelas de importação",
+      "profissionais habilitados, portarias de localização e as tabelas de importação. A numeração dos pareceres " +
+      "volta a zero",
     apagar: [
       "processo",
       "checklist",
@@ -331,6 +348,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "laudo_posto",
       "demanda",
       "demanda_encaminhamento",
+      ...NUMERACAO.processos,
     ],
     tipos_email: [],
     desvincular: ["acesso_dado_sensivel.processo_id"],
