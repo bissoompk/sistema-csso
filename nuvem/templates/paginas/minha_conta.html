@@ -4,10 +4,11 @@
 
 {# A conta vista pela própria pessoa (22/10/2026); desde o Portal do servidor
    (mesmo dia) é o "Meu perfil", em seções. Abre para toda conta logada: o que
-   muda aqui é sempre a conta da sessão. Dados funcionais, perfis e vínculo de
-   servidor ficam só para leitura — quem os corrige é a gestão de pessoas (o
-   cadastro) e a coordenação (a conta, em /usuarios). Sem CPF, RG ou data de
-   nascimento: o perfil não os mostra.
+   muda aqui é sempre a conta da sessão. O sistema não lê o SIAPE (25/10/2026):
+   o cadastro funcional é do próprio servidor ou da equipe da Sisa — cargo,
+   função e lotação se corrigem aqui, e a conta sem servidor se liga aqui
+   («Sou servidor da UFVJM»). Os perfis de acesso são da coordenação. Sem CPF,
+   RG ou data de nascimento: o perfil não os mostra.
 
    As seções são `<details>`, sem JS. A primeira vem aberta; com erro num
    formulário, abre a seção de contato, onde o erro está. #}
@@ -107,6 +108,43 @@
   {% endif %}
 
 
+  {# ---------- «Sou servidor da UFVJM»: a conta sem servidor ligado informa os
+     próprios dados e se liga na hora (25/10/2026) ---------- #}
+  {% if not servidor and not externo %}
+  {% set ds = digitado or {} %}
+  <details class="perfil-secao" id="sou-servidor" open>
+    {{ resumo_secao('person-badge', 'Sou servidor da UFVJM') }}
+    <div class="perfil-secao-corpo formulario">
+      <p>Esta conta ainda não está ligada a um cadastro de servidor. Se você é servidor da UFVJM, informe
+        os seus dados: o cadastro é criado e ligado à sua conta na hora, e passam a aparecer aqui os seus
+        treinamentos, certificados, EPI e processos.</p>
+      {% if erro_servidor %}<div class="aviso aviso-erro" role="alert">{{ erro_servidor }}</div>{% endif %}
+      <form method="post" action="/minha-conta/sou-servidor">
+        <div class="linha-campos">
+          <div class="campo"><label for="ss-siape">SIAPE</label>
+            <input id="ss-siape" name="siape" value="{{ ds.siape or '' }}" required inputmode="numeric" pattern="[0-9]{7}"
+                   maxlength="7" placeholder="7 dígitos"></div>
+          <div class="campo"><label for="ss-nome">Nome completo</label>
+            <input id="ss-nome" name="nome" value="{{ ds.nome if ds.nome is defined else (conta.nome or '') }}" required maxlength="160"></div>
+        </div>
+        <div class="linha-campos">
+          <div class="campo"><label for="ss-cargo">Cargo <span class="discreto">(opcional)</span></label>
+            <select id="ss-cargo" name="cargo_id"><option value="">—</option>
+              {% for cg in cargos %}<option value="{{ cg.id }}"{{ ' selected' if (cg.id | string) == ds.cargo_id }}>{{ cg.nome }}</option>{% endfor %}
+            </select></div>
+          <div class="campo"><label for="ss-lotacao">Lotação <span class="discreto">(opcional)</span></label>
+            <select id="ss-lotacao" name="unidade_uorg_id"><option value="">—</option>
+              {% for u in lotacoes %}<option value="{{ u.id }}"{{ ' selected' if (u.id | string) == ds.unidade_uorg_id }}>{{ u.rotulo }}</option>{% endfor %}
+            </select></div>
+        </div>
+        <p class="discreto">O e-mail do cadastro é o desta conta ({{ conta.email }}). Se o seu SIAPE já estiver no
+          cadastro com esse e-mail, a conta só é ligada a ele; com outro e-mail, procure a equipe da Sisa.</p>
+        <div class="acoes"><button type="submit">Ligar minha conta</button></div>
+      </form>
+    </div>
+  </details>
+  {% endif %}
+
   {# ---------- 2. Contato e acesso (o que já existia em Minha conta) ---------- #}
   <details class="perfil-secao" id="contato"{% if erro_contato or not servidor %} open{% endif %}>
     {{ resumo_secao('envelope', 'Contato e acesso') }}
@@ -177,9 +215,6 @@
       {% if not servidor and externo %}
       <p class="perfil-nota">Esta conta é de quem não é servidor da UFVJM (terceirizado ou
         discente): não há dados funcionais de servidor a mostrar.</p>
-      {% elif not servidor %}
-      <p class="perfil-nota">Esta conta não está ligada a um cadastro de servidor.
-        Dados funcionais, só leitura. Para corrigir, fale com a coordenação.</p>
       {% endif %}
     </div>
   </details>

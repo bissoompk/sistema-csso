@@ -1273,9 +1273,8 @@ function _exigir_titular(usuario: UsuarioAtual): void {
   if (titular_externo.tem_titular(usuario)) return;
   throw new RegraDaTurma(
     "Sua conta não está ligada a um cadastro de servidor, e sem essa " +
-      "ligação o sistema não tem em nome de quem inscrever. A ligação é " +
-      "feita em Usuários, por quem tem `usuario.criar_conta` — peça " +
-      "informando o seu SIAPE.",
+      "ligação o sistema não tem em nome de quem inscrever. " +
+      "Se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora.",
   );
 }
 

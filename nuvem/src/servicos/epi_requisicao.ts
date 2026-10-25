@@ -659,7 +659,7 @@ export async function exigir_requerente_permitido(
     if (usuario.servidor_id === null) {
       throw new RequisicaoBloqueada([
         "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
-          "Peça a quem administra as contas que faça a ligação, informando o seu SIAPE",
+          "se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora",
       ]);
     }
     if (servidor.id !== usuario.servidor_id) {

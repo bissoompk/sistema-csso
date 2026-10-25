@@ -176,8 +176,48 @@ describe("Meu perfil: conta de equipe sem servidor", () => {
     expect(r.text).not.toContain('id="dados-funcionais"');
     expect(r.text).not.toContain('id="treinamentos"');
     expect(r.text).toContain('<li class="chip">Conta de equipe</li>');
-    expect(r.text).toContain("Esta conta não está ligada a um cadastro de servidor.");
+    // a conta sem servidor se liga sozinha (25/10/2026): «Sou servidor da UFVJM»
+    expect(r.text).toContain('id="sou-servidor"');
+    expect(r.text).toContain('action="/minha-conta/sou-servidor"');
+    expect(r.text).not.toContain("Dados funcionais, só leitura");
     expect(r.text).not.toContain('href="/minha-atividade"');
+  });
+
+  it("Sou servidor da UFVJM: o SIAPE novo cria o cadastro e liga a conta na hora", async () => {
+    const [cargo] = await db.insert(e.cargo).values({ nome: "Engenheiro de Segurança do Trabalho" }).returning();
+    const equipe = await entrar(amb.novoCliente(), "engenheiro_seguranca");
+    const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.login, "engenheiro_seguranca"));
+    const r = await equipe.post(
+      "/minha-conta/sou-servidor",
+      { siape: "7778889", nome: "Engenheira da Equipe", cargo_id: String(cargo!.id), unidade_uorg_id: String(unidade!.id) },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    expect(decodeURIComponent(r.location!)).toContain("Cadastro de servidor criado e ligado à sua conta");
+    const [sv] = await db.select().from(e.servidor).where(eq(e.servidor.siape, "7778889"));
+    expect([sv!.nome, sv!.cargo_id, sv!.unidade_uorg_id, sv!.email]).toEqual(["Engenheira da Equipe", cargo!.id, unidade!.id, conta!.email]);
+    const [depois] = await db.select().from(e.usuario).where(eq(e.usuario.id, conta!.id));
+    expect(depois!.servidor_id).toBe(sv!.id);
+    // agora a conta tem Dados funcionais, e o «Sou servidor» some
+    const tela = (await equipe.get("/minha-conta")).text;
+    expect(tela).toContain('id="dados-funcionais"');
+    expect(tela).not.toContain('id="sou-servidor"');
+  });
+
+  it("Sou servidor da UFVJM: o SIAPE de outra pessoa (outro e-mail) é recusado; o do mesmo e-mail só liga", async () => {
+    const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.login, "engenheiro_seguranca"));
+    await db.update(e.usuario).set({ servidor_id: null }).where(eq(e.usuario.id, conta!.id));
+    await db.insert(e.servidor).values({ siape: "5556667", nome: "Outra Pessoa", email: "outra.pessoa@ufvjm.edu.br" });
+    const equipe = await entrar(amb.novoCliente(), "engenheiro_seguranca");
+    const alheio = await equipe.post("/minha-conta/sou-servidor", { siape: "5556667", nome: "Quem Tenta" });
+    expect(alheio.text).toContain("já está no cadastro com outro e-mail");
+    expect((await db.select().from(e.usuario).where(eq(e.usuario.id, conta!.id)))[0]!.servidor_id).toBeNull();
+    const [meu] = await db.insert(e.servidor).values({ siape: "5556668", nome: "Cadastrado pela Equipe", email: conta!.email }).returning();
+    const ok = await equipe.post("/minha-conta/sou-servidor", { siape: "5556668", nome: "Qualquer" }, { seguir: false });
+    expect(decodeURIComponent(ok.location!)).toContain("Conta ligada ao seu cadastro de servidor");
+    expect((await db.select().from(e.usuario).where(eq(e.usuario.id, conta!.id)))[0]!.servidor_id).toBe(meu!.id);
+    // o nome do cadastro não muda pelo que foi digitado
+    expect((await db.select().from(e.servidor).where(eq(e.servidor.id, meu!.id)))[0]!.nome).toBe("Cadastrado pela Equipe");
   });
 
   it("com erro no formulário, a seção de contato vem aberta", async () => {
