@@ -109,6 +109,20 @@ const CAMPOS_ITEM = [
   "exige_treinamento",
 ] as const;
 
+/**
+ * Os tamanhos, um por linha. O campo pede "um por linha", mas "P, M, G" é como
+ * muita gente escreve (25/10/2026: virava UM tamanho chamado "P, M, G" e a
+ * entrada de lote ficava sem opção). Separa também por ponto e vírgula e pela
+ * vírgula entre palavras — não pela de número: a luva "8,5" é um tamanho só.
+ */
+export function tamanhos_digitados(bruto: string | null | undefined): string | null {
+  const partes = (bruto ?? "")
+    .split(/\r?\n|;|,\s+|(?<=\D),(?=\D)/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return partes.length ? [...new Set(partes)].join("\n") : null;
+}
+
 type CamposItem = {
   nome: string;
   categoria_id: number;
@@ -199,7 +213,7 @@ export function _campos_do_item(f: Record<string, string>): [CamposItem | null, 
       numero_ca: ca,
       validade_ca: validade,
       unidade_medida: (_texto(f.unidade_medida) || "UNIDADE").toUpperCase().slice(0, 20),
-      tamanhos: _texto(f.tamanhos),
+      tamanhos: tamanhos_digitados(f.tamanhos),
       vida_util_meses: vida_util,
       quantidade_padrao: padrao,
       quantidade_maxima: maxima,

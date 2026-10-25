@@ -219,7 +219,7 @@ export class ContextoComprovante {
       validade_ca: data(this.validade_ca),
       lote: this.lote || "—",
       tamanho: this.tamanho || "—",
-      quantidade: `${this.quantidade} ${(this.unidade_medida ?? "").toLowerCase()}`,
+      quantidade: `${this.quantidade} ${unidade_no_plural((this.unidade_medida ?? "").toLowerCase(), this.quantidade)}`,
       data_evento: data(this.data_evento),
       data_extenso: datas_br.por_extenso(this.data_evento),
       previsao_troca: data(this.previsao_troca),
@@ -266,4 +266,17 @@ export function nome_para_download(contexto: ContextoComprovante): string {
     textos.slug_ascii(contexto.servidor_nome).slice(0, 60),
   ];
   return partes.filter((p) => p).join("_") + ".docx";
+}
+
+/**
+ * "2 unidades", "3 pares", "1 caixa" (25/10/2026: o comprovante dizia
+ * "2 unidade"). A unidade do catálogo vem no singular; o plural do português
+ * para as que o almoxarifado usa: "par" → "pares", o resto ganha "s".
+ */
+export function unidade_no_plural(unidade: string, quantidade: number): string {
+  const u = unidade.trim();
+  if (!u || quantidade === 1 || /s$/.test(u)) return u;
+  if (/[rz]$/.test(u)) return `${u}es`;
+  if (/l$/.test(u)) return `${u.slice(0, -1)}is`;
+  return `${u}s`;
 }
