@@ -69,7 +69,9 @@ export const ATOR = "linha de comando (limpeza de treinamentos)";
 export const TIPO_EVENTO = "DADOS_DE_TREINAMENTO_APAGADOS";
 
 /** Os locais ficam (são cadastro): a única diferença para o módulo da tela. */
-export const MANTER: readonly string[] = ["local_treinamento"];
+// os locais e a numeração ficam: esta ferramenta recomeça o cadastro, e o número
+// usado aqui não se reaproveita (a tela de limpeza dos testes, sim, zera)
+export const MANTER: readonly string[] = ["local_treinamento", ...limpeza.NUMERACAO.treinamentos];
 
 /** O plano desta ferramenta: o módulo de treinamentos, sem os locais. */
 export function plano(): limpeza.Plano {

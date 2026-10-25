@@ -82,6 +82,8 @@ export interface Portas {
   certificado_no_escopo?: (tx: Executor, usuario: UsuarioAtual, id: number) => Promise<ComServidor | null>;
   /** `emissao_certificado.exigir_leitura_do_certificado` — levanta quando não pode. */
   exigir_leitura_do_certificado?: (usuario: UsuarioAtual, servidor_id: number | null) => void;
+  /** `emissao_certificado.do_titular_externo_por_id` — o certificado do participante ligado à conta. */
+  certificado_do_titular_externo?: (tx: Executor, usuario: UsuarioAtual, id: number) => Promise<ComServidor | null>;
 }
 
 export const PORTAS: Portas = {};
@@ -144,6 +146,18 @@ async function dono_certificado(tx: Executor, usuario: UsuarioAtual, anexo: Anex
   // o mesmo primeiro passo de `rotas/certificados._abrir`: quem não tem a
   // permissão nem cadastro de servidor leva 403 antes de o banco ser tocado
   if (!usuario.pode("certificado.ver") && usuario.servidor_id === null) {
+    // o terceirizado e o discente (25/10/2026): o certificado é dele pelo
+    // participante ligado à conta, a mesma regra da ficha e da segunda via
+    const proprio = await porta("certificado_do_titular_externo", "certificado")(tx, usuario, anexo.entidade_id);
+    if (proprio) {
+      usuario.exigir("treinamento.ver");
+      return {
+        entidade: "certificado",
+        servidor_id: null,
+        processo_id: null,
+        finalidade: "leitura de documento anexado ao próprio certificado de treinamento",
+      };
+    }
     usuario.exigir("certificado.ver");
   }
   const certificado = await porta("certificado_no_escopo", "certificado")(tx, usuario, anexo.entidade_id);

@@ -434,8 +434,9 @@ atual (errar a senha conta como tentativa de login). O sistema faz o **backup
 cifrado** (o mesmo do botão de Configuração) antes de apagar e só apaga se ele
 terminar bem; a tela de resultado diz a chave do backup em `backups/`. Sem o
 Storage configurado (`SUPABASE_URL`) a limpeza é recusada. Perfis, setores,
-campi, catálogos, configurações, a numeração (número usado não se
-reaproveita) e a trilha de auditoria ficam sempre; a trilha ganha um evento
+campi, catálogos, configurações e a trilha de auditoria ficam sempre. A
+**numeração** dos módulos marcados (turmas, certificados, CAT/SP, pedidos de EPI,
+pareceres) **volta a zero**: o próximo protocolo é o 1. A trilha ganha um evento
 «Dados de teste apagados» com as contagens. Os arquivos órfãos do
 armazenamento saem logo depois da gravação.
 

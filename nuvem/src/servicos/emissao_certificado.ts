@@ -219,6 +219,9 @@ export function exigir_leitura_do_certificado(
 // O download do anexo do certificado herda a regra DAQUI (anexo_acesso.ts):
 // a mesma linha e o mesmo rigor da ficha.
 anexo_acesso.declarar_porta("certificado_no_escopo", (tx, usuario, id) => no_escopo(tx, usuario, id));
+anexo_acesso.declarar_porta("certificado_do_titular_externo", (tx, usuario, id) =>
+  titular_externo.eh_titular_externo(usuario) ? do_titular_externo_por_id(tx, usuario, id) : Promise.resolve(null),
+);
 anexo_acesso.declarar_porta("exigir_leitura_do_certificado", (usuario, servidor_id) => {
   exigir_leitura_do_certificado(usuario, servidor_id);
 });
