@@ -21,8 +21,13 @@
   <div class="cabecalho-pagina">
     <div class="titulo">
       <h1>Minha atividade</h1>
+      {# a conta externa não tem EPI nem processo: o subtítulo não os promete #}
+      {% if externo %}
+      <p class="sub">Acompanhe o que aconteceu com seus treinamentos, certificados e a sua conta.</p>
+      {% else %}
       <p class="sub">Acompanhe o que aconteceu com seus treinamentos, certificados, EPI,
         processos e a sua conta.</p>
+      {% endif %}
     </div>
   </div>
 

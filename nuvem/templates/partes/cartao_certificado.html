@@ -34,7 +34,6 @@
 
 {% macro cartao_certificado(c, compacto=false, sem_reciclagem=false, link_baixar=none, com_ficha=true) %}
 {% import "partes/macros.html" as ui_c %}
-{% set so_word = c.modelo_enviado and not pdf_fiel() %}
 {% set destaque = '' if (c.anulado or c.superado_por) else c.situacao.tipo %}
 <article class="cert{% if destaque == 'vencido' %} cert--vencido{% elif destaque == 'a_vencer' %} cert--avencer{% endif %}{% if c.superado_por or c.anulado %} cert--apagado{% endif %}{% if compacto %} cert--compacto{% endif %}"
          aria-labelledby="titulo-cert-{{ c.id }}">
@@ -71,14 +70,14 @@
   {% endif %}
 
   <div class="cert-acoes">
-    {% set href = link_baixar or ('/certificados/' ~ c.id ~ ('/documento' if so_word else '/pdf')) %}
+    {% set href = link_baixar or ('/certificados/' ~ c.id ~ '/pdf') %}
     {% if c.anulado %}
     <a class="botao secundario" href="{{ href }}" aria-label="Baixar cópia anulada do certificado de {{ c.treinamento }}">
       {{- ui_c.icone('download') }}Baixar cópia anulada</a>
     {% else %}
     <a class="botao{% if c.superado_por %} secundario{% endif %}" href="{{ href }}"
-       aria-label="Baixar certificado de {{ c.treinamento }}{% if so_word %} (Word){% endif %}">
-      {{- ui_c.icone('download') }}{{ 'Baixar certificado (Word)' if so_word else 'Baixar certificado' }}</a>
+       aria-label="Baixar certificado de {{ c.treinamento }}">
+      {{- ui_c.icone('download') }}Baixar certificado</a>
     {% endif %}
 
     {% if not compacto and not c.anulado %}

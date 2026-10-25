@@ -2,7 +2,8 @@
 {% import "partes/macros.html" as ui with context %}
 {# A ficha LEVE do certificado, para o titular sem permissão de equipe
    (Portal do servidor, 22/10/2026): os dados do cartão, o QR, o conteúdo
-   programático e a segunda via em PDF e Word. Ficam de fora os hashes, o
+   programático e a segunda via em PDF (o Word é da
+   equipe). Ficam de fora os hashes, o
    dicionário de tags e a trilha técnica — a ficha técnica
    (`certificado_ficha.html`) continua para a equipe. Tudo do congelado. #}
 {% block titulo %}Certificado {{ c.rotulo }} · SISA{% endblock %}
@@ -12,7 +13,6 @@
 {% endblock %}
 
 {% block conteudo %}
-{% set so_word = c.modelo_enviado and not pdf_fiel() %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
@@ -70,17 +70,13 @@
       </dl>
 
       <div class="acoes">
+        {# só o PDF (25/10/2026): o Word é da equipe #}
         {% if c.anulado %}
-        <a class="botao secundario" href="/certificados/{{ c.id }}/{{ 'documento' if so_word else 'pdf' }}"
+        <a class="botao secundario" href="/certificados/{{ c.id }}/pdf"
            data-baixar="Gerando a cópia anulada…">{{ ui.icone('download') }}Baixar cópia anulada</a>
-        {% elif so_word %}
-        <a class="botao" href="/certificados/{{ c.id }}/documento"
-           data-baixar="Gerando a segunda via…">{{ ui.icone('download') }}Baixar certificado (Word)</a>
         {% else %}
         <a class="botao" href="/certificados/{{ c.id }}/pdf"
            data-baixar="Gerando o PDF…">{{ ui.icone('download') }}Baixar certificado (PDF)</a>
-        <a class="botao secundario" href="/certificados/{{ c.id }}/documento"
-           data-baixar="Gerando a segunda via…">Baixar em Word (.docx)</a>
         {% endif %}
         {% if c.reciclagem %}
         {% if c.turma_aberta == false %}

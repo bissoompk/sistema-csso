@@ -368,7 +368,9 @@ describe("ficha do certificado", () => {
     expect(leve).toContain("Conteúdo programático");
     expect(leve).toContain('src="data:image/png;base64,');
     expect(leve).toContain(`href="/certificados/${certificado.id}/pdf"`);
-    expect(leve).toContain(`href="/certificados/${certificado.id}/documento"`);
+    // só o PDF (25/10/2026): o Word é da equipe, e o link antigo leva ao PDF
+    expect(leve).not.toContain(`href="/certificados/${certificado.id}/documento"`);
+    expect(leve).not.toContain("Word");
     expect(leve).toContain(certificado.chave_validacao);
     expect(leve).not.toMatch(CPF);
     SEM_INLINE(leve);

@@ -1085,23 +1085,26 @@ export async function arquivo_do_titular(
   certificado: CertificadoRegistro,
 ): Promise<{ nome: string; bytes: Uint8Array; tipo: string }> {
   const nome_pdf = caminho_saida(certificado, "pdf").split("/").pop()!;
-  if (do_modelo_enviado(certificado)) {
-    if (conversor_pdf.configurado()) {
-      const congelado = certificado.contexto_congelado as Record<string, unknown>;
-      const chave = conversor_pdf.chave_do_pdf(
-        certificado.id,
-        certificado.hash_conteudo ?? "",
-        String(congelado["modelo_sha256"] ?? ""),
-        (await tarja_do_anulado(tx, certificado)) ?? "",
-      );
+  // o titular baixa só PDF (25/10/2026): o modelo enviado sai pelo conversor;
+  // sem ele, ou com ele fora do ar, sai o PDF da casa — nunca o Word
+  if (do_modelo_enviado(certificado) && conversor_pdf.configurado()) {
+    const congelado = certificado.contexto_congelado as Record<string, unknown>;
+    const chave = conversor_pdf.chave_do_pdf(
+      certificado.id,
+      certificado.hash_conteudo ?? "",
+      String(congelado["modelo_sha256"] ?? ""),
+      (await tarja_do_anulado(tx, certificado)) ?? "",
+    );
+    try {
       const bytes = await conversor_pdf.pdf_guardado_ou_convertido(
         chave,
         async () => (await segunda_via_do_titular(tx, certificado)).bytes,
       );
       return { nome: nome_pdf, bytes, tipo: certificado_pdf.TIPO_PDF };
+    } catch (erro) {
+      if (!(erro instanceof conversor_pdf.ConversorIndisponivel)) throw erro;
+      console.error(`[certificado ${certificado.id}] ${erro.message}`);
     }
-    const via = await segunda_via_do_titular(tx, certificado);
-    return { nome: via.docx.split("/").pop()!, bytes: via.bytes, tipo: TIPO_DOCX };
   }
   await segunda_via_do_titular(tx, certificado);
   const bytes = await certificado_pdf.gerar_pdf([montar_contexto(tx, certificado)], [await tarja_do_anulado(tx, certificado)]);

@@ -361,9 +361,16 @@ describe("Meus certificados da conta externa", () => {
     expect(texto(comprovante.text)).toContain((await conta("terceirizado")).nome);
     expect(comprovante.text).toContain(`/validar/${certificado.chave_validacao}`);
 
-    // a segunda via do próprio (o Word, do congelado)
+    // com certificado, o menu oferece o comprovante
+    expect(ficha.text).toContain('href="/certificados/meus/comprovante"');
+
+    // a segunda via do próprio sai só em PDF: o Word é da equipe (25/10/2026)
     const via = await c.get(`/certificados/${certificado.id}/documento`, { seguir: false });
-    expect(via.status).toBe(200);
+    expect(via.status).toBe(303);
+    expect(via.location).toBe(`/certificados/${certificado.id}/pdf`);
+    const pdf = await c.get(`/certificados/${certificado.id}/pdf`, { seguir: false });
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get("content-type")).toContain("pdf");
   });
 
   it("a conta externa não vê o certificado de outro participante", async () => {
@@ -382,6 +389,8 @@ describe("Meus certificados da conta externa", () => {
     const vazia = (await t.get("/certificados/meus")).text;
     expect(vazia).not.toContain(`titulo-cert-${alheio.id}"`);
     expect(vazia).not.toContain(`titulo-cert-${meu.id}"`);
+    // sem certificado, o menu não oferece o comprovante
+    expect(vazia).not.toContain('href="/certificados/meus/comprovante"');
     const sem = await t.get("/certificados/meus/comprovante", { seguir: false });
     expect(sem.status).toBe(303);
     expect(sem.location).toBe("/certificados/meus");

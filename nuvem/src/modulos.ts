@@ -83,6 +83,12 @@ export class Item {
      * veem, ainda que tenham a permissão que ela declara.
      */
     readonly exige_servidor: boolean = false,
+    /**
+     * A tela que só tem o que mostrar com certificado emitido (o comprovante):
+     * a conta externa sem nenhum não a vê (25/10/2026). O servidor a vê
+     * sempre — a tela dele diz por que está vazia.
+     */
+    readonly exige_certificado: boolean = false,
   ) {
     Object.freeze(this);
   }
@@ -104,6 +110,7 @@ export class Item {
     }
     if (this.do_titular && !tem_titular(usuario)) return false;
     if (this.exige_servidor && usuario.servidor_id === null) return false;
+    if (this.exige_certificado && e_externo(usuario) && !usuario.com_certificado_externo) return false;
     if (this.permissao === null) return true;
     const abre = (p: string) => usuario.pode(p) && (this.do_titular || _na_equipe(usuario, p));
     return this.exigidas.some(abre) && this.tambem.every(abre);
@@ -766,6 +773,10 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
         "/certificados/meus/comprovante",
         "treinamento.ver",
         "Uma folha com os seus treinamentos em vigor.",
+        true,
+        [],
+        false,
+        false,
         true,
       ),
     ],

@@ -543,12 +543,15 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}`, async (c) => {
 /**
  * A segunda via, reimpressa **do congelado**. Sai também para certificado
  * anulado: quem precisa juntar ao processo o papel anulado precisa do papel.
+ * O Word é da equipe (25/10/2026): o titular — servidor, terceirizado ou
+ * discente — baixa só o PDF, e o link antigo leva a ele.
  */
 rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/documento`, async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
-  const [certificado] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
+  const [certificado, de_outro] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
   if (!certificado) return redirecionar(c, _volta_da_ficha(usuario));
+  if (!de_outro) return redirecionar(c, `${CERTIFICADOS}/${certificado.id}/pdf`);
   const resultado = await servico.segunda_via(tx, usuario, certificado);
   return baixar(c, resultado.bytes, resultado.docx.split("/").pop()!, servico.TIPO_DOCX);
 });
@@ -557,10 +560,11 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/documento`, async (c) => {
 rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/pdf`, async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
-  const [certificado] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
+  const [certificado, de_outro] = await _abrir(tx, usuario, Number(c.req.param("certificado_id")));
   if (!certificado) return redirecionar(c, _volta_da_ficha(usuario));
   // modelo enviado: o PDF da casa não é o papel dele. Sai o do conversor
-  // (LibreOffice); sem ele, ou com ele fora do ar, o link leva ao Word
+  // (LibreOffice); sem ele, ou com ele fora do ar, a equipe vai ao Word e o
+  // titular, que não baixa Word, recebe o PDF da casa (o QR valida o mesmo)
   if (servico.do_modelo_enviado(certificado)) {
     if (conversor_pdf.configurado()) {
       try {
@@ -571,7 +575,7 @@ rotas.get(`${CERTIFICADOS}/:certificado_id{[0-9]+}/pdf`, async (c) => {
         console.error(`[certificado ${certificado.id}] ${erro.message}`);
       }
     }
-    return redirecionar(c, `${CERTIFICADOS}/${certificado.id}/documento`);
+    if (de_outro) return redirecionar(c, `${CERTIFICADOS}/${certificado.id}/documento`);
   }
   const resultado = await servico.pdf_do_certificado(tx, usuario, certificado);
   return baixar(c, resultado.bytes, resultado.nome, TIPO_PDF);
