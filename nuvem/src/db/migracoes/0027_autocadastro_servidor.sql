@@ -1,0 +1,1 @@
+ALTER TABLE "ativacao_acesso" ADD COLUMN "dados_cadastro" jsonb;

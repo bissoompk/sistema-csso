@@ -49,7 +49,7 @@ describe("acesso", () => {
     const r = await amb.cliente.get("/minha-conta");
     expect(r.status).toBe(200);
     expect(r.text).toContain("7654321");
-    expect(r.text).toContain("Dados funcionais, só leitura.");
+    expect(r.text).toContain("o sistema não lê o SIAPE");
     // o item no bloco, com a trilha do Meu espaço
     expect(r.text).toMatch(/id="lateral-meu"[\s\S]*href="\/minha-conta"/);
     const titular = await usuarioAtual(amb.db, "servidor_consulta");

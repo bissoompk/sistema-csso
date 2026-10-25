@@ -371,6 +371,61 @@ export async function alterar_lotacao(
   },
 ): Promise<ServidorLotacao> {
   usuario.exigir("processo.editar");
+  return _alterar_lotacao(tx, servidor, usuario, d);
+}
+
+/**
+ * O próprio servidor corrige cargo, função e lotação em Meu perfil (25/10/2026:
+ * o sistema não lê o SIAPE; o cadastro é do servidor ou da equipe da Sisa). É
+ * a mesma linha do tempo da equipe — período novo a partir de hoje, nada
+ * sobrescrito, a trilha com o antes e o depois —, e os postos de trabalho
+ * ficam (são da equipe) enquanto a unidade não muda. SIAPE, nome, e-mail e
+ * situação continuam com a equipe.
+ */
+export async function corrigir_pelo_titular(
+  tx: Executor,
+  servidor: Servidor,
+  usuario: UsuarioAtual,
+  d: { unidade_uorg_id: number | null; cargo_id: number | null; funcao: string | null },
+): Promise<ServidorLotacao> {
+  if (usuario.servidor_id === null || usuario.servidor_id !== servidor.id) {
+    throw new RegraViolada("só o próprio servidor corrige os dados funcionais por aqui");
+  }
+  const vigente = await lotacao_vigente(tx, servidor.id);
+  const mesma_unidade = (d.unidade_uorg_id ?? null) === (servidor.unidade_uorg_id ?? null);
+  return _alterar_lotacao(tx, servidor, usuario, {
+    ...d,
+    uorg_id: servidor.uorg_id ?? null,
+    postos: mesma_unidade && vigente ? vigente.postos.map((p) => p.id) : [],
+    a_partir_de: hoje_iso(),
+    observacao: "Informado pelo próprio servidor em Meu perfil.",
+  });
+}
+
+/** As unidades para escolher a lotação, com o campus no rótulo (o campus vem dela). */
+export async function opcoes_de_lotacao(tx: Executor): Promise<{ id: number; rotulo: string }[]> {
+  const linhas = await tx.query.unidade_uorg.findMany({ with: { campus: true }, orderBy: [asc(unidade_uorg.nome_extenso)] });
+  return linhas.map((u) => ({
+    id: u.id,
+    rotulo: [u.sigla ? `${u.sigla} · ${u.nome_extenso}` : u.nome_extenso, u.campus?.nome].filter(Boolean).join(" — "),
+  }));
+}
+
+async function _alterar_lotacao(
+  tx: Executor,
+  servidor: Servidor,
+  usuario: UsuarioAtual,
+  d: {
+    unidade_uorg_id: number | null;
+    cargo_id: number | null;
+    funcao: string | null;
+    a_partir_de: string;
+    uorg_id?: number | null;
+    postos?: number[] | null;
+    documento?: string | null;
+    observacao?: string | null;
+  },
+): Promise<ServidorLotacao> {
   const a_partir_de = d.a_partir_de;
   const uorg_id = d.uorg_id ?? null;
   const hoje = hoje_iso();

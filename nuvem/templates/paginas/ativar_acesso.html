@@ -56,17 +56,18 @@
 {% elif recebido %}
     <h1>Verifique o seu e-mail</h1>
     <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
-    <p class="acesso-nota">O link só vai para o e-mail que está no cadastro de servidores da Sisa. Se não
-      chegar em alguns minutos, o seu cadastro pode ainda não existir ou estar sem e-mail: procure a equipe
-      da Sisa.</p>
+    <p class="acesso-nota">Se você já está no cadastro de servidores da Sisa, o link vai para o e-mail que
+      está lá. Se não chegar em alguns minutos, procure a equipe da Sisa.</p>
     <a class="botao secundario largo" href="/login">Voltar para a entrada</a>
 
 {% else %}
     <a class="acesso-voltar" href="/cadastre-se">{{ ico_acesso('arrow-left') }} Voltar</a>
     <h1>Primeiro acesso do servidor</h1>
-    <p class="sub">Informe o SIAPE, o e-mail institucional e a senha que quer usar. Se o SIAPE e o
-      e-mail conferirem com o cadastro de servidores da Sisa, enviamos a esse e-mail um link para você
-      confirmar e ativar o acesso.</p>
+    {# 25/10/2026: o sistema não lê o SIAPE. Quem ainda não está no cadastro se
+       cadastra aqui; quem já está só confirma o e-mail. A tela é a mesma para
+       os dois e responde igual (de fora não se sabe quem está no cadastro). #}
+    <p class="sub">Informe os seus dados e a senha que quer usar. Enviamos um link ao seu e-mail
+      institucional para você confirmar e ativar o acesso.</p>
     {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
     <form method="post" action="{{ caminho }}">
       <div class="campo"><label for="ativar-siape">SIAPE</label>
@@ -77,7 +78,24 @@
         <input id="ativar-email" name="email" type="email" value="{{ digitado }}" required
                maxlength="160" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
                placeholder="nome@ufvjm.edu.br" aria-describedby="dica-ativar">
-        <span class="dica" id="dica-ativar">Use o e-mail @ufvjm.edu.br, o mesmo informado à Sisa.</span></div>
+        <span class="dica" id="dica-ativar">O seu e-mail @{{ dominio }}. Será o seu login.</span></div>
+      <div class="campo"><label for="ativar-nome">Nome completo</label>
+        <input id="ativar-nome" name="nome" value="{{ nome }}" required maxlength="160" autocomplete="name"></div>
+      <div class="acesso-dois-campos">
+        <div class="campo"><label for="ativar-cargo">Cargo <span class="opcional">(opcional)</span></label>
+          <select id="ativar-cargo" name="cargo_id">
+            <option value="">—</option>
+            {% for cg in cargos %}<option value="{{ cg.id }}"{{ ' selected' if (cg.id | string) == cargo_escolhido }}>{{ cg.nome }}</option>{% endfor %}
+          </select></div>
+        <div class="campo"><label for="ativar-lotacao">Lotação <span class="opcional">(opcional)</span></label>
+          <select id="ativar-lotacao" name="unidade_uorg_id">
+            <option value="">—</option>
+            {% for u in lotacoes %}<option value="{{ u.id }}"{{ ' selected' if (u.id | string) == unidade_escolhida }}>{{ u.rotulo }}</option>{% endfor %}
+          </select></div>
+      </div>
+      <p class="acesso-nota">Se você já está no cadastro de servidores da Sisa, valem os dados de lá. Se ainda
+        não está, o cadastro é criado com estes dados quando você confirmar o e-mail — e cargo e lotação você
+        completa ou corrige depois, em Meu perfil.</p>
       {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
       <div class="campo">
         <label for="nova">Senha</label>
@@ -93,9 +111,9 @@
       </div>
       <div class="acoes"><button type="submit" class="largo">Continuar</button></div>
     </form>
-    <p class="acesso-nota">Não recebeu o link? O seu cadastro pode ainda não estar na Sisa, ou estar sem
-      e-mail. Procure a equipe da Sisa para fazer ou corrigir o cadastro. Se você já tem senha, o link
-      pede a senha de novo: use "Esqueci minha senha".</p>
+    <p class="acesso-nota">Não recebeu o link? Confira a caixa de spam. Se o seu SIAPE já está no cadastro
+      com outro e-mail, o link vai para aquele: procure a equipe da Sisa para corrigir. Se você já tem senha,
+      use "Esqueci minha senha".</p>
 {{ senha.script() }}
     <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
       <a href="/esqueci-senha">Esqueci minha senha</a>

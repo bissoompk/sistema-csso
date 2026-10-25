@@ -154,6 +154,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // Ativar meu acesso / Esqueci minha senha (23/10/2026, `ativar_acesso.ts`): o
   // ator é "o próprio titular" e a descrição nunca leva nome, SIAPE nem e-mail.
   ACESSO_ATIVADO: "Acesso ativado pelo próprio titular (Ativar meu acesso)",
+  SERVIDOR_AUTOCADASTRADO: "Servidor cadastrado pelo próprio servidor no primeiro acesso",
   ACESSO_CRIADO_NO_CADASTRO: "Conta criada com o cadastro do servidor, sem senha (o titular a define)",
   ACESSO_EMAIL_ACOMPANHOU_CADASTRO: "E-mail da conta sem senha acompanhou o cadastro do servidor",
   ACESSO_ENCERRADO_NA_SAIDA: "Conta inativada: o servidor saiu do quadro",
