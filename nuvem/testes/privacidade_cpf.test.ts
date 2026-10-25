@@ -283,6 +283,13 @@ describe("certificado", () => {
     await _mapear_cpf(c.modelo.id);
     const insc = (await servico_turma.carregar_inscricao(db, c.inscricao.id))!;
     await expect(servico.emitir(db, usuario, insc)).rejects.toThrow(/CPF/);
+    // a conferência da aba Emissão já diz o que falta e onde se corrige
+    // (25/10/2026: dizia "apto" e o lote travava sem motivo)
+    const v = await servico.validar(db, insc);
+    expect(v.ok).toBe(false);
+    expect(v.bloqueios.join(" ")).toMatch(/o modelo exige e falta: .*CPF do participante/);
+    expect(v.bloqueios.join(" ")).toContain("aba Inscrições (corrigir CPF)");
+    expect(v.bloqueios.join(" ")).not.toMatch(/cpf_participante|campo_0/);
   });
 });
 

@@ -759,7 +759,7 @@ rotas.post(FILA, async (c) => {
   if (proprio && usuario.servidor_id === null) {
     return recusar(
       "Sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
-        "Peça a quem administra as contas que faça a ligação, informando o seu SIAPE.",
+        "Se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora.",
     );
   }
   const servidor_id = _id(digitado.servidor_id);

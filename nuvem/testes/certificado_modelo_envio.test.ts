@@ -195,9 +195,18 @@ describe("sugestão de campo", () => {
       mes: "certificado_mes_extenso",
       aaaa: "certificado_ano",
       aaaa_3: "certificado_ano",
-      n: "certificado_numero",
-      n_2: "certificado_numero",
+      // "CSSO-BRIG-«AAAA»-«nº»": a sequência do número impresso (0001), e não
+      // a contagem interna, que não bate com o número da validação (25/10/2026)
+      n: "certificado_sequencia",
+      n_2: "certificado_sequencia",
     });
+    const seq = certificado.CAMPOS_CERTIFICADO.certificado_sequencia!;
+    expect(seq.obter({ numero_impresso: "CSSO-BRIG-2026-0007", numero: 3 } as never)).toBe("0007");
+    expect(seq.obter({ numero_impresso: null, numero: 27 } as never)).toBe("27");
+    // «nº» solto ("Certificado nº «nº»/«AAAA»") continua sendo o número
+    expect(envio.sugerir_campo({ marcador: "n", rotulo: "nº", antes: "Certificado nº ", ocorrencia: 1 }, certificado.CAMPOS_CERTIFICADO)).toBe(
+      "certificado_numero",
+    );
     // «___ %»: nota final e frequência se separam pelo que vem antes
     const pct = marcadores.filter((m) => m.rotulo === "___ %").map((m) => sugestao[m.marcador]);
     expect(pct).toEqual(["nota_final_percentual", "frequencia_percentual"]);

@@ -540,6 +540,13 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   ),
   certificado_numero: _c("Documento", "Número", "27", (c) => String(c.numero)),
   certificado_ano: _c("Documento", "Ano", "2026", (c) => String(c.ano)),
+  // NUVEM (25/10/2026): a sequência do número impresso (o «0001» de
+  // CSSO-BRIG-2026-0001), para o modelo que monta o código em pedaços
+  // ("CSSO-BRIG-«AAAA»-«nº»"). `certificado_numero` é a contagem interna do
+  // ano, de todos os treinamentos, e não bate com o número da validação.
+  certificado_sequencia: _c("Documento", "Sequência do número (0001)", "0001", (c) =>
+    c.numero_impresso ? c.numero_impresso.split("-").pop()! : String(c.numero),
+  ),
   // NUVEM (22/10/2026): o número impresso (sigla do setor promotor + código
   // curto do treinamento + ano + sequência); o certificado emitido antes
   // continua com o rótulo antigo (`27/2026`) — `c.rotulo` decide.

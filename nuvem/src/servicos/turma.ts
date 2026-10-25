@@ -588,6 +588,14 @@ export async function editar_turma(
   // prazo depois do início não trava a correção do local (o link e o pedido
   // próprio dela já fecham no início, `aberta_a_pedido_proprio`)
   const ate = valor("inscricao_aberta_ate");
+  // o link público ligado precisa do prazo (`ck_turma_inscricao_publica`):
+  // apagá-lo estourava a regra do banco e a tela mostrava erro 500 (25/10/2026)
+  if (turma.inscricao_publica && ate === null) {
+    throw new RegraDaTurma(
+      "O link público de inscrição desta turma está ligado, e ele precisa da data de “inscrições até”. " +
+        "Informe a data, ou desligue o link na aba Inscrições antes de apagá-la.",
+    );
+  }
   const prazo_mudou = ate !== turma.inscricao_aberta_ate;
   if (!opcoes.concluida && (prazo_mudou || novo_inicio !== turma.data_inicio)) {
     _conferir_prazo_de_inscricao({ data_inicio: novo_inicio, inscricao_aberta_ate: ate }, prazo_mudou);
@@ -1265,9 +1273,8 @@ function _exigir_titular(usuario: UsuarioAtual): void {
   if (titular_externo.tem_titular(usuario)) return;
   throw new RegraDaTurma(
     "Sua conta não está ligada a um cadastro de servidor, e sem essa " +
-      "ligação o sistema não tem em nome de quem inscrever. A ligação é " +
-      "feita em Usuários, por quem tem `usuario.criar_conta` — peça " +
-      "informando o seu SIAPE.",
+      "ligação o sistema não tem em nome de quem inscrever. " +
+      "Se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora.",
   );
 }
 

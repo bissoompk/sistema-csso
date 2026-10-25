@@ -50,7 +50,13 @@ import * as certificados_titular from "../servicos/certificados_titular.js";
 import * as email_saida from "../servicos/email.js";
 import * as emissao from "../servicos/emissao_certificado.js";
 import { numero as numero_br } from "../servicos/presenca.js";
-import { LotacaoInvalida, corrigir_pelo_titular, opcoes_de_lotacao, postos_atuais } from "../servicos/servidores.js";
+import {
+  LotacaoInvalida,
+  corrigir_pelo_titular,
+  ligar_pela_propria_conta,
+  opcoes_de_lotacao,
+  postos_atuais,
+} from "../servicos/servidores.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { comMensagem, pagina, redirecionar } from "../web.js";
 import { INICIO, ipDoCliente } from "./autenticacao.js";
@@ -121,12 +127,13 @@ type Digitado = {
   cargo_id?: string;
   funcao?: string;
   unidade_uorg_id?: string;
+  siape?: string;
 };
 
 async function _tela(
   c: Ctx,
   usuario: UsuarioAtual,
-  extra: { erro_dados?: string; erro_email?: string; erro_funcionais?: string; digitado?: Digitado } = {},
+  extra: { erro_dados?: string; erro_email?: string; erro_funcionais?: string; erro_servidor?: string; digitado?: Digitado } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id));
@@ -168,8 +175,10 @@ async function _tela(
   const [postos, certificados] = servidor
     ? await Promise.all([postos_atuais(tx, servidor.id), certificados_titular.do_titular(tx, servidor.id, hoje)])
     : [[], null];
-  // o próprio servidor corrige cargo, função e lotação (25/10/2026)
-  const [cargos, lotacoes] = servidor
+  // o próprio servidor corrige cargo, função e lotação (25/10/2026); a conta
+  // sem servidor (e que não é de terceirizado ou discente) informa os dados
+  const pede_listas = servidor !== null || !e_externo(usuario);
+  const [cargos, lotacoes] = pede_listas
     ? await Promise.all([tx.select().from(tabela_cargo).orderBy(asc(tabela_cargo.nome)), opcoes_de_lotacao(tx)])
     : [[], []];
 
@@ -276,6 +285,40 @@ rotas.post(`${CAMINHO}/funcionais`, async (c) => {
     return _tela(c, usuario, { erro_funcionais: `${motivo}.`, digitado });
   }
   return redirecionar(c, comMensagem(CAMINHO, "Dados funcionais atualizados."));
+});
+
+/**
+ * "Sou servidor da UFVJM" (25/10/2026): a conta sem servidor ligado informa os
+ * próprios dados, e o cadastro nasce (ou, com o e-mail dela, se liga) na hora
+ * (`ligar_pela_propria_conta`). Terceirizado e discente não passam por aqui.
+ */
+rotas.post(`${CAMINHO}/sou-servidor`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  if (usuario.servidor_id !== null || e_externo(usuario)) return redirecionar(c, CAMINHO);
+  const f = await formulario(c);
+  const digitado = {
+    siape: f.texto("siape").trim(),
+    nome: f.texto("nome").trim(),
+    cargo_id: f.texto("cargo_id"),
+    unidade_uorg_id: f.texto("unidade_uorg_id"),
+  };
+  const inteiro = (v: string) => (/^\d{1,9}$/.test(v) ? Number(v) : null);
+  try {
+    const { criado } = await ligar_pela_propria_conta(c.get("tx"), usuario, {
+      siape: digitado.siape,
+      nome: digitado.nome,
+      cargo_id: inteiro(digitado.cargo_id),
+      unidade_uorg_id: inteiro(digitado.unidade_uorg_id),
+    });
+    return redirecionar(
+      c,
+      comMensagem(CAMINHO, criado ? "Cadastro de servidor criado e ligado à sua conta." : "Conta ligada ao seu cadastro de servidor."),
+    );
+  } catch (erro) {
+    if (!(erro instanceof LotacaoInvalida)) throw erro;
+    const motivo = erro.message.charAt(0).toUpperCase() + erro.message.slice(1);
+    return _tela(c, usuario, { erro_servidor: `${motivo}.`, digitado });
+  }
 });
 
 /**

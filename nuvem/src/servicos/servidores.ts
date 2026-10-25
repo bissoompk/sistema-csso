@@ -21,6 +21,7 @@ import {
   servidor as tabela_servidor,
   servidor_lotacao,
   unidade_uorg,
+  usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import { hoje_iso, somar_dias } from "../dominio/datas.js";
 import { UnidadeUorg, vigente_em } from "../dominio/organizacao.js";
@@ -647,4 +648,76 @@ export async function cadastrar_basico(
 /** Quem cadastra servidor: a base (`processo.criar`) e o balcão de EPI. */
 export function pode_cadastrar(usuario: UsuarioAtual): boolean {
   return usuario.pode("processo.criar") || usuario.pode("epi.entregar");
+}
+
+// ---------------------------------------------------------------------
+// "Sou servidor da UFVJM" (25/10/2026): a conta sem servidor ligado (a da
+// equipe que também é servidor, por exemplo) informa os próprios dados em Meu
+// perfil, e o sistema cria o cadastro e liga a conta na hora — sem pedir a
+// ninguém. O SIAPE que já está no cadastro só se liga quando o e-mail de lá é
+// o da conta (é o que prova que o cadastro é dela); com outro e-mail, recusa:
+// ligar a conta a um servidor é passar a ler o que é dele.
+// ---------------------------------------------------------------------
+export async function ligar_pela_propria_conta(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  d: { siape: string; nome: string; cargo_id: number | null; unidade_uorg_id: number | null },
+): Promise<{ servidor: Servidor; criado: boolean }> {
+  if (usuario.servidor_id !== null) throw new LotacaoInvalida("esta conta já está ligada a um cadastro de servidor");
+  const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id)).for("update");
+  if (!conta) throw new LotacaoInvalida("conta não encontrada");
+  const siape = d.siape.trim();
+  if (!/^\d{7}$/.test(siape)) throw new LotacaoInvalida("o SIAPE tem exatamente 7 dígitos, sem ponto nem traço");
+  const nome = d.nome.trim().replace(/\s+/g, " ");
+  if (!nome) throw new LotacaoInvalida("informe o nome completo");
+  const email_conta = (conta.email ?? "").trim().toLowerCase();
+  const [existente] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, siape));
+  let servidor: Servidor;
+  let criado = false;
+  if (existente) {
+    if ((existente.email ?? "").trim().toLowerCase() !== email_conta) {
+      throw new LotacaoInvalida(
+        `o SIAPE ${siape} já está no cadastro com outro e-mail. Se ele é seu, procure a equipe da Sisa para corrigir o e-mail ` +
+          "do cadastro",
+      );
+    }
+    const [outra] = await tx
+      .select({ id: tabela_usuario.id })
+      .from(tabela_usuario)
+      .where(and(eq(tabela_usuario.servidor_id, existente.id), ne(tabela_usuario.id, conta.id)));
+    if (outra) throw new LotacaoInvalida(`o SIAPE ${siape} já está ligado a outra conta. Procure a equipe da Sisa`);
+    servidor = existente;
+  } else {
+    const email = await conferir_email(tx, conta.email);
+    const [cargo] = d.cargo_id ? await tx.select({ id: tabela_cargo.id }).from(tabela_cargo).where(eq(tabela_cargo.id, d.cargo_id)) : [];
+    const [unidade] = d.unidade_uorg_id
+      ? await tx.select({ id: unidade_uorg.id }).from(unidade_uorg).where(eq(unidade_uorg.id, d.unidade_uorg_id))
+      : [];
+    const [novo] = await tx
+      .insert(tabela_servidor)
+      .values({ siape, nome, email, cargo_id: cargo?.id ?? null, unidade_uorg_id: unidade?.id ?? null })
+      .returning();
+    servidor = novo!;
+    criado = true;
+    await auditoria.registrar(tx, {
+      entidade: "servidor",
+      entidade_id: servidor.id,
+      tipo_evento: ativar_acesso.SERVIDOR_AUTOCADASTRADO,
+      descricao: "Servidor cadastrado pelo próprio servidor, em Meu perfil, a partir da conta que ele já tinha.",
+      usuario,
+    });
+    await registrar_lotacao_inicial(tx, servidor, usuario, { documento: "Informado pelo próprio servidor em Meu perfil" });
+  }
+  await tx.update(tabela_usuario).set({ servidor_id: servidor.id }).where(eq(tabela_usuario.id, conta.id));
+  await auditoria.registrar(tx, {
+    entidade: "usuario",
+    entidade_id: conta.id,
+    tipo_evento: "SERVIDOR_VINCULADO",
+    descricao: `Conta ligada ao cadastro de servidor pela própria conta (${criado ? "cadastro criado agora" : "o e-mail do cadastro é o da conta"}).`,
+    campo: "servidor_id",
+    valor_anterior: null,
+    valor_novo: servidor.id,
+    usuario,
+  });
+  return { servidor, criado };
 }
