@@ -175,6 +175,8 @@ rotas.get("/processos", async (c) => {
     responsaveis: so_o_proprio ? [] : await responsaveis_possiveis(tx),
     estados: _codigos_por_rotulo(),
     visoes: so_o_proprio ? [] : VISOES_SALVAS,
+    // o quadro é da equipe (`/kanban` exige na equipe): o titular não o vê
+    com_quadro: usuario.pode_na_equipe("processo.ver"),
     incisos: dicionario(INCISOS_ART11),
     mensagem: c.req.query("mensagem") ?? null,
     erro: c.req.query("erro") ?? null,
