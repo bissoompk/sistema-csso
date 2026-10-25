@@ -474,7 +474,42 @@ export async function validar(
     const livres = campos_certificado.resolver(modelo, da_turma, do_participante);
     v.bloqueios.push(...campos_certificado.pendencias(modelo, livres));
   }
+  // os marcadores obrigatórios que vêm do cadastro (o CPF do participante ou do
+  // instrutor, que a norma do Brigadista exige): conferidos AQUI, e não só na
+  // emissão — a aba dizia "apto" e o lote travava sem dizer por quê (25/10/2026)
+  if (!v.bloqueios.length && modelo.tags.some((t) => t.obrigatorio)) {
+    const conferencia = await montar_contexto_para_emitir(tx, inscricao, {
+      numero: 0,
+      ano: datas_br.partes(quando)[0],
+      data_emissao: quando,
+      chave: "CONFERENCIA",
+      numero_impresso: "CONFERENCIA",
+      modelo,
+    });
+    const faltam = await conferencia.obrigatorios_faltantes();
+    if (faltam.length) v.bloqueios.push(frase_dos_obrigatorios(faltam));
+  }
   return v;
+}
+
+/**
+ * "falta o CPF do participante (corrija em Inscrições, 'corrigir CPF')": os
+ * rótulos sem repetir (o mesmo CPF aparece em mais de um marcador) e onde se
+ * corrige cada um.
+ */
+export function frase_dos_obrigatorios(faltam: readonly string[]): string {
+  const rotulos = [
+    ...new Set(
+      faltam.map((f) => {
+        const r = f.replace(/^[^(]*\(/, "").replace(/\)$/, "").replace(/ \(só se a norma exigir\)/, "");
+        return /^CPF$/i.test(r) ? "CPF do participante" : r;
+      }),
+    ),
+  ];
+  const onde: string[] = [];
+  if (rotulos.includes("CPF do participante")) onde.push("o CPF do participante se informa na aba Inscrições (corrigir CPF)");
+  if (rotulos.some((r) => /instrutor/i.test(r))) onde.push("os dados do instrutor, no cadastro de Instrutores");
+  return `o modelo exige e falta: ${rotulos.join(", ")}` + (onde.length ? ` — ${onde.join("; ")}` : "");
 }
 
 async function _valores_livres(
@@ -720,7 +755,7 @@ export async function emitir(
     avisos: validacao.avisos,
   });
   const faltantes = await contexto.obrigatorios_faltantes();
-  if (faltantes.length) throw new EmissaoBloqueada(["marcador obrigatório sem valor: " + faltantes.join(", ")]);
+  if (faltantes.length) throw new EmissaoBloqueada([frase_dos_obrigatorios(faltantes)]);
 
   const turma = inscricao.turma;
   const [linha] = await tx

@@ -1220,6 +1220,19 @@ describe("inscrição pública por link", () => {
     expect(avisos[1]!.corpo).not.toContain("turma cheia");
   });
 
+  it("com o link ligado, apagar o prazo de inscrição explica em vez de dar erro 500", async () => {
+    const { turma_id } = await com_link();
+    const antes = await _turma(turma_id);
+    const r = await cliente.post(
+      `/turmas/${turma_id}`,
+      { data_inicio: antes.data_inicio, data_fim: antes.data_fim, inscricao_aberta_ate: "", frequencia_minima_percentual: "75" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    expect(await _msg(cliente, r)).toContain("link público de inscrição desta turma está ligado");
+    expect((await _turma(turma_id)).inscricao_aberta_ate).toBe(antes.inscricao_aberta_ate);
+  });
+
   async function token_da_confirmacao(para: string): Promise<string> {
     const [m] = await db
       .select()

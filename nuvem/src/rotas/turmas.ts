@@ -2005,7 +2005,11 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/certificados`, async (c) => {
   const relatorio = await servico_emissao.emitir_lote(tx, usuario, turma);
   // nada emitido é o retorno de uma ação que não aconteceu: sai em vermelho
   if (!relatorio.itens.length) return _erro(c, volta, "Ninguém apto a emitir nesta turma.");
-  return _volta(c, volta, `${turma.codigo}: ${relatorio.resumo}.`);
+  // o que travou diz por quê (25/10/2026): só os motivos, sem repetir e sem
+  // nome — a mensagem vai na URL
+  const motivos = [...new Set(relatorio.travados.map((i) => (i.erro ?? "").replace(/^Emissão bloqueada: /, "")).filter(Boolean))];
+  const porque = motivos.length ? ` Travou porque ${motivos.slice(0, 2).join("; ")}.` : "";
+  return _volta(c, volta, `${turma.codigo}: ${relatorio.resumo}.${porque}`.slice(0, 600));
 });
 
 /**

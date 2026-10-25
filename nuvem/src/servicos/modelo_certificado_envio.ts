@@ -441,7 +441,9 @@ export function sugerir_campo(
     [r === "dd" || r === "dia", "certificado_dia"],
     [r === "mes" || r === "mes por extenso", "certificado_mes_extenso"],
     [r === "aaaa" || r === "ano", "certificado_ano"],
-    [/^n[ºo°.]?$|^numero$|^no\.?$/.test(r), "certificado_numero"],
+    // «nº» logo depois de um hífen é o fim de um código montado em pedaços
+    // ("CSSO-BRIG-«AAAA»-«nº»"): a sequência do número impresso, não a interna
+    [/^n[ºo°.]?$|^numero$|^no\.?$/.test(r), /-\s*$/.test(antes) ? "certificado_sequencia" : "certificado_numero"],
     [tem("cidade", "municipio"), "cidade"],
     // o texto já diz "Campus" logo antes: só o nome, sem repetir a palavra
     [tem("campus") && /campus\s*$/.test(antes), _o_que_houver(campos, "turma_campus_curto", "turma_campus")],
