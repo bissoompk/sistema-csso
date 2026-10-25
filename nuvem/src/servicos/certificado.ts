@@ -245,11 +245,13 @@ export interface DadosContextoCertificado {
   avisos?: string[];
   // NUVEM: a redação do PDF da casa. 1 (ou ausente: o congelado de antes) é a
   // do v1, reimpressa igual; 2 escreve as frases inteiras (norma sem repetir,
-  // "Validade: indeterminada"). Só a emissão nova grava 2.
+  // "Validade: indeterminada"); 3 (25/10/2026) acerta o período de um dia só
+  // ("realizado em 25 de outubro") e emenda a norma com travessão. Só a
+  // emissão nova grava a atual: o já emitido reimprime igual (RN-15).
   redacao?: number | null;
 }
 
-export const REDACAO_ATUAL = 2;
+export const REDACAO_ATUAL = 3;
 
 const CAMPOS_CONGELADOS = [
   "participante_nome", "participante_identificador", "participante_vinculo",
@@ -498,12 +500,20 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     "Treinamento",
     "Nome do treinamento com a norma, sem repetir",
     "Trabalho em Altura — NR-35",
-    (c) => (norma_no_nome(c.treinamento_nome, c.treinamento_norma) ? c.treinamento_nome : `${c.treinamento_nome} ${(c.treinamento_norma ?? "").trim()}`),
+    // com o travessão do exemplo desde a redação 3: só o espaço emendava
+    // "…(NR-12) NR-12 (Portaria…)"
+    (c) =>
+      norma_no_nome(c.treinamento_nome, c.treinamento_norma)
+        ? c.treinamento_nome
+        : `${c.treinamento_nome}${c.redacao >= 3 ? " —" : ""} ${(c.treinamento_norma ?? "").trim()}`,
   ),
   turma_data_inicio: _c("Turma", "Data de início", "03/03/2026", (c) => _data(c.turma_data_inicio)),
   turma_data_fim: _c("Turma", "Data de término", "05/03/2026", (c) => _data(c.turma_data_fim)),
-  turma_periodo_extenso: _c("Turma", "Período por extenso", "de 03 a 05 de março de 2026", (c) =>
-    _periodo_extenso(c.turma_data_inicio, c.turma_data_fim),
+  turma_periodo_extenso: _c("Turma", "Período por extenso (com “de” ou “em”)", "de 03 a 05 de março de 2026", (c) =>
+    // a preposição vem junto, nos dois casos, desde a redação 3: "realizado
+    // «período»" lia "realizado 25 de outubro de 2026" na turma de um dia só
+    (c.redacao >= 3 && c.turma_data_inicio === c.turma_data_fim ? "em " : "") +
+      _periodo_extenso(c.turma_data_inicio, c.turma_data_fim),
   ),
   turma_local: _c("Turma", "Local", "Auditório do Campus JK", (c) => c.turma_local),
   turma_descricao: _c(

@@ -284,7 +284,12 @@ rotas.get(CATALOGO, async (c) => {
 
 /** Código a partir do nome, no padrão e no tamanho da coluna (30), sem repetir. */
 async function _codigo_do_nome(tx: Executor, nome: string): Promise<string> {
-  const base = textos.slug_ascii(nome).toUpperCase().slice(0, 26).replace(/_+$/, "") || "TREINAMENTO";
+  // corta na palavra: "SEGURANCA_NO_TRABALHO_EM_M" virava código de quem tinha
+  // escrito "Segurança no Trabalho em Máquinas"
+  const inteiro = textos.slug_ascii(nome).toUpperCase();
+  let base = inteiro.slice(0, 26);
+  if (inteiro.length > 26 && inteiro[26] !== "_" && base.includes("_")) base = base.slice(0, base.lastIndexOf("_"));
+  base = base.replace(/_+$/, "") || "TREINAMENTO";
   for (let n = 1; ; n++) {
     const candidato = n === 1 ? base : `${base}_${n}`;
     const [ja] = await tx
@@ -368,7 +373,8 @@ rotas.post(CATALOGO, async (c) => {
       `${horas}h · validade ${Treinamento.validade_rotulo(treinamento!)} · código curto ${treinamento!.codigo_curto}`,
     usuario,
   });
-  return _volta(c, CATALOGO, `Treinamento ${codigo_limpo} cadastrado.`);
+  // o nome, que é o que a pessoa digitou; o código gerado sozinho não dizia nada
+  return _volta(c, CATALOGO, `Treinamento “${nome_limpo}” cadastrado (código ${codigo_limpo}).`);
 });
 
 rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {

@@ -183,6 +183,40 @@ describe("D28/D29/D30/M45: o certificado novo escreve as frases inteiras", () =>
     expect(CAMPOS_CERTIFICADO.certificado_frase_validade!.obter(novo)).toBe("Validade: indeterminada");
   });
 
+  it("redação 3: turma de um dia sai «realizado em», e a norma longa vem com travessão; a 2 reimprime igual", async () => {
+    const base = {
+      participante_nome: "Ana",
+      treinamento_nome: "Segurança no Trabalho em Máquinas e Equipamentos (NR-12)",
+      treinamento_norma: "NR-12 (Portaria MTP nº 4.219/2022), item 12.16 e Anexo II",
+      treinamento_conteudo: "",
+      carga_horaria: "8",
+      turma_data_inicio: "2026-10-25",
+      turma_data_fim: "2026-10-25",
+      data_emissao: "2026-10-25",
+      data_vencimento: null,
+      numero: 1,
+      ano: 2026,
+      instrutores: [],
+      mapa_tags: {},
+      modelo_arquivo: "certificado_padrao_v2.docx",
+    };
+    const dois = ContextoCertificado.descongelar({ ...base, redacao: 2 });
+    expect(CAMPOS_CERTIFICADO.turma_periodo_extenso!.obter(dois)).toBe("25 de outubro de 2026");
+    expect(CAMPOS_CERTIFICADO.treinamento_nome_e_norma!.obter(dois)).toBe(
+      "Segurança no Trabalho em Máquinas e Equipamentos (NR-12) NR-12 (Portaria MTP nº 4.219/2022), item 12.16 e Anexo II",
+    );
+    const tres = ContextoCertificado.descongelar({ ...base, redacao: 3 });
+    expect(CAMPOS_CERTIFICADO.turma_periodo_extenso!.obter(tres)).toBe("em 25 de outubro de 2026");
+    expect(CAMPOS_CERTIFICADO.treinamento_nome_e_norma!.obter(tres)).toBe(
+      "Segurança no Trabalho em Máquinas e Equipamentos (NR-12) — NR-12 (Portaria MTP nº 4.219/2022), item 12.16 e Anexo II",
+    );
+    // o período de vários dias já trazia o "de"
+    const varios = ContextoCertificado.descongelar({ ...base, redacao: 3, turma_data_fim: "2026-10-27" });
+    expect(CAMPOS_CERTIFICADO.turma_periodo_extenso!.obter(varios)).toBe("de 25 a 27 de outubro de 2026");
+    const pdf = _texto_pdf(await gerar_pdf([tres])).replaceAll("\n", " ");
+    expect(pdf).toContain("realizado em 25 de outubro de 2026");
+  });
+
   it("a semente promove o 'Padrão da casa' do v1 ao v2 uma vez só, e a v1 fica para as segundas vias", async () => {
     const modelos = await db
       .select()

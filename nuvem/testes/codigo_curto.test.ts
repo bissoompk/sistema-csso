@@ -154,6 +154,17 @@ describe("o catálogo", () => {
     expect((await _por_codigo("RSS-01"))!.codigo_curto).toBe("RSS01");
   });
 
+  it("o código que sai do nome corta na palavra, e a mensagem diz o nome", async () => {
+    const r = await cliente.post(
+      "/treinamentos/catalogo",
+      { ...NR35, codigo: "", nome: "Segurança no Trabalho em Máquinas e Equipamentos (NR-12)", codigo_curto: "NR12" },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    expect(decodeURIComponent(r.location!)).toContain("Treinamento “Segurança no Trabalho em Máquinas e Equipamentos (NR-12)” cadastrado");
+    expect(await _por_codigo("SEGURANCA_NO_TRABALHO_EM")).toBeTruthy();
+  });
+
   it("cadastro: digitado em minúscula vira caixa alta", async () => {
     const r = await cliente.post("/treinamentos/catalogo", { ...NR35, codigo: "TESTE-A", nome: "Teste A", codigo_curto: " tsta " }, { seguir: false });
     expect(r.status).toBe(303);
