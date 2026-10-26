@@ -40,12 +40,6 @@ function ip_novo() {
   return { cabecalhos: { "x-nf-client-connection-ip": `203.0.113.${(n_ip % 250) + 1}` } };
 }
 
-async function lotacao_e_cargo() {
-  const [cargo] = await db.insert(e.cargo).values({ nome: "Técnico em Laboratório" }).returning();
-  const [unidade] = await db.select().from(e.unidade_uorg).limit(1);
-  return { cargo: cargo!, unidade: unidade! };
-}
-
 function pedir(campos: Record<string, string>, c: Cliente = cliente) {
   return c.post("/ativar-acesso", { siape: SIAPE, email: EMAIL, nome: "João Novo da Silva", nova: SENHA, confirmacao: SENHA, ...campos }, ip_novo());
 }
@@ -63,8 +57,7 @@ const sem_nonce = (html: string) => html.replace(/nonce="[^"]*"/g, 'nonce=""');
 
 describe("autocadastro do servidor", () => {
   it("SIAPE fora do cadastro: o link vai ao e-mail digitado e o cadastro só nasce na confirmação", async () => {
-    const { cargo, unidade } = await lotacao_e_cargo();
-    const r = await pedir({ cargo_id: String(cargo.id), unidade_uorg_id: String(unidade.id) });
+    const r = await pedir({});
     expect(r.status).toBe(200);
     expect(r.text).toContain(servico.RESPOSTA_PADRAO.slice(0, 40));
     const enviados = await caixa();
@@ -92,14 +85,15 @@ describe("autocadastro do servidor", () => {
     expect([sv!.nome, sv!.email, sv!.cargo_id, sv!.unidade_uorg_id, sv!.situacao]).toEqual([
       "João Novo da Silva",
       EMAIL,
-      cargo.id,
-      unidade.id,
+      null, // cargo e lotação o servidor completa depois, em Meu perfil
+      null,
       "ATIVO",
     ]);
     const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.servidor_id, sv!.id));
     expect(conta!.email).toBe(EMAIL);
     const periodos = await db.select().from(e.servidor_lotacao).where(eq(e.servidor_lotacao.servidor_id, sv!.id));
     expect(periodos).toHaveLength(1);
+    expect([periodos[0]!.unidade_uorg_id, periodos[0]!.cargo_id]).toEqual([null, null]);
     const ev = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, servico.SERVIDOR_AUTOCADASTRADO));
     expect(ev.map((x) => x.entidade_id)).toEqual([sv!.id]);
     // a linha do pedido não guarda mais nem os dados nem a senha
@@ -155,11 +149,37 @@ describe("autocadastro do servidor", () => {
     expect(servidores.map((s) => s.nome)).toEqual(["Cadastrado pela Equipe"]);
   });
 
-  it("a tela do primeiro acesso pede nome, cargo e lotação e não diz mais que os dados vêm do SIAPE", async () => {
-    const tela = await cliente.get("/ativar-acesso");
-    expect(tela.text).toContain('name="nome"');
-    expect(tela.text).toContain('name="cargo_id"');
-    expect(tela.text).toContain('name="unidade_uorg_id"');
-    expect(tela.text).toContain("o cadastro é criado com estes dados quando você confirmar o e-mail");
+  it("a tela do servidor, em /cadastre-se, pede SIAPE, e-mail, nome e senha, sem cargo nem lotação", async () => {
+    const tela = await cliente.get("/cadastre-se?vinculo=SERVIDOR");
+    expect(tela.status).toBe(200);
+    for (const campo of ["siape", "email", "nome", "nova", "confirmacao"]) expect(tela.text).toContain(`name="${campo}"`);
+    expect(tela.text).not.toContain('name="cargo_id"');
+    expect(tela.text).not.toContain('name="unidade_uorg_id"');
+    expect(tela.text).not.toContain("Primeiro acesso");
+  });
+
+  it("POST /cadastre-se com vinculo=SERVIDOR faz o mesmo pedido do alias /ativar-acesso", async () => {
+    const r = await cliente.post("/cadastre-se", { vinculo: "SERVIDOR", siape: SIAPE, email: EMAIL, nome: "João Novo da Silva", nova: SENHA, confirmacao: SENHA }, ip_novo());
+    expect(r.status).toBe(200);
+    const enviados = await caixa();
+    expect(enviados.map((x) => [x.tipo, x.destinatario])).toEqual([[servico.TIPO_LINK, EMAIL]]);
+  });
+
+  it("SIAPE inválido em /cadastre-se devolve a tela do servidor com 422, mantendo o digitado e nunca a senha", async () => {
+    const r = await cliente.post("/cadastre-se", { vinculo: "SERVIDOR", siape: "123", email: EMAIL, nome: "João Novo da Silva", nova: SENHA, confirmacao: SENHA }, ip_novo());
+    expect(r.status).toBe(422);
+    expect(r.text).toContain("Digite o SIAPE com 7 dígitos.");
+    expect(r.text).toContain('name="siape"');
+    expect(r.text).toContain('value="123"');
+    expect(r.text).toContain(`value="${EMAIL}"`);
+    expect(r.text).toContain('value="João Novo da Silva"');
+    expect(r.text).not.toContain(SENHA);
+    expect(await caixa()).toHaveLength(0);
+  });
+
+  it("GET /ativar-acesso redireciona para o cadastro do servidor", async () => {
+    const r = await cliente.get("/ativar-acesso", { seguir: false });
+    expect(r.status).toBe(303);
+    expect(r.location).toBe("/cadastre-se?vinculo=SERVIDOR");
   });
 });

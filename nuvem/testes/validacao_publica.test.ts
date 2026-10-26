@@ -228,10 +228,8 @@ const ABERTAS_SEM_SESSAO: Record<string, string> = {
   "/validar": "o formulário da validação pública por chave",
   "/certificados/acesso":
     "o formulário em que o participante sem conta pede, por e-mail, o link dos próprios certificados (`servicos/acesso_participante.ts`): não mostra dado de ninguém, e a resposta é a mesma para e-mail conhecido ou não",
-  "/ativar-acesso":
-    "o formulário em que o servidor, sem conta, pede o link para ativar o acesso ou redefinir a senha (`servicos/ativar_acesso.ts`): a resposta é a mesma para qualquer dado digitado",
   "/cadastre-se":
-    "o Primeiro acesso / Cadastre-se: pergunta o vínculo e recebe o PEDIDO de conta do terceirizado ou discente (`servicos/pedido_conta.ts`), que a equipe confere; a resposta é a mesma para qualquer dado",
+    "o Cadastre-se: pergunta o vínculo e recebe o PEDIDO de conta (servidor, terceirizado ou discente: `servicos/pedido_conta.ts` e `servicos/ativar_acesso.ts`), que o e-mail confirma ou a equipe confere; a resposta é a mesma para qualquer dado. O GET antigo de /ativar-acesso agora só redireciona (303) para cá",
   "/esqueci-senha":
     "o Esqueci minha senha de qualquer conta, só com o e-mail (`servicos/ativar_acesso.ts`): o link vai ao e-mail da conta e a resposta é a mesma para e-mail conhecido ou não",
   "/sw.js":

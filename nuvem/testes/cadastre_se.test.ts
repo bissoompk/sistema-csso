@@ -71,16 +71,33 @@ async function pedir_e_confirmar(campos: Record<string, string>) {
 }
 
 describe("o pedido", () => {
-  it("a tela pergunta o vínculo, e o servidor segue para o primeiro acesso pelo cadastro", async () => {
+  it("a tela pergunta o vínculo, e o servidor segue pelo próprio cadastro", async () => {
     const r = await cliente.get("/cadastre-se");
     expect(r.status).toBe(200);
-    expect(r.text).toContain('href="/ativar-acesso"');
+    expect(r.text).toContain("vinculo=SERVIDOR");
+    expect(r.text).not.toContain('href="/ativar-acesso"');
     expect(r.text).toContain("vinculo=TERCEIRIZADO");
     expect(r.text).toContain("vinculo=DISCENTE");
     const t = (await cliente.get("/cadastre-se?vinculo=DISCENTE")).text;
-    expect(t).toContain("Matrícula");
     expect(t).toContain('name="nova"');
     expect(t).toContain('name="confirmacao"');
+  });
+
+  it("terceirizado e discente não informam mais empresa/curso nem matrícula, e o pedido sem eles é aceito", async () => {
+    for (const v of ["TERCEIRIZADO", "DISCENTE"]) {
+      const t = (await cliente.get(`/cadastre-se?vinculo=${v}`)).text;
+      expect(t).not.toContain('name="organizacao"');
+      expect(t).not.toContain('name="matricula"');
+      for (const campo of ["email", "nome", "nova", "confirmacao", "maior_de_idade"]) expect(t).toContain(`name="${campo}"`);
+    }
+    const { organizacao: _o, matricula: _m, ...enxuto } = TERC;
+    const r = await pedir(enxuto);
+    expect(r.status).toBe(200);
+    expect(r.text).toContain("Confirme o seu e-mail");
+    expect(await pedidos()).toHaveLength(1);
+    const r2 = await pedir({ ...enxuto, vinculo: "DISCENTE", email: "pedro.ficticio@ufvjm.edu.br" });
+    expect(r2.status).toBe(200);
+    expect(await pedidos()).toHaveLength(2);
   });
 
   it("o login tem Primeiro acesso e Esqueci minha senha", async () => {
