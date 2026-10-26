@@ -25,8 +25,9 @@
     <form method="post" action="{{ caminho }}/{{ token }}">
       <div class="acoes"><button type="submit" class="largo">Confirmar e ativar o acesso</button></div>
     </form>
-    <div class="aviso aviso-alerta" role="note"><p>Não foi você que pediu? Não confirme: feche esta página
-      e nada muda.</p></div>
+    <div class="aviso aviso-alerta" role="note"><p>Confirme só se foi você que acabou de preencher o cadastro:
+      ao confirmar, você entra no sistema na hora, com a senha escolhida nele. Não foi você? Não confirme:
+      feche esta página e nada muda.</p></div>
 
 {% elif definir %}
 {% set erro_confirma = erro_senha if erro_senha and erro_senha.startsWith('A confirmação') else none %}

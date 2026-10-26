@@ -177,6 +177,21 @@ describe("autocadastro do servidor", () => {
     expect(await caixa()).toHaveLength(0);
   });
 
+  it("nome do servidor: as mesmas regras de terceirizado e discente, e o erro sai uma vez só na tela", async () => {
+    for (const [nome, frase] of [
+      ["x", "Digite o nome completo."],
+      ["Joao", "Digite o nome completo."],
+      ["João 123 Silva", "O nome não leva números."],
+    ] as const) {
+      const r = await pedir({ nome }, novoCliente());
+      expect(r.status, nome).toBe(422);
+      expect(r.text, nome).toContain(frase);
+      // a casca também escreveria o erro no alto: ele sai só dentro do formulário
+      expect(r.text.split(frase).length - 1, nome).toBe(1);
+    }
+    expect((await caixa()).filter((l) => l.tipo === servico.TIPO_LINK)).toHaveLength(0);
+  });
+
   it("GET /ativar-acesso redireciona para o cadastro do servidor", async () => {
     const r = await cliente.get("/ativar-acesso", { seguir: false });
     expect(r.status).toBe(303);

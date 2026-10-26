@@ -6,6 +6,10 @@
    A conta é liberada quando o e-mail é confirmado. Desenho das telas de
    acesso: painel da Sisa à esquerda, formulário à direita. #}
 {% set sem_casca = true %}
+{# O erro do pedido sai UMA vez, dentro do formulário: a casca (`base.html`) também
+   o escreveria no alto da página, e no computador aparecia duas vezes. #}
+{% set erro_do_pedido = erro %}
+{% set erro = none %}
 {% block titulo %}Cadastre-se · SISA{% endblock %}
 {% block classe_conteudo %}tela-auxiliar tela-acesso{% endblock %}
 {% macro ico_acesso(nome) %}<svg class="ico" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>{% endmacro %}
@@ -81,12 +85,12 @@
     <h1>Cadastro do servidor</h1>
     <p class="sub"><span class="pilula">Servidor</span> Informe os seus dados e a senha que quer usar. Enviamos um
       link ao seu e-mail institucional para você confirmar o cadastro.</p>
-    {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+    {% if erro_do_pedido %}<div class="aviso aviso-erro" role="alert">{{ erro_do_pedido }}</div>{% endif %}
     <form method="post" action="{{ caminho }}">
       <input type="hidden" name="vinculo" value="{{ vinculo_servidor }}">
       <div class="campo"><label for="cad-siape">SIAPE</label>
         <input id="cad-siape" name="siape" value="{{ d.siape or '' }}" required inputmode="numeric"
-               pattern="[0-9]{7}" maxlength="7" autocomplete="off" autocapitalize="none" spellcheck="false"
+               maxlength="7" autocomplete="off" autocapitalize="none" spellcheck="false"
                placeholder="7 dígitos" aria-describedby="dica-cad-siape">
         <span class="dica" id="dica-cad-siape">7 dígitos.</span></div>
       <div class="campo"><label for="cad-email">E-mail institucional</label>
@@ -96,7 +100,7 @@
         <span class="dica" id="dica-cad-email">O seu e-mail @{{ dominio_servidor }}. Será o seu login.</span></div>
       <div class="campo"><label for="cad-nome">Nome completo</label>
         <input id="cad-nome" name="nome" value="{{ d.nome or '' }}" required maxlength="160" autocomplete="name"></div>
-      {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
+      {% set erro_confirma = erro_do_pedido if erro_do_pedido and erro_do_pedido.startsWith('A confirmação') else none %}
       <div class="campo">
         <label for="nova">Senha</label>
         <input id="nova" name="nova" type="password" data-mostrar-senha required autocomplete="new-password" aria-describedby="dica-nova">
@@ -123,7 +127,7 @@
     <h1>Cadastro</h1>
     <p class="sub"><span class="pilula">{{ ROTULO_VINCULO[vinculo] }}</span> Com a conta você se inscreve em
       treinamentos, vê os seus certificados e comunica acidentes.</p>
-    {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+    {% if erro_do_pedido %}<div class="aviso aviso-erro" role="alert">{{ erro_do_pedido }}</div>{% endif %}
     <form method="post" action="{{ caminho }}">
       <input type="hidden" name="vinculo" value="{{ vinculo }}">
       <div class="campo"><label for="cad-email">{{ 'E-mail' if terc else 'E-mail institucional' }}</label>
@@ -135,7 +139,7 @@
           {%- else %}O seu e-mail @{{ dominio_discente }}. Será o seu login.{% endif %}</span></div>
       <div class="campo"><label for="cad-nome">Nome completo</label>
         <input id="cad-nome" name="nome" value="{{ d.nome or '' }}" required maxlength="160" autocomplete="name"></div>
-      {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
+      {% set erro_confirma = erro_do_pedido if erro_do_pedido and erro_do_pedido.startsWith('A confirmação') else none %}
       <div class="campo">
         <label for="nova">Senha</label>
         <input id="nova" name="nova" type="password" data-mostrar-senha required autocomplete="new-password" aria-describedby="dica-nova">
