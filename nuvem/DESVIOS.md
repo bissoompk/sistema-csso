@@ -1844,3 +1844,12 @@ Varredura de /demandas e /pendencias com coordenação, administrador, superinte
 
 - **«Nenhuma demanda registrada. Registre a primeira…»** na fila padrão («Em aberto») com todas as demandas encerradas: diz «Nenhuma demanda em aberto.» e aponta para «Encerradas».
 - **O processo que nasceu de uma demanda não levava de volta a ela** (a origem só aparecia na trilha). A ficha do processo mostra «Origem» com o link, lido na mesma consulta da ficha (`processos.por_id`, campo extra `demanda_de_origem_id`), para quem tem `demanda.ver`.
+
+## Primeiro acesso do servidor: confirma o e-mail e já entra (26/10/2026)
+
+Decisão do usuário: simplificar o primeiro acesso. O servidor preenche os dados e a senha, recebe um e-mail só para confirmar o cadastro e, ao clicar em «Confirmar e ativar o acesso», **já entra logado** — sem voltar à tela de entrada para digitar e-mail e senha outra vez.
+
+- **A sessão abre no clique do botão**, não ao abrir o link: o cuidado de antes continua (leitor de e-mail que pré-visualiza links só vê a página, nunca ativa nem entra). `definir_senha` passa a devolver `{ resultado, sessao }`; a sessão vem pela mesma `autenticacao.abrir_sessao` da entrada com senha (extraída de `autenticar`), e `ultimo_login_em` acompanha. A rota grava o cookie com as mesmas flags do login e leva ao Início do servidor, com a faixa «Acesso ativado. Bem-vindo(a) ao Sistema SISA.» (`/?ativado=1`).
+- **Só nesse caso.** O link que ainda pede a senha (Esqueci minha senha, convite do Cadastre-se) continua voltando ao login com «redefinida»/«ativada»: ali a senha é digitada na hora, e a troca de senha encerra as sessões abertas. O link usado de novo responde 404 e não abre sessão.
+- **Os textos acompanham:** a página do link («você já entra no sistema, sem digitar nada de novo»), a tela «Verifique o seu e-mail», os dois e-mails de confirmação («você entra no sistema na hora») e o aviso de acesso ativado («nas próximas vezes, entre em…/login»).
+- **Desvio consciente** do cuidado de que «o link de e-mail não é credencial de sessão»: aqui a credencial é o clique de quem recebeu o link de uso único (24 h) no e-mail institucional, com a senha que ele mesmo escolheu no pedido — o mesmo que a tela de entrada provaria logo em seguida.

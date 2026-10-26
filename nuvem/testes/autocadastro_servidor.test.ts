@@ -86,7 +86,8 @@ describe("autocadastro do servidor", () => {
 
     const ok = await cliente.post(`/ativar-acesso/${token}`, {}, { seguir: false });
     expect(ok.status).toBe(303);
-    expect(ok.location).toBe("/login?motivo=ativada");
+    // quem confirmou o e-mail entra logado, sem passar pela tela de entrada (26/10/2026)
+    expect(ok.location).toBe("/?ativado=1");
     const [sv] = await db.select().from(e.servidor).where(eq(e.servidor.siape, SIAPE));
     expect([sv!.nome, sv!.email, sv!.cargo_id, sv!.unidade_uorg_id, sv!.situacao]).toEqual([
       "João Novo da Silva",

@@ -20,8 +20,8 @@
 
 {% elif confirmar %}
     <h1>Confirme o seu e-mail</h1>
-    <p class="sub">Falta um passo: confirme que este e-mail é seu para ativar o acesso com a senha que
-      você escolheu no pedido.</p>
+    <p class="sub">Falta um passo: confirme que este e-mail é seu. Ao confirmar, o acesso é ativado com a
+      senha que você escolheu no pedido e você já entra no sistema, sem digitar nada de novo.</p>
     <form method="post" action="{{ caminho }}/{{ token }}">
       <div class="acoes"><button type="submit" class="largo">Confirmar e ativar o acesso</button></div>
     </form>
@@ -58,6 +58,8 @@
     <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
     <p class="acesso-nota">Se você já está no cadastro de servidores da Sisa, o link vai para o e-mail que
       está lá. Se não chegar em alguns minutos, procure a equipe da Sisa.</p>
+    <p class="acesso-nota">Abra o link que enviamos e clique em “Confirmar”: você entra no sistema na hora.
+      Não precisa voltar a esta tela.</p>
     <a class="botao secundario largo" href="/login">Voltar para a entrada</a>
 
 {% else %}
