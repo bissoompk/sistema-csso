@@ -9,7 +9,7 @@
  * As contagens são de inscrições (a pessoa que fez dois cursos conta duas
  * vezes), como no IntegraSST. A supressão da RN-19 é da rota: aqui só se conta.
  */
-import { and, count, eq, gte, inArray, lte, ne, type SQL } from "drizzle-orm";
+import { and, count, countDistinct, eq, gte, inArray, lte, ne, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   certificado as tabela_certificado,
@@ -39,7 +39,10 @@ export interface Indicadores {
   turmas_ativas: number;
   turmas_concluidas: number;
   turmas_canceladas: number;
+  /** inscrições que ocupam vaga: a mesma pessoa em três turmas conta três vezes */
   participantes: number;
+  /** as pessoas distintas por trás delas */
+  pessoas_distintas: number;
   aguardando_confirmacao: number;
   aprovados: number;
   reprovados: number;
@@ -95,6 +98,7 @@ export async function calcular(tx: Executor, usuario: UsuarioAtual, f: Filtros):
     turmas_concluidas: 0,
     turmas_canceladas: 0,
     participantes: 0,
+    pessoas_distintas: 0,
     aguardando_confirmacao: 0,
     aprovados: 0,
     reprovados: 0,
@@ -137,6 +141,11 @@ export async function calcular(tx: Executor, usuario: UsuarioAtual, f: Filtros):
     if (l.situacao === "REPROVADO") r.reprovados += n;
     if (l.situacao === "AUSENTE") r.faltas += n;
   }
+  const [distintas] = await tx
+    .select({ n: countDistinct(tabela_inscricao.participante_id) })
+    .from(tabela_inscricao)
+    .where(and(inArray(tabela_inscricao.turma_id, ids), inArray(tabela_inscricao.situacao, [...INSCRICAO_OCUPA_VAGA])));
+  r.pessoas_distintas = Number(distintas?.n ?? 0);
   // o certificado em vigor de cada aprovado: um por inscrição (o anulado não conta)
   const [emitidos] = await tx
     .select({ n: count() })
