@@ -235,10 +235,14 @@ pode ser apagado depois.
    `/trocar-senha`: troque. A senha precisa de **10 caracteres** (uma frase
    curta serve). Conta trazida de banco antigo com senha de 6 caracteres
    entra uma vez e é mandada trocar.
-3. **Senha esquecida**: o `admin_ti` redefine a de qualquer conta comum; a de
-   conta de administração (superintendente, `admin_ti`) só o superintendente
-   redefine. A do único superintendente, se perdida, pela linha de comando
-   (com a `DATABASE_URL` de produção; registre em ata):
+3. **Senha esquecida**: toda conta, inclusive a de administração, usa **«Esqueci
+   minha senha»** na tela de entrada: o link vai ao e-mail da conta. Na conta
+   de administração (superintendente, `admin_ti`, quem concede perfil) o link
+   vale **30 minutos**, a redefinição encerra as outras sessões, avisa por
+   e-mail («se não foi você…») e fica na trilha. O `admin_ti` também redefine a
+   de conta comum em `/usuarios`; a de administração só o superintendente. Se o
+   e-mail da conta não chega mais (ou a conta está inativa), pela linha de
+   comando, com a `DATABASE_URL` de produção (registre em ata):
    `npm run redefinir-senha -- --email <e-mail>` (`--reativar` se a conta
    também estiver inativa). A senha provisória aparece uma vez.
 4. Em `/usuarios` > Gerir, corrija o ato "BOOTSTRAP — substituir pelo ato
