@@ -150,6 +150,14 @@
         <td class="curta" data-coluna="Situação">{{ ui.pilula_demanda(dm.estado, rotulo_estado_demanda) }}</td>
       </tr>
       {% else %}
+      {# "Em aberto" é a visão padrão: vazia com encerradas no banco não é "nenhuma
+         registrada" — dizia isso, e mandava registrar "a primeira", com quatro
+         encerradas na ficha ao lado. #}
+      {% set encerradas = contagem['ENCERRADA'] or 0 %}
+      {% if not (q or filtro_estado or apenas_minhas) and encerradas %}
+      {{ ui.vazio_de_lista('Nenhuma demanda em aberto.',
+           'As ' ~ encerradas ~ ' encerrada(s) estão em “Encerradas”, logo acima.', 6) }}
+      {% else %}
       {{ ui.vazio_de_lista(
            'Nenhuma demanda nesta seleção.' if (q or filtro_estado or apenas_minhas)
              else 'Nenhuma demanda registrada.',
@@ -158,6 +166,7 @@
            ('Registre a primeira em “' ~ CADASTRAR ~ '”, no canto superior direito: '
             ~ 'é o e-mail que chegou hoje e ainda não virou nada.'),
            6) }}
+      {% endif %}
       {% endfor %}
     </table>
   </div>

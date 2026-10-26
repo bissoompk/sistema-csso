@@ -1837,3 +1837,10 @@ Ciclo completo pela tela, com o modelo padrão da casa: treinamento «Segurança
 - As duas mudam o texto dos campos, e por isso entram com **`REDACAO_ATUAL = 3`**: o certificado já emitido (redação 1 ou 2) reimprime igual (RN-15), e o .docx da casa e os modelos enviados emitidos daqui em diante ganham as frases certas.
 - **O código gerado do nome cortava no meio da palavra** («SEGURANCA_NO_TRABALHO_EM_M»): corta na palavra. **A mensagem do cadastro** dizia só esse código; diz o nome digitado.
 - Fica como está: o certificado identifica o participante pelo código público («PTC-…»), e não pelo SIAPE ou CPF — o CPF só sai quando o modelo o pede.
+
+## Teste do módulo Demandas no navegador (25/10/2026)
+
+Varredura de /demandas e /pendencias com coordenação, administrador, superintendente, a servidora e o terceirizado (403, como deve), no computador e no celular, sem erro. Ciclo pela tela: registrar (assunto vazio, chegada no futuro, prazo antes da chegada e menção a saúde recusados dentro da camada, com a confirmação RN-21 aparecendo e gravando), por e-mail com servidor e unidade, no balcão sem servidor, ofício já atrasado (o aviso de atraso e a tarefa no sino), marcar em andamento, encaminhar, trocar o responsável, e os desfechos: virou processo (sem NUP, DV errado com o «confirmei no SEI» na recusa, e o processo cadastrado no mesmo ato), encaminhada (sem setor e com data futura recusados), resolvida; o aviso do desfecho chega à servidora no sino e em Pendências. Achados corrigidos:
+
+- **«Nenhuma demanda registrada. Registre a primeira…»** na fila padrão («Em aberto») com todas as demandas encerradas: diz «Nenhuma demanda em aberto.» e aponta para «Encerradas».
+- **O processo que nasceu de uma demanda não levava de volta a ela** (a origem só aparecia na trilha). A ficha do processo mostra «Origem» com o link, lido na mesma consulta da ficha (`processos.por_id`, campo extra `demanda_de_origem_id`), para quem tem `demanda.ver`.

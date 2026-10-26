@@ -110,6 +110,10 @@
 
           <dt>Observações</dt>
           <dd>{{ processo.observacoes or '—' }}</dd>
+          {% if processo.demanda_de_origem_id and usuario.pode('demanda.ver') %}
+          <dt>Origem</dt>
+          <dd><a href="/demandas/{{ processo.demanda_de_origem_id }}">a demanda que virou este processo</a></dd>
+          {% endif %}
         </dl>
       </section>
     </div>
