@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import type { Ambiente, Ctx } from "./nucleo/contexto.js";
 import { cabecalhos, novoNonce, origemCruzada, resumoDoErro } from "./nucleo/seguranca.js";
 import { ErroHttp, PermissaoNegada, RecusaDaApi, RedirecionaParaLogin } from "./nucleo/erros.js";
-import { obterBanco } from "./db/cliente.js";
+import { obterBanco, type Tx } from "./db/cliente.js";
 import { instalarRegistroDeAcesso } from "./servicos/registro_acesso.js";
 import { pagina } from "./web.js";
 import { usuarioOpcional } from "./dependencias.js";
@@ -112,7 +112,14 @@ export function criarApp(): Hono<Ambiente> {
   app.use("*", async (c, next) => {
     const caminho = new URL(c.req.url).pathname;
     if (caminho.startsWith("/estaticos/")) return next();
-    try {
+    // Leitura (GET/HEAD) corre sem BEGIN/COMMIT: com a função num continente e
+    // o banco em outro, são duas idas a mais (~300 ms) por tela, e ler não
+    // tem o que desfazer. Quem escreve segue na transação da requisição.
+    if (c.req.method === "GET" || c.req.method === "HEAD") {
+      c.set("tx", obterBanco() as unknown as Tx);
+      await next();
+      if (c.error || c.get("desfazer")) return;
+    } else try {
       await obterBanco().transaction(async (tx) => {
         c.set("tx", tx);
         await next();
