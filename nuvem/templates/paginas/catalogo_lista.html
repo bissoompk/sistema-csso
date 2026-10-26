@@ -181,7 +181,7 @@
   <tr>
     <td>{{ u.sigla or '—' }}<span class="quebra discreto mono">{{ u.codigo_uorg or 'sem código' }}</span></td>
     <td data-coluna="Nome oficial (SIAPE)">{{ u.nome_oficial }}</td>
-    <td data-coluna="Nome no parecer">{{ u.nome_extenso }}</td>
+    <td data-coluna="Nome no parecer">{{ u.nome_extenso }}{% if u.a_conferir %} <span class="pilula alerta" title="Digitada por quem preencheu um formulário. Abra o «Editar» e salve para marcar como conferida.">a conferir</span>{% endif %}</td>
     <td data-coluna="Tipo · campus">{{ rotulo_tipo[u.tipo] or u.tipo }}<span class="quebra discreto">{{ u.campus.sigla if u.campus else 'sem campus' }}</span></td>
     <td data-coluna="Situação">{{ ui.pilula_sim_nao(u.ativo, 'ativa', 'inativa') }}
       {%- if u.emite_portaria %} <span class="pilula info">emite portaria</span>{% endif %}</td>
@@ -283,7 +283,7 @@
     {{ th_acoes() }}</tr>
 </thead><tbody>
   {% for c in itens %}<tr>
-    <td>{{ c.nome }}</td>
+    <td>{{ c.nome }}{% if c.a_conferir %} <span class="pilula alerta" title="Digitado por quem preencheu um formulário. Abra o «Editar» e salve para marcar como conferido.">a conferir</span>{% endif %}</td>
     <td data-coluna="Código SIAPE" class="mono">{{ c.codigo_siape or '—' }}</td>
     <td data-coluna="Servidores"><span class="contador" title="servidores neste cargo">{{ em_uso[c.id] }}</span></td>
     {{ editar('editar-cargo-' ~ c.id) }}

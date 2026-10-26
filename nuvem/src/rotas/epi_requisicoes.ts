@@ -69,6 +69,7 @@ import * as epi_ficha from "../servicos/epi_ficha.js";
 import * as epi_treinamento from "../servicos/epi_treinamento.js";
 import * as identificacao from "../servicos/identificacao.js";
 import * as servico from "../servicos/epi_requisicao.js";
+import * as dados_funcionais from "../servicos/dados_funcionais.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import * as textos from "../servicos/textos.js";
 import { hoje } from "../servicos/datas_br.js";
@@ -535,6 +536,41 @@ export const NOTA_SERVIDOR = "A chefia ou a secretaria podem abrir o pedido por 
  * mesmo (rascunho + itens): "Salvar e acrescentar outro item" leva à ficha do
  * rascunho, onde os outros itens entram.
  */
+/**
+ * Cargo e lotação são obrigatórios para pedir EPI (26/10/2026), mas o Cadastre-se
+ * não os pergunta. Falta no cadastro → a tela os pede aqui, e o que a pessoa
+ * digitar (ou escolher) entra no cadastro dela e no catálogo. Nunca sobrescreve
+ * o que o cadastro já tem. Dentro do savepoint do pedido: recusa, nada fica.
+ */
+async function _completar_funcionais(
+  tx: Tx,
+  usuario: UsuarioAtual,
+  servidor: Awaited<ReturnType<typeof servico_servidores.buscar>>[number],
+  entrada: dados_funcionais.EntradaFuncional,
+  proprio: boolean,
+): Promise<void> {
+  // pedir por outro, sem poder, é do serviço recusar (403): aqui não se mexe no cadastro alheio
+  if (proprio && servidor.id !== usuario.servidor_id) return;
+  const falta = dados_funcionais.faltam(servidor);
+  if (!falta.cargo && !falta.lotacao) return;
+  let r;
+  try {
+    r = await dados_funcionais.resolver(tx, entrada, usuario);
+  } catch (erro) {
+    if (!(erro instanceof dados_funcionais.DadosFuncionaisInvalidos)) throw erro;
+    throw new dados_funcionais.DadosFuncionaisInvalidos(`${erro.message.charAt(0).toUpperCase()}${erro.message.slice(1)}.`);
+  }
+  await servico_servidores.completar_funcionais(tx, servidor, usuario, r, "no pedido de EPI");
+  const ainda = dados_funcionais.faltam(servidor);
+  if (!ainda.cargo && !ainda.lotacao) return;
+  const o_que = [ainda.cargo ? "o cargo" : null, ainda.lotacao ? "a lotação" : null].filter(Boolean).join(" e ");
+  throw new dados_funcionais.DadosFuncionaisInvalidos(
+    proprio
+      ? `Para pedir EPI informe ${o_que}: escolha na lista ou digite em «Não está na lista?».`
+      : `O cadastro de ${servidor.nome} está sem ${o_que}: informe na seção «Cargo e lotação» (escolha ou digite) antes de salvar o pedido.`,
+  );
+}
+
 async function _tela_nova(
   c: Ctx,
   usuario: UsuarioAtual,
@@ -555,6 +591,7 @@ async function _tela_nova(
     proprio && usuario.servidor_id !== null
       ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id))
       : [];
+  const cl = await dados_funcionais.opcoes(tx);
   const digitado = opcoes.digitado ?? {};
   const item_id = opcoes.item_id ?? _id(String(digitado["item_id"] ?? ""));
   const item = await _item_do_catalogo(tx, item_id);
@@ -574,6 +611,9 @@ async function _tela_nova(
     motivo_sugerido: motivo_sugerido(String(digitado["finalidade"] ?? "ROTINA")),
     proprio,
     eu: eu ?? null,
+    cl,
+    cargo_atual: cl.cargos.find((x) => x.id === eu?.cargo_id)?.nome ?? null,
+    lotacao_atual: cl.lotacoes.find((x) => x.id === eu?.unidade_uorg_id)?.rotulo ?? null,
     // a lista de servidores só existe para quem pede por outro
     servidores: proprio ? [] : await servico_servidores.buscar(tx, q, usuario),
     nota: NOTA_SERVIDOR,
@@ -750,6 +790,8 @@ rotas.post(FILA, async (c) => {
     justificativa: f.texto("justificativa"),
     motivo: f.texto("motivo"),
     comunicacao_id: f.texto("comunicacao_id"),
+    // cargo e lotação do cadastro, quando faltam (26/10/2026)
+    ...dados_funcionais.ler(f),
     // o termo NR-06 NÃO volta marcado na recusa: declarar é ato de quem envia
   };
   const termo_aceito = _marcado(f.texto("termo_aceito"));
@@ -778,7 +820,10 @@ rotas.post(FILA, async (c) => {
 
   const comunicacao_id = _id(digitado.comunicacao_id);
   let sem_vinculo = false;
-  const r = await tentar(c, async (sp) => {
+  const r = await tentar(
+    c,
+    async (sp) => {
+    await _completar_funcionais(sp, usuario, servidor, dados_funcionais.ler(f), proprio);
     const requisicao = await servico.criar_rascunho(sp, usuario, {
       servidor,
       chefia_servidor_id: chefia ? chefia.id : null,
@@ -811,7 +856,10 @@ rotas.post(FILA, async (c) => {
     }
     if (acao === "enviar") await servico.enviar(sp, usuario, requisicao, { termo_aceito });
     return requisicao;
-  });
+    },
+    dados_funcionais.DadosFuncionaisInvalidos,
+    servico_servidores.LotacaoInvalida,
+  );
   if (!r.ok) return recusar(_motivos(r.falha));
   const aviso_vinculo = sem_vinculo
     ? " A comunicação de origem não pôde ser ligada a este pedido (já tratada, retirada ou com outro pedido): o pedido segue sem o vínculo."

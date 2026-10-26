@@ -57,6 +57,9 @@ export const unidade_uorg = pgTable(
     // `dominio/organizacao.ts`). NULL = a cor do sistema.
     cor_setor: varchar('cor_setor', { length: 12 }),
     icone_setor: varchar('icone_setor', { length: 24 }),
+    // a unidade que a própria pessoa digitou (EPI, acidente, Meu perfil) e a
+    // equipe ainda não conferiu
+    a_conferir: boolean('a_conferir').notNull().default(false),
   },
   () => [
     check(
@@ -97,6 +100,8 @@ export const cargo = pgTable('cargo', {
   id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
   nome: varchar('nome', { length: 120 }).notNull().unique(),
   codigo_siape: varchar('codigo_siape', { length: 10 }),
+  // o cargo que a própria pessoa digitou e a equipe ainda não conferiu
+  a_conferir: boolean('a_conferir').notNull().default(false),
 });
 
 export const servidor = pgTable(

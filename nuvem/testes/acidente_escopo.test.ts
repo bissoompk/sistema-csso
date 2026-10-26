@@ -56,7 +56,16 @@ describe("comunicar pela tela", () => {
   it("o servidor comum comunica e cai na ficha, que mostra o protocolo e o relato", async () => {
     await titular(db);
     const cli = await como("servidor_consulta");
-    const r = await cli.post("/acidentes/comunicar", formulario(), { seguir: false });
+    // o cadastro do servidor não tem cargo nem lotação: o formulário os traz
+    const r = await cli.post(
+      "/acidentes/comunicar",
+      formulario({
+        env_1_cargo_novo: "Técnico Fictício",
+        env_1_lotacao_nova: "Setor Fictício",
+        env_1_lotacao_campus_id: String((await db.select().from(e.campus))[0]!.id),
+      }),
+      { seguir: false },
+    );
     expect(r.status).toBe(303);
     expect(r.location).toMatch(/^\/acidentes\/\d+\?mensagem=/);
     const ficha = await cli.get(r.location!);

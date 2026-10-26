@@ -94,6 +94,11 @@ export function criarApp(): Hono<Ambiente> {
     for (const [nome, valor] of cabecalhos(nonce, https)) {
       if (!c.res.headers.has(nome)) c.res.headers.set(nome, valor);
     }
+    // Tela HTML não fica no cache nem no "voltar" do navegador: depois do
+    // «sair», a seta de voltar reabria a tela protegida da pessoa anterior.
+    if (!c.res.headers.has("cache-control") && (c.res.headers.get("content-type") ?? "").startsWith("text/html")) {
+      c.res.headers.set("cache-control", "no-store");
+    }
   });
 
   // CSRF: método que escreve vindo de outra origem é recusado antes de tocar

@@ -542,8 +542,9 @@ rotas.post("/catalogos/cargos", async (c) => {
     const [atual] = await tx.select().from(cargo).where(eq(cargo.id, Number(cargo_id)));
     if (!atual) return redirecionar(c, "/catalogos/cargos");
     if (homonimo && homonimo.id !== atual.id) return recusar(`Já existe outro cargo chamado '${limpo}'.`);
-    const antes = { nome: atual.nome, codigo_siape: atual.codigo_siape };
-    const depois = { nome: limpo, codigo_siape: codigo };
+    const antes = { nome: atual.nome, codigo_siape: atual.codigo_siape, a_conferir: atual.a_conferir };
+    // abrir e salvar é a conferência do que foi digitado num formulário
+    const depois = { nome: limpo, codigo_siape: codigo, a_conferir: false };
     await tx.update(cargo).set(depois).where(eq(cargo.id, atual.id));
     await auditoria.registrar_diferencas(tx, { entidade: "cargo", entidade_id: atual.id, antes, depois, usuario });
     mensagem = `Cargo '${limpo}' atualizado.`;
@@ -879,6 +880,8 @@ rotas.post("/catalogos/unidades-uorg/:id{[0-9]+}", async (c) => {
       campus_id: _int(f, "campus_id"),
       emite_portaria: f.texto("emite_portaria") === "1",
       ativo: f.texto("ativo") === "1",
+      // abrir e salvar é a conferência da que foi digitada num formulário
+      a_conferir: false,
     },
     { permissao: GERENCIAR, rotulo: "Unidade", volta: "/catalogos/unidades-uorg" },
   );

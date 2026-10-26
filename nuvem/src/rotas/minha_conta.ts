@@ -37,7 +37,6 @@ import { formulario, usuarioLogado } from "../dependencias.js";
 import {
   atribuicao,
   campus as tabela_campus,
-  cargo as tabela_cargo,
   servidor as tabela_servidor,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
@@ -54,10 +53,10 @@ import {
   LotacaoInvalida,
   corrigir_pelo_titular,
   ligar_pela_propria_conta,
-  opcoes_de_lotacao,
   postos_atuais,
 } from "../servicos/servidores.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
+import * as dados_funcionais from "../servicos/dados_funcionais.js";
 import { comMensagem, pagina, redirecionar } from "../web.js";
 import { INICIO, ipDoCliente } from "./autenticacao.js";
 import { e_externo } from "../modulos.js";
@@ -128,6 +127,9 @@ type Digitado = {
   funcao?: string;
   unidade_uorg_id?: string;
   siape?: string;
+  cargo_novo?: string;
+  lotacao_nova?: string;
+  lotacao_campus_id?: string;
 };
 
 async function _tela(
@@ -178,9 +180,7 @@ async function _tela(
   // o próprio servidor corrige cargo, função e lotação (25/10/2026); a conta
   // sem servidor (e que não é de terceirizado ou discente) informa os dados
   const pede_listas = servidor !== null || !e_externo(usuario);
-  const [cargos, lotacoes] = pede_listas
-    ? await Promise.all([tx.select().from(tabela_cargo).orderBy(asc(tabela_cargo.nome)), opcoes_de_lotacao(tx)])
-    : [[], []];
+  const cl = pede_listas ? await dados_funcionais.opcoes(tx) : { cargos: [], lotacoes: [], campi: [] };
 
   // "Meu perfil" (Portal do servidor, 22/10/2026): o resumo de treinamentos.
   // Válido é o que ainda vale hoje: no prazo, a vencer, ou sem vencimento.
@@ -197,8 +197,7 @@ async function _tela(
     perfis,
     servidor,
     postos,
-    cargos,
-    lotacoes,
+    cl,
     iniciais: iniciais(servidor?.nome ?? conta?.nome ?? usuario.nome),
     resumo_certificados,
     // terceirizado ou discente: não há cadastro funcional a mostrar, e o aviso
@@ -265,21 +264,20 @@ rotas.post(`${CAMINHO}/funcionais`, async (c) => {
   const tx = c.get("tx");
   if (usuario.servidor_id === null) return redirecionar(c, CAMINHO);
   const f = await formulario(c);
-  const digitado = { cargo_id: f.texto("cargo_id"), funcao: f.texto("funcao").trim(), unidade_uorg_id: f.texto("unidade_uorg_id") };
-  const inteiro = (v: string) => (/^\d+$/.test(v) ? Number(v) : null);
+  const digitado = { ...dados_funcionais.ler(f), funcao: f.texto("funcao").trim() };
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id)).for("update");
   if (!servidor) return redirecionar(c, CAMINHO);
   if ([...digitado.funcao].length > 120) {
     return _tela(c, usuario, { erro_funcionais: "A função tem mais de 120 caracteres.", digitado });
   }
   try {
-    await corrigir_pelo_titular(tx, servidor, usuario, {
-      cargo_id: inteiro(digitado.cargo_id),
-      funcao: digitado.funcao || null,
-      unidade_uorg_id: inteiro(digitado.unidade_uorg_id),
+    // savepoint: a recusa não deixa cargo/lotação digitados no catálogo
+    await tx.transaction(async (sp) => {
+      const { cargo_id, unidade_uorg_id } = await dados_funcionais.resolver(sp, digitado, usuario);
+      await corrigir_pelo_titular(sp, servidor, usuario, { cargo_id, funcao: digitado.funcao || null, unidade_uorg_id });
     });
   } catch (erro) {
-    if (!(erro instanceof LotacaoInvalida)) throw erro;
+    if (!(erro instanceof LotacaoInvalida) && !(erro instanceof dados_funcionais.DadosFuncionaisInvalidos)) throw erro;
     if (/^nada mudou/.test(erro.message)) return redirecionar(c, comMensagem(CAMINHO, "Nada mudou."));
     const motivo = erro.message.charAt(0).toUpperCase() + erro.message.slice(1);
     return _tela(c, usuario, { erro_funcionais: `${motivo}.`, digitado });
@@ -296,26 +294,18 @@ rotas.post(`${CAMINHO}/sou-servidor`, async (c) => {
   const usuario = await usuarioLogado(c);
   if (usuario.servidor_id !== null || e_externo(usuario)) return redirecionar(c, CAMINHO);
   const f = await formulario(c);
-  const digitado = {
-    siape: f.texto("siape").trim(),
-    nome: f.texto("nome").trim(),
-    cargo_id: f.texto("cargo_id"),
-    unidade_uorg_id: f.texto("unidade_uorg_id"),
-  };
-  const inteiro = (v: string) => (/^\d{1,9}$/.test(v) ? Number(v) : null);
+  const digitado = { ...dados_funcionais.ler(f), siape: f.texto("siape").trim(), nome: f.texto("nome").trim() };
   try {
-    const { criado } = await ligar_pela_propria_conta(c.get("tx"), usuario, {
-      siape: digitado.siape,
-      nome: digitado.nome,
-      cargo_id: inteiro(digitado.cargo_id),
-      unidade_uorg_id: inteiro(digitado.unidade_uorg_id),
+    const { criado } = await c.get("tx").transaction(async (sp) => {
+      const { cargo_id, unidade_uorg_id } = await dados_funcionais.resolver(sp, digitado, usuario);
+      return ligar_pela_propria_conta(sp, usuario, { siape: digitado.siape, nome: digitado.nome, cargo_id, unidade_uorg_id });
     });
     return redirecionar(
       c,
       comMensagem(CAMINHO, criado ? "Cadastro de servidor criado e ligado à sua conta." : "Conta ligada ao seu cadastro de servidor."),
     );
   } catch (erro) {
-    if (!(erro instanceof LotacaoInvalida)) throw erro;
+    if (!(erro instanceof LotacaoInvalida) && !(erro instanceof dados_funcionais.DadosFuncionaisInvalidos)) throw erro;
     const motivo = erro.message.charAt(0).toUpperCase() + erro.message.slice(1);
     return _tela(c, usuario, { erro_servidor: `${motivo}.`, digitado });
   }

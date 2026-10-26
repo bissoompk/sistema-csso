@@ -47,6 +47,20 @@
     <label for="{{ p }}siape">SIAPE</label>
     <input id="{{ p }}siape" name="{{ p }}siape" inputmode="numeric" maxlength="7" class="mono" value="{{ d[p ~ 'siape'] or '' }}">
   </div>
+  {# CARGO E LOTAÇÃO (26/10/2026): o cadastro nem sempre os tem. Faltando no
+     SEU cadastro, a comunicação em que você é o envolvido pede os dois; nos
+     demais é opcional e só completa o que está vazio. O que se digita entra no
+     catálogo (`servicos/dados_funcionais.ts`). #}
+  {% if cl %}
+  {% set falta_aqui = (i == 1 and falta_funcional) %}
+  <div class="campo" data-mostra-quando="{{ p }}vinculo=SERVIDOR">
+    <details class="recolhido"{{ ' open' if falta_aqui or d[p ~ 'cargo_novo'] or d[p ~ 'lotacao_nova'] or d[p ~ 'cargo_id'] or d[p ~ 'unidade_uorg_id'] }}>
+      <summary>Cargo e lotação{% if falta_aqui %} — obrigatórios, faltam no seu cadastro{% else %} (só se o cadastro estiver sem){% endif %}</summary>
+      {% set fp = p %}{% set fd = d %}{% set obrigatorio = falta_aqui %}
+      {% include "partes/cargo_lotacao.html" %}
+    </details>
+  </div>
+  {% endif %}
   <div data-mostra-quando="{{ p }}vinculo=TERCEIRIZADO|ESTUDANTE|BOLSISTA|RESIDENTE|VISITANTE|OUTRO">
     <div class="linha-campos">
       <div class="campo">

@@ -146,6 +146,27 @@
       </div>
       {% endif %}
 
+      {# CARGO E LOTAÇÃO (26/10/2026): o Cadastre-se não pergunta; o pedido exige.
+         Com os dois no cadastro, só se mostram; faltando, a pessoa escolhe ou
+         digita (o catálogo cresce) e o cadastro dela é completado. #}
+      {% if proprio and eu and eu.cargo_id and eu.unidade_uorg_id %}
+      <p class="discreto">Seu cadastro: <strong>{{ cargo_atual }}</strong> · <strong>{{ lotacao_atual }}</strong>.
+        Para corrigir, use <a href="/minha-conta#dados-funcionais">Meu perfil</a>.</p>
+      {% else %}
+      <div id="cargo-e-lotacao">
+        <h3>{{ 'Seu cargo e sua lotação' if proprio else 'Cargo e lotação de quem vai usar' }}</h3>
+        <p class="dica">{% if proprio %}Obrigatórios para pedir EPI. Escolha na lista ou, se não achar, digite: o que você
+          informar fica no seu cadastro e entra na lista para os próximos.{% else %}Só se o cadastro do servidor escolhido
+          estiver sem cargo ou lotação: o que for informado completa o cadastro dele (nada é sobrescrito).{% endif %}</p>
+        {% set fd = {'cargo_id': d.get('cargo_id') or (eu.cargo_id if eu else ''),
+                     'unidade_uorg_id': d.get('unidade_uorg_id') or (eu.unidade_uorg_id if eu else ''),
+                     'cargo_novo': d.get('cargo_novo') or '', 'lotacao_nova': d.get('lotacao_nova') or '',
+                     'lotacao_campus_id': d.get('lotacao_campus_id') or ''} %}
+        {% set fp = '' %}{% set obrigatorio = proprio %}
+        {% include "partes/cargo_lotacao.html" %}
+      </div>
+      {% endif %}
+
       <div class="linha-campos">
         <div class="campo">
           <label for="finalidade">Finalidade</label>

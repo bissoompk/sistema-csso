@@ -96,6 +96,8 @@ function exigidos(f: Formulario, ...nomes: string[]): void {
 rotas.get("/login", async (c) => {
   const tx = c.get("tx");
   if (!(await autenticacao.existe_algum_usuario(tx))) return redirecionar(c, "/primeiro-acesso");
+  // quem já está dentro não precisa do formulário (favorito do /login)
+  if (await usuarioOpcional(c)) return redirecionar(c, destino_seguro(c.req.query("proximo") ?? INICIO));
   return pagina(c, "paginas/login.html", null, {
     proximo: destino_seguro(c.req.query("proximo") ?? INICIO),
     // `hasOwn`: `?motivo=toString` acharia o método herdado do objeto
