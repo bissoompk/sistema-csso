@@ -555,8 +555,18 @@ export const participante_mesclagem = pgTable(
     }>('movido').notNull(),
     feito_por: integer('feito_por'),
     feito_em: MomentoUTC('feito_em').notNull().$defaultFn(agora_utc),
+    // NUVEM (26/10/2026): a junção desfeita (`mesclagem.desfazer`). A linha fica,
+    // com quem desfez, quando e por quê; o `movido` continua sendo o que foi movido
+    desfeita_em: MomentoUTC('desfeita_em'),
+    desfeita_por: integer('desfeita_por'),
+    desfeita_motivo: text('desfeita_motivo'),
   },
   (t) => [
+    foreignKey({ name: 'fk_mesclagem_desfeita_por', columns: [t.desfeita_por], foreignColumns: [usuario.id] }),
+    check(
+      'ck_mesclagem_desfeita',
+      sql.raw(`(desfeita_em IS NULL) = (desfeita_motivo IS NULL)`),
+    ),
     foreignKey({ name: 'fk_mesclagem_mantido', columns: [t.mantido_id], foreignColumns: [participante.id] }),
     foreignKey({ name: 'fk_mesclagem_absorvido', columns: [t.absorvido_id], foreignColumns: [participante.id] }),
     foreignKey({ name: 'fk_mesclagem_usuario', columns: [t.feito_por], foreignColumns: [usuario.id] }),

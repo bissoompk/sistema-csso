@@ -1714,6 +1714,8 @@ rotas.get(PARTICIPANTES, async (c) => {
   // o atalho "juntar com outro cadastro" da ficha (23/10/2026): a pessoa e
   // quem parece com ela, pelo critério único (`duplicados.procurar`)
   const de = id_opcional(c.req.query("de"));
+  // a lista das junções já feitas, com o "desfazer" de cada uma (26/10/2026)
+  const feitas = c.req.query("feitas") !== undefined;
   const origem = de !== null ? await servico_participante.carregar(tx, de) : null;
   const do_atalho =
     origem && origem.ativo && origem.mesclado_em_id === null
@@ -1724,8 +1726,10 @@ rotas.get(PARTICIPANTES, async (c) => {
     : do_atalho.length
       ? await mesclagem.fichas(tx, do_atalho)
       : [];
-  const grupos = busca || do_atalho.length ? [] : await mesclagem.possiveis_duplicados(tx);
+  const grupos = busca || do_atalho.length || feitas ? [] : await mesclagem.possiveis_duplicados(tx);
   return pagina(c, "paginas/participantes.html", usuario, {
+    feitas,
+    juncoes: feitas ? await mesclagem.juncoes_feitas(tx) : [],
     // `termo`, e não `busca`: a casca copia `busca` para o campo da busca
     // global do cabeçalho, e o mesmo texto nos dois campos confundia
     termo: busca,

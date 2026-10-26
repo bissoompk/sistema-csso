@@ -14,7 +14,7 @@
  * de certificado diferentes, ou os dois na mesma turma (a junção deixaria a
  * pessoa inscrita duas vezes).
  */
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   certificado as tabela_certificado,
@@ -225,6 +225,242 @@ export async function _mesclar(
     });
   }
   return { inscricoes: inscricoes.length, certificados: certificados.length, emails };
+}
+
+// ---------------------------------------------------------------------
+// Desfazer a junção (26/10/2026)
+// ---------------------------------------------------------------------
+export const PARTICIPANTE_MESCLAGEM_DESFEITA = "PARTICIPANTE_MESCLAGEM_DESFEITA";
+
+export interface ResultadoDesfazer {
+  mantido: string;
+  absorvido: string;
+  inscricoes: number;
+  certificados: number;
+  emails: number;
+  /** o que a junção moveu e que já não está com o mantido: fica onde está */
+  ficou_para_tras: number;
+  distintos: boolean;
+}
+
+/**
+ * Desfaz uma junção: devolve ao absorvido o que a junção moveu
+ * (`participante_mesclagem.movido`) e o reativa. Só o que AINDA está com o
+ * mantido volta; o que a junção moveu e depois mudou de mãos fica onde está,
+ * e a contagem diz quanto. Nada do que nasceu depois da junção (inscrição,
+ * certificado ou e-mail novos do mantido) é tocado.
+ *
+ * Recusa quando desfazer seria desfazer uma história que andou: o mantido foi
+ * juntado a um terceiro (desfaça primeiro a junção mais nova), qualquer um dos
+ * dois foi expurgado, ou a junção já foi desfeita.
+ *
+ * Limites do registro, que o `movido` não guarda de propósito (RN-19, nunca o
+ * número nem o endereço): o CPF volta a partir do que está no mantido (ele o
+ * herdou, ou já tinha o mesmo); o e-mail repetido que a junção apagou é
+ * recriado a partir do endereço do mantido a que era igual; e o principal do
+ * absorvido é o herdado, ou o primeiro que voltou.
+ *
+ * `marcar_distintos` grava o par como "não são a mesma pessoa" (é o caso de
+ * quem juntou errado); sem ele, o par pode voltar a aparecer como parecido.
+ */
+export async function desfazer(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  mesclagem_id: number,
+  motivo: string | null | undefined,
+  marcar_distintos: boolean,
+): Promise<ResultadoDesfazer> {
+  usuario.exigir("participante.mesclar");
+  const limpo = (motivo ?? "").trim();
+  if (!limpo) throw new MesclagemRecusada("Desfazer uma junção exige o motivo: é o que explica na trilha.");
+  const [linha] = await tx.select().from(tabela_mesclagem).where(eq(tabela_mesclagem.id, mesclagem_id));
+  if (!linha) throw new MesclagemRecusada("Junção não encontrada.");
+  if (linha.desfeita_em !== null) throw new MesclagemRecusada("Esta junção já foi desfeita.");
+  const mantido = await servico_participante.carregar(tx, linha.mantido_id);
+  const absorvido = await servico_participante.carregar(tx, linha.absorvido_id);
+  if (!mantido || !absorvido) throw new MesclagemRecusada("Cadastro não encontrado.");
+  if (mantido.expurgado_em !== null || absorvido.expurgado_em !== null) {
+    throw new MesclagemRecusada("Um dos cadastros já foi expurgado: não há como devolver o que era dele.");
+  }
+  if (absorvido.mesclado_em_id !== mantido.id) {
+    throw new MesclagemRecusada(`${absorvido.identificador_publico} não está mais juntado a ${mantido.identificador_publico}.`);
+  }
+  if (mantido.mesclado_em_id !== null) {
+    throw new MesclagemRecusada(
+      `${mantido.identificador_publico} foi juntado a outro cadastro depois desta junção: desfaça primeiro a junção mais nova.`,
+    );
+  }
+  const m = linha.movido;
+
+  // inscrições: só as que ainda estão com o mantido
+  const insc = m.inscricoes.length
+    ? await tx
+        .update(tabela_inscricao)
+        .set({ participante_id: absorvido.id })
+        .where(and(inArray(tabela_inscricao.id, m.inscricoes), eq(tabela_inscricao.participante_id, mantido.id)))
+        .returning({ id: tabela_inscricao.id })
+    : [];
+  // certificados: voltam com o `servidor_id` de antes (o escopo "meus")
+  let certificados = 0;
+  for (const c of m.certificados) {
+    const r = await tx
+      .update(tabela_certificado)
+      .set({ participante_id: absorvido.id, servidor_id: c.servidor_id_antes })
+      .where(and(eq(tabela_certificado.id, c.id), eq(tabela_certificado.participante_id, mantido.id)))
+      .returning({ id: tabela_certificado.id });
+    certificados += r.length;
+  }
+
+  // e-mails que a junção moveu, e que ainda são do mantido, voltam
+  const voltaram = m.emails_movidos.length
+    ? await tx
+        .update(tabela_email)
+        .set({ participante_id: absorvido.id })
+        .where(and(inArray(tabela_email.id, m.emails_movidos), eq(tabela_email.participante_id, mantido.id)))
+        .returning({ id: tabela_email.id })
+    : [];
+  const ids_voltaram = voltaram.map((x) => x.id);
+  // os que a junção apagou por serem iguais aos do mantido: recriados com o
+  // mesmo endereço do mantido. Confirmado só se o mantido não o confirma agora
+  // (`uq_email_confirmado`: um endereço confirmado é de um cadastro só)
+  const recriados: number[] = [];
+  for (const rep of m.emails_repetidos) {
+    if (rep.igual_a === null) continue;
+    const [base] = await tx.select().from(tabela_email).where(eq(tabela_email.id, rep.igual_a));
+    if (!base || base.participante_id !== mantido.id) continue;
+    const [novo] = await tx
+      .insert(tabela_email)
+      .values({
+        participante_id: absorvido.id,
+        email: base.email,
+        email_normalizado: base.email_normalizado,
+        origem: rep.origem,
+        confirmado_em: rep.confirmado_em && base.confirmado_em === null ? new Date(rep.confirmado_em) : null,
+      })
+      .returning({ id: tabela_email.id });
+    recriados.push(novo!.id);
+  }
+  const ficou_para_tras =
+    m.inscricoes.length - insc.length + (m.certificados.length - certificados) + (m.emails_movidos.length - ids_voltaram.length);
+
+  // o principal do mantido: se era um dos que voltaram, passa para um que ficou
+  const campos_mantido: Partial<typeof tabela_participante.$inferSelect> = {};
+  if (mantido.email_principal_id !== null && ids_voltaram.includes(mantido.email_principal_id)) {
+    const [resto] = await tx
+      .select({ id: tabela_email.id })
+      .from(tabela_email)
+      .where(and(eq(tabela_email.participante_id, mantido.id), sql`${tabela_email.id} <> ALL(${ids_voltaram})`))
+      .orderBy(tabela_email.id)
+      .limit(1);
+    campos_mantido.email_principal_id = resto?.id ?? null;
+  }
+  // campos herdados saem do mantido se ainda são o que o absorvido tem
+  if (m.campos_herdados.includes("organizacao") && mantido.organizacao === absorvido.organizacao) {
+    campos_mantido.organizacao = null;
+  }
+  if (m.campos_herdados.includes("matricula_externa") && mantido.matricula_externa === absorvido.matricula_externa) {
+    campos_mantido.matricula_externa = null;
+  }
+  // o CPF e a conta: primeiro saem do mantido, depois entram no absorvido (UNIQUE)
+  const cpf = m.absorvido_tinha_cpf ? mantido.cpf : null;
+  if (m.campos_herdados.includes("cpf") && cpf) campos_mantido.cpf = null;
+  const conta = m.conta_movida ?? null;
+  const conta_volta = conta !== null && mantido.usuario_id === conta;
+  if (conta_volta) campos_mantido.usuario_id = null;
+  if (Object.keys(campos_mantido).length) {
+    await tx.update(tabela_participante).set(campos_mantido).where(eq(tabela_participante.id, mantido.id));
+  }
+  const principal = m.principal_herdado !== null && ids_voltaram.includes(m.principal_herdado)
+    ? m.principal_herdado
+    : (ids_voltaram[0] ?? recriados[0] ?? null);
+  await tx
+    .update(tabela_participante)
+    .set({
+      mesclado_em_id: null,
+      ativo: true,
+      email_principal_id: principal,
+      cpf,
+      usuario_id: conta_volta ? conta : null,
+    })
+    .where(eq(tabela_participante.id, absorvido.id));
+  await tx
+    .update(tabela_mesclagem)
+    .set({ desfeita_em: new Date(), desfeita_por: usuario.id, desfeita_motivo: limpo })
+    .where(eq(tabela_mesclagem.id, linha.id));
+  if (marcar_distintos) await duplicados.marcar_distintos(tx, usuario, mantido.id, absorvido.id, "JUNCAO");
+
+  const resumo =
+    `${insc.length} inscrição(ões), ${certificados} certificado(s), ${ids_voltaram.length + recriados.length} e-mail(s)` +
+    (ficou_para_tras ? `; ${ficou_para_tras} item(ns) que a junção moveu já não estavam com ${mantido.identificador_publico} e ficaram onde estão` : "");
+  for (const [p, frase] of [
+    [absorvido, `junção de ${absorvido.identificador_publico} a ${mantido.identificador_publico} desfeita (${resumo})`],
+    [mantido, `junção de ${absorvido.identificador_publico} desfeita: o que era dele voltou (${resumo})`],
+  ] as const) {
+    await auditoria.registrar(tx, {
+      entidade: "participante",
+      entidade_id: p.id,
+      tipo_evento: PARTICIPANTE_MESCLAGEM_DESFEITA,
+      descricao: `${frase}: ${limpo}`,
+      comentario: limpo,
+      usuario,
+    });
+  }
+  return {
+    mantido: mantido.identificador_publico,
+    absorvido: absorvido.identificador_publico,
+    inscricoes: insc.length,
+    certificados,
+    emails: ids_voltaram.length + recriados.length,
+    ficou_para_tras,
+    distintos: marcar_distintos,
+  };
+}
+
+export interface JuncaoFeita {
+  id: number;
+  mantido: string;
+  absorvido: string;
+  nome_mantido: string;
+  nome_absorvido: string;
+  feita_em: Date;
+  inscricoes: number;
+  certificados: number;
+  emails: number;
+  desfeita_em: Date | null;
+  desfeita_motivo: string | null;
+  /** por que não dá para desfazer agora; vazio quando dá */
+  impedimento: string;
+}
+
+/** As últimas junções, da mais nova à mais antiga, com o que impede desfazer cada uma. */
+export async function juncoes_feitas(tx: Executor, limite = 50): Promise<JuncaoFeita[]> {
+  const linhas = await tx.select().from(tabela_mesclagem).orderBy(desc(tabela_mesclagem.id)).limit(limite);
+  const saida: JuncaoFeita[] = [];
+  for (const l of linhas) {
+    const mantido = await servico_participante.carregar(tx, l.mantido_id);
+    const absorvido = await servico_participante.carregar(tx, l.absorvido_id);
+    if (!mantido || !absorvido) continue;
+    let impedimento = "";
+    if (l.desfeita_em !== null) impedimento = "já desfeita";
+    else if (mantido.expurgado_em !== null || absorvido.expurgado_em !== null) impedimento = "um dos cadastros foi expurgado";
+    else if (absorvido.mesclado_em_id !== mantido.id) impedimento = "o juntado não está mais ligado a este cadastro";
+    else if (mantido.mesclado_em_id !== null) impedimento = "o cadastro que ficou foi juntado a outro depois: desfaça primeiro a junção mais nova";
+    saida.push({
+      id: l.id,
+      mantido: mantido.identificador_publico,
+      absorvido: absorvido.identificador_publico,
+      nome_mantido: nome_exibicao(mantido),
+      nome_absorvido: nome_exibicao(absorvido),
+      feita_em: l.feito_em,
+      inscricoes: l.movido.inscricoes.length,
+      certificados: l.movido.certificados.length,
+      emails: l.movido.emails_movidos.length,
+      desfeita_em: l.desfeita_em,
+      desfeita_motivo: l.desfeita_motivo,
+      impedimento,
+    });
+  }
+  return saida;
 }
 
 // ---------------------------------------------------------------------

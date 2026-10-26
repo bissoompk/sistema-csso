@@ -14,6 +14,7 @@ import type { Ambiente } from "../nucleo/contexto.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as duplicados from "../servicos/duplicados.js";
+import * as mesclagem from "../servicos/mesclagem.js";
 import * as pedidos_link from "../servicos/pedidos_link.js";
 import * as servico_participante from "../servicos/participante.js";
 import type { Executor } from "../db/cliente.js";
@@ -107,3 +108,37 @@ rotas.post(`${PARTICIPANTES}/distintos`, async (c) => {
   );
 });
 
+
+/**
+ * Desfazer uma junção (26/10/2026): devolve ao cadastro juntado o que a
+ * junção moveu (`mesclagem.desfazer`). Quem faz é quem pode juntar
+ * (`participante.mesclar`), com o motivo, e escolhe se o par fica gravado como
+ * "não são a mesma pessoa" (marcado de saída: desfazer costuma ser a
+ * correção de quem juntou errado).
+ */
+rotas.post(`${PARTICIPANTES}/desfazer`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("participante.mesclar");
+  const f = await formulario(c);
+  const volta = f.texto("volta").startsWith(PARTICIPANTES) ? f.texto("volta") : `${PARTICIPANTES}?feitas=1`;
+  const id = id_opcional(f.texto("mesclagem_id"));
+  if (id === null) return _erro(c, volta, "Escolha a junção.");
+  const tx = c.get("tx");
+  let r: Awaited<ReturnType<typeof mesclagem.desfazer>>;
+  try {
+    r = await tx.transaction((sp) =>
+      mesclagem.desfazer(sp as Executor, usuario, id, f.texto("motivo"), f.texto("distintos") === "sim"),
+    );
+  } catch (erro) {
+    if (erro instanceof RegraViolada) return _erro(c, volta, `Nada foi desfeito. ${erro.message}`);
+    throw erro;
+  }
+  return _volta(
+    c,
+    volta,
+    `Junção desfeita: ${r.absorvido} voltou a ser um cadastro à parte, com ${r.inscricoes} inscrição(ões), ` +
+      `${r.certificados} certificado(s) e ${r.emails} e-mail(s).` +
+      (r.ficou_para_tras ? ` ${r.ficou_para_tras} item(ns) que já não estavam com ${r.mantido} ficaram onde estão.` : "") +
+      (r.distintos ? " Os dois ficam como pessoas diferentes: o aviso não volta." : ""),
+  );
+});

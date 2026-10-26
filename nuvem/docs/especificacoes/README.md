@@ -12,7 +12,7 @@ O que ficou diferente do especificado está em `nuvem/DESVIOS.md`.
 | `epi/`, `paridade_*.md` | Paridade da Gestão de EPIs e dos Certificados com o IntegraSST |
 | `plano_menu_certificados.md` | Menu de Certificados |
 | `portal-abho/` | Portal do servidor e vitrine de cursos (especificação e protótipos HTML) |
-| `duplicados/` | Prevenção de cadastros duplicados (decisões; etapa 1 em 23/10 e etapa 2, «sou eu» / «não fui eu», em 26/10) |
+| `duplicados/` | Prevenção de cadastros duplicados (decisões; etapa 1 em 23/10, etapa 2 «sou eu» / «não fui eu» e desfazer junção em 26/10) |
 | `ativar-acesso/` | Ativar acesso, esqueci minha senha e e-mail |
 | `config/` | Configurações por perfil |
 | `acidentes-catsp/` | Módulo Análise de Acidentes: especificação, decisões D1–D14 e desvios da F0 (a especificação completa também está em `entrada/acidentes_especificacao.md`) |
