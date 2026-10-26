@@ -398,6 +398,23 @@ rotas.post("/catalogos/campi", async (c) => {
   return _volta(c, "/catalogos/campi", `Campus ${sigla} cadastrado.`);
 });
 
+/**
+ * Outra unidade com o MESMO nome oficial (sem contar caixa nem acento). O nome
+ * oficial é a chave que o sistema usa para achar a unidade (a CSSO, por
+ * exemplo): uma segunda com o mesmo nome deixa a busca ambígua, e o cadastro
+ * aceitava (teste de configurações, 26/10/2026).
+ */
+async function _unidade_homonima(tx: Executor, nome_oficial: string, exceto_id: number | null) {
+  const chave = textos.chave_busca(nome_oficial);
+  const todas = await tx.select({ id: unidade_uorg.id, nome_oficial: unidade_uorg.nome_oficial, sigla: unidade_uorg.sigla }).from(unidade_uorg);
+  return todas.find((u) => u.id !== exceto_id && textos.chave_busca(u.nome_oficial) === chave) ?? null;
+}
+
+/** Fim de vigência antes do início não descreve período nenhum. */
+function _vigencia_invertida(inicio: string, fim: string | null): boolean {
+  return fim !== null && fim < inicio;
+}
+
 /** A caixa do nome oficial é preservada byte a byte: é ela que sai no UORG do parecer. */
 rotas.post("/catalogos/unidades-uorg", async (c) => {
   const usuario = await usuarioLogado(c);
@@ -407,6 +424,16 @@ rotas.post("/catalogos/unidades-uorg", async (c) => {
   const tx = c.get("tx");
   const campus_id = _int(f, "campus_id");
   const codigo = f.texto("codigo_uorg").trim() || null;
+  const homonima = await _unidade_homonima(tx, f.texto("nome_oficial"), null);
+  if (homonima) {
+    const digitado = Object.fromEntries(
+      ["nome_oficial", "nome_extenso", "tipo", "codigo_uorg", "sigla", "unidade_pai_id", "emite_portaria"].map((k) => [k, f.texto(k)]),
+    );
+    return _tela(c, usuario, "unidades-uorg", {
+      erro: `Já existe uma unidade com o nome oficial “${homonima.nome_oficial}”${homonima.sigla ? ` (${homonima.sigla})` : ""}: o nome oficial identifica a unidade, e dois iguais a confundem.`,
+      digitado: { ...digitado, campus_id },
+    });
+  }
   if (codigo) {
     const [ja] = await tx.select().from(unidade_uorg).where(eq(unidade_uorg.codigo_uorg, codigo));
     if (ja) {
@@ -506,7 +533,10 @@ rotas.post("/catalogos/cargos", async (c) => {
 
   if (!limpo) return recusar("O nome do cargo não pode ficar em branco.");
   const codigo = codigo_siape.trim() || null;
-  const [homonimo] = await tx.select().from(cargo).where(eq(cargo.nome, limpo));
+  // sem contar caixa nem acento: "tecnico de laboratorio area" era cadastrado ao
+  // lado de "TECNICO DE LABORATORIO AREA" (a unicidade do banco é byte a byte)
+  const chave_do_nome = textos.chave_busca(limpo);
+  const homonimo = (await tx.select().from(cargo)).find((x) => textos.chave_busca(x.nome) === chave_do_nome);
   let mensagem: string;
   if (editando) {
     const [atual] = await tx.select().from(cargo).where(eq(cargo.id, Number(cargo_id)));
@@ -609,6 +639,12 @@ rotas.post("/catalogos/autoridades-destinatarias", async (c) => {
     vigencia_inicio: _data_iso(f.texto("vigencia_inicio")),
     vigencia_fim: f.texto("vigencia_fim") ? _data_iso(f.texto("vigencia_fim")) : null,
   };
+  if (_vigencia_invertida(valores.vigencia_inicio, valores.vigencia_fim)) {
+    return _tela(c, usuario, "autoridades-destinatarias", {
+      erro: "O fim da vigência não pode ser antes do início.",
+      digitado: Object.fromEntries(["nome", "cargo", "tratamento", "vigencia_inicio", "vigencia_fim"].map((k) => [k, f.texto(k)])),
+    });
+  }
   if (!valores.nome || !valores.cargo || !valores.tratamento) {
     return _tela(c, usuario, "autoridades-destinatarias", {
       erro: "Nome, cargo e tratamento saem no parecer: nenhum pode ficar em branco.",
@@ -640,6 +676,7 @@ rotas.post("/catalogos/setores-emissores", async (c) => {
       digitado: Object.fromEntries(CAMPOS_SETOR.map((k) => [k, f.texto(k)])),
     });
   if (!valores.sigla_composta || !valores.nome_extenso) return recusar("Sigla e nome extenso não podem ficar em branco.");
+  if (_vigencia_invertida(valores.vigencia_inicio, valores.vigencia_fim)) return recusar("O fim da vigência não pode ser antes do início.");
   const [ja] = await tx
     .select()
     .from(setor_emissor)
@@ -719,6 +756,10 @@ rotas.post("/catalogos/autoridades-destinatarias/:id{[0-9]+}", async (c) => {
   usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome", "cargo", "tratamento", "vigencia_inicio");
+  if (_vigencia_invertida(_data_iso(f.texto("vigencia_inicio")), f.texto("vigencia_fim") ? _data_iso(f.texto("vigencia_fim")) : null)) {
+    return _recusar_edicao(c, usuario, "autoridades-destinatarias", f, ["nome", "cargo", "tratamento", "vigencia_inicio", "vigencia_fim"],
+      "O fim da vigência não pode ser antes do início.");
+  }
   return salvar_com_diff(
     c,
     usuario,
@@ -742,6 +783,9 @@ rotas.post("/catalogos/setores-emissores/:id{[0-9]+}", async (c) => {
   exigidos(f, "sigla_composta", "nome_extenso", "vigencia_inicio");
   const id = Number(c.req.param("id"));
   const campos = _campos_setor(f);
+  if (_vigencia_invertida(campos.vigencia_inicio, campos.vigencia_fim)) {
+    return _recusar_edicao(c, usuario, "setores-emissores", f, CAMPOS_SETOR, "O fim da vigência não pode ser antes do início.");
+  }
   const [ja] = await c
     .get("tx")
     .select()
@@ -793,6 +837,17 @@ rotas.post("/catalogos/unidades-uorg/:id{[0-9]+}", async (c) => {
   exigidos(f, "nome_oficial", "nome_extenso", "tipo", "campus_id");
   const id = Number(c.req.param("id"));
   const codigo = _texto(f.texto("codigo_uorg"));
+  const homonima = await _unidade_homonima(c.get("tx"), f.texto("nome_oficial"), id);
+  if (homonima) {
+    return _recusar_edicao(
+      c,
+      usuario,
+      "unidades-uorg",
+      f,
+      ["codigo_uorg", "sigla", "nome_oficial", "nome_extenso", "tipo", "campus_id", "emite_portaria", "ativo"],
+      `Já existe outra unidade com o nome oficial “${homonima.nome_oficial}”${homonima.sigla ? ` (${homonima.sigla})` : ""}.`,
+    );
+  }
   if (codigo) {
     const [ja] = await c
       .get("tx")

@@ -153,7 +153,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   LOGIN_CONVERTIDO_PARA_EMAIL: "Login convertido para o e-mail",
   // Ativar meu acesso / Esqueci minha senha (23/10/2026, `ativar_acesso.ts`): o
   // ator é "o próprio titular" e a descrição nunca leva nome, SIAPE nem e-mail.
-  ACESSO_ATIVADO: "Acesso ativado pelo próprio titular (Ativar meu acesso)",
+  ACESSO_ATIVADO: "Acesso ativado pelo próprio titular (Cadastre-se)",
   SERVIDOR_AUTOCADASTRADO: "Servidor cadastrado pelo próprio servidor no Cadastre-se",
   INSCRICAO_EMAIL_CONFIRMADO: "E-mail do pedido pelo link confirmado (sem vaga ou turma fechada: fica para a equipe)",
   ACESSO_CRIADO_NO_CADASTRO: "Conta criada com o cadastro do servidor, sem senha (o titular a define)",

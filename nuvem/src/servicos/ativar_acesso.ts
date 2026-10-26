@@ -633,7 +633,7 @@ export async function garantir_acesso(tx: Executor, servidor: Servidor, origem: 
     tipo_evento: ACESSO_CRIADO_NO_CADASTRO,
     descricao:
       `Conta criada com o cadastro do servidor, com o perfil ${PERFIL_DO_TITULAR} e sem senha utilizável: ` +
-      "o titular define a senha por 'Ativar meu acesso'. Nenhum e-mail foi enviado.",
+      "o titular define a senha pelo Cadastre-se (vínculo Servidor) ou por 'Esqueci minha senha'. Nenhum e-mail foi enviado.",
     ...origem,
   });
   return "criada";

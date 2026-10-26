@@ -407,3 +407,71 @@ describe("edição pelo popup", () => {
     expect(corpo).toContain('value="LEAC2"');
   });
 });
+
+// =====================================================================
+// O que o teste das telas de configurações achou (26/10/2026)
+// =====================================================================
+describe("validações dos catálogos que faltavam", () => {
+  it("cargo com o mesmo nome, sem contar caixa nem acento, é recusado — no cadastro e na edição", async () => {
+    const r = await amb.cliente.post("/catalogos/cargos", { nome: "tecnico de laboratorio area" });
+    expect(r.status).toBe(200);
+    expect(r.text).toContain("já está cadastrado");
+    expect(await amb.db.select().from(e.cargo).where(eq(e.cargo.nome, "tecnico de laboratorio area"))).toHaveLength(0);
+    const outro = await amb.cliente.post("/catalogos/cargos", { nome: "Cargo Outro Teste" });
+    expect(outro.status).toBe(200);
+    const [novo] = await amb.db.select().from(e.cargo).where(eq(e.cargo.nome, "Cargo Outro Teste"));
+    const edicao = await amb.cliente.post("/catalogos/cargos", { cargo_id: String(novo!.id), nome: "Técnico de Laboratório Área" });
+    expect(edicao.text).toContain("Já existe outro cargo");
+  });
+
+  it("unidade com o mesmo nome oficial de outra é recusada, no cadastro e na edição", async () => {
+    const [csso] = await amb.db.select().from(e.unidade_uorg).where(eq(e.unidade_uorg.sigla, "CSSO"));
+    const base = { campus_id: String(csso!.campus_id), tipo: "COORDENADORIA", nome_extenso: "Duplicada" };
+    const r = await amb.cliente.post("/catalogos/unidades-uorg", { ...base, nome_oficial: "coordenadoria de seguranca e saude ocupacional" });
+    expect(r.status).toBe(200);
+    expect(r.text).toContain("Já existe uma unidade com o nome oficial");
+    const antes = await amb.db.select().from(e.unidade_uorg);
+    expect(antes.filter((u) => u.nome_oficial.toUpperCase().includes("SEGURANCA E SAUDE OCUPACIONAL"))).toHaveLength(1);
+    // a edição de OUTRA unidade para esse nome também
+    const [outra] = antes.filter((u) => u.id !== csso!.id);
+    const edicao = await amb.cliente.post(`/catalogos/unidades-uorg/${outra!.id}`, {
+      nome_oficial: csso!.nome_oficial,
+      nome_extenso: outra!.nome_extenso,
+      tipo: outra!.tipo,
+      campus_id: String(outra!.campus_id),
+    });
+    expect(edicao.text).toContain("Já existe outra unidade com o nome oficial");
+    // editar a própria CSSO sem mudar o nome continua passando
+    const propria = await amb.cliente.post(`/catalogos/unidades-uorg/${csso!.id}`, {
+      nome_oficial: csso!.nome_oficial,
+      nome_extenso: csso!.nome_extenso,
+      tipo: csso!.tipo,
+      campus_id: String(csso!.campus_id),
+      ativo: "1",
+    });
+    expect(propria.text).not.toContain("Já existe outra unidade");
+  });
+
+  it("autoridade e setor emissor com o fim da vigência antes do início são recusados", async () => {
+    const aut = await amb.cliente.post("/catalogos/autoridades-destinatarias", {
+      nome: "FULANO DE TESTE", cargo: "Pró-reitor", tratamento: "Ilmo. Sr.", vigencia_inicio: "2026-05-01", vigencia_fim: "2026-04-01",
+    });
+    expect(aut.text).toContain("O fim da vigência não pode ser antes do início.");
+    expect(await amb.db.select().from(e.autoridade_destinataria).where(eq(e.autoridade_destinataria.nome, "FULANO DE TESTE"))).toHaveLength(0);
+    const set = await amb.cliente.post("/catalogos/setores-emissores", {
+      sigla_composta: "TST/SISA", nome_extenso: "Setor de Teste", vigencia_inicio: "2027-02-01", vigencia_fim: "2027-01-01",
+    });
+    expect(set.text).toContain("O fim da vigência não pode ser antes do início.");
+    expect(await amb.db.select().from(e.setor_emissor).where(eq(e.setor_emissor.sigla_composta, "TST/SISA"))).toHaveLength(0);
+  });
+
+  it("texto maior que a coluna responde 422 com a frase, e não 500", async () => {
+    const r = await amb.cliente.post("/catalogos/campi", { sigla: "ABCDEFGHIJKLMNOP", nome: "X", cidade: "Y" }, { cabecalhos: { accept: "text/html" } });
+    expect(r.status).toBe(422);
+    expect(r.text).toContain("passa do tamanho permitido");
+    expect(await amb.db.select().from(e.campus).where(eq(e.campus.nome, "X"))).toHaveLength(0);
+    // e o formulário limita o tamanho antes
+    const form = (await amb.cliente.get("/catalogos/campi")).text;
+    expect(form).toMatch(/id="novo-sigla" name="sigla" maxlength="12"/);
+  });
+});
