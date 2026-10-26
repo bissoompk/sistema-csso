@@ -759,7 +759,8 @@ describe("reciclagem: o monitor e o aviso de 60 dias (JANELA_A_VENCER_DIAS)", ()
       // inserido à mão: com a chave antiga, sem número impresso (o do original é único)
       numero_impresso: null,
       chave_validacao: servico_certificado.gerar_chave(2026),
-      data_emissao: "2026-10-25",
+      // depois do original, que foi emitido hoje (a data fixa quebrava na virada do dia)
+      data_emissao: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
       data_vencimento: "2028-10-25",
     });
     const monitor = await reciclagem.monitor(db, usuario, "2026-10-26");

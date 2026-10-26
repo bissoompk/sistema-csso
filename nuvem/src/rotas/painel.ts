@@ -94,7 +94,11 @@ rotas.get("/", async (c) => {
       // equipe sem a permissão continua no 403
       if (e_externo(usuario) || !so_tem_o_proprio(usuario)) exigir(usuario, "processo.ver");
     }
-    return pagina(c, "paginas/painel.html", usuario, await inicio_do_servidor(tx, usuario, hoje));
+    return pagina(c, "paginas/painel.html", usuario, {
+      ...(await inicio_do_servidor(tx, usuario, hoje)),
+      // quem acabou de confirmar o e-mail do primeiro acesso entra por aqui
+      mensagem: c.req.query("ativado") === "1" ? "Acesso ativado. Bem-vindo(a) ao Sistema SISA." : null,
+    });
   }
   const exercicio = Number(hoje.slice(0, 4));
   // Lido ANTES de disparar as consultas: perfil sem escopo declarado lança aqui,
@@ -107,7 +111,12 @@ rotas.get("/", async (c) => {
   // ele eram dez linhas de "conteúdo suprimido" sobre o que ele mesmo fez) não
   // dizem nada a ele. Abre o "Início do servidor": o adicional, os processos,
   // o treinamento, os certificados e o EPI DELE.
-  if (so_o_proprio) return pagina(c, "paginas/painel.html", usuario, await inicio_do_servidor(tx, usuario, hoje));
+  if (so_o_proprio) {
+    return pagina(c, "paginas/painel.html", usuario, {
+      ...(await inicio_do_servidor(tx, usuario, hoje)),
+      mensagem: c.req.query("ativado") === "1" ? "Acesso ativado. Bem-vindo(a) ao Sistema SISA." : null,
+    });
+  }
   // Os blocos do painel não dependem uns dos outros: saem juntos, e as
   // consultas seguem lado a lado pela conexão (o banco fica longe — ver
   // `db/cliente.ts`).

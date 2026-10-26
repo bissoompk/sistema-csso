@@ -10,6 +10,7 @@
  * entra sozinha: o link de e-mail não é credencial de sessão).
  */
 import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { formulario } from "../dependencias.js";
 import * as autenticacao from "../servicos/autenticacao.js";
@@ -20,6 +21,8 @@ import { pagina, redirecionar } from "../web.js";
 import { asc } from "drizzle-orm";
 import { cargo as tabela_cargo } from "../db/esquema/index.js";
 import { opcoes_de_lotacao } from "../servicos/servidores.js";
+import { obterConfig } from "../config.js";
+import { cookieSeguro } from "../nucleo/seguranca.js";
 import { ipDoCliente } from "./autenticacao.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -182,7 +185,18 @@ rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
       user_agent: c.req.header("user-agent") ?? null,
       base_url: await emissao.url_base_validacao(tx),
     });
-    return _sem_rastro(redirecionar(c, `/login?motivo=${feito === "criada" ? "ativada" : "redefinida"}`));
+    // quem confirmou o e-mail entra logado (26/10/2026): sem a tela de entrada
+    if (feito.sessao) {
+      setCookie(c, autenticacao.COOKIE_SESSAO, feito.sessao, {
+        httpOnly: true,
+        sameSite: "Lax",
+        path: "/",
+        maxAge: obterConfig().sessaoHoras * 3600,
+        secure: cookieSeguro(c.req.url),
+      });
+      return _sem_rastro(redirecionar(c, "/?ativado=1"));
+    }
+    return _sem_rastro(redirecionar(c, `/login?motivo=${feito.resultado === "criada" ? "ativada" : "redefinida"}`));
   } catch (erro) {
     if (erro instanceof servico.LinkInvalido) return _tela(c, { invalido: true, status: 404 });
     if (erro instanceof autenticacao.SenhaRecusada) {

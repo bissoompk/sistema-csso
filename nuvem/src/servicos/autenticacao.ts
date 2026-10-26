@@ -366,18 +366,33 @@ export async function autenticar(
   conta.ultimo_login_em = agora;
   conta.precisa_trocar_senha = precisa_trocar_senha;
 
+  return [conta, await abrir_sessao(tx, conta.id, ip, user_agent, agora)];
+}
+
+/**
+ * Abre a sessão da conta e devolve o token (só o hash fica no banco). Um lugar
+ * só para a entrada com senha e para a ativação do primeiro acesso, que entra
+ * logada depois de o servidor confirmar o e-mail (26/10/2026).
+ */
+export async function abrir_sessao(
+  tx: Executor,
+  usuario_id: number,
+  ip: string | null = null,
+  user_agent: string | null = null,
+  agora: Date = agora_utc(),
+): Promise<string> {
   const token = randomBytes(48).toString("base64url");
   await tx.insert(sessao).values({
     token_hash: _hash_token(token),
-    usuario_id: conta.id,
+    usuario_id,
     criada_em: agora,
-    expira_em: new Date(agora.getTime() + cfg.sessaoHoras * 3600_000),
+    expira_em: new Date(agora.getTime() + obterConfig().sessaoHoras * 3600_000),
     ip,
     user_agent,
   });
   await expurgar_sessoes(tx, agora);
   await expurgar_limites_ip(tx, agora);
-  return [conta, token];
+  return token;
 }
 
 // ---------------------------------------------------------------------

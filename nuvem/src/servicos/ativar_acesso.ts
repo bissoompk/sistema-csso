@@ -189,7 +189,7 @@ export function corpo_da_confirmacao(link: string, expira_em: Date): string {
     "Olá.\n\n" +
     "Foi pedido o acesso ao Sistema SISA com este e-mail institucional, com uma senha escolhida na tela " +
     "do pedido. Para confirmar que este e-mail é seu e ativar o acesso, abra o link abaixo e clique em " +
-    `"Confirmar" até ${datas_br.numerica(datas_br.hoje(expira_em))}, às ` +
+    `"Confirmar" — você entra no sistema na hora, sem digitar nada — até ${datas_br.numerica(datas_br.hoje(expira_em))}, às ` +
     `${expira_em.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}:\n\n` +
     `${link}\n\n` +
     "SE NÃO FOI VOCÊ QUE PEDIU, NÃO CONFIRME: ignore esta mensagem e nada muda.\n\n" +
@@ -202,7 +202,7 @@ export function corpo_do_autocadastro(link: string, expira_em: Date): string {
     "Olá.\n\n" +
     "Foi pedido, com este e-mail institucional, o cadastro de servidor e o acesso ao Sistema SISA, com uma " +
     "senha escolhida na tela do pedido. Para confirmar que este e-mail é seu, abra o link abaixo e clique em " +
-    `"Confirmar" até ${datas_br.numerica(datas_br.hoje(expira_em))}, às ` +
+    `"Confirmar" — você entra no sistema na hora, sem digitar nada — até ${datas_br.numerica(datas_br.hoje(expira_em))}, às ` +
     `${expira_em.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}. ` +
     "O cadastro só é criado quando você confirma:\n\n" +
     `${link}\n\n` +
@@ -214,8 +214,8 @@ export function corpo_do_autocadastro(link: string, expira_em: Date): string {
 export function corpo_do_aviso_ativado(base_url: string): string {
   return (
     "Olá.\n\n" +
-    "O acesso ao Sistema SISA com este e-mail foi ativado agora, com a senha escolhida no pedido. Entre em " +
-    `${base_url}/login com este e-mail e essa senha.\n\n` +
+    "O acesso ao Sistema SISA com este e-mail foi ativado agora, com a senha escolhida no pedido. Nas " +
+    `próximas vezes, entre em ${base_url}/login com este e-mail e essa senha.\n\n` +
     "Se não foi você, use \"Esqueci minha senha\" na tela de entrada para definir uma senha nova (as " +
     "sessões abertas são encerradas) e avise a equipe da Sisa.\n\n" +
     ASSINATURA
@@ -750,6 +750,13 @@ export async function o_que_o_link_pede(
   return linha?.senha_hash ? "confirmar" : "definir";
 }
 
+/** O que `definir_senha` fez, e a sessão aberta quando o clique do e-mail ativou o acesso. */
+export interface Ativacao {
+  resultado: "criada" | "redefinida";
+  /** o token da sessão: só quando a senha já tinha sido escolhida no pedido (o link só confirmou) */
+  sessao: string | null;
+}
+
 export interface Contexto {
   ip?: string | null;
   user_agent?: string | null;
@@ -768,7 +775,7 @@ export async function definir_senha(
   confirmacao: string,
   contexto: Contexto = {},
   agora: Date = new Date(),
-): Promise<"criada" | "redefinida"> {
+): Promise<Ativacao> {
   const linha = await _linha_valida(tx, token, agora);
   if (!linha) throw new LinkInvalido("link inválido ou vencido");
   // a senha escolhida no pedido já foi conferida lá; o link só confirma
@@ -778,7 +785,7 @@ export async function definir_senha(
     const problemas = autenticacao.politica_de_senha(nova);
     if (problemas.length) throw new autenticacao.SenhaRecusada("Senha fraca: " + problemas.join("; "));
   }
-  if (linha.usuario_id !== null) return _definir_da_conta(tx, linha, nova, contexto, agora);
+  if (linha.usuario_id !== null) return { resultado: await _definir_da_conta(tx, linha, nova, contexto, agora), sessao: null };
   if (linha.servidor_id === null) linha.servidor_id = await _criar_do_autocadastro(tx, linha, contexto);
   // um servidor por vez: dois links do mesmo servidor não criam duas contas
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!)).for("update");
@@ -842,7 +849,7 @@ export async function definir_senha(
         `com o perfil ${PERFIL_DO_TITULAR}.`,
       ...origem,
     });
-    return "criada";
+    return { resultado: "criada", sessao: escolhida ? await _sessao_da_ativacao(tx, conta!.id, contexto) : null };
   }
   await tx
     .update(tabela_usuario)
@@ -858,7 +865,7 @@ export async function definir_senha(
       descricao: "Acesso ativado pelo próprio titular: definiu a primeira senha pelo link enviado ao e-mail do cadastro.",
       ...origem,
     });
-    return "redefinida";
+    return { resultado: "redefinida", sessao: escolhida ? await _sessao_da_ativacao(tx, decisao.conta.id, contexto) : null };
   }
   await auditoria.registrar(tx, {
     entidade: "usuario",
@@ -869,7 +876,19 @@ export async function definir_senha(
       `bloqueio e tentativas zerados, ${encerradas} sessão(ões) encerrada(s). Nenhum perfil foi concedido.`,
     ...origem,
   });
-  return "redefinida";
+  return { resultado: "redefinida", sessao: null };
+}
+
+/**
+ * Quem confirmou o e-mail entra logado, sem passar pela tela de entrada
+ * (26/10/2026): a senha foi escolhida por ele no pedido, e o clique no botão do
+ * e-mail prova o endereço. Só nesse caso — o link que ainda pede a senha
+ * (Esqueci minha senha, convite) continua voltando ao login. A sessão sai pela
+ * mesma `abrir_sessao` da entrada, e `ultimo_login_em` acompanha.
+ */
+async function _sessao_da_ativacao(tx: Executor, usuario_id: number, contexto: Contexto): Promise<string> {
+  await tx.update(tabela_usuario).set({ ultimo_login_em: agora_utc() }).where(eq(tabela_usuario.id, usuario_id));
+  return autenticacao.abrir_sessao(tx, usuario_id, contexto.ip ?? null, contexto.user_agent ?? null);
 }
 
 /**

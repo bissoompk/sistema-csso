@@ -328,9 +328,16 @@ describe("primeiro acesso do servidor com a senha escolhida na tela", () => {
     expect(tela.text).not.toContain('name="nova"');
     expect(await conta(MAIL)).toBeUndefined();
     const s = await cliente.post(`/ativar-acesso/${token}`, {}, { seguir: false });
-    expect(s.headers.get("location")).toContain("motivo=ativada");
+    // entra logado (26/10/2026): a sessão abre no clique do e-mail, sem a tela de entrada
+    expect(s.headers.get("location")).toBe("/?ativado=1");
+    expect(s.headers.get("set-cookie") ?? "").toMatch(/csso_sessao=[^;]+;.*HttpOnly/i);
+    const inicio = await cliente.get("/?ativado=1");
+    expect(inicio.status).toBe(200);
+    expect(inicio.text).toContain("Acesso ativado");
     const c = (await conta(MAIL))!;
     expect(c.servidor_id).not.toBeNull();
+    expect(c.ultimo_login_em).not.toBeNull();
+    // e a senha escolhida continua valendo na entrada comum
     await entrar(novoCliente(), c.login, SENHA);
     const aviso = (await caixa()).find((x) => x.tipo === ativar_acesso.TIPO_AVISO_ATIVADO)!;
     expect(aviso.destinatario).toBe(MAIL);

@@ -264,6 +264,49 @@ describe("cria a conta do titular", () => {
   });
 });
 
+describe("o primeiro acesso entra logado depois de confirmar o e-mail (26/10/2026)", () => {
+  const SENHA = "frase-longa-2026";
+
+  it("o clique de confirmação abre a sessão e leva ao Início; o mesmo link, de novo, não abre outra", async () => {
+    await servidor();
+    await cliente.post("/ativar-acesso", { siape: SIAPE, email: EMAIL, nova: SENHA, confirmacao: SENHA }, ip_novo());
+    const token = await token_do_email();
+    const novo = novoCliente();
+    // abrir o link não ativa nem entra (leitor de e-mail que pré-visualiza)
+    expect((await novo.get(`/ativar-acesso/${token}`)).status).toBe(200);
+    expect((await novo.get("/quem-sou-eu")).json().autenticado).toBe(false);
+    const ok = await novo.post(`/ativar-acesso/${token}`, {}, { seguir: false });
+    expect(ok.status).toBe(303);
+    expect(ok.location).toBe("/?ativado=1");
+    expect((await novo.get("/quem-sou-eu")).json().autenticado).toBe(true);
+    const inicio = await novo.get("/?ativado=1");
+    expect(inicio.status).toBe(200);
+    expect(inicio.text).toContain("Acesso ativado");
+    // a sessão é de quem confirmou, e só dele
+    const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.email, EMAIL));
+    expect(conta!.ultimo_login_em).not.toBeNull();
+    expect(await db.select().from(e.sessao).where(eq(e.sessao.usuario_id, conta!.id))).toHaveLength(1);
+    // o clique repetido não abre sessão nenhuma
+    const outro = novoCliente();
+    const de_novo = await outro.post(`/ativar-acesso/${token}`, {}, { seguir: false });
+    expect(de_novo.status).toBe(404);
+    expect((await outro.get("/quem-sou-eu")).json().autenticado).toBe(false);
+    expect(await db.select().from(e.sessao).where(eq(e.sessao.usuario_id, conta!.id))).toHaveLength(1);
+  });
+
+  it("o link que ainda pede a senha (Esqueci minha senha) continua voltando ao login, sem sessão", async () => {
+    const s = await servidor();
+    await criarUsuario(db, { login: EMAIL, email: EMAIL, nome: NOME, servidor_id: s.id, perfis: ["servidor_consulta"] });
+    await pedir(SIAPE, EMAIL);
+    const token = await token_do_email();
+    const novo = novoCliente();
+    const r = await novo.post(`/ativar-acesso/${token}`, { nova: SENHA, confirmacao: SENHA }, { seguir: false });
+    expect(r.location).toBe("/login?motivo=redefinida");
+    expect(r.headers.get("set-cookie") ?? "").not.toContain("csso_sessao=");
+    expect((await novo.get("/quem-sou-eu")).json().autenticado).toBe(false);
+  });
+});
+
 describe("esqueci minha senha (conta que já existe)", () => {
   it("troca a senha, revoga as sessões abertas e zera bloqueio e tentativas", async () => {
     const s = await servidor();
