@@ -1912,3 +1912,9 @@ Testados: as 13 telas (lista, cadastrar, editar), permissões (coordenação edi
 - **Texto padrão** aceitava código «  » (só espaços), com acento e espaços (o parecer procura o código pela chave `TENDO_EM_VISTA`): agora letras sem acento, dígitos e «_», até 40; texto em branco ou acima de 20.000 caracteres recusado.
 - **Checklist modelo**: cadastrar com **nome já existente** sobrescrevia, em silêncio, os itens do modelo antigo («Modelo atualizado»). Agora recusa («Já existe …»; para mudar, use o Editar). Também recusados: sem itens, item repetido (sem contar caixa), item acima de 300 caracteres e mais de 100 itens.
 - Os campos dos formulários ganharam `maxlength` do tamanho da coluna. **Para decisão**: tipo de risco, fundamentação e percentual não têm «Cadastrar» (só editar) — parece intencional (são fixos pela norma), então não mudei.
+
+## 26/10/2026 — «Esqueci minha senha» também para a conta de administração
+
+- **Antes**: superintendente, administrador do sistema e quem concede perfil recebiam o e-mail neutro («não pode ser atendido por este caminho») e só a linha de comando redefinia. Decisão do dono do sistema: liberar pelo e-mail da própria conta.
+- **Agora**, só no «Esqueci minha senha» (o Cadastre-se e o resto seguem recusando administração): link de **30 minutos** (`VALIDADE_ADMINISTRACAO_MS`; o prazo é a marca do link — um link de 1 h emitido quando a conta ainda era comum não serve se ela virou administração antes do uso), **aviso por e-mail** à conta depois da troca («se não foi você, avise a equipe»), as outras sessões são encerradas (já era), trilha com «CONTA DE ADMINISTRAÇÃO» e os tetos por IP/e-mail de sempre. Conta inativa continua sem link.
+- **Risco aceito**: quem controla o e-mail institucional do administrador passa a controlar a conta. Mitigações acima + 2FA do próprio e-mail da UFVJM. A linha de comando continua como plano B (§3 de PRODUCAO.md).

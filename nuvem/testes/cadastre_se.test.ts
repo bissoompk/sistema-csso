@@ -291,17 +291,59 @@ describe("Esqueci minha senha, para qualquer conta", () => {
     await entrar(novoCliente(), c.login, "Outra frase de senha 2026");
   });
 
-  it("e-mail desconhecido, conta inativa e conta de administração: a mesma tela, e nenhum link", async () => {
+  it("e-mail desconhecido e conta inativa: a mesma tela, e nenhum link", async () => {
     await criarUsuario(db, { login: "inativa@exemplo.org", email: "inativa@exemplo.org", ativo: false });
-    const [sup] = await db.select().from(e.usuario).where(eq(e.usuario.login, "superintendente"));
-    const telas = [
-      (await pedir_link("ninguem@exemplo.org")).text,
-      (await pedir_link("inativa@exemplo.org")).text,
-      (await pedir_link(sup!.email)).text,
-    ];
+    const telas = [(await pedir_link("ninguem@exemplo.org")).text, (await pedir_link("inativa@exemplo.org")).text];
     for (const t of telas) expect(t).toContain(ativar_acesso.RESPOSTA_ESQUECI);
     expect((await caixa()).filter((x) => x.tipo === ativar_acesso.TIPO_LINK)).toHaveLength(0);
-    expect((await caixa()).filter((x) => x.tipo === ativar_acesso.TIPO_NEUTRO)).toHaveLength(2);
+    expect((await caixa()).filter((x) => x.tipo === ativar_acesso.TIPO_NEUTRO)).toHaveLength(1);
+  });
+
+  // 26/10/2026: a conta de administração também redefine pelo e-mail dela, com
+  // as proteções (link de meia hora, aviso, sessões encerradas, trilha).
+  describe("conta de administração", () => {
+    const sup = async () => (await db.select().from(e.usuario).where(eq(e.usuario.login, "superintendente")))[0]!;
+    const NOVA = "Frase nova de administrador 2026";
+
+    it("recebe o link (de meia hora), redefine, é avisada por e-mail, perde as sessões e fica na trilha", async () => {
+      const conta = await sup();
+      const aberta = await entrar(novoCliente(), "superintendente");
+      expect((await aberta.get("/inicio")).status).toBe(200);
+      const r = await pedir_link(conta.email);
+      expect(r.text).toContain(ativar_acesso.RESPOSTA_ESQUECI);
+      const m = (await caixa()).find((x) => x.tipo === ativar_acesso.TIPO_LINK)!;
+      expect(m.destinatario).toBe(conta.email);
+      const [linha] = await db.select().from(e.ativacao_acesso).where(eq(e.ativacao_acesso.usuario_id, conta.id));
+      expect(linha!.expira_em!.getTime() - linha!.criado_em.getTime()).toBe(ativar_acesso.VALIDADE_ADMINISTRACAO_MS);
+      const s = await cliente.post(`/ativar-acesso/${token_de(m.corpo!)}`, { nova: NOVA, confirmacao: NOVA }, { seguir: false });
+      expect(s.headers.get("location")).toContain("motivo=redefinida");
+      await entrar(novoCliente(), "superintendente", NOVA);
+      // a sessão que já estava aberta caiu
+      expect((await aberta.get("/inicio", { seguir: false })).status).toBe(303);
+      const aviso = (await caixa()).find((x) => x.tipo === ativar_acesso.TIPO_AVISO_SENHA)!;
+      expect(aviso.destinatario).toBe(conta.email);
+      expect(aviso.corpo).toContain("SE NÃO FOI VOCÊ");
+      const trilha = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, ativar_acesso.SENHA_REDEFINIDA_POR_LINK));
+      expect(trilha.map((t) => t.descricao).join(" ")).toContain("CONTA DE ADMINISTRAÇÃO");
+    });
+
+    it("o link da conta comum não serve se a conta virar de administração depois (prazo de 1 h não vale)", async () => {
+      const c = await criarUsuario(db, { login: "virou@exemplo.org", email: "virou@exemplo.org", perfis: ["terceirizado"] });
+      await pedir_link("virou@exemplo.org");
+      const m = (await caixa()).find((x) => x.tipo === ativar_acesso.TIPO_LINK)!;
+      const [perfil] = await db.select().from(e.perfil).where(eq(e.perfil.codigo, "superintendente"));
+      await db.insert(e.atribuicao).values({ usuario_id: c.id, perfil_id: perfil!.id, vigencia_inicio: "2020-01-01" });
+      const r = await cliente.post(`/ativar-acesso/${token_de(m.corpo!)}`, { nova: NOVA, confirmacao: NOVA });
+      expect(r.status).toBe(404);
+    });
+
+    it("conta de administração INATIVA continua sem link", async () => {
+      const conta = await sup();
+      await db.update(e.usuario).set({ ativo: false }).where(eq(e.usuario.id, conta.id));
+      await pedir_link(conta.email);
+      expect((await caixa()).filter((x) => x.tipo === ativar_acesso.TIPO_LINK)).toHaveLength(0);
+      expect((await caixa()).filter((x) => x.tipo === ativar_acesso.TIPO_NEUTRO)).toHaveLength(1);
+    });
   });
 
   it("o servidor sem conta, pelo e-mail do cadastro, recebe o link de ativação", async () => {

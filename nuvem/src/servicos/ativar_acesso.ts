@@ -60,6 +60,13 @@ import { PERFIS_EXTERNOS, TOPO_DA_HIERARQUIA, eh_conta_de_governo, perfis_vigent
 
 export const CAMINHO = "/ativar-acesso";
 export const VALIDADE_MS = 3_600_000;
+/**
+ * O link de «Esqueci minha senha» da conta de ADMINISTRAÇÃO (26/10/2026) vale
+ * meia hora, e não uma. É também a marca do link: no uso, a conta de administração
+ * só é atendida se o link foi emitido com este prazo (já sabendo que era dela).
+ */
+export const VALIDADE_ADMINISTRACAO_MS = 30 * 60_000;
+export const TIPO_AVISO_SENHA = "SENHA_REDEFINIDA_AVISO";
 /** O link que só confirma o e-mail (a senha já foi escolhida na tela) vale um dia. */
 export const VALIDADE_CONFIRMACAO_MS = 24 * 3_600_000;
 export const TIPO_AVISO_ATIVADO = "ACESSO_ATIVADO_AVISO";
@@ -125,11 +132,11 @@ type Conta = typeof tabela_usuario.$inferSelect;
 
 export type Decisao =
   | { tipo: "criar" }
-  | { tipo: "redefinir"; conta: Conta }
+  | { tipo: "redefinir"; conta: Conta; administracao?: boolean }
   | { tipo: "recusar"; motivo: string; conta?: Conta };
 
 /** Quem o link pode alcançar, ou o motivo de não alcançar. */
-export async function decidir(tx: Executor, servidor: Servidor): Promise<Decisao> {
+export async function decidir(tx: Executor, servidor: Servidor, opcoes: OpcoesDecisao = {}): Promise<Decisao> {
   const alvo = normalizar_email(servidor.email);
   const contas = await tx
     .select()
@@ -154,17 +161,45 @@ export async function decidir(tx: Executor, servidor: Servidor): Promise<Decisao
   if (conta.servidor_id === null && perfis.some((p) => PERFIS_EXTERNOS.includes(p))) {
     return { tipo: "recusar", motivo: "o e-mail do servidor é o de uma conta de terceirizado ou discente", conta };
   }
-  return decidir_conta(tx, conta);
+  return decidir_conta(tx, conta, opcoes);
 }
 
-/** A conta que o link alcança: ativa e fora da administração. */
-export async function decidir_conta(tx: Executor, conta: Conta): Promise<Decisao> {
+/**
+ * `administracao_ok`: só o «Esqueci minha senha» liga — a conta de administração
+ * (superintendente, administrador do sistema ou quem concede perfil) redefine
+ * a senha pelo link do SEU e-mail, com as proteções (link de meia hora, aviso
+ * por e-mail, sessões encerradas). Cadastre-se e o resto seguem recusando.
+ */
+export interface OpcoesDecisao {
+  administracao_ok?: boolean;
+}
+
+/** A conta que o link alcança: ativa e, fora o «Esqueci», fora da administração. */
+export async function decidir_conta(tx: Executor, conta: Conta, opcoes: OpcoesDecisao = {}): Promise<Decisao> {
   if (!conta.ativo) return { tipo: "recusar", motivo: "conta inativa (quem decide é a equipe)", conta };
   const { perfis, permissoes } = await perfis_vigentes(tx, conta.id, null, { incluir_futuras: true });
-  if (perfis.some((p) => TOPO_DA_HIERARQUIA.includes(p)) || permissoes.has("perfil.conceder")) {
+  const administracao = perfis.some((p) => TOPO_DA_HIERARQUIA.includes(p)) || permissoes.has("perfil.conceder");
+  if (administracao && !opcoes.administracao_ok) {
     return { tipo: "recusar", motivo: "conta de administração (outro administrador ou a linha de comando redefine)", conta };
   }
-  return { tipo: "redefinir", conta };
+  return { tipo: "redefinir", conta, administracao };
+}
+
+/** O link foi emitido já com o prazo da administração? (a marca de `VALIDADE_ADMINISTRACAO_MS`) */
+function _link_de_administracao(linha: { criado_em: Date; expira_em: Date | null }): boolean {
+  return !!linha.expira_em && linha.expira_em.getTime() - linha.criado_em.getTime() <= VALIDADE_ADMINISTRACAO_MS;
+}
+
+export function corpo_do_aviso_de_senha(base_url: string): string {
+  return (
+    "Olá.\n\n" +
+    "A senha da sua conta no Sistema SISA acabou de ser redefinida pelo link enviado a este e-mail. " +
+    "Todas as sessões abertas foram encerradas.\n\n" +
+    "SE NÃO FOI VOCÊ, avise a equipe responsável pelo sistema agora (Sisa/UFVJM): alguém pode ter acesso a este e-mail." +
+    (base_url ? `\n\nSistema: ${base_url}` : "") +
+    "\n\n" +
+    ASSINATURA
+  );
 }
 
 const ASSINATURA = "Superintendência Integrada de Saúde (Sisa) — UFVJM\nMensagem enviada pelo Sistema SISA.\n";
@@ -432,6 +467,7 @@ async function _atender_servidor(
   agora: Date,
   marcar: Marcar,
   senha_hash: string | null = null,
+  esqueci = false,
 ): Promise<void> {
   const cadastrado = (servidor.email ?? "").trim();
   if (!cadastrado || !email.email_valido(cadastrado)) {
@@ -441,7 +477,7 @@ async function _atender_servidor(
   if (normalizar_email(cadastrado) !== normalizar_email(digitado)) return;
   if (await no_teto_do_destinatario(tx, cadastrado, agora)) return;
 
-  const decisao = await decidir(tx, servidor);
+  const decisao = await decidir(tx, servidor, { administracao_ok: esqueci });
   if (decisao.tipo === "recusar") {
     await marcar({ servidor_id: servidor.id, resultado: "NEUTRO" });
     await _neutro(tx, cadastrado, agora);
@@ -462,7 +498,12 @@ async function _atender_servidor(
   // SIAPE e o e-mail de outra pessoa e convencê-la a clicar em "Confirmar".
   if (decisao.tipo === "redefinir" && decisao.conta.senha_hash !== SEM_SENHA) senha_hash = null;
   const token = randomBytes(24).toString("base64url");
-  const expira_em = new Date(agora.getTime() + (senha_hash ? VALIDADE_CONFIRMACAO_MS : VALIDADE_MS));
+  const prazo = senha_hash
+    ? VALIDADE_CONFIRMACAO_MS
+    : decisao.tipo === "redefinir" && decisao.administracao
+      ? VALIDADE_ADMINISTRACAO_MS
+      : VALIDADE_MS;
+  const expira_em = new Date(agora.getTime() + prazo);
   await marcar({ token_hash: _hash(token), servidor_id: servidor.id, resultado: "LINK", expira_em, senha_hash });
   const link = `${base_url}${CAMINHO}/${token}`;
   await email.enfileirar(tx, {
@@ -506,12 +547,12 @@ export async function pedir_por_email(
     // a conta de servidor segue a regra do servidor (o e-mail do cadastro)
     const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, conta.servidor_id));
     if (servidor && normalizar_email(servidor.email ?? "") === alvo) {
-      await _atender_servidor(tx, servidor, digitado, ip, base_url, agora, marcar);
+      await _atender_servidor(tx, servidor, digitado, ip, base_url, agora, marcar, null, true);
       return;
     }
   }
   if (!email.email_valido(conta.email) || (await no_teto_do_destinatario(tx, conta.email, agora))) return;
-  const decisao = await decidir_conta(tx, conta);
+  const decisao = await decidir_conta(tx, conta, { administracao_ok: true });
   if (decisao.tipo === "recusar") {
     await marcar({ usuario_id: conta.id, resultado: "NEUTRO" });
     await _neutro(tx, conta.email, agora);
@@ -525,7 +566,11 @@ export async function pedir_por_email(
     });
     return;
   }
-  await emitir_link_da_conta(tx, conta, base_url, { agora, marcar });
+  await emitir_link_da_conta(tx, conta, base_url, {
+    agora,
+    marcar,
+    validade_ms: decisao.tipo === "redefinir" && decisao.administracao ? VALIDADE_ADMINISTRACAO_MS : undefined,
+  });
 }
 
 /**
@@ -731,12 +776,12 @@ export async function link_vale(tx: Executor, token: string, agora: Date = new D
   if (!linha) return false;
   if (linha.usuario_id !== null) {
     const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, linha.usuario_id));
-    return !!conta && (await decidir_conta(tx, conta)).tipo !== "recusar";
+    return !!conta && (await decidir_conta(tx, conta, { administracao_ok: _link_de_administracao(linha) })).tipo !== "recusar";
   }
   if (linha.servidor_id === null) return (await _colisao_do_autocadastro(tx, linha.dados_cadastro as DadosCadastro)) === null;
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!));
   if (!servidor?.email) return false;
-  return (await decidir(tx, servidor)).tipo !== "recusar";
+  return (await decidir(tx, servidor, { administracao_ok: _link_de_administracao(linha) })).tipo !== "recusar";
 }
 
 /**
@@ -794,7 +839,7 @@ export async function definir_senha(
   // um servidor por vez: dois links do mesmo servidor não criam duas contas
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, linha.servidor_id!)).for("update");
   if (!servidor?.email) throw new LinkInvalido("link inválido ou vencido");
-  const decisao = await decidir(tx, servidor);
+  const decisao = await decidir(tx, servidor, { administracao_ok: _link_de_administracao(linha) });
   if (decisao.tipo === "recusar") throw new LinkInvalido("link inválido ou vencido");
   // o gasto é atômico: de dois envios do mesmo link, um só ganha
   const gasto = await tx
@@ -871,11 +916,13 @@ export async function definir_senha(
     });
     return { resultado: "redefinida", sessao: escolhida ? await _sessao_da_ativacao(tx, decisao.conta.id, contexto) : null };
   }
+  if (decisao.administracao) await _avisar_senha(tx, servidor.email.trim(), contexto.base_url ?? "", agora);
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: decisao.conta.id,
     tipo_evento: SENHA_REDEFINIDA_POR_LINK,
     descricao:
+      (decisao.administracao ? "CONTA DE ADMINISTRAÇÃO: " : "") +
       "Senha redefinida pelo próprio titular, pelo link enviado ao e-mail do cadastro de servidores; " +
       `bloqueio e tentativas zerados, ${encerradas} sessão(ões) encerrada(s). Nenhum perfil foi concedido.`,
     ...origem,
@@ -933,6 +980,18 @@ async function _criar_do_autocadastro(tx: Executor, linha: typeof tabela.$inferS
   return novo.id;
 }
 
+/** O aviso de que a senha mudou, ao e-mail da conta de administração: se não foi ela, é o alarme. */
+async function _avisar_senha(tx: Executor, para: string, base_url: string, agora: Date): Promise<void> {
+  if (!email.email_valido(para)) return;
+  await email.enfileirar(tx, {
+    tipo: TIPO_AVISO_SENHA,
+    destinatario: para,
+    assunto: ASSUNTO,
+    corpo: corpo_do_aviso_de_senha(base_url),
+    expira_em: new Date(agora.getTime() + 72 * 3_600_000),
+  });
+}
+
 /** O link de uma conta (Esqueci por e-mail, conta aprovada no Cadastre-se): só define a senha. */
 async function _definir_da_conta(
   tx: Executor,
@@ -942,7 +1001,9 @@ async function _definir_da_conta(
   agora: Date,
 ): Promise<"criada" | "redefinida"> {
   const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, linha.usuario_id!)).for("update");
-  if (!conta || (await decidir_conta(tx, conta)).tipo === "recusar") throw new LinkInvalido("link inválido ou vencido");
+  const decisao = conta ? await decidir_conta(tx, conta, { administracao_ok: _link_de_administracao(linha) }) : null;
+  if (!conta || !decisao || decisao.tipo === "recusar") throw new LinkInvalido("link inválido ou vencido");
+  const administracao = decisao.tipo === "redefinir" && !!decisao.administracao;
   const gasto = await tx
     .update(tabela)
     .set({ usado_em: agora_utc() })
@@ -957,13 +1018,15 @@ async function _definir_da_conta(
     .where(eq(tabela_usuario.id, conta.id));
   const encerradas = await autenticacao.revogar_do_usuario(tx, conta.id);
   const primeira = conta.senha_hash === SEM_SENHA;
+  if (administracao && !primeira) await _avisar_senha(tx, conta.email, contexto.base_url ?? "", agora);
   await auditoria.registrar(tx, {
     entidade: "usuario",
     entidade_id: conta.id,
     tipo_evento: primeira ? ACESSO_ATIVADO : SENHA_REDEFINIDA_POR_LINK,
     descricao: primeira
       ? "Acesso ativado pelo próprio titular: definiu a primeira senha pelo link enviado ao e-mail da conta."
-      : "Senha redefinida pelo próprio titular, pelo link enviado ao e-mail da conta; " +
+      : (administracao ? "CONTA DE ADMINISTRAÇÃO: " : "") +
+        "Senha redefinida pelo próprio titular, pelo link enviado ao e-mail da conta; " +
         `bloqueio e tentativas zerados, ${encerradas} sessão(ões) encerrada(s). Nenhum perfil foi concedido.`,
     ...origem,
   });
