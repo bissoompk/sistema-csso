@@ -63,7 +63,8 @@
       {% call ui.info('juntar-cadastros', 'o que juntar faz') %}
         <p>As inscrições, os certificados e os e-mails de quem se junta passam para quem fica.
           <strong>Nada se apaga</strong>: o cadastro juntado sai das listas e aponta para o que
-          ficou, e cada certificado continua com o nome com que foi emitido e com a mesma chave.</p>
+          ficou, e cada certificado continua com o nome com que foi emitido e com a mesma chave. Juntou errado? Em <a href="/treinamentos/participantes?feitas=1">Junções feitas</a>
+          dá para desfazer.</p>
         <p>Não se juntam dois servidores (SIAPEs diferentes são pessoas diferentes), cadastros com
           CPFs diferentes, nem os dois que estão na mesma turma. O cadastro de servidor é sempre o
           que fica, porque é nele que o nome do servidor é mantido.</p>
@@ -74,8 +75,10 @@
   {# A lista abre nos possíveis duplicados; a busca é para o par que o sistema
      não achou sozinho (nomes diferentes da mesma pessoa). #}
   <div class="fileira">
-    {% if termo or de_identificador %}<a class="ficha-filtro" href="/treinamentos/participantes">Possíveis duplicados</a>
+    {% if termo or de_identificador or feitas %}<a class="ficha-filtro" href="/treinamentos/participantes">Possíveis duplicados</a>
     {% else %}<span class="ficha-filtro ativa" aria-current="page">Possíveis duplicados <span class="conta">{{ grupos|length }}</span></span>{% endif %}
+    {% if feitas %}<span class="ficha-filtro ativa" aria-current="page">Junções feitas</span>
+    {% else %}<a class="ficha-filtro" href="/treinamentos/participantes?feitas=1">Junções feitas</a>{% endif %}
     <form method="get" action="/treinamentos/participantes" class="filtro-inline">
       <label class="oculto" for="busca-participante">Procurar participante</label>
       <input id="busca-participante" type="search" name="busca" value="{{ termo }}"
@@ -84,7 +87,49 @@
     </form>
   </div>
 
-  {% if termo %}
+  {% if feitas %}
+  {# As junções já feitas, da mais nova à mais antiga (26/10/2026). Desfazer devolve
+     ao cadastro juntado o que a junção moveu; o que nasceu depois não é tocado. #}
+  <h2>Junções feitas</h2>
+  {% if juncoes|length %}
+  <p class="discreto">Desfazer devolve ao cadastro juntado as inscrições, os certificados e os e-mails que a junção
+    moveu, e o reativa. O que o cadastro que ficou ganhou depois da junção continua com ele. Só se desfaz a junção
+    mais nova de cada cadastro: se o que ficou foi juntado a outro, desfaça essa primeiro.</p>
+  {% for j in juncoes %}
+  <div class="cartao liso">
+    <div class="corpo">
+      <p><strong class="mono">{{ j.absorvido }}</strong> {{ j.nome_absorvido }} foi juntado a
+        <strong class="mono">{{ j.mantido }}</strong> {{ j.nome_mantido }}
+        <span class="discreto">· {{ j.feita_em|momento }} · {{ j.inscricoes }} inscrição(ões),
+          {{ j.certificados }} certificado(s), {{ j.emails }} e-mail(s) moveram</span></p>
+      {% if j.desfeita_em %}
+      <p><span class="pilula ok sem-ponto">desfeita em {{ j.desfeita_em|momento }}</span>
+        <span class="discreto">{{ j.desfeita_motivo }}</span></p>
+      {% elif j.impedimento %}
+      <p><span class="pilula alerta sem-ponto">não dá para desfazer agora</span>
+        <span class="discreto">{{ j.impedimento }}</span></p>
+      {% else %}
+      <form method="post" action="/treinamentos/participantes/desfazer">
+        <input type="hidden" name="mesclagem_id" value="{{ j.id }}">
+        <input type="hidden" name="volta" value="/treinamentos/participantes?feitas=1">
+        <div class="linha-campos">
+          <div class="campo"><label for="motivo-desfazer-{{ j.id }}">Motivo</label>
+            <input id="motivo-desfazer-{{ j.id }}" name="motivo" required
+                   placeholder="juntei os cadastros errados, eram duas pessoas…"></div>
+        </div>
+        <label class="alvo-marca"><input type="checkbox" name="distintos" value="sim" checked>
+          Gravar que não são a mesma pessoa (o aviso de parecido não volta)</label>
+        <div class="acoes"><button type="submit" class="secundario">Desfazer esta junção</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="vazio"><strong>Nenhuma junção feita ainda</strong>
+    <span>Quando dois cadastros forem juntados, a junção aparece aqui, com o botão de desfazer.</span></div>
+  {% endif %}
+  {% elif termo %}
   <h2>Resultado da busca</h2>
   {% if achados.length > 1 %}
   <p class="discreto">Marque quem fica e quem se junta a ele. O que difere do sugerido para ficar vem marcado.</p>
