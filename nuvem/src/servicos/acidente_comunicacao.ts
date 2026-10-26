@@ -52,6 +52,8 @@ import { hoje_iso } from "../dominio/datas.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as acidente_email from "./acidente_email.js";
 import * as auditoria from "./auditoria.js";
+import { DadosFuncionaisInvalidos, faltam, resolver, type EntradaFuncional } from "./dados_funcionais.js";
+import { completar_funcionais } from "./servidores.js";
 import { proximo_numero_cat_sp } from "./numeracao.js";
 import * as pendencias from "./pendencias.js";
 import { PERFIS_EXTERNOS, type UsuarioAtual } from "./rbac.js";
@@ -99,6 +101,8 @@ export interface Envolvido {
   houve_lesao: string | null;
   contato_investigacao: string | null;
   menor_de_idade: boolean;
+  /** cargo e lotação, para completar o cadastro do servidor quando faltam */
+  funcional?: EntradaFuncional;
   saude: SaudeDeclarada;
 }
 
@@ -381,6 +385,29 @@ async function _resolver_envolvidos(
           `O SIAPE ${siape} ${rotulo} não está no cadastro de servidores. Confira o número ou, se a pessoa ` +
             "não for servidora, escolha outro vínculo e informe o nome.",
           `o SIAPE ${rotulo}`,
+        );
+      }
+    }
+    // cargo e lotação faltando no cadastro (26/10/2026): o que veio no formulário
+    // completa (sem sobrescrever); para quem é o próprio envolvido, é obrigatório
+    if (servidor && usuario && e.funcional) {
+      const falta = faltam(servidor);
+      if (falta.cargo || falta.lotacao) {
+        let r;
+        try {
+          r = await resolver(tx, e.funcional, usuario);
+        } catch (erro) {
+          if (erro instanceof DadosFuncionaisInvalidos) throw new ComunicacaoRecusada(`${erro.message}.`, `o cargo ${rotulo}`);
+          throw erro;
+        }
+        await completar_funcionais(tx, servidor, usuario, r, "na comunicação de acidente");
+      }
+      const ainda = faltam(servidor);
+      if (e.sou_eu && (ainda.cargo || ainda.lotacao)) {
+        const o_que = [ainda.cargo ? "o cargo" : null, ainda.lotacao ? "a lotação" : null].filter(Boolean).join(" e ");
+        throw new ComunicacaoRecusada(
+          `Informe ${o_que} no seu cadastro (escolha na lista ou digite em «Não está na lista?») antes de comunicar.`,
+          `o cargo ${rotulo}`,
         );
       }
     }

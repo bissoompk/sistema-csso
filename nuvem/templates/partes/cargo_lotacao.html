@@ -1,0 +1,42 @@
+{# Cargo e lotação pedidos no momento do uso (26/10/2026): escolher da lista OU
+   digitar o que não está nela — o catálogo cresce com o que se digita
+   (`servicos/dados_funcionais.ts`). Quem inclui define:
+     fp  — prefixo dos nomes dos campos ("" ou "env_1_");
+     cl  — as listas (`dados_funcionais.opcoes`): cargos, lotacoes, campi;
+     fd  — o que foi digitado, pelos nomes completos dos campos, ou o atual;
+     obrigatorio — rotula com «obrigatório». O servidor é quem recusa a falta:
+     o campo da lista não é `required` porque a alternativa é digitar. #}
+{% set ca = fp ~ 'cargo_id' %}{% set cn = fp ~ 'cargo_novo' %}
+{% set ua = fp ~ 'unidade_uorg_id' %}{% set ln = fp ~ 'lotacao_nova' %}{% set lc = fp ~ 'lotacao_campus_id' %}
+<div class="linha-campos cargo-lotacao">
+  <div class="campo">
+    <label for="{{ ca }}">Cargo{% if obrigatorio %} <span class="discreto">(obrigatório)</span>{% endif %}</label>
+    <select id="{{ ca }}" name="{{ ca }}">
+      <option value="">—</option>
+      {% for cg in cl.cargos %}<option value="{{ cg.id }}"{{ ' selected' if (cg.id | string) == ('' ~ fd[ca]) }}>{{ cg.nome }}</option>{% endfor %}
+    </select>
+    <details class="recolhido"{{ ' open' if fd[cn] }}>
+      <summary>Não está na lista? Digite o seu cargo</summary>
+      <input id="{{ cn }}" name="{{ cn }}" maxlength="120" value="{{ fd[cn] or '' }}" aria-label="Cargo digitado">
+      <span class="dica">Vale o que você digitar aqui, e ele entra na lista para os próximos.</span>
+    </details>
+  </div>
+  <div class="campo">
+    <label for="{{ ua }}">Lotação{% if obrigatorio %} <span class="discreto">(obrigatório)</span>{% endif %}</label>
+    <select id="{{ ua }}" name="{{ ua }}">
+      <option value="">—</option>
+      {% for u in cl.lotacoes %}<option value="{{ u.id }}"{{ ' selected' if (u.id | string) == ('' ~ fd[ua]) }}>{{ u.rotulo }}</option>{% endfor %}
+    </select>
+    <details class="recolhido"{{ ' open' if fd[ln] }}>
+      <summary>Não está na lista? Digite a sua lotação</summary>
+      <input id="{{ ln }}" name="{{ ln }}" maxlength="160" value="{{ fd[ln] or '' }}" aria-label="Lotação digitada"
+             placeholder="Ex.: Laboratório de Química — DEQUI">
+      <label for="{{ lc }}" class="discreto">Campus da lotação digitada</label>
+      <select id="{{ lc }}" name="{{ lc }}">
+        <option value="">—</option>
+        {% for cp in cl.campi %}<option value="{{ cp.id }}"{{ ' selected' if (cp.id | string) == ('' ~ fd[lc]) }}>{{ cp.nome }}</option>{% endfor %}
+      </select>
+      <span class="dica">A lotação digitada entra na lista, e a equipe da Sisa confere depois.</span>
+    </details>
+  </div>
+</div>

@@ -84,24 +84,18 @@
   {% call ui.popup_cadastro('corrigir-funcionais', 'Corrigir dados funcionais', '/minha-conta/funcionais',
                             'Salvar', aberto=erro_funcionais, erro=erro_funcionais or '',
                             nota='entra no histórico de lotação a partir de hoje') %}
-    <div class="campo"><label for="f-cargo">Cargo</label>
-      <select id="f-cargo" name="cargo_id">
-        <option value="">— não informado</option>
-        {% set atual_cargo = df.cargo_id if df.cargo_id is defined else (('' ~ servidor.cargo_id) if servidor.cargo_id else '') %}
-        {% for cg in cargos %}<option value="{{ cg.id }}"{{ ' selected' if (cg.id | string) == atual_cargo }}>{{ cg.nome }}</option>{% endfor %}
-      </select></div>
+    {% set fd = {'cargo_id': df.cargo_id if df.cargo_id is defined else (servidor.cargo_id or ''),
+                 'unidade_uorg_id': df.unidade_uorg_id if df.unidade_uorg_id is defined else (servidor.unidade_uorg_id or ''),
+                 'cargo_novo': df.cargo_novo or '', 'lotacao_nova': df.lotacao_nova or '',
+                 'lotacao_campus_id': df.lotacao_campus_id or ''} %}
     <div class="campo"><label for="f-funcao">Função <span class="discreto">(opcional)</span></label>
       <input id="f-funcao" name="funcao" maxlength="120"
              value="{{ df.funcao if df.funcao is defined else (servidor.funcao or '') }}"
              placeholder="por exemplo, Chefe do Laboratório de Química"></div>
-    <div class="campo"><label for="f-lotacao">Lotação</label>
-      <select id="f-lotacao" name="unidade_uorg_id" aria-describedby="dica-f-lotacao">
-        <option value="">— não informada</option>
-        {% set atual_un = df.unidade_uorg_id if df.unidade_uorg_id is defined else (('' ~ servidor.unidade_uorg_id) if servidor.unidade_uorg_id else '') %}
-        {% for u in lotacoes %}<option value="{{ u.id }}"{{ ' selected' if (u.id | string) == atual_un }}>{{ u.rotulo }}</option>{% endfor %}
-      </select>
-      <span class="dica" id="dica-f-lotacao">A unidade onde você está lotado; o campus vem com ela. Não achou a
-        sua? Procure a equipe da Sisa.</span></div>
+    {% set fp = '' %}{% set obrigatorio = false %}
+    {% include "partes/cargo_lotacao.html" %}
+    <span class="dica">O campus vem com a lotação. O que você digitar nos campos «Não está na lista?» entra na
+      lista para os próximos, e a equipe da Sisa confere depois.</span>
     <p class="discreto">A mudança vale a partir de hoje e o período anterior fica guardado no histórico. O que já foi
       registrado antes (um pedido de EPI enviado, um processo) guarda os dados daquela data.</p>
   {% endcall %}
@@ -127,16 +121,10 @@
           <div class="campo"><label for="ss-nome">Nome completo</label>
             <input id="ss-nome" name="nome" value="{{ ds.nome if ds.nome is defined else (conta.nome or '') }}" required maxlength="160"></div>
         </div>
-        <div class="linha-campos">
-          <div class="campo"><label for="ss-cargo">Cargo <span class="discreto">(opcional)</span></label>
-            <select id="ss-cargo" name="cargo_id"><option value="">—</option>
-              {% for cg in cargos %}<option value="{{ cg.id }}"{{ ' selected' if (cg.id | string) == ds.cargo_id }}>{{ cg.nome }}</option>{% endfor %}
-            </select></div>
-          <div class="campo"><label for="ss-lotacao">Lotação <span class="discreto">(opcional)</span></label>
-            <select id="ss-lotacao" name="unidade_uorg_id"><option value="">—</option>
-              {% for u in lotacoes %}<option value="{{ u.id }}"{{ ' selected' if (u.id | string) == ds.unidade_uorg_id }}>{{ u.rotulo }}</option>{% endfor %}
-            </select></div>
-        </div>
+        {% set fd = {'cargo_id': ds.cargo_id or '', 'unidade_uorg_id': ds.unidade_uorg_id or '', 'cargo_novo': ds.cargo_novo or '',
+                     'lotacao_nova': ds.lotacao_nova or '', 'lotacao_campus_id': ds.lotacao_campus_id or ''} %}
+        {% set fp = '' %}{% set obrigatorio = false %}
+        {% include "partes/cargo_lotacao.html" %}
         <p class="discreto">O e-mail do cadastro é o desta conta ({{ conta.email }}). Se o seu SIAPE já estiver no
           cadastro com esse e-mail, a conta só é ligada a ele; com outro e-mail, procure a equipe da Sisa.</p>
         <div class="acoes"><button type="submit">Ligar minha conta</button></div>

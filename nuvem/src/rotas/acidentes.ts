@@ -70,6 +70,8 @@ import * as triagem from "../servicos/acidente_triagem.js";
 import * as investigacao from "../servicos/acidente_investigacao.js";
 import * as checklist from "../servicos/acidente_checklist.js";
 import * as entrevista from "../servicos/acidente_entrevista.js";
+import * as dados_funcionais from "../servicos/dados_funcionais.js";
+import { servidor as tabela_servidor } from "../db/esquema/index.js";
 import { hoje } from "../servicos/datas_br.js";
 import { comMensagem, fragmento, pagina, redirecionar } from "../web.js";
 
@@ -443,6 +445,7 @@ function _ler_envolvidos(f: Formulario, indices: number[]): comunicacao.Envolvid
       houve_lesao: f.opcional(p("houve_lesao")),
       contato_investigacao: f.opcional(p("contato_investigacao")),
       menor_de_idade: f.texto(p("menor_de_idade")) === "1",
+      funcional: dados_funcionais.ler(f, `env_${i}_`),
       saude: {
         partes_corpo_ids: f
           .todos(p("partes"))
@@ -482,6 +485,15 @@ function _digitado(f: Formulario): Record<string, unknown> {
   return saida;
 }
 
+/** O servidor da conta está sem cargo ou lotação no cadastro? */
+async function _falta_funcional(c: Ctx, usuario: UsuarioAtual): Promise<boolean> {
+  if (usuario.servidor_id === null) return false;
+  const [sv] = await c.get("tx").select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id));
+  if (!sv) return false;
+  const falta = dados_funcionais.faltam(sv);
+  return falta.cargo || falta.lotacao;
+}
+
 async function _tela_comunicar(
   c: Ctx,
   usuario: UsuarioAtual,
@@ -499,6 +511,8 @@ async function _tela_comunicar(
       indices: d.indices ?? [1],
       proximo_indice: Math.max(...(d.indices ?? [1])) + 1,
       tem_servidor: usuario.servidor_id !== null,
+      cl: await dados_funcionais.opcoes(c.get("tx")),
+      falta_funcional: await _falta_funcional(c, usuario),
       // terceirizado ou discente: o "Sou eu" entra pelo nome da conta, com
       // este vínculo pré-marcado
       vinculo_proprio: usuario.servidor_id === null ? comunicacao.vinculo_externo_de(usuario) : null,
@@ -528,6 +542,8 @@ rotas.get(`${COMUNICAR}/envolvido`, async (c) => {
     i,
     d: {},
     tem_servidor: false,
+    cl: await dados_funcionais.opcoes(c.get("tx")),
+    falta_funcional: false,
     proximo_indice: i + 1,
   });
 });

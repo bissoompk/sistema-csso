@@ -403,6 +403,35 @@ export async function corrigir_pelo_titular(
   });
 }
 
+/**
+ * Preenche o que FALTA no cadastro (cargo e/ou lotação) a partir de um
+ * formulário de uso — o pedido de EPI, a comunicação de acidente (26/10/2026).
+ * Nunca sobrescreve: o que já está no cadastro só muda em Meu perfil, ou pela
+ * equipe, com a linha do tempo. Devolve `true` se gravou algo.
+ */
+export async function completar_funcionais(
+  tx: Executor,
+  servidor: Servidor,
+  usuario: UsuarioAtual,
+  d: { cargo_id: number | null; unidade_uorg_id: number | null },
+  onde: string,
+): Promise<boolean> {
+  const cargo_id = servidor.cargo_id ?? d.cargo_id;
+  const unidade_uorg_id = servidor.unidade_uorg_id ?? d.unidade_uorg_id;
+  if (cargo_id === servidor.cargo_id && unidade_uorg_id === servidor.unidade_uorg_id) return false;
+  const vigente = await lotacao_vigente(tx, servidor.id);
+  await _alterar_lotacao(tx, servidor, usuario, {
+    unidade_uorg_id,
+    cargo_id,
+    funcao: servidor.funcao,
+    uorg_id: servidor.uorg_id ?? null,
+    postos: unidade_uorg_id === servidor.unidade_uorg_id && vigente ? vigente.postos.map((p) => p.id) : [],
+    a_partir_de: hoje_iso(),
+    observacao: `Informado ${onde}.`,
+  });
+  return true;
+}
+
 /** As unidades para escolher a lotação, com o campus no rótulo (o campus vem dela). */
 export async function opcoes_de_lotacao(tx: Executor): Promise<{ id: number; rotulo: string }[]> {
   const linhas = await tx.query.unidade_uorg.findMany({ with: { campus: true }, orderBy: [asc(unidade_uorg.nome_extenso)] });

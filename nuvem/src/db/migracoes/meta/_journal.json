@@ -204,6 +204,13 @@
       "when": 1792940779203,
       "tag": "0028_confirmar_inscricoes_abertas",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793037745409,
+      "tag": "0029_dados_funcionais_a_conferir",
+      "breakpoints": true
     }
   ]
 }
