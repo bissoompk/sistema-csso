@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 {% import "partes/senha.html" as senha with context %}
-{# Sem lateral: quem abre ainda não tem conta. O servidor segue para o
-   primeiro acesso pelo cadastro (SIAPE + e-mail); terceirizado e discente
-   fazem um PEDIDO, e a conta é liberada quando o e-mail é confirmado (24/10/2026).
-    Desenho das
-   telas de acesso: painel da Sisa à esquerda, formulário à direita. #}
+{# Sem lateral: quem abre ainda não tem conta. É o único cadastro (26/10/2026:
+   a opção «Primeiro acesso» saiu). O servidor informa SIAPE, e-mail
+   institucional, nome e senha; terceirizado e discente, e-mail, nome e senha.
+   A conta é liberada quando o e-mail é confirmado. Desenho das telas de
+   acesso: painel da Sisa à esquerda, formulário à direita. #}
 {% set sem_casca = true %}
-{% block titulo %}Primeiro acesso · SISA{% endblock %}
+{# O erro do pedido sai UMA vez, dentro do formulário: a casca (`base.html`) também
+   o escreveria no alto da página, e no computador aparecia duas vezes. #}
+{% set erro_do_pedido = erro %}
+{% set erro = none %}
+{% block titulo %}Cadastre-se · SISA{% endblock %}
 {% block classe_conteudo %}tela-auxiliar tela-acesso{% endblock %}
 {% macro ico_acesso(nome) %}<svg class="ico" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>{% endmacro %}
 
@@ -46,13 +50,13 @@
     <a class="botao secundario largo" href="/login">Voltar para a entrada</a>
 
 {% elif not vinculo %}
-    <h1>Primeiro acesso</h1>
+    <h1>Cadastre-se</h1>
     <p class="sub">Qual é o seu vínculo com a UFVJM?</p>
     <nav class="opcoes-vinculo" aria-label="Escolha o vínculo">
-      <a class="opcao-vinculo" href="{{ caminho_servidor }}">
+      <a class="opcao-vinculo" href="{{ caminho }}?vinculo={{ vinculo_servidor }}">
         <span class="opcao-icone">{{ ico_acesso('person-badge') }}</span>
         <span class="opcao-texto"><strong>Servidor</strong>
-          <span>Informe o SIAPE, o e-mail institucional e os seus dados. Ainda não está no cadastro? Ele é criado aqui.</span></span>
+          <span>Informe o SIAPE, o e-mail institucional, o seu nome e a senha.</span></span>
         <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
       </a>
       <a class="opcao-vinculo" href="{{ caminho }}?vinculo=TERCEIRIZADO">
@@ -68,34 +72,74 @@
         <span class="opcao-seta">{{ ico_acesso('arrow-right') }}</span>
       </a>
     </nav>
-    <p class="acesso-nota">Terceirizado e discente preenchem os dados e a senha que vão usar; a conta é liberada
-      assim que confirmarem o e-mail.</p>
+    <p class="acesso-nota">Você preenche os dados e a senha que vai usar; a conta é liberada assim que você
+      confirmar o e-mail.</p>
+    <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
+      <a href="/esqueci-senha">Esqueci minha senha</a></p>
+
+{% elif vinculo == vinculo_servidor %}
+    {# O servidor: SIAPE, e-mail institucional, nome e senha. O SIAPE é o que o
+       diferencia dos outros vínculos; a conta nasce ligada a ele quando o
+       e-mail é confirmado. Cargo e lotação o servidor completa em Meu perfil. #}
+    <a class="acesso-voltar" href="{{ caminho }}">{{ ico_acesso('arrow-left') }} Voltar</a>
+    <h1>Cadastro do servidor</h1>
+    <p class="sub"><span class="pilula">Servidor</span> Informe os seus dados e a senha que quer usar. Enviamos um
+      link ao seu e-mail institucional para você confirmar o cadastro.</p>
+    {% if erro_do_pedido %}<div class="aviso aviso-erro" role="alert">{{ erro_do_pedido }}</div>{% endif %}
+    <form method="post" action="{{ caminho }}">
+      <input type="hidden" name="vinculo" value="{{ vinculo_servidor }}">
+      <div class="campo"><label for="cad-siape">SIAPE</label>
+        <input id="cad-siape" name="siape" value="{{ d.siape or '' }}" required inputmode="numeric"
+               maxlength="7" autocomplete="off" autocapitalize="none" spellcheck="false"
+               placeholder="7 dígitos" aria-describedby="dica-cad-siape">
+        <span class="dica" id="dica-cad-siape">7 dígitos.</span></div>
+      <div class="campo"><label for="cad-email">E-mail institucional</label>
+        <input id="cad-email" name="email" type="email" value="{{ d.email or '' }}" required maxlength="160"
+               autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+               placeholder="nome@{{ dominio_servidor }}" aria-describedby="dica-cad-email">
+        <span class="dica" id="dica-cad-email">O seu e-mail @{{ dominio_servidor }}. Será o seu login.</span></div>
+      <div class="campo"><label for="cad-nome">Nome completo</label>
+        <input id="cad-nome" name="nome" value="{{ d.nome or '' }}" required maxlength="160" autocomplete="name"></div>
+      {% set erro_confirma = erro_do_pedido if erro_do_pedido and erro_do_pedido.startsWith('A confirmação') else none %}
+      <div class="campo">
+        <label for="nova">Senha</label>
+        <input id="nova" name="nova" type="password" data-mostrar-senha required autocomplete="new-password" aria-describedby="dica-nova">
+        {{ senha.barra('nova') }}
+        <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase curta
+          é mais fácil de lembrar e mais difícil de adivinhar.</span>
+      </div>
+      <div class="campo">
+        <label for="confirmacao">Repita a senha</label>
+        <input id="confirmacao" name="confirmacao" type="password" data-mostrar-senha required autocomplete="new-password">
+        {{ senha.confere_com('nova', erro_confirma) }}
+      </div>
+      <div class="acoes"><button type="submit" class="largo">Cadastrar</button></div>
+    </form>
+    <p class="acesso-nota">Depois de enviar, abra o link que chega ao seu e-mail e confirme: o acesso é ativado
+      e você já entra no sistema. Se você já tem senha, use “Esqueci minha senha”.</p>
+{{ senha.script() }}
     <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
       <a href="/esqueci-senha">Esqueci minha senha</a></p>
 
 {% else %}
 {% set terc = vinculo == 'TERCEIRIZADO' %}
     <a class="acesso-voltar" href="{{ caminho }}">{{ ico_acesso('arrow-left') }} Voltar</a>
-    <h1>Pedido de conta</h1>
+    <h1>Cadastro</h1>
     <p class="sub"><span class="pilula">{{ ROTULO_VINCULO[vinculo] }}</span> Com a conta você se inscreve em
       treinamentos, vê os seus certificados e comunica acidentes.</p>
-    {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+    {% if erro_do_pedido %}<div class="aviso aviso-erro" role="alert">{{ erro_do_pedido }}</div>{% endif %}
     <form method="post" action="{{ caminho }}">
       <input type="hidden" name="vinculo" value="{{ vinculo }}">
-      <div class="campo"><label for="cad-nome">Nome completo</label>
-        <input id="cad-nome" name="nome" value="{{ d.nome or '' }}" required maxlength="160" autocomplete="name"></div>
       <div class="campo"><label for="cad-email">{{ 'E-mail' if terc else 'E-mail institucional' }}</label>
         <input id="cad-email" name="email" type="email" value="{{ d.email or '' }}" required maxlength="160"
                autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
                placeholder="{{ 'nome@empresa.com.br' if terc else 'nome@' ~ dominio_discente }}" aria-describedby="dica-cad-email">
-        <span class="dica" id="dica-cad-email">Será o seu login; o link para confirmar o pedido vai para ele.</span></div>
-      <div class="acesso-dois-campos">
-        <div class="campo"><label for="cad-org">{{ 'Empresa' if terc else 'Curso' }}</label>
-          <input id="cad-org" name="organizacao" value="{{ d.organizacao or '' }}" required maxlength="160"></div>
-        <div class="campo"><label for="cad-matricula">{{ 'Setor na UFVJM' if terc else 'Matrícula' }} <span class="opcional">(opcional)</span></label>
-          <input id="cad-matricula" name="matricula" value="{{ d.matricula or '' }}" maxlength="30"></div>
-      </div>
-      {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
+        <span class="dica" id="dica-cad-email">
+          {%- if terc %}O seu e-mail. Será o seu login; o link para confirmar o cadastro vai para ele.
+          {%- else %}O seu e-mail @{{ dominio_discente }}. Será o seu login.{% endif %}</span></div>
+      <div class="campo"><label for="cad-nome">Nome completo</label>
+        <input id="cad-nome" name="nome" value="{{ d.nome or '' }}" required maxlength="160" autocomplete="name"></div>
+      {% set erro_confirma = erro_do_pedido if erro_do_pedido and erro_do_pedido.startsWith('A confirmação') else none %}
       <div class="campo">
         <label for="nova">Senha</label>
         <input id="nova" name="nova" type="password" data-mostrar-senha required autocomplete="new-password" aria-describedby="dica-nova">
@@ -112,7 +156,7 @@
         <label><input type="checkbox" name="maior_de_idade" value="1" required{{ ' checked' if d.maior_de_idade }}>
           Tenho 18 anos ou mais</label>
       </div>
-      <div class="acoes"><button type="submit" class="largo">Enviar o pedido</button></div>
+      <div class="acoes"><button type="submit" class="largo">Cadastrar</button></div>
     </form>
     <p class="acesso-nota">Depois de enviar, confirme o e-mail pelo link que chega a ele: a conta é liberada
       na hora. Os dados servem só para criar a conta e identificar o seu vínculo; o pedido é apagado em até

@@ -1,9 +1,9 @@
 /**
  * "Cadastre-se" do terceirizado e do discente (23/10/2026): o PEDIDO de conta.
  *
- * O servidor não passa por aqui: o cadastro de servidores já diz quem ele é, e
- * o primeiro acesso dele é o de `ativar_acesso.ts` (SIAPE + e-mail do
- * cadastro). Para terceirizado e discente o desenho é:
+ * O servidor se cadastra na mesma tela (/cadastre-se, vínculo «Servidor»), mas o
+ * pedido dele é o de `ativar_acesso.ts` (SIAPE, e-mail institucional, nome e
+ * senha), e não passa por aqui. Para terceirizado e discente o desenho é:
  *
  * - **A pessoa escolhe a senha no pedido (24/10/2026) e confirma o e-mail.**
  *   O pedido nasce `AGUARDANDO_EMAIL`, com a senha em hash, e um link
@@ -116,13 +116,9 @@ export function limpar(
   if (vinculo === "DISCENTE" && !normalizar_email(mail).endsWith(`@${DOMINIO_DISCENTE}`)) {
     throw new DadosInvalidos(`Discente pede com o e-mail institucional (@${DOMINIO_DISCENTE}).`, "o e-mail");
   }
+  // empresa/curso e matrícula saíram do formulário (26/10/2026): o cadastro pede
+  // só e-mail, nome e senha. O campo continua aceito, vazio, para o que já existe
   const organizacao = d.organizacao.replace(/\s+/g, " ").trim();
-  if (!organizacao) {
-    throw new DadosInvalidos(
-      vinculo === "TERCEIRIZADO" ? "Informe a empresa em que você trabalha." : "Informe o seu curso.",
-      vinculo === "TERCEIRIZADO" ? "a empresa" : "o curso",
-    );
-  }
   if (organizacao.length > 160) throw new DadosInvalidos("O texto passa de 160 caracteres.", "a empresa ou o curso");
   const matricula = d.matricula.trim();
   if (matricula.length > 30) throw new DadosInvalidos("A matrícula passa de 30 caracteres.", "a matrícula");
@@ -181,7 +177,6 @@ export function corpo_neutro(): string {
     "Recebemos um pedido de conta no Sistema SISA com este e-mail, mas ele já está no sistema " +
     "(numa conta, num pedido em análise ou no cadastro de servidores).\n\n" +
     "- Se você já tem conta, use \"Esqueci minha senha\" na tela de entrada.\n" +
-    "- Se você é servidor da UFVJM, use \"Primeiro acesso\" e escolha \"Servidor\".\n" +
     "- Se a conta foi bloqueada, procure a equipe da Sisa.\n\n" +
     "Se não foi você, ignore esta mensagem.\n\n" +
     ASSINATURA

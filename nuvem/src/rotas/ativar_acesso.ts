@@ -18,12 +18,12 @@ import * as servico from "../servicos/ativar_acesso.js";
 import * as email from "../servicos/email.js";
 import * as emissao from "../servicos/emissao_certificado.js";
 import { pagina, redirecionar } from "../web.js";
-import { asc } from "drizzle-orm";
-import { cargo as tabela_cargo } from "../db/esquema/index.js";
-import { opcoes_de_lotacao } from "../servicos/servidores.js";
 import { obterConfig } from "../config.js";
 import { cookieSeguro } from "../nucleo/seguranca.js";
 import { ipDoCliente } from "./autenticacao.js";
+import { VINCULO_SERVIDOR, pedido_do_servidor } from "./pedido_conta.js";
+
+const CAMINHO_CADASTRO = "/cadastre-se";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -34,16 +34,14 @@ function _sem_rastro(resposta: Response): Response {
   return resposta;
 }
 
+/**
+ * O que sobrou desta tela: o link de confirmação do e-mail, a escolha da senha
+ * (Esqueci minha senha, convite) e o link vencido. O pedido do servidor mora em
+ * /cadastre-se (26/10/2026): aqui o GET só leva até lá.
+ */
 async function _tela(
   c: Ctx,
   d: {
-    siape?: string;
-    email?: string;
-    nome?: string;
-    cargo_id?: string;
-    unidade_uorg_id?: string;
-    erro?: string | null;
-    recebido?: boolean;
     token?: string;
     definir?: boolean;
     confirmar?: boolean;
@@ -58,18 +56,6 @@ async function _tela(
       "paginas/ativar_acesso.html",
       null,
       {
-        siape: d.siape ?? "",
-        digitado: d.email ?? "",
-        nome: d.nome ?? "",
-        cargo_escolhido: d.cargo_id ?? "",
-        unidade_escolhida: d.unidade_uorg_id ?? "",
-        // as listas do autocadastro: cargo e lotação, que o servidor corrige depois em Meu perfil
-        cargos: await c.get("tx").select().from(tabela_cargo).orderBy(asc(tabela_cargo.nome)),
-        lotacoes: await opcoes_de_lotacao(c.get("tx")),
-        dominio: servico.DOMINIO_SERVIDOR,
-        erro: d.erro ?? null,
-        recebido: d.recebido ?? false,
-        resposta_padrao: servico.RESPOSTA_PADRAO,
         definir: d.definir ?? false,
         confirmar: d.confirmar ?? false,
         invalido: d.invalido ?? false,
@@ -82,54 +68,12 @@ async function _tela(
   );
 }
 
-rotas.get(servico.CAMINHO, (c) => _tela(c));
+// O primeiro acesso do servidor virou um vínculo do Cadastre-se: o endereço
+// antigo (favorito, e-mail de aviso) leva até o formulário dele.
+rotas.get(servico.CAMINHO, (c) => _sem_rastro(redirecionar(c, `${CAMINHO_CADASTRO}?vinculo=${VINCULO_SERVIDOR}`)));
 
-rotas.post(servico.CAMINHO, async (c) => {
-  const inicio = Date.now();
-  const f = await formulario(c);
-  const siape = f.texto("siape").trim().slice(0, 20);
-  const digitado = f.texto("email").trim().slice(0, 160);
-  const tx = c.get("tx");
-  try {
-    const inteiro = (v: string) => (/^\d{1,9}$/.test(v) ? Number(v) : null);
-    await servico.pedir(
-      tx,
-      {
-        siape,
-        email: digitado,
-        nova: f.texto("nova"),
-        confirmacao: f.texto("confirmacao"),
-        // o autocadastro de quem ainda não está no cadastro (25/10/2026)
-        nome: f.texto("nome"),
-        cargo_id: inteiro(f.texto("cargo_id")),
-        unidade_uorg_id: inteiro(f.texto("unidade_uorg_id")),
-      },
-      ipDoCliente(c),
-      await emissao.url_base_validacao(tx),
-    );
-  } catch (erro) {
-    if (erro instanceof servico.DadosInvalidos) {
-      return _tela(c, {
-        siape,
-        email: digitado,
-        nome: f.texto("nome").trim().slice(0, 160),
-        cargo_id: f.texto("cargo_id"),
-        unidade_uorg_id: f.texto("unidade_uorg_id"),
-        erro: erro.message,
-        status: 422,
-      });
-    }
-    throw erro;
-  }
-  // sempre, achando ou não: o custo do "acordar" não distingue o pedido que gerou e-mail
-  await email.acordar_envio();
-  if (!email.configurado()) {
-    // para quem opera (o log da função), sem dado de ninguém; a tela não muda
-    console.warn("[ativar-acesso] pedido recebido, mas o envio de e-mail não está configurado: nada saiu da fila");
-  }
-  await servico.esperar_piso(inicio);
-  return _tela(c, { recebido: true });
-});
+// O POST antigo segue respondendo (formulário em cache): é o mesmo pedido.
+rotas.post(servico.CAMINHO, async (c) => pedido_do_servidor(c, await formulario(c)));
 
 // "Esqueci minha senha" só com o e-mail, para qualquer conta
 async function _tela_esqueci(c: Ctx, d: { email?: string; erro?: string | null; recebido?: boolean; status?: number } = {}) {

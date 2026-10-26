@@ -91,7 +91,7 @@ export const ACESSO_EMAIL_ACOMPANHOU_CADASTRO = "ACESSO_EMAIL_ACOMPANHOU_CADASTR
 export const PEDIDO_DE_ACESSO_RECUSADO = "PEDIDO_DE_ACESSO_RECUSADO";
 export const ACESSO_ATIVADO = "ACESSO_ATIVADO";
 export const SERVIDOR_AUTOCADASTRADO = "SERVIDOR_AUTOCADASTRADO";
-/** O e-mail do servidor no primeiro acesso: o institucional. */
+/** O e-mail do servidor no cadastro: o institucional. */
 export const DOMINIO_SERVIDOR = "ufvjm.edu.br";
 export const SENHA_REDEFINIDA_POR_LINK = "SENHA_REDEFINIDA_POR_LINK";
 
@@ -291,6 +291,10 @@ export async function pedir(
   // exige; só chega assim de fora da tela), só ativa quem já está no cadastro.
   const nome = (d.nome ?? "").trim().replace(/\s+/g, " ");
   if (nome && [...nome].length > 160) throw new DadosInvalidos("O nome tem mais de 160 caracteres.");
+  // as mesmas regras do nome de terceirizado e discente (`pedido_conta.limpar`):
+  // o nome vai para o cadastro, os certificados e os relatórios
+  if (nome && (nome.length < 5 || !nome.includes(" "))) throw new DadosInvalidos("Digite o nome completo.");
+  if (nome && /\d/.test(nome)) throw new DadosInvalidos("O nome não leva números.");
   if (nome && !normalizar_email(d.email).endsWith(`@${DOMINIO_SERVIDOR}`)) {
     throw new DadosInvalidos(`Use o seu e-mail institucional (@${DOMINIO_SERVIDOR}).`);
   }
@@ -918,13 +922,13 @@ async function _criar_do_autocadastro(tx: Executor, linha: typeof tabela.$inferS
     tipo_evento: SERVIDOR_AUTOCADASTRADO,
     descricao:
       // como os outros eventos deste fluxo: sem nome, SIAPE nem e-mail (a ficha os tem)
-      "Servidor cadastrado pelo próprio servidor no primeiro acesso, ao confirmar o e-mail institucional. " +
+      "Servidor cadastrado pelo próprio servidor no Cadastre-se, ao confirmar o e-mail institucional. " +
       "A equipe da Sisa confere e corrige na ficha.",
     usuario_nome: ATOR,
     ip: contexto.ip ?? null,
     user_agent: contexto.user_agent ?? null,
   });
-  await registrar_lotacao_inicial(tx, novo, null, { documento: "Autocadastro no primeiro acesso" });
+  await registrar_lotacao_inicial(tx, novo, null, { documento: "Autocadastro no Cadastre-se" });
   await tx.update(tabela).set({ servidor_id: novo.id }).where(eq(tabela.id, linha.id));
   return novo.id;
 }

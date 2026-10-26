@@ -1,12 +1,13 @@
 /**
- * /cadastre-se — o "Primeiro acesso / Cadastre-se" da tela de entrada — e
- * /usuarios/pedidos, a fila em que a equipe confere os pedidos de conta
- * (`servicos/pedido_conta.ts`).
+ * /cadastre-se — o único cadastro, da tela de entrada — e /usuarios/pedidos, a
+ * fila em que a equipe confere os pedidos de conta (`servicos/pedido_conta.ts`).
  *
- * /cadastre-se pergunta o vínculo: o servidor segue para /ativar-acesso (o
- * cadastro de servidores diz quem ele é); terceirizado e discente preenchem o
- * pedido. Como as outras telas sem sessão: `noindex`, `no-store`,
- * `no-referrer`, a mesma resposta para todo pedido e piso de tempo.
+ * /cadastre-se pergunta o vínculo. O servidor informa SIAPE, e-mail
+ * institucional, nome e senha (`servicos/ativar_acesso.ts`: o e-mail
+ * confirmado ativa o acesso e entra); terceirizado e discente, e-mail, nome e
+ * senha (`servicos/pedido_conta.ts`). A opção «Primeiro acesso do servidor»
+ * deixou de existir (26/10/2026). Como as outras telas sem sessão: `noindex`,
+ * `no-store`, `no-referrer`, a mesma resposta para todo pedido e piso de tempo.
  */
 import { Hono } from "hono";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
@@ -29,7 +30,10 @@ function _sem_rastro(resposta: Response): Response {
   return resposta;
 }
 
-type Digitado = Partial<servico.DadosPedido>;
+type Digitado = Partial<servico.DadosPedido> & { siape?: string };
+
+/** O vínculo do servidor no Cadastre-se: o formulário dele pede o SIAPE. */
+export const VINCULO_SERVIDOR = "SERVIDOR";
 
 async function _tela(
   c: Ctx,
@@ -44,7 +48,8 @@ async function _tela(
     status?: number;
   } = {},
 ): Promise<Response> {
-  const vinculo = servico.VINCULOS.includes(d.vinculo as servico.Vinculo) ? d.vinculo : null;
+  const vinculo =
+    d.vinculo === VINCULO_SERVIDOR || servico.VINCULOS.includes(d.vinculo as servico.Vinculo) ? d.vinculo : null;
   return _sem_rastro(
     await pagina(
       c,
@@ -59,9 +64,10 @@ async function _tela(
         confirmado: d.confirmado ?? false,
         invalido: d.invalido ?? false,
         caminho_confirmar: servico.CAMINHO_CONFIRMAR,
-        resposta_padrao: servico.RESPOSTA_PADRAO,
+        resposta_padrao: d.vinculo === VINCULO_SERVIDOR ? ativar_acesso.RESPOSTA_PADRAO : servico.RESPOSTA_PADRAO,
         caminho: servico.CAMINHO,
-        caminho_servidor: ativar_acesso.CAMINHO,
+        vinculo_servidor: VINCULO_SERVIDOR,
+        dominio_servidor: ativar_acesso.DOMINIO_SERVIDOR,
         dominio_discente: servico.DOMINIO_DISCENTE,
         ROTULO_VINCULO: servico.ROTULO_VINCULO,
       },
@@ -72,9 +78,43 @@ async function _tela(
 
 rotas.get(servico.CAMINHO, (c) => _tela(c, { vinculo: c.req.query("vinculo") ?? "" }));
 
+/**
+ * O pedido do servidor: SIAPE, e-mail institucional, nome e senha. É o mesmo
+ * serviço do antigo «Primeiro acesso do servidor» (`ativar_acesso.pedir`); só a
+ * porta de entrada mudou. Exportado para o POST antigo de /ativar-acesso, que
+ * segue respondendo (formulário em cache, favorito).
+ */
+export async function pedido_do_servidor(c: Ctx, f: Awaited<ReturnType<typeof formulario>>): Promise<Response> {
+  const inicio = Date.now();
+  const siape = f.texto("siape").trim().slice(0, 20);
+  const digitado = { siape, email: f.texto("email").trim().slice(0, 160), nome: f.texto("nome").trim().slice(0, 160) };
+  const tx = c.get("tx");
+  try {
+    await ativar_acesso.pedir(
+      tx,
+      { ...digitado, nova: f.texto("nova"), confirmacao: f.texto("confirmacao") },
+      ipDoCliente(c),
+      await emissao.url_base_validacao(tx),
+    );
+  } catch (erro) {
+    if (erro instanceof ativar_acesso.DadosInvalidos) {
+      return _tela(c, { vinculo: VINCULO_SERVIDOR, digitado, erro: erro.message, status: 422 });
+    }
+    throw erro;
+  }
+  await email.acordar_envio();
+  if (!email.configurado()) {
+    // para quem opera (o log da função), sem dado de ninguém; a tela não muda
+    console.warn("[cadastre-se] pedido recebido, mas o envio de e-mail não está configurado: nada saiu da fila");
+  }
+  await ativar_acesso.esperar_piso(inicio);
+  return _tela(c, { vinculo: VINCULO_SERVIDOR, recebido: true });
+}
+
 rotas.post(servico.CAMINHO, async (c) => {
   const inicio = Date.now();
   const f = await formulario(c);
+  if (f.texto("vinculo") === VINCULO_SERVIDOR) return pedido_do_servidor(c, f);
   const digitado: servico.DadosPedido = {
     vinculo: f.texto("vinculo").slice(0, 20),
     nome: f.texto("nome").slice(0, 400),

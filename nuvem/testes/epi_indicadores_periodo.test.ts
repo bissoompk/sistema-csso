@@ -167,17 +167,23 @@ describe("período livre", () => {
     expect(_status(() => rota.periodo_da_consulta({ exercicio: "dois mil" }))).toBe(422);
   });
 
-  it("a tela responde 422 com a mensagem, e o período livre na tela", async () => {
+  it("período que não fecha: a tela abre no exercício corrente com a mensagem; a exportação recusa (422)", async () => {
     await bancoLimpo();
     await contas(obterBanco());
     const cliente = await entrar(novoCliente(), "coordenador_csso");
+    // a tela não vira página de erro (26/10/2026): a frase fica no alto e os números são do exercício corrente
     const invertido = await cliente.get("/epis/relatorios?exercicio=livre&inicio=2026-05-02&fim=2026-05-01");
-    expect(invertido.status).toBe(422);
+    expect(invertido.status).toBe(200);
     expect(invertido.text).toContain("O início do período não pode ser depois do fim.");
+    expect(invertido.text).toContain("Entregue por EPI");
     const longo = await cliente.get("/epis/relatorios?inicio=2015-01-01&fim=2026-01-01");
-    expect(longo.status).toBe(422);
+    expect(longo.status).toBe(200);
     expect(longo.text).toContain("no máximo 5 anos");
-    expect((await cliente.get("/epis/relatorios?inicio=2026-13-01&fim=2026-12-31")).status).toBe(422);
+    const torta = await cliente.get("/epis/relatorios?inicio=2026-13-01&fim=2026-12-31");
+    expect(torta.status).toBe(200);
+    expect(torta.text).toContain("data inválida");
+    // o arquivo continua recusando: ninguém baixa um CSV de um período que não existe
+    expect((await cliente.get("/epis/relatorios/exportar?exercicio=livre&inicio=2026-05-02&fim=2026-05-01")).status).toBe(422);
 
     const tela = await cliente.get("/epis/relatorios?exercicio=livre&inicio=2026-03-01&fim=2026-06-30");
     expect(tela.status).toBe(200);

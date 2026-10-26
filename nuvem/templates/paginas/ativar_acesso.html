@@ -3,7 +3,7 @@
 {# Sem lateral: quem abre não tem conta (ou esqueceu a senha). Desenho das
    telas de acesso: painel da Sisa à esquerda, formulário à direita. #}
 {% set sem_casca = true %}
-{% block titulo %}Primeiro acesso do servidor · SISA{% endblock %}
+{% block titulo %}Acesso · SISA{% endblock %}
 {% block classe_conteudo %}tela-auxiliar tela-acesso{% endblock %}
 {% macro ico_acesso(nome) %}<svg class="ico" aria-hidden="true" focusable="false"><use href="/estaticos/img/icones.svg#{{ nome }}"></use></svg>{% endmacro %}
 
@@ -16,7 +16,7 @@
     <h1>Link vencido ou inválido</h1>
     <p class="sub">O link para definir a senha vale por tempo limitado e só pode ser usado uma vez. Peça outro.</p>
     <a class="botao largo" href="/esqueci-senha">Pedir um link novo</a>
-    <p class="acesso-links"><a href="{{ caminho }}">Sou servidor e ainda não ativei o acesso</a></p>
+    <p class="acesso-links"><a href="/cadastre-se?vinculo=SERVIDOR">Sou servidor e ainda não me cadastrei</a></p>
 
 {% elif confirmar %}
     <h1>Confirme o seu e-mail</h1>
@@ -25,8 +25,9 @@
     <form method="post" action="{{ caminho }}/{{ token }}">
       <div class="acoes"><button type="submit" class="largo">Confirmar e ativar o acesso</button></div>
     </form>
-    <div class="aviso aviso-alerta" role="note"><p>Não foi você que pediu? Não confirme: feche esta página
-      e nada muda.</p></div>
+    <div class="aviso aviso-alerta" role="note"><p>Confirme só se foi você que acabou de preencher o cadastro:
+      ao confirmar, você entra no sistema na hora, com a senha escolhida nele. Não foi você? Não confirme:
+      feche esta página e nada muda.</p></div>
 
 {% elif definir %}
 {% set erro_confirma = erro_senha if erro_senha and erro_senha.startsWith('A confirmação') else none %}
@@ -53,73 +54,11 @@
       aparelhos, se houver, são encerradas.</p>
 {{ senha.script() }}
 
-{% elif recebido %}
-    <h1>Verifique o seu e-mail</h1>
-    <div class="aviso aviso-ok" role="status"><p>{{ resposta_padrao }}</p></div>
-    <p class="acesso-nota">Se você já está no cadastro de servidores da Sisa, o link vai para o e-mail que
-      está lá. Se não chegar em alguns minutos, procure a equipe da Sisa.</p>
-    <p class="acesso-nota">Abra o link que enviamos e clique em “Confirmar”: você entra no sistema na hora.
-      Não precisa voltar a esta tela.</p>
-    <a class="botao secundario largo" href="/login">Voltar para a entrada</a>
-
 {% else %}
-    <a class="acesso-voltar" href="/cadastre-se">{{ ico_acesso('arrow-left') }} Voltar</a>
-    <h1>Primeiro acesso do servidor</h1>
-    {# 25/10/2026: o sistema não lê o SIAPE. Quem ainda não está no cadastro se
-       cadastra aqui; quem já está só confirma o e-mail. A tela é a mesma para
-       os dois e responde igual (de fora não se sabe quem está no cadastro). #}
-    <p class="sub">Informe os seus dados e a senha que quer usar. Enviamos um link ao seu e-mail
-      institucional para você confirmar e ativar o acesso.</p>
-    {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
-    <form method="post" action="{{ caminho }}">
-      <div class="campo"><label for="ativar-siape">SIAPE</label>
-        <input id="ativar-siape" name="siape" value="{{ siape }}" required inputmode="numeric"
-               pattern="[0-9]{7}" maxlength="7" autocomplete="off" autocapitalize="none" spellcheck="false"
-               placeholder="7 dígitos"></div>
-      <div class="campo"><label for="ativar-email">E-mail institucional</label>
-        <input id="ativar-email" name="email" type="email" value="{{ digitado }}" required
-               maxlength="160" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
-               placeholder="nome@ufvjm.edu.br" aria-describedby="dica-ativar">
-        <span class="dica" id="dica-ativar">O seu e-mail @{{ dominio }}. Será o seu login.</span></div>
-      <div class="campo"><label for="ativar-nome">Nome completo</label>
-        <input id="ativar-nome" name="nome" value="{{ nome }}" required maxlength="160" autocomplete="name"></div>
-      <div class="acesso-dois-campos">
-        <div class="campo"><label for="ativar-cargo">Cargo <span class="opcional">(opcional)</span></label>
-          <select id="ativar-cargo" name="cargo_id">
-            <option value="">—</option>
-            {% for cg in cargos %}<option value="{{ cg.id }}"{{ ' selected' if (cg.id | string) == cargo_escolhido }}>{{ cg.nome }}</option>{% endfor %}
-          </select></div>
-        <div class="campo"><label for="ativar-lotacao">Lotação <span class="opcional">(opcional)</span></label>
-          <select id="ativar-lotacao" name="unidade_uorg_id">
-            <option value="">—</option>
-            {% for u in lotacoes %}<option value="{{ u.id }}"{{ ' selected' if (u.id | string) == unidade_escolhida }}>{{ u.rotulo }}</option>{% endfor %}
-          </select></div>
-      </div>
-      <p class="acesso-nota">Se você já está no cadastro de servidores da Sisa, valem os dados de lá. Se ainda
-        não está, o cadastro é criado com estes dados quando você confirmar o e-mail — e cargo e lotação você
-        completa ou corrige depois, em Meu perfil.</p>
-      {% set erro_confirma = erro if erro and erro.startsWith('A confirmação') else none %}
-      <div class="campo">
-        <label for="nova">Senha</label>
-        <input id="nova" name="nova" type="password" data-mostrar-senha required autocomplete="new-password" aria-describedby="dica-nova">
-        {{ senha.barra('nova') }}
-        <span class="dica" id="dica-nova">Mínimo de {{ POLITICA_SENHA.minimo }} caracteres. Uma frase curta
-          é mais fácil de lembrar e mais difícil de adivinhar.</span>
-      </div>
-      <div class="campo">
-        <label for="confirmacao">Repita a senha</label>
-        <input id="confirmacao" name="confirmacao" type="password" data-mostrar-senha required autocomplete="new-password">
-        {{ senha.confere_com('nova', erro_confirma) }}
-      </div>
-      <div class="acoes"><button type="submit" class="largo">Continuar</button></div>
-    </form>
-    <p class="acesso-nota">Não recebeu o link? Confira a caixa de spam. Se o seu SIAPE já está no cadastro
-      com outro e-mail, o link vai para aquele: procure a equipe da Sisa para corrigir. Se você já tem senha,
-      use "Esqueci minha senha".</p>
-{{ senha.script() }}
-    <p class="acesso-links"><a href="/login">Já tenho acesso: entrar</a>
-      <a href="/esqueci-senha">Esqueci minha senha</a>
-      <a href="/cadastre-se">Não sou servidor</a></p>
+    {# O pedido do servidor mora em /cadastre-se; o GET daqui já redireciona #}
+    <h1>Cadastre-se</h1>
+    <a class="botao largo" href="/cadastre-se?vinculo=SERVIDOR">Cadastro do servidor</a>
+
 {% endif %}
   </div>
 </div>

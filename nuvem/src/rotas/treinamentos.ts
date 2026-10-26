@@ -1664,7 +1664,7 @@ rotas.get(INDICADORES, async (c) => {
   const suprime = (n: number) => !nominal && n !== 0 && n < LIMIAR_SUPRESSAO;
   const pessoas = (n: number) => (suprime(n) ? MARCA_SUPRIMIDO : String(n));
   const cartoes_pessoas = Object.fromEntries(
-    (["participantes", "aguardando_confirmacao", "aprovados", "reprovados", "faltas", "emitidos", "pendentes"] as const).map(
+    (["participantes", "pessoas_distintas", "aguardando_confirmacao", "aprovados", "reprovados", "faltas", "emitidos", "pendentes"] as const).map(
       (k) => [k, pessoas(r[k])],
     ),
   );

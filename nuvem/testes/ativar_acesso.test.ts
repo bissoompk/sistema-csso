@@ -137,7 +137,7 @@ describe("limites contados no banco", () => {
       expect(r.status).toBe(200);
       ultima = sem_nonce(r.text);
     }
-    expect(ultima).toContain("Verifique o seu e-mail");
+    expect(ultima).toContain("Confirme o seu e-mail");
     const linhas = await db.select().from(e.ativacao_acesso).where(eq(e.ativacao_acesso.ip, "203.0.113.7"));
     expect(linhas).toHaveLength(servico.PEDIDOS_POR_HORA_POR_IP);
     // o pedido certo, vindo desse mesmo endereço já no teto, não manda nada
@@ -419,11 +419,16 @@ describe("auditoria", () => {
 describe("telas", () => {
   it("o login tem o link, e nenhuma tela do fluxo mostra código (RN-xx)", async () => {
     expect((await cliente.get("/login")).text).toContain('href="/cadastre-se"');
-    expect((await cliente.get("/login")).text).toContain("Primeiro acesso / Cadastre-se");
-    expect((await cliente.get("/cadastre-se")).text).toContain('href="/ativar-acesso"');
+    expect((await cliente.get("/login")).text).toContain("Cadastre-se");
+    // o «Primeiro acesso do servidor» saiu: o GET antigo leva ao cadastro do servidor
+    const antigo = await cliente.get("/ativar-acesso", { seguir: false });
+    expect(antigo.status).toBe(303);
+    expect(antigo.location).toBe("/cadastre-se?vinculo=SERVIDOR");
+    expect((await cliente.get("/login")).text).not.toContain("Primeiro acesso");
     await servidor();
     const telas = [
-      (await cliente.get("/ativar-acesso")).text,
+      (await cliente.get("/cadastre-se")).text,
+      (await cliente.get("/cadastre-se?vinculo=SERVIDOR")).text,
       (await pedir(SIAPE, EMAIL)).text,
       (await pedir("12", EMAIL)).text,
       (await cliente.get("/ativar-acesso/inventado")).text,

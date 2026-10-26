@@ -437,7 +437,18 @@ rotas.get(RELATORIOS, async (c) => {
   // o relatório é do módulo de EPI: "sem acesso" a ele fecha também esta tela
   // (liberação por módulo, 22/10/2026; o item de menu declara as duas)
   usuario.exigir_na_equipe("epi.ver");
-  const periodo = _periodo(c);
+  // Período que não fecha (início depois do fim, data torta): a tela abre no
+  // exercício corrente com a frase no alto, em vez da página de erro genérica
+  // que mandava a pessoa de volta ao painel. A exportação continua recusando.
+  let periodo: Periodo;
+  let erro: string | null = null;
+  try {
+    periodo = _periodo(c);
+  } catch (falha) {
+    if (!(falha instanceof ErroHttp) || falha.status !== 422) throw falha;
+    periodo = _periodo_do_exercicio(null);
+    erro = falha.detalhe;
+  }
   const tx = c.get("tx");
   const ctx = await _contexto(tx, usuario, periodo);
   const exercicios = await _exercicios(tx);
@@ -445,6 +456,7 @@ rotas.get(RELATORIOS, async (c) => {
   return pagina(c, "paginas/epis_relatorios.html", usuario, {
     pode_exportar: usuario.pode("exportar"),
     exercicios: exercicios.sort((x, y) => y - x),
+    ...(erro ? { erro } : {}),
     ...ctx,
   });
 });

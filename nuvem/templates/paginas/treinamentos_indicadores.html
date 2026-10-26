@@ -80,7 +80,9 @@
     </div>
     <div class="kpi">
       <div class="rotulo">Participantes</div>
-      <div class="medida"><span class="valor">{{ cartoes_pessoas.participantes }}</span></div>
+      <div class="medida"><span class="valor">{{ cartoes_pessoas.participantes }}</span>
+        {# inscrições que ocupam vaga: quem faz três turmas conta três vezes #}
+        <span class="nota">inscrições · {{ cartoes_pessoas.pessoas_distintas }} pessoa(s) distinta(s)</span></div>
     </div>
     <div class="kpi">
       <div class="rotulo">Aguardando confirmação</div>

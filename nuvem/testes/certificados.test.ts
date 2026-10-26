@@ -801,6 +801,8 @@ describe("indicadores de treinamento", () => {
       turmas_concluidas: 1,
       turmas_ativas: 0,
       participantes: 2,
+      // duas pessoas, uma inscrição cada; quem faz várias turmas conta várias vezes em `participantes`
+      pessoas_distintas: 2,
       aprovados: 2,
       reprovados: 0,
       emitidos: 1,
@@ -831,6 +833,8 @@ describe("indicadores de treinamento", () => {
     expect(tela.status).toBe(200);
     expect(tela.text).toContain("Treinamentos com mais participantes");
     expect(tela.text).toContain("Trabalho em Altura — NR-35");
+    // o cartão diz que são inscrições, e quantas pessoas há por trás (teste de relatórios, 26/10/2026)
+    expect(tela.text).toMatch(/inscrições · 2 pessoa\(s\) distinta\(s\)/);
     expect(tela.text).toContain("100%");
     await entrar(cliente, "secretaria_csso");
     const suprimida = await cliente.get("/treinamentos/indicadores?periodo=todo");
