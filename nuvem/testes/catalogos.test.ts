@@ -474,4 +474,87 @@ describe("validações dos catálogos que faltavam", () => {
     const form = (await amb.cliente.get("/catalogos/campi")).text;
     expect(form).toMatch(/id="novo-sigla" name="sigla" maxlength="12"/);
   });
+
+  // 26/10/2026 — o teste no navegador achou linha em branco, duplicata por caixa
+  // e 500 em texto longo nos catálogos de agentes, riscos, fundamentações,
+  // percentuais, textos padrão, portarias e checklists.
+  describe("recusas dos catálogos de parecer", () => {
+    const post = (caminho: string, dados: Record<string, string>) => amb.cliente.post(caminho, dados);
+
+    it("agente nocivo: em branco, igual a outro (caixa/acento) e longo demais são recusados, no cadastro e na edição", async () => {
+      const [agente] = await amb.db.select().from(e.agente_nocivo).orderBy(e.agente_nocivo.id);
+      const [risco] = await amb.db.select().from(e.tipo_risco);
+      const antes = (await amb.db.select().from(e.agente_nocivo)).length;
+      const base = { tipo_risco_id: String(risco!.id) };
+      const branco = await post("/catalogos/agentes-nocivos", { ...base, descricao: "   " });
+      expect(branco.text).toContain("o campo não pode ficar em branco");
+      const igual = await post("/catalogos/agentes-nocivos", { ...base, descricao: agente!.descricao.toUpperCase() });
+      expect(igual.text).toContain("Já existe");
+      expect(abertos(igual.text)).toEqual(["novo"]);
+      const longo = await post("/catalogos/agentes-nocivos", { ...base, descricao: "X".repeat(201) });
+      expect(longo.text).toContain("passa de 200 caracteres");
+      expect(await amb.db.select().from(e.agente_nocivo)).toHaveLength(antes);
+      const outro = (await amb.db.select().from(e.agente_nocivo).orderBy(e.agente_nocivo.id))[1]!;
+      const edicao = await post(`/catalogos/agentes-nocivos/${outro.id}`, { ...base, descricao: agente!.descricao.toLowerCase(), ativo: "1" });
+      expect(edicao.text).toContain("Já existe");
+      expect(abertos(edicao.text)).toEqual([`editar-agente-${outro.id}`]);
+    });
+
+    it("tipo de risco, percentual e fundamentação: nome repetido ou grande demais volta como recusa (não 500)", async () => {
+      const [t1, t2] = await amb.db.select().from(e.tipo_risco).orderBy(e.tipo_risco.id);
+      const rep = await post(`/catalogos/tipos-risco/${t1!.id}`, { nome: t2!.nome.toUpperCase() });
+      expect(rep.text).toContain("Já existe");
+      expect((await post(`/catalogos/tipos-risco/${t1!.id}`, { nome: "Y".repeat(61) })).text).toContain("passa de 60 caracteres");
+      const [p1, p2] = await amb.db.select().from(e.percentual_aplicavel).orderBy(e.percentual_aplicavel.id);
+      expect((await post(`/catalogos/percentuais/${p1!.id}`, { rotulo: p2!.rotulo })).text).toContain("Já existe");
+      expect((await post(`/catalogos/percentuais/${p1!.id}`, { rotulo: "R".repeat(41) })).text).toContain("passa de 40 caracteres");
+      const [f1] = await amb.db.select().from(e.fundamentacao_legal).orderBy(e.fundamentacao_legal.id);
+      const corpo = { norma: f1!.norma, anexo: "A".repeat(21), texto: "texto", vigente: "1" };
+      expect((await post(`/catalogos/fundamentacoes-legais/${f1!.id}`, corpo)).text).toContain("O anexo passa de 20 caracteres");
+      expect((await post(`/catalogos/fundamentacoes-legais/${f1!.id}`, { ...corpo, anexo: "", texto: "  " })).text).toContain("Preencha o texto");
+      const [t1depois] = await amb.db.select().from(e.tipo_risco).where(eq(e.tipo_risco.id, t1!.id));
+      expect(t1depois!.nome).toBe(t1!.nome);
+    });
+
+    it("texto padrão: código com espaço/acento e texto em branco são recusados; código bom versiona", async () => {
+      const dados = { categoria: "ASSUNTO", template: "Olá" };
+      const antes = (await amb.db.select().from(e.texto_padrao)).length;
+      for (const codigo of ["  ", "Código Ação", "COM ESPACO", "A".repeat(41)]) {
+        const r = await post("/catalogos/textos-padrao", { ...dados, codigo });
+        expect(r.text, codigo).toContain("O código tem de 1 a 40 letras");
+      }
+      expect((await post("/catalogos/textos-padrao", { ...dados, codigo: "TESTE_Y", template: "  " })).text).toContain("Preencha o texto");
+      expect(await amb.db.select().from(e.texto_padrao)).toHaveLength(antes);
+      expect((await post("/catalogos/textos-padrao", { ...dados, codigo: "TESTE_Y" })).status).toBe(200);
+      expect(await amb.db.select().from(e.texto_padrao)).toHaveLength(antes + 1);
+    });
+
+    it("portaria: número com letra ou maior que a coluna é recusado na edição", async () => {
+      const [fam] = await amb.db.select().from(e.unidade_uorg).limit(1);
+      await post("/catalogos/portarias", { texto_original: "PORTARIA/FAMED Nº 7, DE 3 DE MARÇO DE 2024", unidade_emissora_id: String(fam!.id) });
+      const [p] = await amb.db.select().from(e.portaria_localizacao);
+      const base = { texto_original: p!.texto_original, data_publicacao: p!.data_publicacao };
+      expect((await post(`/catalogos/portarias/${p!.id}`, { ...base, numero: "12A" })).text).toContain("de 1 a 10 dígitos");
+      expect((await post(`/catalogos/portarias/${p!.id}`, { ...base, numero: "9".repeat(11) })).text).toContain("de 1 a 10 dígitos");
+      expect((await post(`/catalogos/portarias/${p!.id}`, { ...base, texto_original: "  ", numero: "7" })).text).toContain("Preencha o texto");
+    });
+
+    it("checklist: sem itens, item repetido ou longo, e nome repetido (que atualizava em silêncio) são recusados", async () => {
+      expect((await post("/catalogos/checklists-modelo", { nome: "Modelo A", itens: "  \n " })).text).toContain("ao menos um item");
+      expect((await post("/catalogos/checklists-modelo", { nome: "Modelo A", itens: "Um\num" })).text).toContain("aparece mais de uma vez");
+      expect((await post("/catalogos/checklists-modelo", { nome: "Modelo A", itens: "G".repeat(301) })).text).toContain("passa de 300 caracteres");
+      await post("/catalogos/checklists-modelo", { nome: "Modelo A", itens: "Um\nDois" });
+      const repetido = await post("/catalogos/checklists-modelo", { nome: "modelo a", itens: "Outro" });
+      expect(repetido.text).toContain("Já existe");
+      const [m] = await amb.db.select().from(e.checklist_modelo).where(eq(e.checklist_modelo.nome, "Modelo A"));
+      expect(m!.itens).toBe("Um\nDois");
+      // editar: o nome de OUTRO modelo é recusado; o próprio nome passa
+      await post("/catalogos/checklists-modelo", { nome: "Modelo B", itens: "x" });
+      const [b] = await amb.db.select().from(e.checklist_modelo).where(eq(e.checklist_modelo.nome, "Modelo B"));
+      expect((await post(`/catalogos/checklists-modelo/${b!.id}`, { nome: "MODELO A", itens: "x", ativo: "1" })).text).toContain("Já existe");
+      await post(`/catalogos/checklists-modelo/${b!.id}`, { nome: "Modelo B", itens: "x\ny", ativo: "1" });
+      const [b_depois] = await amb.db.select().from(e.checklist_modelo).where(eq(e.checklist_modelo.id, b!.id));
+      expect(b_depois!.itens).toBe("x\ny");
+    });
+  });
 });

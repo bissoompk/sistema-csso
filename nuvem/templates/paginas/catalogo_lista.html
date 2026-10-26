@@ -541,7 +541,7 @@
                        'ASSUNTO','PREAMBULO','ENCERRAMENTO'] %}<option{{ ui.sel(dn['categoria'], c) }}>{{ c }}</option>{% endfor %}
         </select></div>
       <div class="campo codigo"><label for="txt-codigo">Código</label>
-        <input id="txt-codigo" name="codigo" required value="{{ dn['codigo'] or '' }}"></div>
+        <input id="txt-codigo" name="codigo" required maxlength="40" pattern="[A-Za-z0-9_]+" title="letras sem acento, dígitos e _" value="{{ dn['codigo'] or '' }}"></div>
     </div>
     <div class="campo"><label for="txt-template">Template</label>
       <textarea id="txt-template" name="template" required>{{ dn['template'] or '' }}</textarea></div>
@@ -570,9 +570,9 @@
   {% elif nome == 'checklists-modelo' %}
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/checklists-modelo',
                             ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro,
-                            nota='nome já cadastrado atualiza o modelo em vez de duplicar') %}
+                            nota='nome já cadastrado é recusado: edite o modelo da lista') %}
     <div class="campo"><label for="chk-nome">Nome</label>
-      <input id="chk-nome" name="nome" required placeholder="Instrução do adicional ocupacional"
+      <input id="chk-nome" name="nome" required maxlength="120" placeholder="Instrução do adicional ocupacional"
              value="{{ dn['nome'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="chk-tipo">Tipo de processo</label>
@@ -649,7 +649,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
   {% call ui.popup_cadastro('novo', ROTULO_NOVO[nome], '/catalogos/agentes-nocivos',
                             ROTULO_NOVO[nome], aberto=(recusado and not editando_id), erro=erro_cadastro) %}
     <div class="campo"><label for="ag-descricao">Descrição</label>
-      <input id="ag-descricao" name="descricao" required value="{{ dn['descricao'] or '' }}"></div>
+      <input id="ag-descricao" name="descricao" required maxlength="200" value="{{ dn['descricao'] or '' }}"></div>
     <div class="linha-campos">
       <div class="campo"><label for="ag-risco">Tipo de risco</label>
         <select id="ag-risco" name="tipo_risco_id" required>
@@ -810,7 +810,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
   {% call ui.popup_cadastro('editar-agente-' ~ a.id, 'Editar agente nocivo', '/catalogos/agentes-nocivos/' ~ a.id, 'Salvar',
                             aberto=deste, erro=(erro_popup if deste else none)) %}
     <div class="campo{{ ' com-erro' if deste }}"><label for="ed-agente-{{ a.id }}-descricao">Descrição</label>
-      <input id="ed-agente-{{ a.id }}-descricao" name="descricao" required value="{{ v.descricao or '' }}"{{ ' autofocus' if deste }}></div>
+      <input id="ed-agente-{{ a.id }}-descricao" name="descricao" required maxlength="200" value="{{ v.descricao or '' }}"{{ ' autofocus' if deste }}></div>
     <div class="linha-campos">
       <div class="campo"><label for="ed-agente-{{ a.id }}-risco">Tipo de risco</label>
         <select id="ed-agente-{{ a.id }}-risco" name="tipo_risco_id" required>
@@ -845,7 +845,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
                             aberto=deste, erro=(erro_popup if deste else none),
                             nota='o código é chave interna e não muda') %}
     <div class="campo{{ ' com-erro' if deste }}"><label for="ed-risco-{{ t.id }}-nome">Nome</label>
-      <input id="ed-risco-{{ t.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}
+      <input id="ed-risco-{{ t.id }}-nome" name="nome" required maxlength="60" value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}
              aria-describedby="ed-risco-{{ t.id }}-dica">
       <span class="dica" id="ed-risco-{{ t.id }}-dica">Sai no parecer no campo “Tipo de risco”.</span></div>
   {% endcall %}
@@ -860,9 +860,9 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
                             nota='o parecer já emitido não muda: reimprime do congelado') %}
     <div class="linha-campos">
       <div class="campo{{ ' com-erro' if deste }}"><label for="ed-fund-{{ f.id }}-norma">Norma</label>
-        <input id="ed-fund-{{ f.id }}-norma" name="norma" required value="{{ v.norma or '' }}"{{ ' autofocus' if deste }}></div>
+        <input id="ed-fund-{{ f.id }}-norma" name="norma" required maxlength="40" value="{{ v.norma or '' }}"{{ ' autofocus' if deste }}></div>
       <div class="campo"><label for="ed-fund-{{ f.id }}-anexo">Anexo</label>
-        <input id="ed-fund-{{ f.id }}-anexo" name="anexo" value="{{ v.anexo or '' }}"></div>
+        <input id="ed-fund-{{ f.id }}-anexo" name="anexo" maxlength="20" value="{{ v.anexo or '' }}"></div>
     </div>
     <div class="campo"><label for="ed-fund-{{ f.id }}-texto">Texto</label>
       <textarea id="ed-fund-{{ f.id }}-texto" name="texto" rows="6" required
@@ -884,7 +884,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
                             aberto=deste, erro=(erro_popup if deste else none),
                             nota='o valor é a lei e não se edita aqui') %}
     <div class="campo{{ ' com-erro' if deste }}"><label for="ed-perc-{{ p.id }}-rotulo">Rótulo</label>
-      <input id="ed-perc-{{ p.id }}-rotulo" name="rotulo" required value="{{ v.rotulo or '' }}"{{ ' autofocus' if deste }}></div>
+      <input id="ed-perc-{{ p.id }}-rotulo" name="rotulo" required maxlength="40" value="{{ v.rotulo or '' }}"{{ ' autofocus' if deste }}></div>
     <p class="discreto rodape-cartao sem-margem">Valor: <span class="mono">{{ p.valor }}%</span>
       sobre {{ p.base_calculo }}.</p>
   {% endcall %}
@@ -898,7 +898,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
                             aberto=deste, erro=(erro_popup if deste else none),
                             nota='o checklist já aplicado num processo é uma cópia e não muda') %}
     <div class="campo{{ ' com-erro' if deste }}"><label for="ed-chk-{{ m.id }}-nome">Nome</label>
-      <input id="ed-chk-{{ m.id }}-nome" name="nome" required value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}></div>
+      <input id="ed-chk-{{ m.id }}-nome" name="nome" required maxlength="120" value="{{ v.nome or '' }}"{{ ' autofocus' if deste }}></div>
     <div class="campo"><label for="ed-chk-{{ m.id }}-itens">Itens</label>
       <textarea id="ed-chk-{{ m.id }}-itens" name="itens" rows="6" required
                 aria-describedby="ed-chk-{{ m.id }}-dica">{{ v.itens or '' }}</textarea>
@@ -923,7 +923,7 @@ placeholder="Portaria de localização anexada&#10;Formulário do art. 17 assina
       <span class="dica" id="ed-port-{{ p.id }}-dica">Byte a byte como no documento.</span></div>
     <div class="linha-campos">
       <div class="campo codigo"><label for="ed-port-{{ p.id }}-numero">Número</label>
-        <input id="ed-port-{{ p.id }}-numero" name="numero" required value="{{ v.numero or '' }}"></div>
+        <input id="ed-port-{{ p.id }}-numero" name="numero" required maxlength="10" value="{{ v.numero or '' }}"></div>
       <div class="campo"><label for="ed-port-{{ p.id }}-data">Publicação</label>
         <input id="ed-port-{{ p.id }}-data" name="data_publicacao" type="date" required value="{{ v.data_publicacao or '' }}"></div>
     </div>
