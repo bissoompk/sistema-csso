@@ -293,6 +293,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   PARTICIPANTES_DISTINTOS: "Cadastros conferidos: não são a mesma pessoa",
   PARTICIPANTE_SUSPEITO_DUPLICADO: "Participante cadastrado sem conferência de duplicidade",
   AVISO_CADASTRO_EXISTENTE: "Aviso de pedido pelo link enviado ao e-mail do cadastro",
+  AVISO_CADASTRO_RESPONDIDO: "Titular respondeu ao aviso de pedido pelo link («sou eu» / «não fui eu»)",
   EMAIL_CONFIRMADO_PELO_LINK: "E-mail do participante confirmado pelo link de acesso",
   // Avaliação de reação (24/10/2026, `servicos/avaliacao_reacao.ts`): a turma
   // recebeu uma resposta — nunca de quem

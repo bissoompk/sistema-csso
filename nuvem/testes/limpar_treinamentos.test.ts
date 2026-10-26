@@ -158,11 +158,16 @@ async function montar(): Promise<Montado> {
   await naTransacao((tx) => mesclagem.mesclar(tx, coord, cris.id, cris2.id, "mesma pessoa"));
   const [a, b] = ana.id < bia.id ? [ana.id, bia.id] : [bia.id, ana.id];
   await db.insert(e.participante_par_distinto).values({ participante_a_id: a, participante_b_id: b, origem: "JUNCAO", decidido_por: coord.id });
-  await db.insert(e.inscricao).values({
-    turma_id: cen.turma.id,
+  const [pedido_bia] = await db
+    .insert(e.inscricao)
+    .values({ turma_id: cen.turma.id, participante_id: bia.id, situacao: "AGUARDANDO_EMAIL", origem: "PUBLICA" })
+    .returning();
+  // o aviso de cadastro existente com os botões «sou eu» / «não fui eu» (26/10/2026)
+  await db.insert(e.aviso_cadastro).values({
     participante_id: bia.id,
-    situacao: "AGUARDANDO_EMAIL",
-    origem: "PUBLICA",
+    inscricao_id: pedido_bia!.id,
+    token_hash: "c".repeat(64),
+    expira_em: new Date(Date.now() + 3600_000),
   });
 
   await designarAjudante(db, cen.turma.id, "coordenador_csso");

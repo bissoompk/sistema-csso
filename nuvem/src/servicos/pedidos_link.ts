@@ -21,6 +21,7 @@ import {
 import { TransicaoInvalida } from "../dominio/estados.js";
 import { Participante } from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
+import * as aviso_cadastro from "./aviso_cadastro_existente.js";
 import * as duplicados from "./duplicados.js";
 import * as mesclagem from "./mesclagem.js";
 import { nome_exibicao, type ParticipanteCarregado } from "./participante.js";
@@ -46,6 +47,12 @@ export interface PedidoNaFila {
    * sempre, o nome só para quem pode lê-lo. O visitante não vê nada disto.
    */
   parecidos: duplicados.ParecidoNaTela[];
+  /**
+   * A resposta do titular ao aviso de cadastro existente (26/10/2026): «sou eu»
+   * ou «não fui eu» (`aviso_cadastro_existente.selos`). Pista para a equipe,
+   * nunca uma decisão; `null` quando ele não respondeu (ou nem foi avisado).
+   */
+  titular: "SOU_EU" | "NAO_FUI_EU" | null;
 }
 
 export interface TurmaComPedidos {
@@ -98,6 +105,7 @@ export async function a_conferir(tx: Executor, usuario: UsuarioAtual): Promise<T
       aviso_dono: d ? dono_turma.recusa_de(d, dono_turma.INSCRICOES) : "",
     });
   }
+  const selos = await aviso_cadastro.selos(tx, linhas.map((l) => l.id));
   for (const l of linhas) {
     const i = await servico_turma.carregar_inscricao(tx, l.id);
     if (!i) continue;
@@ -112,6 +120,7 @@ export async function a_conferir(tx: Executor, usuario: UsuarioAtual): Promise<T
       observacao: i.observacao,
       criado_em: i.inscrito_em,
       parecidos: duplicados.na_tela(await duplicados.procurar(tx, duplicados.alvo_do_cadastro(i.participante)), usuario),
+      titular: selos.get(i.id) ?? null,
     });
   }
   return [...saida.values()].filter((t) => t.pedidos.length);

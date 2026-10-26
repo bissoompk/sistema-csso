@@ -211,6 +211,13 @@
       "when": 1793037745409,
       "tag": "0029_dados_funcionais_a_conferir",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793055763221,
+      "tag": "0030_aviso_cadastro_resposta",
+      "breakpoints": true
     }
   ]
 }

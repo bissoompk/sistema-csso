@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{# A resposta ao aviso "alguém pediu vaga com os seus dados" (26/10/2026).
+   Abrir não responde — leitor de e-mail pré-visualiza links —; o botão responde.
+   A página diz o treinamento e nada mais: nem nome, nem SIAPE, nem a turma.
+   Sem lateral, como o cartaz. #}
+{% set sem_casca = true %}
+{% block titulo %}Pedido de vaga · SISA{% endblock %}
+{% block classe_conteudo %}tela-auxiliar{% endblock %}
+
+{% block conteudo %}
+{% if excedeu %}
+<div class="cartao">
+  <h1>Muitas tentativas</h1>
+  <p>Espere alguns minutos e abra o link do e-mail de novo.</p>
+</div>
+
+{% elif not aviso %}
+<div class="cartao">
+  <h1>Link vencido ou desconhecido</h1>
+  <p>Este link não vale mais: ele serve por 7 dias. Não se preocupe: nada é confirmado sem a conferência
+    da equipe responsável. Se precisar, responda ao e-mail que você recebeu.</p>
+</div>
+
+{% elif resposta == 'SOU_EU' %}
+<div class="cartao">
+  <h1>Obrigado, anotamos</h1>
+  <div class="aviso aviso-ok" role="status">
+    <p>Registramos que o pedido de vaga em <strong>{{ aviso.treinamento }}</strong> é seu.
+      A equipe responsável ainda confere o pedido e avisa por e-mail.</p>
+  </div>
+</div>
+
+{% elif resposta == 'NAO_FUI_EU' %}
+<div class="cartao">
+  <h1>Obrigado, anotamos</h1>
+  <div class="aviso aviso-ok" role="status">
+    <p>Registramos que <strong>não foi você</strong> quem pediu vaga em <strong>{{ aviso.treinamento }}</strong>.
+      A equipe responsável vê o seu aviso ao conferir o pedido. Você não precisa fazer mais nada.</p>
+  </div>
+</div>
+
+{% else %}
+<div class="cartao">
+  <h1>Pedido de vaga em seu nome?</h1>
+  <p class="sub">{{ aviso.treinamento }}</p>
+  <p>Alguém pediu vaga neste treinamento pelo link público, com dados ligados ao seu cadastro.
+    Foi você? A sua resposta só ajuda a equipe na conferência: <strong>ela não aceita a vaga</strong>.</p>
+  <form method="post" action="{{ caminho }}/{{ token }}">
+    <div class="acoes">
+      <button type="submit" name="resposta" value="SOU_EU" class="largo">Sim, fui eu</button>
+      <button type="submit" name="resposta" value="NAO_FUI_EU" class="largo secundario">Não fui eu</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

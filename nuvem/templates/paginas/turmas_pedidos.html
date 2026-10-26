@@ -77,7 +77,16 @@
                    data-grupo="turma-{{ t.id }}" aria-label="Decidir o pedido de {{ p.nome }}">{% endif %}</td>
         <td class="nome">{{ p.nome }}
           {% if p.observacao %}<span class="quebra discreto">{{ p.observacao }}</span>{% endif %}
-          {# "parece com PTC-…" (`duplicados.procurar`): o nome do outro cadastro
+          {# o titular respondeu ao aviso que o e-mail do cadastro recebeu (26/10/2026):
+             pista para a equipe, nunca uma decisão — «sou eu» não aceita a vaga e
+             «não fui eu» não a recusa sozinho #}
+          {% if p.titular == 'NAO_FUI_EU' %}
+          <span class="quebra"><span class="pilula erro sem-ponto">o titular do cadastro disse «não fui eu»</span>
+            <span class="discreto">· sugestão de motivo para a recusa: «o titular do cadastro disse que não pediu»</span></span>
+          {% elif p.titular == 'SOU_EU' %}
+          <span class="quebra"><span class="pilula ok sem-ponto">o titular do cadastro disse «sou eu»</span></span>
+          {% endif %}
+          {# "parece com PTC-… (`duplicados.procurar`): o nome do outro cadastro
              só para quem pode lê-lo. Os botões são do formulário da tabela, com
              `formaction` próprio; o visitante nunca vê nada disto. #}
           {% for x in p.parecidos %}
