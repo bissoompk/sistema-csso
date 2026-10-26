@@ -1889,3 +1889,9 @@ Decisão do usuário: sai a opção «Primeiro acesso» e fica só o **Cadastre-
 
 - **GET/HEAD sem BEGIN/COMMIT** (`src/app.ts`): a função roda nos EUA e o banco em São Paulo (~150 ms por ida). Cada tela abria e fechava uma transação — duas idas a mais (~300 ms) só para ler. Medido com proxy de 75 ms por sentido: `/login` 0,62 s → 0,32 s; as demais telas ficaram ~0,3 s mais rápidas. Quem escreve (POST etc.) segue na transação da requisição. Risco aceito: uma leitura que grava (registro de visualização) e falha depois não desfaz mais a gravação.
 - **Fora do código**: a maior fatia continua sendo a distância função↔banco. No Netlify, mudar a região das funções para a mais próxima de São Paulo (se o plano permitir) ou usar o Supabase em região dos EUA corta cada ida de ~150 ms para poucos ms.
+
+## 26/10/2026 — Telas de login (teste no navegador)
+
+- **«Voltar» depois de sair reabria a tela protegida**: as páginas HTML não mandavam `Cache-Control`, e o navegador guardava a tela (ex.: Turmas) para a seta de voltar, mesmo com a sessão encerrada. Agora toda tela HTML sai com `no-store` (estáticos seguem com o cache deles). Custo: voltar numa tela refaz a consulta.
+- **/login para quem já está dentro** mostrava o formulário (favorito do /login, aba antiga). Agora vai ao início, ou ao `proximo` do sistema (mesma regra de `destino_seguro`).
+- **Sem defeito**: campos obrigatórios, senha/e-mail errados (mesma mensagem, o e-mail volta e a senha não), e-mail em maiúscula/com espaço, 5 mil caracteres, injeção, `proximo` externo/`//`/`\`/`javascript:` (volta ao início), avisos de `motivo` (valor desconhecido ou HTML não aparece), bloqueio por 5 tentativas (com a mensagem do horário certo, inclusive com a senha certa durante o bloqueio), links de Esqueci/Cadastre-se/certificados, `/primeiro-acesso` cai no login, celular sem rolagem lateral, Enter envia.
