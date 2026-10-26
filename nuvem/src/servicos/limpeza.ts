@@ -217,6 +217,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "turma_instrutor",
       "turma_ajudante",
       "turma_presenca",
+      "aviso_cadastro",
       "inscricao",
       "participante",
       "participante_email",

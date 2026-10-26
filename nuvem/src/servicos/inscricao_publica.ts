@@ -544,7 +544,14 @@ export async function pedir(
     .from(tabela_inscricao)
     .where(and(eq(tabela_inscricao.turma_id, turma.id), eq(tabela_inscricao.participante_id, pessoa.id)));
   if (ja) {
-    if (casou) await aviso_cadastro.avisar(tx, pessoa, { chave: casou, digitado: p.email, ja_na_turma: true }, agora);
+    if (casou) {
+      await aviso_cadastro.avisar(
+        tx,
+        pessoa,
+        { chave: casou, digitado: p.email, ja_na_turma: true, inscricao_id: ja.id, base_url },
+        agora,
+      );
+    }
     return;
   }
 
@@ -578,7 +585,12 @@ export async function pedir(
       : false;
   // o aviso de cadastro existente iria ao mesmo endereço: a confirmação basta
   if (casou && !(enviado && casou === "EMAIL")) {
-    await aviso_cadastro.avisar(tx, pessoa, { chave: casou, digitado: p.email, ja_na_turma: false }, agora);
+    await aviso_cadastro.avisar(
+      tx,
+      pessoa,
+      { chave: casou, digitado: p.email, ja_na_turma: false, inscricao_id: inscricao.id, base_url },
+      agora,
+    );
   }
 }
 

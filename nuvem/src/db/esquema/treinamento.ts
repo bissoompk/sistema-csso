@@ -896,6 +896,46 @@ export const inscricao = pgTable(
 );
 
 /**
+ * NUVEM (26/10/2026): o aviso "você já tem cadastro" do link público
+ * (`servicos/aviso_cadastro_existente.ts`) leva dois botões — "sou eu" e "não
+ * fui eu" —, e cada aviso tem o seu token. Guarda só o hash do token e a
+ * resposta; o endereço de e-mail NÃO mora aqui (está na fila e no cadastro).
+ * A resposta só serve de selo na conferência da equipe: não aceita vaga nem
+ * acrescenta e-mail ao cadastro.
+ */
+export const aviso_cadastro = pgTable(
+  'aviso_cadastro',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    participante_id: integer('participante_id').notNull(),
+    // o pedido que gerou o aviso; some com a inscrição
+    inscricao_id: integer('inscricao_id').notNull(),
+    // o e-mail do cadastro que recebeu o aviso: é ele que o "sou eu" confirma
+    email_id: integer('email_id'),
+    token_hash: varchar('token_hash', { length: 64 }).notNull(),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+    expira_em: MomentoUTC('expira_em').notNull(),
+    resposta: varchar('resposta', { length: 12 }),
+    respondida_em: MomentoUTC('respondida_em'),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_aviso_cadastro', columns: [t.id] }),
+    foreignKey({ name: 'fk_aviso_cadastro_participante', columns: [t.participante_id], foreignColumns: [participante.id] }),
+    foreignKey({ name: 'fk_aviso_cadastro_inscricao', columns: [t.inscricao_id], foreignColumns: [inscricao.id] }).onDelete(
+      'cascade',
+    ),
+    foreignKey({ name: 'fk_aviso_cadastro_email', columns: [t.email_id], foreignColumns: [participante_email.id] }).onDelete(
+      'set null',
+    ),
+    unique('uq_aviso_cadastro_token').on(t.token_hash),
+    check('ck_aviso_cadastro_resposta', sql.raw(`resposta IS NULL OR resposta IN ('SOU_EU','NAO_FUI_EU')`)),
+    check('ck_aviso_cadastro_respondida', sql.raw(`(resposta IS NULL) = (respondida_em IS NULL)`)),
+    index('ix_aviso_cadastro_inscricao').on(t.inscricao_id),
+    index('ix_aviso_cadastro_participante').on(t.participante_id),
+  ],
+);
+
+/**
  * Presenca de um inscrito num dia da turma.
  *
  * Frequencia se conta por DIA, nao por "veio ou nao veio". Sem a linha por dia,
