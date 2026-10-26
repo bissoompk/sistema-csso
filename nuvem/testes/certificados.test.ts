@@ -711,8 +711,10 @@ describe("reciclagem: o monitor e o aviso de 60 dias (JANELA_A_VENCER_DIAS)", ()
   async function _dois_emitidos() {
     const usuario = await _usuario(db);
     const cen = await _cenario(db, usuario, { extras: [["2220001", "Ana Lima", "8"]] });
-    const a = (await servico.emitir(db, usuario, cen.inscricao, { gerar_pdf: false })).certificado;
-    const b = (await servico.emitir(db, usuario, cen.outras[0]!, { gerar_pdf: false })).certificado;
+    // a emissão é fixada em HOJE: sem isso valia o relógio real, e a reciclagem
+    // (emitida em 25/10 mais abaixo) deixava de ser a mais recente
+    const a = (await servico.emitir(db, usuario, cen.inscricao, { gerar_pdf: false, data_emissao: HOJE })).certificado;
+    const b = (await servico.emitir(db, usuario, cen.outras[0]!, { gerar_pdf: false, data_emissao: HOJE })).certificado;
     // Marco vence em 10 dias; Ana venceu ontem
     await db.update(e.certificado).set({ data_vencimento: "2026-10-30" }).where(eq(e.certificado.id, a.id));
     await db.update(e.certificado).set({ data_vencimento: "2026-10-19" }).where(eq(e.certificado.id, b.id));

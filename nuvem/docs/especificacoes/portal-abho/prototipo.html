@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meu espaço SISA</title>
+<style>
+:root{
+  --acento:#0058a3; --acento-escuro:#00468a; --lateral:#0a2a5c; --ciano:#1a96c0;
+  --tinta:#0f172a; --tinta-media:#334155; --tinta-fraca:#475569; --dica:#64748b;
+  --papel:#f1f5f9; --cartao:#fff; --borda:#e2e8f0; --borda-fraca:#eef2f6;
+  --azul-claro:#e6f1fa; --ciano-claro:#e3f4fa;
+  --ok:#2f6b17; --ok-claro:#eaf5e2;
+  --alerta:#8a5a00; --alerta-claro:#fff4d6; --alerta-borda:#e8b52e;
+  --erro:#b42318; --erro-claro:#fdecea;
+  --lilas:#5b3fa8; --lilas-claro:#efeafb;
+  --raio:10px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--papel);color:var(--tinta);font:15px/1.5 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--acento)}
+svg{flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:3px solid var(--ciano);outline-offset:2px;border-radius:4px}
+
+/* ---------- topo ---------- */
+.topo{background:#fff;border-bottom:1px solid var(--borda);position:sticky;top:0;z-index:5}
+.topo-in{max-width:1180px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px}
+.marca{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--lateral);text-decoration:none;font-size:18px;letter-spacing:.5px}
+.marca-simbolo{width:28px;height:28px}
+.topo-aviso{margin-left:auto;font-size:12px;color:var(--dica);background:var(--alerta-claro);border:1px solid var(--alerta-borda);padding:3px 8px;border-radius:999px}
+
+/* ---------- casca ---------- */
+.casca{max-width:1180px;margin:0 auto;padding:20px 16px 48px;display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;align-items:start}
+.lateral{background:var(--lateral);color:#dbe7f5;border-radius:var(--raio);overflow:hidden;position:sticky;top:70px}
+.ident{position:relative;padding:18px 16px;background:linear-gradient(135deg,var(--lateral),var(--acento));display:flex;gap:12px;align-items:center;overflow:hidden}
+.ident::after{content:"";position:absolute;right:-26px;top:-26px;width:110px;height:110px;border-radius:50%;border:14px solid rgba(255,255,255,.07)}
+.avatar{width:44px;height:44px;border-radius:50%;background:var(--ciano);color:#fff;font-weight:800;font-size:17px;display:grid;place-items:center;border:2px solid rgba(255,255,255,.6)}
+.ident-nome{font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.ident-sub{font-size:12px;color:#c7d8ee}
+.menu{list-style:none;margin:0;padding:8px 0}
+.menu-grupo{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8fa8c9;padding:12px 18px 4px}
+.menu a{display:flex;align-items:center;gap:10px;min-height:42px;padding:8px 16px;color:#dbe7f5;text-decoration:none;border-left:3px solid transparent;font-size:14px}
+.menu a:hover{background:rgba(255,255,255,.06)}
+.menu a.ativo{background:rgba(26,150,192,.18);border-left-color:var(--ciano);color:#fff;font-weight:600}
+.menu svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.menu .sair{border-top:1px solid rgba(255,255,255,.12);margin-top:6px}
+.menu .sair a{color:#ffb4ab}
+
+/* telas por âncora (sem JS) */
+.tela{display:none;scroll-margin-top:90px}
+.tela:target{display:block}
+main:not(:has(.tela:target)) #painel{display:block}
+body:has(#certificados:target) .menu a[href="#certificados"],
+body:has(#atividade:target) .menu a[href="#atividade"],
+body:has(#perfil:target) .menu a[href="#perfil"],
+body:not(:has(.tela:target)) .menu a[href="#painel"],
+body:has(#painel:target) .menu a[href="#painel"]{background:rgba(26,150,192,.18);border-left-color:var(--ciano);color:#fff;font-weight:600}
+
+/* ---------- comuns ---------- */
+.cab{display:flex;gap:12px;align-items:flex-start;margin:0 0 6px}
+.cab-ico{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:var(--azul-claro);color:var(--acento)}
+.cab-ico svg,.ico svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.cab h1{margin:0;font-size:22px;color:var(--acento);line-height:1.25}
+.cab p{margin:2px 0 0;color:var(--tinta-fraca);font-size:14px}
+.divisor{border:0;border-top:1px solid var(--borda);margin:16px 0 20px}
+h2.secao{font-size:16px;margin:28px 0 12px;color:var(--tinta)}
+.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:var(--raio)}
+.mini{font-size:13px;color:var(--dica)}
+.btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:7px 14px;border-radius:8px;font:600 13px/1 inherit;text-decoration:none;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn-pri{background:var(--acento);color:#fff}
+.btn-pri:hover{background:var(--acento-escuro)}
+.btn-sec{background:#fff;color:var(--acento);border-color:#9cc0e2}
+.btn-alerta{background:#fff;color:var(--alerta);border-color:var(--alerta-borda)}
+.btn-link{background:none;color:var(--acento);padding-left:4px;padding-right:4px}
+
+/* ---------- painel ---------- */
+.boas{position:relative;overflow:hidden;color:#fff;border-radius:14px;padding:24px;background:linear-gradient(120deg,var(--lateral) 0%,var(--acento) 70%,#0a74b8 100%)}
+.boas::after{content:"";position:absolute;right:-40px;top:-50px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(26,150,192,.55),rgba(26,150,192,0) 70%)}
+.boas h1{margin:0;font-size:24px}
+.boas p{margin:6px 0 16px;color:#d8e6f7;max-width:46ch}
+.chips{display:flex;flex-wrap:wrap;gap:8px;position:relative;z-index:1}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35)}
+.chip svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.avisos{display:grid;gap:10px;margin-top:18px}
+.aviso{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:var(--raio);border:1px solid;border-left-width:4px;background:#fff}
+.aviso svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;margin-top:2px}
+.aviso strong{display:block}
+.aviso span{font-size:14px;color:var(--tinta-media)}
+.aviso-erro{border-color:#f3b8b1;border-left-color:var(--erro);color:var(--erro)}
+.aviso-alerta{border-color:#f2d58a;border-left-color:var(--alerta-borda);color:var(--alerta)}
+.aviso-info{border-color:#b9d4ee;border-left-color:var(--acento);color:var(--acento)}
+.status{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:18px}
+.st{padding:16px}
+.ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;margin-bottom:10px}
+.ico-azul{background:var(--azul-claro);color:var(--acento)}
+.ico-verde{background:var(--ok-claro);color:var(--ok)}
+.ico-amarelo{background:var(--alerta-claro);color:var(--alerta)}
+.ico-ciano{background:var(--ciano-claro);color:#0b6f91}
+.ico-lilas{background:var(--lilas-claro);color:var(--lilas)}
+.ico-cinza{background:#eef1f5;color:var(--tinta-fraca)}
+.st-rot{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dica)}
+.st-val{font-size:28px;font-weight:800;line-height:1.1;margin:2px 0 4px}
+.st a{font-size:13px;font-weight:600;text-decoration:none}
+.atalhos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.atalho{display:flex;gap:12px;align-items:center;padding:14px;text-decoration:none;color:var(--tinta);min-height:64px}
+.atalho:hover{border-color:#9cc0e2}
+.atalho .ico{margin:0}
+.atalho b{display:block;font-size:14px}
+.atalho span{font-size:13px;color:var(--dica)}
+
+/* ---------- certificados ---------- */
+.pilulas{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.pilula{flex:none;display:inline-flex;align-items:center;min-height:36px;padding:6px 14px;border-radius:999px;border:1px solid var(--borda);background:#fff;color:var(--tinta-media);font-size:13px;font-weight:600;text-decoration:none}
+.pilula b{margin-left:6px;font-weight:700;color:var(--dica)}
+.pilula[aria-current]{background:var(--acento);border-color:var(--acento);color:#fff}
+.pilula[aria-current] b{color:#cfe2f5}
+.filtros>*{min-width:0;max-width:100%}
+.filtros{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:6px}
+.ano{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--tinta-fraca)}
+.ano select{min-height:36px;border:1px solid #7c8ba1;border-radius:8px;padding:4px 8px;font:inherit;background:#fff}
+.grupo-ano{display:flex;align-items:baseline;gap:8px;margin:22px 0 10px;font-weight:700}
+.grupo-ano span{font-weight:500;font-size:13px;color:var(--dica)}
+.grade{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.cert{padding:18px 18px 14px;display:flex;flex-direction:column;gap:10px}
+.selos{display:flex;flex-wrap:wrap;gap:6px}
+.selo{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px}
+.selo svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.4}
+.selo-valido{background:var(--ok-claro);color:var(--ok)}
+.selo-avencer{background:var(--alerta-claro);color:var(--alerta)}
+.selo-vencido{background:var(--erro-claro);color:var(--erro)}
+.selo-norma{background:var(--ciano-claro);color:#0b6383}
+.selo-neutro{background:#eef1f5;color:var(--tinta-fraca)}
+.cert h3{margin:0;font-size:15px;font-weight:650;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.promotor{font-size:13px;color:var(--tinta-fraca);margin-top:-6px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--tinta-fraca);margin:0;padding:0;list-style:none}
+.meta li{display:inline-flex;align-items:center;gap:5px}
+.meta svg{width:14px;height:14px;stroke:var(--dica);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.meta .vence{color:var(--alerta);font-weight:600}
+.meta .venceu{color:var(--erro);font-weight:600}
+.acoes{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:2px}
+.cert details{font-size:13px}
+.cert summary{list-style:none;cursor:pointer}
+.cert summary::-webkit-details-marker{display:none}
+.painel-det{margin-top:10px;padding:12px;border-radius:8px;background:#f8fafc;border:1px solid var(--borda-fraca)}
+.painel-det ul{margin:0;padding-left:18px}
+.validar{display:flex;gap:12px;align-items:center}
+.qr{width:72px;height:72px;flex:none;background:
+ conic-gradient(from 90deg at 2px 2px,#0000 90deg,#0f172a 0) 0 0/12px 12px;border:4px solid #fff;outline:1px solid var(--borda);image-rendering:pixelated}
+.chave{font:600 12px/1.3 ui-monospace,Menlo,Consolas,monospace;background:#fff;border:1px dashed #9cc0e2;padding:4px 6px;border-radius:6px;display:inline-block;word-break:break-all}
+.cert-num{font-size:12px;color:var(--dica);border-top:1px solid var(--borda-fraca);padding-top:8px;display:flex;justify-content:space-between;gap:8px}
+.cert-emissao{background:#fafbfc;border-style:dashed}
+.cert-superado{opacity:.85}
+.anulados{margin-top:22px}
+.anulados summary{cursor:pointer;font-weight:600;color:var(--tinta-media);min-height:44px;display:flex;align-items:center}
+.vazio{text-align:center;padding:32px 20px}
+.vazio .ico{margin:0 auto 10px;width:52px;height:52px;border-radius:14px}
+.vazio b{display:block;font-size:16px}
+.vazio p{margin:4px auto 14px;color:var(--tinta-fraca);max-width:42ch}
+.demo-rotulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--dica);margin:30px 0 8px}
+
+/* ---------- atividade ---------- */
+.dia{margin:22px 0 8px;font-size:13px;font-weight:700;color:var(--tinta-fraca)}
+.tl{list-style:none;margin:0;padding:0}
+.tl li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;background:#fff;border:1px solid var(--borda);border-radius:var(--raio);margin-bottom:8px}
+.tl .ico{margin:0;width:36px;height:36px}
+.tl-txt{flex:1;min-width:0}
+.tl-txt b{display:block;font-size:14px}
+.tl-txt span{display:block;font-size:13px;color:var(--tinta-fraca);overflow-wrap:anywhere}
+.tl-txt small{font-size:12px;color:var(--dica)}
+.tl time{font-size:12px;color:var(--dica);white-space:nowrap}
+.nota{font-size:13px;color:var(--tinta-fraca);background:#fff;border:1px dashed var(--borda);border-radius:var(--raio);padding:10px 14px;margin-top:18px}
+
+/* ---------- perfil ---------- */
+.perfil-cab{display:flex;gap:16px;align-items:center;padding:22px;border-radius:14px;background:linear-gradient(120deg,var(--lateral),#0b3d7d);color:#fff}
+.perfil-cab .avatar{width:64px;height:64px;font-size:24px}
+.perfil-cab h1{margin:0 0 8px;font-size:20px}
+.chip-ok{background:rgba(141,198,63,.25);border-color:rgba(190,230,140,.7)}
+.secoes{display:grid;gap:12px;margin-top:18px}
+.secao-p{background:#fff;border:1px solid var(--borda);border-radius:var(--raio)}
+.secao-p>summary{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;min-height:56px}
+.secao-p>summary::-webkit-details-marker{display:none}
+.secao-p>summary .ico{margin:0;width:34px;height:34px}
+.secao-p>summary b{flex:1;font-size:15px}
+.seta{width:18px;height:18px;stroke:var(--dica);fill:none;stroke-width:2;transition:transform .15s}
+.secao-p[open] .seta{transform:rotate(180deg)}
+.alterar{font-size:13px;font-weight:600;color:var(--acento);text-decoration:none;display:inline-flex;gap:4px;align-items:center;padding:6px 8px}
+.alterar svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.so-leitura{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--dica);background:#eef1f5;padding:3px 8px;border-radius:999px}
+.corpo{padding:4px 16px 16px;border-top:1px solid var(--borda-fraca)}
+dl.rv{margin:0;display:grid;grid-template-columns:30% 1fr}
+dl.rv dt,dl.rv dd{padding:10px 0;border-bottom:1px solid var(--borda-fraca);margin:0}
+dl.rv dt{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dica);padding-top:13px}
+dl.rv dd{font-size:14px}
+.fonte{font-size:12px;color:var(--dica);margin-top:10px}
+.sessoes{list-style:none;margin:8px 0 0;padding:0}
+.sessoes li{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--borda-fraca)}
+.sessoes b{font-size:14px}
+.atual{font-size:11px;font-weight:700;color:var(--ok);background:var(--ok-claro);padding:2px 8px;border-radius:999px;margin-left:6px}
+
+.rodape{max-width:1180px;margin:0 auto;padding:0 16px 30px;font-size:12px;color:var(--dica);text-align:center}
+
+/* ---------- responsivo ---------- */
+@media (max-width:980px){
+  .status{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .casca{grid-template-columns:minmax(0,1fr);gap:16px;padding-top:12px}
+  .lateral{position:static}
+  .ident{padding:12px 14px}
+  .ident .avatar{width:36px;height:36px;font-size:14px}
+  .menu{display:flex;overflow-x:auto;padding:6px;gap:4px;scrollbar-width:thin}
+  .menu-grupo{display:none}
+  .menu li{flex:none}
+  .menu a{border-left:0;border-bottom:3px solid transparent;border-radius:8px;min-height:44px;padding:8px 12px;white-space:nowrap}
+  .menu a.ativo,
+  body:has(#certificados:target) .menu a[href="#certificados"],
+  body:has(#atividade:target) .menu a[href="#atividade"],
+  body:has(#perfil:target) .menu a[href="#perfil"],
+  body:not(:has(.tela:target)) .menu a[href="#painel"],
+  body:has(#painel:target) .menu a[href="#painel"]{border-bottom-color:var(--ciano)}
+  .menu .sair{border-top:0;margin:0}
+  .grade{grid-template-columns:1fr}
+  .atalhos{grid-template-columns:1fr}
+}
+@media (max-width:600px){
+  .boas{padding:18px}
+  .boas h1{font-size:21px}
+  .st{padding:14px}
+  .st-val{font-size:24px}
+  .acoes .btn{flex:1 1 100%;justify-content:center;min-height:44px}
+  .acoes .btn-link{flex:1 1 auto}
+  dl.rv{grid-template-columns:1fr}
+  dl.rv dt{border-bottom:0;padding:10px 0 0}
+  dl.rv dd{padding-top:2px}
+  .perfil-cab{flex-direction:column;align-items:flex-start}
+  .tl li{flex-wrap:wrap}
+  .tl time{order:-1;width:100%;padding-left:48px;margin-bottom:-6px}
+  .topo-aviso{display:none}
+}
+@media (max-width:359px){ .status{grid-template-columns:1fr} }
+@media (prefers-reduced-motion:reduce){ *{transition:none!important;scroll-behavior:auto!important} }
+</style>
+</head>
+<body>
+
+<!-- Ícones reaproveitados (estilo Lucide), definidos uma vez -->
+<svg width="0" height="0" class="sr" aria-hidden="true">
+  <symbol id="i-casa" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-livro" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></symbol>
+  <symbol id="i-medalha" viewBox="0 0 24 24"><circle cx="12" cy="9" r="6"/><path d="m8.5 14-1.5 8 5-3 5 3-1.5-8"/></symbol>
+  <symbol id="i-escudo" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="i-caixa" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-moeda" viewBox="0 0 24 24"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></symbol>
+  <symbol id="i-pasta" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-relogio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-pessoa" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-sair" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-alerta" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M21 14v7h-4M14 18v3"/></symbol>
+  <symbol id="i-recic" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/></symbol>
+  <symbol id="i-predio" viewBox="0 0 24 24"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M8 7h4M8 11h4M8 15h4M2 21h20"/></symbol>
+  <symbol id="i-maleta" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></symbol>
+  <symbol id="i-pino" viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-lapis" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-carta" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+  <symbol id="i-lista" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+</svg>
+
+<header class="topo">
+  <div class="topo-in">
+    <a class="marca" href="#painel" aria-label="SISA, início">
+      <svg class="marca-simbolo" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="7" r="4" fill="#0058a3"/><circle cx="25" cy="16" r="4" fill="#219bbd"/><circle cx="16" cy="25" r="4" fill="#88bd27"/><circle cx="7" cy="16" r="4" fill="#00316b"/></svg>
+      SISA
+    </a>
+    <span class="topo-aviso">Protótipo estático · dados fictícios</span>
+  </div>
+</header>
+
+<div class="casca">
+  <aside class="lateral">
+    <div class="ident" title="Mariana Alves Rocha">
+      <span class="avatar" aria-hidden="true">MR</span>
+      <div>
+        <div class="ident-nome">Mariana Alves Rocha</div>
+        <div class="ident-sub">ICT · Campus JK</div>
+      </div>
+    </div>
+    <nav aria-label="Meu espaço">
+      <ul class="menu">
+        <li><a href="#painel"><svg><use href="#i-casa"/></svg>Início</a></li>
+        <li class="menu-grupo" aria-hidden="true">Treinamentos</li>
+        <li><a href="#painel"><svg><use href="#i-livro"/></svg>Meus treinamentos</a></li>
+        <li><a href="#certificados"><svg><use href="#i-medalha"/></svg>Meus certificados</a></li>
+        <li class="menu-grupo" aria-hidden="true">EPI</li>
+        <li><a href="#painel"><svg><use href="#i-escudo"/></svg>Minha ficha de EPI</a></li>
+        <li><a href="#painel"><svg><use href="#i-caixa"/></svg>Meus pedidos de EPI</a></li>
+        <li><a href="#painel"><svg><use href="#i-mais"/></svg>Pedir EPI</a></li>
+        <li class="menu-grupo" aria-hidden="true">Adicional</li>
+        <li><a href="#painel"><svg><use href="#i-moeda"/></svg>Meu adicional</a></li>
+        <li><a href="#painel"><svg><use href="#i-pasta"/></svg>Meus processos</a></li>
+        <li class="menu-grupo" aria-hidden="true">Eu</li>
+        <li><a href="#atividade"><svg><use href="#i-relogio"/></svg>Minha atividade</a></li>
+        <li><a href="#perfil"><svg><use href="#i-pessoa"/></svg>Meu perfil</a></li>
+        <li class="sair"><a href="#painel"><svg><use href="#i-sair"/></svg>Sair</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main>
+  <!-- =================================================== PAINEL -->
+  <section id="painel" class="tela" aria-labelledby="t-painel">
+    <div class="boas">
+      <h1 id="t-painel">Olá, Mariana!</h1>
+      <p>Aqui estão seus treinamentos, certificados, EPI e pedidos. Comece pelo que pede atenção.</p>
+      <div class="chips">
+        <span class="chip"><svg><use href="#i-predio"/></svg>ICT · Instituto de Ciência e Tecnologia</span>
+        <span class="chip"><svg><use href="#i-maleta"/></svg>Técnica de Laboratório</span>
+        <span class="chip"><svg><use href="#i-pino"/></svg>Campus JK · Diamantina</span>
+        <span class="chip"><svg><use href="#i-relogio"/></svg>Último acesso 20/10/2026 08:42</span>
+      </div>
+    </div>
+
+    <div class="avisos">
+      <div class="aviso aviso-erro" role="status">
+        <svg><use href="#i-x"/></svg>
+        <div><strong>Brigada de incêndio vencida em 12/05/2026</strong>
+        <span>Inscreva-se numa turma de reciclagem para voltar à brigada. <a href="#certificados">Ver turmas de reciclagem</a></span></div>
+      </div>
+      <div class="aviso aviso-alerta" role="status">
+        <svg><use href="#i-alerta"/></svg>
+        <div><strong>NR-35 vence em 53 dias (14/12/2026)</strong>
+        <span>Há uma turma de reciclagem com vagas em 18/11/2026. <a href="#certificados">Inscrever-se</a></span></div>
+      </div>
+      <div class="aviso aviso-info" role="status">
+        <svg><use href="#i-cal"/></svg>
+        <div><strong>Sua turma começa em 27/10/2026</strong>
+        <span>NR-06 · Uso correto de EPI, Auditório do ICT, 8h. <a href="#painel">Ver detalhes</a></span></div>
+      </div>
+    </div>
+
+    <div class="status">
+      <a class="cartao st" href="#certificados" style="text-decoration:none;color:inherit">
+        <div class="ico ico-verde"><svg><use href="#i-medalha"/></svg></div>
+        <div class="st-rot">Certificados válidos</div>
+        <div class="st-val">5</div>
+        <span class="mini">de 7 emitidos · 120 h</span>
+      </a>
+      <a class="cartao st" href="#certificados" style="text-decoration:none;color:inherit">
+        <div class="ico ico-amarelo"><svg><use href="#i-alerta"/></svg></div>
+        <div class="st-rot">A vencer (60 dias)</div>
+        <div class="st-val">1</div>
+        <span class="mini">NR-35 em 14/12/2026</span>
+      </a>
+      <a class="cartao st" href="#painel" style="text-decoration:none;color:inherit">
+        <div class="ico ico-azul"><svg><use href="#i-livro"/></svg></div>
+        <div class="st-rot">Inscrições abertas</div>
+        <div class="st-val">3</div>
+        <span class="mini">turmas · você está em 1</span>
+      </a>
+      <a class="cartao st" href="#painel" style="text-decoration:none;color:inherit">
+        <div class="ico ico-ciano"><svg><use href="#i-escudo"/></svg></div>
+        <div class="st-rot">EPI</div>
+        <div class="st-val">1</div>
+        <span class="mini">pedido em análise · 0 trocas vencidas</span>
+      </a>
+    </div>
+
+    <h2 class="secao">Últimos certificados</h2>
+    <ul class="grade" role="list">
+      <li><article class="cartao cert" aria-labelledby="pc1">
+        <div class="selos"><span class="selo selo-valido"><svg><use href="#i-ok"/></svg>Válido</span><span class="selo selo-norma">NR-10</span></div>
+        <h3 id="pc1">NR-10 · Reciclagem bienal em Segurança em Instalações Elétricas</h3>
+        <div class="promotor">DSQV · Divisão de Saúde e Qualidade de Vida</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>02 e 03/09/2026</li>
+          <li><svg><use href="#i-relogio"/></svg>8 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 10/09/2026</li>
+        </ul>
+        <div class="acoes"><a class="btn btn-pri" href="#certificados"><svg><use href="#i-down"/></svg>Baixar certificado</a></div>
+      </article></li>
+      <li><article class="cartao cert" aria-labelledby="pc2">
+        <div class="selos"><span class="selo selo-valido"><svg><use href="#i-ok"/></svg>Válido</span><span class="selo selo-norma">Primeiros socorros</span></div>
+        <h3 id="pc2">Primeiros Socorros no Ambiente de Trabalho</h3>
+        <div class="promotor">SESMT · Campus JK</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>14/07/2026</li>
+          <li><svg><use href="#i-relogio"/></svg>8 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 21/07/2026</li>
+        </ul>
+        <div class="acoes"><a class="btn btn-pri" href="#certificados"><svg><use href="#i-down"/></svg>Baixar certificado</a></div>
+      </article></li>
+    </ul>
+    <p><a href="#certificados" style="font-weight:600">Todos os certificados (7) →</a></p>
+
+    <h2 class="secao">Atalhos</h2>
+    <div class="atalhos">
+      <a class="cartao atalho" href="#painel"><span class="ico ico-azul"><svg><use href="#i-livro"/></svg></span><div><b>Meus treinamentos</b><span>Inscrições e turmas abertas</span></div></a>
+      <a class="cartao atalho" href="#certificados"><span class="ico ico-verde"><svg><use href="#i-medalha"/></svg></span><div><b>Meus certificados</b><span>Baixar e validar</span></div></a>
+      <a class="cartao atalho" href="#painel"><span class="ico ico-ciano"><svg><use href="#i-escudo"/></svg></span><div><b>Minha ficha de EPI</b><span>O que você recebeu</span></div></a>
+      <a class="cartao atalho" href="#painel"><span class="ico ico-cinza"><svg><use href="#i-mais"/></svg></span><div><b>Pedir EPI</b><span>Novo pedido ao SESMT</span></div></a>
+      <a class="cartao atalho" href="#atividade"><span class="ico ico-lilas"><svg><use href="#i-relogio"/></svg></span><div><b>Minha atividade</b><span>Tudo o que aconteceu</span></div></a>
+      <a class="cartao atalho" href="#perfil"><span class="ico ico-azul"><svg><use href="#i-pessoa"/></svg></span><div><b>Meu perfil</b><span>Contato, senha e sessões</span></div></a>
+    </div>
+  </section>
+
+  <!-- =================================================== CERTIFICADOS -->
+  <section id="certificados" class="tela" aria-labelledby="t-cert">
+    <div class="cab">
+      <span class="cab-ico"><svg><use href="#i-medalha"/></svg></span>
+      <div><h1 id="t-cert">Meus certificados</h1>
+      <p>7 certificados emitidos · 120 h de capacitação</p></div>
+    </div>
+    <hr class="divisor">
+
+    <div class="filtros">
+      <nav class="pilulas" aria-label="Filtrar por situação">
+        <a class="pilula" href="#certificados" aria-current="true">Todos<b>7</b></a>
+        <a class="pilula" href="#certificados">Válidos<b>5</b></a>
+        <a class="pilula" href="#certificados">A vencer<b>1</b></a>
+        <a class="pilula" href="#certificados">Vencidos<b>1</b></a>
+      </nav>
+      <form class="ano" action="#certificados">
+        <label for="ano">Ano</label>
+        <select id="ano"><option>Todos</option><option>2026</option><option>2025</option><option>2024</option></select>
+        <button class="btn btn-sec" type="submit">Filtrar</button>
+      </form>
+    </div>
+
+    <div class="grupo-ano">2026 <span>· 4 certificados e 1 em emissão</span></div>
+    <ul class="grade" role="list">
+      <li><article class="cartao cert cert-emissao" aria-labelledby="c0">
+        <div class="selos"><span class="selo selo-neutro"><svg><use href="#i-relogio"/></svg>Em emissão</span><span class="selo selo-norma">CIPA</span></div>
+        <h3 id="c0">Treinamento de Membros da CIPA – Gestão 2026/2027</h3>
+        <div class="promotor">SESMT · Campus JK</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>06 a 10/10/2026</li>
+          <li><svg><use href="#i-relogio"/></svg>20 h</li>
+        </ul>
+        <p class="mini" style="margin:0">A equipe do SESMT está emitindo seu certificado. Você recebe um aviso por e-mail.</p>
+      </article></li>
+
+      <li><article class="cartao cert" aria-labelledby="c1">
+        <div class="selos"><span class="selo selo-valido"><svg><use href="#i-ok"/></svg>Válido</span><span class="selo selo-norma">NR-10</span></div>
+        <h3 id="c1">NR-10 · Reciclagem bienal em Segurança em Instalações Elétricas</h3>
+        <div class="promotor">DSQV · Divisão de Saúde e Qualidade de Vida</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>02 e 03/09/2026</li>
+          <li><svg><use href="#i-relogio"/></svg>8 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 10/09/2026</li>
+          <li><svg><use href="#i-escudo"/></svg>Válido até 03/09/2028</li>
+        </ul>
+        <div class="acoes">
+          <a class="btn btn-pri" href="#certificados" aria-label="Baixar certificado de NR-10 Reciclagem"><svg><use href="#i-down"/></svg>Baixar certificado</a>
+          <details><summary class="btn btn-sec"><svg><use href="#i-lista"/></svg>Conteúdo programático</summary>
+            <div class="painel-det"><ul><li>Riscos elétricos e medidas de controle</li><li>Procedimentos de trabalho e bloqueio (LOTO)</li><li>Acidentes de origem elétrica: estudo de casos</li><li>Primeiros socorros e combate a incêndio</li></ul></div>
+          </details>
+          <details><summary class="btn btn-link"><svg><use href="#i-qr"/></svg>Validar</summary>
+            <div class="painel-det validar"><span class="qr" role="img" aria-label="QR code de validação"></span>
+              <div><div class="mini">Código de validação</div><span class="chave">SISA-2026-7F3K-Q9WD</span><br>
+              <a class="btn btn-link" href="#certificados"><svg><use href="#i-link"/></svg>Copiar link</a></div></div>
+          </details>
+        </div>
+        <div class="cert-num"><span>Nº 214/2026</span><span>Instrutor: Eng. de Segurança</span></div>
+      </article></li>
+
+      <li><article class="cartao cert" aria-labelledby="c2">
+        <div class="selos"><span class="selo selo-valido"><svg><use href="#i-ok"/></svg>Válido</span><span class="selo selo-norma">Primeiros socorros</span></div>
+        <h3 id="c2">Primeiros Socorros no Ambiente de Trabalho</h3>
+        <div class="promotor">SESMT · Campus JK</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>14/07/2026</li>
+          <li><svg><use href="#i-relogio"/></svg>8 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 21/07/2026</li>
+          <li><svg><use href="#i-escudo"/></svg>Válido até 14/07/2028</li>
+        </ul>
+        <div class="acoes">
+          <a class="btn btn-pri" href="#certificados"><svg><use href="#i-down"/></svg>Baixar certificado</a>
+          <details><summary class="btn btn-link"><svg><use href="#i-qr"/></svg>Validar</summary>
+            <div class="painel-det validar"><span class="qr" role="img" aria-label="QR code de validação"></span>
+              <div><div class="mini">Código de validação</div><span class="chave">SISA-2026-2M8P-HX4C</span><br>
+              <a class="btn btn-link" href="#certificados"><svg><use href="#i-link"/></svg>Copiar link</a></div></div>
+          </details>
+        </div>
+        <div class="cert-num"><span>Nº 162/2026</span></div>
+      </article></li>
+
+      <li><article class="cartao cert" aria-labelledby="c3">
+        <div class="selos"><span class="selo selo-vencido"><svg><use href="#i-x"/></svg>Vencido</span><span class="selo selo-norma">Brigada</span></div>
+        <h3 id="c3">Formação de Brigada de Incêndio – Nível Intermediário</h3>
+        <div class="promotor">SESMT · Campus JK</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>10, 11 e 12/05/2025</li>
+          <li><svg><use href="#i-relogio"/></svg>16 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 20/05/2025</li>
+          <li class="venceu"><svg><use href="#i-alerta"/></svg>Venceu em 12/05/2026</li>
+        </ul>
+        <div class="acoes">
+          <a class="btn btn-pri" href="#certificados"><svg><use href="#i-down"/></svg>Baixar certificado</a>
+          <a class="btn btn-alerta" href="#painel"><svg><use href="#i-recic"/></svg>Inscrever-se na reciclagem</a>
+        </div>
+        <div class="cert-num"><span>Nº 088/2025</span></div>
+      </article></li>
+    </ul>
+
+    <div class="grupo-ano">2025 <span>· 2 certificados</span></div>
+    <ul class="grade" role="list">
+      <li><article class="cartao cert" aria-labelledby="c4">
+        <div class="selos"><span class="selo selo-avencer"><svg><use href="#i-alerta"/></svg>Vence em 53 dias</span><span class="selo selo-norma">NR-35</span></div>
+        <h3 id="c4">NR-35 · Trabalho em Altura</h3>
+        <div class="promotor">DSQV · Divisão de Saúde e Qualidade de Vida</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>13 e 14/12/2024</li>
+          <li><svg><use href="#i-relogio"/></svg>8 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 08/01/2025</li>
+          <li class="vence"><svg><use href="#i-alerta"/></svg>Válido até 14/12/2026</li>
+        </ul>
+        <div class="acoes">
+          <a class="btn btn-pri" href="#certificados"><svg><use href="#i-down"/></svg>Baixar certificado</a>
+          <a class="btn btn-alerta" href="#painel"><svg><use href="#i-recic"/></svg>Inscrever-se na reciclagem</a>
+          <details><summary class="btn btn-link"><svg><use href="#i-qr"/></svg>Validar</summary>
+            <div class="painel-det validar"><span class="qr" role="img" aria-label="QR code de validação"></span>
+              <div><div class="mini">Código de validação</div><span class="chave">CSSO-2025-A1B2-C3D4</span><br>
+              <a class="btn btn-link" href="#certificados"><svg><use href="#i-link"/></svg>Copiar link</a></div></div>
+          </details>
+        </div>
+        <div class="cert-num"><span>Nº 004/2025</span><span>Emitido antes da SISA</span></div>
+      </article></li>
+
+      <li><article class="cartao cert" aria-labelledby="c5">
+        <div class="selos"><span class="selo selo-neutro">Sem prazo de validade</span><span class="selo selo-norma">Ergonomia</span></div>
+        <h3 id="c5">Ergonomia no Trabalho de Laboratório – NR-17</h3>
+        <div class="promotor">ICT · Comissão de Biossegurança</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>22/09/2025</li>
+          <li><svg><use href="#i-relogio"/></svg>4 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 30/09/2025</li>
+        </ul>
+        <div class="acoes">
+          <a class="btn btn-pri" href="#certificados"><svg><use href="#i-down"/></svg>Baixar certificado (Word)</a>
+        </div>
+        <div class="cert-num"><span>Nº 131/2025</span></div>
+      </article></li>
+    </ul>
+
+    <div class="grupo-ano">2024 <span>· 1 certificado</span></div>
+    <ul class="grade" role="list">
+      <li><article class="cartao cert cert-superado" aria-labelledby="c6">
+        <div class="selos"><span class="selo selo-neutro"><svg><use href="#i-recic"/></svg>Substituído pela reciclagem</span><span class="selo selo-norma">NR-10</span></div>
+        <h3 id="c6">NR-10 · Segurança em Instalações e Serviços em Eletricidade (Básico)</h3>
+        <div class="promotor">DSQV · Divisão de Saúde e Qualidade de Vida</div>
+        <ul class="meta">
+          <li><svg><use href="#i-cal"/></svg>02 a 06/09/2024</li>
+          <li><svg><use href="#i-relogio"/></svg>40 h</li>
+          <li><svg><use href="#i-check"/></svg>Emitido em 16/09/2024</li>
+        </ul>
+        <div class="acoes"><a class="btn btn-sec" href="#certificados"><svg><use href="#i-down"/></svg>Baixar certificado</a></div>
+        <div class="cert-num"><span>Nº 197/2024</span><span>Em vigor: Nº 214/2026</span></div>
+      </article></li>
+    </ul>
+
+    <details class="anulados">
+      <summary>Certificados anulados (1)</summary>
+      <article class="cartao cert" style="opacity:.8">
+        <div class="selos"><span class="selo selo-neutro">Anulado · substituído pelo Nº 162/2026</span></div>
+        <h3>Primeiros Socorros no Ambiente de Trabalho</h3>
+        <div class="mini">Motivo: carga horária impressa errada. Use o certificado substituto.</div>
+      </article>
+    </details>
+
+    <div class="demo-rotulo">Estado vazio (exemplo)</div>
+    <div class="cartao vazio">
+      <div class="ico ico-azul"><svg><use href="#i-medalha"/></svg></div>
+      <b>Você ainda não tem certificados emitidos</b>
+      <p>Quando você concluir um treinamento, o certificado aparece aqui para baixar e validar.</p>
+      <a class="btn btn-pri" href="#painel"><svg><use href="#i-livro"/></svg>Ver turmas abertas</a>
+    </div>
+  </section>
+
+  <!-- =================================================== ATIVIDADE -->
+  <section id="atividade" class="tela" aria-labelledby="t-ativ">
+    <div class="cab">
+      <span class="cab-ico" style="background:var(--lilas-claro);color:var(--lilas)"><svg><use href="#i-relogio"/></svg></span>
+      <div><h1 id="t-ativ">Minha atividade</h1>
+      <p>Acompanhe o que aconteceu com seus treinamentos, certificados, EPI e conta.</p></div>
+    </div>
+    <hr class="divisor">
+    <nav class="pilulas" aria-label="Filtrar por tipo">
+      <a class="pilula" href="#atividade" aria-current="true">Tudo</a>
+      <a class="pilula" href="#atividade">Treinamentos</a>
+      <a class="pilula" href="#atividade">Certificados</a>
+      <a class="pilula" href="#atividade">EPI</a>
+      <a class="pilula" href="#atividade">Processos</a>
+      <a class="pilula" href="#atividade">Conta</a>
+    </nav>
+
+    <h2 class="dia">Hoje</h2>
+    <ol class="tl">
+      <li><span class="ico ico-azul"><svg><use href="#i-livro"/></svg></span>
+        <div class="tl-txt"><b>Inscrição confirmada</b><span>NR-06 · Uso correto de EPI · turma T-2026-041</span><small>Equipe SESMT</small></div>
+        <time datetime="2026-10-22T10:14" title="22/10/2026 10:14">há 3 h</time></li>
+      <li><span class="ico ico-azul"><svg><use href="#i-livro"/></svg></span>
+        <div class="tl-txt"><b>Você pediu inscrição</b><span>NR-06 · Uso correto de EPI · turma T-2026-041</span><small>Você</small></div>
+        <time datetime="2026-10-22T08:51" title="22/10/2026 08:51">há 4 h</time></li>
+    </ol>
+    <h2 class="dia">Ontem</h2>
+    <ol class="tl">
+      <li><span class="ico ico-ciano"><svg><use href="#i-escudo"/></svg></span>
+        <div class="tl-txt"><b>Pedido de EPI em análise</b><span>Pedido nº 58/2026 · luva nitrílica, óculos de proteção</span><small>Equipe SESMT</small></div>
+        <time datetime="2026-10-21T15:30" title="21/10/2026 15:30">15:30</time></li>
+    </ol>
+    <h2 class="dia">10/09/2026</h2>
+    <ol class="tl">
+      <li><span class="ico ico-verde"><svg><use href="#i-medalha"/></svg></span>
+        <div class="tl-txt"><b>Certificado emitido</b><span>NR-10 · Reciclagem bienal · Nº 214/2026</span><small>Equipe DSQV</small></div>
+        <time datetime="2026-09-10T11:02" title="10/09/2026 11:02">há 6 semanas</time></li>
+      <li><span class="ico ico-azul"><svg><use href="#i-livro"/></svg></span>
+        <div class="tl-txt"><b>Presença registrada</b><span>NR-10 · Reciclagem bienal · 100% de frequência</span><small>Equipe DSQV</small></div>
+        <time datetime="2026-09-10T09:40" title="10/09/2026 09:40">há 6 semanas</time></li>
+    </ol>
+    <h2 class="dia">02/08/2026</h2>
+    <ol class="tl">
+      <li><span class="ico ico-ciano"><svg><use href="#i-escudo"/></svg></span>
+        <div class="tl-txt"><b>EPI entregue</b><span>Jaleco de algodão (CA 12345) · comprovante assinado</span><small>Equipe SESMT</small></div>
+        <time datetime="2026-08-02T14:12" title="02/08/2026 14:12">há 3 meses</time></li>
+      <li><span class="ico ico-cinza"><svg><use href="#i-cadeado"/></svg></span>
+        <div class="tl-txt"><b>Senha alterada</b><span>Pela tela Meu perfil › Segurança</span><small>Você</small></div>
+        <time datetime="2026-08-02T08:05" title="02/08/2026 08:05">há 3 meses</time></li>
+    </ol>
+    <p><a class="btn btn-sec" href="#atividade">Carregar mais</a></p>
+    <p class="nota">Seus acessos (logins) não aparecem aqui: veja em <a href="#perfil">Meu perfil › Segurança</a>. Ações da equipe aparecem com o nome do setor, e não com o nome de quem operou.</p>
+  </section>
+
+  <!-- =================================================== PERFIL -->
+  <section id="perfil" class="tela" aria-labelledby="t-perfil">
+    <div class="perfil-cab">
+      <span class="avatar" aria-hidden="true">MR</span>
+      <div>
+        <h1 id="t-perfil">Mariana Alves Rocha</h1>
+        <div class="chips">
+          <span class="chip">ICT</span>
+          <span class="chip">Técnica de Laboratório</span>
+          <span class="chip">Campus JK</span>
+          <span class="chip chip-ok">Ativa</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="secoes">
+      <details class="secao-p" open>
+        <summary><span class="ico ico-azul"><svg><use href="#i-maleta"/></svg></span><b>Dados funcionais</b><span class="so-leitura">Só leitura</span><svg class="seta"><use href="#i-seta"/></svg></summary>
+        <div class="corpo">
+          <dl class="rv">
+            <dt>Matrícula SIAPE</dt><dd>0000000 <span class="mini">(fictícia)</span></dd>
+            <dt>Cargo</dt><dd>Técnica de Laboratório – Área Química</dd>
+            <dt>Função</dt><dd>—</dd>
+            <dt>Lotação</dt><dd>ICT · Instituto de Ciência e Tecnologia</dd>
+            <dt>Campus</dt><dd>Campus JK · Diamantina</dd>
+            <dt>Situação</dt><dd><span class="selo selo-valido">Ativa</span></dd>
+          </dl>
+          <p class="fonte">Fonte: SIAPE / Pró-Reitoria de Gestão de Pessoas. Para corrigir, procure a gestão de pessoas. <a href="#perfil">Ver minha ficha completa →</a></p>
+        </div>
+      </details>
+
+      <details class="secao-p">
+        <summary><span class="ico ico-ciano"><svg><use href="#i-carta"/></svg></span><b>Contato e acesso</b><a class="alterar" href="#perfil"><svg><use href="#i-lapis"/></svg>Alterar</a><svg class="seta"><use href="#i-seta"/></svg></summary>
+        <div class="corpo">
+          <dl class="rv">
+            <dt>Nome de exibição</dt><dd>Mariana Rocha</dd>
+            <dt>E-mail</dt><dd>mariana.rocha@exemplo.edu.br</dd>
+            <dt>Conta criada em</dt><dd>03/02/2025</dd>
+            <dt>Último acesso</dt><dd>20/10/2026 08:42</dd>
+          </dl>
+          <p class="fonte">Ao trocar o e-mail, enviamos um link de confirmação para o endereço novo.</p>
+        </div>
+      </details>
+
+      <details class="secao-p">
+        <summary><span class="ico ico-cinza"><svg><use href="#i-cadeado"/></svg></span><b>Segurança</b><svg class="seta"><use href="#i-seta"/></svg></summary>
+        <div class="corpo">
+          <p><a class="btn btn-sec" href="#perfil"><svg><use href="#i-cadeado"/></svg>Trocar senha</a> <span class="mini">Última troca em 02/08/2026</span></p>
+          <b>Sessões ativas</b>
+          <ul class="sessoes">
+            <li><div><b>Firefox · Linux</b><span class="atual">Esta sessão</span><div class="mini">IP 200.131.x.x · desde 22/10/2026 08:50</div></div></li>
+            <li><div><b>Chrome · Android</b><div class="mini">IP 177.x.x.x · último uso 19/10/2026 18:03</div></div><a class="btn btn-sec" href="#perfil">Encerrar</a></li>
+          </ul>
+          <p><a class="btn btn-link" href="#perfil">Encerrar todas as outras sessões</a></p>
+        </div>
+      </details>
+
+      <details class="secao-p">
+        <summary><span class="ico ico-verde"><svg><use href="#i-medalha"/></svg></span><b>Treinamentos e certificados</b><svg class="seta"><use href="#i-seta"/></svg></summary>
+        <div class="corpo">
+          <dl class="rv">
+            <dt>Certificados válidos</dt><dd>5 de 7 emitidos</dd>
+            <dt>Capacitação</dt><dd>120 h no total</dd>
+            <dt>Atenção</dt><dd><span class="selo selo-avencer">NR-35 vence em 53 dias</span> <span class="selo selo-vencido">Brigada vencida</span></dd>
+          </dl>
+          <p class="fonte"><a href="#certificados">Ver meus certificados →</a></p>
+        </div>
+      </details>
+
+      <details class="secao-p">
+        <summary><span class="ico ico-lilas"><svg><use href="#i-escudo"/></svg></span><b>Privacidade (LGPD)</b><svg class="seta"><use href="#i-seta"/></svg></summary>
+        <div class="corpo">
+          <p style="font-size:14px;margin-top:12px">Você pode confirmar quais dados seus o sistema guarda e pedir correção (LGPD, art. 18). O SISA não mostra CPF, RG nem data de nascimento nas suas telas, e a validação pública dos certificados não exibe seu nome.</p>
+          <p class="fonte"><a href="#atividade">Ver minha atividade →</a> · Encarregado de dados: encarregado@exemplo.edu.br</p>
+        </div>
+      </details>
+    </div>
+  </section>
+  </main>
+</div>
+
+<footer class="rodape">SISA · protótipo com dados fictícios, só para referência visual</footer>
+</body>
+</html>
