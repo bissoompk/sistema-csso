@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cursos da SISA</title>
+<meta name="description" content="Protótipo estático da vitrine pública de cursos da SISA / UFVJM.">
+<!-- PROTÓTIPO: no sistema real, este CSS vai para public/estaticos/css/vitrine.css (CSP sem style inline).
+     Abas = radios + :checked; ficha do curso = :target. Nenhum JavaScript. -->
+<style>
+:root{
+  --sisa-marinho:#00316b; --sisa-azul:#0058a3; --sisa-ciano:#1a96c0; --lateral:#0a2a5c;
+  --acento-forte:#004a8a; --acento-claro:#d9e9f7; --acento-suave:#eef5fb;
+  --tinta:#0f172a; --tinta-media:#334155; --tinta-fraca:#475569; --tinta-dica:#64748b;
+  --cartao:#fff; --papel:#f1f5f9; --borda:#e2e8f0; --borda-campo:#7c8ba1;
+  --ok:#2f6b17; --ok-fundo:#e8f3dc; --alerta-texto:#92400e; --alerta-fundo:#fef3c7;
+  --perigo:#b91c1c; --perigo-fundo:#fee2e2;
+  /* cor por setor promotor (unidade_uorg.cor_vitrine) */
+  --csso:#0058a3; --csqv:#3a7a1c; --cpos:#08669a; --cpel:#6b3fa0; --secsisa:#0a2a5c;
+  --raio:14px; --sombra:0 1px 2px rgba(15,23,42,.06),0 6px 20px rgba(15,23,42,.06);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--papel);color:var(--tinta);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+a{color:var(--sisa-azul)}
+a:focus-visible,label:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--sisa-ciano);outline-offset:2px}
+.so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.envolve{max-width:1240px;margin:0 auto;padding:0 16px}
+
+/* barra superior pública */
+.topo{background:var(--lateral);color:#fff}
+.topo .envolve{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:60px}
+.marca{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-weight:700;letter-spacing:.02em}
+.marca svg{flex:none}
+.marca small{display:block;font-weight:400;color:#c8d4e6;font-size:.78rem;letter-spacing:0}
+.topo nav a{color:#c8d4e6;text-decoration:none;font-size:.92rem;margin-left:18px}
+.topo nav a[aria-current]{color:#fff;font-weight:600}
+@media (max-width:600px){.topo nav a.opcional{display:none}}
+
+.trilha{font-size:.88rem;color:var(--tinta-fraca);margin:18px 0 12px}
+.trilha a{color:var(--tinta-fraca)}
+
+/* cabeçalho estilo ABHO */
+.cabeca{background:var(--cartao);border-radius:var(--raio);box-shadow:var(--sombra);overflow:hidden;margin-bottom:20px}
+.cabeca::before{content:"";display:block;height:6px;background:linear-gradient(90deg,var(--sisa-marinho),var(--sisa-azul),var(--sisa-ciano))}
+.cabeca-corpo{display:flex;gap:18px;align-items:center;padding:22px 24px}
+.icone-redondo{flex:none;width:64px;height:64px;border-radius:50%;background:var(--acento-suave);display:grid;place-items:center;color:var(--sisa-azul)}
+.cabeca h1{margin:0;font-size:1.75rem;line-height:1.2;color:var(--sisa-marinho)}
+.cabeca p{margin:4px 0 0;color:var(--tinta-fraca)}
+@media (max-width:600px){.cabeca-corpo{padding:18px 16px;gap:14px}.icone-redondo{width:52px;height:52px}.cabeca h1{font-size:1.4rem}}
+
+/* abas sem JS */
+.abas-radio{position:absolute;opacity:0;pointer-events:none}
+.abas{display:flex;gap:4px;border-bottom:2px solid var(--borda);overflow-x:auto;scrollbar-width:none;margin-bottom:14px}
+.abas label{flex:none;padding:10px 16px;font-weight:600;color:var(--tinta-fraca);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.abas label span{display:inline-block;min-width:22px;padding:0 6px;margin-left:6px;border-radius:999px;background:var(--borda);color:var(--tinta-media);font-size:.78rem;text-align:center}
+#aba-abertas:checked ~ .abas label[for=aba-abertas],
+#aba-breve:checked ~ .abas label[for=aba-breve],
+#aba-realizados:checked ~ .abas label[for=aba-realizados]{color:var(--sisa-azul);border-bottom-color:var(--sisa-azul)}
+#aba-abertas:checked ~ .abas label[for=aba-abertas] span{background:var(--sisa-azul);color:#fff}
+#aba-abertas:focus-visible ~ .abas label[for=aba-abertas],
+#aba-breve:focus-visible ~ .abas label[for=aba-breve],
+#aba-realizados:focus-visible ~ .abas label[for=aba-realizados]{outline:3px solid var(--sisa-ciano)}
+.painel{display:none}
+#aba-abertas:checked ~ .p-abertas,#aba-breve:checked ~ .p-breve,#aba-realizados:checked ~ .p-realizados{display:block}
+
+/* filtros */
+.filtros{background:var(--cartao);border:1px solid var(--borda);border-radius:var(--raio);margin-bottom:18px}
+.filtros summary{padding:12px 16px;font-weight:600;cursor:pointer;color:var(--tinta-media)}
+.filtros form{display:grid;grid-template-columns:repeat(4,1fr) auto;gap:12px;padding:0 16px 16px;align-items:end}
+.filtros label{font-size:.85rem;color:var(--tinta-fraca);display:grid;gap:4px}
+select,input[type=text],input[type=email]{font:inherit;padding:9px 10px;border:1px solid var(--borda-campo);border-radius:8px;background:#fff;color:var(--tinta);width:100%}
+@media (max-width:860px){.filtros form{grid-template-columns:1fr 1fr}}
+@media (max-width:420px){.filtros form{grid-template-columns:1fr}}
+
+.botao{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 18px;border-radius:10px;border:0;background:var(--sisa-azul);color:#fff;font:inherit;font-weight:600;text-decoration:none;cursor:pointer}
+.botao:hover{background:var(--acento-forte)}
+.botao.claro{background:var(--acento-suave);color:var(--sisa-azul)}
+.botao.claro:hover{background:var(--acento-claro)}
+.botao.contorno{background:#fff;color:var(--sisa-azul);border:1px solid var(--sisa-azul)}
+.botao.largo{width:100%}
+
+/* grade de cartões */
+.grade{display:grid;gap:18px;grid-template-columns:1fr}
+@media (min-width:600px){.grade{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:960px){.grade{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:1280px){.grade{grid-template-columns:repeat(4,1fr)}}
+.cartao{background:var(--cartao);border-radius:var(--raio);box-shadow:var(--sombra);display:flex;flex-direction:column;overflow:hidden}
+.arte{position:relative;aspect-ratio:4/5;max-height:60vh;color:#fff;overflow:hidden}
+.arte .selos{position:absolute;top:10px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:6px}
+
+/* capa gerada pela identidade do setor (fallback sem arte enviada) */
+.capa{height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:52px 20px 20px;background:var(--cor);position:relative}
+.capa::after{content:"";position:absolute;right:-60px;bottom:-60px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,.08);box-shadow:0 0 0 40px rgba(255,255,255,.05)}
+.capa .ic{width:56px;height:56px;border-radius:14px;background:rgba(255,255,255,.16);display:grid;place-items:center}
+.capa .nr{font-size:.85rem;font-weight:700;letter-spacing:.08em;opacity:.9}
+.capa .nome{font-size:1.5rem;font-weight:800;line-height:1.15;margin:6px 0 0}
+.capa .rodape-capa{display:flex;justify-content:space-between;align-items:end;font-size:.8rem;opacity:.95;position:relative;z-index:1}
+.capa .rodape-capa b{font-size:1rem}
+.setor-csso{--cor:var(--csso)} .setor-csqv{--cor:var(--csqv)} .setor-cpos{--cor:var(--cpos)} .setor-cpel{--cor:var(--cpel)} .setor-secsisa{--cor:var(--secsisa)}
+
+/* arte "enviada pela equipe" (simulada em SVG) */
+.arte svg.poster{display:block;width:100%;height:100%}
+
+.selo{display:inline-flex;align-items:center;gap:4px;font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:#fff;color:var(--tinta-media);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.selo.urgente{background:var(--alerta-fundo);color:var(--alerta-texto)}
+.selo.ultimas{background:var(--perigo-fundo);color:var(--perigo)}
+.selo.ok{background:var(--ok-fundo);color:var(--ok)}
+
+.cartao-corpo{padding:16px 18px 6px;display:flex;flex-direction:column;gap:8px;flex:1}
+.etiqueta-setor{align-self:flex-start;font-size:.75rem;font-weight:700;letter-spacing:.04em;color:#fff;background:var(--cor);padding:2px 8px;border-radius:6px}
+.cartao h2{font-size:1.1rem;line-height:1.3;margin:0;color:var(--tinta);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.infos{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:.9rem;color:var(--tinta-media)}
+.infos li{display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start}
+.infos svg{margin-top:3px;color:var(--tinta-dica)}
+.infos strong{color:var(--tinta)}
+.vagas{margin-top:2px}
+.barra{height:6px;border-radius:999px;background:var(--borda);overflow:hidden}
+.barra i{display:block;height:100%;background:var(--ok)}
+.barra.pouca i{background:var(--perigo)}
+.vagas small{display:flex;justify-content:space-between;color:var(--tinta-fraca);font-size:.8rem;margin-top:3px}
+.publico{display:flex;flex-wrap:wrap;gap:5px}
+.publico span{font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--acento-suave);color:var(--sisa-marinho)}
+.cartao-pe{padding:12px 18px 18px;display:grid;gap:8px}
+.cartao-pe a.detalhe{text-align:center;font-size:.9rem}
+
+/* estado vazio */
+.vazio{background:var(--cartao);border-radius:var(--raio);box-shadow:var(--sombra);padding:36px 24px;text-align:center;max-width:720px;margin:0 auto}
+.vazio .icone-redondo{margin:0 auto 12px}
+.vazio h2{margin:0 0 4px;font-size:1.25rem}
+.vazio > p{margin:0;color:var(--tinta-fraca)}
+.aviso{margin-top:24px;text-align:left;border-top:1px solid var(--borda);padding-top:20px}
+.aviso h3{margin:0 0 4px;font-size:1.05rem;color:var(--sisa-marinho)}
+.aviso .dica{color:var(--tinta-fraca);font-size:.9rem;margin:0 0 14px}
+.campos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.campos label{display:grid;gap:4px;font-size:.88rem;font-weight:600;color:var(--tinta-media)}
+.campos .inteiro{grid-column:1/-1}
+fieldset{border:1px solid var(--borda);border-radius:10px;padding:10px 12px;margin:0}
+legend{font-size:.88rem;font-weight:600;color:var(--tinta-media);padding:0 4px}
+fieldset label{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-weight:400;padding:4px 0}
+fieldset label select{flex:1 1 160px;width:auto;min-width:0}
+body{overflow-x:hidden}
+.consentimento{display:flex;gap:10px;align-items:flex-start;font-size:.9rem;font-weight:400 !important;color:var(--tinta)}
+.consentimento input{margin-top:4px;width:18px;height:18px;flex:none}
+.finalidade{font-size:.85rem;color:var(--tinta-fraca);background:var(--acento-suave);border-radius:8px;padding:10px 12px;margin:0}
+.isca{position:absolute;left:-9999px}
+@media (max-width:600px){.campos{grid-template-columns:1fr}.vazio{padding:28px 16px}}
+
+/* realizados */
+.realizado{display:flex;gap:14px;align-items:center;background:var(--cartao);border-radius:12px;padding:14px 16px;box-shadow:var(--sombra)}
+.realizado .mini{flex:none;width:48px;height:48px;border-radius:10px;background:var(--cor);display:grid;place-items:center;color:#fff}
+.realizado h3{margin:0;font-size:1rem}
+.realizado p{margin:2px 0 0;color:var(--tinta-fraca);font-size:.88rem}
+.lista-realizados{display:grid;gap:10px}
+.contador{margin:0 0 14px;color:var(--tinta-fraca)}
+
+/* ficha do curso (:target) */
+.ficha{display:none}
+.ficha:target{display:block}
+.ficha:target ~ .vitrine{display:none}
+.ficha-topo{display:grid;grid-template-columns:minmax(260px,380px) 1fr;gap:24px;background:var(--cartao);border-radius:var(--raio);box-shadow:var(--sombra);padding:20px;overflow:hidden}
+.ficha-topo .arte{border-radius:12px}
+.ficha h1{margin:6px 0 8px;font-size:1.8rem;line-height:1.2;color:var(--sisa-marinho)}
+.resumo{display:grid;grid-template-columns:repeat(2,1fr);gap:12px 20px;margin:16px 0;padding:0;list-style:none}
+.resumo li{font-size:.92rem;color:var(--tinta-media)}
+.resumo li b{display:block;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--tinta-dica);font-weight:700}
+.secoes{display:grid;grid-template-columns:1fr 340px;gap:20px;margin-top:20px;align-items:start}
+.bloco{background:var(--cartao);border-radius:var(--raio);box-shadow:var(--sombra);padding:20px 22px;margin-bottom:20px}
+.bloco h2{margin:0 0 10px;font-size:1.15rem;color:var(--sisa-marinho)}
+.bloco ol{margin:0;padding-left:20px;display:grid;gap:4px}
+.instrutor{display:flex;gap:12px;align-items:center}
+.avatar{width:48px;height:48px;border-radius:50%;background:var(--acento-claro);color:var(--sisa-azul);display:grid;place-items:center;font-weight:700}
+.divulgue .qr{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.divulgue .qr svg{flex:none;border:1px solid var(--borda);border-radius:8px;padding:6px;background:#fff}
+.acoes{display:grid;gap:8px}
+.copiar label{font-size:.85rem;color:var(--tinta-fraca);display:grid;gap:4px;margin-top:6px}
+.copiar input{font-size:.85rem;background:var(--papel)}
+.fixo-celular{display:none}
+@media (max-width:860px){
+  .ficha-topo{grid-template-columns:1fr;padding:14px}
+  .ficha-topo .arte{max-height:none;aspect-ratio:16/10}
+  .ficha-topo .arte .capa{padding-top:44px}
+  .secoes{grid-template-columns:1fr}
+  .ficha h1{font-size:1.45rem}
+  .fixo-celular{display:block;position:sticky;bottom:0;background:rgba(241,245,249,.96);padding:10px 0 12px;border-top:1px solid var(--borda);margin:0 -16px;padding-left:16px;padding-right:16px}
+}
+@media (max-width:420px){.resumo{grid-template-columns:1fr 1fr;gap:10px 12px}}
+
+.rodape{margin-top:40px;padding:24px 0 32px;color:var(--tinta-fraca);font-size:.88rem;border-top:1px solid var(--borda)}
+.rodape .envolve{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.nota-proto{background:var(--alerta-fundo);color:var(--alerta-texto);font-size:.82rem;text-align:center;padding:6px 16px}
+
+/* popup de inscrição (no sistema: <dialog> do ui.popup_cadastro) */
+.alterna-popup{position:absolute;opacity:0;pointer-events:none}
+.popup-fundo{display:none;position:fixed;inset:0;z-index:50;background:rgba(10,42,92,.55);padding:24px;overflow:auto}
+.alterna-popup:checked ~ .popup-fundo{display:grid;place-items:center}
+.popup-fora{position:fixed;inset:0;cursor:default}
+.popup{position:relative;background:var(--cartao);border-radius:var(--raio);box-shadow:0 20px 60px rgba(0,0,0,.3);width:min(620px,100%);padding:22px 24px;border-top:5px solid var(--csso)}
+.popup-cabeca{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.popup-cabeca h2{margin:6px 0 4px;font-size:1.3rem;color:var(--sisa-marinho)}
+.pop-resumo{margin:0;color:var(--tinta-fraca);font-size:.92rem}
+.popup-fechar{font-size:28px;line-height:1;width:44px;height:44px;display:grid;place-items:center;border-radius:50%;cursor:pointer;color:var(--tinta-fraca)}
+.popup-fechar:hover{background:var(--papel)}
+.passos{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0;padding:0}
+.passos li{display:flex;gap:8px;align-items:center;background:var(--acento-suave);border-radius:10px;padding:8px 10px;font-size:.85rem;color:var(--tinta-media)}
+.passos b{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#fff;color:var(--sisa-azul);border:1px solid var(--acento-claro)}
+.passos li.atual{background:var(--sisa-azul);color:#fff}
+.passos li.atual b{background:#fff;color:var(--sisa-azul)}
+.vinculo{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px}
+.vinculo legend{font-weight:600;margin-bottom:6px;width:100%}
+.vinculo label{display:flex;align-items:center;gap:6px;border:1px solid var(--borda-campo);border-radius:999px;padding:10px 14px;min-height:44px;cursor:pointer;font-weight:500}
+.vinculo label:has(input:checked){border-color:var(--sisa-azul);background:var(--acento-suave);color:var(--sisa-azul)}
+.dica{font-weight:400;color:var(--tinta-dica);font-size:.85em}
+.campos label.so-externo{display:none}
+.campos:has(.vinculo input[value=terceirizado]:checked) label.so-servidor,
+.campos:has(.vinculo input[value=estudante]:checked) label.so-servidor{display:none}
+.campos:has(.vinculo input[value=terceirizado]:checked) label.so-externo,
+.campos:has(.vinculo input[value=estudante]:checked) label.so-externo{display:grid}
+.prerequisito{background:var(--alerta-fundo);border-radius:10px;padding:12px 14px;display:grid;gap:8px}
+.prerequisito label{display:flex;gap:8px;align-items:flex-start;font-weight:400}
+.prerequisito input{width:20px;height:20px;margin-top:2px;flex:none}
+.popup-rodape{display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--borda);padding-top:14px}
+@media (max-width:600px){
+  .popup-fundo{padding:0}
+  .alterna-popup:checked ~ .popup-fundo{place-items:stretch}
+  .popup{border-radius:0;min-height:100%;padding:16px}
+  .passos{grid-template-columns:1fr}
+  .popup-rodape{position:sticky;bottom:0;background:#fff;padding-bottom:12px}
+  .popup-rodape .botao{flex:1;min-height:48px}
+  input,select{font-size:16px}
+}
+</style>
+</head>
+<body>
+
+<div class="nota-proto">Protótipo estático: dados fictícios. As abas e a ficha funcionam sem JavaScript.</div>
+
+<header class="topo">
+  <div class="envolve">
+    <a class="marca" href="#">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="16" fill="#1a96c0"/><path d="M10 20c0-4 3-7 7-7s7 3 7 7" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="17" cy="11" r="3" fill="#8dc63f"/></svg>
+      <span>SISA<small>UFVJM</small></span>
+    </a>
+    <nav aria-label="Principal">
+      <a href="#" aria-current="page">Cursos</a>
+      <a href="#" class="opcional">Validar certificado</a>
+      <a href="#">Entrar</a>
+    </nav>
+  </div>
+</header>
+
+<main class="envolve">
+
+<!-- ================= FICHA DO CURSO (/cursos/TUR-2026-0031) ================= -->
+<section class="ficha" id="curso-nr35" aria-labelledby="ficha-titulo">
+  <nav class="trilha" aria-label="Trilha"><a href="#">Início</a> › <a href="#vitrine">Cursos</a> › NR-35 Trabalho em altura</nav>
+
+  <div class="ficha-topo">
+    <div class="arte setor-csso">
+      <div class="selos"><span class="selo ok">Gratuito</span><span class="selo">Certificado incluso</span></div>
+      <div class="capa">
+        <div class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M12 2v6M5 22l7-14 7 14M8 16h8"/></svg></div>
+        <div><div class="nr">NR-35 · RECICLAGEM 24 MESES</div><p class="nome">Trabalho em altura</p></div>
+        <div class="rodape-capa"><span><b>CSSO</b><br>Coordenadoria de Saúde e Segurança Ocupacional</span><span>SISA · UFVJM</span></div>
+      </div>
+    </div>
+    <div>
+      <span class="etiqueta-setor setor-csso">CSSO</span>
+      <h1 id="ficha-titulo">NR-35 Trabalho em altura</h1>
+      <div class="publico" aria-label="Público-alvo"><span>Servidores</span><span>Terceirizados</span></div>
+      <ul class="resumo">
+        <li><b>Datas</b>18 e 19/11/2026</li>
+        <li><b>Horário</b>8h às 12h e 13h às 17h</li>
+        <li><b>Local</b>Auditório do Campus JK, Diamantina</li>
+        <li><b>Modalidade</b>Presencial</li>
+        <li><b>Carga horária</b>16 h</li>
+        <li><b>Inscrições até</b>11/11/2026</li>
+        <li><b>Vagas</b>12 de 30 disponíveis</li>
+        <li><b>Turma</b>TUR-2026-0031</li>
+      </ul>
+      <label class="botao largo" for="abrir-inscricao">Inscrever-se</label>
+    </div>
+  </div>
+
+  <div class="secoes">
+    <div>
+      <section class="bloco">
+        <h2>Sobre o curso</h2>
+        <p>Capacitação para quem executa ou supervisiona atividades acima de 2 metros do nível inferior: telhados, andaimes, escadas e manutenção predial. Atende ao item 35.3 da NR-35. Inclui prática com cinto paraquedista e linha de vida no segundo dia.</p>
+      </section>
+      <section class="bloco">
+        <h2>Conteúdo programático</h2>
+        <ol>
+          <li>Normas e regulamentos aplicáveis ao trabalho em altura</li>
+          <li>Análise de risco e condições impeditivas</li>
+          <li>Riscos potenciais inerentes ao trabalho em altura e medidas de prevenção</li>
+          <li>Sistemas, equipamentos e procedimentos de proteção coletiva</li>
+          <li>EPI para trabalho em altura: seleção, inspeção, conservação e limitação de uso</li>
+          <li>Acidentes típicos em trabalhos em altura</li>
+          <li>Condutas em situações de emergência, incluindo noções de resgate e primeiros socorros</li>
+        </ol>
+      </section>
+      <section class="bloco">
+        <h2>Pré-requisitos</h2>
+        <p>Atestado de saúde ocupacional (ASO) com aptidão para trabalho em altura, válido na data do curso. Traga calçado fechado.</p>
+      </section>
+      <section class="bloco">
+        <h2>Instrutor</h2>
+        <div class="instrutor"><div class="avatar" aria-hidden="true">MA</div><div><strong>Marcos A. Ribeiro</strong><br><span class="contador">Engenheiro de Segurança do Trabalho</span></div></div>
+      </section>
+      <section class="bloco">
+        <h2>Certificado</h2>
+        <p>Certificado digital emitido pela SISA, com QR de validação. Válido por 24 meses (reciclagem bienal, NR-35). Exige 100% de presença.</p>
+      </section>
+
+    </div>
+
+    <aside>
+      <section class="bloco divulgue" aria-labelledby="divulgue-t">
+        <h2 id="divulgue-t">Divulgue</h2>
+        <div class="qr">
+          <svg width="96" height="96" viewBox="0 0 21 21" role="img" aria-label="QR code da página do curso" shape-rendering="crispEdges">
+            <rect width="21" height="21" fill="#fff"/>
+            <path fill="#0a2a5c" d="M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2zM14 0h7v7h-7zM15 1v5h5V1zM16 2h3v3h-3zM0 14h7v7H0zM1 15v5h5v-5zM2 16h3v3H2zM8 0h1v1H8zM10 1h2v1h-2zM9 3h1v2H9zM11 4h2v1h-2zM8 6h1v1H8zM12 6h1v2h-1zM8 8h3v1H8zM0 8h2v1H0zM3 9h2v1H3zM5 8h1v2H5zM14 8h2v1h-2zM17 9h3v1h-3zM19 8h2v1h-2zM9 10h2v2H9zM13 10h1v3h-1zM15 11h2v1h-2zM18 11h1v2h-1zM1 11h1v2H1zM4 12h2v1H4zM8 13h2v1H8zM11 14h2v1h-2zM14 14h3v1h-3zM19 14h2v2h-2zM9 16h1v2H9zM12 16h2v1h-2zM15 16h1v3h-1zM17 17h2v1h-2zM10 19h3v1h-3zM18 19h3v2h-3zM8 20h1v1H8z"/>
+          </svg>
+          <p class="contador">Aponte a câmera para abrir esta página. Use no cartaz e no mural.</p>
+        </div>
+        <div class="acoes">
+          <a class="botao" href="#curso-nr35">Compartilhar no WhatsApp</a>
+          <a class="botao claro" href="#curso-nr35">Adicionar à agenda (.ics)</a>
+          <a class="botao claro" href="#curso-nr35">Baixar cartaz A4 (PDF)</a>
+          <a class="botao contorno" href="#curso-nr35">Post para feed 1080×1350</a>
+          <a class="botao contorno" href="#curso-nr35">Story 1080×1920</a>
+        </div>
+        <div class="copiar"><label>Link da página<input type="text" readonly value="https://sisa.ufvjm.edu.br/cursos/TUR-2026-0031"></label></div>
+      </section>
+      <section class="bloco">
+        <h2>Lotou ou não pode agora?</h2>
+        <p class="contador">Receba um e-mail quando abrir a próxima turma de NR-35.</p>
+        <a class="botao claro largo" href="#vitrine">Quero ser avisado</a>
+      </section>
+    </aside>
+  </div>
+  <div class="fixo-celular"><label class="botao largo" for="abrir-inscricao">Inscrever-se · até 11/11</label></div>
+
+  <!-- Popup de inscrição. No sistema: <dialog> pelo ui.popup_cadastro; aqui, um checkbox + CSS. -->
+  <input type="checkbox" id="abrir-inscricao" class="alterna-popup" aria-hidden="true" tabindex="-1">
+  <div class="popup-fundo" role="dialog" aria-modal="true" aria-labelledby="pop-titulo">
+    <label class="popup-fora" for="abrir-inscricao" aria-hidden="true"></label>
+    <div class="popup">
+      <header class="popup-cabeca">
+        <div>
+          <span class="etiqueta-setor setor-csso">CSSO</span>
+          <h2 id="pop-titulo">Inscrição · NR-35 Trabalho em altura</h2>
+          <p class="pop-resumo">18 e 19/11/2026 · 8h às 17h · Auditório do Campus JK · <b>12 vagas</b></p>
+        </div>
+        <label class="popup-fechar" for="abrir-inscricao" title="Fechar">×</label>
+      </header>
+
+      <ol class="passos" aria-label="Como funciona">
+        <li class="atual"><b>1</b><span>Você envia o pedido</span></li>
+        <li><b>2</b><span>A equipe da CSSO confere</span></li>
+        <li><b>3</b><span>Você recebe a confirmação por e-mail</span></li>
+      </ol>
+
+      <form class="campos" action="#curso-nr35" method="get">
+        <fieldset class="inteiro vinculo">
+          <legend>Você é</legend>
+          <label><input type="radio" name="vinculo" value="servidor" checked> Servidor da UFVJM</label>
+          <label><input type="radio" name="vinculo" value="terceirizado"> Terceirizado</label>
+          <label><input type="radio" name="vinculo" value="estudante"> Estudante</label>
+        </fieldset>
+        <label class="inteiro">Nome completo<input type="text" name="nome" autocomplete="name" required></label>
+        <label class="inteiro">E-mail <span class="dica">a resposta chega aqui</span><input type="email" name="email" autocomplete="email" inputmode="email" required></label>
+        <label class="so-servidor">SIAPE<input type="text" name="siape" inputmode="numeric" pattern="[0-9]{7}" maxlength="7" placeholder="7 dígitos"></label>
+        <label class="so-externo">Empresa ou curso<input type="text" name="origem" autocomplete="organization"></label>
+        <label>Setor ou unidade onde trabalha<input type="text" name="setor" autocomplete="off"></label>
+        <label class="isca" aria-hidden="true">Não preencha<input type="text" name="site" tabindex="-1" autocomplete="off"></label>
+
+        <div class="inteiro prerequisito">
+          <strong>Antes de enviar</strong>
+          <label><input type="checkbox" required> Tenho ASO com aptidão para trabalho em altura válido em 18/11/2026.</label>
+          <label><input type="checkbox" required> Li e concordo com o uso destes dados só para a inscrição e a emissão do certificado.</label>
+        </div>
+
+        <div class="inteiro popup-rodape">
+          <label class="botao claro" for="abrir-inscricao">Cancelar</label>
+          <button class="botao" type="submit">Enviar pedido</button>
+        </div>
+        <p class="inteiro contador">Resposta em até 2 dias úteis. Dúvidas: csso@ufvjm.edu.br.</p>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ================= VITRINE (/cursos) ================= -->
+<div class="vitrine" id="vitrine">
+  <nav class="trilha" aria-label="Trilha"><a href="#">Início</a> › Cursos</nav>
+
+  <section class="cabeca" aria-labelledby="titulo">
+    <div class="cabeca-corpo">
+      <div class="icone-redondo" aria-hidden="true">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/></svg>
+      </div>
+      <div>
+        <h1 id="titulo">Cursos da SISA</h1>
+        <p>Capacitações em saúde, segurança e qualidade de vida para quem trabalha e estuda na UFVJM. Todas gratuitas e com certificado.</p>
+      </div>
+    </div>
+  </section>
+
+  <input class="abas-radio" type="radio" name="aba" id="aba-abertas" checked>
+  <input class="abas-radio" type="radio" name="aba" id="aba-breve">
+  <input class="abas-radio" type="radio" name="aba" id="aba-realizados">
+  <div class="abas" role="presentation">
+    <label for="aba-abertas">Inscrições abertas<span>4</span></label>
+    <label for="aba-breve">Em breve<span>0</span></label>
+    <label for="aba-realizados">Realizados<span>3</span></label>
+  </div>
+
+  <details class="filtros">
+    <summary>Filtrar por setor, campus, modalidade e público</summary>
+    <form action="#vitrine" method="get">
+      <label>Setor promotor
+        <select name="setor"><option value="">Todos</option><option>CSSO</option><option>CSQV</option><option>CPOS</option><option>CPEL</option><option>SecSisa</option></select>
+      </label>
+      <label>Campus
+        <select name="campus"><option value="">Todos</option><option>JK (Diamantina)</option><option>I (Diamantina)</option><option>Mucuri (Teófilo Otoni)</option><option>Janaúba</option><option>Unaí</option></select>
+      </label>
+      <label>Modalidade
+        <select name="modalidade"><option value="">Todas</option><option>Presencial</option><option>Online</option><option>Híbrido</option></select>
+      </label>
+      <label>Público
+        <select name="publico"><option value="">Todos</option><option>Servidores</option><option>Terceirizados</option><option>Estudantes</option><option>Comunidade</option></select>
+      </label>
+      <button class="botao" type="submit">Filtrar</button>
+    </form>
+  </details>
+
+  <!-- ===== aba: inscrições abertas ===== -->
+  <section class="painel p-abertas" aria-label="Inscrições abertas">
+    <div class="grade">
+
+      <!-- 1. Primeiros socorros: CSQV, encerrando, com arte enviada -->
+      <article class="cartao setor-csqv">
+        <div class="arte">
+          <svg class="poster" viewBox="0 0 400 500" role="img" aria-label="Primeiros socorros no ambiente de trabalho">
+            <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2d6316"/><stop offset="1" stop-color="#8dc63f"/></linearGradient></defs>
+            <rect width="400" height="500" fill="url(#g1)"/>
+            <circle cx="320" cy="120" r="110" fill="#fff" opacity=".1"/>
+            <rect x="140" y="150" width="120" height="120" rx="22" fill="#fff"/>
+            <path d="M185 170h30v35h35v30h-35v35h-30v-35h-35v-30h35z" fill="#c62828"/>
+            <text x="200" y="345" fill="#fff" font-family="system-ui,Arial" font-size="34" font-weight="800" text-anchor="middle">PRIMEIROS</text>
+            <text x="200" y="385" fill="#fff" font-family="system-ui,Arial" font-size="34" font-weight="800" text-anchor="middle">SOCORROS</text>
+            <text x="200" y="420" fill="#eaf6d9" font-family="system-ui,Arial" font-size="16" text-anchor="middle">Aprenda a agir nos primeiros minutos</text>
+            <text x="24" y="478" fill="#fff" font-family="system-ui,Arial" font-size="14" font-weight="700">CSQV · SISA</text>
+          </svg>
+          <div class="selos"><span class="selo urgente">Encerra em 3 dias</span><span class="selo ok">Gratuito</span></div>
+        </div>
+        <div class="cartao-corpo">
+          <span class="etiqueta-setor">CSQV</span>
+          <h2>Primeiros socorros no ambiente de trabalho</h2>
+          <ul class="infos">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span><strong>05/11/2026</strong> · 8h às 12h</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Sala 12, prédio do DCS · Campus JK · Presencial</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>4 h · Inscrições até <strong>25/10</strong></span></li>
+          </ul>
+          <div class="publico"><span>Servidores</span><span>Terceirizados</span><span>Estudantes</span></div>
+          <div class="vagas"><div class="barra"><i style="width:55%"></i></div><small><span>11 de 20 vagas</span><span>Certificado incluso</span></small></div>
+        </div>
+        <div class="cartao-pe">
+          <a class="botao largo" href="#curso-nr35">Inscrever-se</a>
+          <a class="detalhe" href="#curso-nr35">Ver detalhes</a>
+        </div>
+      </article>
+
+      <!-- 2. NR-35: CSSO, capa gerada -->
+      <article class="cartao setor-csso">
+        <div class="arte">
+          <div class="selos"><span class="selo ok">Gratuito</span><span class="selo">Reciclagem NR-35</span></div>
+          <div class="capa">
+            <div class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M12 2v6M5 22l7-14 7 14M8 16h8"/></svg></div>
+            <div><div class="nr">NR-35</div><p class="nome">Trabalho em altura</p></div>
+            <div class="rodape-capa"><span><b>CSSO</b><br>Saúde e Segurança Ocupacional</span><span>SISA · UFVJM</span></div>
+          </div>
+        </div>
+        <div class="cartao-corpo">
+          <span class="etiqueta-setor">CSSO</span>
+          <h2>NR-35 Trabalho em altura</h2>
+          <ul class="infos">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span><strong>18 e 19/11/2026</strong> · 8h às 17h</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Auditório · Campus JK · Presencial</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>16 h · Inscrições até <strong>11/11</strong></span></li>
+          </ul>
+          <div class="publico"><span>Servidores</span><span>Terceirizados</span></div>
+          <div class="vagas"><div class="barra"><i style="width:40%"></i></div><small><span>12 de 30 vagas</span><span>Certificado incluso</span></small></div>
+        </div>
+        <div class="cartao-pe">
+          <a class="botao largo" href="#curso-nr35">Inscrever-se</a>
+          <a class="detalhe" href="#curso-nr35">Ver detalhes</a>
+        </div>
+      </article>
+
+      <!-- 3. Ergonomia: CPOS, online -->
+      <article class="cartao setor-cpos">
+        <div class="arte">
+          <div class="selos"><span class="selo ok">Gratuito</span><span class="selo">Online</span></div>
+          <div class="capa">
+            <div class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+            <div><div class="nr">NR-17</div><p class="nome">Ergonomia no escritório</p></div>
+            <div class="rodape-capa"><span><b>CPOS</b><br>Promoção à Saúde</span><span>SISA · UFVJM</span></div>
+          </div>
+        </div>
+        <div class="cartao-corpo">
+          <span class="etiqueta-setor">CPOS</span>
+          <h2>Ergonomia no escritório e no trabalho remoto</h2>
+          <ul class="infos">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span><strong>26/11/2026</strong> · 14h às 17h</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Online · o link da sala vai por e-mail a quem for aceito</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>3 h · Inscrições até <strong>20/11</strong></span></li>
+          </ul>
+          <div class="publico"><span>Servidores</span><span>Terceirizados</span><span>Estudantes</span><span>Comunidade</span></div>
+          <div class="vagas"><small><span>Vagas abertas</span><span>Certificado incluso</span></small></div>
+        </div>
+        <div class="cartao-pe">
+          <a class="botao largo" href="#curso-nr35">Inscrever-se</a>
+          <a class="detalhe" href="#curso-nr35">Ver detalhes</a>
+        </div>
+      </article>
+
+      <!-- 4. Brigada: CSSO, últimas vagas -->
+      <article class="cartao setor-csso">
+        <div class="arte">
+          <div class="selos"><span class="selo ultimas">Últimas vagas</span><span class="selo ok">Gratuito</span></div>
+          <div class="capa">
+            <div class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M12 22c4 0 7-3 7-7 0-5-5-7-5-12-3 2-5 5-5 8-1-1-2-2-2-4-2 2-2 5-2 8 0 4 3 7 7 7z"/></svg></div>
+            <div><div class="nr">NBR 14276 · IT-12 CBMMG</div><p class="nome">Brigada de incêndio</p></div>
+            <div class="rodape-capa"><span><b>CSSO</b><br>Saúde e Segurança Ocupacional</span><span>SISA · UFVJM</span></div>
+          </div>
+        </div>
+        <div class="cartao-corpo">
+          <span class="etiqueta-setor">CSSO</span>
+          <h2>Formação de brigada de incêndio</h2>
+          <ul class="infos">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span><strong>01 a 03/12/2026</strong> · 8h às 12h</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Ginásio · Campus Mucuri · Presencial</span></li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>12 h · Inscrições até <strong>24/11</strong></span></li>
+          </ul>
+          <div class="publico"><span>Servidores</span><span>Terceirizados</span></div>
+          <div class="vagas"><div class="barra pouca"><i style="width:12%"></i></div><small><span>3 de 25 vagas</span><span>Certificado incluso</span></small></div>
+        </div>
+        <div class="cartao-pe">
+          <a class="botao largo" href="#curso-nr35">Inscrever-se</a>
+          <a class="detalhe" href="#curso-nr35">Ver detalhes</a>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===== aba: em breve (vazio + quero ser avisado) ===== -->
+  <section class="painel p-breve" aria-label="Em breve">
+    <div class="vazio">
+      <div class="icone-redondo" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 14v3"/></svg>
+      </div>
+      <h2>Nenhum curso programado no momento</h2>
+      <p>Novas turmas estão sendo preparadas pelos setores da SISA.</p>
+
+      <form class="aviso" action="#vitrine" method="get" aria-labelledby="aviso-t">
+        <h3 id="aviso-t">Quero ser avisado!</h3>
+        <p class="dica">Mandamos um e-mail quando abrir turma do que você escolher.</p>
+        <div class="campos">
+          <label>Nome<input type="text" name="nome" autocomplete="name" required maxlength="120"></label>
+          <label>E-mail<input type="email" name="email" autocomplete="email" required></label>
+          <fieldset class="inteiro">
+            <legend>Quero saber de</legend>
+            <label><input type="radio" name="interesse" value="qualquer" checked> Qualquer curso da SISA</label>
+            <label><input type="radio" name="interesse" value="setor"> Cursos de um setor:
+              <select name="setor" aria-label="Setor"><option>CSSO</option><option>CSQV</option><option>CPOS</option><option>CPEL</option><option>SecSisa</option></select></label>
+            <label><input type="radio" name="interesse" value="treinamento"> Um curso:
+              <select name="treinamento" aria-label="Curso"><option>NR-35 Trabalho em altura</option><option>NR-10 Segurança em eletricidade</option><option>Primeiros socorros</option><option>Brigada de incêndio</option></select></label>
+          </fieldset>
+          <label class="inteiro">Campus (opcional)
+            <select name="campus"><option value="">Qualquer campus</option><option>JK (Diamantina)</option><option>I (Diamantina)</option><option>Mucuri (Teófilo Otoni)</option><option>Janaúba</option><option>Unaí</option></select>
+          </label>
+          <label class="isca" aria-hidden="true">Não preencha<input type="text" name="site" tabindex="-1" autocomplete="off"></label>
+          <label class="consentimento inteiro"><input type="checkbox" name="consentimento" required> Concordo em receber e-mails da SISA sobre a abertura de turmas.</label>
+          <p class="finalidade inteiro">Usaremos seu nome e e-mail só para avisar quando abrir turma do interesse escolhido. Primeiro você confirma pelo e-mail. Em cada aviso há um link para sair. O cadastro expira em 12 meses. <a href="#">Política de privacidade</a></p>
+          <div class="inteiro"><button class="botao largo" type="submit">Quero ser avisado</button></div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== aba: realizados ===== -->
+  <section class="painel p-realizados" aria-label="Realizados">
+    <p class="contador"><strong>412 pessoas</strong> capacitadas pela SISA em 2026 (número agregado, sem nomes).</p>
+    <div class="lista-realizados">
+      <div class="realizado setor-csso"><div class="mini" aria-hidden="true">NR</div><div><h3>NR-10 Segurança em eletricidade</h3><p>CSSO · 14 a 16/10/2026 · Campus JK · 28 concluintes</p></div></div>
+      <div class="realizado setor-csqv"><div class="mini" aria-hidden="true">QV</div><div><h3>Ginástica laboral: multiplicadores</h3><p>CSQV · 30/09/2026 · Campus Mucuri · 19 concluintes</p></div></div>
+      <div class="realizado setor-cpel"><div class="mini" aria-hidden="true">PE</div><div><h3>Prevenção de LER/DORT</h3><p>CPEL · 10/09/2026 · Online · 64 concluintes</p></div></div>
+    </div>
+  </section>
+</div>
+</main>
+
+<footer class="rodape">
+  <div class="envolve">
+    <span>Sistema SISA · Universidade Federal dos Vales do Jequitinhonha e Mucuri</span>
+    <span><a href="#">Receber avisos de novos cursos</a> · <a href="#">Privacidade</a> · <a href="#">Validar certificado</a></span>
+  </div>
+</footer>
+</body>
+</html>
