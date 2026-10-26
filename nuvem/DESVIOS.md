@@ -1884,3 +1884,8 @@ Decisão do usuário: sai a opção «Primeiro acesso» e fica só o **Cadastre-
 - **Fim de vigência antes do início** em autoridade destinatária e setor emissor era aceito: recusa no cadastro e na edição.
 - **Texto de e-mail** em `/config` e na ficha do servidor ainda falava em «Ativar meu acesso» (o primeiro acesso saiu); fala de «Cadastre-se». O rótulo da trilha também.
 - **Fica como está, para decisão**: autoridades e setores emissores com vigências que se sobrepõem são aceitos (a transição entre duas pessoas costuma ter dias em comum); o código do cargo no SIAPE aceita letras (o formato real não está confirmado).
+
+## 26/10/2026 — Lentidão no Netlify: leitura sem transação
+
+- **GET/HEAD sem BEGIN/COMMIT** (`src/app.ts`): a função roda nos EUA e o banco em São Paulo (~150 ms por ida). Cada tela abria e fechava uma transação — duas idas a mais (~300 ms) só para ler. Medido com proxy de 75 ms por sentido: `/login` 0,62 s → 0,32 s; as demais telas ficaram ~0,3 s mais rápidas. Quem escreve (POST etc.) segue na transação da requisição. Risco aceito: uma leitura que grava (registro de visualização) e falha depois não desfaz mais a gravação.
+- **Fora do código**: a maior fatia continua sendo a distância função↔banco. No Netlify, mudar a região das funções para a mais próxima de São Paulo (se o plano permitir) ou usar o Supabase em região dos EUA corta cada ida de ~150 ms para poucos ms.
