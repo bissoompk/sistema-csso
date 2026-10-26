@@ -168,6 +168,19 @@ export function criarApp(): Hono<Ambiente> {
       }
       return c.json({ detail: erro.detalhe }, erro.status as any);
     }
+    // Texto maior que a coluna (22001) ou número fora do limite (22003): quem
+    // digitou erra, e não "algo do nosso lado". Os formulários dos catálogos
+    // não limitavam o tamanho, e uma sigla de campus longa virava "500 — erro
+    // interno" sem dizer qual campo (teste de configurações, 26/10/2026).
+    const codigo_pg = (erro as { code?: string }).code ?? (erro as { cause?: { code?: string } }).cause?.code;
+    if (codigo_pg === "22001" || codigo_pg === "22003") {
+      const detalhe =
+        codigo_pg === "22001"
+          ? "Um dos campos passa do tamanho permitido. Encurte o texto e envie de novo; nada foi gravado."
+          : "Um dos números está fora do limite permitido. Confira o valor e envie de novo; nada foi gravado.";
+      if (pedeJson(c)) return c.json({ erro: detalhe, motivos: [] }, 422);
+      return telaDeErro(c, "422 — formulário incompleto", detalhe, null, 422);
+    }
     // `resumoDoErro`: sem os valores da consulta nem o `detail` do Postgres —
     // o log do Netlify não é lugar de dado pessoal
     console.error("erro nao tratado", resumoDoErro(erro));

@@ -214,11 +214,11 @@
     </dl>
     {% if not envio.configurado %}
     <p class="discreto">Sem o envio ligado, os e-mails ficam parados na fila e saem quando ele for
-      configurado; os pedidos de «Ativar meu acesso» continuam sendo recebidos, mas nenhum link chega.
+      configurado; os cadastros pelo «Cadastre-se» continuam sendo recebidos, mas nenhum link chega.
       O passo a passo está em PRODUCAO.md, «Configurar o envio de e-mail».</p>
     {% endif %}
     {% if envio.pediram|length %}
-    <p class="discreto">SIAPE de quem pediu «Ativar meu acesso» e não tem e-mail no cadastro (a equipe
+    <p class="discreto">SIAPE de quem pediu o acesso e não tem e-mail no cadastro (a equipe
       completa o cadastro): <span class="mono">{{ envio.pediram|join(', ') }}</span></p>
     {% endif %}
     <p class="discreto">A caixa de saída completa (motivo de cada falha) fica em Certificados, «E-mails».</p>

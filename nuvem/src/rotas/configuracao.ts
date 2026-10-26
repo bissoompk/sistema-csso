@@ -32,6 +32,9 @@ import * as servico_email from "../servicos/email.js";
 import { RotinaFalhou, conferir_senha_do_backup } from "../servicos/rotinas.js";
 import * as sei from "../servicos/sei.js";
 import { SLA_PADRAO, gravar_sla, sla_vigente } from "../servicos/processo.js";
+
+/** O teto do prazo por coluna: o mesmo `max` do formulário, agora também no servidor. */
+const SLA_MAXIMO_DIAS = 3650;
 import { COLUNAS_KANBAN } from "../dominio/estados.js";
 import { obterArmazenamento, pastaLocal } from "../servicos/armazenamento.js";
 import { dicionario } from "../dicionario.js";
@@ -235,12 +238,25 @@ rotas.post("/config/sla", async (c) => {
   );
   const f = await formulario(c);
   const valores: Record<string, number> = {};
+  const recusados: string[] = [];
   for (const coluna of Object.keys(SLA_PADRAO)) {
     const bruto = f.texto(`sla_${coluna}`).trim();
-    if (/^\d+$/.test(bruto)) valores[coluna] = Number(bruto);
+    // campo vazio mantém o prazo de hoje; o resto tem de ser dias inteiros de 0 a 3650
+    // (o limite estava só no navegador: o servidor aceitava 99999999999 dias)
+    if (bruto === "") continue;
+    if (/^\d+$/.test(bruto) && Number(bruto) <= SLA_MAXIMO_DIAS) valores[coluna] = Number(bruto);
+    else recusados.push(coluna);
   }
-  await gravar_sla(c.get("tx"), valores, usuario);
-  return _tela(c, usuario, { mensagem: "SLA atualizado." });
+  if (recusados.length) {
+    return _tela(c, usuario, {
+      erro: `Prazo recusado em ${recusados.join(", ")}: use dias inteiros, de 0 a ${SLA_MAXIMO_DIAS}. Nada foi gravado.`,
+    });
+  }
+  const tx = c.get("tx");
+  const antes = await sla_vigente(tx);
+  const depois = await gravar_sla(tx, valores, usuario);
+  const mudou = Object.keys(valores).some((coluna) => antes[coluna] !== depois[coluna]);
+  return _tela(c, usuario, { mensagem: mudou ? "SLA atualizado." : "Nada mudou: os prazos já eram esses." });
 });
 
 rotas.post("/config/backup", async (c) => {

@@ -187,10 +187,31 @@ describe("CA-14: exportar tudo", () => {
 describe("tela /config", () => {
   it("o SLA pela tela", async () => {
     await entrar(amb.cliente, "coordenador_csso");
-    const r = await amb.cliente.post("/config/sla", { sla_A_FAZER: "7", sla_EM_ANDAMENTO: "21", sla_AGUARDANDO: "abc" });
+    const r = await amb.cliente.post("/config/sla", { sla_A_FAZER: "7", sla_EM_ANDAMENTO: "21", sla_AGUARDANDO: "" });
     expect(r.status).toBe(200);
     expect(r.text).toContain("SLA atualizado");
-    expect((await amb.cliente.get("/config")).text).toContain('name="sla_A_FAZER" value="7"');
+    const tela = (await amb.cliente.get("/config")).text;
+    expect(tela).toContain('name="sla_A_FAZER" value="7"');
+    expect(tela).toContain('name="sla_EM_ANDAMENTO" value="21"');
+    // o campo vazio mantém o prazo de hoje
+    expect(tela).toContain('name="sla_AGUARDANDO" value="20"');
+  });
+
+  it("o SLA que não é dias inteiros de 0 a 3650 é recusado inteiro, dizendo onde (teste de configurações, 26/10/2026)", async () => {
+    await entrar(amb.cliente, "coordenador_csso");
+    for (const torto of ["abc", "-5", "7.5", "99999999999", "3651"]) {
+      const r = await amb.cliente.post("/config/sla", { sla_A_FAZER: "9", sla_AGUARDANDO: torto });
+      expect(r.status, torto).toBe(200);
+      expect(r.text, torto).toContain("Prazo recusado em AGUARDANDO");
+      expect(r.text, torto).toContain("de 0 a 3650");
+      expect(r.text, torto).not.toContain("SLA atualizado");
+    }
+    // nada foi gravado, nem o campo bom que veio junto
+    expect((await amb.cliente.get("/config")).text).toContain('name="sla_A_FAZER" value="15"');
+    // o limite vale: 3650 passa
+    expect((await amb.cliente.post("/config/sla", { sla_AGUARDANDO: "3650" })).text).toContain("SLA atualizado");
+    // o mesmo valor de novo: nada mudou
+    expect((await amb.cliente.post("/config/sla", { sla_AGUARDANDO: "3650" })).text).toContain("Nada mudou");
   });
 
   it("admin_ti abre a parte da máquina e não a do processo", async () => {
