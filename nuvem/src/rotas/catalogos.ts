@@ -106,6 +106,41 @@ function _em_branco(campos: Record<string, string>): string | null {
   const lista = faltando.length === 1 ? faltando[0]! : `${faltando.slice(0, -1).join(", ")} e ${faltando.at(-1)}`;
   return `Preencha ${lista}: ${faltando.length === 1 ? "o campo não pode ficar" : "os campos não podem ficar"} em branco.`;
 }
+/**
+ * O texto de um catálogo antes de gravar: em branco, maior que a coluna ou igual
+ * a outro (sem contar caixa, acento e espaço — a unicidade do banco é byte a
+ * byte) voltam como recusa da tela, e não como "erro interno" ou linha vazia.
+ */
+function _erro_de_texto(
+  valor: string,
+  rotulo: string,
+  max: number,
+  outros: readonly { id: number; texto: string }[],
+  exceto_id: number | null,
+): string | null {
+  if (!valor.trim()) return `Preencha ${rotulo}: o campo não pode ficar em branco.`;
+  if ([...valor.trim()].length > max) return `${rotulo.charAt(0).toUpperCase()}${rotulo.slice(1)} passa de ${max} caracteres.`;
+  const chave = textos.chave_busca(valor);
+  const igual = outros.find((o) => o.id !== exceto_id && textos.chave_busca(o.texto) === chave);
+  return igual ? `Já existe '${igual.texto}'.` : null;
+}
+
+/** Itens do checklist (um por linha): pelo menos um, curtos, sem repetir. */
+function _erro_dos_itens(bruto: string): string | null {
+  const itens = ChecklistModelo.lista_de_itens({ itens: bruto });
+  if (!itens.length) return "Informe ao menos um item (um por linha).";
+  if (itens.length > 100) return "O modelo passa de 100 itens.";
+  const longo = itens.find((i) => [...i].length > 300);
+  if (longo) return `O item «${longo.slice(0, 40)}…» passa de 300 caracteres.`;
+  const vistos = new Set<string>();
+  for (const i of itens) {
+    const chave = textos.chave_busca(i);
+    if (vistos.has(chave)) return `O item «${i.slice(0, 60)}» aparece mais de uma vez.`;
+    vistos.add(chave);
+  }
+  return null;
+}
+
 function _data_iso(bruto: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(bruto)) throw new ErroHttp(422, `Data inválida: ${bruto}`);
   return bruto;
@@ -330,7 +365,17 @@ rotas.post("/catalogos/textos-padrao", async (c) => {
   exigidos(f, "categoria", "codigo", "template");
   const tx = c.get("tx");
   const categoria = f.texto("categoria");
-  const codigo = f.texto("codigo");
+  const codigo = f.texto("codigo").trim();
+  const template = f.texto("template");
+  // o código é a chave que o parecer procura: letras sem acento, dígitos e «_»
+  const erro_texto = !/^[A-Za-z0-9_]{1,40}$/.test(codigo)
+    ? "O código tem de 1 a 40 letras (sem acento), dígitos ou «_», sem espaço — por exemplo TENDO_EM_VISTA."
+    : !template.trim()
+      ? "Preencha o texto: o campo não pode ficar em branco."
+      : [...template].length > 20000
+        ? "O texto passa de 20.000 caracteres."
+        : null;
+  if (erro_texto) return _tela(c, usuario, "textos-padrao", { erro: erro_texto, digitado: { categoria, codigo, template } });
   const onde = and(eq(texto_padrao.categoria, categoria), eq(texto_padrao.codigo, codigo));
   const atuais = await tx.select().from(texto_padrao).where(onde);
   const proxima = Math.max(0, ...atuais.map((t) => t.versao)) + 1;
@@ -573,25 +618,24 @@ rotas.post("/catalogos/checklists-modelo", async (c) => {
   const itens = f.texto("itens");
   const tipo_processo_id = _int_ou_nulo(f.texto("tipo_processo_id"));
   const estado_alvo = f.texto("estado_alvo") || null;
-  const [existente] = await tx.select().from(checklist_modelo).where(eq(checklist_modelo.nome, nome));
-  let mensagem: string;
-  if (existente) {
-    await tx
-      .update(checklist_modelo)
-      .set({ itens, tipo_processo_id, estado_alvo })
-      .where(eq(checklist_modelo.id, existente.id));
-    mensagem = "Modelo atualizado.";
-  } else {
-    const [modelo] = await tx.insert(checklist_modelo).values({ nome, itens, tipo_processo_id, estado_alvo }).returning();
-    await auditoria.registrar(tx, {
-      entidade: "checklist_modelo",
-      entidade_id: modelo!.id,
-      tipo_evento: "CHECKLIST_MODELO_CRIADO",
-      descricao: `${modelo!.nome} (${ChecklistModelo.lista_de_itens(modelo!).length} itens)`,
-      usuario,
+  const erro_modelo =
+    _erro_de_texto(nome, "o nome", 120, (await tx.select().from(checklist_modelo)).map((m) => ({ id: m.id, texto: m.nome })), null) ??
+    _erro_dos_itens(itens);
+  if (erro_modelo) {
+    return _tela(c, usuario, "checklists-modelo", {
+      erro: erro_modelo,
+      digitado: { nome, itens, tipo_processo_id: f.texto("tipo_processo_id"), estado_alvo: f.texto("estado_alvo") },
     });
-    mensagem = "Modelo cadastrado.";
   }
+  const [modelo] = await tx.insert(checklist_modelo).values({ nome, itens, tipo_processo_id, estado_alvo }).returning();
+  await auditoria.registrar(tx, {
+    entidade: "checklist_modelo",
+    entidade_id: modelo!.id,
+    tipo_evento: "CHECKLIST_MODELO_CRIADO",
+    descricao: `${modelo!.nome} (${ChecklistModelo.lista_de_itens(modelo!).length} itens)`,
+    usuario,
+  });
+  const mensagem = "Modelo cadastrado.";
   return _volta(c, "/catalogos/checklists-modelo", mensagem);
 });
 
@@ -602,6 +646,19 @@ rotas.post("/catalogos/agentes-nocivos", async (c) => {
   exigidos(f, "descricao", "tipo_risco_id");
   const tx = c.get("tx");
   const descricao = f.texto("descricao").trim();
+  const erro_agente = _erro_de_texto(
+    descricao,
+    "a descrição",
+    200,
+    (await tx.select().from(agente_nocivo)).map((a) => ({ id: a.id, texto: a.descricao })),
+    null,
+  );
+  if (erro_agente) {
+    return _tela(c, usuario, "agentes-nocivos", {
+      erro: erro_agente,
+      digitado: { descricao, tipo_risco_id: f.texto("tipo_risco_id"), fundamentacao_id: f.texto("fundamentacao_id") },
+    });
+  }
   const [agente] = await tx
     .insert(agente_nocivo)
     .values({
@@ -927,11 +984,20 @@ rotas.post("/catalogos/tipos-risco/:id{[0-9]+}", async (c) => {
   usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome");
+  const id_tipo = Number(c.req.param("id"));
+  const erro_tipo = _erro_de_texto(
+    f.texto("nome"),
+    "o nome",
+    60,
+    (await c.get("tx").select().from(tipo_risco)).map((t) => ({ id: t.id, texto: t.nome })),
+    id_tipo,
+  );
+  if (erro_tipo) return _recusar_edicao(c, usuario, "tipos-risco", f, ["nome"], erro_tipo);
   return salvar_com_diff(
     c,
     usuario,
     tipo_risco,
-    Number(c.req.param("id")),
+    id_tipo,
     { nome: f.texto("nome").trim() },
     { permissao: GERENCIAR, rotulo: "Tipo de risco", volta: "/catalogos/tipos-risco" },
   );
@@ -942,6 +1008,11 @@ rotas.post("/catalogos/fundamentacoes-legais/:id{[0-9]+}", async (c) => {
   usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "norma", "texto");
+  const erro_fund =
+    _erro_de_texto(f.texto("norma"), "a norma", 40, [], null) ??
+    ([...f.texto("anexo").trim()].length > 20 ? "O anexo passa de 20 caracteres." : null) ??
+    (f.texto("texto").trim() ? null : "Preencha o texto: o campo não pode ficar em branco.");
+  if (erro_fund) return _recusar_edicao(c, usuario, "fundamentacoes-legais", f, ["norma", "anexo", "texto", "vigente"], erro_fund);
   return salvar_com_diff(
     c,
     usuario,
@@ -965,11 +1036,20 @@ rotas.post("/catalogos/percentuais/:id{[0-9]+}", async (c) => {
   usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "rotulo");
+  const id_perc = Number(c.req.param("id"));
+  const erro_perc = _erro_de_texto(
+    f.texto("rotulo"),
+    "o rótulo",
+    40,
+    (await c.get("tx").select().from(percentual_aplicavel)).map((x) => ({ id: x.id, texto: x.rotulo })),
+    id_perc,
+  );
+  if (erro_perc) return _recusar_edicao(c, usuario, "percentuais", f, ["rotulo"], erro_perc);
   return salvar_com_diff(
     c,
     usuario,
     percentual_aplicavel,
-    Number(c.req.param("id")),
+    id_perc,
     { rotulo: f.texto("rotulo").trim() },
     { permissao: GERENCIAR, rotulo: "Rótulo do percentual", volta: "/catalogos/percentuais" },
   );
@@ -980,11 +1060,22 @@ rotas.post("/catalogos/agentes-nocivos/:id{[0-9]+}", async (c) => {
   usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "descricao", "tipo_risco_id");
+  const id_agente = Number(c.req.param("id"));
+  const erro_agente = _erro_de_texto(
+    f.texto("descricao"),
+    "a descrição",
+    200,
+    (await c.get("tx").select().from(agente_nocivo)).map((a) => ({ id: a.id, texto: a.descricao })),
+    id_agente,
+  );
+  if (erro_agente) {
+    return _recusar_edicao(c, usuario, "agentes-nocivos", f, ["descricao", "tipo_risco_id", "fundamentacao_id", "exige_quantitativa", "ativo"], erro_agente);
+  }
   return salvar_com_diff(
     c,
     usuario,
     agente_nocivo,
-    Number(c.req.param("id")),
+    id_agente,
     {
       descricao: f.texto("descricao").trim(),
       tipo_risco_id: _int(f, "tipo_risco_id"),
@@ -1001,6 +1092,15 @@ rotas.post("/catalogos/portarias/:id{[0-9]+}", async (c) => {
   usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "texto_original", "data_publicacao", "numero");
+  const numero_limpo = f.texto("numero").trim().replace(/^0+/, "") || "0";
+  const erro_portaria = !f.texto("texto_original").trim()
+    ? "Preencha o texto da portaria: o campo não pode ficar em branco."
+    : !/^\d{1,10}$/.test(numero_limpo)
+      ? "O número da portaria tem de 1 a 10 dígitos."
+      : null;
+  if (erro_portaria) {
+    return _recusar_edicao(c, usuario, "portarias", f, ["texto_original", "data_publicacao", "numero"], erro_portaria);
+  }
   const quando = _data_iso(f.texto("data_publicacao"));
   return salvar_com_diff(
     c,
@@ -1022,11 +1122,21 @@ rotas.post("/catalogos/checklists-modelo/:id{[0-9]+}", async (c) => {
   usuario.exigir(GERENCIAR);
   const f = await formulario(c);
   exigidos(f, "nome", "itens");
+  const id_modelo = Number(c.req.param("id"));
+  const erro_modelo =
+    _erro_de_texto(
+      f.texto("nome"),
+      "o nome",
+      120,
+      (await c.get("tx").select().from(checklist_modelo)).map((m) => ({ id: m.id, texto: m.nome })),
+      id_modelo,
+    ) ?? _erro_dos_itens(f.texto("itens"));
+  if (erro_modelo) return _recusar_edicao(c, usuario, "checklists-modelo", f, ["nome", "itens", "ativo"], erro_modelo);
   return salvar_com_diff(
     c,
     usuario,
     checklist_modelo,
-    Number(c.req.param("id")),
+    id_modelo,
     { nome: f.texto("nome").trim(), itens: f.texto("itens"), ativo: f.texto("ativo") === "1" },
     { permissao: GERENCIAR, rotulo: "Modelo", volta: "/catalogos/checklists-modelo" },
   );
