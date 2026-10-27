@@ -2021,3 +2021,13 @@ Fecha o módulo. **Sem migração.** Serviços `acidente_contagens.ts` e `aciden
 - **Idempotente e por linha**: protocolo que já existe é pulado; cada linha roda num ponto de salvamento, e a linha com defeito é recusada e relatada sem derrubar as outras. O terminal mostra só protocolos e códigos.
 - **Fora**: os PDFs de relatório e os anexos do Drive. A CAT/SP antiga é prova: baixa-se o PDF à mão e se anexa ao caso (categoria `CAT_SP`). A reabertura do legado (`TipoCAT = Reabertura`, que ele nunca ligava ao caso anterior) entra como INICIAL, com aviso.
 - **Depois de rodar**: apagar a pasta com os CSV (dados pessoais), registrar em ata (risco 11) e **revogar o link público e trocar a senha do legado**.
+
+## 27/10/2026 — Acidentes: tabelas do Anexo III.2 conferidas com o Manual de Perícia Oficial
+
+O usuário trouxe o Manual de Perícia Oficial em Saúde do Servidor Público Federal (3ª ed., 2017) — guardado em `entrada/` (ignorada pelo git). O **Anexo III.2** traz as Tabelas I a IV da CAT/SP. Conferência linha a linha com os catálogos semeados (a partir do legado):
+
+- **Tabela I (partes do corpo)**: igual, 44 itens. Os dois erros de digitação do PDF («PUNHO A O OMBRO», «PARTE MÚLTIPLAS») ficam corrigidos como já estavam.
+- **Tabela II (agente causador do acidente)**: igual nos 198 itens que o manual traz; o PDF tem texto quebrado por OCR («ÍÉ», «IÍQUIDO»), e o catálogo do sistema está certo. Os itens 107 e 108 vêm **cortados no próprio manual** (terminam em «RETIFICADOR,» e «ÍÉ»): o texto completo continua sendo o que foi reconstruído e **segue para conferir com a NBR 14280**. **O catálogo tem 1 item que o manual não traz: «ARQUIBANCADA, ESTÁDIO - EDIFÍCIO OU ESTRUTURA»**; ficou como está (pode ser da NBR 14280) e a equipe confirma.
+- **Tabela III (agente da doença)**: faltava o primeiro item oficial, «REAÇÃO DO CORPO A SEUS MOVIMENTOS - MOVIMENTO INVOLUNTÁRIO (ESCORREGÃO SEM QUEDA, ETC)». **Incluído** (agora 31).
+- **Tabela IV (situação geradora)**: faltava «IMPACTO DE PESSOA CONTRA OBJETO PARADO». **Incluído** (agora 31).
+- Os dois itens novos têm `ordem` 0 (aparecem primeiro, como na tabela oficial), `rotulo_legado` nulo (a planilha antiga não os tinha) e entram pela semeadura idempotente, sem renumerar nada nem migração de esquema.

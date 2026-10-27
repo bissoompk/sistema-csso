@@ -26,8 +26,11 @@
  * (não se inventa tabela oficial) e é preenchida num ponto só, aqui.
  */
 
-/** [ordem, rótulo corrigido, rótulo legado] */
-export type ItemCatalogo = readonly [number, string, string];
+/**
+ * [ordem, rótulo corrigido, rótulo legado]. O legado é nulo no item que a
+ * planilha antiga NÃO tinha e a tabela oficial do Anexo III.2 tem (ordem 0).
+ */
+export type ItemCatalogo = readonly [number, string, string | null];
 /** [ordem, rótulo corrigido, grupo ou null, rótulo legado] */
 export type ItemCatalogoAgrupado = readonly [number, string, string | null, string];
 /** [ordem, rótulo, código oficial, rótulo legado ou null] */
@@ -283,6 +286,8 @@ export const AGENTES_CAUSADORES: readonly ItemCatalogoAgrupado[] = [
 ];
 
 export const AGENTES_DA_DOENCA: readonly ItemCatalogo[] = [
+  // Tabela III do Anexo III.2 do Manual de Perícia Oficial (3ª ed., 2017): o item que a planilha antiga não trazia
+  [0, "REAÇÃO DO CORPO A SEUS MOVIMENTOS - MOVIMENTO INVOLUNTÁRIO (ESCORREGÃO SEM QUEDA, ETC)", null],
   [1, "REAÇÃO DO CORPO A SEUS MOVIMENTOS - MOVIMENTO VOLUNTÁRIO", "1. REAÇÃO DO CORPO A SEUS MOVIMENTOS - MOVIMENTO VOLUNTÁRIO"],
   [2, "ESFORÇO EXCESSIVO AO ERGUER OBJETO", "2. ESFORÇO EXCESSIVO AO ERGUER OBJETO"],
   [3, "ESFORÇO EXCESSIVO AO EMPURRAR OU PUXAR OBJETO", "3. ESFORÇO EXCESSIVO AO EMPURRAR OU PUXAR OBJETO"],
@@ -316,6 +321,8 @@ export const AGENTES_DA_DOENCA: readonly ItemCatalogo[] = [
 ];
 
 export const SITUACOES_GERADORAS: readonly ItemCatalogo[] = [
+  // Tabela IV do Anexo III.2 do Manual de Perícia Oficial (3ª ed., 2017): o item que a planilha antiga não trazia
+  [0, "IMPACTO DE PESSOA CONTRA OBJETO PARADO", null],
   [1, "IMPACTO DE PESSOA CONTRA OBJETO EM MOVIMENTO", "1. IMPACTO DE PESSOA CONTRA OBJETO EM MOVIMENTO"],
   [2, "IMPACTO SOFRIDO POR PESSOA DE OBJETO QUE CAI", "2. IMPACTO SOFRIDO POR PESSOA DE OBJETO QUE CAI"],
   [3, "IMPACTO SOFRIDO POR PESSOA DE OBJETO PROJETADO", "3. IMPACTO SOFRIDO POR PESSOA DE OBJETO PROJETADO"],

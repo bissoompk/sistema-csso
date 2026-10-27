@@ -44,13 +44,13 @@ async function contar() {
 }
 
 describe("catálogos de acidente", () => {
-  it("as listas têm 44, 199, 30 e 30 itens; a natureza da lesão espera a lista oficial", async () => {
+  it("as listas têm 44, 199, 31 e 31 itens (a oficial do Anexo III.2); a natureza da lesão espera a lista oficial", async () => {
     expect(PARTES_DO_CORPO).toHaveLength(44);
     expect(AGENTES_CAUSADORES).toHaveLength(199);
-    expect(AGENTES_DA_DOENCA).toHaveLength(30);
-    expect(SITUACOES_GERADORAS).toHaveLength(30);
+    expect(AGENTES_DA_DOENCA).toHaveLength(31);
+    expect(SITUACOES_GERADORAS).toHaveLength(31);
     expect(NATUREZAS_DA_LESAO).toHaveLength(0);
-    expect(await contar()).toEqual({ partes: 44, agentes: 199, doenca: 30, situacoes: 30, naturezas: 0 });
+    expect(await contar()).toEqual({ partes: 44, agentes: 199, doenca: 31, situacoes: 31, naturezas: 0 });
   });
 
   it("semear de novo não duplica nada", async () => {
@@ -65,19 +65,27 @@ describe("catálogos de acidente", () => {
       const linhas = await db.select().from(t);
       for (const l of linhas) {
         expect(l.rotulo, `ordem ${l.ordem}`).not.toMatch(/^\d+\.\s/);
-        expect(l.rotulo_legado, `ordem ${l.ordem}`).toMatch(new RegExp(`^${l.ordem}\\. `));
+        // ordem 0: item da tabela oficial que a planilha antiga não tinha
+        if (l.ordem === 0) expect(l.rotulo_legado).toBeNull();
+        else expect(l.rotulo_legado, `ordem ${l.ordem}`).toMatch(new RegExp(`^${l.ordem}\\. `));
         expect(l.rotulo.trim()).toBe(l.rotulo);
         expect(l.rotulo.length).toBeGreaterThan(1);
       }
     }
   });
 
-  it("a ordem vai de 1 ao total, sem buraco, e o rótulo legado não repete", () => {
+  it("a ordem vai do início ao total, sem buraco, e o rótulo legado não repete", () => {
     for (const lista of [PARTES_DO_CORPO, AGENTES_CAUSADORES, AGENTES_DA_DOENCA, SITUACOES_GERADORAS]) {
-      expect(lista.map((i) => i[0])).toEqual(Array.from({ length: lista.length }, (_, i) => i + 1));
-      const legados = lista.map((i) => i[i.length - 1] as string);
-      expect(new Set(legados).size).toBe(lista.length);
+      const comeco = lista[0]![0];
+      expect(lista.map((i) => i[0])).toEqual(Array.from({ length: lista.length }, (_, i) => i + comeco));
+      const legados = lista.map((i) => i[i.length - 1] as string | null).filter((l) => l !== null);
+      expect(new Set(legados).size).toBe(legados.length);
     }
+  });
+
+  it("traz os itens da tabela oficial do Anexo III.2 que a planilha antiga não tinha", () => {
+    expect(AGENTES_DA_DOENCA[0]![1]).toMatch(/^REAÇÃO DO CORPO A SEUS MOVIMENTOS - MOVIMENTO INVOLUNTÁRIO/);
+    expect(SITUACOES_GERADORAS[0]![1]).toBe("IMPACTO DE PESSOA CONTRA OBJETO PARADO");
   });
 
   it("a grafia foi corrigida (sem os erros do legado)", () => {

@@ -111,8 +111,8 @@ describe("ler_csv", () => {
 describe("a comunicação", () => {
   it("preserva o protocolo e traz os fatos, os catálogos, o envolvido e a testemunha", async () => {
     const s = await servidorFicticio(db, "7001234", "Fulano Fictício");
-    const [agente] = await db.select().from(e.acidente_agente_causador).limit(1);
-    const [situacao] = await db.select().from(e.acidente_situacao_geradora).limit(1);
+    const [agente] = (await db.select().from(e.acidente_agente_causador)).filter((x) => x.rotulo_legado);
+    const [situacao] = (await db.select().from(e.acidente_situacao_geradora)).filter((x) => x.rotulo_legado);
     const r = await rodar({
       ...vazio(),
       comunicacoes: [linha({ AgenteCausadorAcidente: agente!.rotulo_legado!, SituacaoGeradora: situacao!.rotulo_legado! })],
