@@ -140,7 +140,7 @@
 
 <section class="cartao">
   <h2>O que aconteceu <span class="discreto">— CAT/SP versão {{ oc.cat_sp_versao }}</span></h2>
-  <dl class="lista-dados">
+  <dl class="tabela-dados">
     <dt>Espécie</dt><dd>{{ ROTULO_ESPECIE[oc.especie] or oc.especie }}</dd>
     <dt>Data e hora</dt><dd>{{ oc.data_evento|data }}{% if oc.hora_evento %}, {{ oc.hora_evento.slice(0, 5) }}{% endif %}</dd>
     {% if oc.minutos_apos_inicio_jornada !== null %}<dt>Tempo de jornada</dt><dd>{{ (oc.minutos_apos_inicio_jornada // 60) }} h {{ oc.minutos_apos_inicio_jornada % 60 }} min</dd>{% endif %}

@@ -24,6 +24,7 @@ rotas.get("/acidentes/:id{[0-9]+}/identificacao", async (c) => {
   const acidentado_id = Number(c.req.query("acidentado"));
   const finalidade = c.req.query("finalidade") || null;
   const ocorrencia = await acidentes.ocorrencia_no_alcance(c, usuario, oc_id);
+  if (!Number.isInteger(acidentado_id)) throw new ErroHttp(404, "Acidentado não encontrado.");
   const base = { aba: "identificacao", ident_aberta: { acidentado_id, finalidade } };
   try {
     const lida = await c.get("tx").transaction((sp) => identificacao.ler(sp, usuario, ocorrencia, acidentado_id, finalidade));
@@ -36,11 +37,11 @@ rotas.get("/acidentes/:id{[0-9]+}/identificacao", async (c) => {
 });
 
 /** A CAT/SP no formato do Anexo III, um acidentado por vez, para a perícia do SIASS. Não é guardada. */
-rotas.get("/acidentes/:id{[0-9]+}/anexo-iii/:acidentado{[0-9]+}.pdf", async (c) => {
+rotas.get("/acidentes/:id{[0-9]+}/anexo-iii/:acidentado{[0-9]+\\.pdf}", async (c) => {
   const usuario = await acidentes.porta_titular(c, "acidente.ver");
   const ocorrencia = await acidentes.ocorrencia_no_alcance(c, usuario, Number(c.req.param("id")));
   try {
-    const r = await c.get("tx").transaction((sp) => anexo.gerar_pdf(sp, usuario, ocorrencia, Number(c.req.param("acidentado"))));
+    const r = await c.get("tx").transaction((sp) => anexo.gerar_pdf(sp, usuario, ocorrencia, Number(c.req.param("acidentado").replace(/\.pdf$/, ""))));
     return baixar(c, r.bytes, r.nome, "application/pdf");
   } catch (erro) {
     if (erro instanceof anexo.AnexoRecusado) throw new ErroHttp(404, erro.message);

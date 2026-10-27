@@ -4139,6 +4139,53 @@ details.ajuste-horas input { margin-top: 4px; }
 }
 /* ---------- fim DUPLICADOS ---------- */
 
+/* ---------- Acidentes: texto corrido, partes do corpo e apontamentos ----------
+   Estas classes eram usadas nos templates sem regra nenhuma: o relato saia como
+   linha solta, as partes do corpo como uma coluna de caixas sem fim e a lista da
+   aba Análise com o marcador padrao do navegador. */
+.relato {
+  margin: 14px 0 0; padding: 10px 14px; max-width: 75ch;
+  border-left: 3px solid var(--borda); background: var(--linha-hover);
+  font-size: 14px; line-height: 1.55; color: var(--tinta); white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+fieldset.partes-corpo {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 2px 18px;
+  border: 1px solid var(--borda); border-radius: var(--raio-aviso); padding: 10px 14px 12px; margin: 0;
+  min-width: 0;
+}
+fieldset.partes-corpo > legend { padding: 0 6px; font-size: 13px; font-weight: 600; color: var(--tinta-media); }
+fieldset.partes-corpo label { font-size: 13px; line-height: 1.35; }
+.lista-apontamentos { list-style: none; margin: 4px 0 18px; padding: 0; }
+.lista-apontamentos > li {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 9px 4px 9px 12px; border-left: 3px solid var(--borda); border-bottom: 1px solid var(--borda-fraca);
+  font-size: 14px; line-height: 1.5; overflow-wrap: anywhere;
+}
+.lista-apontamentos > li:last-child { border-bottom: 0; }
+.lista-apontamentos > li > a { flex: none; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.contagem.urgente {
+  display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--alerta-texto);
+}
+/* O rotulo e o (i) de ajuda na mesma linha: sem isto o (i), que e um elemento a parte, cai
+   debaixo do rotulo e empurra o campo para baixo. */
+.rotulo-com-ajuda { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.rotulo-com-ajuda > label { margin: 0; }
+.lista-apontamentos > li.ap-inconsistencia { border-left-color: var(--erro); }
+.lista-apontamentos > li.ap-lacuna { border-left-color: var(--alerta); }
+.lista-apontamentos > li.ap-atencao { border-left-color: var(--alerta-borda); }
+.lista-apontamentos > li.ap-proximo_passo { border-left-color: var(--acento); }
+/* Hora e data+hora dentro de um .campo: ficavam de fora da regra-base dos controles e saiam
+   com o tamanho e a borda do navegador, menores que o campo vizinho. */
+.campo input[type=time], .campo input[type=datetime-local] {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--borda-campo);
+  border-radius: var(--raio); font: inherit; font-size: 14px;
+  background: var(--cartao); color: var(--tinta);
+}
+.campo input[type=time]:focus, .campo input[type=datetime-local]:focus {
+  border-color: var(--acento); outline: var(--anel-foco); outline-offset: 0;
+}
+
 /* ===== CELULAR (lote 0) =====
    O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
    com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o

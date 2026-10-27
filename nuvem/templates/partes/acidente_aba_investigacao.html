@@ -30,8 +30,10 @@
   <input type="hidden" name="versao" value="{{ inv.versao }}">
   {% for campo, rotulo, ajuda in CAMPOS_TEXTO %}
   <div class="campo">
-    <label for="mapa-{{ campo }}">{{ rotulo }}</label>
-    {% call ui.info('ajuda-' ~ campo, rotulo|lower) %}<p>{{ ajuda }}</p>{% endcall %}
+    <div class="rotulo-com-ajuda">
+      <label for="mapa-{{ campo }}">{{ rotulo }}</label>
+      {% call ui.info('ajuda-' ~ campo, rotulo|lower) %}<p>{{ ajuda }}</p>{% endcall %}
+    </div>
     <textarea id="mapa-{{ campo }}" name="{{ campo }}" rows="3" maxlength="8000"{{ ' readonly' if not investigacao_editavel }}>{{ d[campo] or '' }}</textarea>
   </div>
   {% endfor %}
