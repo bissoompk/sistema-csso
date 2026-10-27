@@ -86,6 +86,12 @@ export const ROTULO_CAMPO: Readonly<Record<string, string>> = {
   primeiro_socorro_por: "primeiro socorro (quem)",
   primeiro_socorro_unidade: "primeiro socorro (onde)",
   atendimento_em: "momento do atendimento",
+  duracao_tratamento_dias: "duração provável do tratamento",
+  deve_afastar: "deve afastar-se",
+  descricao_lesao: "descrição da lesão",
+  diagnostico_provavel: "diagnóstico provável",
+  cid: "CID",
+  observacoes_saude: "observações de saúde",
 };
 
 // ---------------------------------------------------------------------
@@ -198,6 +204,12 @@ export interface Detalhe {
   primeiro_socorro_por: string | null;
   primeiro_socorro_unidade: string | null;
   atendimento_em: Date | null;
+  duracao_tratamento_dias: number | null;
+  deve_afastar: string | null;
+  descricao_lesao: string | null;
+  diagnostico_provavel: string | null;
+  cid: string | null;
+  observacoes_saude: string | null;
 }
 
 export interface Leitura {
@@ -302,6 +314,12 @@ export async function ler(
             primeiro_socorro_por: linha.primeiro_socorro_por,
             primeiro_socorro_unidade: linha.primeiro_socorro_unidade,
             atendimento_em: linha.atendimento_em,
+            duracao_tratamento_dias: linha.duracao_tratamento_dias,
+            deve_afastar: linha.deve_afastar,
+            descricao_lesao: linha.descricao_lesao,
+            diagnostico_provavel: linha.diagnostico_provavel,
+            cid: linha.cid,
+            observacoes_saude: linha.observacoes_saude,
           }
         : null,
     detalhe_expurgado: linha?.detalhe_expurgado_em != null,
@@ -330,8 +348,15 @@ export interface DadosSaude {
   primeiro_socorro_unidade: string | null;
   /** "AAAA-MM-DDTHH:MM", hora de Brasília */
   atendimento_em: string | null;
+  duracao_tratamento_dias: number | null;
+  deve_afastar: string | null;
+  descricao_lesao: string | null;
+  diagnostico_provavel: string | null;
+  cid: string | null;
+  observacoes_saude: string | null;
 }
 
+const RE_CID = /^[A-Z][0-9]{2}(\.[0-9A-Z]{1,4})?$/;
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
 const RE_MOMENTO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
@@ -364,6 +389,15 @@ function _texto(valor: string | null, max: number, rotulo: string): string | nul
   }
 }
 
+/** CID-10 sem ponto de formato livre: aceita "s61.0" e "S610"; guarda "S61.0". */
+function _cid(valor: string | null): string | null {
+  const bruto = (valor ?? "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!bruto) return null;
+  const com_ponto = /^[A-Z][0-9]{3,}$/.test(bruto) ? `${bruto.slice(0, 3)}.${bruto.slice(3)}` : bruto;
+  if (!RE_CID.test(com_ponto)) throw new SaudeRecusada("CID: use o formato da CID-10, por exemplo S61.0.");
+  return com_ponto;
+}
+
 /** Valida e normaliza o que a tela mandou; nada daqui toca o banco. */
 async function _normalizar(tx: Executor, d: DadosSaude): Promise<DadosSaude> {
   const cat = await catalogos(tx);
@@ -391,6 +425,12 @@ async function _normalizar(tx: Executor, d: DadosSaude): Promise<DadosSaude> {
     primeiro_socorro_por: _texto(d.primeiro_socorro_por, 120, "Primeiro socorro (quem)"),
     primeiro_socorro_unidade: _texto(d.primeiro_socorro_unidade, 160, "Primeiro socorro (onde)"),
     atendimento_em: d.atendimento_em && d.atendimento_em !== "" ? d.atendimento_em : null,
+    duracao_tratamento_dias: _inteiro(d.duracao_tratamento_dias, "a duração provável do tratamento"),
+    deve_afastar: _da_lista(d.deve_afastar, SIM_NAO_NAO_SEI, "deve afastar-se"),
+    descricao_lesao: _texto(d.descricao_lesao, 1000, "Descrição da lesão"),
+    diagnostico_provavel: _texto(d.diagnostico_provavel, 240, "Diagnóstico provável"),
+    cid: _cid(d.cid),
+    observacoes_saude: _texto(d.observacoes_saude, 1000, "Observações de saúde"),
   };
   if (saida.atendimento_em !== null && !RE_MOMENTO.test(saida.atendimento_em)) {
     throw new SaudeRecusada("Momento do atendimento: data e hora inválidas.");
@@ -454,6 +494,12 @@ export async function registrar(
     primeiro_socorro_por: d.primeiro_socorro_por,
     primeiro_socorro_unidade: d.primeiro_socorro_unidade,
     atendimento_em: _instante(d.atendimento_em),
+    duracao_tratamento_dias: d.duracao_tratamento_dias,
+    deve_afastar: d.deve_afastar,
+    descricao_lesao: d.descricao_lesao,
+    diagnostico_provavel: d.diagnostico_provavel,
+    cid: d.cid,
+    observacoes_saude: d.observacoes_saude,
   };
   if (atual?.detalhe_expurgado_em) {
     if (Object.values(nivel2).some((v) => v !== null)) {

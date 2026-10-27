@@ -70,6 +70,12 @@
         <dt>Dias debitados</dt><dd>{{ l.detalhe.dias_debitados if l.detalhe.dias_debitados is not none else '—' }}</dd>
         <dt>Primeiro socorro</dt><dd>{{ l.detalhe.primeiro_socorro_por or '—' }}{% if l.detalhe.primeiro_socorro_unidade %} · {{ l.detalhe.primeiro_socorro_unidade }}{% endif %}</dd>
         <dt>Atendimento em</dt><dd>{{ l.detalhe.atendimento_em|momento if l.detalhe.atendimento_em else '—' }}</dd>
+        <dt>Duração provável do tratamento</dt><dd>{{ l.detalhe.duracao_tratamento_dias ~ ' dias' if l.detalhe.duracao_tratamento_dias is not none else '—' }}</dd>
+        <dt>Deve afastar-se</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[l.detalhe.deve_afastar] if l.detalhe.deve_afastar else '—' }}</dd>
+        <dt>Descrição da lesão</dt><dd>{{ l.detalhe.descricao_lesao or '—' }}</dd>
+        <dt>Diagnóstico provável</dt><dd>{{ l.detalhe.diagnostico_provavel or '—' }}</dd>
+        <dt>CID</dt><dd>{{ l.detalhe.cid or '—' }}</dd>
+        <dt>Observações</dt><dd>{{ l.detalhe.observacoes_saude or '—' }}</dd>
         {% endif %}
       </dl>
       {% if l.detalhe_expurgado %}<p class="discreto">O detalhe (nível 2) foi expurgado e não se preenche de novo.</p>{% endif %}
@@ -133,6 +139,23 @@
           <div class="campo"><label for="ae-{{ a.id }}">Atendimento em</label>
             <input id="ae-{{ a.id }}" type="datetime-local" name="atendimento_em" value="{{ sd.atendimento_em if sd.atendimento_em is defined else (momento_campo(l.detalhe.atendimento_em) if l.detalhe else '') }}"></div>
         </div>
+        <div class="linha-campos">
+          <div class="campo"><label for="dt-{{ a.id }}">Duração provável do tratamento (dias)</label>
+            <input id="dt-{{ a.id }}" type="number" min="0" name="duracao_tratamento_dias" value="{{ sd.duracao_tratamento_dias if sd.duracao_tratamento_dias is defined else (l.detalhe.duracao_tratamento_dias if l.detalhe and l.detalhe.duracao_tratamento_dias is not none else '') }}"></div>
+          <div class="campo"><label for="dv-{{ a.id }}">Deve afastar-se durante o tratamento</label>
+            <select id="dv-{{ a.id }}" name="deve_afastar">
+              <option value="">—</option>
+              {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{% if (sd.deve_afastar or (l.detalhe.deve_afastar if l.detalhe else '')) == v %} selected{% endif %}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+            </select></div>
+          <div class="campo"><label for="cid-{{ a.id }}">CID</label>
+            <input id="cid-{{ a.id }}" name="cid" maxlength="8" value="{{ sd.cid if sd.cid is defined else (l.detalhe.cid or '' if l.detalhe else '') }}"></div>
+        </div>
+        <div class="campo"><label for="dg-{{ a.id }}">Diagnóstico provável</label>
+          <input id="dg-{{ a.id }}" name="diagnostico_provavel" maxlength="240" value="{{ sd.diagnostico_provavel if sd.diagnostico_provavel is defined else (l.detalhe.diagnostico_provavel or '' if l.detalhe else '') }}"></div>
+        <div class="campo"><label for="dl-{{ a.id }}">Descrição da lesão</label>
+          <textarea id="dl-{{ a.id }}" name="descricao_lesao" rows="3" maxlength="1000">{{ sd.descricao_lesao if sd.descricao_lesao is defined else (l.detalhe.descricao_lesao or '' if l.detalhe else '') }}</textarea></div>
+        <div class="campo"><label for="ob-{{ a.id }}">Observações</label>
+          <textarea id="ob-{{ a.id }}" name="observacoes_saude" rows="2" maxlength="1000">{{ sd.observacoes_saude if sd.observacoes_saude is defined else (l.detalhe.observacoes_saude or '' if l.detalhe else '') }}</textarea></div>
         <div class="acoes"><button type="submit" class="secundario">Salvar saúde</button></div>
       </form>
       {% endif %}

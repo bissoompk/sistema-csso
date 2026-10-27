@@ -390,6 +390,19 @@ export async function ler(
 }
 
 /**
+ * A identificação COMPLETA, com o CPF inteiro, só para o PDF do Anexo III que
+ * vai à perícia do SIASS. Mesma regra de `ler` (permissão, finalidade fixa
+ * «instruir a perícia» e registro do acesso), e o titular não a usa por aqui.
+ * O CPF não sai deste módulo por nenhum outro caminho.
+ */
+export async function ler_para_siass(tx: Executor, usuario: UsuarioAtual, ocorrencia: Ocorrencia, acidentado_id: number) {
+  usuario.exigir("acidente.identificacao_ver");
+  const leitura = await ler(tx, usuario, ocorrencia, acidentado_id, "INSTRUCAO_PERICIA");
+  const [linha] = await tx.select({ cpf: acidente_identificacao.cpf }).from(acidente_identificacao).where(eq(acidente_identificacao.acidentado_id, acidentado_id));
+  return { ...leitura, cpf: linha?.cpf ? textos.formatar_cpf(linha.cpf) : null };
+}
+
+/**
  * O que a aba mostra ANTES de abrir qualquer conteúdo: por acidentado, se a
  * pessoa é o titular, se pode abrir e se há algo informado. Não lê o conteúdo
  * nem grava acesso.

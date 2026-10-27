@@ -764,7 +764,12 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
         };
   const dados_saude = aba === "saude" ? await saude.painel(tx, usuario, ocorrencia, envolvidos.acidentados) : {};
   const dados_identificacao =
-    aba === "identificacao" ? await identificacao.painel(tx, usuario, ocorrencia, envolvidos.acidentados) : {};
+    aba === "identificacao"
+      ? {
+          ...(await identificacao.painel(tx, usuario, ocorrencia, envolvidos.acidentados)),
+          pode_anexo_iii: usuario.pode("acidente.identificacao_ver") && usuario.pode("acidente.saude_detalhe_ver"),
+        }
+      : {};
   return pagina(
     c,
     "paginas/acidente_ficha.html",

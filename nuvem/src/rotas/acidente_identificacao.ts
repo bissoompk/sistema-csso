@@ -11,8 +11,10 @@
 import { Hono } from "hono";
 import type { Ambiente } from "../nucleo/contexto.js";
 import { ErroHttp, RegraViolada } from "../nucleo/erros.js";
+import * as anexo from "../servicos/acidente_anexo_iii.js";
 import * as identificacao from "../servicos/acidente_identificacao.js";
 import * as acidentes from "./acidentes.js";
+import { baixar } from "./turmas.js";
 
 export const rotas = new Hono<Ambiente>();
 
@@ -30,5 +32,19 @@ rotas.get("/acidentes/:id{[0-9]+}/identificacao", async (c) => {
     if (erro instanceof identificacao.IdentificacaoInexistente) throw new ErroHttp(404, erro.message);
     if (!(erro instanceof RegraViolada)) throw erro;
     return acidentes.tela_ficha(c, usuario, ocorrencia, { ...base, erro: erro.message }, 422);
+  }
+});
+
+/** A CAT/SP no formato do Anexo III, um acidentado por vez, para a perícia do SIASS. Não é guardada. */
+rotas.get("/acidentes/:id{[0-9]+}/anexo-iii/:acidentado{[0-9]+}.pdf", async (c) => {
+  const usuario = await acidentes.porta_titular(c, "acidente.ver");
+  const ocorrencia = await acidentes.ocorrencia_no_alcance(c, usuario, Number(c.req.param("id")));
+  try {
+    const r = await c.get("tx").transaction((sp) => anexo.gerar_pdf(sp, usuario, ocorrencia, Number(c.req.param("acidentado"))));
+    return baixar(c, r.bytes, r.nome, "application/pdf");
+  } catch (erro) {
+    if (erro instanceof anexo.AnexoRecusado) throw new ErroHttp(404, erro.message);
+    if (!(erro instanceof RegraViolada)) throw erro;
+    return acidentes.tela_ficha(c, usuario, ocorrencia, { aba: "identificacao", erro: erro.message }, 422);
   }
 });

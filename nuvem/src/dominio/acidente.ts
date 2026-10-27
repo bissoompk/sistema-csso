@@ -215,6 +215,13 @@ export const COLUNAS_SAUDE_NIVEL_2 = [
   'primeiro_socorro_por',
   'primeiro_socorro_unidade',
   'atendimento_em',
+  // campos clínicos do Anexo III (CAT/SP)
+  'duracao_tratamento_dias',
+  'deve_afastar',
+  'descricao_lesao',
+  'diagnostico_provavel',
+  'cid',
+  'observacoes_saude',
 ] as const;
 
 // ---------------------------------------------------------------------

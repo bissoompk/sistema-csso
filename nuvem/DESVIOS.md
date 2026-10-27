@@ -2044,3 +2044,42 @@ O Anexo III do Manual de Perícia (a CAT/SP oficial) pede a identificação do s
 - **Trilha.** `ACIDENTE_IDENTIFICACAO_REGISTRADA` diz **quais grupos de campo** foram informados («sexo, CPF, endereço…»), nunca o valor.
 - **Ainda não feito (fatias 3 a 5).** Os campos de saúde do Anexo III (duração provável do tratamento, deve afastar-se, descrição da lesão, diagnóstico provável, CID, observações) e o nexo causal; o PDF no formato do Anexo III; **a emenda da ROPA** (§4.3/§4.5/§9, com base legal e prazo de expurgo da identificação) e o expurgo. **A emenda da ROPA tem de sair antes de ligar `CSSO_MODULO_ACIDENTES` em produção:** hoje o módulo continua travado lá, e esta coleta só passa a valer quando ele for liberado.
 - **Campos com asterisco no Anexo III** (hora, tempo de jornada, parte do corpo, situação geradora, afastamento, óbito, UF e município): o formulário os aceita em branco, como antes. Torná-los obrigatórios muda a comunicação e fica para uma decisão à parte.
+
+## Acidentes: campos de saúde do Anexo III e nexo causal (fatia 3)
+
+Decisão de 27/10/2026. Migração 0033: `acidente_saude` ganha, no **nível 2**
+(só o médico lê, o expurgo parcial leva a NULL, trigger conferida), a duração
+provável do tratamento, «deve afastar-se», a descrição da lesão, o diagnóstico
+provável, o CID (CID-10, normalizado para `S61.0`) e as observações. A trilha
+guarda só os nomes dos campos.
+
+- O **nexo causal** não tem coluna: deriva da decisão pericial
+  (`acidente_decisao_pericial`: reconhecido = Sim, não reconhecido = Não,
+  encaminhado ao SIASS = Encaminhar) e será mapeado no PDF do Anexo III (fatia 4).
+- O comunicante **não** declara estes campos clínicos: o Anexo III os atribui ao
+  serviço de saúde e o nível 2 é restrito ao médico. Quem comunica continua
+  informando só os fatos do nível 1.
+
+## Acidentes: emenda da ROPA e PDF no formato do Anexo III (fatia 4)
+
+Decisão de 27/10/2026.
+
+- **ROPA v1.7 (`docs/ROPA.md` §0.6) e POLITICA_RETENCAO §2.4.** A emenda registra
+  a identificação pessoal restrita, os campos clínicos do nível 2 (revogando, só
+  no módulo de Acidentes, a frase «nunca CID, nunca diagnóstico, nunca texto
+  clínico»), a base legal, a retenção e as pendências novas (§9 itens 10 e 11).
+  Cumpre o bloqueador da emenda, mas o módulo continua travado em produção até a
+  revogação do legado e a tabela de natureza da lesão.
+- **Expurgo da identificação**: proposta de 5 anos após a conclusão, ato manual do
+  setor com simulação e ata, **sem ferramenta ainda** (a do detalhe de saúde também
+  não existe). O prazo depende do arquivo institucional (ROPA §9, item 10).
+- **PDF do Anexo III** (`servicos/acidente_anexo_iii.ts`, rota
+  `GET /acidentes/:id/anexo-iii/:acidentado.pdf`): um acidentado por vez, **montado a
+  cada pedido e nunca guardado**, porque é o único lugar em que o CPF sai por
+  inteiro (`identificacao.ler_para_siass`). Exige `acidente.identificacao_ver` e
+  `acidente.saude_detalhe_ver` (na prática, o médico do trabalho), grava os dois
+  acessos com a finalidade «instruir a perícia» e o evento
+  `ACIDENTE_ANEXO_III_EMITIDO`, sem dado. O titular não o emite por aqui.
+- O leiaute segue os campos do Anexo III em blocos, sem reproduzir a grade do
+  formulário. «Data/carimbo» e «Assinatura» ficam para o papel do SIASS. O nexo
+  causal vem da decisão pericial vigente.

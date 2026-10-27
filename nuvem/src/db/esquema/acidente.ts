@@ -648,6 +648,12 @@ export const acidente_saude = pgTable(
     primeiro_socorro_por: varchar('primeiro_socorro_por', { length: 120 }),
     primeiro_socorro_unidade: varchar('primeiro_socorro_unidade', { length: 160 }),
     atendimento_em: MomentoUTC('atendimento_em'),
+    duracao_tratamento_dias: integer('duracao_tratamento_dias'),
+    deve_afastar: varchar('deve_afastar', { length: 8 }),
+    descricao_lesao: text('descricao_lesao'),
+    diagnostico_provavel: varchar('diagnostico_provavel', { length: 240 }),
+    cid: varchar('cid', { length: 8 }),
+    observacoes_saude: text('observacoes_saude'),
     origem: varchar('origem', { length: 24 }).notNull(),
     registrado_por: integer('registrado_por'),
     registrado_em: MomentoUTC('registrado_em').notNull().$defaultFn(agora_utc),
@@ -675,6 +681,9 @@ export const acidente_saude = pgTable(
     ),
     // a data do óbito só existe onde há óbito
     check('ck_acid_saude_data_obito', sql.raw(`data_obito IS NULL OR houve_obito = 'SIM'`)),
+    check('ck_acid_saude_deve_afastar', em('deve_afastar', SIM_NAO_NAO_SEI)),
+    check('ck_acid_saude_duracao', sql.raw(`COALESCE(duracao_tratamento_dias, 0) >= 0`)),
+    check('ck_acid_saude_cid', sql.raw(`cid IS NULL OR cid ~ '^[A-Z][0-9]{2}(\\.[0-9A-Z]{1,4})?$'`)),
     unique('uq_acid_saude_acidentado').on(t.acidentado_id),
   ],
 );

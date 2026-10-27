@@ -34,6 +34,10 @@
       {% else %}
       <p class="discreto">Seu perfil não abre a identificação pessoal.</p>
       {% endif %}
+      {% if pode_anexo_iii %}
+      <p><a class="botao secundario" href="/acidentes/{{ ocorrencia.id }}/anexo-iii/{{ a.id }}.pdf">Baixar a CAT/SP no formato do Anexo III (para o SIASS)</a>
+        <span class="discreto">Traz o CPF por inteiro e o detalhe de saúde; cada emissão fica registrada.</span></p>
+      {% endif %}
 
       {% if ident_aberta and ident_aberta.acidentado_id == a.id and ident_lida %}
       {% set l = ident_lida %}
