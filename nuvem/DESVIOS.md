@@ -2098,9 +2098,9 @@ responsável, ações vencidas) e o **próximo passo** pelo estado do caso.
   corpo), sem conteúdo e sem gravar `acesso_dado_sensivel`.
 - **Quem vê:** quem investiga ou encaminha ao SIASS (mesma regra das abas da
   investigação); aos demais a aba diz que é da equipe.
-- **Fora desta fatia:** sugerir ação ou barreira a partir do agente causador
-  (exigiria uma tabela de correspondência que a equipe de segurança ainda não
-  definiu; inventá-la seria pior que não ter) e qualquer leitura de texto livre.
+- **Fora desta fatia:** sugerir ação ou barreira a partir do agente causador (feito
+  depois, como rascunho por família: seção «Sugestões por agente causador») e
+  qualquer leitura de texto livre.
 
 ## Acidentes: expurgo parcial (27/10/2026)
 
@@ -2126,3 +2126,24 @@ das testemunhas e o nível 2 da saúde de ocorrência **concluída há mais de N
   Anexo III) não é expurgado; entra na discussão do prazo com o encarregado.
 - **Antes de executar em produção**, o encarregado confirma o prazo (ROPA §9, item
   10; POLITICA §2.5, item 3). Até lá, só a simulação.
+
+## Acidentes: sugestões de ação por agente causador (27/10/2026)
+
+A aba Análise passou a sugerir **tipos de ação** a partir do agente causador
+(Tabela II), em `dominio/acidente_sugestoes.ts`. É um **rascunho de partida**, não a
+tabela de correspondência que a equipe de segurança ainda não definiu:
+
+- **Por família, não por item.** São 11 famílias, faixas contíguas dos 199 agentes
+  (superfícies, ferramentas, máquinas, içamento, elétrico, pressão, calor e
+  radiação, veículos, químicos, animal, materiais). Um teste garante que cobrem a
+  Tabela II sem buraco nem sobreposição. Mapear item a item seria inventar conteúdo
+  técnico.
+- **Só aponta o tipo de ação** (a hierarquia de controles do plano) com um exemplo
+  curto e, onde cabe, a NR de referência. Não cria ação nem barreira.
+- **Quando aparece:** caso em investigação, com agente escolhido, e só os tipos que
+  o plano ainda não tem (ações canceladas não contam). Como próximo passo, sempre
+  dizendo que é sugestão e que a equipe decide.
+- **A equipe revisa o arquivo.** Trocar o texto, os tipos ou as faixas é editar
+  `FAMILIAS_DE_AGENTE`. Sem IA (D2), sem leitura de texto livre.
+- **Fora daqui:** sugestão de barreira (`TIPOS_BARREIRA`) e de agente da doença
+  (Tabela III), que pedem outra definição.

@@ -13,7 +13,9 @@
  */
 import { and, count, eq } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { acidente_barreira, acidente_checklist_item, acidente_entrevista, acidente_evidencia, acidente_investigacao } from "../db/esquema/index.js";
+import { acidente_agente_causador, acidente_barreira, acidente_checklist_item, acidente_entrevista, acidente_evidencia, acidente_investigacao } from "../db/esquema/index.js";
+import { ROTULO_TIPO_ACAO } from "../dominio/acidente.js";
+import { AVISO_SUGESTAO, familia_do_agente, sugestoes_faltantes } from "../dominio/acidente_sugestoes.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { pode_ver_restrita_sst } from "./acidente_acesso.js";
 import * as comunicacao from "./acidente_comunicacao.js";
@@ -43,6 +45,10 @@ const ORDEM: NivelApontamento[] = ["INCONSISTENCIA", "LACUNA", "ATENCAO", "PROXI
 
 export interface FatosAnalise {
   hoje: string;
+  /** o agente causador escolhido (número na Tabela II e rótulo), para as sugestões por família */
+  agente?: { ordem: number; rotulo: string } | null;
+  /** os tipos de ação que o plano já tem (sem as canceladas) */
+  tipos_de_acao?: readonly string[];
   oc: Pick<
     Ocorrencia,
     | "especie" | "estado" | "data_evento" | "hora_evento" | "minutos_apos_inicio_jornada" | "ultimo_dia_trabalho" | "local_municipio" | "local_uf"
@@ -120,6 +126,12 @@ export function avaliar(f: FatosAnalise): Apontamento[] {
     if (f.contagens.barreiras === 0) add("PROXIMO_PASSO", "investigacao", "Identificar as barreiras que existiam, falharam ou faltaram.");
     if (f.contagens.evidencias === 0) add("PROXIMO_PASSO", "entrevistas", "Juntar evidências (fotos do local, documentos, medições).");
     if (f.contagens.acoes === 0) add("PROXIMO_PASSO", "acoes", "Propor ações no plano, com responsável e prazo.");
+    const familia = familia_do_agente(f.agente?.ordem);
+    const faltantes = familia ? sugestoes_faltantes(familia, f.tipos_de_acao ?? []) : [];
+    if (familia && faltantes.length) {
+      const lista = faltantes.map((s) => `${ROTULO_TIPO_ACAO[s.tipo] ?? s.tipo} (${s.exemplo})`).join("; ");
+      add("PROXIMO_PASSO", "acoes", `Agente «${f.agente!.rotulo}», família ${familia.rotulo.toLowerCase()}: o plano ainda não tem ação de ${lista}. ${AVISO_SUGESTAO}`);
+    }
     if (faltam === 0 && f.contagens.acoes > 0) add("PROXIMO_PASSO", "relatorios", "A análise e o plano estão preenchidos: emitir o relatório.");
   }
   if (oc.estado === "RELATORIO_EMITIDO") add("PROXIMO_PASSO", "siass", "Encaminhar o relatório ao SIASS (CAT/SP no formato do Anexo III) ou concluir com o motivo.");
@@ -146,9 +158,14 @@ export async function do_caso(tx: Executor, usuario: UsuarioAtual, ocorrencia: O
     .from(acidente_checklist_item)
     .where(and(eq(acidente_checklist_item.ocorrencia_id, ocorrencia.id), eq(acidente_checklist_item.ativo, true), eq(acidente_checklist_item.marcado, true)));
   const acoes = await acao.do_caso(tx, ocorrencia.id);
+  const [agente] = ocorrencia.agente_causador_id
+    ? await tx.select({ ordem: acidente_agente_causador.ordem, rotulo: acidente_agente_causador.rotulo }).from(acidente_agente_causador).where(eq(acidente_agente_causador.id, ocorrencia.agente_causador_id))
+    : [];
   const situacao = await siass.situacao(tx, ocorrencia.id);
   return avaliar({
     hoje: hoje_iso(),
+    agente: agente ?? null,
+    tipos_de_acao: acoes.filter((a) => a.estado !== "CANCELADA").map((a) => a.tipo_acao),
     oc: ocorrencia,
     acidentados: acidentados.map((a) => ({
       ordem: a.ordem,
