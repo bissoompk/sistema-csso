@@ -80,3 +80,16 @@ export async function em_investigacao(db: Banco, extra: Partial<comunicacao.Dado
   await db.transaction((tx) => triagem.mudar_estado(tx, equipe, a, "EM_INVESTIGACAO", a.versao));
   return { oc: await ler(), equipe, ler };
 }
+
+/** Uma ocorrência com o relatório emitido (as duas variantes), pronta para o SIASS. */
+export async function com_relatorio(db: Banco, requer_cat_siass: "SIM" | "NAO" = "SIM") {
+  const investigacao = await import("../src/servicos/acidente_investigacao.js");
+  const relatorio = await import("../src/servicos/acidente_relatorio.js");
+  const c = await em_investigacao(db);
+  await db.transaction((tx) =>
+    investigacao.salvar(tx, c.equipe, c.oc, { sintese: "A tampa de segurança não foi reposta.", caracterizacao: "SIM", requer_cat_siass }, 1),
+  );
+  const oc = await c.ler();
+  await db.transaction((tx) => relatorio.emitir(tx, c.equipe, oc, oc.versao));
+  return { ...c, oc: await c.ler() };
+}

@@ -1983,3 +1983,13 @@ Aba **Relatórios** da ficha, sobre a tabela `acidente_relatorio` já existente 
 - **Caracteres fora do WinAnsi** saem como «?» em vez de derrubar a emissão. A assinatura oficial segue no SEI.
 - **Teste de ficha**: a aba usada como «sem parcial» passou de Relatórios para SIASS.
 - **Ficou para depois**: F7 (SIASS e conclusão), F8 (hub e indicadores), e um .docx editável opcional (D3).
+
+## 27/10/2026 — Acidentes F7: SIASS e conclusão
+
+Aba **SIASS** da ficha, sobre as tabelas `acidente_encaminhamento` e `acidente_decisao_pericial` já existentes (**sem migração**). Serviço `acidente_siass.ts`, rotas `POST /acidentes/:id/siass[/decisao|/concluir]` (`rotas/acidente_siass.ts`), parcial `acidente_aba_siass.html`. Permissão: `acidente.siass`; a leitura segue a regra das abas da investigação.
+
+- **Encaminhar** (RELATORIO_EMITIDO → ENCAMINHADA_SIASS): meio, NUP do SEI (normalizado e validado; obrigatório pelo SEI), data (não futura) e a **versão vigente do relatório completo**, que é a que a perícia recebe. Fecha o prazo legal de comunicação e abre `ACIDENTE_AGUARDA_PERICIA` (60 dias). Já encaminhado, um novo encaminhamento só acrescenta a linha (append-only; o estado não muda).
+- **Decisão pericial**: append-only; a correção é linha nova com `substitui_id`, e a tela marca a vigente. Número da CAT no SIASS em campo próprio (letras, números, ponto, barra, hífen). **A observação recusa «doença»** e qualquer termo de saúde (contexto padrão da RN-21, sem a dispensa do nexo ocupacional) e CPF. Fecha a espera da perícia.
+- **Concluir**: de ENCAMINHADA_SIASS exige a decisão registrada **ou** o motivo; de RELATORIO_EMITIDO só para o caso que a investigação marcou como «não requer CAT no SIASS», com motivo. Grava `concluida_em` e `conclusao_motivo`, fecha as pendências do caso e registra a mudança de estado (versão otimista da ocorrência). O plano de ação continua depois da conclusão.
+- A trilha diz o meio, a versão do relatório e o rótulo do resultado; nunca a observação, o NUP nem número de CAT.
+- **Ficou para depois**: F8 (hub e indicadores), e-mail de aviso ao acidentado servidor no relatório emitido/concluído (D6, desligado até configurar).

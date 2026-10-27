@@ -50,6 +50,10 @@ import {
   ROTULO_SITUACAO_BARREIRA,
   ROTULO_TIPO_BARREIRA,
   ROTULO_VARIANTE_RELATORIO,
+  MEIOS_ENCAMINHAMENTO,
+  ROTULO_MEIO_ENCAMINHAMENTO,
+  RESULTADOS_PERICIA,
+  ROTULO_RESULTADO_PERICIA,
   ROTULO_TIPO_ACAO,
   ROTULO_PRIORIDADE,
   ROTULO_ESTADO_ACAO,
@@ -73,6 +77,7 @@ import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
 import { escopo_ocorrencias, filtro_restrita, pode_ver_restrita_sst } from "../servicos/acidente_acesso.js";
 import * as comunicacao from "../servicos/acidente_comunicacao.js";
 import * as triagem from "../servicos/acidente_triagem.js";
+import * as siass from "../servicos/acidente_siass.js";
 import * as relatorio from "../servicos/acidente_relatorio.js";
 import * as plano from "../servicos/acidente_acao.js";
 import * as saude from "../servicos/acidente_saude.js";
@@ -691,6 +696,9 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       titulo,
       itens: itens.filter((i) => i.secao === n),
     })).filter((g) => g.itens.length);
+  } else if (ve_investigacao && aba === "siass") {
+    Object.assign(dados_investigacao, await siass.situacao(tx, ocorrencia.id));
+    dados_investigacao.pode_siass = usuario.pode("acidente.siass");
   } else if (ve_investigacao && aba === "relatorios") {
     dados_investigacao.relatorios = await relatorio.versoes(tx, ocorrencia.id);
     dados_investigacao.pode_emitir = usuario.pode("acidente.relatorio_emitir") && usuario.pode("acidente.saude_ver");
@@ -779,6 +787,10 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       ROTULO_SITUACAO_BARREIRA,
       ROTULO_CARACTERIZACAO,
       ROTULO_VARIANTE_RELATORIO,
+      MEIOS_ENCAMINHAMENTO,
+      ROTULO_MEIO_ENCAMINHAMENTO,
+      RESULTADOS_PERICIA,
+      ROTULO_RESULTADO_PERICIA,
       TIPOS_ACAO,
       ROTULO_TIPO_ACAO,
       PRIORIDADES,
