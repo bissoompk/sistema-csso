@@ -1956,3 +1956,15 @@ Aba **Saúde** da ficha da ocorrência, sobre as tabelas `acidente_saude*` já e
 - **Natureza da lesão: catálogo vazio.** A tabela oficial (NBR 14280 / eSocial 17) ainda não foi fornecida; o campo aparece sem opções, com aviso na tela. Quando vier, entra por semente, sem mudar código.
 - **Teste de ficha**: a aba usada como «sem parcial» passou de Saúde para Relatórios.
 - **Ficou para depois**: expurgo parcial por tela (hoje só ato manual, POLITICA §2.4), F5, F6 (relatório) e a emenda da ROPA sobre dado de saúde antes de ligar Acidentes em produção.
+
+## 27/10/2026 — Acidentes F5: o plano de ação
+
+Aba **Plano de ação** da ficha e lista geral `/acidentes/acoes` (antes «em construção»), sobre a tabela `acidente_acao` já existente (**sem migração**). Serviço `acidente_acao.ts`, rotas `POST /acidentes/:id/acoes[/:aid/(editar|iniciar|concluir|cancelar)]` (`rotas/acidente_acoes.ts`), parcial `acidente_aba_acoes.html`, página `acidentes_acoes.html`. Permissão única: `acidente.investigar` (a leitura exige quem investiga ou encaminha ao SIASS, como a investigação).
+
+- **Número estável por caso** (`numero` sequencial) e **uma pendência por ação** (`ACIDENTE_ACAO_PRAZO`, chave por ação, prazo da ação; responsável = conta escolhida ou quem conduz o caso). Mudar prazo ou responsável na edição move a pendência junto; concluir ou cancelar a fecha.
+- **Máquina de estado** PENDENTE → EM_ANDAMENTO → CONCLUIDA; PENDENTE/EM_ANDAMENTO → CANCELADA. Concluir exige «o que foi feito» e aceita uma evidência (PDF ou imagem, categoria `EVIDENCIA_ACIDENTE`); cancelar exige o motivo. **Nunca se apaga** (trigger): a ação cancelada continua na lista, riscada.
+- **O plano continua depois do relatório**: ação nova vale até o caso ser cancelado (a prevenção acompanha o que foi emitido). Prazo de ação nova não pode ser no passado.
+- **Controle de versão** em editar, iniciar, concluir e cancelar (409 com tela velha); diff por campo na trilha (`ACIDENTE_ACAO_ALTERADA`). Texto passa pelo filtro de saúde (nexo ocupacional) e recusa CPF.
+- **Responsável na tela**: «quem conduz o caso» (padrão), «eu», unidade e nome livre. A escolha de outra conta do sistema existe no serviço, mas a tela ainda não a oferece (falta uma lista de equipe).
+- **Lista geral**: em aberto (padrão), vencidas e todas, no escopo e na regra de ocorrência restrita da conta; só mostra protocolo, nunca nome de acidentado. A secretaria (que só tria) recebe 403; o teste de telas foi ajustado.
+- **Ficou para depois**: o e-mail de prazo pela rotina, o link «Plano de ação» no hub (F8), F6 (relatório) e F7 (SIASS).

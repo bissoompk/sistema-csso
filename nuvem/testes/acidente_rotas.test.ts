@@ -27,7 +27,7 @@ async function get(login: string, caminho: string) {
   return cliente.get(caminho, { seguir: false });
 }
 
-const TELAS = ["/acidentes", "/acidentes/fila", "/acidentes/acoes", "/acidentes/minhas"];
+const TELAS = ["/acidentes", "/acidentes/fila", "/acidentes/minhas"];
 
 describe("as telas do módulo de acidentes", () => {
   it.each(["coordenador_csso", "engenheiro_seguranca", "tecnico_seguranca", "medico_trabalho", "secretaria_csso", "superintendente"])(
@@ -39,6 +39,14 @@ describe("as telas do módulo de acidentes", () => {
       }
     },
   );
+
+  it("o plano de ação (lista) é de quem investiga ou encaminha ao SIASS; a secretaria, que só tria, não o abre", async () => {
+    for (const login of ["coordenador_csso", "engenheiro_seguranca", "tecnico_seguranca", "medico_trabalho", "superintendente"]) {
+      const r = await get(login, "/acidentes/acoes");
+      expect(r.status, login).toBe(200);
+    }
+    expect((await get("secretaria_csso", "/acidentes/acoes")).status).toBe(403);
+  });
 
   it("o servidor comum comunica e vê as próprias, mas não tem painel de equipe nem indicadores", async () => {
     expect((await get("servidor_consulta", "/acidentes/comunicar")).status).toBe(200);
