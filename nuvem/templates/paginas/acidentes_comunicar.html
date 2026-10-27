@@ -36,7 +36,8 @@
 
     <details class="recolhido"{{ ' open' if recusado }}>
       <summary>3. Testemunhas (opcional)</summary>
-      <p class="dica">Nome e um contato (e-mail institucional ou ramal). Endereço não é pedido.</p>
+      <p class="dica">Nome e um contato (e-mail institucional ou ramal). O endereço e o telefone são os do Anexo III da CAT/SP:
+        ficam num bloco restrito, que só a equipe de segurança do trabalho e a perícia abrem.</p>
       {% for t in range(1, MAXIMO_TESTEMUNHAS + 1) %}
       {% set tp = 'test_' ~ t ~ '_' %}
       <div class="linha-campos">
@@ -56,6 +57,29 @@
           <input id="{{ tp }}contato" name="{{ tp }}contato" maxlength="160" value="{{ d[tp ~ 'contato'] or '' }}">
         </div>
       </div>
+      <details class="recolhido">
+        <summary>Endereço e telefone da testemunha {{ t }} (opcional)</summary>
+        <div class="linha-campos">
+          <div class="campo"><label for="{{ tp }}cep">CEP</label>
+            <input id="{{ tp }}cep" name="{{ tp }}cep" inputmode="numeric" maxlength="9" class="mono" value="{{ d[tp ~ 'cep'] or '' }}"></div>
+          <div class="campo"><label for="{{ tp }}logradouro">Logradouro</label>
+            <input id="{{ tp }}logradouro" name="{{ tp }}logradouro" maxlength="160" value="{{ d[tp ~ 'logradouro'] or '' }}"></div>
+          <div class="campo"><label for="{{ tp }}numero">Número</label>
+            <input id="{{ tp }}numero" name="{{ tp }}numero" maxlength="20" value="{{ d[tp ~ 'numero'] or '' }}"></div>
+          <div class="campo"><label for="{{ tp }}complemento">Complemento</label>
+            <input id="{{ tp }}complemento" name="{{ tp }}complemento" maxlength="80" value="{{ d[tp ~ 'complemento'] or '' }}"></div>
+        </div>
+        <div class="linha-campos">
+          <div class="campo"><label for="{{ tp }}bairro">Bairro</label>
+            <input id="{{ tp }}bairro" name="{{ tp }}bairro" maxlength="80" value="{{ d[tp ~ 'bairro'] or '' }}"></div>
+          <div class="campo"><label for="{{ tp }}municipio">Município</label>
+            <input id="{{ tp }}municipio" name="{{ tp }}municipio" maxlength="80" value="{{ d[tp ~ 'municipio'] or '' }}"></div>
+          <div class="campo"><label for="{{ tp }}uf">UF</label>
+            <input id="{{ tp }}uf" name="{{ tp }}uf" maxlength="2" class="mono" value="{{ d[tp ~ 'uf'] or '' }}"></div>
+          <div class="campo"><label for="{{ tp }}telefone">Telefone (com DDD)</label>
+            <input id="{{ tp }}telefone" name="{{ tp }}telefone" inputmode="tel" maxlength="16" class="mono" value="{{ d[tp ~ 'telefone'] or '' }}"></div>
+        </div>
+      </details>
       {% endfor %}
     </details>
 

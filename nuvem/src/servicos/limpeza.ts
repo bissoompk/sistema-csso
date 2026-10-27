@@ -256,7 +256,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
     codigo: "acidentes",
     nome: "Acidentes",
     apaga:
-      "as ocorrências e tudo o que pende delas: comunicação e comunicantes, envolvidos e testemunhas, saúde, " +
+      "as ocorrências e tudo o que pende delas: comunicação e comunicantes, envolvidos e testemunhas (com a identificação pessoal e o contato), saúde, " +
       "triagem e complementação, CAT/SP, investigação (MAPA, linha do tempo, barreiras, checklist, entrevistas, " +
       "evidências, plano de ação), relatório, encaminhamento ao SIASS, decisão pericial, os links públicos de " +
       "comunicação, e os anexos, pendências e e-mails do módulo",
@@ -265,6 +265,8 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "acidente_ocorrencia",
       "acidentado",
       "acidente_testemunha",
+      "acidente_testemunha_contato",
+      "acidente_identificacao",
       "acidente_comunicante",
       "acidente_complementacao",
       "acidente_saude",

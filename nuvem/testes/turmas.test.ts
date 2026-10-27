@@ -580,13 +580,16 @@ describe("participante", () => {
     expect(P.nome_exibicao(pessoa)).toBe("Maria Aparecida de Souza");
   });
 
-  it("CPF só nas duas colunas do certificado (19/10/2026), em nenhuma outra", async () => {
+  it("CPF só nas colunas autorizadas (certificado, 19/10/2026; Anexo III da CAT/SP, 27/10/2026), em nenhuma outra", async () => {
     // "guardar CPF só para certificado": participante.cpf e assinatura_instrutor.cpf
+    // — e, desde 27/10/2026 (decisão do dono do sistema), o bloco restrito do Anexo III da CAT/SP
+    // (`acidente_identificacao.cpf`: ver `servicos/acidente_identificacao.ts` e o DESVIOS.md)
     const colunas = (await db.execute(
       sql`SELECT table_name, column_name FROM information_schema.columns
            WHERE table_schema = 'public' AND column_name ILIKE '%cpf%' ORDER BY 1, 2`,
     )) as unknown as { table_name: string; column_name: string }[];
     expect(colunas.map((c) => `${c.table_name}.${c.column_name}`)).toEqual([
+      "acidente_identificacao.cpf",
       "assinatura_instrutor.cpf",
       "participante.cpf",
     ]);

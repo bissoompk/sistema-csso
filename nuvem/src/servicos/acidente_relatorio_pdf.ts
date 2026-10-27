@@ -173,8 +173,14 @@ function quebrar(fonte: PDFFont, texto: string, tamanho: number, largura: number
 }
 
 export async function gerar_pdf(c: ContextoRelatorio, hash: string): Promise<Uint8Array> {
+  const rodape = `${c.protocolo} · v${c.versao} · ${c.variante === "COMPLETA" ? "completa" : "sem saúde"} · ${hash.slice(0, 12)}`;
+  return desenhar(blocos(c), `Relatório ${c.protocolo} v${c.versao}`, rodape);
+}
+
+/** Desenha uma lista de blocos em PDF A4, com o rodapé em todas as páginas. */
+export async function desenhar(lista: Bloco[], titulo_do_arquivo: string, texto_do_rodape: string): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(`Relatório ${c.protocolo} v${c.versao}`);
+  doc.setTitle(titulo_do_arquivo);
   doc.setProducer("Sistema SISA");
   const normal = await doc.embedFont(StandardFonts.Helvetica);
   const negrito = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -195,7 +201,7 @@ export async function gerar_pdf(c: ContextoRelatorio, hash: string): Promise<Uin
     y -= espaco_depois;
   };
 
-  for (const b of blocos(c)) {
+  for (const b of lista) {
     if (b.t === "titulo") linhas(b.texto, negrito, 15, 0, COR_TITULO, 6);
     else if (b.t === "secao") {
       y -= 6;
@@ -212,7 +218,7 @@ export async function gerar_pdf(c: ContextoRelatorio, hash: string): Promise<Uin
   // rodapé em todas as páginas: protocolo, versão, variante e o início do hash
   const paginas = doc.getPages();
   paginas.forEach((p, n) => {
-    const rodape = limpo(normal, `${c.protocolo} · v${c.versao} · ${c.variante === "COMPLETA" ? "completa" : "sem saúde"} · ${hash.slice(0, 12)} · página ${n + 1} de ${paginas.length}`);
+    const rodape = limpo(normal, `${texto_do_rodape} · página ${n + 1} de ${paginas.length}`);
     p.drawText(rodape, { x: MARGEM, y: MARGEM - 24, size: 8, font: normal, color: COR_SUAVE });
   });
   return doc.save();

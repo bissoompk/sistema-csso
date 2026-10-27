@@ -37,6 +37,12 @@ function _dados(f: Awaited<ReturnType<typeof formulario>>): saude.DadosSaude {
     primeiro_socorro_por: f.opcional("primeiro_socorro_por"),
     primeiro_socorro_unidade: f.opcional("primeiro_socorro_unidade"),
     atendimento_em: f.opcional("atendimento_em"),
+    duracao_tratamento_dias: f.inteiro("duracao_tratamento_dias"),
+    deve_afastar: f.opcional("deve_afastar"),
+    descricao_lesao: f.opcional("descricao_lesao"),
+    diagnostico_provavel: f.opcional("diagnostico_provavel"),
+    cid: f.opcional("cid"),
+    observacoes_saude: f.opcional("observacoes_saude"),
   };
 }
 

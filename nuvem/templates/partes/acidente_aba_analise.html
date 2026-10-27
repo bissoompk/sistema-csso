@@ -1,0 +1,22 @@
+{# A aba Análise: o que falta, o que não fecha e o próximo passo, por regras fixas (sem IA).
+   Só aponta; não grava nada. Quem não investiga nem encaminha ao SIASS não a vê. #}
+<section class="cartao">
+  <h2>Análise do caso</h2>
+  {% if not ve_investigacao %}
+  <div class="vazio"><strong>Sem acesso</strong><span>Esta aba é da equipe que investiga ou encaminha ao SIASS.</span></div>
+  {% else %}
+  <p class="discreto">Conferência automática do que a comunicação, os envolvidos e a investigação já trazem, contra os itens do Anexo III
+    da CAT/SP. É um apoio: quem decide é a equipe. Não lê dado de saúde nem identificação, só se já existem.</p>
+  {% for nivel in ['INCONSISTENCIA', 'LACUNA', 'ATENCAO', 'PROXIMO_PASSO'] %}
+  {% set grupo = apontamentos|selectattr('nivel', 'equalto', nivel)|list %}
+  {% if grupo|length %}
+  <h3>{{ ROTULO_NIVEL[nivel] }} <span class="discreto">({{ grupo|length }})</span></h3>
+  <ul class="lista-simples">
+    {% for ap in grupo %}
+    <li>{{ ap.texto }} <a href="/acidentes/{{ ocorrencia.id }}?aba={{ ap.aba }}">abrir</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+</section>

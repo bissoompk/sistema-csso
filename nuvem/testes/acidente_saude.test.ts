@@ -41,6 +41,12 @@ const VAZIO: saude.DadosSaude = {
   primeiro_socorro_por: null,
   primeiro_socorro_unidade: null,
   atendimento_em: null,
+  duracao_tratamento_dias: null,
+  deve_afastar: null,
+  descricao_lesao: null,
+  diagnostico_provavel: null,
+  cid: null,
+  observacoes_saude: null,
 };
 
 async function cenario() {
@@ -136,6 +142,34 @@ describe("a leitura", () => {
 });
 
 describe("o registro do médico", () => {
+  it("grava os campos clínicos do Anexo III, normaliza o CID e não os põe na trilha", async () => {
+    const { oc, acid } = await cenario();
+    const medico = await usuarioAtual(db, "medico_trabalho");
+    await db.transaction((tx) =>
+      saude.registrar(tx, medico, oc, acid.id, {
+        ...VAZIO, houve_atendimento: "SIM", duracao_tratamento_dias: 15, deve_afastar: "SIM",
+        descricao_lesao: "Corte superficial", diagnostico_provavel: "Ferimento", cid: "s610", observacoes_saude: "Retorno em 7 dias",
+      }, 1),
+    );
+    const [linha] = await db.select().from(e.acidente_saude).where(eq(e.acidente_saude.acidentado_id, acid.id));
+    expect(linha).toMatchObject({ duracao_tratamento_dias: 15, deve_afastar: "SIM", cid: "S61.0" });
+    const evs = await db.select().from(e.historico_evento).where(eq(e.historico_evento.entidade_id, oc.id));
+    expect(JSON.stringify(evs)).not.toMatch(/Corte superficial|S61\.0|Retorno em 7/);
+    expect(JSON.stringify(evs)).toMatch(/CID/);
+    const l2 = await db.transaction((tx) => saude.ler(tx, medico, oc, acid.id, 2, "INVESTIGACAO"));
+    expect(l2.detalhe).toMatchObject({ cid: "S61.0", descricao_lesao: "Corte superficial" });
+    const l1 = await db.transaction((tx) => saude.ler(tx, medico, oc, acid.id, 1, "INVESTIGACAO"));
+    expect(l1.detalhe).toBeNull();
+  });
+
+  it("recusa CID inválido e impede apagar campo clínico sem expurgo", async () => {
+    const { oc, acid } = await cenario();
+    const medico = await usuarioAtual(db, "medico_trabalho");
+    await expect(db.transaction((tx) => saude.registrar(tx, medico, oc, acid.id, { ...VAZIO, cid: "XYZ" }, 1))).rejects.toThrow(/CID/);
+    await db.transaction((tx) => saude.registrar(tx, medico, oc, acid.id, { ...VAZIO, cid: "S61.0" }, 1));
+    await expect(db.transaction((tx) => saude.registrar(tx, medico, oc, acid.id, { ...VAZIO, cid: null }, 2))).rejects.toThrow(/corrija-o/);
+  });
+
   it("confirma a declaração: origem muda, a pendência fecha e a trilha não leva valores", async () => {
     const { oc, acid } = await cenario();
     const medico = await usuarioAtual(db, "medico_trabalho");

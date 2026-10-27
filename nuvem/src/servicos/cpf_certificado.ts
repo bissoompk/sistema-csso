@@ -120,6 +120,12 @@ export function sem_cpf_no_dump(tabela: string, linhas: Record<string, unknown>[
     for (const l of linhas) if ("cpf" in l) l.cpf = null;
     return true;
   }
+  // identificação pessoal do Anexo III (acidentes): o zip em claro leva só as chaves
+  if (tabela === "acidente_identificacao" || tabela === "acidente_testemunha_contato") {
+    const chaves = new Set(["acidentado_id", "testemunha_id", "registrado_por", "registrado_em"]);
+    for (const l of linhas) for (const k of Object.keys(l)) if (!chaves.has(k)) l[k] = null;
+    return true;
+  }
   if (tabela === "certificado") {
     for (const l of linhas) {
       const ctx = l.contexto_congelado;

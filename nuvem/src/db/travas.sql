@@ -682,6 +682,12 @@ BEGIN
        OR (OLD.dias_debitados IS NOT NULL AND NEW.dias_debitados IS NULL)
        OR (OLD.primeiro_socorro_por IS NOT NULL AND NEW.primeiro_socorro_por IS NULL)
        OR (OLD.primeiro_socorro_unidade IS NOT NULL AND NEW.primeiro_socorro_unidade IS NULL)
+       OR (OLD.duracao_tratamento_dias IS NOT NULL AND NEW.duracao_tratamento_dias IS NULL)
+       OR (OLD.deve_afastar IS NOT NULL AND NEW.deve_afastar IS NULL)
+       OR (OLD.descricao_lesao IS NOT NULL AND NEW.descricao_lesao IS NULL)
+       OR (OLD.diagnostico_provavel IS NOT NULL AND NEW.diagnostico_provavel IS NULL)
+       OR (OLD.cid IS NOT NULL AND NEW.cid IS NULL)
+       OR (OLD.observacoes_saude IS NOT NULL AND NEW.observacoes_saude IS NULL)
        OR (OLD.atendimento_em IS NOT NULL AND NEW.atendimento_em IS NULL))
      AND NEW.detalhe_expurgado_em IS NULL THEN
     RAISE EXCEPTION 'acidente_saude: o nivel 2 so vai a NULL junto do carimbo de expurgo (detalhe_expurgado_em)'
@@ -695,6 +701,12 @@ BEGIN
        OR NEW.dias_debitados IS NOT NULL
        OR NEW.primeiro_socorro_por IS NOT NULL
        OR NEW.primeiro_socorro_unidade IS NOT NULL
+       OR NEW.duracao_tratamento_dias IS NOT NULL
+       OR NEW.deve_afastar IS NOT NULL
+       OR NEW.descricao_lesao IS NOT NULL
+       OR NEW.diagnostico_provavel IS NOT NULL
+       OR NEW.cid IS NOT NULL
+       OR NEW.observacoes_saude IS NOT NULL
        OR NEW.atendimento_em IS NOT NULL) THEN
     RAISE EXCEPTION 'acidente_saude: o nivel 2 expurgado nao se preenche de novo'
       USING ERRCODE = 'integrity_constraint_violation';

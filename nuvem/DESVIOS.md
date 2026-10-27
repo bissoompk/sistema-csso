@@ -2004,3 +2004,100 @@ Fecha o módulo. **Sem migração.** Serviços `acidente_contagens.ts` e `aciden
 - **Afastamentos e dias perdidos** (D12): só para quem tem `acidente.saude_detalhe_ver`, e suprimidos quando os casos com afastamento são menos de 5 (a soma de dias identificaria quem se afastou). **Taxas de frequência e de gravidade ficam de fora**: pedem horas-homem trabalhadas por unidade, que o SISA não tem (parâmetro anual por campus, depois).
 - **CSV**: exige `indicador.ver` e `exportar`; UTF-8 com BOM, ponto e vírgula, `linha_csv` neutraliza fórmula. A permissão vem **antes** do período (403, e não o 422 da data torta).
 - **Fechamento do módulo**: o que o módulo ainda pede é a tabela oficial de natureza da lesão, a emenda da ROPA sobre dado de saúde, a decisão sobre ligar `CSSO_MODULO_ACIDENTES` em produção e os e-mails (D6, desligados até configurar).
+
+## 27/10/2026 — Acidentes F9: migração dos casos do CAT/SP antigo
+
+Última fatia do módulo. **Sem migração de esquema.** Serviço `servicos/acidente_importacao.ts` (a lógica, testável), ferramenta `ferramentas/importar-catsp.ts` (`npm run importar-catsp`) e `testes/acidente_importacao.test.ts` (17, com planilha fictícia). D5 (b): só os campos permitidos, com o protocolo original.
+
+- **Entrada**: as abas `COMUNICACOES`, `ANALISES_MAPA` e `PLANO_ACAO` exportadas como CSV numa pasta **fora do repositório** (a ferramenta recusa pasta dentro dele). A conta que conduz entra em `--por <login>`. `--simular` faz tudo e desfaz. Sem ele, pede a identidade do banco.
+- **Nunca chegam ao banco**: CPF, RG, data de nascimento (lida só para saber se o acidentado era **menor de idade** na data — e então a ocorrência fica restrita à SST), sexo, endereço, telefones e e-mail do acidentado, endereço e telefone das testemunhas, URLs e IDs do Drive, e as anotações livres da SST. CPF no meio de um texto vira «[CPF removido]». O teste varre as tabelas do módulo e a trilha atrás de cada valor proibido.
+- **Protocolo e sequência**: o protocolo `CAT-AAAA-NNNN` é o original (ano e número saem dele); a sequência do ano sobe para o maior número migrado, e a numeração nova continua dali.
+- **Cada caso**: origem `MIGRACAO`, tipo INICIAL, a CAT/SP versão 1 (origem `MIGRACAO`, contexto congelado e hash), o estado da planilha («Em análise SST» virou EM_INVESTIGACAO; concluída e cancelada entram com motivo «antes da migração») e um evento `ACIDENTE_IMPORTADO` na trilha, sem nome nem texto. **Não abre pendência**: o caso é histórico.
+- **Envolvidos**: casados com `servidor` pelo SIAPE. SIAPE que não existe no cadastro entra pelo nome (como no formulário por link), com o SIAPE guardado, e o relatório avisa. Testemunha: só o nome.
+- **Catálogos**: casados pelo texto original (`rotulo_legado`); a lista de partes do corpo vem numa célula só e os rótulos têm vírgula, então a ferramenta procura os rótulos conhecidos (do mais longo ao mais curto) em vez de dividir. O que não casa fica vazio, com aviso.
+- **Saúde**: o que a planilha declarava (afastamento, internação, óbito, atendimento e as partes do corpo) entra como DECLARADA, nível 1, na ficha do acidentado principal, **sem** a pendência de confirmação (o caso é histórico). O nível 2 (dias, datas, unidade de atendimento) não vem: o médico registra se for o caso.
+- **Análise (MAPA)**: vira `acidente_investigacao`. As barreiras do legado eram texto sem situação (existia/falhou/ausente), e inventar a situação seria mentir: ficam **rotuladas dentro das evidências**. A linha do tempo vira uma linha só, «Planilha antiga». Não vêm o nexo causal do perito (nexo é da perícia oficial), transcrições, gravações, o checklist e a retificação do relatório; o relatório avisa quando havia conteúdo ali.
+- **Plano de ação**: ações numeradas por caso, com tipo, prioridade, prazo e estado; o responsável era texto livre e segue como texto (`responsavel_texto`).
+- **Idempotente e por linha**: protocolo que já existe é pulado; cada linha roda num ponto de salvamento, e a linha com defeito é recusada e relatada sem derrubar as outras. O terminal mostra só protocolos e códigos.
+- **Fora**: os PDFs de relatório e os anexos do Drive. A CAT/SP antiga é prova: baixa-se o PDF à mão e se anexa ao caso (categoria `CAT_SP`). A reabertura do legado (`TipoCAT = Reabertura`, que ele nunca ligava ao caso anterior) entra como INICIAL, com aviso.
+- **Depois de rodar**: apagar a pasta com os CSV (dados pessoais), registrar em ata (risco 11) e **revogar o link público e trocar a senha do legado**.
+
+## 27/10/2026 — Acidentes: tabelas do Anexo III.2 conferidas com o Manual de Perícia Oficial
+
+O usuário trouxe o Manual de Perícia Oficial em Saúde do Servidor Público Federal (3ª ed., 2017) — guardado em `entrada/` (ignorada pelo git). O **Anexo III.2** traz as Tabelas I a IV da CAT/SP. Conferência linha a linha com os catálogos semeados (a partir do legado):
+
+- **Tabela I (partes do corpo)**: igual, 44 itens. Os dois erros de digitação do PDF («PUNHO A O OMBRO», «PARTE MÚLTIPLAS») ficam corrigidos como já estavam.
+- **Tabela II (agente causador do acidente)**: igual nos 198 itens que o manual traz; o PDF tem texto quebrado por OCR («ÍÉ», «IÍQUIDO»), e o catálogo do sistema está certo. Os itens 107 e 108 vêm **cortados no próprio manual** (terminam em «RETIFICADOR,» e «ÍÉ»): o texto completo continua sendo o que foi reconstruído e **segue para conferir com a NBR 14280**. **O catálogo tem 1 item que o manual não traz: «ARQUIBANCADA, ESTÁDIO - EDIFÍCIO OU ESTRUTURA»**; ficou como está (pode ser da NBR 14280) e a equipe confirma.
+- **Tabela III (agente da doença)**: faltava o primeiro item oficial, «REAÇÃO DO CORPO A SEUS MOVIMENTOS - MOVIMENTO INVOLUNTÁRIO (ESCORREGÃO SEM QUEDA, ETC)». **Incluído** (agora 31).
+- **Tabela IV (situação geradora)**: faltava «IMPACTO DE PESSOA CONTRA OBJETO PARADO». **Incluído** (agora 31).
+- Os dois itens novos têm `ordem` 0 (aparecem primeiro, como na tabela oficial), `rotulo_legado` nulo (a planilha antiga não os tinha) e entram pela semeadura idempotente, sem renumerar nada nem migração de esquema.
+
+## 27/10/2026 — Acidentes: identificação pessoal do Anexo III (bloco restrito), fatias 1 e 2
+
+O Anexo III do Manual de Perícia (a CAT/SP oficial) pede a identificação do servidor (sexo, CPF, nascimento, RG, endereço, telefone, e-mail) e o endereço das testemunhas. **Decisão do dono do sistema**: coletar tudo, num bloco restrito, com a ROPA ganhando emenda. Isto **reverte** a minimização da F1 (ROPA §4.3/§4.5), que cobrava que não se coletasse nada disso. **Migração 0032.**
+
+- **Onde mora.** `acidente_identificacao` (1:1 com `acidentado`) e `acidente_testemunha_contato` (1:1 com a testemunha). Tabelas próprias: nada disto está em `acidentado`, na ocorrência, na CAT/SP congelada, no relatório (nenhuma das duas variantes) nem na trilha. CPF só com 11 dígitos (CHECK) e verificador conferido pelo serviço. Sem trigger de DELETE: dado pessoal tem de poder ser apagado (expurgo/pedido do titular, ainda por fazer).
+- **Por onde entra.** Só pela comunicação **com conta** (`comunicar`; o formulário por link não pede). Tudo opcional: o Anexo III não marca estes campos como obrigatórios. CPF só pelo campo `env_<n>_cpf`, o segundo (depois do `cpf_certificado`) a escapar da máscara que a porta aplica a todo texto (`dependencias.INTOCAVEIS`); a rota nunca o devolve ao formulário numa recusa, nem mascarado. CPF no meio de endereço, complemento etc. é recusado. Identificação inválida recusa a comunicação inteira (a transação desfaz).
+- **Menor de idade.** A data de nascimento, comparada com a data do acidente, marca o envolvido como menor e a ocorrência como restrita à SST (D14a), mesmo que ninguém tenha marcado «menor de idade». A data em si só vai para o bloco restrito.
+- **Quem lê.** Permissão nova **`acidente.identificacao_ver`** (coordenação, superintendência, engenharia, técnico de segurança e médico do trabalho — os cargos que já veem saúde ou instruem o caso). Finalidade escolhida ANTES (lista fechada `FINALIDADES_IDENTIFICACAO`), uma linha em `acesso_dado_sensivel` a cada abertura (`campo = acidente_identificacao`), e evento na trilha (sem dado) quando quem abre não conduz o caso. O próprio acidentado lê a sua sem finalidade e sem registro. Ocorrência restrita segue só para quem instrui. Serviço único: `servicos/acidente_identificacao.ts` (`ler`).
+- **O que sai.** Na tela (nova aba **Identificação** da ficha) o CPF aparece só mascarado, como no certificado; os demais campos, para quem tem a permissão. O CPF inteiro só sairá no PDF da CAT/SP no formato do Anexo III, para o SIASS (fatia 4, ainda não feita). A exportação em claro leva só as chaves das duas tabelas (o backup cifrado leva tudo). A limpeza de dados de teste as inclui.
+- **Trilha.** `ACIDENTE_IDENTIFICACAO_REGISTRADA` diz **quais grupos de campo** foram informados («sexo, CPF, endereço…»), nunca o valor.
+- **Ainda não feito (fatias 3 a 5).** Os campos de saúde do Anexo III (duração provável do tratamento, deve afastar-se, descrição da lesão, diagnóstico provável, CID, observações) e o nexo causal; o PDF no formato do Anexo III; **a emenda da ROPA** (§4.3/§4.5/§9, com base legal e prazo de expurgo da identificação) e o expurgo. **A emenda da ROPA tem de sair antes de ligar `CSSO_MODULO_ACIDENTES` em produção:** hoje o módulo continua travado lá, e esta coleta só passa a valer quando ele for liberado.
+- **Campos com asterisco no Anexo III** (hora, tempo de jornada, parte do corpo, situação geradora, afastamento, óbito, UF e município): o formulário os aceita em branco, como antes. Torná-los obrigatórios muda a comunicação e fica para uma decisão à parte.
+
+## Acidentes: campos de saúde do Anexo III e nexo causal (fatia 3)
+
+Decisão de 27/10/2026. Migração 0033: `acidente_saude` ganha, no **nível 2**
+(só o médico lê, o expurgo parcial leva a NULL, trigger conferida), a duração
+provável do tratamento, «deve afastar-se», a descrição da lesão, o diagnóstico
+provável, o CID (CID-10, normalizado para `S61.0`) e as observações. A trilha
+guarda só os nomes dos campos.
+
+- O **nexo causal** não tem coluna: deriva da decisão pericial
+  (`acidente_decisao_pericial`: reconhecido = Sim, não reconhecido = Não,
+  encaminhado ao SIASS = Encaminhar) e será mapeado no PDF do Anexo III (fatia 4).
+- O comunicante **não** declara estes campos clínicos: o Anexo III os atribui ao
+  serviço de saúde e o nível 2 é restrito ao médico. Quem comunica continua
+  informando só os fatos do nível 1.
+
+## Acidentes: emenda da ROPA e PDF no formato do Anexo III (fatia 4)
+
+Decisão de 27/10/2026.
+
+- **ROPA v1.7 (`docs/ROPA.md` §0.6) e POLITICA_RETENCAO §2.4.** A emenda registra
+  a identificação pessoal restrita, os campos clínicos do nível 2 (revogando, só
+  no módulo de Acidentes, a frase «nunca CID, nunca diagnóstico, nunca texto
+  clínico»), a base legal, a retenção e as pendências novas (§9 itens 10 e 11).
+  Cumpre o bloqueador da emenda, mas o módulo continua travado em produção até a
+  revogação do legado e a tabela de natureza da lesão.
+- **Expurgo da identificação**: proposta de 5 anos após a conclusão, ato manual do
+  setor com simulação e ata, **sem ferramenta ainda** (a do detalhe de saúde também
+  não existe). O prazo depende do arquivo institucional (ROPA §9, item 10).
+- **PDF do Anexo III** (`servicos/acidente_anexo_iii.ts`, rota
+  `GET /acidentes/:id/anexo-iii/:acidentado.pdf`): um acidentado por vez, **montado a
+  cada pedido e nunca guardado**, porque é o único lugar em que o CPF sai por
+  inteiro (`identificacao.ler_para_siass`). Exige `acidente.identificacao_ver` e
+  `acidente.saude_detalhe_ver` (na prática, o médico do trabalho), grava os dois
+  acessos com a finalidade «instruir a perícia» e o evento
+  `ACIDENTE_ANEXO_III_EMITIDO`, sem dado. O titular não o emite por aqui.
+- O leiaute segue os campos do Anexo III em blocos, sem reproduzir a grade do
+  formulário. «Data/carimbo» e «Assinatura» ficam para o papel do SIASS. O nexo
+  causal vem da decisão pericial vigente.
+
+## Acidentes: auxílio à análise (fatia 5)
+
+Decisão de 27/10/2026. Aba **Análise** na ficha (`servicos/acidente_analise.ts`):
+conferência por **regras fixas** (D2: sem IA, sem API externa, ROPA §5.1) que
+aponta, em quatro níveis, o que **não fecha**, o que **falta do Anexo III**
+(itens com asterisco), o que pede **atenção** (prazo do art. 214, menor sem
+responsável, ações vencidas) e o **próximo passo** pelo estado do caso.
+
+- **Só aponta.** Não grava nada nem muda estado; quem decide é a equipe.
+- **Não abre dado restrito.** Para saber se há identificação e saúde usa
+  `presenca()` de cada serviço (sim/não, confirmada pelo médico, com parte do
+  corpo), sem conteúdo e sem gravar `acesso_dado_sensivel`.
+- **Quem vê:** quem investiga ou encaminha ao SIASS (mesma regra das abas da
+  investigação); aos demais a aba diz que é da equipe.
+- **Fora desta fatia:** sugerir ação ou barreira a partir do agente causador
+  (exigiria uma tabela de correspondência que a equipe de segurança ainda não
+  definiu; inventá-la seria pior que não ter) e qualquer leitura de texto livre.

@@ -48,7 +48,8 @@ const VAZIO: saude.DadosSaude = {
   natureza_lesao_id: null, parte_corpo_ids: [], lateralidade: null, houve_atendimento: null, houve_afastamento: null,
   houve_internacao: null, houve_obito: null, houve_sequela: null, dias_afastamento: null, afastamento_inicio: null,
   afastamento_retorno: null, dias_internacao: null, data_obito: null, dias_debitados: null, primeiro_socorro_por: null,
-  primeiro_socorro_unidade: null, atendimento_em: null,
+  primeiro_socorro_unidade: null, atendimento_em: null, duracao_tratamento_dias: null, deve_afastar: null,
+  descricao_lesao: null, diagnostico_provavel: null, cid: null, observacoes_saude: null,
 };
 
 /** Um caso pronto para emitir: síntese e caracterização preenchidas, saúde registrada pelo médico. */

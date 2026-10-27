@@ -8,8 +8,9 @@ Ocupacional (CSSO), da Superintendência Integrada de Saúde (Sisa)
 **Contato do setor:** `csso.sisa@ufvjm.edu.br`
 **Encarregado (DPO):** indicar o encarregado institucional da UFVJM — pendente
 (ver `PENDENCIAS.md`)
-**Versão deste registro:** 1.6, de 04/09/2026 — o titular alcança o que é dele, e
-a validação de certificado por chave passou a existir, pública e sem nome (§0.5) ·
+**Versão deste registro:** 1.7, de 27/10/2026 — Acidentes coleta o Anexo III
+completo, com identificação pessoal restrita e campos clínicos no nível 2 (§0.6);
+em 04/09/2026 o titular passou a alcançar o que é dele (§0.5) ·
 revisar a cada mudança de finalidade, de categoria de dado ou de local de
 armazenamento.
 
@@ -219,6 +220,77 @@ e ela continua valendo, com uma diferença de momento:
   A rota foi construída para tornar isso barato — é leitura pura, sem nome, sem
   listagem e sem dependência do resto —, mas **extrair não é o mesmo que já estar
   extraído**, e a decisão continua sendo institucional.
+
+### 0.6 Emenda de 27/10/2026 — Acidentes: o Anexo III completo (identificação pessoal e campos clínicos)
+
+**Decisão do coordenador (27/10/2026):** a CAT/SP do SISA deve coletar **todos os
+itens do Anexo III** do Manual de Perícia Oficial em Saúde do Servidor Público
+Federal (3ª ed., 2017), que é o documento que o SIASS recebe. Sem isso a CAT/SP
+do sistema não é a CAT/SP oficial. A decisão **reverte**, em parte, a minimização
+do §4.3 e do §4.5 e a proibição de CID e de texto clínico do §4.4. O que segue
+**revoga os trechos contrários daqueles itens para o módulo de Acidentes e só
+para ele**; em todos os outros módulos as proibições continuam como estão.
+
+**1. Identificação pessoal do acidentado — bloco restrito.**
+Passam a ser tratados, para o acidentado, sexo, CPF, RG, data de nascimento,
+endereço residencial (CEP, logradouro, número, complemento, bairro, cidade, UF),
+telefone e e-mail pessoais; e, para a testemunha, endereço e telefone.
+
+- **Tabela própria** (`acidente_identificacao`, 1:1 com `acidentado`; contato da
+  testemunha em `acidente_testemunha_contato`), fora do contexto congelado da
+  CAT/SP, **fora do relatório sem saúde** e fora do relatório de indicadores.
+- **Leitura por um serviço único**, com a permissão `acidente.identificacao_ver`
+  (coordenação, superintendência, engenharia, médico e técnico de segurança),
+  **finalidade escolhida em lista fechada antes de o conteúdo aparecer**
+  (contatar o envolvido, investigação, emitir a CAT/SP, instruir a perícia,
+  auditoria) e registro em `acesso_dado_sensivel`, como a saúde. O titular lê o
+  que é dele sem registro. Acesso de quem não conduz o caso gera evento próprio
+  na trilha.
+- **CPF nunca em claro na tela, no log ou na trilha**: aparece mascarado
+  (`cpf_exibicao`); a trilha diz só os **grupos de campo** que mudaram, nunca os
+  valores; o CPF não passa pelo formulário de volta (campo intocável); o dump
+  de backup e o certificado de ausência de CPF (`sem_cpf_no_dump`) tratam as
+  duas tabelas. O CPF inteiro só sai no PDF do Anexo III para o SIASS (§5).
+- **Base legal:** art. 7º, II (obrigação legal: Lei 8.112/90, arts. 212 a 214, e
+  o Anexo III do Manual de Perícia) e art. 11, II, "a" e "d" quando o dado é de
+  saúde. Finalidade: preencher a CAT/SP e instruir a perícia do SIASS, e **só
+  essa**; o dado pessoal não alimenta nenhum indicador.
+- **Menor de idade:** a data de nascimento marca o acidentado como menor na data
+  do fato (`menor_de_idade`) e a ocorrência passa a restrita à SST. A decisão do
+  item 4 do §9 segue em aberto quanto à base legal do art. 14, mas **o sistema
+  já não deixa o dado do menor aparecer fora do bloco restrito**.
+- **Retenção:** acompanha a ocorrência (permanente, POLITICA §2.4), com **proposta
+  de expurgo parcial 5 anos após a conclusão** — o CPF, o RG, o endereço, o
+  telefone e o e-mail vão a NULL, preservando nome e vínculo —, ato manual do
+  setor, com simulação e ata, como o detalhe de saúde. O prazo é proposta (§9,
+  item 10).
+
+**2. Campos clínicos do Anexo III — nível 2 da saúde.**
+`acidente_saude` ganha duração provável do tratamento, «deve afastar-se durante
+o tratamento», descrição da lesão, diagnóstico provável, **CID** e observações.
+**Isto revoga a frase «nunca CID, nunca diagnóstico, nunca texto clínico livre» do
+§4.4 e o «CID; diagnóstico» do §4.5, no módulo de Acidentes.** Os seis campos
+são **nível 2**: só o médico do trabalho os registra
+(`acidente.saude_registrar`) e os lê (`acidente.saude_detalhe_ver`), com
+finalidade e registro; o expurgo parcial os leva a NULL; a trilha guarda o nome
+do campo, nunca o valor. **O comunicante não declara estes campos**: o Anexo III
+os atribui ao serviço de saúde. **A proibição de fotografia de lesão continua
+valendo.**
+
+**3. O nexo causal continua sendo da perícia.** O sistema não o conclui: o campo
+«nexo causal» do Anexo III é preenchido a partir da decisão pericial
+registrada (reconhecido, não reconhecido, ou encaminhado ao SIASS quando ainda
+não há decisão).
+
+**4. Saída para o SIASS.** O PDF da CAT/SP no formato do Anexo III é gerado pelo
+próprio sistema, para quem tem `acidente.identificacao_ver` **e**
+`acidente.saude_detalhe_ver`, com a identificação e o detalhe de saúde abertos
+**com finalidade e registro de acesso**. Nenhum link público.
+
+**Fica em aberto** (§9, itens 4, 5 e 10): base legal do art. 14 para o menor,
+base legal do dado de comunicante e de testemunha, e o prazo do expurgo da
+identificação. **Enquanto a revogação do legado CAT/SP (Drive público, senha
+compartilhada) não for feita, o módulo de Acidentes não é ligado em produção.**
 
 ---
 
@@ -743,3 +815,5 @@ que dê para alguém agir sobre ela.
 | 7 | **Autocadastro** (decisão 8, em aberto). Se existir, muda como a conta nasce, exige confirmação de e-mail e exige regra de qual perfil ela recebe | Nenhum dos módulos depende dele hoje, então não force a decisão — mas ela muda este registro quando vier | Fabrício |
 | 8 | **Quem responde ao pedido de ficha de EPI, e por qual canal.** A linha nova do §5 registra que o compartilhamento vai existir; ela não diz quem executa | A ficha passou a existir hoje, e o §12.8 do desenho já avisava: assim que ela existir de verdade, PROGEP, procuradoria e eventualmente a Justiça do Trabalho vão pedi-la. É decisão de processo, não de engenharia — e é a diferença entre uma ficha que ajuda e uma que vira passivo. Enquanto não houver canal definido, o pedido cai em quem tiver `epi.ficha`, e cada leitura fica registrada | Fabrício, com o encarregado |
 | 9 | **A assinatura manuscrita do titular é dado biométrico?** O comprovante `FICHA_EPI` carrega a assinatura do próprio servidor, digitalizada | Tratei-a como dado pessoal comum de acesso `RESTRITO`, que é o mínimo defensável, e **não** como dado sensível do art. 11. Assinatura manuscrita não está na lista fechada daquele artigo, mas é um identificador com função de autenticação, e não conferi a leitura da ANPD sobre isso. Se ela for sensível, muda a base legal desta linha no §2 e o recorte de acesso no §6 | Encarregado |
+| 10 | **Prazo do expurgo da identificação pessoal do acidentado** (§0.6) | A proposta de 5 anos após a conclusão vem do detalhe de saúde, que já é proposta e depende da tabela de temporalidade da UFVJM. Não há norma conferida para o prazo | Encarregado, com o arquivo institucional |
+| 11 | **Legado CAT/SP.** O sistema antigo guarda CPF, RG, nascimento e endereço em Drive com link público e senha compartilhada | Não é tratamento do SISA, mas é o mesmo dado: o módulo novo não deve subir enquanto o antigo estiver exposto. Revogar o link, trocar a senha e registrar em ata | Fabrício |

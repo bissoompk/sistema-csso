@@ -87,6 +87,75 @@
     <input id="{{ p }}contato" name="{{ p }}contato_investigacao" maxlength="160" value="{{ d[p ~ 'contato_investigacao'] or '' }}"
            placeholder="e-mail institucional ou ramal">
   </div>
+  {# ANEXO III (27/10/2026): a identificação pessoal que a CAT/SP oficial pede. Bloco RESTRITO:
+     só a equipe de SST e a perícia leem, com a finalidade registrada, e nada disto vai ao
+     relatório sem saúde nem à trilha (`servicos/acidente_identificacao.ts`). Tudo opcional. #}
+  <details class="recolhido">
+    <summary>Dados pessoais do envolvido — Anexo III da CAT/SP (opcional)</summary>
+    <p class="dica">Estes dados são pedidos pelo formulário oficial da CAT/SP e ficam num bloco restrito: só a equipe de
+      segurança do trabalho e a perícia do SIASS os abrem, e cada abertura é registrada. O CPF digitado não volta para a tela.</p>
+    <div class="linha-campos">
+      <div class="campo">
+        <label for="{{ p }}sexo">Sexo</label>
+        <select id="{{ p }}sexo" name="{{ p }}sexo">
+          <option value="">—</option>
+          {% for v in SEXOS %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'sexo'], v) }}>{{ ROTULO_SEXO[v] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="{{ p }}data_nascimento">Data de nascimento</label>
+        <input id="{{ p }}data_nascimento" name="{{ p }}data_nascimento" type="date" value="{{ d[p ~ 'data_nascimento'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}cpf">CPF</label>
+        <input id="{{ p }}cpf" name="{{ p }}cpf" inputmode="numeric" maxlength="14" class="mono" autocomplete="off" placeholder="000.000.000-00">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}rg">RG</label>
+        <input id="{{ p }}rg" name="{{ p }}rg" maxlength="20" class="mono" value="{{ d[p ~ 'rg'] or '' }}">
+      </div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo">
+        <label for="{{ p }}cep">CEP</label>
+        <input id="{{ p }}cep" name="{{ p }}cep" inputmode="numeric" maxlength="9" class="mono" value="{{ d[p ~ 'cep'] or '' }}" placeholder="00000-000">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}logradouro">Logradouro</label>
+        <input id="{{ p }}logradouro" name="{{ p }}logradouro" maxlength="160" value="{{ d[p ~ 'logradouro'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}numero">Número</label>
+        <input id="{{ p }}numero" name="{{ p }}numero" maxlength="20" value="{{ d[p ~ 'numero'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}complemento">Complemento</label>
+        <input id="{{ p }}complemento" name="{{ p }}complemento" maxlength="80" value="{{ d[p ~ 'complemento'] or '' }}">
+      </div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo">
+        <label for="{{ p }}bairro">Bairro</label>
+        <input id="{{ p }}bairro" name="{{ p }}bairro" maxlength="80" value="{{ d[p ~ 'bairro'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}cidade">Cidade</label>
+        <input id="{{ p }}cidade" name="{{ p }}cidade" maxlength="80" value="{{ d[p ~ 'cidade'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}uf">UF</label>
+        <input id="{{ p }}uf" name="{{ p }}uf" maxlength="2" class="mono" value="{{ d[p ~ 'uf'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}telefone">Telefone (com DDD)</label>
+        <input id="{{ p }}telefone" name="{{ p }}telefone" inputmode="tel" maxlength="16" class="mono" value="{{ d[p ~ 'telefone'] or '' }}">
+      </div>
+      <div class="campo">
+        <label for="{{ p }}email">E-mail</label>
+        <input id="{{ p }}email" name="{{ p }}email" type="email" maxlength="160" value="{{ d[p ~ 'email'] or '' }}">
+      </div>
+    </div>
+  </details>
   <details class="recolhido">
     <summary>O que você sabe sobre a lesão (opcional)</summary>
     <p class="dica">Só o que está na lista: o médico do trabalho confirma depois. Não escreva diagnóstico.</p>

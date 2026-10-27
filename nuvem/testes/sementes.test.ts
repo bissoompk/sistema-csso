@@ -87,8 +87,8 @@ describe("sementes", () => {
       // Acidentes: os catálogos da CAT/SP (natureza da lesão: lista oficial pendente)
       acidente_parte_corpo: 44,
       acidente_agente_causador: 199,
-      acidente_agente_doenca: 30,
-      acidente_situacao_geradora: 30,
+      acidente_agente_doenca: 31,
+      acidente_situacao_geradora: 31,
       acidente_natureza_lesao: 0,
     });
   });

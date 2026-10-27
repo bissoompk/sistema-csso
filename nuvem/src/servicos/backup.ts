@@ -591,7 +591,14 @@ export interface ResultadoExportacao {
 /** Tabelas que não saem na exportação em claro: só servem para entrar no sistema. */
 export const TABELAS_DE_CREDENCIAL: ReadonlySet<string> = new Set(["sessao", "limite_login_ip"]);
 /** Tabelas com o CPF do certificado (`cpf_certificado.ts`): saem sem ele. */
-const TABELAS_COM_CPF: ReadonlySet<string> = new Set(["participante", "assinatura_instrutor", "certificado"]);
+const TABELAS_COM_CPF: ReadonlySet<string> = new Set([
+  "participante",
+  "assinatura_instrutor",
+  "certificado",
+  // identificação pessoal do Anexo III da CAT/SP: fica só no backup cifrado
+  "acidente_identificacao",
+  "acidente_testemunha_contato",
+]);
 
 /**
  * O dump sem o que dá acesso (revisão de segurança, 25/09/2026). A exportação
