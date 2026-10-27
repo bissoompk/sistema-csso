@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Indicadores de acidentes · SISA{% endblock %}
+
+{% macro bloco(titulo, dados, vazio) %}
+<div class="cartao">
+  <div class="corpo">
+    <h2>{{ titulo }}</h2>
+    {{ ui.distribuicao(dados, ind.limiar, vazio) }}
+  </div>
+</div>
+{% endmacro %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Indicadores de acidentes</h1>
+      <p class="sub">Acidentes com data entre {{ periodo.inicio|data }} e {{ periodo.fim|data }}, sem as comunicações canceladas.</p>
+      {% call ui.info('como-se-conta', 'como cada número é contado') %}
+        <p>Conta-se a <strong>ocorrência</strong> pela data do acidente, dentro do que o seu perfil alcança. Taxas de
+          frequência e de gravidade ainda não aparecem: pedem as horas trabalhadas por unidade.</p>
+        <p>Recorte com menos de {{ ind.limiar }} casos aparece como <span class="mono">—</span>, e quando só um ficaria
+          escondido o menor dos outros também se esconde, para a conta não o devolver. Com poucos casos por ano, os
+          recortes por unidade ficam quase todos assim: é esperado.</p>
+      {% endcall %}
+    </div>
+  </div>
+
+  <form method="get" action="/acidentes/indicadores" class="cartao filtros">
+    <div class="linha-campos">
+      <div><label for="f-ano">Ano</label>
+        <select id="f-ano" name="exercicio">
+          {% for a in anos %}<option value="{{ a }}"{{ ' selected' if periodo.exercicio == a }}>{{ a }}</option>{% endfor %}
+          <option value="livre"{{ ' selected' if periodo.exercicio is none }}>Período livre</option>
+        </select></div>
+      <div><label for="f-inicio">De</label><input id="f-inicio" type="date" name="inicio" value="{{ periodo.inicio if periodo.exercicio is none else '' }}"></div>
+      <div><label for="f-fim">Até</label><input id="f-fim" type="date" name="fim" value="{{ periodo.fim if periodo.exercicio is none else '' }}"></div>
+    </div>
+    <div class="acoes">
+      <button type="submit" class="secundario">Aplicar</button>
+      {% if pode_exportar %}<button type="submit" class="secundario" formaction="/acidentes/indicadores/exportar">Exportar CSV</button>{% endif %}
+    </div>
+  </form>
+
+  <div class="grade-resumo">
+    <div class="cartao-resumo">
+      <span class="rotulo">Ocorrências no período</span>
+      <span class="valor">{{ ind.total }}</span>
+      <a class="acao" href="/acidentes/fila">Ver a fila</a>
+    </div>
+    {% if ind.afastamento %}
+    <div class="cartao-resumo">
+      <span class="rotulo">Casos com afastamento</span>
+      <span class="valor">{{ ind.afastamento.casos }}</span>
+      <span class="detalhe">Dias perdidos: {{ ind.afastamento.dias }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {{ bloco('Por ano', ind.por_ano, 'Nenhuma ocorrência no período') }}
+  {{ bloco('Por espécie', ind.por_especie, 'Nenhuma ocorrência no período') }}
+  {{ bloco('Por campus', ind.por_campus, 'Nenhuma ocorrência no período') }}
+  {{ bloco('Por unidade do local', ind.por_unidade, 'Nenhuma ocorrência no período') }}
+</div>
+{% endblock %}

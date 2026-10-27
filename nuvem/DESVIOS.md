@@ -1968,3 +1968,39 @@ Aba **Plano de ação** da ficha e lista geral `/acidentes/acoes` (antes «em co
 - **Responsável na tela**: «quem conduz o caso» (padrão), «eu», unidade e nome livre. A escolha de outra conta do sistema existe no serviço, mas a tela ainda não a oferece (falta uma lista de equipe).
 - **Lista geral**: em aberto (padrão), vencidas e todas, no escopo e na regra de ocorrência restrita da conta; só mostra protocolo, nunca nome de acidentado. A secretaria (que só tria) recebe 403; o teste de telas foi ajustado.
 - **Ficou para depois**: o e-mail de prazo pela rotina, o link «Plano de ação» no hub (F8), F6 (relatório) e F7 (SIASS).
+
+## 27/10/2026 — Acidentes F6: o relatório técnico em PDF
+
+Aba **Relatórios** da ficha, sobre a tabela `acidente_relatorio` já existente (**sem migração**). Serviço `acidente_relatorio.ts` (emitir, retificar, versões, baixar), desenho `acidente_relatorio_pdf.ts` (pdf-lib, Helvetica/WinAnsi, como o certificado), rotas `POST /acidentes/:id/relatorio[/retificar]` e `GET /acidentes/:id/relatorio/:versao/:VARIANTE.pdf` (`rotas/acidente_relatorio.ts`), parcial `acidente_aba_relatorios.html`. Permissão: `acidente.relatorio_emitir` (só do perfil) **e** `acidente.saude_ver` para emitir e retificar.
+
+- **Duas variantes no mesmo ato**: COMPLETA (perícia do SIASS, com o resumo de saúde — nível 1) e SEM_SAUDE (contratada e fiscal). A sem saúde é montada **sem o campo `saude`**, não «limpa depois»; o teste confere o texto extraído do PDF e o contexto congelado.
+- **Contexto congelado com hash** (SHA-256 do JSON de chaves ordenadas), guardado em `acidente_relatorio`; o PDF vai como anexo `RELATORIO_INVESTIGACAO` (restrito). Append-only: retificar gera a versão seguinte das duas variantes com motivo (mín. uma frase) e `substitui_id`; a anterior continua legível, marcada «retificada».
+- **Emitir** exige a síntese explicativa e a caracterização na Investigação, o caso em EM_INVESTIGACAO e leva-o a RELATORIO_EMITIDO (fecha a pendência de investigar, grava a mudança de estado e o evento). Retificar mantém o estado e vale em RELATORIO_EMITIDO e ENCAMINHADA_SIASS. As evidências ficam marcadas como citadas.
+- **A saúde da variante completa é uma leitura**: passa por `acidente_saude.ler` (finalidade «instrução da perícia», `acesso_dado_sensivel` por acidentado, evento se quem emite não conduz o caso). Só o resumo (nível 1) entra; o detalhe clínico (nível 2) fica com o médico.
+- **Download** só pela porta dos anexos: escopo da ocorrência, `acidente.saude_ver` para a completa, leitura registrada (`ANEXO_BAIXADO`). A reimpressão devolve os mesmos bytes.
+- **O que o relatório diz das entrevistas**: que houve, com que vínculo e quando; o relato de cada uma fica arquivado no caso (não vai no PDF).
+- **Limite assumido**: a investigação continua travada depois do relatório, então a retificação congela de novo o que está vigente (CAT/SP retificada, plano de ação, saúde), sem reabrir o texto do MAPA.
+- **Caracteres fora do WinAnsi** saem como «?» em vez de derrubar a emissão. A assinatura oficial segue no SEI.
+- **Teste de ficha**: a aba usada como «sem parcial» passou de Relatórios para SIASS.
+- **Ficou para depois**: F7 (SIASS e conclusão), F8 (hub e indicadores), e um .docx editável opcional (D3).
+
+## 27/10/2026 — Acidentes F7: SIASS e conclusão
+
+Aba **SIASS** da ficha, sobre as tabelas `acidente_encaminhamento` e `acidente_decisao_pericial` já existentes (**sem migração**). Serviço `acidente_siass.ts`, rotas `POST /acidentes/:id/siass[/decisao|/concluir]` (`rotas/acidente_siass.ts`), parcial `acidente_aba_siass.html`. Permissão: `acidente.siass`; a leitura segue a regra das abas da investigação.
+
+- **Encaminhar** (RELATORIO_EMITIDO → ENCAMINHADA_SIASS): meio, NUP do SEI (normalizado e validado; obrigatório pelo SEI), data (não futura) e a **versão vigente do relatório completo**, que é a que a perícia recebe. Fecha o prazo legal de comunicação e abre `ACIDENTE_AGUARDA_PERICIA` (60 dias). Já encaminhado, um novo encaminhamento só acrescenta a linha (append-only; o estado não muda).
+- **Decisão pericial**: append-only; a correção é linha nova com `substitui_id`, e a tela marca a vigente. Número da CAT no SIASS em campo próprio (letras, números, ponto, barra, hífen). **A observação recusa «doença»** e qualquer termo de saúde (contexto padrão da RN-21, sem a dispensa do nexo ocupacional) e CPF. Fecha a espera da perícia.
+- **Concluir**: de ENCAMINHADA_SIASS exige a decisão registrada **ou** o motivo; de RELATORIO_EMITIDO só para o caso que a investigação marcou como «não requer CAT no SIASS», com motivo. Grava `concluida_em` e `conclusao_motivo`, fecha as pendências do caso e registra a mudança de estado (versão otimista da ocorrência). O plano de ação continua depois da conclusão.
+- A trilha diz o meio, a versão do relatório e o rótulo do resultado; nunca a observação, o NUP nem número de CAT.
+- **Ficou para depois**: F8 (hub e indicadores), e-mail de aviso ao acidentado servidor no relatório emitido/concluído (D6, desligado até configurar).
+
+## 27/10/2026 — Acidentes F8: hub e indicadores
+
+Fecha o módulo. **Sem migração.** Serviços `acidente_contagens.ts` e `acidente_indicadores.ts`, rotas `GET /acidentes/indicadores` e `GET /acidentes/indicadores/exportar` (`rotas/acidente_indicadores.ts`, no lugar do «em construção»), página `acidentes_indicadores.html` e dois atalhos novos no hub. As entradas de menu «Plano de ação» e «Indicadores» já existiam.
+
+- **Hub**: «Plano de ação» (com as ações vencidas, linkando a lista já filtrada; só para quem investiga ou encaminha ao SIASS) e «Indicadores» (`indicador.ver`). A versão pessoal (escopo próprio) continua só com comunicar e as próprias.
+- **Indicadores**: ocorrências pela data do acidente, no alcance de quem pede (escopo e restrita), sem as canceladas, por **ano, espécie, campus e unidade do local**, com seletor de ano ou período livre (o mesmo de `/epis/relatorios`).
+- **RN-19**: toda célula com menos de 5 casos sai «—», com a supressão secundária do sistema (`suprimir`: nunca sobra uma célula escondida sozinha). O total também. A tela explica que, com poucos casos por ano, o recorte por unidade fica quase todo suprimido.
+- **Afastamentos e dias perdidos** (D12): só para quem tem `acidente.saude_detalhe_ver`, e suprimidos quando os casos com afastamento são menos de 5 (a soma de dias identificaria quem se afastou). **Taxas de frequência e de gravidade ficam de fora**: pedem horas-homem trabalhadas por unidade, que o SISA não tem (parâmetro anual por campus, depois).
+- **CSV**: exige `indicador.ver` e `exportar`; UTF-8 com BOM, ponto e vírgula, `linha_csv` neutraliza fórmula. A permissão vem **antes** do período (403, e não o 422 da data torta).
+- **Fechamento do módulo**: o que o módulo ainda pede é a tabela oficial de natureza da lesão, a emenda da ROPA sobre dado de saúde, a decisão sobre ligar `CSSO_MODULO_ACIDENTES` em produção e os e-mails (D6, desligados até configurar).

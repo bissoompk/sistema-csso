@@ -1,0 +1,84 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba SIASS (F7): encaminhamentos (append-only), decisões da perícia (a correção
+   é linha nova) e a conclusão do caso. Edita quem tem `acidente.siass`. #}
+{% if not ve_investigacao %}
+<div class="cartao"><div class="vazio"><strong>Restrito à equipe que investiga</strong>
+  <span>O encaminhamento ao SIASS fica com quem conduz o caso.</span></div></div>
+{% else %}
+{% set d = digitado or {} %}
+<section class="cartao">
+  <h2>Encaminhamentos ao SIASS <span class="contador">{{ encaminhamentos|length }}</span></h2>
+  {% if encaminhamentos|length %}
+  <ul class="linha-tempo">
+    {% for e in encaminhamentos %}
+    <li>{{ e.encaminhado_em|data }} · {{ ROTULO_MEIO_ENCAMINHAMENTO[e.meio] }}{% if e.nup_sei %} · NUP <span class="mono">{{ e.nup_sei }}</span>{% endif %}
+      · relatório versão {{ e.relatorio_versao }} <span class="discreto">({{ e.por }})</span>
+      {% if e.observacao %}<span class="quebra discreto">{{ e.observacao }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="discreto">Ainda não foi encaminhada. {% if ocorrencia.estado == 'RELATORIO_EMITIDO' %}O relatório já está emitido.{% else %}O encaminhamento vem depois do relatório.{% endif %}</p>
+  {% endif %}
+  {% if pode_siass and ocorrencia.estado in ['RELATORIO_EMITIDO', 'ENCAMINHADA_SIASS'] %}
+  <details class="recolhido"><summary>{{ 'Registrar novo encaminhamento' if encaminhamentos|length else 'Encaminhar ao SIASS' }}</summary>
+    <form method="post" action="/acidentes/{{ ocorrencia.id }}/siass">
+      <input type="hidden" name="versao_ocorrencia" value="{{ ocorrencia.versao }}">
+      <div class="linha-campos">
+        <div class="campo"><label for="s-meio">Meio</label>
+          <select id="s-meio" name="meio">{% for m in MEIOS_ENCAMINHAMENTO %}<option value="{{ m }}"{% if d.meio == m %} selected{% endif %}>{{ ROTULO_MEIO_ENCAMINHAMENTO[m] }}</option>{% endfor %}</select></div>
+        <div class="campo"><label for="s-nup">NUP do SEI</label><input id="s-nup" name="nup_sei" placeholder="23086.000000/2026-00" value="{{ d.nup_sei or '' }}"></div>
+        <div class="campo"><label for="s-data">Data do encaminhamento</label><input id="s-data" type="date" name="encaminhado_em" max="{{ hoje }}" value="{{ d.encaminhado_em or hoje }}" required></div>
+      </div>
+      <div class="campo"><label for="s-obs">Observação (opcional)</label><input id="s-obs" name="observacao" maxlength="1000" value="{{ d.observacao or '' }}"></div>
+      <div class="acoes"><button type="submit" class="secundario">Registrar encaminhamento</button></div>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Decisão da perícia <span class="contador">{{ decisoes|length }}</span></h2>
+  {% if decisoes|length %}
+  <ul class="linha-tempo">
+    {% for x in decisoes %}
+    <li>{{ x.decidida_em|data }} · <strong>{{ ROTULO_RESULTADO_PERICIA[x.resultado] }}</strong>
+      {%- if x.numero_cat_siass %} · CAT no SIASS <span class="mono">{{ x.numero_cat_siass }}</span>{% endif %}
+      <span class="discreto">({{ x.por }})</span>
+      {% if x.vigente %}<span class="pilula ok sem-ponto">vigente</span>{% else %}<span class="pilula neutra sem-ponto">corrigida</span>{% endif %}
+      {% if x.observacao %}<span class="quebra discreto">{{ x.observacao }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="discreto">Sem decisão registrada.</p>
+  {% endif %}
+  {% if pode_siass and ocorrencia.estado == 'ENCAMINHADA_SIASS' %}
+  <details class="recolhido"><summary>{{ 'Corrigir a decisão' if decisoes|length else 'Registrar a decisão' }}</summary>
+    <form method="post" action="/acidentes/{{ ocorrencia.id }}/siass/decisao">
+      <div class="linha-campos">
+        <div class="campo"><label for="d-res">Resultado</label>
+          <select id="d-res" name="resultado">{% for r in RESULTADOS_PERICIA %}<option value="{{ r }}"{% if d.resultado == r %} selected{% endif %}>{{ ROTULO_RESULTADO_PERICIA[r] }}</option>{% endfor %}</select></div>
+        <div class="campo"><label for="d-data">Data da decisão</label><input id="d-data" type="date" name="decidida_em" max="{{ hoje }}" value="{{ d.decidida_em or hoje }}" required></div>
+        <div class="campo"><label for="d-cat">Número da CAT no SIASS</label><input id="d-cat" name="numero_cat_siass" maxlength="40" value="{{ d.numero_cat_siass or '' }}"></div>
+      </div>
+      <div class="campo"><label for="d-obs">Observação (sem dado clínico)</label><input id="d-obs" name="observacao" maxlength="1000" value="{{ d.observacao or '' }}"></div>
+      <div class="acoes"><button type="submit" class="secundario">Registrar decisão</button></div>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+{% if pode_siass and ocorrencia.estado in ['RELATORIO_EMITIDO', 'ENCAMINHADA_SIASS'] %}
+<section class="cartao">
+  <h2>Concluir a ocorrência</h2>
+  <p class="discreto">{% if ocorrencia.estado == 'ENCAMINHADA_SIASS' %}Exige a decisão da perícia registrada ou o motivo de concluir sem ela.
+    {% else %}Sem encaminhar ao SIASS só se conclui o caso marcado como «não requer CAT no SIASS», com o motivo.{% endif %}
+    O plano de ação continua depois da conclusão.</p>
+  <form method="post" action="/acidentes/{{ ocorrencia.id }}/siass/concluir">
+    <input type="hidden" name="versao_ocorrencia" value="{{ ocorrencia.versao }}">
+    <div class="campo"><label for="c-motivo">Motivo{{ ' (obrigatório sem decisão)' if ocorrencia.estado == 'ENCAMINHADA_SIASS' else '' }}</label>
+      <textarea id="c-motivo" name="motivo" rows="2" maxlength="2000">{{ d.motivo or '' }}</textarea></div>
+    <div class="acoes"><button type="submit" class="perigo">Concluir ocorrência</button></div>
+  </form>
+</section>
+{% endif %}
+{% endif %}
