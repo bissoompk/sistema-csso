@@ -263,7 +263,9 @@ telefone e e-mail pessoais; e, para a testemunha, endereço e telefone.
   de expurgo parcial 5 anos após a conclusão** — o CPF, o RG, o endereço, o
   telefone e o e-mail vão a NULL, preservando nome e vínculo —, ato manual do
   setor, com simulação e ata, como o detalhe de saúde. O prazo é proposta (§9,
-  item 10).
+  item 10). **A ferramenta existe** (`npm run expurgar-acidentes`, simulação por
+  padrão; POLITICA §2.4): falta o encarregado confirmar o prazo antes de
+  qualquer execução em produção.
 
 **2. Campos clínicos do Anexo III — nível 2 da saúde.**
 `acidente_saude` ganha duração provável do tratamento, «deve afastar-se durante

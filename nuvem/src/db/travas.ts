@@ -222,6 +222,8 @@ export const TRIGGERS = [
   'trg_acidente_complementacao_sem_truncate',
   'trg_acidente_complementacao_resposta',
   'trg_acidente_saude_expurgo',
+  'trg_acidente_identificacao_expurgo',
+  'trg_acidente_testemunha_contato_expurgo',
   'trg_acidente_saude_sem_delete',
   'trg_acidente_saude_sem_truncate',
 ] as const;

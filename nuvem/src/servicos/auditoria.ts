@@ -130,6 +130,7 @@ export const ACIDENTE_EMAIL_ENFILEIRADO = "ACIDENTE_EMAIL_ENFILEIRADO";
 export const ACIDENTE_LINK_GERADO = "ACIDENTE_LINK_GERADO";
 export const ACIDENTE_LINK_DESLIGADO = "ACIDENTE_LINK_DESLIGADO";
 export const ACIDENTE_IMPORTADO = "ACIDENTE_IMPORTADO";
+export const ACIDENTE_EXPURGO_PARCIAL = "ACIDENTE_EXPURGO_PARCIAL";
 
 // ---------------------------------------------------------------------
 // O nome do evento na tela
@@ -422,6 +423,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   ACIDENTE_LINK_GERADO: "Link do formulário de acidente gerado",
   ACIDENTE_LINK_DESLIGADO: "Link do formulário de acidente desligado",
   ACIDENTE_IMPORTADO: "Ocorrência migrada da planilha antiga",
+  ACIDENTE_EXPURGO_PARCIAL: "Identificação e detalhe de saúde do acidente expurgados",
 };
 
 /** `str.capitalize()` do Python: primeira maiúscula, o resto minúsculo. */

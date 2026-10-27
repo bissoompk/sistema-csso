@@ -516,6 +516,9 @@ export const acidente_identificacao = pgTable(
     email: varchar('email', { length: 160 }),
     registrado_por: integer('registrado_por'),
     registrado_em: MomentoUTC('registrado_em').notNull().$defaultFn(agora_utc),
+    // o expurgo parcial (POLITICA §2.4): os campos vão a NULL junto deste carimbo
+    // e depois dele não se preenchem de novo (trigger em `travas.sql`)
+    expurgado_em: MomentoUTC('expurgado_em'),
   },
   (t) => [
     primaryKey({ name: 'pk_acidente_identificacao', columns: [t.acidentado_id] }),
@@ -542,6 +545,8 @@ export const acidente_testemunha_contato = pgTable(
     municipio: varchar('municipio', { length: 80 }),
     uf: varchar('uf', { length: 2 }),
     telefone: varchar('telefone', { length: 11 }),
+    // o mesmo expurgo parcial da identificação do acidentado
+    expurgado_em: MomentoUTC('expurgado_em'),
   },
   (t) => [
     primaryKey({ name: 'pk_acidente_testemunha_contato', columns: [t.testemunha_id] }),

@@ -239,6 +239,13 @@
       "when": 1793111738648,
       "tag": "0033_acidente_saude_anexo_iii",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793133131446,
+      "tag": "0034_acidente_expurgo_identificacao",
+      "breakpoints": true
     }
   ]
 }

@@ -470,3 +470,15 @@ npm run importar-catsp -- --pasta ~/catsp-csv --por <login>
 ```
 
 A simulação mostra o que entraria e desfaz. O terminal só mostra protocolos e códigos. Pode repetir: o que já entrou é pulado. Ao terminar, apague a pasta e registre em ata. Os PDFs antigos se baixam à mão e se anexam a cada caso. Detalhes em `DESVIOS.md` (F9).
+
+
+## Expurgo parcial de Acidentes (ato manual, com ata)
+
+Apaga a identificação pessoal, o contato das testemunhas e o detalhe de saúde (nível 2) das ocorrências concluídas há mais de 5 anos e com decisão pericial. **Só execute depois que o encarregado confirmar o prazo** (ROPA §9, item 10). A simulação é sempre livre:
+
+```
+npm run expurgar-acidentes                                  # simulação: nada é gravado
+npm run expurgar-acidentes -- --executar --ata "Ata 3/2031" # executa, pedindo a identidade do banco
+```
+
+É **irreversível** e não copia o dado apagado: faça o backup do banco antes, se quiser poder voltar. O terminal só mostra protocolos e contagens. Cada ocorrência recebe um evento na trilha, com a ata. Registre o ato na ata do setor. Detalhes em `DESVIOS.md` e na `POLITICA_RETENCAO.md` §2.4.

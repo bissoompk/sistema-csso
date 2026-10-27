@@ -2071,8 +2071,8 @@ Decisão de 27/10/2026.
   Cumpre o bloqueador da emenda, mas o módulo continua travado em produção até a
   revogação do legado e a tabela de natureza da lesão.
 - **Expurgo da identificação**: proposta de 5 anos após a conclusão, ato manual do
-  setor com simulação e ata, **sem ferramenta ainda** (a do detalhe de saúde também
-  não existe). O prazo depende do arquivo institucional (ROPA §9, item 10).
+  setor com simulação e ata. A ferramenta foi feita depois (seção «Expurgo parcial»
+  abaixo). O prazo depende do arquivo institucional (ROPA §9, item 10).
 - **PDF do Anexo III** (`servicos/acidente_anexo_iii.ts`, rota
   `GET /acidentes/:id/anexo-iii/:acidentado.pdf`): um acidentado por vez, **montado a
   cada pedido e nunca guardado**, porque é o único lugar em que o CPF sai por
@@ -2101,3 +2101,28 @@ responsável, ações vencidas) e o **próximo passo** pelo estado do caso.
 - **Fora desta fatia:** sugerir ação ou barreira a partir do agente causador
   (exigiria uma tabela de correspondência que a equipe de segurança ainda não
   definiu; inventá-la seria pior que não ter) e qualquer leitura de texto livre.
+
+## Acidentes: expurgo parcial (27/10/2026)
+
+`npm run expurgar-acidentes` (`ferramentas/expurgar-acidentes.ts`, regra em
+`servicos/acidente_expurgo.ts`): leva a NULL a identificação do acidentado, o contato
+das testemunhas e o nível 2 da saúde de ocorrência **concluída há mais de N anos
+(padrão 5) e com decisão pericial**. É ato manual, nunca rotina nem tela.
+
+- **Simulação por padrão**: faz tudo numa transação e a desfaz. Executar exige
+  `--executar`, `--ata "<referência>"` e a identidade do banco digitada (ou
+  `--confirmar`). Um evento `ACIDENTE_EXPURGO_PARCIAL` por ocorrência, com ata e
+  contagens, nunca valor.
+- **Não copia o dado apagado** (ao contrário da limpeza de treinamentos): copiar
+  desfaria o expurgo. A salvaguarda é a simulação e o backup do banco, a critério de
+  quem executa.
+- **Migração 0034**: `expurgado_em` em `acidente_identificacao` e em
+  `acidente_testemunha_contato`; a trigger `csso_acidente_identificacao_expurgo`
+  impede alterar o carimbo e preencher de novo depois dele. A saúde já tinha
+  `detalhe_expurgado_em`.
+- A tela e o PDF do Anexo III avisam que o campo em branco foi apagado, não deixado
+  sem informar.
+- **Fora do escopo**: `acidente_testemunha.contato` (texto livre curto, anterior ao
+  Anexo III) não é expurgado; entra na discussão do prazo com o encarregado.
+- **Antes de executar em produção**, o encarregado confirma o prazo (ROPA §9, item
+  10; POLITICA §2.5, item 3). Até lá, só a simulação.
