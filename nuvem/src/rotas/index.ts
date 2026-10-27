@@ -34,6 +34,7 @@ import { rotas as certificados } from "./certificados.js";
 import { rotas as acidentes } from "./acidentes.js";
 import { rotas as acidente_publico } from "./acidente_publico.js";
 import { rotas as acidente_investigacao } from "./acidente_investigacao.js";
+import { rotas as acidente_identificacao } from "./acidente_identificacao.js";
 import { rotas as acidente_saude } from "./acidente_saude.js";
 import { rotas as acidente_acoes } from "./acidente_acoes.js";
 import { rotas as acidente_relatorio } from "./acidente_relatorio.js";
@@ -87,6 +88,7 @@ export const ROTAS: Hono<Ambiente>[] = [
   acidente_publico,
   acidente_investigacao,
   acidente_saude,
+  acidente_identificacao,
   acidente_acoes,
   acidente_relatorio,
   acidente_siass,

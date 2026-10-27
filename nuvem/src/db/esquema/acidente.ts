@@ -4,11 +4,20 @@
  * O prefixo `acidente_` está em todas, menos `acidentado`, nome que a ROPA
  * (§1.3, §4.3) e a POLITICA_RETENCAO (§2.4) já fixaram.
  *
- * **O que NÃO está aqui, de propósito (ROPA §4.3/§4.5):** CPF, RG, data de
- * nascimento, sexo, endereço residencial, telefone pessoal, CID, diagnóstico,
- * texto clínico e foto de lesão. O acidentado que não é servidor tem cadastro
- * próprio com nome e vínculo, SEM CPF (decisão D14c, 23/10/2026), e a coluna de
- * identificação externa recusa, por CHECK, o que tem cara de CPF.
+ * **O que NÃO está nas tabelas do caso, de propósito (ROPA §4.3/§4.5):** CPF,
+ * RG, data de nascimento, sexo, endereço residencial e telefone pessoal. O
+ * acidentado que não é servidor tem cadastro próprio com nome e vínculo, SEM
+ * CPF (decisão D14c, 23/10/2026), e a coluna de identificação externa recusa,
+ * por CHECK, o que tem cara de CPF.
+ *
+ * **Onde esses dados moram (27/10/2026).** O Anexo III do Manual de Perícia
+ * Oficial (a CAT/SP) pede a identificação pessoal do acidentado e o endereço das
+ * testemunhas. Por decisão do dono do sistema ela é coletada, mas num bloco
+ * RESTRITO, em tabelas próprias (`acidente_identificacao`,
+ * `acidente_testemunha_contato`), lidas só por serviço único com permissão
+ * (`acidente.identificacao_ver`) e registro em `acesso_dado_sensivel`, sem valor
+ * na trilha e fora do contexto congelado da CAT/SP e do relatório. CID,
+ * diagnóstico e texto clínico seguem fora (saúde, em `acidente_saude`).
  *
  * **Imutabilidade.** A CAT/SP é versionada e append-only; a ocorrência só muda
  * as colunas de trâmite, e os fatos do evento só mudam junto com uma versão
@@ -53,6 +62,7 @@ import {
   PADRAO_PROTOCOLO_CAT,
   PRIORIDADES,
   RESULTADOS_PERICIA,
+  SEXOS,
   SIM_NAO_NAO_SEI,
   SITUACOES_BARREIRA,
   TIPOS_ACAO,
@@ -476,6 +486,69 @@ export const acidente_testemunha = pgTable(
     foreignKey({ name: 'fk_acid_test_servidor', columns: [t.servidor_id], foreignColumns: [servidor.id] }),
     check('ck_acid_test_vinculo', em('vinculo', VINCULOS_ACIDENTADO)),
     index('ix_acid_test_ocorrencia').on(t.ocorrencia_id),
+  ],
+);
+
+/**
+ * A identificação pessoal do acidentado, exigida pelo Anexo III (CAT/SP): bloco
+ * RESTRITO, 1:1 com `acidentado`. Só o serviço `acidente_identificacao` lê, com
+ * `acidente.identificacao_ver`, e cada leitura de terceiro fica em
+ * `acesso_dado_sensivel`. Nada daqui vai à trilha (só QUE foi informado), ao
+ * contexto congelado, ao relatório nem à exportação em claro. CPF só com os
+ * onze dígitos e verificador conferido.
+ */
+export const acidente_identificacao = pgTable(
+  'acidente_identificacao',
+  {
+    acidentado_id: integer('acidentado_id').notNull(),
+    sexo: varchar('sexo', { length: 14 }),
+    cpf: varchar('cpf', { length: 11 }),
+    rg: varchar('rg', { length: 20 }),
+    data_nascimento: DataPura('data_nascimento'),
+    cep: varchar('cep', { length: 8 }),
+    logradouro: varchar('logradouro', { length: 160 }),
+    numero: varchar('numero', { length: 20 }),
+    complemento: varchar('complemento', { length: 80 }),
+    bairro: varchar('bairro', { length: 80 }),
+    cidade: varchar('cidade', { length: 80 }),
+    uf: varchar('uf', { length: 2 }),
+    telefone: varchar('telefone', { length: 11 }),
+    email: varchar('email', { length: 160 }),
+    registrado_por: integer('registrado_por'),
+    registrado_em: MomentoUTC('registrado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_acidente_identificacao', columns: [t.acidentado_id] }),
+    foreignKey({ name: 'fk_acid_ident_acidentado', columns: [t.acidentado_id], foreignColumns: [acidentado.id] }),
+    foreignKey({ name: 'fk_acid_ident_registrado_por', columns: [t.registrado_por], foreignColumns: [usuario.id] }),
+    check('ck_acid_ident_sexo', em('sexo', SEXOS)),
+    check_regex('ck_acid_ident_cpf', 'cpf', String.raw`[0-9]{11}`),
+    check_regex('ck_acid_ident_cep', 'cep', String.raw`[0-9]{8}`),
+    check_regex('ck_acid_ident_uf', 'uf', String.raw`[A-Z]{2}`),
+    check_regex('ck_acid_ident_telefone', 'telefone', String.raw`[0-9]{10,11}`),
+  ],
+);
+
+/** O endereço e o telefone da testemunha (Anexo III), no mesmo bloco restrito. */
+export const acidente_testemunha_contato = pgTable(
+  'acidente_testemunha_contato',
+  {
+    testemunha_id: integer('testemunha_id').notNull(),
+    cep: varchar('cep', { length: 8 }),
+    logradouro: varchar('logradouro', { length: 160 }),
+    numero: varchar('numero', { length: 20 }),
+    complemento: varchar('complemento', { length: 80 }),
+    bairro: varchar('bairro', { length: 80 }),
+    municipio: varchar('municipio', { length: 80 }),
+    uf: varchar('uf', { length: 2 }),
+    telefone: varchar('telefone', { length: 11 }),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_acidente_testemunha_contato', columns: [t.testemunha_id] }),
+    foreignKey({ name: 'fk_acid_test_contato_testemunha', columns: [t.testemunha_id], foreignColumns: [acidente_testemunha.id] }),
+    check_regex('ck_acid_test_contato_cep', 'cep', String.raw`[0-9]{8}`),
+    check_regex('ck_acid_test_contato_uf', 'uf', String.raw`[A-Z]{2}`),
+    check_regex('ck_acid_test_contato_telefone', 'telefone', String.raw`[0-9]{10,11}`),
   ],
 );
 

@@ -1,0 +1,74 @@
+{# A aba Identificação: os dados pessoais do Anexo III da CAT/SP (sexo, CPF, RG, nascimento,
+   endereço, telefone, e-mail) e o contato das testemunhas. Bloco RESTRITO: a finalidade se
+   escolhe ANTES de abrir e cada abertura fica registrada. O CPF aparece só mascarado. O
+   próprio acidentado lê a sua sem escolher finalidade. #}
+<section class="cartao">
+  <h2>Identificação dos envolvidos</h2>
+  <p class="discreto">São dados pessoais pedidos pelo formulário oficial da CAT/SP. Escolha para que vai ler: a escolha e a
+    leitura ficam registradas, e o titular pode pedir para ver quem leu.</p>
+  {% if not ident_acidentados|length %}
+  <div class="vazio"><strong>Nada para abrir</strong><span>Esta ocorrência não tem envolvido que você possa consultar.</span></div>
+  {% endif %}
+  {% for ia in ident_acidentados %}
+  {% set a = acidentados|selectattr('id', 'equalto', ia.id)|first %}
+  <div class="cartao liso">
+    <div class="corpo">
+      <p><strong>Envolvido nº {{ a.ordem }}</strong>
+        {%- if a.servidor %} — {% set quem = identificar(a.servidor) %}{{ quem.nome }}
+        {%- elif ve_nomes %} — {{ a.nome_externo }}
+        {%- else %} — <span class="discreto">pessoa externa {{ a.ordem }}</span>{% endif %}
+        {%- if ia.titular %} <span class="pilula ok sem-ponto">é você</span>{% endif %}
+        {%- if ia.tem %} <span class="pilula sem-ponto">informada</span>{% else %} <span class="pilula sem-ponto discreto">nada informado</span>{% endif %}</p>
+      {% if ia.pode %}
+      <form method="get" action="/acidentes/{{ ocorrencia.id }}/identificacao" class="linha-campos">
+        <input type="hidden" name="acidentado" value="{{ a.id }}">
+        {% if not ia.titular %}
+        <div class="campo"><label for="idfin-{{ a.id }}">Finalidade</label>
+          <select id="idfin-{{ a.id }}" name="finalidade" required>
+            <option value="">escolha…</option>
+            {% for f in FINALIDADES_IDENTIFICACAO %}<option value="{{ f }}"{% if ident_aberta and ident_aberta.acidentado_id == a.id and ident_aberta.finalidade == f %} selected{% endif %}>{{ ROTULO_FINALIDADE_IDENTIFICACAO[f] }}</option>{% endfor %}
+          </select></div>
+        {% endif %}
+        <div class="acoes"><button type="submit" class="secundario">Abrir identificação</button></div>
+      </form>
+      {% else %}
+      <p class="discreto">Seu perfil não abre a identificação pessoal.</p>
+      {% endif %}
+
+      {% if ident_aberta and ident_aberta.acidentado_id == a.id and ident_lida %}
+      {% set l = ident_lida %}
+      <hr>
+      {% if not l.existe %}
+      <p class="discreto">Nada foi informado para este envolvido.</p>
+      {% else %}
+      <dl class="dados">
+        <dt>Sexo</dt><dd>{{ ROTULO_SEXO[l.sexo] if l.sexo else '—' }}</dd>
+        <dt>Data de nascimento</dt><dd>{{ l.data_nascimento|data if l.data_nascimento else '—' }}</dd>
+        <dt>CPF</dt><dd class="mono">{{ l.cpf_exibicao or '—' }}</dd>
+        <dt>RG</dt><dd class="mono">{{ l.rg or '—' }}</dd>
+        <dt>Endereço</dt>
+        <dd>{% set e = l.endereco %}
+          {%- if e.logradouro or e.cep or e.cidade -%}
+          {{ e.logradouro or '' }}{{ ', ' ~ e.numero if e.numero }}{{ ' — ' ~ e.complemento if e.complemento }}<br>
+          {{ e.bairro or '' }}{{ ' · ' if e.bairro and (e.cidade or e.uf) }}{{ e.cidade or '' }}{{ '/' ~ e.uf if e.uf }}{{ ' · CEP ' ~ e.cep if e.cep }}
+          {%- else %}—{% endif %}</dd>
+        <dt>Telefone</dt><dd>{{ l.telefone or '—' }}</dd>
+        <dt>E-mail</dt><dd>{{ l.email or '—' }}</dd>
+      </dl>
+      {% endif %}
+      {% if l.testemunhas|length %}
+      <h3>Testemunhas</h3>
+      {% for t in l.testemunhas %}
+      <p><strong>Testemunha {{ loop.index }}</strong>{% if ve_nomes %} — {{ t.nome }}{% endif %}
+        {% if t.contato %}<br>{% set e = t.contato %}
+        {{ e.logradouro or '' }}{{ ', ' ~ e.numero if e.numero }}{{ ' — ' ~ e.complemento if e.complemento }}
+        {{ ' · ' ~ e.bairro if e.bairro }}{{ ' · ' ~ e.municipio if e.municipio }}{{ '/' ~ e.uf if e.uf }}{{ ' · CEP ' ~ e.cep if e.cep }}
+        {{ ' · ' ~ e.telefone if e.telefone }}
+        {% else %}<span class="discreto"> — sem endereço informado</span>{% endif %}</p>
+      {% endfor %}
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>

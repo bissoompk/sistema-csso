@@ -196,6 +196,7 @@ export const PERMISSOES: Record<string, string> = {
   "acidente.investigar": "Investigar acidente: MAPA, checklist, entrevistas, evidencias e plano de acao",
   "acidente.siass": "Encaminhar ao SIASS, registrar a decisao pericial e concluir a ocorrencia",
   "acidente.relatorio_emitir": "Emitir e retificar o relatorio tecnico do acidente",
+  "acidente.identificacao_ver": "Ver a identificacao pessoal do acidentado e o contato das testemunhas (Anexo III da CAT/SP)",
   "acidente.saude_ver": "Ver a saude do acidentado, nivel 1 (lesao em categoria fechada e fatos administrativos)",
   "acidente.saude_detalhe_ver": "Ver a saude do acidentado, nivel 2 (dias, datas e atendimento)",
   "acidente.saude_registrar": "Registrar e corrigir os dados de saude do acidentado",
@@ -289,6 +290,7 @@ export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<
       "acidente.investigar": "Investigar o acidente: análise MAPA, checklist, entrevistas, evidências e plano de ação",
       "acidente.siass": "Encaminhar ao SIASS, registrar a decisão pericial e concluir",
       "acidente.relatorio_emitir": "Emitir e retificar o relatório técnico (exige o cargo técnico)",
+      "acidente.identificacao_ver": "Ver a identificação pessoal do acidentado e o contato das testemunhas (Anexo III da CAT/SP)",
       "acidente.saude_ver": "Ver a saúde do acidentado, nível 1 (lesão em categoria e fatos administrativos)",
       "acidente.saude_detalhe_ver": "Ver a saúde do acidentado, nível 2 (dias, datas e atendimento)",
       "acidente.saude_registrar": "Registrar e corrigir os dados de saúde do acidentado",
@@ -378,6 +380,7 @@ const PERMISSOES_COORDENADOR: string[] = [
   "acidente.siass",
   "acidente.relatorio_emitir",
   "acidente.saude_ver",
+  "acidente.identificacao_ver",
   "acidente.saude_detalhe_ver",
   "acidente.saude_registrar",
 ];
@@ -552,6 +555,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.siass",
       "acidente.relatorio_emitir",
       "acidente.saude_ver",
+      "acidente.identificacao_ver",
     ],
   },
   medico_trabalho: {
@@ -605,6 +609,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.comunicar",
       "acidente.siass",
       "acidente.saude_ver",
+      "acidente.identificacao_ver",
       "acidente.saude_detalhe_ver",
       "acidente.saude_registrar",
     ],
@@ -664,6 +669,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.siass",
       "acidente.relatorio_emitir",
       "acidente.saude_ver",
+      "acidente.identificacao_ver",
     ],
   },
   almoxarife_sesmt: {

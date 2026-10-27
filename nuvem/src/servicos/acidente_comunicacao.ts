@@ -53,6 +53,7 @@ import { RegraViolada } from "../nucleo/erros.js";
 import * as acidente_email from "./acidente_email.js";
 import * as acidente_saude from "./acidente_saude.js";
 import * as auditoria from "./auditoria.js";
+import * as identificacao from "./acidente_identificacao.js";
 import { DadosFuncionaisInvalidos, faltam, resolver, type EntradaFuncional } from "./dados_funcionais.js";
 import { completar_funcionais } from "./servidores.js";
 import { proximo_numero_cat_sp } from "./numeracao.js";
@@ -105,12 +106,16 @@ export interface Envolvido {
   /** cargo e lotação, para completar o cadastro do servidor quando faltam */
   funcional?: EntradaFuncional;
   saude: SaudeDeclarada;
+  /** Anexo III: identificação pessoal (bloco restrito; só com conta, nunca no contexto congelado) */
+  identificacao?: identificacao.DadosIdentificacao;
 }
 
 export interface Testemunha {
   nome: string;
   vinculo: string | null;
   contato: string | null;
+  /** Anexo III: endereço e telefone da testemunha (bloco restrito; fora do contexto congelado) */
+  endereco?: identificacao.ContatoTestemunha;
 }
 
 export interface Fatos {
@@ -458,20 +463,25 @@ async function _resolver_envolvidos(
   return saida;
 }
 
-function _resolver_testemunhas(lista: Testemunha[]): Testemunha[] {
-  const preenchidas = lista.filter((t) => (t.nome ?? "").trim() || (t.contato ?? "").trim());
+function _resolver_testemunhas(lista: Testemunha[]): { testemunhas: Testemunha[]; enderecos: (identificacao.ContatoTestemunha | null)[] } {
+  const preenchidas = lista.filter(
+    (t) => (t.nome ?? "").trim() || (t.contato ?? "").trim() || Object.values(t.endereco ?? {}).some((v) => (v ?? "").trim()),
+  );
   if (preenchidas.length > MAXIMO_TESTEMUNHAS) {
     throw new ComunicacaoRecusada(`São no máximo ${MAXIMO_TESTEMUNHAS} testemunhas.`, "as testemunhas");
   }
-  return preenchidas.map((t, i) => {
+  const enderecos: (identificacao.ContatoTestemunha | null)[] = [];
+  const testemunhas = preenchidas.map((t, i) => {
     const nome = _texto(t.nome, `o nome da testemunha ${i + 1}`, 160);
     if (!nome) throw new ComunicacaoRecusada(`Informe o nome da testemunha ${i + 1}.`, `o nome da testemunha ${i + 1}`);
+    enderecos.push(t.endereco ? identificacao.conferir_contato(t.endereco) : null);
     return {
       nome,
       vinculo: _da_lista(t.vinculo, VINCULOS_ACIDENTADO, `o vínculo da testemunha ${i + 1}`),
       contato: _texto(t.contato, `o contato da testemunha ${i + 1}`, 160),
     };
   });
+  return { testemunhas, enderecos };
 }
 
 /** Quem comunica sem conta: nome, e-mail e vínculo (D14b), para a equipe poder voltar a ela. */
@@ -581,7 +591,13 @@ export async function comunicar(
   const fatos = await conferir_fatos(tx, bruto.fatos);
   const relato = conferir_relato(bruto.relato);
   const envolvidos = await _resolver_envolvidos(tx, usuario, bruto.envolvidos);
-  const testemunhas = _resolver_testemunhas(bruto.testemunhas);
+  const { testemunhas, enderecos: enderecos_testemunhas } = _resolver_testemunhas(bruto.testemunhas);
+  // Anexo III: a identificação só vem de quem tem conta, e é conferida antes de qualquer gravação.
+  // A data de nascimento faz a ocorrência restrita quando o acidentado era menor no dia do acidente
+  const identificacoes = envolvidos.map((e) => (usuario && e.identificacao ? identificacao.conferir(e.identificacao) : null));
+  for (const [i, e] of envolvidos.entries()) {
+    if (identificacao.era_menor_na_data(identificacoes[i]?.data_nascimento ?? null, fatos.data_evento)) e.menor_de_idade = true;
+  }
   const origem = origem_de(usuario, bruto);
 
   // o acidentado principal (escopo próprio): o primeiro servidor acidentado, ou o primeiro servidor
@@ -651,6 +667,7 @@ export async function comunicar(
       menor_de_idade: e.menor_de_idade,
     }).returning({ id: tabela_acidentado.id });
     declaracoes.push({ acidentado_id: criado!.id, saude: e.saude });
+    if (identificacoes[i]) await identificacao.gravar(tx, usuario, oc, { id: criado!.id, ordem: i + 1 }, identificacoes[i]!);
     congelados.push({
       ordem: i + 1,
       vinculo: e.vinculo,
@@ -665,8 +682,12 @@ export async function comunicar(
       contato_investigacao: e.contato_investigacao,
     });
   }
-  for (const t of testemunhas) {
-    await tx.insert(acidente_testemunha).values({ ocorrencia_id: oc.id, nome: t.nome, vinculo: t.vinculo, contato: t.contato });
+  for (const [i, t] of testemunhas.entries()) {
+    const [criada] = await tx
+      .insert(acidente_testemunha)
+      .values({ ocorrencia_id: oc.id, nome: t.nome, vinculo: t.vinculo, contato: t.contato })
+      .returning({ id: acidente_testemunha.id });
+    if (usuario && enderecos_testemunhas[i]) await identificacao.gravar_contato_testemunha(tx, usuario, oc, criada!.id, enderecos_testemunhas[i]!);
   }
   await tx.insert(acidente_comunicante).values({
     ocorrencia_id: oc.id,

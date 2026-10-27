@@ -105,6 +105,10 @@ export async function usuarioCom(c: Ctx, ...codigos: string[]): Promise<UsuarioA
  * exige (brigadista, CBMMG — "guardar CPF só para certificado", 19/10/2026).
  * Lido só por `servicos/cpf_certificado.ts`, que valida e grava os dígitos.
  * Nome exato: nenhum outro campo escapa da máscara por se parecer com ele.
+ *
+ * Segundo e último: `env_<n>_cpf`, o CPF do envolvido na comunicação de acidente
+ * (Anexo III da CAT/SP, 27/10/2026), lido só por `servicos/acidente_identificacao.ts`
+ * (dígito verificador conferido, bloco restrito). A rota nunca o devolve à tela.
  */
 export const CAMPO_CPF_CERTIFICADO = "cpf_certificado";
 
@@ -112,7 +116,7 @@ export const CAMPO_CPF_CERTIFICADO = "cpf_certificado";
 // (`senha`, `senha_atual`, e `nova`/`confirmacao` da troca de senha), token,
 // CSRF e nonce. Campo de senha novo tem de entrar aqui. E, de propósito, o
 // `cpf_certificado` (acima) — inteiro, ancorado: ele é o CPF.
-const INTOCAVEIS = /^(senha.*|nova|confirmacao|cpf_certificado)$|token|csrf|nonce/i;
+const INTOCAVEIS = /^(senha.*|nova|confirmacao|cpf_certificado|env_\d+_cpf)$|token|csrf|nonce/i;
 
 /**
  * CPF digitado em qualquer campo livre sai mascarado ANTES de chegar à rota

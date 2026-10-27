@@ -135,6 +135,27 @@ export const ROTULO_VINCULO_ACIDENTADO: Rotulos = {
   OUTRO: 'Outro',
 };
 
+// Identificação pessoal (Anexo III da CAT/SP): bloco restrito, ver
+// `acidente_identificacao`. A lista é a do legado (SEXO), sem acento no código.
+export const SEXOS = ['FEMININO', 'MASCULINO', 'OUTRO', 'NAO_INFORMADO'] as const;
+export const ROTULO_SEXO: Rotulos = {
+  FEMININO: 'Feminino',
+  MASCULINO: 'Masculino',
+  OUTRO: 'Outro',
+  NAO_INFORMADO: 'Não informado',
+};
+
+// Por que se abre a identificação pessoal: escolhida ANTES, fica em
+// `acesso_dado_sensivel` (lista fechada, como a da saúde).
+export const FINALIDADES_IDENTIFICACAO = ['CONTATAR_ENVOLVIDO', 'INVESTIGACAO', 'EMITIR_CAT_SP', 'INSTRUCAO_PERICIA', 'AUDITORIA'] as const;
+export const ROTULO_FINALIDADE_IDENTIFICACAO: Rotulos = {
+  CONTATAR_ENVOLVIDO: 'Contatar o envolvido ou a testemunha',
+  INVESTIGACAO: 'Investigar o acidente',
+  EMITIR_CAT_SP: 'Emitir a CAT/SP no formato do Anexo III',
+  INSTRUCAO_PERICIA: 'Instruir a perícia do SIASS',
+  AUDITORIA: 'Auditoria',
+};
+
 // ---------------------------------------------------------------------
 // A CAT/SP versionada
 // ---------------------------------------------------------------------

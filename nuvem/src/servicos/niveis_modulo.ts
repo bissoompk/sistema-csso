@@ -150,6 +150,7 @@ export const PERMISSOES_SO_DO_PERFIL: Readonly<Record<string, string>> = Object.
   "turma.inscrever_se": "do titular — inscrever a si mesmo",
   "turma.todos_os_setores": "alcance de setor — ver as turmas de todos os setores promotores",
   "acidente.relatorio_emitir": "ato técnico assinado — emitir o relatório do acidente segue o cargo, como a assinatura",
+  "acidente.identificacao_ver": "dado pessoal restrito (CPF, RG, endereço, telefone; LGPD; ROPA §4.3) — segue o cargo, não o módulo",
   "acidente.saude_ver": "dado de saúde, nível 1 (LGPD art. 5º, II; ROPA §4.4) — segue o cargo, não o módulo",
   "acidente.saude_detalhe_ver": "dado de saúde, nível 2 (LGPD art. 5º, II; ROPA §4.4) — segue o cargo, não o módulo",
   "acidente.saude_registrar": "dado de saúde (LGPD art. 5º, II; ROPA §4.4) — só quem registra saúde, por cargo",

@@ -47,6 +47,8 @@ import {
   MOTIVOS_CANCELAMENTO,
   ROTULO_CARACTERIZACAO,
   ROTULO_CONDICAO_ENVOLVIDO,
+  ROTULO_SEXO,
+  SEXOS,
   ROTULO_SITUACAO_BARREIRA,
   ROTULO_TIPO_BARREIRA,
   ROTULO_VARIANTE_RELATORIO,
@@ -81,6 +83,7 @@ import * as contagens from "../servicos/acidente_contagens.js";
 import * as siass from "../servicos/acidente_siass.js";
 import * as relatorio from "../servicos/acidente_relatorio.js";
 import * as plano from "../servicos/acidente_acao.js";
+import * as identificacao from "../servicos/acidente_identificacao.js";
 import * as saude from "../servicos/acidente_saude.js";
 import * as investigacao from "../servicos/acidente_investigacao.js";
 import * as checklist from "../servicos/acidente_checklist.js";
@@ -113,6 +116,7 @@ export const ABAS_FICHA: readonly (readonly [string, string])[] = [
   ["comunicacao", "Comunicação"],
   ["envolvidos", "Envolvidos"],
   ["saude", "Saúde"],
+  ["identificacao", "Identificação"],
   ["investigacao", "Investigação"],
   ["checklist", "Checklist"],
   ["entrevistas", "Entrevistas"],
@@ -391,6 +395,8 @@ const CONTEXTO_FORM = {
   ROTULO_VINCULO_ACIDENTADO,
   CONDICOES_ENVOLVIDO,
   ROTULO_CONDICAO_ENVOLVIDO,
+  SEXOS,
+  ROTULO_SEXO,
   MAXIMO_ENVOLVIDOS: comunicacao.MAXIMO_ENVOLVIDOS,
   MAXIMO_TESTEMUNHAS: comunicacao.MAXIMO_TESTEMUNHAS,
 };
@@ -465,6 +471,21 @@ function _ler_envolvidos(f: Formulario, indices: number[]): comunicacao.Envolvid
       contato_investigacao: f.opcional(p("contato_investigacao")),
       menor_de_idade: f.texto(p("menor_de_idade")) === "1",
       funcional: dados_funcionais.ler(f, `env_${i}_`),
+      identificacao: {
+        sexo: f.opcional(p("sexo")),
+        cpf: f.opcional(p("cpf")),
+        rg: f.opcional(p("rg")),
+        data_nascimento: f.opcional(p("data_nascimento")),
+        cep: f.opcional(p("cep")),
+        logradouro: f.opcional(p("logradouro")),
+        numero: f.opcional(p("numero")),
+        complemento: f.opcional(p("complemento")),
+        bairro: f.opcional(p("bairro")),
+        cidade: f.opcional(p("cidade")),
+        uf: f.opcional(p("uf")),
+        telefone: f.opcional(p("telefone")),
+        email: f.opcional(p("email")),
+      },
       saude: {
         partes_corpo_ids: f
           .todos(p("partes"))
@@ -486,6 +507,16 @@ function _ler_testemunhas(f: Formulario): comunicacao.Testemunha[] {
       nome: f.texto(`test_${i}_nome`),
       vinculo: f.opcional(`test_${i}_vinculo`),
       contato: f.opcional(`test_${i}_contato`),
+      endereco: {
+        cep: f.opcional(`test_${i}_cep`),
+        logradouro: f.opcional(`test_${i}_logradouro`),
+        numero: f.opcional(`test_${i}_numero`),
+        complemento: f.opcional(`test_${i}_complemento`),
+        bairro: f.opcional(`test_${i}_bairro`),
+        municipio: f.opcional(`test_${i}_municipio`),
+        uf: f.opcional(`test_${i}_uf`),
+        telefone: f.opcional(`test_${i}_telefone`),
+      },
     });
   }
   return saida;
@@ -498,6 +529,8 @@ function _ler_testemunhas(f: Formulario): comunicacao.Testemunha[] {
 function _digitado(f: Formulario): Record<string, unknown> {
   const saida: Record<string, unknown> = {};
   for (const nome of new Set(f.dados.keys())) {
+    // o CPF do Anexo III nunca volta para a tela (nem mascarado: o campo some e se digita de novo)
+    if (/^env_\d+_cpf$/.test(nome)) continue;
     const valores = f.todos(nome);
     saida[nome] = valores.length > 1 ? valores : (valores[0] ?? "");
   }
@@ -591,7 +624,8 @@ rotas.post(COMUNICAR, async (c) => {
         digitado: _digitado(f),
         indices,
         erro: erro.message,
-        campo_erro: erro instanceof comunicacao.ComunicacaoRecusada ? erro.campo : null,
+        campo_erro:
+          erro instanceof comunicacao.ComunicacaoRecusada || erro instanceof identificacao.IdentificacaoRecusada ? erro.campo : null,
       },
       422,
     );
@@ -729,6 +763,8 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
           atividade_no_momento: contexto?.relato.atividade_no_momento ?? "",
         };
   const dados_saude = aba === "saude" ? await saude.painel(tx, usuario, ocorrencia, envolvidos.acidentados) : {};
+  const dados_identificacao =
+    aba === "identificacao" ? await identificacao.painel(tx, usuario, ocorrencia, envolvidos.acidentados) : {};
   return pagina(
     c,
     "paginas/acidente_ficha.html",
@@ -774,6 +810,7 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       ..._recados(c),
       ...dados_investigacao,
       ...dados_saude,
+      ...dados_identificacao,
       investigacao_editavel: usuario.pode("acidente.investigar") && investigacao.editavel(ocorrencia),
       CAMPOS_TEXTO: investigacao.CAMPOS_TEXTO,
       CAMPOS_ESCOLHA: investigacao.CAMPOS_ESCOLHA,

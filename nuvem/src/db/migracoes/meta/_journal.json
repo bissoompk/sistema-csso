@@ -225,6 +225,13 @@
       "when": 1793057338503,
       "tag": "0031_desfazer_juncao",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793109882951,
+      "tag": "0032_acidente_identificacao",
+      "breakpoints": true
     }
   ]
 }
