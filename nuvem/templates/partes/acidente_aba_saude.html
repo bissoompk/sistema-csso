@@ -53,7 +53,7 @@
         {% if l.origem == 'DECLARADO_COMUNICANTE' %}<span class="pilula alerta sem-ponto">{{ ROTULO_ORIGEM_SAUDE[l.origem] }}</span>
         {% else %}<span class="pilula ok sem-ponto">{{ ROTULO_ORIGEM_SAUDE[l.origem] }}</span>{% endif %}
         {% if l.registrado_em %}<span class="discreto">· {{ l.registrado_em|momento }}</span>{% endif %}</p>
-      <dl class="dados">
+      <dl class="tabela-dados">
         <dt>Natureza da lesão</dt><dd>{{ l.natureza or '—' }}</dd>
         <dt>Partes do corpo</dt><dd>{{ l.partes|join(', ') or '—' }}</dd>
         <dt>Lateralidade</dt><dd>{{ ROTULO_LATERALIDADE[l.lateralidade] if l.lateralidade else '—' }}</dd>
@@ -103,7 +103,7 @@
               {% for v in LATERALIDADES %}<option value="{{ v }}"{% if (sd.lateralidade or l.lateralidade) == v %} selected{% endif %}>{{ ROTULO_LATERALIDADE[v] }}</option>{% endfor %}
             </select></div>
         </div>
-        <fieldset class="campo"><legend>Partes do corpo</legend>
+        <fieldset class="campo partes-corpo"><legend>Partes do corpo</legend>
           {% for p in saude_catalogos.partes %}
           <label class="alvo-marca"><input type="checkbox" name="parte_corpo_id" value="{{ p.id }}"{% if p.id in l.parte_corpo_ids %} checked{% endif %}> {{ p.rotulo }}</label>
           {% endfor %}

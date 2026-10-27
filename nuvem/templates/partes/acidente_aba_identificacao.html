@@ -45,7 +45,7 @@
       {% if not l.existe %}
       <p class="discreto">Nada foi informado para este envolvido.</p>
       {% else %}
-      <dl class="dados">
+      <dl class="tabela-dados">
         <dt>Sexo</dt><dd>{{ ROTULO_SEXO[l.sexo] if l.sexo else '—' }}</dd>
         <dt>Data de nascimento</dt><dd>{{ l.data_nascimento|data if l.data_nascimento else '—' }}</dd>
         <dt>CPF</dt><dd class="mono">{{ l.cpf_exibicao or '—' }}</dd>

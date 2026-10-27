@@ -11,13 +11,16 @@ import type { Banco } from "../src/db/cliente.js";
 import * as anexo from "../src/servicos/acidente_anexo_iii.js";
 import * as comunicacao from "../src/servicos/acidente_comunicacao.js";
 import { PermissaoNegada } from "../src/servicos/rbac.js";
-import { bancoLimpo, contas, usuarioAtual } from "./ajuda.js";
+import { bancoLimpo, contas, entrar, usuarioAtual, type Cliente } from "./ajuda.js";
 import { dados, envolvido, titular } from "./acidente_ajuda.js";
 
 let db: Banco;
+let novoCliente: () => Cliente;
 
 beforeEach(async () => {
-  db = (await bancoLimpo()).db;
+  const amb = await bancoLimpo();
+  db = amb.db;
+  novoCliente = amb.novoCliente;
   await contas(db);
 });
 
@@ -96,5 +99,25 @@ describe("o PDF do Anexo III", () => {
     const { oc } = await aberta();
     const medico = await usuarioAtual(db, "medico_trabalho");
     await expect(db.transaction((tx) => anexo.gerar_pdf(tx, medico, oc, 999999))).rejects.toBeInstanceOf(anexo.AnexoRecusado);
+  });
+});
+
+describe("pela rota", () => {
+  it("o médico baixa o PDF; o técnico recebe a negativa", async () => {
+    const { oc, env } = await aberta();
+    const medico = await entrar(novoCliente(), "medico_trabalho");
+    const r = await medico.get(`/acidentes/${oc.id}/anexo-iii/${env.id}.pdf`, { seguir: false });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("application/pdf");
+    const tecnico = await entrar(novoCliente(), "tecnico_seguranca");
+    expect((await tecnico.get(`/acidentes/${oc.id}/anexo-iii/${env.id}.pdf`, { seguir: false })).status).toBeGreaterThanOrEqual(403);
+  });
+
+  it("acidentado inexistente na URL dá 404, e a Saúde e a Identificação sem o parâmetro também (e não 500)", async () => {
+    const { oc } = await aberta();
+    const medico = await entrar(novoCliente(), "medico_trabalho");
+    expect((await medico.get(`/acidentes/${oc.id}/anexo-iii/999999.pdf`, { seguir: false })).status).toBe(404);
+    expect((await medico.get(`/acidentes/${oc.id}/saude?finalidade=INVESTIGACAO`, { seguir: false })).status).toBe(404);
+    expect((await medico.get(`/acidentes/${oc.id}/identificacao?finalidade=INVESTIGACAO`, { seguir: false })).status).toBe(404);
   });
 });

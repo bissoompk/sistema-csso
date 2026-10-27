@@ -11,9 +11,9 @@
   {% set grupo = apontamentos|selectattr('nivel', 'equalto', nivel)|list %}
   {% if grupo|length %}
   <h3>{{ ROTULO_NIVEL[nivel] }} <span class="discreto">({{ grupo|length }})</span></h3>
-  <ul class="lista-simples">
+  <ul class="lista-apontamentos">
     {% for ap in grupo %}
-    <li>{{ ap.texto }} <a href="/acidentes/{{ ocorrencia.id }}?aba={{ ap.aba }}">abrir</a></li>
+    <li class="ap-{{ ap.nivel|lower }}">{{ ap.texto }} <a href="/acidentes/{{ ocorrencia.id }}?aba={{ ap.aba }}">abrir</a></li>
     {% endfor %}
   </ul>
   {% endif %}

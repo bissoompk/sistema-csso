@@ -62,6 +62,7 @@ async function _abrir(
   status = 200,
 ) {
   const ocorrencia = await acidentes.ocorrencia_no_alcance(c, usuario, oc_id);
+  if (!Number.isInteger(acidentado_id)) throw new ErroHttp(404, "Acidentado não encontrado.");
   const base = { aba: "saude", saude_aberta: { acidentado_id, nivel, finalidade } };
   try {
     const lida = await c.get("tx").transaction((sp) => saude.ler(sp, usuario, ocorrencia, acidentado_id, nivel, finalidade));
