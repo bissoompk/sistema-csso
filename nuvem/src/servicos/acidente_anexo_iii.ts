@@ -104,6 +104,11 @@ export async function blocos_do_acidentado(tx: Executor, usuario: UsuarioAtual, 
     campo("CNPJ", ocorrencia.local_cnpj_contratada),
     campo("UF / município", [ocorrencia.local_uf, ocorrencia.local_municipio ?? campus?.cidade].filter(Boolean).join(" / ") || null),
   ];
+  // campo em branco por expurgo não é campo sem informar: o perito precisa saber
+  const apagados = [ident.expurgada_em ? "identificação pessoal" : null, sd.detalhe_expurgado ? "detalhe de saúde" : null].filter(Boolean);
+  if (apagados.length) {
+    b.splice(3, 0, { t: "aviso", texto: `Expurgo parcial: ${apagados.join(" e ")} apagado(s) por prazo de guarda cumprido (POLITICA_RETENCAO §2.4). Os campos em branco foram apagados, não deixados sem informar.` });
+  }
   const testemunhas = ident.testemunhas.slice(0, 2);
   testemunhas.forEach((t, i) => {
     const c = t.contato;

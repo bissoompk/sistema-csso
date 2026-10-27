@@ -139,8 +139,8 @@ expurga.** Duas razões somadas, e cada uma sozinha bastaria.
 | `acidente_ocorrencia`, `acidente_investigacao`, `acidente_relatorio`, `acidente_decisao_pericial` | **Permanente** | Guarda permanente | Sustentam o direito do acidentado e podem ser exigidos décadas depois. A decisão pericial é o desfecho: sem ela o registro fica pela metade |
 | `acidentado` | Acompanha a ocorrência — permanente | Guarda permanente | Inclusive quando não é servidor: é o único lugar onde a identificação dele existe |
 | `acidente_saude` — **núcleo**: parte do corpo, natureza da lesão, houve afastamento, óbito, sequela, dias de afastamento e dias debitados | **Permanente**, com o acesso restrito do `ROPA.md` §4.4 | Guarda permanente | É o que prova o direito e o que alimenta a série histórica. Apagar prejudicaria o titular — e uma taxa de gravidade que perde os dados de cinco anos atrás não é série histórica |
-| `acidente_saude` — **detalhe restante**: dias de internação, datas de início e retorno, data do óbito, quem prestou o primeiro socorro e em que unidade | **Proposta:** expurgo parcial 5 anos após a conclusão, com marca em `detalhe_expurgado_em` — **pendente**, §2.5 | Expurgo parcial, executado pelo setor e registrado em ata | A duração já está guardada em dias, e a fonte primária está no SIASS. Mas o prazo é proposta de desenho, não norma conferida |
-| `acidente_identificacao` e `acidente_testemunha_contato` — sexo, CPF, RG, nascimento, endereço, telefone e e-mail do acidentado; endereço e telefone da testemunha (`ROPA.md` §0.6) | Acompanha a ocorrência — permanente, com o acesso restrito de `acidente.identificacao_ver` | **Proposta:** expurgo parcial 5 anos após a conclusão (os campos vão a NULL; ficam nome e vínculo) — **pendente**, `ROPA.md` §9 item 10 | Expurgo parcial, executado pelo setor com simulação e registrado em ata | É o que o Anexo III exige para a perícia do SIASS e não tem outra finalidade. O prazo é proposta de desenho, não norma conferida |
+| `acidente_saude` — **detalhe restante**: dias de internação, datas de início e retorno, data do óbito, quem prestou o primeiro socorro e em que unidade | **Proposta:** expurgo parcial 5 anos após a conclusão, com marca em `detalhe_expurgado_em` — ferramenta pronta (`npm run expurgar-acidentes`), **prazo ainda pendente**, §2.5 | Expurgo parcial, executado pelo setor e registrado em ata | A duração já está guardada em dias, e a fonte primária está no SIASS. Mas o prazo é proposta de desenho, não norma conferida |
+| `acidente_identificacao` e `acidente_testemunha_contato` — sexo, CPF, RG, nascimento, endereço, telefone e e-mail do acidentado; endereço e telefone da testemunha (`ROPA.md` §0.6) | Acompanha a ocorrência — permanente, com o acesso restrito de `acidente.identificacao_ver` | **Proposta:** expurgo parcial 5 anos após a conclusão (os campos vão a NULL, com o carimbo `expurgado_em`; ficam nome e vínculo) — ferramenta pronta (`npm run expurgar-acidentes`), **prazo ainda pendente**, `ROPA.md` §9 item 10 | Expurgo parcial, executado pelo setor com simulação e registrado em ata | É o que o Anexo III exige para a perícia do SIASS e não tem outra finalidade. O prazo é proposta de desenho, não norma conferida |
 | `acidente_saude` — **campos clínicos do Anexo III**: duração provável do tratamento, deve afastar-se, descrição da lesão, diagnóstico provável, CID e observações | Nível 2, junto do detalhe restante | Expurgo parcial, na mesma regra do detalhe | Mesma regra e mesma pendência do detalhe de saúde (§2.5, item 3) |
 | `acidente_entrevista.relato` | Permanente, restrito | Guarda permanente | É a base da caracterização. Apagá-lo destruiria o fundamento do relatório — e é dado de terceiro, que merece o mesmo cuidado que a lesão |
 | `acidente_unidade_exposicao` | Permanente | Guarda permanente | Para doença relacionada ao trabalho, é a prova de **onde** a exposição aconteceu, que é dado previdenciário |
@@ -154,6 +154,17 @@ regime próprio, mais duro: **não existe caminho de edição nem de exclusão e
 camada nenhuma** — nem rota, nem serviço, nem tela. Correção é retificação, e a
 retificação preserva a versão anterior. Documento que constitui prova legal e
 que pode ser silenciosamente reescrito não prova nada.
+
+**Ferramenta (`npm run expurgar-acidentes`, 27/10/2026).** Roda em **simulação por
+padrão** (faz tudo numa transação e desfaz, mostrando por ocorrência o que seria
+apagado, sem dado). Para executar, exige `--executar`, a referência da ata
+(`--ata`) e a digitação da identidade do banco. Cobre os três grupos desta
+tabela — identificação do acidentado, contato de testemunha e nível 2 da saúde —,
+só para ocorrência **concluída há mais de N anos (padrão 5, `--anos`) e com
+decisão pericial**; grava um evento por ocorrência na trilha (ata e contagens,
+nunca valor) e não copia o dado apagado para lugar nenhum. Triggers impedem o
+dado de voltar depois do carimbo. **Sem o prazo confirmado (§2.5, item 3), não
+se executa em produção: só a simulação.**
 
 O expurgo parcial do detalhe de saúde, **se for confirmado**, é a única
 eliminação nova que **não** roda sozinha — e é assim de propósito. Ao contrário

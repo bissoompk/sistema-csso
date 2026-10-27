@@ -45,6 +45,9 @@
       {% if not l.existe %}
       <p class="discreto">Nada foi informado para este envolvido.</p>
       {% else %}
+      {% if l.expurgada_em %}
+      <p class="discreto">Dados pessoais expurgados em {{ l.expurgada_em|data }} (prazo de guarda cumprido). Ficam só o nome e o vínculo.</p>
+      {% endif %}
       <dl class="tabela-dados">
         <dt>Sexo</dt><dd>{{ ROTULO_SEXO[l.sexo] if l.sexo else '—' }}</dd>
         <dt>Data de nascimento</dt><dd>{{ l.data_nascimento|data if l.data_nascimento else '—' }}</dd>
@@ -64,7 +67,8 @@
       <h3>Testemunhas</h3>
       {% for t in l.testemunhas %}
       <p><strong>Testemunha {{ loop.index }}</strong>{% if ve_nomes %} — {{ t.nome }}{% endif %}
-        {% if t.contato %}<br>{% set e = t.contato %}
+        {% if t.contato and t.contato.expurgado_em %}<span class="discreto"> — contato expurgado em {{ t.contato.expurgado_em|data }}</span>
+        {% elif t.contato %}<br>{% set e = t.contato %}
         {{ e.logradouro or '' }}{{ ', ' ~ e.numero if e.numero }}{{ ' — ' ~ e.complemento if e.complemento }}
         {{ ' · ' ~ e.bairro if e.bairro }}{{ ' · ' ~ e.municipio if e.municipio }}{{ '/' ~ e.uf if e.uf }}{{ ' · CEP ' ~ e.cep if e.cep }}
         {{ ' · ' ~ e.telefone if e.telefone }}

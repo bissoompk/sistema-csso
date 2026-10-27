@@ -720,6 +720,39 @@ CREATE TRIGGER trg_acidente_saude_expurgo
   BEFORE UPDATE ON acidente_saude
   FOR EACH ROW EXECUTE FUNCTION csso_acidente_saude_expurgo();
 
+-- A identificacao pessoal e o contato da testemunha tem o mesmo expurgo parcial:
+-- os campos vao a NULL junto de `expurgado_em`; o carimbo nao se altera e,
+-- depois dele, nada se preenche de novo (POLITICA §2.4, ROPA §0.6).
+CREATE OR REPLACE FUNCTION csso_acidente_identificacao_expurgo() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  dados jsonb;
+BEGIN
+  IF OLD.expurgado_em IS NOT NULL AND NEW.expurgado_em IS DISTINCT FROM OLD.expurgado_em THEN
+    RAISE EXCEPTION '%: o carimbo de expurgo nao se altera', TG_TABLE_NAME
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF OLD.expurgado_em IS NOT NULL THEN
+    dados := to_jsonb(NEW) - ARRAY['acidentado_id', 'testemunha_id', 'registrado_por', 'registrado_em', 'expurgado_em'];
+    IF EXISTS (SELECT 1 FROM jsonb_each(dados) WHERE value <> 'null'::jsonb) THEN
+      RAISE EXCEPTION '%: o dado expurgado nao se preenche de novo', TG_TABLE_NAME
+        USING ERRCODE = 'integrity_constraint_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_acidente_identificacao_expurgo ON acidente_identificacao;
+CREATE TRIGGER trg_acidente_identificacao_expurgo
+  BEFORE UPDATE ON acidente_identificacao
+  FOR EACH ROW EXECUTE FUNCTION csso_acidente_identificacao_expurgo();
+
+DROP TRIGGER IF EXISTS trg_acidente_testemunha_contato_expurgo ON acidente_testemunha_contato;
+CREATE TRIGGER trg_acidente_testemunha_contato_expurgo
+  BEFORE UPDATE ON acidente_testemunha_contato
+  FOR EACH ROW EXECUTE FUNCTION csso_acidente_identificacao_expurgo();
+
 DROP TRIGGER IF EXISTS trg_acidente_saude_sem_delete ON acidente_saude;
 CREATE TRIGGER trg_acidente_saude_sem_delete
   BEFORE DELETE ON acidente_saude

@@ -292,6 +292,8 @@ export interface Leitura {
   acidentado_id: number;
   titular: boolean;
   existe: boolean;
+  /** o dia do expurgo parcial (POLITICA §2.4), ou nulo: os campos abaixo vêm vazios */
+  expurgada_em: string | null;
   sexo: string | null;
   /** nunca o número: a máscara, ou nulo */
   cpf_exibicao: string | null;
@@ -300,7 +302,7 @@ export interface Leitura {
   endereco: { cep: string | null; logradouro: string | null; numero: string | null; complemento: string | null; bairro: string | null; cidade: string | null; uf: string | null };
   telefone: string | null;
   email: string | null;
-  testemunhas: { id: number; nome: string; contato: (Omit<ContatoTestemunha, "cep" | "telefone"> & { cep: string | null; telefone: string | null }) | null }[];
+  testemunhas: { id: number; nome: string; contato: (Omit<ContatoTestemunha, "cep" | "telefone"> & { cep: string | null; telefone: string | null; expurgado_em: string | null }) | null }[];
 }
 
 /**
@@ -355,6 +357,7 @@ export async function ler(
     acidentado_id,
     titular,
     existe: Boolean(linha),
+    expurgada_em: linha?.expurgado_em ? linha.expurgado_em.toISOString().slice(0, 10) : null,
     sexo: linha?.sexo ?? null,
     cpf_exibicao: linha?.cpf ? textos.CPF_MASCARADO : null,
     rg: linha?.rg ?? null,
@@ -383,6 +386,7 @@ export async function ler(
             municipio: c.municipio,
             uf: c.uf,
             telefone: formatar_telefone(c.telefone),
+            expurgado_em: c.expurgado_em ? c.expurgado_em.toISOString().slice(0, 10) : null,
           }
         : null,
     })),

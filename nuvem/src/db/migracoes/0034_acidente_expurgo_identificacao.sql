@@ -1,0 +1,2 @@
+ALTER TABLE "acidente_identificacao" ADD COLUMN "expurgado_em" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "acidente_testemunha_contato" ADD COLUMN "expurgado_em" timestamp with time zone;
