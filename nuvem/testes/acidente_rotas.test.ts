@@ -63,10 +63,10 @@ describe("as telas do módulo de acidentes", () => {
 describe("a ficha da ocorrência", () => {
   it("abre com a aba pedida, mesmo sem o parcial da aba; aba desconhecida cai na primeira", async () => {
     const id = await ocorrencia(1, false);
-    const r = await get("coordenador_csso", `/acidentes/${id}?aba=saude`);
+    const r = await get("coordenador_csso", `/acidentes/${id}?aba=relatorios`);
     expect(r.status).toBe(200);
     expect(r.text).toContain("CAT-2031-0001");
-    expect(r.text).toContain('aria-current="page">Saúde');
+    expect(r.text).toContain('aria-current="page">Relatórios');
     // sem o parcial, a aba diz que chega depois (em branco parecia defeito)
     expect(r.text).toContain('id="aba-em-construcao"');
     const r2 = await get("coordenador_csso", `/acidentes/${id}?aba=inventada`);

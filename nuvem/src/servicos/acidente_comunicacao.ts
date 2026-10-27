@@ -51,6 +51,7 @@ import {
 import { hoje_iso } from "../dominio/datas.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as acidente_email from "./acidente_email.js";
+import * as acidente_saude from "./acidente_saude.js";
 import * as auditoria from "./auditoria.js";
 import { DadosFuncionaisInvalidos, faltam, resolver, type EntradaFuncional } from "./dados_funcionais.js";
 import { completar_funcionais } from "./servidores.js";
@@ -629,8 +630,9 @@ export async function comunicar(
   const oc = ocorrencia!;
 
   const congelados: Record<string, unknown>[] = [];
+  const declaracoes: { acidentado_id: number; saude: SaudeDeclarada }[] = [];
   for (const [i, e] of envolvidos.entries()) {
-    await tx.insert(tabela_acidentado).values({
+    const [criado] = await tx.insert(tabela_acidentado).values({
       ocorrencia_id: oc.id,
       ordem: i + 1,
       vinculo: e.vinculo,
@@ -647,7 +649,8 @@ export async function comunicar(
       siape: e.servidor?.siape ?? e.siape_digitado,
       contato_investigacao: e.contato_investigacao,
       menor_de_idade: e.menor_de_idade,
-    });
+    }).returning({ id: tabela_acidentado.id });
+    declaracoes.push({ acidentado_id: criado!.id, saude: e.saude });
     congelados.push({
       ordem: i + 1,
       vinculo: e.vinculo,
@@ -733,6 +736,8 @@ export async function comunicar(
     entidade_id: oc.id,
     prazo: com_versao!.prazo_comunicacao,
   });
+  // a saúde declarada vira linha própria (F3) e pendência para o médico confirmar
+  await acidente_saude.declarar(tx, com_versao!, declaracoes);
   await acidente_email.avisar_nova_comunicacao(tx, com_versao!, usuario);
   return com_versao!;
 }

@@ -67,6 +67,7 @@ import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
 import { escopo_ocorrencias, filtro_restrita, pode_ver_restrita_sst } from "../servicos/acidente_acesso.js";
 import * as comunicacao from "../servicos/acidente_comunicacao.js";
 import * as triagem from "../servicos/acidente_triagem.js";
+import * as saude from "../servicos/acidente_saude.js";
 import * as investigacao from "../servicos/acidente_investigacao.js";
 import * as checklist from "../servicos/acidente_checklist.js";
 import * as entrevista from "../servicos/acidente_entrevista.js";
@@ -698,6 +699,7 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
           descricao: contexto?.relato.descricao ?? "",
           atividade_no_momento: contexto?.relato.atividade_no_momento ?? "",
         };
+  const dados_saude = aba === "saude" ? await saude.painel(tx, usuario, ocorrencia, envolvidos.acidentados) : {};
   return pagina(
     c,
     "paginas/acidente_ficha.html",
@@ -742,6 +744,7 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       prazo_efetivo: ocorrencia.prazo_prorrogado_ate ?? ocorrencia.prazo_comunicacao,
       ..._recados(c),
       ...dados_investigacao,
+      ...dados_saude,
       investigacao_editavel: usuario.pode("acidente.investigar") && investigacao.editavel(ocorrencia),
       CAMPOS_TEXTO: investigacao.CAMPOS_TEXTO,
       CAMPOS_ESCOLHA: investigacao.CAMPOS_ESCOLHA,
@@ -901,6 +904,7 @@ rotas.post("/acidentes/:id{[0-9]+}/complementar", async (c) => {
 export {
   _ocorrencia as ocorrencia_no_alcance,
   _porta as porta,
+  _porta_titular as porta_titular,
   _recados as recados,
   _tela_ficha as tela_ficha,
   _catalogos as catalogos,
