@@ -830,8 +830,8 @@ export async function semear_modelo_certificado(tx: Executor): Promise<void> {
  * causadores, agentes da doença, situações geradoras e natureza da lesão.
  * Idempotente: a chave é o `rotulo_legado` (a da migração da planilha) e, onde
  * ele não existe, a `ordem`. Quem já existe não é reescrito (o rótulo pode ter
- * sido ajustado depois). A natureza da lesão está vazia até a lista oficial
- * chegar (ver `acidente_catalogos.ts`).
+ * sido ajustado depois). A natureza da lesão traz a Tabela 17 do eSocial, com o
+ * código oficial (ver `acidente_catalogos.ts`).
  */
 export async function semear_acidentes(tx: Executor): Promise<void> {
   for (const [ordem, rotulo, legado] of PARTES_DO_CORPO) {

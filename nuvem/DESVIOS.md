@@ -2147,3 +2147,23 @@ tabela de correspondência que a equipe de segurança ainda não definiu:
   `FAMILIAS_DE_AGENTE`. Sem IA (D2), sem leitura de texto livre.
 - **Fora daqui:** sugestão de barreira (`TIPOS_BARREIRA`) e de agente da doença
   (Tabela III), que pedem outra definição.
+
+## Acidentes: natureza da lesão (27/10/2026)
+
+O catálogo `NATUREZAS_DA_LESAO` deixou de ser vazio: traz as **29 linhas da Tabela 17
+do eSocial** (Descrição da Natureza da Lesão, códigos da NBR 14280), conferidas no
+Anexo I dos Leiautes do eSocial v2.5 (consolidada até a NT 19/2020), página 54 do PDF
+do gov.br. Os 29 códigos e a ordem foram cruzados com o texto extraído do PDF.
+
+- **Rótulo = abertura da descrição oficial.** O texto de orientação que a segue
+  («inclui…», «não inclui…») não foi copiado; a coluna do catálogo é curta e a ajuda
+  de preenchimento fica para quem decidir adotá-la.
+- **Linhas da própria tabela:** `702000000 Lesão imediata` e os «NIC» entram como estão.
+  Se a equipe preferir esconder a linha-grupo, é `ativo = false`, sem mudar o código.
+- **Versão:** é a v2.5 (NT 19/2020). As versões S-1.x do eSocial revisam as tabelas; se a
+  UFVJM seguir outra, a lista é trocada num ponto só (`acidente_catalogos.ts`).
+- **A semente é idempotente por `ordem`:** num banco que já rodou a semente com a lista
+  vazia, o próximo deploy insere as 29 linhas, sem tocar o que existe.
+- A tela de saúde (F3) passa a oferecer a natureza da lesão; antes o campo ficava sem opção.
+- **Falta conferir** com a equipe se a lista do eSocial é a mesma que o Anexo III.2 do
+  Manual de Perícia pede para a CAT/SP; o manual remete à tabela do eSocial.

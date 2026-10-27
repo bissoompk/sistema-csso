@@ -44,13 +44,21 @@ async function contar() {
 }
 
 describe("catálogos de acidente", () => {
-  it("as listas têm 44, 199, 31 e 31 itens (a oficial do Anexo III.2); a natureza da lesão espera a lista oficial", async () => {
+  it("as listas têm 44, 199, 31 e 31 itens (a oficial do Anexo III.2) e a natureza da lesão, 29 (Tabela 17 do eSocial)", async () => {
     expect(PARTES_DO_CORPO).toHaveLength(44);
     expect(AGENTES_CAUSADORES).toHaveLength(199);
     expect(AGENTES_DA_DOENCA).toHaveLength(31);
     expect(SITUACOES_GERADORAS).toHaveLength(31);
-    expect(NATUREZAS_DA_LESAO).toHaveLength(0);
-    expect(await contar()).toEqual({ partes: 44, agentes: 199, doenca: 31, situacoes: 31, naturezas: 0 });
+    expect(NATUREZAS_DA_LESAO).toHaveLength(29);
+    expect(await contar()).toEqual({ partes: 44, agentes: 199, doenca: 31, situacoes: 31, naturezas: 29 });
+  });
+
+  it("a natureza da lesão traz código oficial de 9 dígitos, único, e rótulo que cabe na coluna", () => {
+    const codigos = NATUREZAS_DA_LESAO.map((n) => n[2]);
+    expect(codigos.every((c) => /^\d{9}$/.test(c ?? ""))).toBe(true);
+    expect(new Set(codigos).size).toBe(codigos.length);
+    expect(NATUREZAS_DA_LESAO.map((n) => n[0])).toEqual(NATUREZAS_DA_LESAO.map((_, i) => i + 1));
+    expect(NATUREZAS_DA_LESAO.every((n) => n[1].length > 0 && n[1].length <= 240)).toBe(true);
   });
 
   it("semear de novo não duplica nada", async () => {
