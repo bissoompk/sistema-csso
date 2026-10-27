@@ -1945,3 +1945,14 @@ Segue o `docs/especificacoes/duplicados/aviso_visitante.md` (§3 e §4, etapa 2)
 - **«Gravar que não são a mesma pessoa»** vem marcado de saída (desfazer costuma ser a correção de quem juntou errado): grava o par (`participante_par_distinto`, origem `JUNCAO`), e o aviso de parecido não volta. Desmarcado, o par pode voltar a aparecer como parecido.
 - **A linha da junção não se apaga**: fica com quem desfez, quando e por quê, e o `movido` segue dizendo o que foi movido. Juntar de novo cria uma linha nova.
 - **Ficou para depois**: a carga de certificados antigos (IntegraSST/planilhas), que precisa de amostra dos arquivos.
+
+## 26/10/2026 — Acidentes F3: a saúde do acidentado
+
+Aba **Saúde** da ficha da ocorrência, sobre as tabelas `acidente_saude*` já existentes (**sem migração**). Serviço `acidente_saude.ts` (leitura única `ler`, escrita `registrar`, `declarar`, `painel`), rotas `GET|POST /acidentes/:id/saude` (`rotas/acidente_saude.ts`), parcial `acidente_aba_saude.html`.
+
+- **A declaração do comunicante vira linha.** Na comunicação, quem declarou partes do corpo ou algum fato SIM/NÃO gera uma linha `DECLARADO_COMUNICANTE` por acidentado e a pendência `ACIDENTE_SAUDE_REGISTRAR` (texto só com o protocolo). O médico confirma pelo registro: a origem passa a `REGISTRADO_MEDICO` e, não restando declaração a confirmar na ocorrência, a pendência fecha.
+- **Leitura.** Nível 1 exige `acidente.saude_ver`; nível 2 exige também `acidente.saude_detalhe_ver`. A finalidade (lista fechada) se escolhe antes: sem ela, nada é aberto e nada é registrado. Cada abertura grava `acesso_dado_sensivel` (com `acidentado_id` e a ocorrência); quem abre sem ser o responsável pelo caso deixa também `ACIDENTE_SAUDE_FORA_RESPONSAVEL`, sem valores. O **próprio acidentado servidor** lê tudo da sua ocorrência, sem finalidade e sem registro. Ocorrência restrita (menor de idade) só se abre a quem instrui o caso, ou ao titular.
+- **Escrita.** Só `acidente.saude_registrar`, com controle de versão (409 se a tela estiver velha). A trilha lista **nomes de campos**, nunca valores. O nível 2 já preenchido **não se apaga** por aqui (a trigger só o deixa ir a NULL com o expurgo parcial): o serviço recusa antes, com a frase certa.
+- **Natureza da lesão: catálogo vazio.** A tabela oficial (NBR 14280 / eSocial 17) ainda não foi fornecida; o campo aparece sem opções, com aviso na tela. Quando vier, entra por semente, sem mudar código.
+- **Teste de ficha**: a aba usada como «sem parcial» passou de Saúde para Relatórios.
+- **Ficou para depois**: expurgo parcial por tela (hoje só ato manual, POLITICA §2.4), F5, F6 (relatório) e a emenda da ROPA sobre dado de saúde antes de ligar Acidentes em produção.

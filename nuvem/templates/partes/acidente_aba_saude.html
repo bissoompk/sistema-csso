@@ -1,0 +1,143 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Saúde (F3). Dado sensível em dois níveis (ROPA §4.4): a finalidade se
+   escolhe ANTES de abrir e cada abertura fica registrada. O nível 1 é o resumo
+   (natureza, partes do corpo, fatos); o nível 2, o detalhe (dias, datas,
+   primeiro socorro). O próprio acidentado lê tudo sem escolher finalidade. O
+   que o comunicante declarou aparece como «a confirmar» até o médico registrar.
+   Nome de quem não é servidor segue a RN-19 (`ve_nomes`). #}
+<section class="cartao">
+  <h2>Saúde dos envolvidos</h2>
+  <p class="discreto">Dado de saúde é sensível: escolha para que vai ler. A escolha e a leitura ficam registradas, e o
+    titular pode pedir para ver quem leu.</p>
+  {% if not saude_acidentados|length %}
+  <div class="vazio"><strong>Nada para abrir</strong><span>Esta ocorrência não tem acidentado que você possa consultar.</span></div>
+  {% endif %}
+  {% for sa in saude_acidentados %}
+  {% set a = acidentados|selectattr('id', 'equalto', sa.id)|first %}
+  <div class="cartao liso">
+    <div class="corpo">
+      <p><strong>Acidentado nº {{ a.ordem }}</strong>
+        {%- if a.servidor %} — {% set quem = identificar(a.servidor) %}{{ quem.nome }}
+        {%- elif ve_nomes %} — {{ a.nome_externo }}
+        {%- else %} — <span class="discreto">pessoa externa {{ a.ordem }}</span>{% endif %}
+        {%- if sa.titular %} <span class="pilula ok sem-ponto">é você</span>{% endif %}</p>
+      {% if sa.nivel_1 %}
+      <form method="get" action="/acidentes/{{ ocorrencia.id }}/saude" class="linha-campos">
+        <input type="hidden" name="acidentado" value="{{ a.id }}">
+        {% if not sa.titular %}
+        <div class="campo"><label for="fin-{{ a.id }}">Finalidade</label>
+          <select id="fin-{{ a.id }}" name="finalidade" required>
+            <option value="">escolha…</option>
+            {% for f in FINALIDADES_SAUDE %}<option value="{{ f }}"{% if saude_aberta and saude_aberta.acidentado_id == a.id and saude_aberta.finalidade == f %} selected{% endif %}>{{ ROTULO_FINALIDADE_SAUDE[f] }}</option>{% endfor %}
+          </select></div>
+        {% endif %}
+        <div class="campo"><label for="niv-{{ a.id }}">O que abrir</label>
+          <select id="niv-{{ a.id }}" name="nivel">
+            <option value="1">Resumo (nível 1)</option>
+            {% if sa.nivel_2 %}<option value="2"{% if saude_aberta and saude_aberta.acidentado_id == a.id and saude_aberta.nivel == 2 %} selected{% endif %}>Detalhe (nível 2)</option>{% endif %}
+          </select></div>
+        <div class="acoes"><button type="submit" class="secundario">Abrir saúde</button></div>
+      </form>
+      {% else %}
+      <p class="discreto">Seu perfil não abre a saúde.</p>
+      {% endif %}
+
+      {% if saude_aberta and saude_aberta.acidentado_id == a.id and saude_lida %}
+      {% set l = saude_lida %}
+      {% set sd = saude_digitado or {} %}
+      <hr>
+      {% if not l.existe %}
+      <p class="discreto">Ainda não há saúde registrada para este acidentado.</p>
+      {% else %}
+      <p>
+        {% if l.origem == 'DECLARADO_COMUNICANTE' %}<span class="pilula alerta sem-ponto">{{ ROTULO_ORIGEM_SAUDE[l.origem] }}</span>
+        {% else %}<span class="pilula ok sem-ponto">{{ ROTULO_ORIGEM_SAUDE[l.origem] }}</span>{% endif %}
+        {% if l.registrado_em %}<span class="discreto">· {{ l.registrado_em|momento }}</span>{% endif %}</p>
+      <dl class="dados">
+        <dt>Natureza da lesão</dt><dd>{{ l.natureza or '—' }}</dd>
+        <dt>Partes do corpo</dt><dd>{{ l.partes|join(', ') or '—' }}</dd>
+        <dt>Lateralidade</dt><dd>{{ ROTULO_LATERALIDADE[l.lateralidade] if l.lateralidade else '—' }}</dd>
+        <dt>Atendimento</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[l.fatos.houve_atendimento] if l.fatos.houve_atendimento else '—' }}</dd>
+        <dt>Afastamento</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[l.fatos.houve_afastamento] if l.fatos.houve_afastamento else '—' }}</dd>
+        <dt>Internação</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[l.fatos.houve_internacao] if l.fatos.houve_internacao else '—' }}</dd>
+        <dt>Óbito</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[l.fatos.houve_obito] if l.fatos.houve_obito else '—' }}</dd>
+        <dt>Sequela</dt><dd>{{ ROTULO_SIM_NAO_NAO_SEI[l.fatos.houve_sequela] if l.fatos.houve_sequela else '—' }}</dd>
+        {% if l.detalhe %}
+        <dt>Dias de afastamento</dt><dd>{{ l.detalhe.dias_afastamento if l.detalhe.dias_afastamento is not none else '—' }}</dd>
+        <dt>Afastamento</dt><dd>{{ l.detalhe.afastamento_inicio or '—' }} a {{ l.detalhe.afastamento_retorno or '—' }}</dd>
+        <dt>Dias de internação</dt><dd>{{ l.detalhe.dias_internacao if l.detalhe.dias_internacao is not none else '—' }}</dd>
+        <dt>Data do óbito</dt><dd>{{ l.detalhe.data_obito or '—' }}</dd>
+        <dt>Dias debitados</dt><dd>{{ l.detalhe.dias_debitados if l.detalhe.dias_debitados is not none else '—' }}</dd>
+        <dt>Primeiro socorro</dt><dd>{{ l.detalhe.primeiro_socorro_por or '—' }}{% if l.detalhe.primeiro_socorro_unidade %} · {{ l.detalhe.primeiro_socorro_unidade }}{% endif %}</dd>
+        <dt>Atendimento em</dt><dd>{{ l.detalhe.atendimento_em|momento if l.detalhe.atendimento_em else '—' }}</dd>
+        {% endif %}
+      </dl>
+      {% if l.detalhe_expurgado %}<p class="discreto">O detalhe (nível 2) foi expurgado e não se preenche de novo.</p>{% endif %}
+      {% endif %}
+
+      {# o registro do médico: só no detalhe aberto, para quem pode registrar #}
+      {% if saude_pode_registrar and saude_aberta.nivel == 2 %}
+      <h3>{{ 'Confirmar ou corrigir' if l.existe else 'Registrar' }}</h3>
+      {% if saude_catalogos.naturezas|length == 0 %}
+      <p class="discreto">A tabela oficial de natureza da lesão ainda não foi carregada; o campo fica sem opções até lá.</p>
+      {% endif %}
+      <form method="post" action="/acidentes/{{ ocorrencia.id }}/saude">
+        <input type="hidden" name="acidentado_id" value="{{ a.id }}">
+        <input type="hidden" name="versao" value="{{ l.versao }}">
+        <input type="hidden" name="finalidade" value="{{ saude_aberta.finalidade }}">
+        <div class="linha-campos">
+          <div class="campo"><label for="nat-{{ a.id }}">Natureza da lesão</label>
+            <select id="nat-{{ a.id }}" name="natureza_lesao_id">
+              <option value="">—</option>
+              {% for n in saude_catalogos.naturezas %}<option value="{{ n.id }}"{% if (sd.natureza_lesao_id or l.natureza_lesao_id)|string == n.id|string %} selected{% endif %}>{{ n.rotulo }}</option>{% endfor %}
+            </select></div>
+          <div class="campo"><label for="lat-{{ a.id }}">Lateralidade</label>
+            <select id="lat-{{ a.id }}" name="lateralidade">
+              <option value="">—</option>
+              {% for v in LATERALIDADES %}<option value="{{ v }}"{% if (sd.lateralidade or l.lateralidade) == v %} selected{% endif %}>{{ ROTULO_LATERALIDADE[v] }}</option>{% endfor %}
+            </select></div>
+        </div>
+        <fieldset class="campo"><legend>Partes do corpo</legend>
+          {% for p in saude_catalogos.partes %}
+          <label class="alvo-marca"><input type="checkbox" name="parte_corpo_id" value="{{ p.id }}"{% if p.id in l.parte_corpo_ids %} checked{% endif %}> {{ p.rotulo }}</label>
+          {% endfor %}
+        </fieldset>
+        <div class="linha-campos">
+          {% for campo, rotulo in [['houve_atendimento','Atendimento'],['houve_afastamento','Afastamento'],['houve_internacao','Internação'],['houve_obito','Óbito'],['houve_sequela','Sequela']] %}
+          <div class="campo"><label for="{{ campo }}-{{ a.id }}">{{ rotulo }}</label>
+            <select id="{{ campo }}-{{ a.id }}" name="{{ campo }}">
+              <option value="">—</option>
+              {% for v in SIM_NAO_NAO_SEI %}<option value="{{ v }}"{% if (sd[campo] or l.fatos[campo]) == v %} selected{% endif %}>{{ ROTULO_SIM_NAO_NAO_SEI[v] }}</option>{% endfor %}
+            </select></div>
+          {% endfor %}
+        </div>
+        <div class="linha-campos">
+          <div class="campo"><label for="da-{{ a.id }}">Dias de afastamento</label>
+            <input id="da-{{ a.id }}" type="number" min="0" name="dias_afastamento" value="{{ sd.dias_afastamento if sd.dias_afastamento is defined else (l.detalhe.dias_afastamento if l.detalhe and l.detalhe.dias_afastamento is not none else '') }}"></div>
+          <div class="campo"><label for="ai-{{ a.id }}">Início do afastamento</label>
+            <input id="ai-{{ a.id }}" type="date" name="afastamento_inicio" value="{{ sd.afastamento_inicio if sd.afastamento_inicio is defined else (l.detalhe.afastamento_inicio or '' if l.detalhe else '') }}"></div>
+          <div class="campo"><label for="ar-{{ a.id }}">Retorno</label>
+            <input id="ar-{{ a.id }}" type="date" name="afastamento_retorno" value="{{ sd.afastamento_retorno if sd.afastamento_retorno is defined else (l.detalhe.afastamento_retorno or '' if l.detalhe else '') }}"></div>
+          <div class="campo"><label for="di-{{ a.id }}">Dias de internação</label>
+            <input id="di-{{ a.id }}" type="number" min="0" name="dias_internacao" value="{{ sd.dias_internacao if sd.dias_internacao is defined else (l.detalhe.dias_internacao if l.detalhe and l.detalhe.dias_internacao is not none else '') }}"></div>
+        </div>
+        <div class="linha-campos">
+          <div class="campo"><label for="do-{{ a.id }}">Data do óbito</label>
+            <input id="do-{{ a.id }}" type="date" name="data_obito" value="{{ sd.data_obito if sd.data_obito is defined else (l.detalhe.data_obito or '' if l.detalhe else '') }}"></div>
+          <div class="campo"><label for="dd-{{ a.id }}">Dias debitados</label>
+            <input id="dd-{{ a.id }}" type="number" min="0" name="dias_debitados" value="{{ sd.dias_debitados if sd.dias_debitados is defined else (l.detalhe.dias_debitados if l.detalhe and l.detalhe.dias_debitados is not none else '') }}"></div>
+          <div class="campo"><label for="ps-{{ a.id }}">Primeiro socorro: quem</label>
+            <input id="ps-{{ a.id }}" name="primeiro_socorro_por" maxlength="120" value="{{ sd.primeiro_socorro_por if sd.primeiro_socorro_por is defined else (l.detalhe.primeiro_socorro_por or '' if l.detalhe else '') }}"></div>
+          <div class="campo"><label for="pu-{{ a.id }}">Primeiro socorro: onde</label>
+            <input id="pu-{{ a.id }}" name="primeiro_socorro_unidade" maxlength="160" value="{{ sd.primeiro_socorro_unidade if sd.primeiro_socorro_unidade is defined else (l.detalhe.primeiro_socorro_unidade or '' if l.detalhe else '') }}"></div>
+          <div class="campo"><label for="ae-{{ a.id }}">Atendimento em</label>
+            <input id="ae-{{ a.id }}" type="datetime-local" name="atendimento_em" value="{{ sd.atendimento_em if sd.atendimento_em is defined else (momento_campo(l.detalhe.atendimento_em) if l.detalhe else '') }}"></div>
+        </div>
+        <div class="acoes"><button type="submit" class="secundario">Salvar saúde</button></div>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
