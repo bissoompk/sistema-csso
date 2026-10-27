@@ -455,10 +455,50 @@ npm run criar-acessos
 
 Cada servidor define a senha em «Ativar meu acesso» (ou «Esqueci minha senha») na tela de login. Quem está sem e-mail institucional no cadastro não ganha acesso: a ficha e `/config` mostram quantos são.
 
-## 11. Liberar o módulo de acidentes
+## 11. Liberar o módulo de acidentes (roteiro)
 
-O módulo Análise de Acidentes fica **seguro na produção** até o relatório (F6) e a emenda da ROPA que trata o dado de saúde: o cartão aparece «em desenvolvimento» e as telas `/acidentes` respondem 404. Para liberar, no painel do Netlify, acrescente `CSSO_MODULO_ACIDENTES=sim` e publique de novo. Para voltar a segurar, apague a variável (ou ponha `nao`) e publique.
+O módulo fica **travado na produção**: o cartão aparece «em desenvolvimento» e as telas `/acidentes` respondem 404, até a variável `CSSO_MODULO_ACIDENTES=sim`. Siga as etapas na ordem. **Etapa A é pré-requisito: sem ela, não ligue.**
 
+### A. Antes de ligar (decisões e ações fora do código)
+
+- [ ] **Revogar o legado CAT/SP**: tirar o link público do Drive e trocar a senha compartilhada. O módulo novo coleta CPF e saúde; manter o legado aberto torna a ROPA falsa (ROPA §0.6).
+- [ ] **O encarregado decide os itens abertos da ROPA §9**: 4 (base legal do art. 14 para o menor), 5 (base legal do comunicante e da testemunha), 10 (prazo do expurgo da identificação) e 11 (legado). O sistema já protege o dado do menor; falta a base legal escrita.
+- [ ] **Conferir a natureza da lesão**: a lista é a Tabela 17 do eSocial v2.5 (29 linhas). Confirmar com a equipe se é a mesma que o Anexo III.2 do Manual de Perícia pede.
+- [ ] **Conferir os itens 107 e 108 do agente causador** e o «ARQUIBANCADA, ESTÁDIO» extra (`DESVIOS.md`).
+- [ ] **A equipe de segurança revisa as sugestões por família de agente** (`src/dominio/acidente_sugestoes.ts`). Não bloqueia a liberação (só aponta), mas o texto é rascunho.
+- [ ] **Conferir que o último deploy rodou**: abra a aba Saúde de um caso e veja se o campo «natureza da lesão» tem opções (a lista entra pelo deploy).
+
+### B. Quem vê o quê (conferir em Gerir antes de abrir)
+
+| Perfil | Ficha e Análise | Identificação (CPF etc.) | Saúde nível 2 e PDF do Anexo III |
+|---|---|---|---|
+| Médico do trabalho, coordenação, superintendência | sim | sim | sim |
+| Engenheiro e técnico de segurança | sim | sim | não |
+| Secretaria | sim | não | não |
+| Almoxarife, administrador | não | não | não |
+| Servidor | só o caso em que é acidentado | só a dele | só a saúde dele, sem o PDF |
+
+Confira se as atribuições vigentes estão certas: quem não devia ver CPF não pode ter o perfil de engenheiro ou técnico.
+
+### C. Ligar
+
+1. **Ensaie fora da produção.** Caso criado em produção **não se apaga** (a CAT/SP é append-only; correção é retificação). Um caso de teste lá fica para sempre. Use um banco de teste: `npm run ambiente-teste` com `DATABASE_URL` apontando para um banco separado, e rode `npm run dev`.
+2. No painel do Netlify, acrescente `CSSO_MODULO_ACIDENTES=sim` e publique de novo.
+3. Acompanhe o **primeiro caso real** de ponta a ponta (comunicação, triagem, saúde pelo médico, relatório) antes de divulgar para os demais.
+
+### D. E-mails do módulo (opcional, desligados por padrão)
+
+Com o módulo estável, para avisar o setor de cada comunicação nova e confirmar ao comunicante: `CSSO_ACIDENTE_EMAIL=sim` e `CSSO_ACIDENTE_EMAIL_SETOR=<endereço do setor>`, e publique. Antes, teste o envio com `npm run testar-email`. O corpo leva só protocolo, o que aconteceu e o link; nunca dado de saúde ou identificação.
+
+### E. Casos do sistema antigo (uma vez)
+
+Depois de ligar e **depois de revogar o legado**: a importação está na seção «Migração dos casos do CAT/SP antigo», abaixo. Rode sempre `--simular` primeiro.
+
+### F. Depois de ligar
+
+- **Expurgo** (seção «Expurgo parcial», abaixo): só execute com o prazo confirmado pelo encarregado. A simulação é livre.
+- **Backup** do banco antes de qualquer expurgo ou importação.
+- **Para voltar a segurar**: apague a variável (ou ponha `nao`) e publique. Os dados ficam; só as telas somem.
 
 ## Migração dos casos do CAT/SP antigo (uma vez)
 
