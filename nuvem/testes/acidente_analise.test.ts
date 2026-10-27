@@ -10,7 +10,7 @@ import type { Banco } from "../src/db/cliente.js";
 import * as analise from "../src/servicos/acidente_analise.js";
 import { PermissaoNegada } from "../src/servicos/rbac.js";
 import { bancoLimpo, contas, entrar, usuarioAtual, type Cliente } from "./ajuda.js";
-import { em_investigacao } from "./acidente_ajuda.js";
+import { dados, em_investigacao } from "./acidente_ajuda.js";
 
 const BASE: analise.FatosAnalise = {
   hoje: "2026-10-27",
@@ -28,6 +28,29 @@ const BASE: analise.FatosAnalise = {
 };
 const com = (oc: Partial<analise.FatosAnalise["oc"]> = {}, resto: Partial<analise.FatosAnalise> = {}): analise.FatosAnalise => ({ ...BASE, ...resto, oc: { ...BASE.oc, ...oc } });
 const textos = (f: analise.FatosAnalise) => analise.avaliar(f).map((a) => a.texto).join("\n");
+
+describe("sugestões por família do agente causador", () => {
+  const maquina = { agente: { ordem: 70, rotulo: "MÁQUINA DE FUNDIR" } };
+
+  it("sem agente escolhido ou fora da investigação, não sugere nada", () => {
+    expect(textos(com({}, { agente: null }))).not.toMatch(/família/);
+    expect(textos(com({ estado: "RELATORIO_EMITIDO" }, maquina))).not.toMatch(/família/);
+  });
+
+  it("agente de máquina com plano sem ação do tipo sugerido: lista os tipos que faltam, avisando que é sugestão", () => {
+    const t = textos(com({}, { ...maquina, tipos_de_acao: ["TREINAMENTO"] }));
+    expect(t).toMatch(/família máquinas e transportadores/);
+    expect(t).toMatch(/Engenharia \/ proteção coletiva \(proteção de partes móveis/);
+    expect(t).toMatch(/Procedimento \(bloqueio e etiquetagem/);
+    expect(t).not.toMatch(/Treinamento \/ orientação \(operação segura/);
+    expect(t).toMatch(/A equipe de segurança decide/);
+  });
+
+  it("some quando o plano já tem uma ação de cada tipo sugerido", () => {
+    const todos = ["ENGENHARIA", "PROCEDIMENTO", "TREINAMENTO", "SINALIZACAO"];
+    expect(textos(com({}, { ...maquina, tipos_de_acao: todos }))).not.toMatch(/família/);
+  });
+});
 
 describe("avaliar", () => {
   it("o caso completo só tem o próximo passo: emitir o relatório", () => {
@@ -115,6 +138,19 @@ describe("do banco e pela tela", () => {
     expect(r.some((a) => a.nivel === "PROXIMO_PASSO")).toBe(true);
     expect(await db.select().from(e.acesso_dado_sensivel)).toHaveLength(0);
     expect(await db.select().from(e.acidente_ocorrencia).where(eq(e.acidente_ocorrencia.id, oc.id))).toHaveLength(1);
+  });
+
+  it("com o agente causador escolhido, sugere pela família e deixa de sugerir quando o plano cobre", async () => {
+    const [maquina] = await db.select().from(e.acidente_agente_causador).where(eq(e.acidente_agente_causador.ordem, 64));
+    expect(maquina).toBeTruthy();
+    // os fatos do evento não mudam depois (trigger): o caso já nasce com o agente
+    const { oc } = await em_investigacao(db, { fatos: { ...dados().fatos, agente_causador_id: maquina!.id } });
+    const [atual] = await db.select().from(e.acidente_ocorrencia).where(eq(e.acidente_ocorrencia.id, oc.id));
+    const tecnico = await usuarioAtual(db, "tecnico_seguranca");
+    const r = await db.transaction((tx) => analise.do_caso(tx, tecnico, atual!));
+    const sugestao = r.find((a) => /família máquinas e transportadores/.test(a.texto));
+    expect(sugestao?.nivel).toBe("PROXIMO_PASSO");
+    expect(sugestao?.texto).toContain(maquina!.rotulo);
   });
 
   it("quem não investiga nem encaminha é negado", async () => {
