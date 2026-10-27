@@ -459,3 +459,14 @@ Cada servidor define a senha em «Ativar meu acesso» (ou «Esqueci minha senha�
 
 O módulo Análise de Acidentes fica **seguro na produção** até o relatório (F6) e a emenda da ROPA que trata o dado de saúde: o cartão aparece «em desenvolvimento» e as telas `/acidentes` respondem 404. Para liberar, no painel do Netlify, acrescente `CSSO_MODULO_ACIDENTES=sim` e publique de novo. Para voltar a segurar, apague a variável (ou ponha `nao`) e publique.
 
+
+## Migração dos casos do CAT/SP antigo (uma vez)
+
+Exporte as abas `COMUNICACOES`, `ANALISES_MAPA` e `PLANO_ACAO` da planilha como CSV, para uma pasta **fora do repositório** (os arquivos têm CPF e saúde). Depois:
+
+```
+npm run importar-catsp -- --pasta ~/catsp-csv --por <login> --simular
+npm run importar-catsp -- --pasta ~/catsp-csv --por <login>
+```
+
+A simulação mostra o que entraria e desfaz. O terminal só mostra protocolos e códigos. Pode repetir: o que já entrou é pulado. Ao terminar, apague a pasta e registre em ata. Os PDFs antigos se baixam à mão e se anexam a cada caso. Detalhes em `DESVIOS.md` (F9).
