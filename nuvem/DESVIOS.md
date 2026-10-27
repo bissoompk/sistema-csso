@@ -2083,3 +2083,21 @@ Decisão de 27/10/2026.
 - O leiaute segue os campos do Anexo III em blocos, sem reproduzir a grade do
   formulário. «Data/carimbo» e «Assinatura» ficam para o papel do SIASS. O nexo
   causal vem da decisão pericial vigente.
+
+## Acidentes: auxílio à análise (fatia 5)
+
+Decisão de 27/10/2026. Aba **Análise** na ficha (`servicos/acidente_analise.ts`):
+conferência por **regras fixas** (D2: sem IA, sem API externa, ROPA §5.1) que
+aponta, em quatro níveis, o que **não fecha**, o que **falta do Anexo III**
+(itens com asterisco), o que pede **atenção** (prazo do art. 214, menor sem
+responsável, ações vencidas) e o **próximo passo** pelo estado do caso.
+
+- **Só aponta.** Não grava nada nem muda estado; quem decide é a equipe.
+- **Não abre dado restrito.** Para saber se há identificação e saúde usa
+  `presenca()` de cada serviço (sim/não, confirmada pelo médico, com parte do
+  corpo), sem conteúdo e sem gravar `acesso_dado_sensivel`.
+- **Quem vê:** quem investiga ou encaminha ao SIASS (mesma regra das abas da
+  investigação); aos demais a aba diz que é da equipe.
+- **Fora desta fatia:** sugerir ação ou barreira a partir do agente causador
+  (exigiria uma tabela de correspondência que a equipe de segurança ainda não
+  definiu; inventá-la seria pior que não ter) e qualquer leitura de texto livre.

@@ -29,7 +29,7 @@
  * instrui o caso (`pode_ver_restrita_sst`): para os outros, é como se não
  * existisse.
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   acidentado as tabela_acidentado,
@@ -632,4 +632,25 @@ export async function painel(tx: Executor, usuario: UsuarioAtual, ocorrencia: Oc
     ROTULO_ORIGEM_SAUDE,
     momento_campo: momento_do_campo,
   };
+}
+
+/**
+ * Só a PRESENÇA, nunca o conteúdo: a análise do caso precisa saber se a saúde
+ * foi registrada e confirmada, e se há parte do corpo, sem abrir o dado (e sem
+ * gravar acesso, porque nada de saúde sai daqui).
+ */
+export async function presenca(tx: Executor, acidentado_ids: number[]): Promise<Map<number, { confirmada: boolean; com_partes: boolean }>> {
+  const saida = new Map<number, { confirmada: boolean; com_partes: boolean }>();
+  if (!acidentado_ids.length) return saida;
+  const linhas = await tx
+    .select({ id: acidente_saude.id, acidentado_id: acidente_saude.acidentado_id, origem: acidente_saude.origem })
+    .from(acidente_saude)
+    .where(inArray(acidente_saude.acidentado_id, acidentado_ids));
+  const com_partes = new Set(
+    linhas.length
+      ? (await tx.select({ saude_id: acidente_saude_parte.saude_id }).from(acidente_saude_parte).where(inArray(acidente_saude_parte.saude_id, linhas.map((l) => l.id)))).map((p) => p.saude_id)
+      : [],
+  );
+  for (const l of linhas) saida.set(l.acidentado_id, { confirmada: l.origem !== "DECLARADO_COMUNICANTE", com_partes: com_partes.has(l.id) });
+  return saida;
 }

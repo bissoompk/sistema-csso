@@ -83,6 +83,7 @@ import * as contagens from "../servicos/acidente_contagens.js";
 import * as siass from "../servicos/acidente_siass.js";
 import * as relatorio from "../servicos/acidente_relatorio.js";
 import * as plano from "../servicos/acidente_acao.js";
+import * as analise from "../servicos/acidente_analise.js";
 import * as identificacao from "../servicos/acidente_identificacao.js";
 import * as saude from "../servicos/acidente_saude.js";
 import * as investigacao from "../servicos/acidente_investigacao.js";
@@ -117,6 +118,7 @@ export const ABAS_FICHA: readonly (readonly [string, string])[] = [
   ["envolvidos", "Envolvidos"],
   ["saude", "Saúde"],
   ["identificacao", "Identificação"],
+  ["analise", "Análise"],
   ["investigacao", "Investigação"],
   ["checklist", "Checklist"],
   ["entrevistas", "Entrevistas"],
@@ -716,7 +718,10 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
   // (relato e evidência são dado de terceiro); para os outros, a aba diz isso
   const ve_investigacao = pode_ver_restrita_sst(usuario);
   const dados_investigacao: Record<string, unknown> = { ve_investigacao };
-  if (ve_investigacao && aba === "investigacao") {
+  if (ve_investigacao && aba === "analise") {
+    dados_investigacao.apontamentos = await analise.do_caso(tx, usuario, ocorrencia);
+    dados_investigacao.ROTULO_NIVEL = analise.ROTULO_NIVEL;
+  } else if (ve_investigacao && aba === "investigacao") {
     dados_investigacao.investigacao = await investigacao.obter(tx, ocorrencia);
     dados_investigacao.linha_do_tempo = await investigacao.linha_do_tempo(tx, ocorrencia.id);
     dados_investigacao.barreiras = await investigacao.barreiras(tx, ocorrencia.id);

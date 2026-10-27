@@ -430,3 +430,19 @@ export async function painel(
     ROTULO_FINALIDADE_IDENTIFICACAO,
   };
 }
+
+/** Só a PRESENÇA, para a análise do caso: quem já tem identificação e quais testemunhas têm contato. Nada de conteúdo, nada de acesso gravado. */
+export async function presenca(tx: Executor, ocorrencia_id: number, acidentado_ids: number[]) {
+  const com_identificacao = new Set(
+    acidentado_ids.length
+      ? (await tx.select({ id: acidente_identificacao.acidentado_id }).from(acidente_identificacao).where(inArray(acidente_identificacao.acidentado_id, acidentado_ids))).map((l) => l.id)
+      : [],
+  );
+  const testemunhas = await tx.select({ id: acidente_testemunha.id }).from(acidente_testemunha).where(eq(acidente_testemunha.ocorrencia_id, ocorrencia_id));
+  const com_contato = new Set(
+    testemunhas.length
+      ? (await tx.select({ id: acidente_testemunha_contato.testemunha_id }).from(acidente_testemunha_contato).where(inArray(acidente_testemunha_contato.testemunha_id, testemunhas.map((t) => t.id)))).map((l) => l.id)
+      : [],
+  );
+  return { com_identificacao, testemunhas_total: testemunhas.length, testemunhas_com_contato: testemunhas.filter((t) => com_contato.has(t.id)).length };
+}
