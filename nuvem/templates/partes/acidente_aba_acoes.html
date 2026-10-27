@@ -1,0 +1,122 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Plano de ação (F5). Cada ação tem número estável, responsável, prazo e
+   prioridade, e uma pendência própria. Nunca se apaga: conclui (com o que foi
+   feito) ou se cancela (com motivo) e continua riscada na lista. Edita quem tem
+   `acidente.investigar`; os outros da equipe leem. #}
+{% if not ve_investigacao %}
+<div class="cartao"><div class="vazio"><strong>Restrito à equipe que investiga</strong>
+  <span>O plano de ação fica com quem investiga o caso ou o encaminha ao SIASS.</span></div></div>
+{% else %}
+{% set d = digitado or {} %}
+<section class="cartao">
+  <h2>Plano de ação <span class="contador">{{ acoes|length }}</span></h2>
+  <p class="discreto">As medidas para não repetir o acidente. O que se recomenda em texto fica na Investigação; aqui cada
+    medida tem responsável e prazo, e uma tarefa que aparece nas pendências até ser concluída ou cancelada.</p>
+
+  {% for a in acoes %}
+  <div class="cartao liso" id="acao-{{ a.id }}">
+    <div class="corpo">
+      <p><strong>Ação nº {{ a.numero }}</strong>
+        <span class="pilula {{ 'ok' if a.estado == 'CONCLUIDA' else ('neutra' if a.estado == 'CANCELADA' else 'alerta') }} sem-ponto">{{ ROTULO_ESTADO_ACAO[a.estado] }}</span>
+        <span class="pilula neutra sem-ponto">{{ ROTULO_TIPO_ACAO[a.tipo_acao] }}</span>
+        <span class="discreto">prioridade {{ ROTULO_PRIORIDADE[a.prioridade]|lower }}</span>
+        {% if a.vencida %}<span class="pilula erro">vencida</span>{% endif %}</p>
+      <p {% if a.estado == 'CANCELADA' %}style="text-decoration: line-through"{% endif %}>{{ a.acao }}</p>
+      {% if a.achado %}<p class="discreto">Achado: {{ a.achado }}</p>{% endif %}
+      <p class="discreto">Responsável: {{ a.responsavel_nome or a.unidade_nome or a.responsavel_texto or 'quem conduz o caso' }}
+        · Prazo: {{ a.prazo|data if a.prazo else 'sem prazo' }}</p>
+      {% if a.estado == 'CONCLUIDA' %}
+      <p><strong>Feito:</strong> {{ a.conclusao_texto }}
+        {%- if a.anexo_nome %} <span class="discreto">(evidência: {{ a.anexo_nome }})</span>{% endif %}</p>
+      {% elif a.estado == 'CANCELADA' %}
+      <p><strong>Cancelada:</strong> {{ a.cancelamento_motivo }}</p>
+      {% elif pode_acao %}
+      <div class="acoes">
+        {% if a.estado == 'PENDENTE' %}
+        <form method="post" action="/acidentes/{{ ocorrencia.id }}/acoes/{{ a.id }}/iniciar">
+          <input type="hidden" name="versao" value="{{ a.versao }}">
+          <button type="submit" class="secundario">Iniciar</button>
+        </form>
+        {% endif %}
+      </div>
+      <details class="recolhido"><summary>Editar</summary>
+        <form method="post" action="/acidentes/{{ ocorrencia.id }}/acoes/{{ a.id }}/editar">
+          <input type="hidden" name="versao" value="{{ a.versao }}">
+          <div class="campo"><label for="ach-{{ a.id }}">Achado que motiva a ação</label>
+            <textarea id="ach-{{ a.id }}" name="achado" rows="2" maxlength="2000">{{ (d.achado if acao_com_erro == a.id else a.achado) or '' }}</textarea></div>
+          <div class="campo"><label for="ac-{{ a.id }}">Ação</label>
+            <textarea id="ac-{{ a.id }}" name="acao" rows="3" maxlength="2000" required>{{ (d.acao if acao_com_erro == a.id else a.acao) or '' }}</textarea></div>
+          <div class="linha-campos">
+            <div class="campo"><label for="tp-{{ a.id }}">Tipo</label>
+              <select id="tp-{{ a.id }}" name="tipo_acao">{% for t in TIPOS_ACAO %}<option value="{{ t }}"{% if a.tipo_acao == t %} selected{% endif %}>{{ ROTULO_TIPO_ACAO[t] }}</option>{% endfor %}</select></div>
+            <div class="campo"><label for="pr-{{ a.id }}">Prioridade</label>
+              <select id="pr-{{ a.id }}" name="prioridade">{% for p in PRIORIDADES %}<option value="{{ p }}"{% if a.prioridade == p %} selected{% endif %}>{{ ROTULO_PRIORIDADE[p] }}</option>{% endfor %}</select></div>
+            <div class="campo"><label for="pz-{{ a.id }}">Prazo</label>
+              <input id="pz-{{ a.id }}" type="date" name="prazo" value="{{ a.prazo or '' }}"></div>
+          </div>
+          <div class="linha-campos">
+            <div class="campo"><label for="un-{{ a.id }}">Unidade responsável</label>
+              <select id="un-{{ a.id }}" name="unidade"><option value="">—</option>
+                {% for u in unidades_acao %}<option value="{{ u.id }}"{% if a.responsavel_unidade_uorg_id == u.id %} selected{% endif %}>{{ u.nome }}</option>{% endfor %}</select></div>
+            <div class="campo"><label for="rt-{{ a.id }}">Responsável (nome livre)</label>
+              <input id="rt-{{ a.id }}" name="responsavel_texto" maxlength="160" value="{{ a.responsavel_texto or '' }}"></div>
+          </div>
+          <div class="acoes"><button type="submit" class="secundario">Salvar alteração</button></div>
+        </form>
+      </details>
+      {% if a.estado == 'EM_ANDAMENTO' %}
+      <details class="recolhido"><summary>Concluir</summary>
+        <form method="post" action="/acidentes/{{ ocorrencia.id }}/acoes/{{ a.id }}/concluir" enctype="multipart/form-data">
+          <input type="hidden" name="versao" value="{{ a.versao }}">
+          <div class="campo"><label for="cc-{{ a.id }}">O que foi feito</label>
+            <textarea id="cc-{{ a.id }}" name="conclusao" rows="3" maxlength="4000" required></textarea></div>
+          <div class="campo"><label for="ev-{{ a.id }}">Evidência (PDF ou imagem, opcional)</label>
+            <input id="ev-{{ a.id }}" type="file" name="evidencia" accept="application/pdf,image/*"></div>
+          <div class="acoes"><button type="submit" class="secundario">Concluir ação</button></div>
+        </form>
+      </details>
+      {% endif %}
+      <details class="recolhido"><summary>Cancelar</summary>
+        <form method="post" action="/acidentes/{{ ocorrencia.id }}/acoes/{{ a.id }}/cancelar">
+          <input type="hidden" name="versao" value="{{ a.versao }}">
+          <div class="campo"><label for="cm-{{ a.id }}">Motivo do cancelamento</label>
+            <textarea id="cm-{{ a.id }}" name="motivo" rows="2" maxlength="2000" required></textarea></div>
+          <div class="acoes"><button type="submit" class="perigo">Cancelar ação</button></div>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="vazio"><strong>Nenhuma ação no plano</strong><span>Acrescente a primeira medida abaixo.</span></div>
+  {% endfor %}
+</section>
+
+{% if pode_acao %}
+<section class="cartao">
+  <h2>Nova ação</h2>
+  <form method="post" action="/acidentes/{{ ocorrencia.id }}/acoes">
+    <div class="campo"><label for="n-achado">Achado que motiva a ação (opcional)</label>
+      <textarea id="n-achado" name="achado" rows="2" maxlength="2000">{{ d.achado if not acao_com_erro and d.achado }}</textarea></div>
+    <div class="campo"><label for="n-acao">Ação</label>
+      <textarea id="n-acao" name="acao" rows="3" maxlength="2000" required>{{ d.acao if not acao_com_erro and d.acao }}</textarea></div>
+    <div class="linha-campos">
+      <div class="campo"><label for="n-tipo">Tipo</label>
+        <select id="n-tipo" name="tipo_acao">{% for t in TIPOS_ACAO %}<option value="{{ t }}">{{ ROTULO_TIPO_ACAO[t] }}</option>{% endfor %}</select></div>
+      <div class="campo"><label for="n-prio">Prioridade</label>
+        <select id="n-prio" name="prioridade">{% for p in PRIORIDADES %}<option value="{{ p }}"{% if p == 'MEDIA' %} selected{% endif %}>{{ ROTULO_PRIORIDADE[p] }}</option>{% endfor %}</select></div>
+      <div class="campo"><label for="n-prazo">Prazo</label><input id="n-prazo" type="date" name="prazo" min="{{ hoje }}"></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label for="n-resp">Conta responsável</label>
+        <select id="n-resp" name="responsavel"><option value="">Quem conduz o caso</option><option value="eu">Eu</option></select></div>
+      <div class="campo"><label for="n-uni">Unidade responsável</label>
+        <select id="n-uni" name="unidade"><option value="">—</option>
+          {% for u in unidades_acao %}<option value="{{ u.id }}">{{ u.nome }}</option>{% endfor %}</select></div>
+      <div class="campo"><label for="n-rt">Responsável (nome livre)</label><input id="n-rt" name="responsavel_texto" maxlength="160"></div>
+    </div>
+    <div class="acoes"><button type="submit">Acrescentar ao plano</button></div>
+  </form>
+</section>
+{% endif %}
+{% endif %}

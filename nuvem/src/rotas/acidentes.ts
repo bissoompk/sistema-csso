@@ -49,6 +49,11 @@ import {
   ROTULO_CONDICAO_ENVOLVIDO,
   ROTULO_SITUACAO_BARREIRA,
   ROTULO_TIPO_BARREIRA,
+  ROTULO_TIPO_ACAO,
+  ROTULO_PRIORIDADE,
+  ROTULO_ESTADO_ACAO,
+  TIPOS_ACAO,
+  PRIORIDADES,
   SITUACOES_BARREIRA,
   TIPOS_BARREIRA,
   ROTULO_ESPECIE,
@@ -67,6 +72,7 @@ import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
 import { escopo_ocorrencias, filtro_restrita, pode_ver_restrita_sst } from "../servicos/acidente_acesso.js";
 import * as comunicacao from "../servicos/acidente_comunicacao.js";
 import * as triagem from "../servicos/acidente_triagem.js";
+import * as plano from "../servicos/acidente_acao.js";
 import * as saude from "../servicos/acidente_saude.js";
 import * as investigacao from "../servicos/acidente_investigacao.js";
 import * as checklist from "../servicos/acidente_checklist.js";
@@ -592,9 +598,17 @@ rotas.post(COMUNICAR, async (c) => {
 // =====================================================================
 rotas.get(ACOES, async (c) => {
   const usuario = await _porta(c, "acidente.ver");
-  return pagina(c, "paginas/acidentes_em_construcao.html", usuario, {
-    titulo_tela: "Plano de ação",
-    texto: "O plano de ação, com os prazos de cada medida, chega numa etapa seguinte do módulo.",
+  // o plano nasce da investigação: é de quem investiga ou encaminha ao SIASS
+  if (!pode_ver_restrita_sst(usuario)) throw new ErroHttp(403, "O plano de ação é da equipe que investiga os acidentes.");
+  const pedido = c.req.query("mostrar") ?? "abertas";
+  const filtro = ["abertas", "vencidas", "todas"].includes(pedido) ? pedido : "abertas";
+  const acoes = await plano.lista_geral(c.get("tx"), _onde(usuario), filtro);
+  return pagina(c, "paginas/acidentes_acoes.html", usuario, {
+    filtro,
+    acoes,
+    ROTULO_TIPO_ACAO,
+    ROTULO_PRIORIDADE,
+    ROTULO_ESTADO_ACAO,
   });
 });
 
@@ -675,6 +689,10 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       titulo,
       itens: itens.filter((i) => i.secao === n),
     })).filter((g) => g.itens.length);
+  } else if (ve_investigacao && aba === "acoes") {
+    dados_investigacao.acoes = await plano.do_caso(tx, ocorrencia.id);
+    dados_investigacao.unidades_acao = await plano.unidades(tx);
+    dados_investigacao.pode_acao = usuario.pode("acidente.investigar") && ocorrencia.estado !== "CANCELADA";
   } else if (ve_investigacao && aba === "entrevistas") {
     dados_investigacao.entrevistas = await entrevista.entrevistas(tx, ocorrencia.id);
     dados_investigacao.evidencias = await entrevista.evidencias(tx, ocorrencia.id);
@@ -754,6 +772,11 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       SITUACOES_BARREIRA,
       ROTULO_SITUACAO_BARREIRA,
       ROTULO_CARACTERIZACAO,
+      TIPOS_ACAO,
+      ROTULO_TIPO_ACAO,
+      PRIORIDADES,
+      ROTULO_PRIORIDADE,
+      ROTULO_ESTADO_ACAO,
       ...extra,
     },
     status,
