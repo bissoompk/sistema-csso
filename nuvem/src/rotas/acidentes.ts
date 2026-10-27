@@ -77,6 +77,7 @@ import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
 import { escopo_ocorrencias, filtro_restrita, pode_ver_restrita_sst } from "../servicos/acidente_acesso.js";
 import * as comunicacao from "../servicos/acidente_comunicacao.js";
 import * as triagem from "../servicos/acidente_triagem.js";
+import * as contagens from "../servicos/acidente_contagens.js";
 import * as siass from "../servicos/acidente_siass.js";
 import * as relatorio from "../servicos/acidente_relatorio.js";
 import * as plano from "../servicos/acidente_acao.js";
@@ -229,10 +230,14 @@ rotas.get(PAINEL, async (c) => {
   const contagem: Record<string, number> = Object.fromEntries(por_estado.map((l) => [l.estado, Number(l.n)]));
   const limite = somar_dias(hoje(), DIAS_PRAZO_VENCENDO);
   const vencendo = await _contar(c, usuario, _vencendo(limite));
+  const ve_plano = pode_ver_restrita_sst(usuario);
   return pagina(c, "paginas/acidentes_painel.html", usuario, {
     pessoal: false,
     contagem,
     vencendo,
+    ve_plano,
+    acoes_vencidas: ve_plano ? await contagens.acoes_vencidas(tx, _onde(usuario)) : 0,
+    ve_indicadores: usuario.pode("indicador.ver"),
     dias_vencendo: DIAS_PRAZO_VENCENDO,
     cartoes: ESTADOS_ACIDENTE.map((e) => ({ estado: e, rotulo: ROTULO_ACIDENTE[e], n: contagem[e] ?? 0 })),
     pode_comunicar: usuario.pode("acidente.comunicar"),
@@ -616,14 +621,6 @@ rotas.get(ACOES, async (c) => {
     ROTULO_TIPO_ACAO,
     ROTULO_PRIORIDADE,
     ROTULO_ESTADO_ACAO,
-  });
-});
-
-rotas.get(INDICADORES, async (c) => {
-  const usuario = await _porta(c, "indicador.ver", "acidente.ver");
-  return pagina(c, "paginas/acidentes_em_construcao.html", usuario, {
-    titulo_tela: "Indicadores de acidentes",
-    texto: "A série histórica e as taxas de frequência e de gravidade chegam numa etapa seguinte do módulo.",
   });
 });
 

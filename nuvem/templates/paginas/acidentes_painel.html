@@ -58,6 +58,20 @@
       <span>Para quem não tem conta comunicar</span>
     </a>
     {% endif %}
+    {% if ve_plano %}
+    <a class="acao-hub teal" href="/acidentes/acoes?mostrar=vencidas">
+      {{ ui.icone('list-check') }}
+      <strong>Plano de ação</strong>
+      <span>{{ acoes_vencidas }} {{ 'vencida' if acoes_vencidas == 1 else 'vencidas' }}</span>
+    </a>
+    {% endif %}
+    {% if ve_indicadores %}
+    <a class="acao-hub verde" href="/acidentes/indicadores">
+      {{ ui.icone('bar-chart') }}
+      <strong>Indicadores</strong>
+      <span>Casos por ano, espécie, campus e unidade</span>
+    </a>
+    {% endif %}
     {% if usuario.pode('acidente.siass') %}
     <a class="acao-hub teal" href="/acidentes/fila?estado=VENCENDO">
       {{ ui.icone('send') }}

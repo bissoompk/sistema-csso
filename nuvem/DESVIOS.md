@@ -1993,3 +1993,14 @@ Aba **SIASS** da ficha, sobre as tabelas `acidente_encaminhamento` e `acidente_d
 - **Concluir**: de ENCAMINHADA_SIASS exige a decisão registrada **ou** o motivo; de RELATORIO_EMITIDO só para o caso que a investigação marcou como «não requer CAT no SIASS», com motivo. Grava `concluida_em` e `conclusao_motivo`, fecha as pendências do caso e registra a mudança de estado (versão otimista da ocorrência). O plano de ação continua depois da conclusão.
 - A trilha diz o meio, a versão do relatório e o rótulo do resultado; nunca a observação, o NUP nem número de CAT.
 - **Ficou para depois**: F8 (hub e indicadores), e-mail de aviso ao acidentado servidor no relatório emitido/concluído (D6, desligado até configurar).
+
+## 27/10/2026 — Acidentes F8: hub e indicadores
+
+Fecha o módulo. **Sem migração.** Serviços `acidente_contagens.ts` e `acidente_indicadores.ts`, rotas `GET /acidentes/indicadores` e `GET /acidentes/indicadores/exportar` (`rotas/acidente_indicadores.ts`, no lugar do «em construção»), página `acidentes_indicadores.html` e dois atalhos novos no hub. As entradas de menu «Plano de ação» e «Indicadores» já existiam.
+
+- **Hub**: «Plano de ação» (com as ações vencidas, linkando a lista já filtrada; só para quem investiga ou encaminha ao SIASS) e «Indicadores» (`indicador.ver`). A versão pessoal (escopo próprio) continua só com comunicar e as próprias.
+- **Indicadores**: ocorrências pela data do acidente, no alcance de quem pede (escopo e restrita), sem as canceladas, por **ano, espécie, campus e unidade do local**, com seletor de ano ou período livre (o mesmo de `/epis/relatorios`).
+- **RN-19**: toda célula com menos de 5 casos sai «—», com a supressão secundária do sistema (`suprimir`: nunca sobra uma célula escondida sozinha). O total também. A tela explica que, com poucos casos por ano, o recorte por unidade fica quase todo suprimido.
+- **Afastamentos e dias perdidos** (D12): só para quem tem `acidente.saude_detalhe_ver`, e suprimidos quando os casos com afastamento são menos de 5 (a soma de dias identificaria quem se afastou). **Taxas de frequência e de gravidade ficam de fora**: pedem horas-homem trabalhadas por unidade, que o SISA não tem (parâmetro anual por campus, depois).
+- **CSV**: exige `indicador.ver` e `exportar`; UTF-8 com BOM, ponto e vírgula, `linha_csv` neutraliza fórmula. A permissão vem **antes** do período (403, e não o 422 da data torta).
+- **Fechamento do módulo**: o que o módulo ainda pede é a tabela oficial de natureza da lesão, a emenda da ROPA sobre dado de saúde, a decisão sobre ligar `CSSO_MODULO_ACIDENTES` em produção e os e-mails (D6, desligados até configurar).
