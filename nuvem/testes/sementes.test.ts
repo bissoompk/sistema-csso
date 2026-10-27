@@ -84,12 +84,12 @@ describe("sementes", () => {
       // para as segundas vias) e a v2 vigente (22, as frases inteiras)
       certificado_modelo: 2,
       certificado_modelo_tag: 45,
-      // Acidentes: os catálogos da CAT/SP (natureza da lesão: lista oficial pendente)
+      // Acidentes: os catálogos da CAT/SP (natureza da lesão: Tabela 17 do eSocial)
       acidente_parte_corpo: 44,
       acidente_agente_causador: 199,
       acidente_agente_doenca: 31,
       acidente_situacao_geradora: 31,
-      acidente_natureza_lesao: 0,
+      acidente_natureza_lesao: 29,
     });
   });
 

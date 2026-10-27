@@ -21,9 +21,9 @@
  *
  * `codigo_oficial` fica nulo: os códigos da NBR 14280, das Tabelas I a IV da
  * CAT/SP e das Tabelas 13 a 15 do eSocial não vieram com o legado. A natureza
- * da lesão (Tabela 17 do eSocial / NBR 14280) também depende da lista oficial,
- * que precisa ser fornecida: `NATUREZAS_DA_LESAO` está vazia de propósito
- * (não se inventa tabela oficial) e é preenchida num ponto só, aqui.
+ * da lesão (Tabela 17 do eSocial / NBR 14280) vem com o código oficial: a lista
+ * foi conferida no anexo do eSocial (ver `NATUREZAS_DA_LESAO`) e é preenchida
+ * num ponto só, aqui.
  */
 
 /**
@@ -356,11 +356,47 @@ export const SITUACOES_GERADORAS: readonly ItemCatalogo[] = [
 ];
 
 /**
- * Natureza da lesão: a tabela oficial (NBR 14280 / Tabela 17 do eSocial), com
- * o código oficial de cada item. VAZIA até a lista ser fornecida (D11); enquanto
- * isso a tela da saúde (fatia F3) não tem o que oferecer neste campo.
+ * Natureza da lesão: a Tabela 17 do eSocial (Descrição da Natureza da Lesão,
+ * códigos da NBR 14280), conferida em 27/10/2026 contra o Anexo I dos Leiautes do
+ * eSocial v2.5 (consolidada até a NT 19/2020), página 54 do PDF oficial do gov.br:
+ * 29 linhas, com o código oficial de cada uma. O rótulo é a ABERTURA da descrição
+ * oficial; o texto de orientação que a segue ("inclui…", "não inclui…") não foi
+ * copiado (ver DESVIOS.md). Os itens 702000000 («Lesão imediata») e os «NIC» são
+ * linhas da própria tabela. Sem rótulo legado: a planilha antiga não tinha este
+ * campo. Se a UFVJM adotar outra versão da tabela (as versões S-1.x do eSocial
+ * a revisam), este é o único ponto a trocar.
  */
-export const NATUREZAS_DA_LESAO: readonly ItemOficial[] = [];
+export const NATUREZAS_DA_LESAO: readonly ItemOficial[] = [
+  [1, "Lesão imediata", "702000000", null],
+  [2, "Escoriação, abrasão (ferimento superficial)", "702005000", null],
+  [3, "Corte, laceração, ferida contusa, punctura (ferida aberta)", "702010000", null],
+  [4, "Contusão, esmagamento (superfície cutânea intacta)", "702015000", null],
+  [5, "Distensão, torção", "702020000", null],
+  [6, "Inflamação de articulação, tendão ou músculo", "702025000", null],
+  [7, "Luxação", "702030000", null],
+  [8, "Fratura", "702035000", null],
+  [9, "Queimadura ou escaldadura", "702040000", null],
+  [10, "Queimadura química", "702042000", null],
+  [11, "Efeito de radiação (imediato)", "702045000", null],
+  [12, "Congelamento, geladura e outros efeitos da exposição à baixa temperatura", "702048000", null],
+  [13, "Asfixia, estrangulamento, afogamento", "702050000", null],
+  [14, "Intermação, insolação, cãibra, exaustão e outros efeitos da temperatura ambiente elevada", "702055000", null],
+  [15, "Choque elétrico e eletroplessão (eletrocussão)", "702060000", null],
+  [16, "Hérnia de qualquer natureza, ruptura", "702065000", null],
+  [17, "Amputação ou enucleação", "702070000", null],
+  [18, "Perda ou diminuição de sentido (audição, visão, olfato, paladar e tato, desde que não seja sequela de outra lesão)", "702075000", null],
+  [19, "Concussão cerebral", "702080000", null],
+  [20, "Lesão imediata, NIC", "702090000", null],
+  [21, "Doença contagiosa ou infecciosa (tuberculose, brucelose, etc.)", "704020000", null],
+  [22, "Pneumoconiose (silicose, asbestose, etc.)", "704030000", null],
+  [23, "Dermatose (erupção, inflamação da pele, inclusive furúnculo, etc.)", "704040000", null],
+  [24, "Envenenamento sistêmico", "704050000", null],
+  [25, "Perda ou diminuição mediatas de sentido (audição, visão, olfato, paladar e tato, desde que não seja sequela de outra lesão)", "704060000", null],
+  [26, "Efeito de radiação (mediato)", "704070000", null],
+  [27, "Doença, NIC", "704090000", null],
+  [28, "Lesões múltiplas", "706050000", null],
+  [29, "Outras lesões, NIC", "706090000", null],
+];
 
 /** "SERRA - MÁQUINA": o rótulo como a tela o mostra, com a classe quando há. */
 export function rotulo_com_grupo(item: { rotulo: string; grupo?: string | null }): string {
