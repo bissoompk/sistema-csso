@@ -1968,3 +1968,18 @@ Aba **Plano de ação** da ficha e lista geral `/acidentes/acoes` (antes «em co
 - **Responsável na tela**: «quem conduz o caso» (padrão), «eu», unidade e nome livre. A escolha de outra conta do sistema existe no serviço, mas a tela ainda não a oferece (falta uma lista de equipe).
 - **Lista geral**: em aberto (padrão), vencidas e todas, no escopo e na regra de ocorrência restrita da conta; só mostra protocolo, nunca nome de acidentado. A secretaria (que só tria) recebe 403; o teste de telas foi ajustado.
 - **Ficou para depois**: o e-mail de prazo pela rotina, o link «Plano de ação» no hub (F8), F6 (relatório) e F7 (SIASS).
+
+## 27/10/2026 — Acidentes F6: o relatório técnico em PDF
+
+Aba **Relatórios** da ficha, sobre a tabela `acidente_relatorio` já existente (**sem migração**). Serviço `acidente_relatorio.ts` (emitir, retificar, versões, baixar), desenho `acidente_relatorio_pdf.ts` (pdf-lib, Helvetica/WinAnsi, como o certificado), rotas `POST /acidentes/:id/relatorio[/retificar]` e `GET /acidentes/:id/relatorio/:versao/:VARIANTE.pdf` (`rotas/acidente_relatorio.ts`), parcial `acidente_aba_relatorios.html`. Permissão: `acidente.relatorio_emitir` (só do perfil) **e** `acidente.saude_ver` para emitir e retificar.
+
+- **Duas variantes no mesmo ato**: COMPLETA (perícia do SIASS, com o resumo de saúde — nível 1) e SEM_SAUDE (contratada e fiscal). A sem saúde é montada **sem o campo `saude`**, não «limpa depois»; o teste confere o texto extraído do PDF e o contexto congelado.
+- **Contexto congelado com hash** (SHA-256 do JSON de chaves ordenadas), guardado em `acidente_relatorio`; o PDF vai como anexo `RELATORIO_INVESTIGACAO` (restrito). Append-only: retificar gera a versão seguinte das duas variantes com motivo (mín. uma frase) e `substitui_id`; a anterior continua legível, marcada «retificada».
+- **Emitir** exige a síntese explicativa e a caracterização na Investigação, o caso em EM_INVESTIGACAO e leva-o a RELATORIO_EMITIDO (fecha a pendência de investigar, grava a mudança de estado e o evento). Retificar mantém o estado e vale em RELATORIO_EMITIDO e ENCAMINHADA_SIASS. As evidências ficam marcadas como citadas.
+- **A saúde da variante completa é uma leitura**: passa por `acidente_saude.ler` (finalidade «instrução da perícia», `acesso_dado_sensivel` por acidentado, evento se quem emite não conduz o caso). Só o resumo (nível 1) entra; o detalhe clínico (nível 2) fica com o médico.
+- **Download** só pela porta dos anexos: escopo da ocorrência, `acidente.saude_ver` para a completa, leitura registrada (`ANEXO_BAIXADO`). A reimpressão devolve os mesmos bytes.
+- **O que o relatório diz das entrevistas**: que houve, com que vínculo e quando; o relato de cada uma fica arquivado no caso (não vai no PDF).
+- **Limite assumido**: a investigação continua travada depois do relatório, então a retificação congela de novo o que está vigente (CAT/SP retificada, plano de ação, saúde), sem reabrir o texto do MAPA.
+- **Caracteres fora do WinAnsi** saem como «?» em vez de derrubar a emissão. A assinatura oficial segue no SEI.
+- **Teste de ficha**: a aba usada como «sem parcial» passou de Relatórios para SIASS.
+- **Ficou para depois**: F7 (SIASS e conclusão), F8 (hub e indicadores), e um .docx editável opcional (D3).

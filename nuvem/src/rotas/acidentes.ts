@@ -49,6 +49,7 @@ import {
   ROTULO_CONDICAO_ENVOLVIDO,
   ROTULO_SITUACAO_BARREIRA,
   ROTULO_TIPO_BARREIRA,
+  ROTULO_VARIANTE_RELATORIO,
   ROTULO_TIPO_ACAO,
   ROTULO_PRIORIDADE,
   ROTULO_ESTADO_ACAO,
@@ -72,6 +73,7 @@ import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
 import { escopo_ocorrencias, filtro_restrita, pode_ver_restrita_sst } from "../servicos/acidente_acesso.js";
 import * as comunicacao from "../servicos/acidente_comunicacao.js";
 import * as triagem from "../servicos/acidente_triagem.js";
+import * as relatorio from "../servicos/acidente_relatorio.js";
 import * as plano from "../servicos/acidente_acao.js";
 import * as saude from "../servicos/acidente_saude.js";
 import * as investigacao from "../servicos/acidente_investigacao.js";
@@ -689,6 +691,10 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       titulo,
       itens: itens.filter((i) => i.secao === n),
     })).filter((g) => g.itens.length);
+  } else if (ve_investigacao && aba === "relatorios") {
+    dados_investigacao.relatorios = await relatorio.versoes(tx, ocorrencia.id);
+    dados_investigacao.pode_emitir = usuario.pode("acidente.relatorio_emitir") && usuario.pode("acidente.saude_ver");
+    dados_investigacao.pode_ver_completa = usuario.pode("acidente.saude_ver");
   } else if (ve_investigacao && aba === "acoes") {
     dados_investigacao.acoes = await plano.do_caso(tx, ocorrencia.id);
     dados_investigacao.unidades_acao = await plano.unidades(tx);
@@ -772,6 +778,7 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       SITUACOES_BARREIRA,
       ROTULO_SITUACAO_BARREIRA,
       ROTULO_CARACTERIZACAO,
+      ROTULO_VARIANTE_RELATORIO,
       TIPOS_ACAO,
       ROTULO_TIPO_ACAO,
       PRIORIDADES,

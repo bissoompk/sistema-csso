@@ -1,0 +1,61 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Relatórios (F6). Duas variantes por versão: a completa (perícia do SIASS,
+   com o resumo de saúde) e a sem saúde (contratada e fiscal). A retificação gera
+   a versão seguinte e a anterior continua aqui, marcada. O download passa pela
+   porta dos anexos e fica registrado. #}
+{% if not ve_investigacao %}
+<div class="cartao"><div class="vazio"><strong>Restrito à equipe que investiga</strong>
+  <span>O relatório fica com quem investiga o caso ou o encaminha ao SIASS.</span></div></div>
+{% else %}
+<section class="cartao">
+  <h2>Relatório técnico <span class="contador">{{ relatorios|length }}</span></h2>
+  {% if relatorios|length %}
+  <div class="tabela-cartao lista">
+    <table class="empilhavel">
+      <thead><tr><th scope="col">Versão</th><th scope="col">Variante</th><th scope="col">Emitido</th><th scope="col">Situação</th><th scope="col">Arquivo</th></tr></thead>
+      {% for r in relatorios %}
+      <tr>
+        <td class="mono" data-coluna="Versão">{{ r.versao }}</td>
+        <td data-coluna="Variante">{{ ROTULO_VARIANTE_RELATORIO[r.variante] }}</td>
+        <td data-coluna="Emitido">{{ r.emitido_em|momento }} <span class="discreto">· {{ r.emitido_por }}</span></td>
+        <td data-coluna="Situação">{% if r.retificada %}<span class="pilula neutra sem-ponto">retificada</span>{% else %}<span class="pilula ok sem-ponto">vigente</span>{% endif %}
+          {% if r.motivo_retificacao %}<span class="quebra discreto">{{ r.motivo_retificacao }}</span>{% endif %}</td>
+        <td data-coluna="Arquivo">
+          {% if r.variante == 'SEM_SAUDE' or pode_ver_completa %}<a href="/acidentes/{{ ocorrencia.id }}/relatorio/{{ r.versao }}/{{ r.variante }}.pdf">Baixar PDF</a>
+          {% else %}<span class="discreto">sem permissão</span>{% endif %}
+          <span class="quebra mono discreto" title="resumo do conteúdo (SHA-256)">{{ r.hash_conteudo|truncate(12, true, '') }}</span></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  <div class="vazio"><strong>Nenhum relatório emitido</strong>
+    <span>O relatório sai quando a investigação tem a síntese e a caracterização preenchidas.</span></div>
+  {% endif %}
+</section>
+
+{% if pode_emitir %}
+{% if ocorrencia.estado == 'EM_INVESTIGACAO' %}
+<section class="cartao">
+  <h2>Emitir o relatório</h2>
+  <p class="discreto">Emite as duas variantes (completa e sem saúde) e leva o caso para «Relatório emitido». A investigação
+    fica travada depois disso; ler a saúde para a variante completa fica registrado.</p>
+  <form method="post" action="/acidentes/{{ ocorrencia.id }}/relatorio">
+    <input type="hidden" name="versao_ocorrencia" value="{{ ocorrencia.versao }}">
+    <div class="acoes"><button type="submit">Emitir relatório</button></div>
+  </form>
+</section>
+{% elif ocorrencia.estado in ['RELATORIO_EMITIDO', 'ENCAMINHADA_SIASS'] %}
+<section class="cartao">
+  <h2>Retificar o relatório</h2>
+  <p class="discreto">Gera a versão seguinte com o que está vigente hoje (CAT/SP, plano de ação, saúde). A anterior continua
+    disponível, marcada como retificada. O texto da investigação não é reaberto.</p>
+  <form method="post" action="/acidentes/{{ ocorrencia.id }}/relatorio/retificar">
+    <div class="campo"><label for="motivo-ret">Motivo da retificação</label>
+      <textarea id="motivo-ret" name="motivo" rows="2" maxlength="2000" required>{{ digitado.motivo if digitado and digitado.motivo }}</textarea></div>
+    <div class="acoes"><button type="submit" class="secundario">Retificar relatório</button></div>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endif %}
