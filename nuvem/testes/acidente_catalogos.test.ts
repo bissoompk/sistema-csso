@@ -4,7 +4,9 @@
  * listas que o legado trazia), semeados de forma idempotente, com o rótulo
  * corrigido e o texto original preservado em `rotulo_legado`.
  */
-import { count } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { count, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { bancoLimpo, naTransacao } from "./ajuda";
 import {
@@ -59,6 +61,42 @@ describe("catálogos de acidente", () => {
     expect(new Set(codigos).size).toBe(codigos.length);
     expect(NATUREZAS_DA_LESAO.map((n) => n[0])).toEqual(NATUREZAS_DA_LESAO.map((_, i) => i + 1));
     expect(NATUREZAS_DA_LESAO.every((n) => n[1].length > 0 && n[1].length <= 240)).toBe(true);
+  });
+
+  it("107 e 165 têm o texto completo do eSocial, sem o palpite «ETC»; o 108 fica como está", () => {
+    const por = (n: number) => AGENTES_CAUSADORES.find((a) => a[0] === n)!;
+    expect(por(107)[1]).toBe("PAINEL DE CONTROLE, BARRAMENTO, CHAVE, INTERRUPTOR, DISJUNTOR, FUSÍVEL");
+    expect(por(165)[1]).toMatch(/PERCLORETILENO, CLORETO DE METILO, SUBSTÂNCIAS REFRIGERANTES\)$/);
+    expect(por(108)[1]).toMatch(/RETIFICADOR, ETC$/);
+    // o legado, que é a chave da planilha, não mudou
+    expect(por(107)[3]).toBe("107. PAINEL DE CONTROLE, BARRAMENTO, CHAVE, INTERRUPTOR, IE");
+  });
+
+  it("a migração 0035 troca só o rótulo do palpite e é idempotente", async () => {
+    const sqlTexto = readFileSync(path.join(process.cwd(), "src/db/migracoes/0035_acidente_agente_rotulos_107_165.sql"), "utf8");
+    const comandos = sqlTexto.split("--> statement-breakpoint");
+    const rodar = async () => {
+      for (const c of comandos) await db.execute(sql.raw(c));
+    };
+    const ler = async (ordem: number) => (await db.select().from(acidente_agente_causador).where(eq(acidente_agente_causador.ordem, ordem)))[0]!.rotulo;
+    // banco antigo: com o rótulo do palpite
+    await db.update(acidente_agente_causador).set({ rotulo: "PAINEL DE CONTROLE, BARRAMENTO, CHAVE, INTERRUPTOR, ETC" }).where(eq(acidente_agente_causador.ordem, 107));
+    await db.update(acidente_agente_causador).set({ rotulo: "COMPOSTO ORGÂNICO HALOGENADO (TRICLORETILENO, ETC)" }).where(eq(acidente_agente_causador.ordem, 165));
+    // o 165 depois ajustado à mão não deve ser tocado; o 108 não faz parte da migração
+    await rodar();
+    expect(await ler(107)).toBe("PAINEL DE CONTROLE, BARRAMENTO, CHAVE, INTERRUPTOR, DISJUNTOR, FUSÍVEL");
+    expect(await ler(165)).toMatch(/PERCLORETILENO/);
+    expect(await ler(108)).toMatch(/RETIFICADOR, ETC$/);
+    await rodar();
+    expect(await ler(107)).toBe("PAINEL DE CONTROLE, BARRAMENTO, CHAVE, INTERRUPTOR, DISJUNTOR, FUSÍVEL");
+    await db.update(acidente_agente_causador).set({ rotulo: "AJUSTADO À MÃO" }).where(eq(acidente_agente_causador.ordem, 165));
+    await rodar();
+    expect(await ler(165)).toBe("AJUSTADO À MÃO");
+    // devolve o banco compartilhado do arquivo ao estado do catálogo
+    for (const n of [107, 165]) {
+      const item = AGENTES_CAUSADORES.find((a) => a[0] === n)!;
+      await db.update(acidente_agente_causador).set({ rotulo: item[1] }).where(eq(acidente_agente_causador.ordem, n));
+    }
   });
 
   it("semear de novo não duplica nada", async () => {
