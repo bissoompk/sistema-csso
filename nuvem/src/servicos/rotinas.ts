@@ -37,6 +37,7 @@ import { obterArmazenamento, type Armazenamento } from "./armazenamento.js";
 import { ambienteDeProducao } from "./instalacao.js";
 import { TAMANHO_MINIMO_SENHA_BACKUP } from "../config.js";
 import { expurgos_de_privacidade, mensagem_sem_dados } from "./privacidade.js";
+import * as aviso_interesse from "./aviso_interesse.js";
 import { expurgar_corpos } from "./email.js";
 import * as acesso_participante from "./acesso_participante.js";
 import * as avaliacao_reacao from "./avaliacao_reacao.js";
@@ -243,12 +244,14 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
         (await ativar_acesso.expurgar(tx)) +
         (await avaliacao_reacao.expurgar_convites(tx)),
       pedidos: await pedido_conta.expurgar(tx),
+      avisos: await aviso_interesse.expurgar(tx),
     }),
     (r) => [
       true,
       `${r.acessos} linha(s) de registro de acesso e ${r.exportacoes} exportação(ões) apagada(s); ` +
         `IP de ${r.ips} pedido(s) pelo link limpo(s); texto de ${r.corpos} e-mail(s), ${r.links} link(s) de acesso ` +
-        `e ${r.pedidos} pedido(s) de conta apagado(s)`,
+        `${r.pedidos} pedido(s) de conta apagado(s); aviso de interesse da vitrine: ` +
+        `${r.avisos.nao_confirmados} sem confirmar, ${r.avisos.expirados} expirado(s), ${r.avisos.cancelados} cancelado(s), ${r.avisos.ips} IP(s) limpo(s)`,
     ],
   );
   passos.push({ rotina: ROTINA_PRIVACIDADE, ok: expurgos.ok, detalhe: expurgos.detalhe });

@@ -11,7 +11,7 @@
  */
 import { and, eq, ne } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { turma as tabela_turma } from "../db/esquema/index.js";
+import { turma as tabela_turma, unidade_uorg } from "../db/esquema/index.js";
 import { Turma } from "../dominio/treinamento.js";
 import * as auditoria from "./auditoria.js";
 import { PermissaoNegada, type UsuarioAtual } from "./rbac.js";
@@ -230,6 +230,15 @@ export type Ficha =
   | { tipo: "encerrada" }
   | { tipo: "inexistente" };
 
+/** O setor (unidade promotora) pela sigla do filtro da lista, ou `null`. */
+export async function setor_por_sigla(tx: Executor, sigla: string): Promise<{ id: number; nome: string } | null> {
+  const [u] = await tx
+    .select({ id: unidade_uorg.id, sigla: unidade_uorg.sigla, nome: unidade_uorg.nome_extenso })
+    .from(unidade_uorg)
+    .where(eq(unidade_uorg.sigla, sigla));
+  return u ? { id: u.id, nome: u.sigla ?? u.nome } : null;
+}
+
 /** A ficha pública de uma turma já carregada (a vitrine, o início do servidor e o aviso de reciclagem usam o mesmo DTO). */
 export const curso_publico = (tx: Executor, turma: TurmaCarregada, hoje: string = datas_br.hoje()): Promise<CursoPublico> =>
   _dto(tx, turma, hoje);
@@ -316,5 +325,10 @@ export async function configurar(tx: Executor, usuario: UsuarioAtual, turma: Tur
       descricao: `${turma.codigo}: ${d.divulgar ? "publicada na" : "retirada da"} vitrine de cursos`,
       usuario,
     });
+  }
+  if (d.divulgar) {
+    // NUVEM: publicar com inscrição aberta avisa quem pediu (sem repetir: um aviso por pessoa por turma)
+    const aviso = await import("./aviso_interesse.js");
+    await aviso.avisar_turma(tx, turma);
   }
 }

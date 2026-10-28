@@ -17,6 +17,7 @@ import * as emissao from "../servicos/emissao_certificado.js";
 import * as inscricao from "../servicos/inscricao_publica.js";
 import { RegraDaTurma } from "../servicos/turma.js";
 import { qr_png } from "../servicos/qr.js";
+import * as aviso_interesse from "../servicos/aviso_interesse.js";
 import * as vitrine from "../servicos/vitrine.js";
 import * as divulgacao from "../servicos/vitrine_divulgacao.js";
 import * as anexos from "../servicos/anexos.js";
@@ -36,15 +37,36 @@ function _publica(resposta: Response, cache = true): Response {
   return resposta;
 }
 
+/** O formulário "Quero ser avisado": os interesses possíveis, o marcado, os campi. */
+async function _avise(
+  tx: Ambiente["Variables"]["tx"],
+  d: { treinamento_id?: number | null; setor?: { id: number; nome: string } | null; erro?: string | null },
+) {
+  const interesses: { valor: string; rotulo: string }[] = [];
+  if (d.treinamento_id) interesses.push({ valor: `TREINAMENTO:${d.treinamento_id}`, rotulo: "Este curso" });
+  if (d.setor) interesses.push({ valor: `SETOR:${d.setor.id}`, rotulo: `Cursos do setor ${d.setor.nome}` });
+  interesses.push({ valor: "QUALQUER:", rotulo: "Qualquer curso da SISA" });
+  return {
+    interesses,
+    padrao: interesses[0]!.valor,
+    campi: (await aviso_interesse.opcoes_do_formulario(tx)).campi,
+    texto_de_finalidade: aviso_interesse.TEXTO_DE_FINALIDADE,
+    erro: d.erro ?? null,
+  };
+}
+
 rotas.get(CURSOS, async (c) => {
   const q = (n: string) => (c.req.query(n) ?? "").trim().slice(0, 40);
   const pedida = q("aba");
   const aba = vitrine.ABAS.some((a) => a.chave === pedida) ? (pedida as vitrine.Aba) : "abertas";
   const filtros = { aba, setor: q("setor"), campus: q("campus"), modalidade: q("modalidade") };
   const lista = await vitrine.listar(c.get("tx"), filtros);
+  // o setor do filtro vira o interesse já marcado no "Quero ser avisado"
+  const setor = filtros.setor ? await vitrine.setor_por_sigla(c.get("tx"), filtros.setor) : null;
   return _publica(
     await pagina(c, "paginas/vitrine.html", null, {
       ...lista,
+      avise: await _avise(c.get("tx"), { setor }),
       filtros,
       abas: vitrine.ABAS,
       modalidades: vitrine.MODALIDADES,
@@ -83,6 +105,10 @@ async function _ficha(
       publico: inscricao.publico_da_turma(turma),
       equipe_de: promotor ? ` da ${promotor}` : " responsável",
       acao: `${CURSOS}/${curso.codigo}/inscricao`,
+      avise: await _avise(c.get("tx"), {
+        treinamento_id: turma.treinamento_id,
+        setor: turma.unidade_promotora ? { id: turma.unidade_promotora.id, nome: turma.unidade_promotora.sigla ?? turma.unidade_promotora.nome_extenso } : null,
+      }),
       divulgue: { url: url_ficha, whatsapp: divulgacao.link_whatsapp(curso, url_ficha), email: divulgacao.link_email(curso, url_ficha) },
     },
     d.status ?? 200,
@@ -110,6 +136,71 @@ rotas.get(`${CURSOS}/:codigo`, async (c) => {
     return _ficha(c);
   }
   return _ficha(c, { recebido: Boolean(getCookie(c, COOKIE_RECEBIDO)) });
+});
+
+// ---------------------------------------------------------------------
+// "Quero ser avisado"
+// ---------------------------------------------------------------------
+function _sem_cache(r: Response): Response {
+  return _publica(r, false);
+}
+
+async function _resultado(c: Ctx, modo: string, extra: Record<string, unknown> = {}, status = 200): Promise<Response> {
+  return _sem_cache(await pagina(c, "paginas/vitrine_avise.html", null, { modo, ...extra }, status));
+}
+
+/** Resolve "TREINAMENTO:12", "SETOR:5" ou "QUALQUER:" em tipo e alvo. */
+function _interesse(bruto: string): { tipo: string; alvo: number | null } {
+  const [tipo = "", resto = ""] = bruto.split(":");
+  const alvo = /^\d{1,9}$/.test(resto) ? Number(resto) : null;
+  return { tipo, alvo };
+}
+
+rotas.post(`${CURSOS}/avise-me`, async (c) => {
+  const inicio = performance.now();
+  const tx = c.get("tx");
+  const ip = ipDoCliente(c);
+  const f = await formulario(c);
+  if (!(await inscricao.dentro_do_limite(tx, ip))) return _resultado(c, "limite", {}, 429);
+  const { tipo, alvo } = _interesse(f.texto("interesse"));
+  const campus = /^\d{1,9}$/.test(f.texto("campus")) ? Number(f.texto("campus")) : null;
+  const dados = { nome: f.texto("nome"), email: f.texto("email"), tipo, alvo, campus_id: campus, consentimento: f.texto("consentimento") === "sim" };
+  // o campo que gente não vê: robô preenche, e recebe a mesma resposta
+  if (!f.texto("site").trim()) {
+    try {
+      await tx.transaction((sp) => aviso_interesse.cadastrar(sp as typeof tx, dados, ip));
+    } catch (erro) {
+      if (!(erro instanceof aviso_interesse.CadastroInvalido)) throw erro;
+      // e-mail inválido recebe a MESMA resposta do novo e do repetido; os outros erros são do formulário
+      if (erro.message !== "email") {
+        await inscricao.esperar_o_piso(inicio);
+        const msg = "Preencha o nome, escolha o interesse e marque a concordância para receber os avisos.";
+        return _sem_cache(
+          await pagina(c, "paginas/vitrine_avise.html", null, { modo: "resposta", resposta: msg }, 422),
+        );
+      }
+    }
+  }
+  void email.acordar_envio();
+  await inscricao.esperar_o_piso(inicio);
+  return _resultado(c, "resposta", { resposta: aviso_interesse.RESPOSTA_PADRAO });
+});
+
+rotas.get(`${CURSOS}/avise-me/confirmar/:token`, async (c) => {
+  const ok = await c.get("tx").transaction((sp) => aviso_interesse.confirmar(sp as Parameters<typeof aviso_interesse.confirmar>[0], c.req.param("token")));
+  return _resultado(c, ok ? "confirmado" : "confirmar_invalido", {}, ok ? 200 : 410);
+});
+
+// abrir o link NÃO cancela (o leitor de e-mail pré-carrega links): só o POST
+rotas.get(`${CURSOS}/avise-me/sair/:token`, async (c) => {
+  const token = c.req.param("token");
+  if (!(await aviso_interesse.saida_valida(c.get("tx"), token))) return _resultado(c, "sair_invalido", {}, 404);
+  return _resultado(c, "sair", { token });
+});
+
+rotas.post(`${CURSOS}/avise-me/sair/:token`, async (c) => {
+  const ok = await c.get("tx").transaction((sp) => aviso_interesse.descadastrar(sp as Parameters<typeof aviso_interesse.descadastrar>[0], c.req.param("token")));
+  return _resultado(c, ok ? "saiu" : "sair_invalido", {}, ok ? 200 : 404);
 });
 
 /** A ficha de um código, só se estiver publicada e viva; senão 404 sem corpo útil. */

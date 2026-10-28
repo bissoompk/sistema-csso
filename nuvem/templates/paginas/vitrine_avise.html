@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{# Sem lateral, como /cursos: quem abre não tem conta. #}
+{% set sem_casca = true %}
+{% block titulo %}Aviso de cursos · SISA{% endblock %}
+{% block classe_conteudo %}tela-vitrine{% endblock %}
+
+{% block conteudo %}
+<p class="discreto sem-margem"><a href="/cursos">Início › Cursos</a> › Aviso de cursos</p>
+<div class="cartao">
+  {% if modo == 'resposta' %}
+  <h1>Pedido recebido</h1>
+  <p>{{ resposta }}</p>
+  {% elif modo == 'confirmado' %}
+  <h1>Pronto, você será avisado</h1>
+  <p>Seu e-mail foi confirmado. Avisaremos quando abrir turma do interesse que você escolheu. O cadastro vale por
+    12 meses, e há um link para sair em cada aviso.</p>
+  {% elif modo == 'confirmar_invalido' %}
+  <h1>Este link não vale mais</h1>
+  <p>O link de confirmação expirou ou já foi usado. Se ainda quiser ser avisado, faça o pedido de novo na
+    <a href="/cursos#avise-me">vitrine de cursos</a>.</p>
+  {% elif modo == 'sair' %}
+  <h1>Deixar de receber avisos de cursos</h1>
+  <p>Abrir este link não cancela nada. Para parar de receber os avisos da vitrine de cursos, confirme abaixo.</p>
+  <form method="post" action="/cursos/avise-me/sair/{{ token }}">
+    <div class="acoes"><button type="submit">Confirmar saída</button></div>
+  </form>
+  {% elif modo == 'saiu' %}
+  <h1>Pronto, você saiu</h1>
+  <p>Você não receberá mais avisos de cursos da SISA por este pedido. Seus dados serão apagados em breve.</p>
+  {% elif modo == 'sair_invalido' %}
+  <h1>Este link não vale</h1>
+  <p>O endereço está incompleto ou foi alterado. Use o link da mensagem que você recebeu.</p>
+  {% elif modo == 'limite' %}
+  <h1>Muitos pedidos</h1>
+  <p>Foram muitos pedidos deste endereço em pouco tempo. Tente de novo mais tarde.</p>
+  {% endif %}
+  <p class="sem-margem"><a href="/cursos">Ver os cursos</a></p>
+</div>
+{% endblock %}

@@ -78,6 +78,10 @@
 </div>
 {% endif %}
 
+{% if curso.cheia or not curso.aberta %}
+<div class="cartao">{% include "partes/vitrine_avise.html" %}</div>
+{% endif %}
+
 <div class="cartao" id="inscricao">
   {% if excedeu %}
   <div class="aviso aviso-alerta" role="alert"><p><strong>Envios demais deste endereço.</strong>

@@ -516,6 +516,18 @@
       Divulgar na vitrine pública</label></div>
     <div class="acoes"><button type="submit">Salvar</button></div>
   </form>
+  <h3>Quem pediu aviso</h3>
+  <p class="discreto">{% if vitrine_aviso.aguardando == 0 %}Ninguém aguarda aviso de turma como esta.
+    {%- elif vitrine_aviso.aguardando == 1 %}1 pessoa aguarda aviso de turma como esta.
+    {%- else %}{{ vitrine_aviso.aguardando }} pessoas aguardam aviso de turma como esta.{% endif %}
+    A equipe vê só a contagem: não há lista de quem pediu. O aviso {{ 'está ligado' if vitrine_aviso.ativo else 'está desligado' }}.</p>
+  {% if vitrine_aviso.pode_ligar %}
+  <form method="post" action="/turmas/vitrine/aviso-interesse">
+    <input type="hidden" name="volta" value="/turmas/{{ turma.id }}?aba=inscricoes">
+    <input type="hidden" name="ligado" value="{{ 'nao' if vitrine_aviso.ativo else 'sim' }}">
+    <div class="acoes"><button type="submit" class="secundario">{{ 'Desligar o aviso de interesse' if vitrine_aviso.ativo else 'Ligar o aviso de interesse' }}</button></div>
+  </form>
+  {% endif %}
   <h3>Arte da turma</h3>
   <p class="discreto">Opcional. Sem arte, a vitrine mostra uma capa gerada na cor do setor. PNG, JPEG ou WEBP, até 3 MB,
     entre 600×750 e 2160×2700 px, de preferência na proporção 4:5. A localização e os outros metadados da imagem são

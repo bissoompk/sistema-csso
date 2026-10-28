@@ -67,6 +67,7 @@ import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as setor_equipe from "../servicos/setor_equipe.js";
 import * as vitrine from "../servicos/vitrine.js";
 import * as vitrine_arte from "../servicos/vitrine_arte.js";
+import * as aviso_interesse from "../servicos/aviso_interesse.js";
 import * as anexos from "../servicos/anexos.js";
 import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
@@ -890,6 +891,12 @@ async function _tela_ficha(
     vitrine_publicos: vitrine.PUBLICOS,
     vitrine_modalidades: vitrine.MODALIDADES,
     vitrine_arte_declaracao: vitrine_arte.DECLARACAO,
+    // só contagem: ninguém da equipe vê quem pediu aviso
+    vitrine_aviso: {
+      aguardando: (await aviso_interesse.contar_para_turma(tx, turma)).aguardando,
+      ativo: await aviso_interesse.ativo(tx),
+      pode_ligar: usuario.pode("treinamento.gerenciar"),
+    },
     aviso_modelo: aba === "emissao" ? aviso_modelo : "",
     avisos_linha,
     impedimentos_exclusao,
@@ -1626,6 +1633,17 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/vitrine`, async (c) => {
     throw erro;
   }
   return _volta(c, volta, turma.divulgar_na_vitrine ? "Turma publicada na vitrine de cursos." : "Dados da vitrine salvos; a turma não está publicada.");
+});
+
+/** Liga ou desliga o aviso de interesse da vitrine (vale para todas as turmas). */
+rotas.post(`${TURMAS}/vitrine/aviso-interesse`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const f = await formulario(c);
+  const ligado = f.texto("ligado") === "sim";
+  await _no_savepoint(c, (sp) => aviso_interesse.definir_ativo(sp, usuario, ligado));
+  const volta = f.texto("volta").startsWith(`${TURMAS}/`) ? f.texto("volta") : TURMAS;
+  return _volta(c, volta, ligado ? "Aviso de interesse da vitrine ligado." : "Aviso de interesse da vitrine desligado.");
 });
 
 /** Envia a arte da turma para a vitrine (um arquivo por requisição), ou a retira. */

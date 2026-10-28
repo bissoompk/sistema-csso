@@ -120,6 +120,8 @@ export interface Mensagem {
   assunto: string;
   texto: string;
   anexos: { nome: string; tipo: string; bytes: Uint8Array }[];
+  /** cabeçalhos extras (ex.: `List-Unsubscribe`), por tipo de mensagem (`registrar_cabecalhos`) */
+  cabecalhos?: Record<string, string>;
 }
 
 export type Transporte = (m: Mensagem) => Promise<void>;
@@ -138,6 +140,7 @@ function _smtp(): Transporte {
       subject: m.assunto,
       text: m.texto,
       attachments: m.anexos.map((a) => ({ filename: a.nome, contentType: a.tipo, content: Buffer.from(a.bytes) })),
+      headers: m.cabecalhos,
     });
   };
 }
@@ -189,6 +192,14 @@ const _anexadores = new Map<string, Anexador>();
 
 export function registrar_anexador(tipo: string, anexador: Anexador): void {
   _anexadores.set(tipo, anexador);
+}
+
+/** Cabeçalhos extras de um tipo de mensagem, calculados na hora do envio. */
+export type Cabecalhador = (email: EmailRegistro) => Record<string, string> | undefined;
+const _cabecalhadores = new Map<string, Cabecalhador>();
+
+export function registrar_cabecalhos(tipo: string, c: Cabecalhador): void {
+  _cabecalhadores.set(tipo, c);
 }
 
 // ---------------------------------------------------------------------
@@ -328,7 +339,13 @@ export async function processar_fila(
       await db.transaction(async (tx) => {
         const anexador = _anexadores.get(email.tipo);
         const anexos = anexador ? await anexador(tx as Executor, email) : [];
-        await transporte({ para: email.destinatario, assunto: email.assunto, texto: email.corpo ?? "", anexos });
+        await transporte({
+          para: email.destinatario,
+          assunto: email.assunto,
+          texto: email.corpo ?? "",
+          anexos,
+          cabecalhos: _cabecalhadores.get(email.tipo)?.(email),
+        });
         await tx
           .update(tabela)
           .set({ situacao: "ENVIADO", enviado_em: agora_utc(), ultimo_erro: null })

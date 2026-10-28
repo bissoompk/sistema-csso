@@ -4224,6 +4224,9 @@ fieldset.partes-corpo label { font-size: 13px; line-height: 1.35; }
 .para-voce-item { border: 1px solid var(--borda); border-radius: .5rem; padding: .75rem; display: flex; flex-direction: column; gap: .35rem; }
 .para-voce-item h3 { margin: 0; font-size: 1rem; }
 .para-voce-item p { margin: 0; }
+.avise { text-align: left; max-width: 34rem; }
+.avise fieldset { border: 0; padding: 0; margin: 0 0 .75rem; }
+.avise fieldset label { display: block; }
 .divulgue { display: grid; gap: 1rem; grid-template-columns: 1fr; align-items: start; }
 @media (min-width: 640px) { .divulgue { grid-template-columns: 160px 1fr; } }
 .divulgue-qr { width: 160px; height: 160px; border: 1px solid var(--borda); border-radius: .5rem; background: #fff; }

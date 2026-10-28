@@ -1,0 +1,30 @@
+{# "Quero ser avisado": o mesmo formulário no estado vazio da lista, na ficha da
+   turma cheia ou encerrada e no rodapé. Espera `avise` do contexto:
+   `interesses` (lista de {valor, rotulo}), `padrao` (o valor marcado), `campi`
+   (lista de {id, nome}) e, se houver, `erro`. Só nome e e-mail: nenhum telefone. #}
+<div class="avise" id="avise-me">
+  <h2>Quero ser avisado</h2>
+  <p class="discreto">{{ avise.texto_de_finalidade }}</p>
+  {% if avise.erro %}<div class="aviso aviso-erro" role="alert">{{ avise.erro }}</div>{% endif %}
+  <form method="post" action="/cursos/avise-me">
+    <div class="campo"><label for="av-nome">Nome</label>
+      <input id="av-nome" name="nome" maxlength="120" required autocomplete="name"></div>
+    <div class="campo"><label for="av-email">E-mail</label>
+      <input id="av-email" name="email" type="email" maxlength="254" required autocomplete="email"></div>
+    <fieldset class="campo"><legend>Quero ser avisado sobre</legend>
+      {% for i in avise.interesses %}
+      <label><input type="radio" name="interesse" value="{{ i.valor }}"{{ ' checked' if i.valor == avise.padrao }}> {{ i.rotulo }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="campo"><label for="av-campus">Campus (opcional)</label>
+      <select id="av-campus" name="campus"><option value="">Qualquer campus</option>
+        {% for c in avise.campi %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+      </select></div>
+    {# o campo que gente não vê: robô preenche #}
+    <div class="oculto" aria-hidden="true"><label for="av-site">Não preencha</label>
+      <input id="av-site" name="site" tabindex="-1" autocomplete="off"></div>
+    <div class="campo"><label><input type="checkbox" name="consentimento" value="sim" required>
+      Concordo em receber e-mails da SISA sobre a abertura de turmas.</label></div>
+    <div class="acoes"><button type="submit">Quero ser avisado</button></div>
+  </form>
+</div>

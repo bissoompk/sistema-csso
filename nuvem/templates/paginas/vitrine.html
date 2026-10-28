@@ -50,7 +50,16 @@
   <p>{% if filtros.aba == 'abertas' %}Nenhum curso com inscrições abertas no momento. Novas turmas estão sendo preparadas.
     {%- elif filtros.aba == 'breve' %}Nenhum curso anunciado para breve.
     {%- else %}Nenhum curso realizado no último ano.{% endif %}</p>
+  {% if filtros.aba != 'realizados' %}{% include "partes/vitrine_avise.html" %}{% endif %}
 </div>
+{% endif %}
+
+{# no rodapé, o aviso geral: quem achou o que queria não precisa dele, e quem não achou o encontra aqui #}
+{% if itens|length and filtros.aba != 'realizados' %}
+<details class="cartao recolhido" id="avise-me-rodape">
+  <summary>Não achou o curso que procura? Quero ser avisado quando abrir turma</summary>
+  {% include "partes/vitrine_avise.html" %}
+</details>
 {% endif %}
 
 <footer class="vitrine-rodape discreto">Sistema SISA · UFVJM</footer>

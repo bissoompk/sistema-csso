@@ -8,6 +8,8 @@ import type { Config } from "@netlify/functions";
 import { obterBanco } from "../../src/db/cliente.js";
 import * as email from "../../src/servicos/email.js";
 import "../../src/servicos/envio_certificado.js";
+// registra o List-Unsubscribe do aviso de interesse da vitrine
+import "../../src/servicos/aviso_interesse.js";
 
 export default async () => {
   const r = await email.processar_fila(obterBanco(), { prazo_ms: 20_000, limite: 30 });

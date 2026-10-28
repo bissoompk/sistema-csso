@@ -15,6 +15,8 @@ import { fecharBanco, obterBanco } from "../../src/db/cliente.js";
 import * as email from "../../src/servicos/email.js";
 // registra o anexo do certificado na caixa
 import "../../src/servicos/envio_certificado.js";
+// registra o List-Unsubscribe do aviso de interesse da vitrine
+import "../../src/servicos/aviso_interesse.js";
 import { segredoConfere } from "./backup-background.mjs";
 
 const ESPERA_MS = 5_000;
