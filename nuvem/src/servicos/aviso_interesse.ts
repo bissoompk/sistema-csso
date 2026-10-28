@@ -410,6 +410,52 @@ export async function expurgar(tx: Executor, agora: Date = new Date()): Promise<
   return { nao_confirmados, expirados, cancelados, ips };
 }
 
+/**
+ * Pedido de acesso do titular (LGPD art. 18, II): a equipe confere a identidade
+ * de quem escreveu à CSSO e consulta pelo e-mail. Só contagem por tipo e a
+ * situação, sem nome nem lista. A consulta entra na trilha só com a quantidade
+ * (o e-mail é o dado pessoal e não vai para a trilha).
+ */
+export async function consultar_do_titular(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  email_titular: string,
+): Promise<{ tipo: string; confirmado: boolean }[]> {
+  usuario.exigir("treinamento.gerenciar");
+  if (!email.email_valido(email_titular.trim())) throw new CadastroInvalido("email");
+  const achados = await do_titular(tx, email_titular);
+  await auditoria.registrar(tx, {
+    entidade: "aviso_interesse",
+    entidade_id: 0,
+    tipo_evento: "AVISO_INTERESSE_CONSULTADO",
+    descricao: `Pedido de acesso do titular: ${achados.length} cadastro(s) de aviso da vitrine`,
+    usuario,
+  });
+  return achados;
+}
+
+/**
+ * Pedido de eliminação (LGPD art. 18, VI): apaga TODOS os cadastros do e-mail,
+ * inclusive os cancelados que ainda esperam o expurgo. Os envios já feitos
+ * saem junto (cascata). Devolve quantos foram apagados.
+ */
+export async function apagar_do_titular(tx: Executor, usuario: UsuarioAtual, email_titular: string): Promise<number> {
+  usuario.exigir("treinamento.gerenciar");
+  if (!email.email_valido(email_titular.trim())) throw new CadastroInvalido("email");
+  const apagados = await tx
+    .delete(tabela)
+    .where(eq(tabela.email_normalizado, normalizar_email(email_titular)))
+    .returning({ id: tabela.id });
+  await auditoria.registrar(tx, {
+    entidade: "aviso_interesse",
+    entidade_id: 0,
+    tipo_evento: "AVISO_INTERESSE_APAGADO",
+    descricao: `Pedido do titular: ${apagados.length} cadastro(s) de aviso da vitrine apagado(s)`,
+    usuario,
+  });
+  return apagados.length;
+}
+
 /** Os cadastros de um e-mail, para o pedido de acesso do titular (LGPD art. 18). Só contagem por tipo. */
 export async function do_titular(tx: Executor, email_titular: string): Promise<{ tipo: string; confirmado: boolean }[]> {
   const linhas = await tx

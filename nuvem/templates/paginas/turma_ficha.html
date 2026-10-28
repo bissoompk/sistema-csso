@@ -530,6 +530,9 @@
     <div class="acoes"><button type="submit" class="secundario">{{ 'Desligar o aviso de interesse' if vitrine_aviso.ativo else 'Ligar o aviso de interesse' }}</button></div>
   </form>
   {% endif %}
+  {% if vitrine_aviso.pode_ligar %}
+  <p class="discreto"><a href="/turmas/vitrine/titular">Pedido do titular</a>: consultar ou apagar os cadastros de um e-mail.</p>
+  {% endif %}
   <h3>Arte da turma</h3>
   <p class="discreto">Opcional. Sem arte, a vitrine mostra uma capa gerada na cor do setor. PNG, JPEG ou WEBP, até 3 MB,
     entre 600×750 e 2160×2700 px, de preferência na proporção 4:5. A localização e os outros metadados da imagem são
