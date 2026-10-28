@@ -28,6 +28,8 @@ import * as email from "./email.js";
 import * as servico from "./emissao_certificado.js";
 import { destinatario } from "./envio_certificado.js";
 import type { UsuarioAtual } from "./rbac.js";
+import * as vitrine_para_voce from "./vitrine_para_voce.js";
+import * as divulgacao from "./vitrine_divulgacao.js";
 
 export const TIPO = "RECICLAGEM_AVISO";
 export const PARAMETRO_AUTOMATICO = "reciclagem.aviso_email_automatico";
@@ -88,7 +90,15 @@ export async function ja_avisados(tx: Executor, ids: number[]): Promise<Set<numb
   return new Set(linhas.map((l) => l.certificado_id!));
 }
 
-function _mensagem(certificado: CertificadoRegistro, hoje: string): { assunto: string; corpo: string } {
+/** A linha com a próxima turma divulgada do mesmo treinamento, ou "" quando não há. */
+async function _proxima_turma(tx: Executor, certificado: CertificadoRegistro, hoje: string): Promise<string> {
+  const turma = await vitrine_para_voce.proxima_do_treinamento(tx, certificado.treinamento_id, hoje);
+  if (!turma) return "";
+  const url = divulgacao.url_da_ficha(await servico.url_base_validacao(tx), turma.codigo);
+  return `Já há turma com inscrição aberta (início em ${datas_br.numerica(turma.data_inicio)}): ${url}\n\n`;
+}
+
+function _mensagem(certificado: CertificadoRegistro, hoje: string, proxima: string): { assunto: string; corpo: string } {
   const c = servico.montar_contexto(null, certificado);
   const vence = certificado.data_vencimento!;
   const venceu = vence < hoje;
@@ -101,6 +111,7 @@ function _mensagem(certificado: CertificadoRegistro, hoje: string): { assunto: s
       "Para manter a capacitação em dia, procure o setor que promoveu o treinamento" +
       (c.turma_unidade_promotora ? ` (${c.turma_unidade_promotora})` : "") +
       " para se inscrever na próxima turma de reciclagem.\n\n" +
+      proxima +
       `${c.turma_unidade_promotora || "Superintendência Integrada de Saúde (Sisa)"} — UFVJM\n` +
       "Mensagem enviada pelo Sistema SISA.\n",
   };
@@ -135,7 +146,7 @@ async function _avisar(
       r.sem_email += 1;
       continue;
     }
-    const { assunto, corpo } = _mensagem(certificado, hoje);
+    const { assunto, corpo } = _mensagem(certificado, hoje, await _proxima_turma(tx, certificado, hoje));
     await email.enfileirar(tx, {
       tipo: TIPO,
       destinatario: para,

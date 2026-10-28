@@ -47,6 +47,7 @@ import * as epi_contagens from "../servicos/epi_contagens.js";
 import type { Executor } from "../db/cliente.js";
 import * as certificados_titular from "../servicos/certificados_titular.js";
 import { turmas_abertas } from "../servicos/turma.js";
+import * as vitrine_para_voce from "../servicos/vitrine_para_voce.js";
 import { cartao_meu_espaco, e_externo, icone_de, meu_espaco_de, primeira_tela, so_o_proprio as so_tem_o_proprio } from "../modulos.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -464,6 +465,17 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
   const proximo = certificados.resumo.proximo_a_vencer;
   const nome_curto = (c: { norma: string; treinamento: string }) => c.norma || c.treinamento;
 
+  // --- as turmas divulgadas que servem a esta conta (a reciclagem vai na frente) ---
+  const para_voce = await vitrine_para_voce.sugerir(
+    tx,
+    usuario,
+    {
+      certificados: em_vigor.map((c) => ({ treinamento_id: c.treinamento_id, data_vencimento: c.data_vencimento })),
+      campus: dados?.campus ?? null,
+    },
+    hoje,
+  );
+
   // --- avisos por severidade: só quando existem ---
   const reciclagem = ve_treinamento ? { href: "/turmas/minhas", rotulo: "Ver turmas de reciclagem" } : null;
   const avisos: AvisoDoInicio[] = [];
@@ -522,6 +534,7 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
 
   return {
     inicio_do_servidor: true,
+    para_voce,
     epi,
     tem_servidor: servidor_id !== null,
     primeiro_nome,

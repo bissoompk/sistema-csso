@@ -4219,6 +4219,11 @@ fieldset.partes-corpo label { font-size: 13px; line-height: 1.35; }
 .curso-capa--arte { padding: 0; background: none; overflow: hidden; aspect-ratio: 4 / 5; }
 .curso-capa--arte img { display: block; width: 100%; height: 100%; object-fit: cover; aspect-ratio: 4 / 5; }
 .vitrine-previa-arte { border: 1px solid var(--borda); border-radius: .35rem; object-fit: cover; }
+.para-voce { display: grid; gap: .75rem; grid-template-columns: 1fr; margin-bottom: .75rem; }
+@media (min-width: 760px) { .para-voce { grid-template-columns: repeat(3, 1fr); } }
+.para-voce-item { border: 1px solid var(--borda); border-radius: .5rem; padding: .75rem; display: flex; flex-direction: column; gap: .35rem; }
+.para-voce-item h3 { margin: 0; font-size: 1rem; }
+.para-voce-item p { margin: 0; }
 .divulgue { display: grid; gap: 1rem; grid-template-columns: 1fr; align-items: start; }
 @media (min-width: 640px) { .divulgue { grid-template-columns: 160px 1fr; } }
 .divulgue-qr { width: 160px; height: 160px; border: 1px solid var(--borda); border-radius: .5rem; background: #fff; }

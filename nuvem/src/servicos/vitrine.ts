@@ -230,6 +230,10 @@ export type Ficha =
   | { tipo: "encerrada" }
   | { tipo: "inexistente" };
 
+/** A ficha pública de uma turma já carregada (a vitrine, o início do servidor e o aviso de reciclagem usam o mesmo DTO). */
+export const curso_publico = (tx: Executor, turma: TurmaCarregada, hoje: string = datas_br.hoje()): Promise<CursoPublico> =>
+  _dto(tx, turma, hoje);
+
 /** A turma de um código público: só a divulgada e não cancelada tem ficha. */
 export async function ficha(tx: Executor, codigo: string, hoje: string = datas_br.hoje()): Promise<Ficha> {
   if (!/^[A-Z]{3}-\d{4}-\d{4}$/.test(codigo)) return { tipo: "inexistente" };
