@@ -93,7 +93,10 @@ rotas.get("/", async (c) => {
       // a conta de servidor ainda sem vínculo também abre o Início dela
       // (25/10/2026: o servidor já não tem `processo.ver` por padrão); a da
       // equipe sem a permissão continua no 403
-      if (e_externo(usuario) || !so_tem_o_proprio(usuario)) exigir(usuario, "processo.ver");
+      if (e_externo(usuario)) exigir(usuario, "processo.ver");
+      // a conta da equipe sem Processos SEI (almoxarife, admin) tem a tela
+      // inicial na visão geral dos módulos dela, e não um 403 em `/`
+      if (!so_tem_o_proprio(usuario)) return redirecionar(c, "/inicio");
     }
     return pagina(c, "paginas/painel.html", usuario, {
       ...(await inicio_do_servidor(tx, usuario, hoje)),

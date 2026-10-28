@@ -677,6 +677,9 @@ button.sair:hover { text-decoration: underline; }
    escondida: ate a 1.26 nao havia entrada nenhuma. */
 .engrenagem { font-size: 14px; line-height: 1; color: var(--tinta-dica); }
 .engrenagem:hover { color: var(--acento); }
+/* alvo de clique de 24px no minimo (WCAG 2.2, 2.5.8): a engrenagem media 15x17 e o
+   sair 23x16; o desenho nao muda, so a area que responde ao clique */
+.engrenagem, button.sair { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; }
 
 /* ---------- a volta a origem ----------
    O link "voltar as pendencias" fica no cabecalho, entre a trilha e as acoes:
