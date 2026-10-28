@@ -76,7 +76,7 @@
       <p class="perfil-nota">Informados por você ou pela equipe da Sisa — o sistema não lê o SIAPE.
         Cargo, função e lotação você mesmo corrige; o campus vem da lotação. Para o SIAPE ou o nome,
         procure a equipe da Sisa.
-        <a href="/servidores/{{ servidor.id }}">Ver minha ficha completa →</a></p>
+        {% if usuario.pode('processo.ver') or usuario.pode('@base') %}<a href="/servidores/{{ servidor.id }}">Ver minha ficha completa →</a>{% endif %}</p>
       <div class="acoes">{{ ui.botao_cadastro('corrigir-funcionais', 'Corrigir cargo, função ou lotação', 'secundario') }}</div>
     </div>
   </details>
