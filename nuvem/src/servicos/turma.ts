@@ -882,6 +882,24 @@ export async function excluir_turma(
 // ---------------------------------------------------------------------
 // Instrutores da turma
 // ---------------------------------------------------------------------
+/**
+ * A turma concluída ainda aceita mudar o instrutor enquanto nenhum certificado
+ * saiu dela (nem anulado): quem concluiu sem marcar quem assina ficaria sem
+ * saída, porque a emissão é recusada e a tela travava o vínculo. Depois do
+ * primeiro certificado vale a regra de sempre — anula e reemite (`retificacao.ts`).
+ * A turma cancelada nunca muda.
+ */
+export async function instrutor_mutavel(tx: Executor, turma: TurmaCarregada): Promise<boolean> {
+  if (!T.encerrada(turma)) return true;
+  if (turma.situacao !== "CONCLUIDA") return false;
+  const ids = (await tx.select({ id: tabela_inscricao.id }).from(tabela_inscricao).where(eq(tabela_inscricao.turma_id, turma.id))).map((i) => i.id);
+  if (!ids.length) return true;
+  const [certificados] = await tx.select({ n: count() }).from(tabela_certificado).where(inArray(tabela_certificado.inscricao_id, ids));
+  return Number(certificados?.n ?? 0) === 0;
+}
+
+const _RECUSA_INSTRUTOR_ENCERRADA = "Turma encerrada não muda de instrutor.";
+
 export async function vincular_instrutor(
   tx: Executor,
   usuario: UsuarioAtual,
@@ -891,7 +909,7 @@ export async function vincular_instrutor(
 ) {
   const assina = opcoes.assina_certificado ?? true;
   usuario.exigir("turma.criar");
-  if (T.encerrada(turma)) throw new RegraDaTurma("Turma encerrada não muda de instrutor.");
+  if (!(await instrutor_mutavel(tx, turma))) throw new RegraDaTurma(_RECUSA_INSTRUTOR_ENCERRADA);
   const nome = AssinaturaInstrutor.nome_exibicao(instrutor);
   if (!instrutor.ativo) {
     throw new RegraDaTurma(`A assinatura de ${nome} está inativa — reative-a antes de vinculá-la à turma.`);
@@ -937,7 +955,7 @@ export async function desvincular_instrutor(
   instrutor_id: number,
 ): Promise<void> {
   usuario.exigir("turma.criar");
-  if (T.encerrada(turma)) throw new RegraDaTurma("Turma encerrada não muda de instrutor.");
+  if (!(await instrutor_mutavel(tx, turma))) throw new RegraDaTurma(_RECUSA_INSTRUTOR_ENCERRADA);
   const vinculo = turma.instrutores.find((v) => v.assinatura_instrutor_id === instrutor_id);
   if (!vinculo) return;
   const nome = AssinaturaInstrutor.nome_exibicao(vinculo.instrutor);

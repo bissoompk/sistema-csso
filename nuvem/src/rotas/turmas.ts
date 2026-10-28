@@ -933,6 +933,7 @@ async function _tela_ficha(
     lancamento_aberto: turma.situacao === "CONCLUIDA" || servico_presenca.aceita_lancamento(turma),
     permissao_por_destino: servico_turma.PERMISSAO_POR_SITUACAO_TURMA,
     instrutores_livres,
+    instrutor_mutavel: await servico_turma.instrutor_mutavel(tx, turma),
     avisos_qualificacao,
     achados,
     servidores_achados,
