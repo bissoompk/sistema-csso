@@ -1,0 +1,24 @@
+{% import "partes/macros.html" as ui with context %}
+{# A aba Histórico: a trilha do caso, do mais novo ao mais antigo. Mostra o que
+   aconteceu, quando e quem fez; o conteúdo da saúde e da identificação não entra
+   (RN-19). Restrita à equipe que investiga, como as outras abas de condução. #}
+{% if not ve_investigacao %}
+<div class="cartao"><div class="vazio"><strong>Restrito à equipe que investiga</strong>
+  <span>O histórico do caso fica com quem conduz.</span></div></div>
+{% else %}
+<section class="cartao">
+  <h2>Histórico do caso <span class="contador">{{ eventos|length }}</span></h2>
+  {% if eventos|length %}
+  <ul class="linha-tempo">
+    {% for e in eventos %}
+    <li>{{ e.ocorrido_em|momento }} · <strong>{{ e.tipo_evento|evento }}</strong>
+      <span class="discreto">({{ e.usuario_nome }})</span>
+      {% if e.descricao %}<span class="quebra discreto">{{ e.descricao }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="discreto">Nada registrado ainda.</p>
+  {% endif %}
+  {% if eventos|length >= 200 %}<p class="discreto">Mostrando os 200 mais recentes.</p>{% endif %}
+</section>
+{% endif %}

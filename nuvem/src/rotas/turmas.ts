@@ -933,6 +933,7 @@ async function _tela_ficha(
     lancamento_aberto: turma.situacao === "CONCLUIDA" || servico_presenca.aceita_lancamento(turma),
     permissao_por_destino: servico_turma.PERMISSAO_POR_SITUACAO_TURMA,
     instrutores_livres,
+    instrutor_mutavel: await servico_turma.instrutor_mutavel(tx, turma),
     avisos_qualificacao,
     achados,
     servidores_achados,
@@ -1644,6 +1645,51 @@ rotas.post(`${TURMAS}/vitrine/aviso-interesse`, async (c) => {
   await _no_savepoint(c, (sp) => aviso_interesse.definir_ativo(sp, usuario, ligado));
   const volta = f.texto("volta").startsWith(`${TURMAS}/`) ? f.texto("volta") : TURMAS;
   return _volta(c, volta, ligado ? "Aviso de interesse da vitrine ligado." : "Aviso de interesse da vitrine desligado.");
+});
+
+/**
+ * Pedido do titular sobre o aviso de interesse (LGPD art. 18). O e-mail vai por
+ * POST, nunca na URL. A equipe confere a identidade fora do sistema; aqui só
+ * consulta (contagem por tipo) e apaga.
+ */
+const TITULAR = `${TURMAS}/vitrine/titular`;
+
+async function _tela_titular(c: Ctx, usuario: UsuarioAtual, extra: Record<string, unknown> = {}) {
+  return pagina(c, "paginas/aviso_titular.html", usuario, { caminho: TITULAR, ...extra });
+}
+
+rotas.get(TITULAR, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  return _tela_titular(c, usuario);
+});
+
+rotas.post(`${TITULAR}/consultar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const f = await formulario(c);
+  const email_informado = f.texto("email").trim();
+  try {
+    const achados = await _no_savepoint(c, (sp) => aviso_interesse.consultar_do_titular(sp, usuario, email_informado));
+    return _tela_titular(c, usuario, { email: email_informado, achados });
+  } catch (erro) {
+    if (!(erro instanceof aviso_interesse.CadastroInvalido)) throw erro;
+    return _tela_titular(c, usuario, { email: email_informado, erro: "Informe um e-mail válido." });
+  }
+});
+
+rotas.post(`${TITULAR}/apagar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const f = await formulario(c);
+  const email_informado = f.texto("email").trim();
+  try {
+    const n = await _no_savepoint(c, (sp) => aviso_interesse.apagar_do_titular(sp, usuario, email_informado));
+    return _tela_titular(c, usuario, { apagados: n });
+  } catch (erro) {
+    if (!(erro instanceof aviso_interesse.CadastroInvalido)) throw erro;
+    return _tela_titular(c, usuario, { email: email_informado, erro: "Informe um e-mail válido." });
+  }
 });
 
 /** Envia a arte da turma para a vitrine (um arquivo por requisição), ou a retira. */

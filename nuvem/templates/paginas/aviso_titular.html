@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{# Pedido do titular sobre o "quero ser avisado" da vitrine (LGPD art. 18).
+   Tela da equipe: a identidade de quem pede é conferida fora do sistema. O
+   e-mail segue por POST (nunca na URL) e a equipe vê só a contagem por tipo. #}
+{% set trilha_raiz = 'Treinamentos' %}
+{% block titulo %}Pedido do titular · aviso da vitrine · SISA{% endblock %}
+{% block trilha %}<a href="/turmas">Turmas</a> <span class="atual" aria-current="page">Pedido do titular</span>{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Pedido do titular · aviso da vitrine</h1>
+      <p class="sub">Quando alguém escrever à CSSO pedindo o que o sistema guarda dele sobre o «quero ser avisado», confira
+        a identidade de quem pediu e consulte pelo e-mail. A tela mostra só quantos cadastros existem, por tipo. A consulta e o
+        apagamento ficam na trilha, sem o e-mail.</p>
+    </div>
+  </div>
+
+  {% if erro %}<div class="aviso aviso-erro" role="alert"><p>{{ erro }}</p></div>{% endif %}
+  {% if apagados is defined %}
+  <div class="aviso aviso-ok" role="status"><p>{{ apagados }} cadastro(s) apagado(s). Os envios já feitos saíram junto.</p></div>
+  {% endif %}
+
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Consultar por e-mail</h2></div>
+    <form method="post" action="{{ caminho }}/consultar">
+      <div class="campo"><label for="t-email">E-mail da pessoa</label>
+        <input id="t-email" name="email" type="email" maxlength="254" autocomplete="off" value="{{ email or '' }}" required></div>
+      <div class="acoes"><button type="submit">Consultar</button></div>
+    </form>
+  </section>
+
+  {% if achados is defined %}
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>O que o sistema guarda</h2></div>
+    {% if achados|length == 0 %}
+    <p>Nenhum cadastro ativo para este e-mail.</p>
+    {% else %}
+    <table class="tabela-dados">
+      <thead><tr><th scope="col">Interesse</th><th scope="col">Situação</th></tr></thead>
+      {% for a in achados %}
+      <tr><td>{{ {'TREINAMENTO': 'Um curso', 'SETOR': 'Cursos de um setor', 'QUALQUER': 'Qualquer curso'}[a.tipo] }}</td>
+          <td>{{ 'Confirmado' if a.confirmado else 'Aguardando confirmação' }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    <p class="discreto">Guardamos nome, e-mail, o interesse, o consentimento e a data. O IP do consentimento sai em 90 dias.</p>
+    <form method="post" action="{{ caminho }}/apagar">
+      <input type="hidden" name="email" value="{{ email }}">
+      <div class="acoes"><button type="submit" class="perigo">Apagar todos os cadastros deste e-mail</button></div>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

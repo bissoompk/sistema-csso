@@ -376,7 +376,9 @@ describe("agenda .ics", () => {
     const codigo = (await ler_turma(id)).codigo;
     const corpo = r.text.replaceAll("\r\n ", "");
     expect(corpo).toContain(`UID:turma-${codigo}@sisa.exemplo.edu.br`);
-    expect(corpo).toContain(`https://sisa.exemplo.edu.br/turmas/${id}`);
+    // turma não divulgada: o link leva à lista do próprio titular, não a /turmas/{id} (403 para ele)
+    expect(corpo).toContain("https://sisa.exemplo.edu.br/turmas/minhas");
+    expect(corpo).not.toContain(`/turmas/${id}`);
     expect(corpo).toContain("DTSTART:" + FUTURO.replaceAll("-", "") + "T110000Z");
     expect(corpo.toLowerCase()).not.toContain("cssosisa");
     // a turma de outra pessoa (sem inscrição minha) continua recusada

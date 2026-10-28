@@ -292,6 +292,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   AVISO_INTERESSE_CONFIRMADO: "Pedido de aviso da vitrine confirmado pelo e-mail",
   AVISO_INTERESSE_CANCELADO: "Pedido de aviso da vitrine cancelado pela própria pessoa",
   AVISO_INTERESSE_CHAVE: "Aviso de interesse da vitrine ligado ou desligado",
+  AVISO_INTERESSE_CONSULTADO: "Pedido de acesso do titular: cadastros de aviso da vitrine consultados pela equipe",
+  AVISO_INTERESSE_APAGADO: "Pedido do titular: cadastros de aviso da vitrine apagados pela equipe",
   INSCRICAO_LINK_GERADO: "Link público de inscrição gerado",
   INSCRICAO_LINK_DESLIGADO: "Link público de inscrição desligado",
   INSCRICAO_PEDIDA_PELO_LINK: "Inscrição pedida pelo link público",

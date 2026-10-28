@@ -35,6 +35,7 @@ import {
   acidente_parte_corpo,
   acidente_situacao_geradora,
   campus as tabela_campus,
+  historico_evento,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
 import { ESTADOS_ACIDENTE, ROTULO_ACIDENTE, ACIDENTE_ENCERRADO, ACIDENTE_CANCELAVEL, TRANSICOES_ACIDENTE } from "../dominio/estados.js";
@@ -743,6 +744,24 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
     dados_investigacao.acoes = await plano.do_caso(tx, ocorrencia.id);
     dados_investigacao.unidades_acao = await plano.unidades(tx);
     dados_investigacao.pode_acao = usuario.pode("acidente.investigar") && ocorrencia.estado !== "CANCELADA";
+  } else if (ve_investigacao && aba === "historico") {
+    // a trilha do caso, do mais novo ao mais antigo. Só rótulo, quando e quem:
+    // o que mudou na saúde e na identificação nem aparece (RN-19)
+    const eventos = await tx
+      .select({
+        ocorrido_em: historico_evento.ocorrido_em,
+        tipo_evento: historico_evento.tipo_evento,
+        descricao: historico_evento.descricao,
+        usuario_nome: historico_evento.usuario_nome,
+      })
+      .from(historico_evento)
+      .where(and(eq(historico_evento.entidade, triagem.ENTIDADE), eq(historico_evento.entidade_id, ocorrencia.id)))
+      .orderBy(desc(historico_evento.ocorrido_em), desc(historico_evento.id))
+      .limit(200);
+    dados_investigacao.eventos = eventos.map((e) => ({
+      ...e,
+      descricao: /^ACIDENTE_(SAUDE|IDENTIFICACAO)_/.test(e.tipo_evento) ? "" : e.descricao,
+    }));
   } else if (ve_investigacao && aba === "entrevistas") {
     dados_investigacao.entrevistas = await entrevista.entrevistas(tx, ocorrencia.id);
     dados_investigacao.evidencias = await entrevista.evidencias(tx, ocorrencia.id);

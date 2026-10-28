@@ -50,6 +50,8 @@
 {% set pode_lancar = pode_avaliar and (not retificando or pode_aqui('turma.concluir'))
                      and lancamento_aberto %}
 {% set editavel = pode_editar and not turma.encerrada %}
+{# o instrutor ainda se marca na turma concluída enquanto nenhum certificado saiu #}
+{% set instrutor_editavel = pode_editar and (not turma.encerrada or instrutor_mutavel) %}
 {# a turma concluída com dado errado: corrige-se com motivo (`retificacao.ts`) #}
 {% set corrigivel = pode_editar and turma.situacao == 'CONCLUIDA' and pode_aqui('turma.concluir') %}
 
@@ -343,7 +345,7 @@
       <table class="empilhavel">
         <thead>
           <tr><th scope="col">Nome</th><th scope="col">Título</th><th scope="col">Certificado</th>
-              {% if editavel %}<th scope="col"></th>{% endif %}</tr>
+              {% if instrutor_editavel %}<th scope="col"></th>{% endif %}</tr>
         </thead>
         {% for vinculo in turma.instrutores %}
         <tr>
@@ -358,7 +360,7 @@
           <td class="curta" data-coluna="Título">{{ vinculo.instrutor.titulo or '—' }}</td>
           <td class="curta" data-coluna="Certificado">{% if vinculo.assina_certificado %}<span class="pilula ok">assina</span>
               {% else %}<span class="pilula sem-ponto">não assina</span>{% endif %}</td>
-          {% if editavel %}
+          {% if instrutor_editavel %}
           <td class="acao-linha">
             <form method="post" action="/turmas/{{ turma.id }}/instrutores">
               <input type="hidden" name="assinatura_instrutor_id"
@@ -381,7 +383,7 @@
       </div>
       {% endif %}
 
-      {% if editavel %}
+      {% if instrutor_editavel %}
       <div class="corpo">
         <div class="acoes">
           {{ ui.botao_cadastro('vincular-instrutor', VINCULAR_INSTRUTOR, 'secundario') }}
@@ -527,6 +529,9 @@
     <input type="hidden" name="ligado" value="{{ 'nao' if vitrine_aviso.ativo else 'sim' }}">
     <div class="acoes"><button type="submit" class="secundario">{{ 'Desligar o aviso de interesse' if vitrine_aviso.ativo else 'Ligar o aviso de interesse' }}</button></div>
   </form>
+  {% endif %}
+  {% if vitrine_aviso.pode_ligar %}
+  <p class="discreto"><a href="/turmas/vitrine/titular">Pedido do titular</a>: consultar ou apagar os cadastros de um e-mail.</p>
   {% endif %}
   <h3>Arte da turma</h3>
   <p class="discreto">Opcional. Sem arte, a vitrine mostra uma capa gerada na cor do setor. PNG, JPEG ou WEBP, até 3 MB,
@@ -1599,7 +1604,9 @@
   <div class="campo"><label for="observacoes">Observações</label>
     <textarea id="observacoes" name="observacoes" rows="2">{{ turma.observacoes or '' }}</textarea></div>
 {% endcall %}
+{% endif %}
 
+{% if instrutor_editavel %}
 {% call ui.popup_cadastro('vincular-instrutor', VINCULAR_INSTRUTOR,
                           '/turmas/' ~ turma.id ~ '/instrutores', 'Vincular',
                           nota='sem alguém marcado para assinar, a emissão é recusada') %}
