@@ -516,6 +516,27 @@
       Divulgar na vitrine pública</label></div>
     <div class="acoes"><button type="submit">Salvar</button></div>
   </form>
+  <h3>Arte da turma</h3>
+  <p class="discreto">Opcional. Sem arte, a vitrine mostra uma capa gerada na cor do setor. PNG, JPEG ou WEBP, até 3 MB,
+    entre 600×750 e 2160×2700 px, de preferência na proporção 4:5. A localização e os outros metadados da imagem são
+    apagados na gravação.</p>
+  {% if turma.arte_anexo_id %}
+  <p><img class="vitrine-previa-arte" src="/cursos/{{ turma.codigo }}/arte?v={{ turma.arte_anexo_id }}" alt="Arte atual da turma" width="120" height="150"></p>
+  {% endif %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine/arte" enctype="multipart/form-data">
+    <div class="campo"><label for="v-arte">Arquivo da arte</label>
+      <input id="v-arte" type="file" name="arte" accept="image/png,image/jpeg,image/webp" required></div>
+    <div class="campo"><label for="v-arte-alt">Texto alternativo (opcional)</label>
+      <input id="v-arte-alt" name="arte_alt" maxlength="160" value="{{ turma.arte_alt or '' }}"
+             placeholder="Descreva a imagem para quem não a enxerga"></div>
+    <div class="campo"><label><input type="checkbox" name="declaracao" value="sim" required> {{ vitrine_arte_declaracao }}</label></div>
+    <div class="acoes"><button type="submit">{{ 'Trocar a arte' if turma.arte_anexo_id else 'Enviar a arte' }}</button></div>
+  </form>
+  {% if turma.arte_anexo_id %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine/arte/remover">
+    <div class="acoes"><button type="submit" class="secundario">Voltar para a capa gerada</button></div>
+  </form>
+  {% endif %}
 </section>
 {% endif %}
 <section class="cartao liso">

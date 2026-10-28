@@ -679,6 +679,9 @@ export const turma = pgTable(
     // SERVIDOR, TERCEIRIZADO, DISCENTE, COMUNIDADE (lista fixa em servicos/vitrine.ts)
     publico_alvo: varchar('publico_alvo', { length: 16 }).array().notNull().default(sql`'{}'::varchar[]`),
     pre_requisito: varchar('pre_requisito', { length: 300 }),
+    // a arte da vitrine: o anexo vigente (categoria TURMA_ARTE) e o texto alternativo
+    arte_anexo_id: integer('arte_anexo_id'),
+    arte_alt: varchar('arte_alt', { length: 160 }),
 
     nota_minima_aprovacao: numeric('nota_minima_aprovacao', { precision: 5, scale: 2, mode: 'string' }),
     // 75% e a praxe; a NR nao fixa numero geral

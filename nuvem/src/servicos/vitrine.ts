@@ -103,6 +103,8 @@ export interface CursoPublico {
   validade_meses: number;
   aceita_comunidade_externa: boolean;
   selos: Selo[];
+  /** a arte enviada (`v` troca o endereço quando a arte troca); `null` = capa gerada */
+  arte: { alt: string; v: number } | null;
 }
 
 /** Os selos do cartão, calculados; nenhum guarda estado. */
@@ -167,6 +169,7 @@ async function _dto(tx: Executor, turma: TurmaCarregada, hoje: string): Promise<
     validade_meses: turma.treinamento.validade_meses,
     aceita_comunidade_externa: turma.aceita_comunidade_externa,
     selos: selos(turma, restantes, hoje),
+    arte: turma.arte_anexo_id === null ? null : { alt: turma.arte_alt?.trim() || turma.titulo_vitrine?.trim() || turma.treinamento.nome, v: turma.arte_anexo_id },
   };
 }
 

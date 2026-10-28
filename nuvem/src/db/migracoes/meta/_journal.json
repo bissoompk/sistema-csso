@@ -253,6 +253,13 @@
       "when": 1793150156154,
       "tag": "0035_turma_vitrine",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793180289887,
+      "tag": "0036_turma_arte",
+      "breakpoints": true
     }
   ]
 }

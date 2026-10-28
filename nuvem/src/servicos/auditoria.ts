@@ -286,6 +286,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // NUVEM: a inscrição pública por link (sem e-mail; a equipe confere o pedido)
   TURMA_VITRINE_PUBLICADA: "Turma publicada na vitrine de cursos",
   TURMA_VITRINE_DESPUBLICADA: "Turma retirada da vitrine de cursos",
+  TURMA_ARTE_ENVIADA: "Arte da turma enviada para a vitrine",
+  TURMA_ARTE_REMOVIDA: "Arte da turma retirada da vitrine",
   INSCRICAO_LINK_GERADO: "Link público de inscrição gerado",
   INSCRICAO_LINK_DESLIGADO: "Link público de inscrição desligado",
   INSCRICAO_PEDIDA_PELO_LINK: "Inscrição pedida pelo link público",

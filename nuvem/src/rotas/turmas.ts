@@ -66,6 +66,8 @@ import * as qualificacao_instrutor from "../servicos/qualificacao_instrutor.js";
 import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as setor_equipe from "../servicos/setor_equipe.js";
 import * as vitrine from "../servicos/vitrine.js";
+import * as vitrine_arte from "../servicos/vitrine_arte.js";
+import * as anexos from "../servicos/anexos.js";
 import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
 import * as datas_br from "../servicos/datas_br.js";
@@ -887,6 +889,7 @@ async function _tela_ficha(
     vitrine_pendencias: vitrine.pendencias(turma),
     vitrine_publicos: vitrine.PUBLICOS,
     vitrine_modalidades: vitrine.MODALIDADES,
+    vitrine_arte_declaracao: vitrine_arte.DECLARACAO,
     aviso_modelo: aba === "emissao" ? aviso_modelo : "",
     avisos_linha,
     impedimentos_exclusao,
@@ -1623,6 +1626,50 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/vitrine`, async (c) => {
     throw erro;
   }
   return _volta(c, volta, turma.divulgar_na_vitrine ? "Turma publicada na vitrine de cursos." : "Dados da vitrine salvos; a turma não está publicada.");
+});
+
+/** Envia a arte da turma para a vitrine (um arquivo por requisição), ou a retira. */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/vitrine/arte`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
+  const arquivo = f.arquivo("arte");
+  if (!arquivo) return _erro(c, volta, "Escolha o arquivo da arte (PNG, JPEG ou WEBP).");
+  const conteudo = new Uint8Array(await arquivo.arrayBuffer());
+  try {
+    await _no_savepoint(c, (sp) =>
+      vitrine_arte.enviar(sp, usuario, turma, {
+        conteudo,
+        nome_original: arquivo.name || "arte",
+        alt: f.texto("arte_alt"),
+        declaracao: f.texto("declaracao") === "sim",
+      }),
+    );
+  } catch (erro) {
+    if (erro instanceof vitrine_arte.ArteRecusada || erro instanceof anexos.AnexoGrandeDemais) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, "Arte gravada. Os metadados da imagem (como a localização) foram removidos.");
+});
+
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/vitrine/arte/remover`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
+  try {
+    await _no_savepoint(c, (sp) => vitrine_arte.remover(sp, usuario, turma));
+  } catch (erro) {
+    if (erro instanceof vitrine_arte.ArteRecusada) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, "Arte retirada: a vitrine volta a usar a capa gerada.");
 });
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async (c) => {

@@ -24,6 +24,7 @@ export const CATEGORIAS_ANEXO = [
   'LISTA_PRESENCA',
   'CERTIFICADO',
   'CAT_SP',
+  'TURMA_ARTE',
   'RELATORIO_INVESTIGACAO',
   'EVIDENCIA_ACIDENTE',
   // 22/10/2026 (paridade com o IntegraSST, migração 0015): a foto e o PDF de

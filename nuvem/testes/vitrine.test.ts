@@ -12,6 +12,7 @@ import type { Banco } from "../src/db/cliente.js";
 import { hoje_iso, somar_dias } from "../src/dominio/datas.js";
 import * as inscricao_publica from "../src/servicos/inscricao_publica.js";
 import * as divulgacao from "../src/servicos/vitrine_divulgacao.js";
+import * as arte from "../src/servicos/vitrine_arte.js";
 import { matriz_qr } from "../src/servicos/qr.js";
 import { bancoLimpo, contas, entrar, type Cliente } from "./ajuda";
 
@@ -277,5 +278,136 @@ describe("a divulgação da ficha", () => {
 
   it("o cartaz troca o que a Helvetica não desenha por interrogação, sem derrubar", () => {
     expect(divulgacao.so_winansi("Água — ação ✓ 日本")).toBe("Água — ação ? ??");
+  });
+});
+
+// ---- imagens mínimas, montadas à mão: o que importa é o cabeçalho e o que se esconde nele ----
+function _u32(n: number): Buffer {
+  const b = Buffer.alloc(4);
+  b.writeUInt32BE(n);
+  return b;
+}
+function _bloco_png(tipo: string, dados: Buffer): Buffer {
+  return Buffer.concat([_u32(dados.length), Buffer.from(tipo, "latin1"), dados, Buffer.alloc(4)]);
+}
+const SEGREDO = "GPS-LAT-19.8S";
+function _png(l = 800, a = 1000): Uint8Array {
+  const ihdr = Buffer.concat([_u32(l), _u32(a), Buffer.from([8, 0, 0, 0, 0])]);
+  return new Uint8Array(
+    Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      _bloco_png("IHDR", ihdr),
+      _bloco_png("tEXt", Buffer.from(`Comment\0${SEGREDO}`)),
+      _bloco_png("IDAT", Buffer.from([1, 2, 3])),
+      _bloco_png("IEND", Buffer.alloc(0)),
+    ]),
+  );
+}
+function _jpeg(l = 800, a = 1000): Uint8Array {
+  const exif = Buffer.concat([Buffer.from("Exif\0\0"), Buffer.from(SEGREDO)]);
+  const app1 = Buffer.concat([Buffer.from([0xff, 0xe1, 0, exif.length + 2]), exif]);
+  const sof = Buffer.from([0xff, 0xc0, 0, 11, 8, a >> 8, a & 255, l >> 8, l & 255, 1, 1, 0x11, 0]);
+  return new Uint8Array(Buffer.concat([Buffer.from([0xff, 0xd8]), app1, sof, Buffer.from([0xff, 0xda, 0, 4, 0, 0, 9, 9, 0xff, 0xd9])]));
+}
+function _webp(l = 800, a = 1000): Uint8Array {
+  const vp8x = Buffer.alloc(10);
+  vp8x[0] = 0x08;
+  vp8x.writeUIntLE(l - 1, 4, 3);
+  vp8x.writeUIntLE(a - 1, 7, 3);
+  const bloco = (t: string, d: Buffer) => {
+    const c = Buffer.alloc(8);
+    c.write(t, 0, "latin1");
+    c.writeUInt32LE(d.length, 4);
+    return Buffer.concat([c, d, d.length % 2 ? Buffer.alloc(1) : Buffer.alloc(0)]);
+  };
+  const corpo = Buffer.concat([Buffer.from("WEBP"), bloco("VP8X", vp8x), bloco("EXIF", Buffer.from(SEGREDO + "!")), bloco("VP8L", Buffer.from([0x2f, 1, 2, 3]))]);
+  const topo = Buffer.alloc(8);
+  topo.write("RIFF", 0, "latin1");
+  topo.writeUInt32LE(corpo.length, 4);
+  return new Uint8Array(Buffer.concat([topo, corpo]));
+}
+const _tem = (b: Uint8Array, t: string) => Buffer.from(b).includes(Buffer.from(t));
+
+describe("a arte da turma", () => {
+  it("lê o tamanho de PNG, JPEG e WEBP pelo cabeçalho", () => {
+    expect(arte.dimensoes(_png(800, 1000), "image/png")).toEqual({ largura: 800, altura: 1000 });
+    expect(arte.dimensoes(_jpeg(900, 1125), "image/jpeg")).toEqual({ largura: 900, altura: 1125 });
+    expect(arte.dimensoes(_webp(1080, 1350), "image/webp")).toEqual({ largura: 1080, altura: 1350 });
+  });
+
+  it("tira o EXIF, o texto do PNG e o bloco EXIF do WEBP, sem mexer nas dimensões", () => {
+    for (const [img, tipo, limpar] of [
+      [_png(), "image/png", arte.limpar_png],
+      [_jpeg(), "image/jpeg", arte.limpar_jpeg],
+      [_webp(), "image/webp", arte.limpar_webp],
+    ] as const) {
+      expect(_tem(img, SEGREDO), tipo).toBe(true);
+      const limpo = limpar(img);
+      expect(_tem(limpo, SEGREDO), tipo).toBe(false);
+      expect(arte.dimensoes(limpo, tipo), tipo).toEqual({ largura: 800, altura: 1000 });
+    }
+  });
+
+  it("recusa SVG com nome de PNG, GIF, imagem pequena, grande e o que passa de 3 MB", () => {
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    expect(() => arte.conferir({ conteudo: svg })).toThrow(/PNG, JPEG ou WEBP/);
+    expect(() => arte.conferir({ conteudo: new TextEncoder().encode("GIF89a....") })).toThrow(/PNG, JPEG ou WEBP/);
+    expect(() => arte.conferir({ conteudo: _png(300, 375) })).toThrow(/mínimo/);
+    expect(() => arte.conferir({ conteudo: _png(3000, 3750) })).toThrow(/máximo/);
+    expect(() => arte.conferir({ conteudo: new Uint8Array(4 * 1024 * 1024) })).toThrow(/limite é 3 MB/);
+    expect(arte.foge_da_proporcao({ largura: 1000, altura: 1000 })).toBe(true);
+    expect(arte.foge_da_proporcao({ largura: 800, altura: 1000 })).toBe(false);
+  });
+
+  it("envio grava sem metadados, aparece na vitrine só com a turma publicada, e remover volta à capa", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    const arquivo = new File([_png() as unknown as ArrayBuffer], "cartaz.png", { type: "image/png" });
+    const sem_declaracao = await cliente.post(`/turmas/${id}/vitrine/arte`, { arte: arquivo, arte_alt: "Cartaz" }, { seguir: false });
+    expect(sem_declaracao.status).toBe(303);
+    expect((await db.select().from(e.turma).where(eq(e.turma.id, id)))[0]!.arte_anexo_id).toBeNull();
+
+    const ok = await cliente.post(`/turmas/${id}/vitrine/arte`, { arte: arquivo, arte_alt: "Cartaz do curso", declaracao: "sim" }, { seguir: false });
+    expect(ok.status).toBe(303);
+    const [t] = await db.select().from(e.turma).where(eq(e.turma.id, id));
+    expect(t!.arte_anexo_id).not.toBeNull();
+    expect(t!.arte_alt).toBe("Cartaz do curso");
+    const [anexo] = await db.select().from(e.anexo).where(eq(e.anexo.id, t!.arte_anexo_id!));
+    expect(anexo!.categoria).toBe("TURMA_ARTE");
+    expect(anexo!.mime_type).toBe("image/png");
+
+    const visitante = novoCliente();
+    // ainda não publicada: a arte não sai
+    expect((await visitante.get(`/cursos/${codigo}/arte`)).status).toBe(404);
+    expect((await _publicar(id)).status).toBe(303);
+    const img = await visitante.get(`/cursos/${codigo}/arte`);
+    expect(img.status).toBe(200);
+    expect(img.cabecalho("content-type")).toBe("image/png");
+    expect(img.cabecalho("x-content-type-options")).toBe("nosniff");
+    expect(img.cabecalho("content-disposition")).toBe("inline");
+    expect(img.cabecalho("cache-control")).toContain("max-age=86400");
+    expect(img.text).not.toContain(SEGREDO);
+
+    const ficha = await visitante.get(`/cursos/${codigo}`);
+    expect(ficha.text).toContain(`/cursos/${codigo}/arte?v=${t!.arte_anexo_id}`);
+    expect(ficha.text).toContain('alt="Cartaz do curso"');
+    expect((await visitante.get("/cursos")).text).toContain(`/cursos/${codigo}/arte?v=`);
+
+    expect((await cliente.post(`/turmas/${id}/vitrine/arte/remover`, {}, { seguir: false })).status).toBe(303);
+    expect((await visitante.get(`/cursos/${codigo}/arte`)).status).toBe(404);
+    expect((await visitante.get(`/cursos/${codigo}`)).text).not.toContain("/arte?v=");
+    const [depois] = await db.select().from(e.turma).where(eq(e.turma.id, id));
+    expect(depois!.arte_anexo_id).toBeNull();
+    // o arquivo antigo continua guardado
+    expect((await db.select().from(e.anexo).where(eq(e.anexo.id, t!.arte_anexo_id!))).length).toBe(1);
+  });
+
+  it("quem não tem turma.criar não envia arte", async () => {
+    const id = await _turma();
+    const servidor = await entrar(novoCliente(), "servidor_consulta");
+    const arquivo = new File([_png() as unknown as ArrayBuffer], "x.png", { type: "image/png" });
+    const r = await servidor.post(`/turmas/${id}/vitrine/arte`, { arte: arquivo, declaracao: "sim" }, { seguir: false });
+    expect(r.status).toBe(403);
+    expect((await db.select().from(e.turma).where(eq(e.turma.id, id)))[0]!.arte_anexo_id).toBeNull();
   });
 });

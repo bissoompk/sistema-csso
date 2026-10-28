@@ -4216,6 +4216,9 @@ fieldset.partes-corpo label { font-size: 13px; line-height: 1.35; }
 .curso-ficha { display: grid; gap: 1.25rem; grid-template-columns: 1fr; }
 @media (min-width: 760px) { .curso-ficha { grid-template-columns: 280px 1fr; } }
 .vitrine-rodape { text-align: center; margin: 2rem 0 1rem; }
+.curso-capa--arte { padding: 0; background: none; overflow: hidden; aspect-ratio: 4 / 5; }
+.curso-capa--arte img { display: block; width: 100%; height: 100%; object-fit: cover; aspect-ratio: 4 / 5; }
+.vitrine-previa-arte { border: 1px solid var(--borda); border-radius: .35rem; object-fit: cover; }
 .divulgue { display: grid; gap: 1rem; grid-template-columns: 1fr; align-items: start; }
 @media (min-width: 640px) { .divulgue { grid-template-columns: 160px 1fr; } }
 .divulgue-qr { width: 160px; height: 160px; border: 1px solid var(--borda); border-radius: .5rem; background: #fff; }

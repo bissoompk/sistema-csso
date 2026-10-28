@@ -20,11 +20,16 @@
 <p class="discreto sem-margem"><a href="/cursos">Início › Cursos</a> › {{ curso.titulo }}</p>
 
 <div class="cartao curso-ficha">
+  {% if curso.arte %}
+  <div class="curso-capa curso-capa--ficha curso-capa--arte">
+    <img src="/cursos/{{ curso.codigo }}/arte?v={{ curso.arte.v }}" alt="{{ curso.arte.alt }}" width="280" height="350"></div>
+  {% else %}
   <div class="curso-capa curso-capa--ficha setor--{{ curso.setor.cor if (curso.setor and curso.setor.cor) else 'padrao' }}" aria-hidden="true">
     <span class="curso-capa-sigla">{{ curso.setor.sigla if curso.setor else 'SISA' }}</span>
     <span class="curso-capa-nome">{{ curso.treinamento }}</span>
     {% if curso.norma %}<span class="curso-capa-norma">{{ curso.norma }}</span>{% endif %}
   </div>
+  {% endif %}
   <div>
     {% if curso.setor %}<p class="curso-setor">{{ ui.selo_setor(curso.setor) }}</p>{% endif %}
     <h1>{{ curso.titulo }}</h1>

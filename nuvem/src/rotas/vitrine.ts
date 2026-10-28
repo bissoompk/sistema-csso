@@ -19,6 +19,8 @@ import { RegraDaTurma } from "../servicos/turma.js";
 import { qr_png } from "../servicos/qr.js";
 import * as vitrine from "../servicos/vitrine.js";
 import * as divulgacao from "../servicos/vitrine_divulgacao.js";
+import * as anexos from "../servicos/anexos.js";
+import * as vitrine_arte from "../servicos/vitrine_arte.js";
 import { pagina, redirecionar } from "../web.js";
 import { ipDoCliente } from "./autenticacao.js";
 import { COOKIE_RECEBIDO } from "./inscricao_publica.js";
@@ -121,6 +123,29 @@ function _arquivo(corpo: ConstructorParameters<typeof Response>[0], tipo: string
   if (nome) r.headers.set("content-disposition", `attachment; filename="${nome}"`);
   return _publica(r);
 }
+
+/**
+ * A arte enviada, só enquanto a turma está divulgada e viva. O tipo sai fixo, o
+ * que foi conferido nos bytes; `nosniff` e `inline` impedem que vire página. O
+ * endereço leva `?v=<anexo>`: trocar a arte troca o endereço, então o cache de
+ * um dia não segura a arte velha.
+ */
+rotas.get(`${CURSOS}/:codigo/arte`, async (c) => {
+  const f = await vitrine.ficha(c.get("tx"), c.req.param("codigo") ?? "");
+  if (f.tipo !== "ok") return _publica(new Response("Não encontrado", { status: 404 }), false);
+  const anexo = await vitrine_arte.vigente(c.get("tx"), f.turma);
+  if (!anexo) return _publica(new Response("Não encontrado", { status: 404 }), false);
+  const r = new Response((await anexos.ler_conteudo(anexo)) as unknown as ArrayBuffer, {
+    headers: {
+      "content-type": anexos.tipo_para_servir(anexo.mime_type),
+      "x-content-type-options": "nosniff",
+      "content-disposition": "inline",
+      "cache-control": "public, max-age=86400",
+      etag: `"${anexo.sha256}"`,
+    },
+  });
+  return r;
+});
 
 rotas.get(`${CURSOS}/:codigo/qr.png`, async (c) => {
   const curso = await _publicada(c);

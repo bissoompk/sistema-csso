@@ -1,12 +1,17 @@
 {# O cartão de um curso na vitrine (/cursos). `c` é o CursoPublico (sem id, sem
-   nome de ninguém). A capa é gerada: HTML e CSS na cor do setor, sem imagem. #}
+   nome de ninguém). Sem arte enviada, a capa é gerada: HTML e CSS na cor do setor, sem imagem. #}
 {% macro cartao(c) %}
 <article class="curso-cartao">
+  {% if c.arte %}
+  <a class="curso-capa curso-capa--arte" href="/cursos/{{ c.codigo }}" tabindex="-1" aria-hidden="true">
+    <img src="/cursos/{{ c.codigo }}/arte?v={{ c.arte.v }}" alt="" width="320" height="400" loading="lazy"></a>
+  {% else %}
   <a class="curso-capa setor--{{ c.setor.cor if (c.setor and c.setor.cor) else 'padrao' }}" href="/cursos/{{ c.codigo }}" tabindex="-1" aria-hidden="true">
     <span class="curso-capa-sigla">{{ c.setor.sigla if c.setor else 'SISA' }}</span>
     <span class="curso-capa-nome">{{ c.treinamento }}</span>
     {% if c.norma %}<span class="curso-capa-norma">{{ c.norma }}</span>{% endif %}
   </a>
+  {% endif %}
   <div class="curso-corpo">
     <p class="curso-selos">
       {% for s in c.selos %}<span class="curso-selo curso-selo--{{ s.tom }}">{{ s.texto }}</span>{% endfor %}
