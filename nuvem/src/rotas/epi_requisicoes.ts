@@ -26,7 +26,7 @@ import type { Tx } from "../db/cliente.js";
 import { formulario, usuarioLogado } from "../dependencias.js";
 import { obterConfig } from "../config.js";
 import { dicionario, type Dicionario } from "../dicionario.js";
-import { comMensagem, fragmento, global, pagina, redirecionar } from "../web.js";
+import { comMensagem, fragmento, global, marcarDownload, pagina, redirecionar } from "../web.js";
 import {
   epi_comunicacao_titular,
   epi_entrada_estoque,
@@ -72,7 +72,9 @@ import * as servico from "../servicos/epi_requisicao.js";
 import * as dados_funcionais from "../servicos/dados_funcionais.js";
 import * as servico_servidores from "../servicos/servidores.js";
 import * as textos from "../servicos/textos.js";
-import { hoje } from "../servicos/datas_br.js";
+import { data_local, hoje } from "../servicos/datas_br.js";
+import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
+import { linha_csv } from "../servicos/csv.js";
 import { ESCOPO_PROPRIO, PermissaoNegada, type UsuarioAtual } from "../servicos/rbac.js";
 import { cadastrar_pelo_fragmento, fragmento_servidores } from "./epi_fichas.js";
 
@@ -503,12 +505,113 @@ rotas.get(FILA, async (c) => {
     hoje: hoje(),
     pode_requisitar: usuario.pode("epi.requisitar"),
     pode_analisar: usuario.pode("epi.analisar"),
+    pode_exportar: usuario.pode("exportar") && usuario.escopo_de("epi.ver") !== ESCOPO_PROPRIO,
     // a conta de escopo próprio só vê os próprios pedidos: para ela a tela é
     // "Meus pedidos", e não a fila do setor
     meus_pedidos: usuario.escopo_de("epi.ver") === ESCOPO_PROPRIO,
     filtro_ignorado: bruto_estado && !estado_valido ? bruto_estado : null,
     mensagem: c.req.query("mensagem") ?? null,
     erro: recado,
+  });
+});
+
+// =====================================================================
+// A planilha nominal (a "extrair_epi_*" do sistema PROACE antigo)
+// =====================================================================
+export const EXPORTAR_REQUISICOES = "/epis/requisicoes/exportar";
+
+export interface FiltroDaPlanilha {
+  estado?: string;
+  campus_id?: number | null;
+  de?: string | null;
+  ate?: string | null;
+}
+
+/**
+ * Uma linha por item de cada pedido do recorte: quem pediu (o nome só aparece
+ * para quem lê nominal — RN-19, a mesma regra da fila), onde, quando, o que e em
+ * que situação. O recorte parte da MESMA consulta da fila (`servico.fila`), então
+ * o escopo da conta vale aqui também. Exige `exportar` (planilha sai da máquina)
+ * e o módulo de EPI; conta de escopo próprio não exporta.
+ */
+export async function exportar_requisicoes(
+  tx: Tx,
+  usuario: UsuarioAtual,
+  semente: string,
+  filtro: FiltroDaPlanilha = {},
+): Promise<{ nome: string; corpo: Uint8Array }> {
+  usuario.exigir("epi.ver");
+  usuario.exigir("exportar");
+  exigir_acesso_ao_modulo(usuario, "epis");
+  if (usuario.escopo_de("epi.ver") === ESCOPO_PROPRIO) {
+    throw new PermissaoNegada("exportar", "A planilha de pedidos é da equipe; o servidor vê os próprios pedidos na tela.");
+  }
+  const estados = filtro.estado && Object.hasOwn(ROTULO_EPI_REQUISICAO, filtro.estado) ? [filtro.estado] : [];
+  const ids = (await servico.fila(tx, usuario, { estados })).map((r) => r.id);
+  const pedidos = ids.length
+    ? await tx.query.epi_requisicao.findMany({
+        where: inArray(epi_requisicao.id, ids),
+        with: {
+          servidor: true,
+          unidade: { with: { campus: true } },
+          itens: { with: { item: true, motivo_recusa: true }, orderBy: [asc(epi_requisicao_item.id)] },
+        },
+        orderBy: [asc(epi_requisicao.id)],
+      })
+    : [];
+  let texto = linha_csv([
+    "Protocolo", "Requisitante", "SIAPE", "Campus", "Unidade", "Situação do pedido", "Enviado em",
+    "EPI", "Tamanho", "Solicitada", "Aprovada", "Entregue", "Situação do item", "Motivo da recusa",
+  ]);
+  for (const p of pedidos) {
+    const enviado = data_local(p.enviada_em ?? p.criado_em) ?? "";
+    if (filtro.de && enviado < filtro.de) continue;
+    if (filtro.ate && enviado > filtro.ate) continue;
+    const campus_id = p.unidade?.campus_id ?? p.campus_id ?? null;
+    if (filtro.campus_id && campus_id !== filtro.campus_id) continue;
+    const quem = identificacao.identificar(p, usuario, semente, { nominais: identificacao.NOMINAIS_FORA_DO_EPI });
+    for (const i of p.itens) {
+      texto += linha_csv([
+        p.protocolo ?? servico.identificacao(p),
+        quem.nome,
+        quem.nominal ? quem.siape : "",
+        p.unidade?.campus?.nome ?? "",
+        p.unidade?.sigla ?? "",
+        ROTULO_EPI_REQUISICAO[p.estado] ?? p.estado,
+        enviado,
+        i.item.nome,
+        i.tamanho ?? "",
+        i.quantidade_solicitada,
+        i.quantidade_aprovada ?? "",
+        i.quantidade_entregue,
+        ROTULO_EPI_ITEM[i.estado] ?? i.estado,
+        i.motivo_recusa?.rotulo ?? "",
+      ]);
+    }
+  }
+  // UTF-8 com BOM: o Excel abre acentuação certa (o mesmo formato dos indicadores)
+  const corpo = new TextEncoder().encode("\ufeff" + texto);
+  return { nome: `epi-pedidos-${hoje()}.csv`, corpo };
+}
+
+rotas.get(EXPORTAR_REQUISICOES, async (c) => {
+  const usuario = await usuarioLogado(c);
+  // a permissão antes da consulta: quem não exporta recebe 403
+  usuario.exigir("epi.ver");
+  usuario.exigir("exportar");
+  const semente = identificacao.semente_de({ cookies: { get: (n: string) => getCookie(c, n) ?? null } });
+  const campus = Number(c.req.query("campus") ?? "");
+  const data = (nome: string) => (c.req.query(nome) ?? "").match(/^\d{4}-\d{2}-\d{2}$/)?.[0] ?? null;
+  const { nome, corpo } = await exportar_requisicoes(c.get("tx"), usuario, semente, {
+    estado: c.req.query("estado") ?? "",
+    campus_id: Number.isInteger(campus) && campus > 0 ? campus : null,
+    de: data("de"),
+    ate: data("ate"),
+  });
+  marcarDownload(c);
+  return c.body(corpo as unknown as ArrayBuffer, 200, {
+    "content-type": "text/csv; charset=utf-8",
+    "content-disposition": `attachment; filename="${nome}"`,
   });
 });
 

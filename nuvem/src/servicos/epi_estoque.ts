@@ -582,6 +582,7 @@ export interface DadosEntrada {
   item_pregao?: string;
   empenho?: string;
   nota_fiscal?: string;
+  oficio?: string;
   fornecedor_nome?: string;
   fornecedor_cnpj?: string;
   fornecedor_contato?: string;
@@ -691,6 +692,7 @@ export async function registrar_entrada(tx: Executor, usuario: UsuarioAtual, d: 
       item_pregao: _ou_nada(d.item_pregao),
       empenho: _ou_nada(d.empenho),
       nota_fiscal: _ou_nada(d.nota_fiscal),
+      oficio: _ou_nada(d.oficio),
       fornecedor_nome: _ou_nada(d.fornecedor_nome),
       // normalizado: o campo vem de nota fiscal impressa e chega pontuado
       fornecedor_cnpj: normalizar_cnpj(d.fornecedor_cnpj ?? ""),
@@ -856,6 +858,7 @@ export async function atualizar_lote(
   d: {
     entrada: EpiEntradaEstoque;
     nota_fiscal: string;
+    oficio?: string;
     fornecedor_contato: string;
     observacao: string;
     ativo: boolean;
@@ -874,6 +877,7 @@ export async function atualizar_lote(
   }
   const campos = {
     nota_fiscal: _ou_nada(d.nota_fiscal),
+    oficio: d.oficio === undefined ? entrada.oficio : _ou_nada(d.oficio),
     fornecedor_contato: _ou_nada(d.fornecedor_contato),
     observacao: limpa || null,
     ativo,

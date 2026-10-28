@@ -172,6 +172,7 @@ const CAMPOS_ENTRADA = [
   "item_pregao",
   "empenho",
   "nota_fiscal",
+  "oficio",
   "quantidade_empenhada",
   "valor_unitario",
   "fornecedor_nome",
@@ -243,6 +244,7 @@ rotas.post(ESTOQUE, async (c) => {
       item_pregao: d.item_pregao,
       empenho: d.empenho,
       nota_fiscal: d.nota_fiscal,
+      oficio: d.oficio,
       fornecedor_nome: d.fornecedor_nome,
       fornecedor_cnpj: d.fornecedor_cnpj,
       fornecedor_contato: d.fornecedor_contato,
@@ -292,6 +294,7 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}`, async (c) => {
     await servico.atualizar_lote(tx, usuario, {
       entrada,
       nota_fiscal: f.texto("nota_fiscal"),
+      oficio: f.texto("oficio"),
       fornecedor_contato: f.texto("fornecedor_contato"),
       observacao: f.texto("observacao"),
       ativo: f.texto("ativo") === "1",

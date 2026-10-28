@@ -29,6 +29,9 @@
 {% if usuario.pode('epi.entregar') %}
 <a class="botao" href="/epis/entregas/nova">Entregar direto (sem pedido)</a>
 {% endif %}
+{% if pode_exportar %}
+<a class="botao secundario" data-baixar="Exportando…" href="/epis/requisicoes/exportar{{ '?estado=' ~ estado if estado }}">Exportar planilha (CSV)</a>
+{% endif %}
 {% if pode_requisitar %}
 <a class="botao{{ ' secundario' if usuario.pode('epi.entregar') }}" href="/epis/requisicoes/nova">{{ 'Pedir EPI' if meus_pedidos else 'Nova requisição' }}</a>
 {% endif %}

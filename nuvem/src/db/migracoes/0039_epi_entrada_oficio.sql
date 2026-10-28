@@ -1,0 +1,1 @@
+ALTER TABLE "epi_entrada_estoque" ADD COLUMN "oficio" varchar(40);

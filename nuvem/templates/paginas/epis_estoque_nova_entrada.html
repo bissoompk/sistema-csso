@@ -206,7 +206,7 @@
             mais do que se empenhou é recusado.</span></div>
       </div>
 
-      {# A linha de cinco: a que quebrava em 3+2 e dobrava de altura no popup.
+      {# A linha das seis (com o ofício): a que quebrava em 3+2 e dobrava de altura no popup.
          Aqui ela é uma fileira só, e é a ordem em que a nota fiscal se lê —
          número, preço, quem emitiu. #}
       <div class="linha-campos">
@@ -214,6 +214,10 @@
           <label for="nota_fiscal">Nota fiscal</label>
           <input id="nota_fiscal" name="nota_fiscal"
                  value="{{ d.nota_fiscal or '' }}"></div>
+        <div class="campo">
+          <label for="oficio">Nº do ofício</label>
+          <input id="oficio" name="oficio" maxlength="40"
+                 value="{{ d.oficio or '' }}"></div>
         <div class="campo{{ erro_em('valor_unitario') }}">
           <label for="valor_unitario">Valor unitário (R$)</label>
           {# `decimal` e não `numeric`: o teclado de `decimal` traz a vírgula, e a
