@@ -393,11 +393,14 @@ describe("meus treinamentos", () => {
     expect(depois).toContain("A vaga volta para a turma.");
   });
 
-  it("M59: sem turma aberta, o vazio aponta o catálogo", async () => {
+  it("M59: sem turma aberta, o vazio avisa o servidor sem apontar o catálogo da equipe", async () => {
     const { c } = await servidor_logado();
-    const tela = texto((await c.get("/turmas/minhas")).text);
+    const bruto = (await c.get("/turmas/minhas")).text;
+    const tela = texto(bruto);
     expect(tela).toContain("Nenhuma turma aberta agora");
-    expect(tela).toContain('href="/treinamentos/catalogo"');
+    // o catálogo é da equipe (403 para o servidor): o link só aparece para quem lê
+    expect(tela).toContain("volte aqui quando a equipe abrir inscrições");
+    expect(bruto).not.toContain('href="/treinamentos/catalogo"');
   });
 });
 

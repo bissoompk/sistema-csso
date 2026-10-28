@@ -72,8 +72,8 @@ describe("catálogos de acidente", () => {
     expect(por(107)[3]).toBe("107. PAINEL DE CONTROLE, BARRAMENTO, CHAVE, INTERRUPTOR, IE");
   });
 
-  it("a migração 0035 troca só o rótulo do palpite e é idempotente", async () => {
-    const sqlTexto = readFileSync(path.join(process.cwd(), "src/db/migracoes/0035_acidente_agente_rotulos_107_165.sql"), "utf8");
+  it("a migração 0038 troca só o rótulo do palpite e é idempotente", async () => {
+    const sqlTexto = readFileSync(path.join(process.cwd(), "src/db/migracoes/0038_acidente_agente_rotulos_107_165.sql"), "utf8");
     const comandos = sqlTexto.split("--> statement-breakpoint");
     const rodar = async () => {
       for (const c of comandos) await db.execute(sql.raw(c));
