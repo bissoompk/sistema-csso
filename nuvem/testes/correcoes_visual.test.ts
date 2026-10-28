@@ -77,6 +77,9 @@ describe("o Meu espaço de quem só tem o próprio (M47/M81)", () => {
       "/epis/fichas/minha",
       "/epis/requisicoes",
       "/epis/requisicoes/nova",
+      // Ocorrências de urgência e emergência (28/10/2026): registrar e as que registrou
+      "/ocorrencias/registrar",
+      "/ocorrencias/minhas",
       // Acidentes (CAT/SP, 23/10/2026): comunicar e o que ele comunicou
       "/acidentes/comunicar",
       "/acidentes/minhas",
