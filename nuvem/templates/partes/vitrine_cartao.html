@@ -1,0 +1,34 @@
+{# O cartão de um curso na vitrine (/cursos). `c` é o CursoPublico (sem id, sem
+   nome de ninguém). A capa é gerada: HTML e CSS na cor do setor, sem imagem. #}
+{% macro cartao(c) %}
+<article class="curso-cartao">
+  <a class="curso-capa setor--{{ c.setor.cor if (c.setor and c.setor.cor) else 'padrao' }}" href="/cursos/{{ c.codigo }}" tabindex="-1" aria-hidden="true">
+    <span class="curso-capa-sigla">{{ c.setor.sigla if c.setor else 'SISA' }}</span>
+    <span class="curso-capa-nome">{{ c.treinamento }}</span>
+    {% if c.norma %}<span class="curso-capa-norma">{{ c.norma }}</span>{% endif %}
+  </a>
+  <div class="curso-corpo">
+    <p class="curso-selos">
+      {% for s in c.selos %}<span class="curso-selo curso-selo--{{ s.tom }}">{{ s.texto }}</span>{% endfor %}
+    </p>
+    {% if c.setor %}<p class="curso-setor">{{ ui.selo_setor(c.setor) }}</p>{% endif %}
+    <h3><a href="/cursos/{{ c.codigo }}">{{ c.titulo }}</a></h3>
+    <p class="curso-dado">{{ ui.icone('calendar-event') }}
+      {{ c.data_inicio|data }}{% if c.data_fim != c.data_inicio %} a {{ c.data_fim|data }}{% endif %}
+      {%- if c.hora_inicio %} · {{ c.hora_inicio }}{% if c.hora_fim %}–{{ c.hora_fim }}{% endif %}{% endif %}</p>
+    <p class="curso-dado">{{ ui.icone('geo-alt') }}
+      {% if c.modalidade == 'EAD' %}Online{% else %}{{ c.local or 'Local a confirmar' }}{% if c.campus %} · {{ c.campus }}{% endif %}{% endif %}</p>
+    {% if c.carga_horas %}<p class="curso-dado">{{ ui.icone('clock') }} {{ c.carga_horas|num }} h</p>{% endif %}
+    <p class="curso-dado">{{ ui.icone('people') }}
+      {% if c.vagas_restantes is none %}Vagas abertas
+      {%- elif c.vagas_restantes == 0 %}Sem vagas
+      {%- else %}{{ c.vagas_restantes }} de {{ c.vagas_total }} vagas{% endif %}
+      {%- if c.aberta and c.inscricao_ate %} · inscrições até {{ c.inscricao_ate|data }}{% endif %}</p>
+    {% if c.publico|length %}<p class="curso-publico">{% for p in c.publico %}<span>{{ p }}</span>{% endfor %}</p>{% endif %}
+    <p class="curso-acoes">
+      {% if c.aberta and not c.cheia %}<a class="botao" href="/cursos/{{ c.codigo }}#inscricao">Inscrever-se</a>{% endif %}
+      <a class="botao secundario" href="/cursos/{{ c.codigo }}">Detalhes</a>
+    </p>
+  </div>
+</article>
+{% endmacro %}

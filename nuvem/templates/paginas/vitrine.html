@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% import "partes/vitrine_cartao.html" as vc with context %}
+{# Sem lateral, como /inscricao: quem abre não tem conta. #}
+{% set sem_casca = true %}
+{% block titulo %}Cursos da SISA · UFVJM{% endblock %}
+{% block classe_conteudo %}tela-vitrine{% endblock %}
+
+{% block conteudo %}
+<header class="vitrine-topo">
+  <p class="discreto sem-margem">Início › Cursos</p>
+  <h1>Cursos da SISA</h1>
+  <p class="sub">Capacitações em saúde, segurança e qualidade de vida para quem trabalha e estuda na UFVJM.</p>
+</header>
+
+<nav class="vitrine-abas" aria-label="Situação dos cursos">
+  {% for a in abas %}
+  <a href="?aba={{ a.chave }}&setor={{ filtros.setor|urlencode }}&campus={{ filtros.campus|urlencode }}&modalidade={{ filtros.modalidade|urlencode }}"
+     {% if a.chave == filtros.aba %}aria-current="page"{% endif %}>{{ a.rotulo }} ({{ contagem[a.chave] }})</a>
+  {% endfor %}
+</nav>
+
+<details class="vitrine-filtros recolhido"{% if filtros.setor or filtros.campus or filtros.modalidade %} open{% endif %}>
+  <summary>Filtrar</summary>
+  <form method="get" action="/cursos">
+    <input type="hidden" name="aba" value="{{ filtros.aba }}">
+    <div class="campo"><label for="f-setor">Setor</label>
+      <select id="f-setor" name="setor"><option value="">Todos</option>
+        {% for s in setores %}<option value="{{ s.sigla }}"{{ ' selected' if s.sigla == filtros.setor }}>{{ s.nome }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="f-campus">Campus</label>
+      <select id="f-campus" name="campus"><option value="">Todos</option>
+        {% for s in campi %}<option value="{{ s.sigla }}"{{ ' selected' if s.sigla == filtros.campus }}>{{ s.nome }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="f-mod">Modalidade</label>
+      <select id="f-mod" name="modalidade"><option value="">Todas</option>
+        {% for k, v in modalidades %}<option value="{{ k }}"{{ ' selected' if k == filtros.modalidade }}>{{ v }}</option>{% endfor %}
+      </select></div>
+    <div class="acoes"><button type="submit">Filtrar</button>
+      <a class="botao secundario" href="/cursos?aba={{ filtros.aba }}">Limpar</a></div>
+  </form>
+</details>
+
+{% if itens|length %}
+<div class="vitrine-grade">
+  {% for c in itens %}{{ vc.cartao(c) }}{% endfor %}
+</div>
+{% else %}
+<div class="cartao vazio">
+  <p>{% if filtros.aba == 'abertas' %}Nenhum curso com inscrições abertas no momento. Novas turmas estão sendo preparadas.
+    {%- elif filtros.aba == 'breve' %}Nenhum curso anunciado para breve.
+    {%- else %}Nenhum curso realizado no último ano.{% endif %}</p>
+</div>
+{% endif %}
+
+<footer class="vitrine-rodape discreto">Sistema SISA · UFVJM</footer>
+{% endblock %}

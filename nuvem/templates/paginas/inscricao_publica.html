@@ -82,66 +82,7 @@
 
 {% elif not recebido %}
 <div class="cartao">
-  <h2>Pedir a vaga</h2>
-  <p class="discreto">Já fez curso com a gente? Use o mesmo nome e o mesmo e-mail da outra
-    vez: assim os certificados ficam juntos.</p>
-  {% if erro_formulario %}<div class="aviso aviso-erro" role="alert">{{ erro_formulario }}</div>{% endif %}
-  <form method="post" action="{{ acao }}">
-    <div class="campo"><label for="p-nome">Nome completo</label>
-      <input id="p-nome" name="nome" value="{{ pedido.nome }}" required maxlength="160"
-             autocomplete="name" aria-describedby="dica-p-nome">
-      <span class="dica" id="dica-p-nome">Escreva como deve sair no certificado, sem abreviar.</span></div>
-    <div class="campo"><label for="p-vinculo">Vínculo com a UFVJM</label>
-      <select id="p-vinculo" name="vinculo" required>
-        <option value=""{{ ' selected' if not pedido.vinculo }}>Selecione</option>
-        {% for v in vinculos %}
-        <option value="{{ v }}"{{ ' selected' if v == pedido.vinculo }}>{{ rotulo_vinculo[v] }}</option>
-        {% endfor %}
-        {# Visitante e Outro só existem na turma marcada "aceita comunidade
-           externa"; o serviço recusa os dois nas outras, com ou sem tela #}
-        {% if vinculos_externos|length %}
-        <optgroup label="{{ rotulo_externos }}">
-          {% for v in vinculos_externos %}
-          <option value="{{ v }}"{{ ' selected' if v == pedido.vinculo }}>{{ rotulo_vinculo[v] }}</option>
-          {% endfor %}
-        </optgroup>
-        {% endif %}
-      </select></div>
-    {# O SIAPE só para o servidor (`data-mostra-quando`, csso.js). Sem `required`:
-       sem JavaScript o campo fica à vista para todos, e quem decide se ele falta
-       é o servidor, pelo vínculo escolhido. #}
-    <div class="campo" data-mostra-quando="vinculo=SERVIDOR"><label for="p-siape">SIAPE</label>
-      <input id="p-siape" name="siape" value="{{ pedido.siape }}" inputmode="numeric"
-             maxlength="9" autocomplete="off" aria-describedby="dica-siape">
-      <span class="dica" id="dica-siape">Só para servidor da UFVJM: 6 ou 7 dígitos. É por ele
-        que achamos o seu cadastro, mesmo que o e-mail tenha mudado.</span></div>
-    <div class="campo"><label for="p-email">E-mail</label>
-      <input id="p-email" name="email" type="email" value="{{ pedido.email }}" maxlength="160"
-             autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
-             aria-describedby="dica-email">
-      <span class="dica" id="dica-email">Recomendado: é por ele que a equipe{{ equipe_de }} avisa quando conferir o
-        pedido e que você recebe o certificado.</span></div>
-    <div class="campo"><label for="p-org">Empresa, curso ou setor</label>
-      <input id="p-org" name="organizacao" value="{{ pedido.organizacao }}" maxlength="160"
-             placeholder="empresa contratada, curso, unidade…" autocomplete="organization"></div>
-    {# o campo que gente não vê; robô preenche #}
-    <div class="oculto" aria-hidden="true"><label for="p-site">Não preencha</label>
-      <input id="p-site" name="site" tabindex="-1" autocomplete="off"></div>
-    <div class="aviso aviso-info">
-      <p>Seus dados servem só para esta turma e para o certificado. Não informe CPF.</p>
-      <details class="recolhido">
-        <summary>Saiba mais sobre o uso dos dados</summary>
-        <p>A equipe{{ equipe_de }} usa os dados acima para organizar esta turma, registrar a sua presença
-          e emitir o certificado (LGPD, art. 7º, III e art. 23). O pedido guarda também o
-          endereço de rede de onde foi enviado, para coibir abuso, e esse endereço é
-          apagado em 90 dias. Se o certificado exigir CPF, a equipe pede pessoalmente.</p>
-      </details>
-      <label><input type="checkbox" name="consentimento" value="sim"
-             {{ 'checked' if pedido.consentimento }} required>
-        Li e concordo com o uso dos dados.</label>
-    </div>
-    <div class="acoes"><button type="submit" class="largo">Pedir a vaga</button></div>
-  </form>
+  {% include "partes/inscricao_formulario.html" %}
 </div>
 {% endif %}
 {% endif %}

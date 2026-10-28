@@ -284,6 +284,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   INSCRICAO_PEDIDA_PELO_TITULAR: "Inscrição pedida pelo próprio servidor",
   INSCRICAO_DESISTIDA: "Desistência do próprio inscrito",
   // NUVEM: a inscrição pública por link (sem e-mail; a equipe confere o pedido)
+  TURMA_VITRINE_PUBLICADA: "Turma publicada na vitrine de cursos",
+  TURMA_VITRINE_DESPUBLICADA: "Turma retirada da vitrine de cursos",
   INSCRICAO_LINK_GERADO: "Link público de inscrição gerado",
   INSCRICAO_LINK_DESLIGADO: "Link público de inscrição desligado",
   INSCRICAO_PEDIDA_PELO_LINK: "Inscrição pedida pelo link público",

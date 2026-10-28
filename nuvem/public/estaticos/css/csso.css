@@ -4186,6 +4186,37 @@ fieldset.partes-corpo label { font-size: 13px; line-height: 1.35; }
   border-color: var(--acento); outline: var(--anel-foco); outline-offset: 0;
 }
 
+/* ---------- VITRINE PÚBLICA /cursos (27/10/2026): grade de cartões, capa gerada na cor do setor ---------- */
+.tela-vitrine { max-width: 1200px; margin: 0 auto; }
+.vitrine-topo h1 { margin: .25rem 0; }
+.vitrine-abas { display: flex; gap: .5rem; overflow-x: auto; margin: 1rem 0; border-bottom: 1px solid var(--borda); }
+.vitrine-abas a { padding: .6rem .9rem; white-space: nowrap; text-decoration: none; color: var(--tinta-dica); border-bottom: 3px solid transparent; }
+.vitrine-abas a[aria-current="page"] { color: var(--acento); border-bottom-color: var(--acento); font-weight: 600; }
+.vitrine-filtros { margin-bottom: 1rem; }
+.vitrine-grade { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+@media (min-width: 600px) { .vitrine-grade { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 960px) { .vitrine-grade { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1280px) { .vitrine-grade { grid-template-columns: repeat(4, 1fr); } }
+.curso-cartao { display: flex; flex-direction: column; background: var(--superficie, #fff); border: 1px solid var(--borda); border-radius: 12px; overflow: hidden; }
+.curso-capa { display: flex; flex-direction: column; justify-content: space-between; gap: .5rem; aspect-ratio: 4 / 3; padding: 1rem; text-decoration: none; color: #fff; background: var(--setor-cor, var(--acento)); }
+.curso-capa--ficha { aspect-ratio: 4 / 5; border-radius: 12px; }
+.curso-capa-sigla { font-size: .85rem; letter-spacing: .08em; font-weight: 700; opacity: .9; }
+.curso-capa-nome { font-size: 1.25rem; font-weight: 700; line-height: 1.2; }
+.curso-capa-norma { font-size: .85rem; opacity: .9; }
+.curso-corpo { display: flex; flex-direction: column; gap: .35rem; padding: 1rem; flex: 1; }
+.curso-corpo h3 { margin: 0; font-size: 1.05rem; }
+.curso-corpo h3 a { color: inherit; text-decoration: none; }
+.curso-selos { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; }
+.curso-selo { font-size: .75rem; padding: .1rem .5rem; border-radius: 999px; border: 1px solid var(--borda); color: var(--tinta-dica); }
+.curso-selo--alerta { background: var(--aviso-fundo, #fff4e5); border-color: var(--aviso-borda, #f0b35a); color: var(--aviso-texto, #7a4300); font-weight: 600; }
+.curso-setor, .curso-dado, .curso-publico { margin: 0; }
+.curso-dado { font-size: .9rem; display: flex; gap: .4rem; align-items: baseline; }
+.curso-publico { display: flex; flex-wrap: wrap; gap: .35rem; font-size: .8rem; color: var(--tinta-dica); }
+.curso-acoes { margin: auto 0 0; padding-top: .75rem; display: flex; gap: .5rem; flex-wrap: wrap; }
+.curso-ficha { display: grid; gap: 1.25rem; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .curso-ficha { grid-template-columns: 280px 1fr; } }
+.vitrine-rodape { text-align: center; margin: 2rem 0 1rem; }
+
 /* ===== CELULAR (lote 0) =====
    O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
    com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o

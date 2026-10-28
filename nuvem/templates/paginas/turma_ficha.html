@@ -485,6 +485,39 @@
   </div>
 </section>
 {% endif %}
+{% if vitrine_pode %}
+<section class="cartao" id="vitrine">
+  <div class="cabecalho-cartao">
+    <h2>Vitrine de cursos</h2>
+    {% if turma.divulgar_na_vitrine %}<span class="pilula ok">publicada</span>{% else %}<span class="pilula sem-ponto">não publicada</span>{% endif %}
+  </div>
+  <p class="discreto">A turma publicada aparece em <a href="/cursos">/cursos</a>, aberta a qualquer pessoa, e
+    <a href="/cursos/{{ turma.codigo }}">tem ficha própria</a> com o formulário de pedir a vaga. Só a turma
+    sem pendência pode ser publicada. Retirar da vitrine não apaga nada: a ficha pública passa a dar “não encontrado”.</p>
+  {% if vitrine_pendencias|length and not turma.divulgar_na_vitrine %}
+  <div class="aviso aviso-alerta"><p>Falta para publicar:</p>
+    <ul>{% for p in vitrine_pendencias %}<li>{{ p }}</li>{% endfor %}</ul></div>
+  {% endif %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine">
+    <div class="campo"><label for="v-titulo">Título na vitrine (opcional)</label>
+      <input id="v-titulo" name="titulo_vitrine" maxlength="160" value="{{ turma.titulo_vitrine or '' }}"
+             placeholder="{{ turma.treinamento.nome }}"></div>
+    <div class="campo"><label for="v-mod">Modalidade</label>
+      <select id="v-mod" name="modalidade">
+        {% for k, v in vitrine_modalidades %}<option value="{{ k }}"{{ ' selected' if k == turma.modalidade }}>{{ v }}</option>{% endfor %}
+      </select></div>
+    <fieldset class="campo"><legend>Público</legend>
+      {% for k, v in vitrine_publicos %}
+      <label><input type="checkbox" name="publico" value="{{ k }}"{{ ' checked' if k in turma.publico_alvo }}> {{ v }}</label>
+      {% endfor %}</fieldset>
+    <div class="campo"><label for="v-pre">Pré-requisito (opcional)</label>
+      <input id="v-pre" name="pre_requisito" maxlength="300" value="{{ turma.pre_requisito or '' }}"></div>
+    <div class="campo"><label><input type="checkbox" name="divulgar" value="sim"{{ ' checked' if turma.divulgar_na_vitrine }}>
+      Divulgar na vitrine pública</label></div>
+    <div class="acoes"><button type="submit">Salvar</button></div>
+  </form>
+</section>
+{% endif %}
 <section class="cartao liso">
   <div class="cabecalho-cartao">
     <h2>Inscrições</h2>
