@@ -2167,3 +2167,20 @@ do gov.br. Os 29 códigos e a ordem foram cruzados com o texto extraído do PDF.
 - A tela de saúde (F3) passa a oferecer a natureza da lesão; antes o campo ficava sem opção.
 - **Falta conferir** com a equipe se a lista do eSocial é a mesma que o Anexo III.2 do
   Manual de Perícia pede para a CAT/SP; o manual remete à tabela do eSocial.
+
+## Acidentes: agentes causadores 107 e 165 conferidos com o eSocial (27/10/2026)
+
+Os itens 107 e 165 vinham cortados no legado e tinham sido completados por palpite
+(«…, ETC»). Conferidos com a Tabela 14 do eSocial v2.5 (NT 19/2020), que traz o texto
+inteiro: **107** passa a «…INTERRUPTOR, DISJUNTOR, FUSÍVEL» e **165** a «…(TRICLORETILENO,
+PERCLORETILENO, CLORETO DE METILO, SUBSTÂNCIAS REFRIGERANTES)». A migração 0035 troca
+o rótulo no banco só onde ainda é o do palpite; o `rotulo_legado` (chave da planilha)
+não muda. CAT/SP já emitidas guardam o texto da época.
+
+- **O 108 ficou como está («…RETIFICADOR, ETC»), de propósito.** No eSocial «bateria de
+  acumuladores» faz parte do item 108; no nosso catálogo ela é o item 109, separado.
+  Só a página impressa do Manual de Perícia diz qual dos dois vale. Pendente.
+- **«ARQUIBANCADA, ESTÁDIO» (18) não é item extra:** existe no eSocial (`302050600`).
+- Dos 199 itens, 188 batem pelo nome com o eSocial; o eSocial traz mais 58 itens que a
+  Tabela II do manual não tem. O `codigo_oficial` dos agentes segue vazio: só importa se
+  o sistema um dia emitir o evento S-2210.
