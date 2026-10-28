@@ -200,6 +200,15 @@ export const PERMISSOES: Record<string, string> = {
   "acidente.saude_ver": "Ver a saude do acidentado, nivel 1 (lesao em categoria fechada e fatos administrativos)",
   "acidente.saude_detalhe_ver": "Ver a saude do acidentado, nivel 2 (dias, datas e atendimento)",
   "acidente.saude_registrar": "Registrar e corrigir os dados de saude do acidentado",
+  // --- Ocorrencias de urgencia e emergencia (28/10/2026) ---
+  // O registro geral, de qualquer pessoa na universidade (servidor, discente,
+  // terceirizado, visitante), sem CAT/SP: e o "Informar ocorrencia" do sistema
+  // PROACE antigo. `registrar` e larga (toda conta registra e ve as PROPRIAS);
+  // `ver` e da equipe (todas); `tratar` assume, acompanha e conclui. O dado da
+  // pessoa atendida e de saude: so quem trata ou ve pela equipe o le.
+  "ocorrencia.registrar": "Registrar ocorrencia de urgencia ou emergencia e ver as proprias",
+  "ocorrencia.ver": "Ver as ocorrencias de urgencia e emergencia de todos (equipe)",
+  "ocorrencia.tratar": "Tratar a ocorrencia: assumir, acompanhar, encaminhar ao acidente e concluir",
   // --- Limpar dados de teste (24/10/2026) ---
   // Apaga os dados de movimento dos modulos (e, se marcado, servidores e
   // contas) depois dos testes em producao. So o Administrador do sistema: nao
@@ -297,6 +306,14 @@ export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<
     },
   ],
   [
+    "Ocorrências de urgência e emergência",
+    {
+      "ocorrencia.registrar": "Registrar ocorrência de urgência ou emergência e ver as próprias",
+      "ocorrencia.ver": "Ver as ocorrências de urgência e emergência de todos (equipe)",
+      "ocorrencia.tratar": "Tratar a ocorrência: assumir, acompanhar, encaminhar ao acidente e concluir",
+    },
+  ],
+  [
     "Catálogos, indicadores e exportação",
     {
       "catalogo.gerenciar": "Gerenciar os catálogos e a configuração do setor",
@@ -383,6 +400,10 @@ const PERMISSOES_COORDENADOR: string[] = [
   "acidente.identificacao_ver",
   "acidente.saude_detalhe_ver",
   "acidente.saude_registrar",
+  // ocorrencias de urgencia e emergencia (28/10/2026)
+  "ocorrencia.registrar",
+  "ocorrencia.ver",
+  "ocorrencia.tratar",
 ];
 
 /**
@@ -437,6 +458,7 @@ export const PERMISSOES_DO_EXTERNO: readonly string[] = Object.freeze([
   "turma.inscrever_se",
   "acidente.comunicar",
   "acidente.ver",
+  "ocorrencia.registrar",
 ]);
 
 /**
@@ -556,6 +578,10 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.relatorio_emitir",
       "acidente.saude_ver",
       "acidente.identificacao_ver",
+      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
+      "ocorrencia.registrar",
+      "ocorrencia.ver",
+      "ocorrencia.tratar",
     ],
   },
   medico_trabalho: {
@@ -612,6 +638,10 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.identificacao_ver",
       "acidente.saude_detalhe_ver",
       "acidente.saude_registrar",
+      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
+      "ocorrencia.registrar",
+      "ocorrencia.ver",
+      "ocorrencia.tratar",
     ],
   },
   tecnico_seguranca: {
@@ -670,6 +700,10 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.relatorio_emitir",
       "acidente.saude_ver",
       "acidente.identificacao_ver",
+      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
+      "ocorrencia.registrar",
+      "ocorrencia.ver",
+      "ocorrencia.tratar",
     ],
   },
   almoxarife_sesmt: {
@@ -758,6 +792,10 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.ver",
       "acidente.comunicar",
       "acidente.triar",
+      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
+      "ocorrencia.registrar",
+      "ocorrencia.ver",
+      "ocorrencia.tratar",
     ],
   },
   consulta_progep: {
@@ -847,6 +885,8 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       // acidentes (D10): comunica e ve as proprias ocorrencias (escopo proprio)
       "acidente.comunicar",
       "acidente.ver",
+      // ocorrencias (28/10/2026): registra e ve as proprias
+      "ocorrencia.registrar",
     ],
   },
   auditor_interno: {
@@ -1273,6 +1313,7 @@ export const PERMISSOES_DO_TITULAR: ReadonlySet<string> = new Set([
   // principal); a saude do proprio caso o servico le pela relacao de titular
   "acidente.comunicar",
   "acidente.ver",
+  "ocorrencia.registrar",
 ]);
 
 /**

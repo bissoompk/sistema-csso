@@ -125,6 +125,15 @@ export const MODULOS_NIVELADOS: readonly ModuloNivelado[] = Object.freeze([
     consulta: ["acidente.ver"],
     escrita: ["acidente.comunicar", "acidente.triar", "acidente.investigar", "acidente.siass"],
   },
+  {
+    // Ocorrências de urgência e emergência (28/10/2026): o registro geral, de
+    // qualquer pessoa. `registrar` também vem com o vínculo (servidor,
+    // terceirizado, discente), em escopo próprio.
+    codigo: "ocorrencias",
+    nome: "Ocorrências de Urgência e Emergência",
+    consulta: ["ocorrencia.ver"],
+    escrita: ["ocorrencia.registrar", "ocorrencia.tratar"],
+  },
 ]);
 
 /**

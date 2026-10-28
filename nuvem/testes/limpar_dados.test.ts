@@ -87,7 +87,8 @@ async function estavel(): Promise<Record<string, number>> {
 
 interface Montado {
   /** um blob de anexo de cada módulo, que sai junto com ele */
-  blobs: Record<limpeza.CodigoModulo, string>;
+  // as ocorrências de urgência/emergência não têm anexo
+  blobs: Partial<Record<limpeza.CodigoModulo, string>>;
   /** um blob de anexo que não é de módulo nenhum (fica sempre) */
   blob_fica: string;
 }
@@ -136,6 +137,28 @@ async function montar(): Promise<Montado> {
   await db.insert(e.acidente_link_publico).values({ token_sha256: "c".repeat(64), gerado_por: coord.id });
   await db.insert(e.acesso_dado_sensivel).values({ usuario_id: coord.id, acidente_id: oc.id, campo: "acidente.saude" });
   const blob_acidente = await guardar("acidente_ocorrencia", oc.id, [2]);
+
+  // ocorrências de urgência/emergência: uma, já vinculada à CAT/SP acima (o vínculo cai junto com os acidentes)
+  const [campus_oco] = await db.select().from(e.campus).limit(1);
+  const [oco] = await db
+    .insert(e.ocorrencia)
+    .values({
+      protocolo: "OCO-2031-0001",
+      ano: 2031,
+      numero: 1,
+      data_hora: new Date(),
+      campus_id: campus_oco!.id,
+      local_descricao: "Sala fictícia",
+      tipos: "DESMAIO",
+      descricao: "Relato fictício",
+      pessoa_vinculo: "ESTUDANTE",
+      registrado_por: coord.id,
+      notificante_eh_a_pessoa: false,
+      notificante_nome: "Notificante Fictício",
+      acidente_id: oc.id,
+    })
+    .returning();
+  await db.insert(e.ocorrencia_acompanhamento).values({ ocorrencia_id: oco!.id, texto: "Acompanhamento fictício", autor_id: coord.id });
 
   // EPI: pedido enviado e uma entrega pela tela (ficha, movimento de saída)
   const analista = await req.usuario(db, { login: "analista_limpeza" });
@@ -295,6 +318,7 @@ describe("simular e confirmar", () => {
 const PROVAS: Record<limpeza.CodigoModulo, string[]> = {
   treinamentos: ["treinamento", "turma", "inscricao", "certificado", "participante", "local_treinamento"],
   acidentes: ["acidente_ocorrencia", "acidentado", "acidente_cat_sp", "acidente_link_publico", "acidente_comunicante"],
+  ocorrencias: ["ocorrencia", "ocorrencia_acompanhamento"],
   epi: ["epi_requisicao", "epi_requisicao_item", "epi_ficha_registro", "epi_entrada_estoque", "epi_movimento_estoque"],
   processos: ["processo", "parecer_tecnico", "laudo_tecnico", "exposicao", "demanda", "demanda_encaminhamento"],
 };
@@ -327,7 +351,10 @@ describe("cada módulo apaga o seu e mantém os outros", () => {
     expect(depois.historico_evento).toBe(antes.historico_evento! + 2);
     // o arquivo do módulo saiu do armazenamento depois do commit; o dos outros ficou
     const arm = obterArmazenamento();
-    for (const outro of TODOS) expect(await arm.existe(m.blobs[outro]), `blob de ${outro}`).toBe(outro !== modulo);
+    for (const outro of TODOS) {
+      const chave = m.blobs[outro];
+      if (chave) expect(await arm.existe(chave), `blob de ${outro}`).toBe(outro !== modulo);
+    }
     expect(await arm.existe(m.blob_fica)).toBe(true);
   });
 

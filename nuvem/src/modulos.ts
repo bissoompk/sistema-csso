@@ -15,7 +15,7 @@
  * Carregá-lo liga os ganchos da casca em `web.ts` (`navegacao`, `cookieModulo`)
  * e registra o global `porta_de_entrada`.
  */
-import { acidentesLiberado } from "./config.js";
+import { acidentesLiberado, ocorrenciasLiberado } from "./config.js";
 import { EscopoNaoDeclarado, PERFIS_EXTERNOS, type UsuarioAtual } from "./servicos/rbac.js";
 import { PERMISSOES_VER as PERMISSOES_PENDENCIAS } from "./servicos/pendencias.js";
 import { tem_acesso_ao_modulo } from "./servicos/acesso_modulo.js";
@@ -655,6 +655,24 @@ export const MODULOS: readonly Modulo[] = [
     ],
   }),
   new Modulo({
+    codigo: "ocorrencias",
+    nome: "Ocorrências de Urgência e Emergência",
+    resumo:
+      "O registro geral de desmaio, queda, corte, crise convulsiva ou acidente de " +
+      "qualquer pessoa na universidade (servidor, estudante, terceirizado ou " +
+      "visitante), com o socorro prestado e o acompanhamento da equipe. A " +
+      "CAT/SP do servidor segue na análise de acidentes.",
+    itens: [
+      new Item("Painel", "/ocorrencias", "ocorrencia.ver", "O que aguarda a equipe e o que está em acompanhamento."),
+      new Item("Registrar ocorrência", "/ocorrencias/registrar", "ocorrencia.registrar", "O que aconteceu, com quem, onde e o socorro prestado."),
+      new Item("Fila de ocorrências", "/ocorrencias/fila", "ocorrencia.ver", "Todas as ocorrências, com situação e filtros."),
+      new Item("Indicadores", "/ocorrencias/indicadores", "indicador.ver", "Por tipo, campus, vínculo e mês.", false, ["ocorrencia.ver"]),
+    ],
+    // na produção, só com `CSSO_MODULO_OCORRENCIAS=sim` (`ocorrenciasLiberado`)
+    disponivel: ocorrenciasLiberado(),
+    itens_previstos: [],
+  }),
+  new Modulo({
     codigo: "cissp",
     nome: "CISSP",
     resumo:
@@ -791,6 +809,18 @@ export const MEU_ESPACO_GRUPOS: readonly GrupoMenu[] = Object.freeze([
       new Item("Pedir EPI", "/epis/requisicoes/nova", "epi.requisitar", "Pedido para análise do SESMT.", true, [], false, true),
     ],
   },
+  // o grupo das ocorrências some junto com o módulo (`ocorrenciasLiberado`)
+  ...(ocorrenciasLiberado()
+    ? [
+        {
+          titulo: "Ocorrências",
+          itens: [
+            new Item("Registrar ocorrência", "/ocorrencias/registrar", "ocorrencia.registrar", "Urgência, emergência ou acidente de qualquer pessoa na universidade.", true),
+            new Item("Minhas ocorrências", "/ocorrencias/minhas", "ocorrencia.registrar", "As ocorrências que você registrou e em que pé estão.", true),
+          ],
+        },
+      ]
+    : []),
   // o grupo some junto com o módulo enquanto ele está seguro (`acidentesLiberado`)
   ...(acidentesLiberado()
     ? [
@@ -1209,6 +1239,7 @@ const ICONES: Readonly<Record<string, string>> = {
   epis: "shield-plus",
   certificados: "award",
   acidentes: "heart-pulse",
+  ocorrencias: "bandaid",
   cissp: "people",
   pgr: "clipboard-data",
   "/": "grid-1x2",
@@ -1233,6 +1264,11 @@ const ICONES: Readonly<Record<string, string>> = {
   "/acidentes/acoes": "list-check",
   "/acidentes/indicadores": "bar-chart",
   "/acidentes/minhas": "exclamation-triangle",
+  "/ocorrencias": "grid-1x2",
+  "/ocorrencias/registrar": "journal-plus",
+  "/ocorrencias/fila": "inbox",
+  "/ocorrencias/indicadores": "bar-chart",
+  "/ocorrencias/minhas": "exclamation-triangle",
   "/treinamentos": "grid-1x2",
   "/turmas": "collection",
   "/turmas/minhas": "mortarboard",

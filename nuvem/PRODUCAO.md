@@ -500,6 +500,14 @@ Depois de ligar e **depois de revogar o legado**: a importação está na seçã
 - **Backup** do banco antes de qualquer expurgo ou importação.
 - **Para voltar a segurar**: apague a variável (ou ponha `nao`) e publique. Os dados ficam; só as telas somem.
 
+## 12. Liberar o módulo de ocorrências de urgência e emergência
+
+O módulo (`/ocorrencias`) também fica **travado na produção**: o cartão aparece «em desenvolvimento» e as telas respondem 404 até `CSSO_MODULO_OCORRENCIAS=sim`. Ele guarda o relato de saúde de qualquer pessoa na universidade (servidor, estudante, terceirizado, visitante).
+
+1. **Antes:** o encarregado confere a ROPA (finalidade, base legal, quem lê, prazo de guarda do relato) para estudantes, terceirizados e visitantes, e a equipe que vai tratar as ocorrências (perfis coordenação, engenharia, técnico, médico e secretaria) combina quem assume cada caso.
+2. **Ligar:** no painel do Netlify, acrescente `CSSO_MODULO_OCORRENCIAS=sim` e publique de novo. A migração `0040_ocorrencias` roda no deploy.
+3. **Conferir:** com uma conta de estudante de teste, registre uma ocorrência; com a coordenação, abra a fila, assuma, acompanhe e conclua; baixe a planilha e confirme que ela não traz o nome nem o relato.
+
 ## Migração dos casos do CAT/SP antigo (uma vez)
 
 Exporte as abas `COMUNICACOES`, `ANALISES_MAPA` e `PLANO_ACAO` da planilha como CSV, para uma pasta **fora do repositório** (os arquivos têm CPF e saúde). Depois:

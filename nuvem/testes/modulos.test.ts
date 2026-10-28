@@ -512,7 +512,10 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
       "Comprovante de treinamentos",
       "Minha ficha de EPI",
       "Pedir EPI",
-      // pela concessão do titular: a lateral dele não tem o módulo de acidentes
+      // pela concessão do titular: a lateral dele não tem o módulo de ocorrências
+      // nem o de acidentes
+      "Registrar ocorrência",
+      "Minhas ocorrências",
       "Comunicar acidente",
       "Minhas comunicações",
       // "Meu adicional" e "Meus processos" só com a exceção da pessoa (25/10/2026)
@@ -549,6 +552,7 @@ describe("a conta de equipe ligada a servidor: a lateral da equipe e o Meu espa�
       "Meus certificados",
       "Comprovante de treinamentos",
       "Minha ficha de EPI",
+      "Minhas ocorrências",
       "Minhas comunicações",
       "Minha atividade",
       "Meu perfil",

@@ -53,8 +53,8 @@ function _previstos(html: string): string {
 
 describe("Visão geral: quem vê qual cartão", () => {
   it.each([
-    ["coordenador_csso", ["processos-sei", "epis", "certificados", "acidentes", "demandas"]],
-    ["superintendente", ["processos-sei", "epis", "certificados", "acidentes", "demandas", "administracao"]],
+    ["coordenador_csso", ["processos-sei", "epis", "certificados", "acidentes", "ocorrencias", "demandas"]],
+    ["superintendente", ["processos-sei", "epis", "certificados", "acidentes", "ocorrencias", "demandas", "administracao"]],
     ["almoxarife_sesmt", ["epis", "demandas"]],
     ["consulta_progep", ["processos-sei", "epis", "certificados"]],
     ["admin_ti", ["administracao"]],
@@ -90,7 +90,7 @@ describe("Visão geral: quem vê qual cartão", () => {
     expect(_cartoes(await _visao("coord_sem_epi"))).toContain("epis");
     await db.insert(e.usuario_nivel_modulo).values({ usuario_id: conta.id, modulo: "epis", nivel: "SEM_ACESSO" });
     const html = await _visao("coord_sem_epi");
-    expect(_cartoes(html)).toEqual(["processos-sei", "certificados", "acidentes", "demandas"]);
+    expect(_cartoes(html)).toEqual(["processos-sei", "certificados", "acidentes", "ocorrencias", "demandas"]);
     expect(_conteudo(html)).not.toContain('href="/epis');
   });
 
@@ -112,7 +112,7 @@ describe("Visão geral: quem vê qual cartão", () => {
     expect(usuario.pode("processo.ver")).toBe(false);
     const html = await _visao("coord_sem_sei");
     expect(_cartoes(html)).not.toContain("processos-sei");
-    expect(_cartoes(html)).toEqual(["epis", "certificados", "acidentes", "demandas"]);
+    expect(_cartoes(html)).toEqual(["epis", "certificados", "acidentes", "ocorrencias", "demandas"]);
   });
 
   it("a saudação usa o primeiro nome, e a tela leva ao mapa das telas", async () => {
