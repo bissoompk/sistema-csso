@@ -36,6 +36,8 @@ export interface TurmaDaAgenda {
   campus?: { nome: string } | null;
   treinamento: { nome: string };
   unidade_promotora?: { sigla: string | null; nome_extenso: string } | null;
+  /** Preenchido quando a turma está na vitrine pública. */
+  divulgada_em?: Date | null;
 }
 
 /** Diferença do horário de Brasília para o UTC, em horas (sem horário de verão). */
@@ -165,9 +167,14 @@ export function gerar(turma: TurmaDaAgenda, opcoes: { url_base: string; link: st
   return linhas.map(dobrar).join("\r\n") + "\r\n";
 }
 
-/** O endereço da turma que vai na descrição. */
-export function link_da_turma(url_base: string, turma: { id: number }): string {
-  return `${url_base}/turmas/${turma.id}`;
+/**
+ * O endereço da turma que vai na descrição. A turma divulgada leva à ficha
+ * pública (abre sem entrar); a outra, à lista "Meus treinamentos" de quem recebe,
+ * porque `/turmas/{id}` é da equipe e dá 403 para o servidor.
+ */
+export function link_da_turma(url_base: string, turma: { codigo: string; divulgada_em?: Date | null }): string {
+  const base = url_base.replace(/\/+$/, "");
+  return turma.divulgada_em ? `${base}/cursos/${turma.codigo}` : `${base}/turmas/minhas`;
 }
 
 /** O arquivo pronto: nome, bytes e o texto. A URL base é a do sistema. */
