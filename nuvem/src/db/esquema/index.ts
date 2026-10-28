@@ -17,4 +17,5 @@ export * from './acidente';
 export * from './treinamento';
 export * from './operacao';
 export * from './privacidade';
+export * from './vitrine_aviso';
 export * from './relacoes';

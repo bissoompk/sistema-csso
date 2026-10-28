@@ -80,7 +80,7 @@ describe("Meu perfil: cabeçalho e seções", () => {
     }
   });
 
-  it("Dados funcionais: SIAPE, cargo, função, lotação e campus, com a fonte e o link da ficha", () => {
+  it("Dados funcionais: SIAPE, cargo, função, lotação e campus, com a fonte e sem o link da ficha", () => {
     expect(tela.text).toContain('<dt>Matrícula SIAPE</dt><dd class="mono">1110654</dd>');
     expect(tela.text).toContain("<dt>Função</dt><dd>Chefe de Laboratório</dd>");
     expect(tela.text).toContain(`<dt>Lotação</dt><dd>${unidade!.sigla} · ${unidade!.nome_extenso}</dd>`);
@@ -89,7 +89,8 @@ describe("Meu perfil: cabeçalho e seções", () => {
     expect(tela.text).toContain("Informados por você ou pela equipe da Sisa — o sistema não lê o SIAPE.");
     expect(tela.text).not.toContain("Fonte: SIAPE");
     expect(tela.text).toContain('action="/minha-conta/funcionais"');
-    expect(tela.text).toContain(`<a href="/servidores/${cen.servidor.id}">Ver minha ficha completa →</a>`);
+    // a ficha completa é da equipe (403 para o servidor): sem o link (27/10/2026)
+    expect(tela.text).not.toContain("Ver minha ficha completa");
   });
 
   it("Contato e acesso continua com os dois formulários; Segurança leva a /trocar-senha e diz a inatividade", () => {

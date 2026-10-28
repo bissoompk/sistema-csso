@@ -667,6 +667,22 @@ export const turma = pgTable(
     inscricao_token_hash: varchar('inscricao_token_hash', { length: 64 }),
     inscricao_token_expira_em: MomentoUTC('inscricao_token_expira_em'),
 
+    // --- vitrine publica /cursos (27/10/2026) ---
+    // So a turma divulgada entra na vitrine. `divulgada_em` e a primeira
+    // publicacao (quando um dia disparar o aviso de interesse); despublicar nao
+    // apaga nada, a ficha publica so passa a responder 404.
+    divulgar_na_vitrine: boolean('divulgar_na_vitrine').notNull().default(false),
+    divulgada_em: MomentoUTC('divulgada_em'),
+    // vazio = o nome do treinamento
+    titulo_vitrine: varchar('titulo_vitrine', { length: 160 }),
+    modalidade: varchar('modalidade', { length: 12 }).notNull().default('PRESENCIAL'),
+    // SERVIDOR, TERCEIRIZADO, DISCENTE, COMUNIDADE (lista fixa em servicos/vitrine.ts)
+    publico_alvo: varchar('publico_alvo', { length: 16 }).array().notNull().default(sql`'{}'::varchar[]`),
+    pre_requisito: varchar('pre_requisito', { length: 300 }),
+    // a arte da vitrine: o anexo vigente (categoria TURMA_ARTE) e o texto alternativo
+    arte_anexo_id: integer('arte_anexo_id'),
+    arte_alt: varchar('arte_alt', { length: 160 }),
+
     nota_minima_aprovacao: numeric('nota_minima_aprovacao', { precision: 5, scale: 2, mode: 'string' }),
     // 75% e a praxe; a NR nao fixa numero geral
     frequencia_minima_percentual: numeric('frequencia_minima_percentual', {
@@ -709,6 +725,8 @@ export const turma = pgTable(
     // cancelar sem motivo produz turma morta sem explicacao
     check('ck_turma_cancelada', sql.raw(`situacao <> 'CANCELADA' OR motivo_cancelamento IS NOT NULL`)),
     check('ck_turma_vagas', sql.raw(`vagas IS NULL OR vagas > 0`)),
+    check('ck_turma_modalidade', sql.raw(`modalidade IN ('PRESENCIAL','EAD','HIBRIDO')`)),
+    index('ix_turma_vitrine').on(t.situacao, t.data_inicio).where(sql`divulgar_na_vitrine`),
     check('ck_turma_carga', sql.raw(`carga_horaria_horas IS NULL OR carga_horaria_horas > 0`)),
     // link publico sem data de fechamento fica aberto para sempre
     // (`inscricao_publica = 0` no SQLite; booleano usado como booleano aqui)

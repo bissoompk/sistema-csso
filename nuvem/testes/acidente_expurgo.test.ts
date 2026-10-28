@@ -153,7 +153,9 @@ describe("a trilha e as travas", () => {
     const [ev] = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "ACIDENTE_EXPURGO_PARCIAL"));
     expect(ev!.entidade_id).toBe(c.oc.id);
     expect(ev!.descricao).toContain("Ata 3/2031");
-    const tudo = JSON.stringify(ev);
+    // o conteúdo do evento, sem o hash encadeado: 128 hexadecimais ao acaso contêm "529" em ~3% das vezes
+    const { hash_anterior: _a, hash_atual: _h, ...conteudo } = ev!;
+    const tudo = JSON.stringify(conteudo);
     for (const proibido of ["529", "MG-1", "Rua dos Testes", "fulana", "S61", "UPA Fictícia", "Corte superficial", "38999991234"]) {
       expect(tudo).not.toContain(proibido);
     }

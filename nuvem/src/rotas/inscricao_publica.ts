@@ -23,7 +23,7 @@ import { ROTULO_VINCULO } from "../dominio/treinamento.js";
 import * as email from "../servicos/email.js";
 import * as emissao from "../servicos/emissao_certificado.js";
 import * as servico from "../servicos/inscricao_publica.js";
-import { RegraDaTurma } from "../servicos/turma.js";
+import { RegraDaTurma, vagas_restantes } from "../servicos/turma.js";
 import { pagina, redirecionar } from "../web.js";
 import { ipDoCliente } from "./autenticacao.js";
 import { vista_turma } from "./treinamento_vistas.js";
@@ -94,6 +94,11 @@ async function _tela(
       vinculos_externos: d.link?.turma.aceita_comunidade_externa ? servico.VINCULOS_COMUNIDADE_EXTERNA : [],
       rotulo_externos: servico.ROTULO_COMUNIDADE_EXTERNA,
       publico: d.link ? servico.publico_da_turma(d.link.turma) : "",
+      conteudo: (d.link?.turma.treinamento.conteudo_programatico ?? "")
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean),
+      vagas_restantes: d.link ? await vagas_restantes(c.get("tx"), d.link.turma) : null,
       rotulo_vinculo: ROTULO_VINCULO,
       acao: c.req.path,
     },

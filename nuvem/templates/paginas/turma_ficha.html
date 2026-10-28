@@ -485,6 +485,72 @@
   </div>
 </section>
 {% endif %}
+{% if vitrine_pode %}
+<section class="cartao" id="vitrine">
+  <div class="cabecalho-cartao">
+    <h2>Vitrine de cursos</h2>
+    {% if turma.divulgar_na_vitrine %}<span class="pilula ok">publicada</span>{% else %}<span class="pilula sem-ponto">não publicada</span>{% endif %}
+  </div>
+  <p class="discreto">A turma publicada aparece em <a href="/cursos">/cursos</a>, aberta a qualquer pessoa, e
+    <a href="/cursos/{{ turma.codigo }}">tem ficha própria</a> com o formulário de pedir a vaga. Só a turma
+    sem pendência pode ser publicada. Retirar da vitrine não apaga nada: a ficha pública passa a dar “não encontrado”.</p>
+  {% if vitrine_pendencias|length and not turma.divulgar_na_vitrine %}
+  <div class="aviso aviso-alerta"><p>Falta para publicar:</p>
+    <ul>{% for p in vitrine_pendencias %}<li>{{ p }}</li>{% endfor %}</ul></div>
+  {% endif %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine">
+    <div class="campo"><label for="v-titulo">Título na vitrine (opcional)</label>
+      <input id="v-titulo" name="titulo_vitrine" maxlength="160" value="{{ turma.titulo_vitrine or '' }}"
+             placeholder="{{ turma.treinamento.nome }}"></div>
+    <div class="campo"><label for="v-mod">Modalidade</label>
+      <select id="v-mod" name="modalidade">
+        {% for k, v in vitrine_modalidades %}<option value="{{ k }}"{{ ' selected' if k == turma.modalidade }}>{{ v }}</option>{% endfor %}
+      </select></div>
+    <fieldset class="campo"><legend>Público</legend>
+      {% for k, v in vitrine_publicos %}
+      <label><input type="checkbox" name="publico" value="{{ k }}"{{ ' checked' if k in turma.publico_alvo }}> {{ v }}</label>
+      {% endfor %}</fieldset>
+    <div class="campo"><label for="v-pre">Pré-requisito (opcional)</label>
+      <input id="v-pre" name="pre_requisito" maxlength="300" value="{{ turma.pre_requisito or '' }}"></div>
+    <div class="campo"><label><input type="checkbox" name="divulgar" value="sim"{{ ' checked' if turma.divulgar_na_vitrine }}>
+      Divulgar na vitrine pública</label></div>
+    <div class="acoes"><button type="submit">Salvar</button></div>
+  </form>
+  <h3>Quem pediu aviso</h3>
+  <p class="discreto">{% if vitrine_aviso.aguardando == 0 %}Ninguém aguarda aviso de turma como esta.
+    {%- elif vitrine_aviso.aguardando == 1 %}1 pessoa aguarda aviso de turma como esta.
+    {%- else %}{{ vitrine_aviso.aguardando }} pessoas aguardam aviso de turma como esta.{% endif %}
+    A equipe vê só a contagem: não há lista de quem pediu. O aviso {{ 'está ligado' if vitrine_aviso.ativo else 'está desligado' }}.</p>
+  {% if vitrine_aviso.pode_ligar %}
+  <form method="post" action="/turmas/vitrine/aviso-interesse">
+    <input type="hidden" name="volta" value="/turmas/{{ turma.id }}?aba=inscricoes">
+    <input type="hidden" name="ligado" value="{{ 'nao' if vitrine_aviso.ativo else 'sim' }}">
+    <div class="acoes"><button type="submit" class="secundario">{{ 'Desligar o aviso de interesse' if vitrine_aviso.ativo else 'Ligar o aviso de interesse' }}</button></div>
+  </form>
+  {% endif %}
+  <h3>Arte da turma</h3>
+  <p class="discreto">Opcional. Sem arte, a vitrine mostra uma capa gerada na cor do setor. PNG, JPEG ou WEBP, até 3 MB,
+    entre 600×750 e 2160×2700 px, de preferência na proporção 4:5. A localização e os outros metadados da imagem são
+    apagados na gravação.</p>
+  {% if turma.arte_anexo_id %}
+  <p><img class="vitrine-previa-arte" src="/cursos/{{ turma.codigo }}/arte?v={{ turma.arte_anexo_id }}" alt="Arte atual da turma" width="120" height="150"></p>
+  {% endif %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine/arte" enctype="multipart/form-data">
+    <div class="campo"><label for="v-arte">Arquivo da arte</label>
+      <input id="v-arte" type="file" name="arte" accept="image/png,image/jpeg,image/webp" required></div>
+    <div class="campo"><label for="v-arte-alt">Texto alternativo (opcional)</label>
+      <input id="v-arte-alt" name="arte_alt" maxlength="160" value="{{ turma.arte_alt or '' }}"
+             placeholder="Descreva a imagem para quem não a enxerga"></div>
+    <div class="campo"><label><input type="checkbox" name="declaracao" value="sim" required> {{ vitrine_arte_declaracao }}</label></div>
+    <div class="acoes"><button type="submit">{{ 'Trocar a arte' if turma.arte_anexo_id else 'Enviar a arte' }}</button></div>
+  </form>
+  {% if turma.arte_anexo_id %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine/arte/remover">
+    <div class="acoes"><button type="submit" class="secundario">Voltar para a capa gerada</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
 <section class="cartao liso">
   <div class="cabecalho-cartao">
     <h2>Inscrições</h2>

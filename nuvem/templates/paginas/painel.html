@@ -84,6 +84,36 @@
   </div>
   {% endif %}
 
+  {# As turmas divulgadas na vitrine que servem a esta conta: a reciclagem vai
+     na frente. O botão é o mesmo da tela de turmas: um formulário só com a
+     turma, e quem se inscreve sai da sessão. #}
+  <section class="cartao" id="para-voce">
+    <div class="cabecalho-cartao"><h2>Cursos abertos para você</h2></div>
+    {% if para_voce.itens|length %}
+    <div class="para-voce">
+      {% for s in para_voce.itens %}
+      <article class="para-voce-item">
+        {% if s.motivo %}<p class="para-voce-motivo"><span class="pilula alerta">{{ s.motivo }}</span></p>{% endif %}
+        <h3><a href="/cursos/{{ s.curso.codigo }}">{{ s.curso.titulo }}</a></h3>
+        <p class="discreto">{{ s.curso.data_inicio|data }}{% if s.curso.data_fim != s.curso.data_inicio %} a {{ s.curso.data_fim|data }}{% endif %}
+          {% if s.curso.local %} · {{ s.curso.local }}{% endif %}
+          {% if s.curso.vagas_restantes is not none %} · {{ 'sem vagas' if s.curso.vagas_restantes <= 0 else (s.curso.vagas_restantes ~ (' vaga' if s.curso.vagas_restantes == 1 else ' vagas')) }}{% endif %}</p>
+        {% if s.ja_pediu %}
+        <p><span class="pilula ok">Você já pediu vaga</span></p>
+        {% else %}
+        <form method="post" action="/turmas/{{ s.turma_id }}/inscrever-me">
+          <button type="submit" class="compacto">Quero participar</button>
+        </form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% elif para_voce.pode_pedir %}
+    <p class="discreto">Nenhuma turma divulgada com inscrição aberta agora.</p>
+    {% endif %}
+    <p class="sem-margem"><a href="/cursos">Ver todos os cursos <span aria-hidden="true">→</span></a></p>
+  </section>
+
   {# Os cartões de status: ícone num quadrado pastel, rótulo, número grande e
      a frase com o link. 4 na mesa, 2×2 no celular e 1 coluna abaixo de 360px;
      "Meu adicional" e "Meus processos" entram quando a conta tem

@@ -47,6 +47,7 @@ import * as epi_contagens from "../servicos/epi_contagens.js";
 import type { Executor } from "../db/cliente.js";
 import * as certificados_titular from "../servicos/certificados_titular.js";
 import { turmas_abertas } from "../servicos/turma.js";
+import * as vitrine_para_voce from "../servicos/vitrine_para_voce.js";
 import { cartao_meu_espaco, e_externo, icone_de, meu_espaco_de, primeira_tela, so_o_proprio as so_tem_o_proprio } from "../modulos.js";
 
 export const rotas = new Hono<Ambiente>();
@@ -92,7 +93,10 @@ rotas.get("/", async (c) => {
       // a conta de servidor ainda sem vínculo também abre o Início dela
       // (25/10/2026: o servidor já não tem `processo.ver` por padrão); a da
       // equipe sem a permissão continua no 403
-      if (e_externo(usuario) || !so_tem_o_proprio(usuario)) exigir(usuario, "processo.ver");
+      if (e_externo(usuario)) exigir(usuario, "processo.ver");
+      // a conta da equipe sem Processos SEI (almoxarife, admin) tem a tela
+      // inicial na visão geral dos módulos dela, e não um 403 em `/`
+      if (!so_tem_o_proprio(usuario)) return redirecionar(c, "/inicio");
     }
     return pagina(c, "paginas/painel.html", usuario, {
       ...(await inicio_do_servidor(tx, usuario, hoje)),
@@ -464,6 +468,17 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
   const proximo = certificados.resumo.proximo_a_vencer;
   const nome_curto = (c: { norma: string; treinamento: string }) => c.norma || c.treinamento;
 
+  // --- as turmas divulgadas que servem a esta conta (a reciclagem vai na frente) ---
+  const para_voce = await vitrine_para_voce.sugerir(
+    tx,
+    usuario,
+    {
+      certificados: em_vigor.map((c) => ({ treinamento_id: c.treinamento_id, data_vencimento: c.data_vencimento })),
+      campus: dados?.campus ?? null,
+    },
+    hoje,
+  );
+
   // --- avisos por severidade: só quando existem ---
   const reciclagem = ve_treinamento ? { href: "/turmas/minhas", rotulo: "Ver turmas de reciclagem" } : null;
   const avisos: AvisoDoInicio[] = [];
@@ -522,6 +537,7 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
 
   return {
     inicio_do_servidor: true,
+    para_voce,
     epi,
     tem_servidor: servidor_id !== null,
     primeiro_nome,

@@ -337,6 +337,21 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Registro | Cadastro e inativação na trilha; cada download em `historico_evento` (`ANEXO_BAIXADO`) e, para instrutor servidor, em `acesso_dado_sensivel`. A pendência de vencimento não leva o nome do instrutor |
 | Retenção | Enquanto a turma e o certificado que o instrutor assinou forem guardados (é a prova de que o certificado foi dado por pessoa qualificada); inativar não apaga. Sem expurgo automático |
 
+### 5.15 "Quero ser avisado" da vitrine de cursos (28/10/2026)
+
+| Item | Registro |
+|---|---|
+| Titulares | Qualquer pessoa que, na vitrine pública (`/cursos`), pediu para ser avisada quando abrir turma (servidor, discente, terceirizado ou público externo) |
+| Dado | **Nome e e-mail**, o interesse escolhido (um curso, os cursos de um setor, ou qualquer curso), o campus (opcional), o instante e a **versão do texto de finalidade** do consentimento e o **IP** do consentimento. **Sem telefone**, sem CPF, sem vínculo |
+| Onde | `aviso_interesse` e `aviso_interesse_envio` (migração 0037); o e-mail passa pela caixa de saída (§5.9) |
+| Finalidade | Uma só: avisar, por e-mail, quando abrir turma do interesse escolhido. Nenhum outro uso, nenhuma lista de divulgação geral |
+| Base legal | **Consentimento** (art. 7º, I): a caixa nasce desmarcada, o texto de finalidade aparece junto do botão, e o cadastro só vale **depois da confirmação** pelo link enviado ao e-mail. Sair é possível a qualquer momento, sem login, pelo link de cada aviso (`List-Unsubscribe` de um clique incluso); abrir o link não cancela, só o botão "Confirmar saída" |
+| Quem vê | A equipe vê **só contagens** ("N pessoas aguardam turma como esta") na ficha da turma; **não há tela com a lista** e não há exportação. O endereço só é lido pelo envio |
+| Resposta pública | Sempre a mesma para e-mail novo, repetido ou inválido, com piso de tempo, para a página não dizer quem já está cadastrado; limite por IP compartilhado com a inscrição pública e campo-isca contra robô |
+| Chave de ligar | Parâmetro `aviso_interesse.ativo`, **desligado por padrão**: com ele desligado o cadastro funciona e nenhum aviso de turma é enfileirado. Quem liga (`treinamento.gerenciar`) fica na trilha |
+| Trilha | `AVISO_INTERESSE_CRIADO`, `_CONFIRMADO` e `_CANCELADO`, só com o número do cadastro, **nunca** o e-mail ou o nome |
+| Retenção | Ver §6: não confirmado, 7 dias; confirmado, 12 meses (apagado no dia seguinte ao vencimento); cancelado, 30 dias; IP, 90 dias |
+
 ## 6. Retenção — o que a nuvem acrescenta à política
 
 | Conjunto | Prazo | Mecanismo |
@@ -355,6 +370,10 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 | Pedido de link de acesso do participante (§5.10): e-mail, IP, horários | 7 dias | Rotina noturna (`EXPURGO_PRIVACIDADE`, `acesso_participante.expurgar`) |
 | Pedido de conta do Cadastre-se (§5.12): nome, e-mail, empresa ou curso, matrícula, IP, motivo da recusa | 90 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `pedido_conta.expurgar`) |
 | Convite da avaliação de reação (§5.13): inscrição e hash do token | Até o fim do prazo da avaliação (60 dias após o fim da turma) | Rotina noturna (`EXPURGO_PRIVACIDADE`, `avaliacao_reacao.expurgar_convites`) |
+| Pedido de aviso da vitrine (§5.15), não confirmado | 7 dias do pedido | Rotina noturna (`EXPURGO_PRIVACIDADE`, `aviso_interesse.expurgar`) |
+| Pedido de aviso da vitrine (§5.15), confirmado | 12 meses da confirmação (apagado no dia seguinte) | Idem |
+| Pedido de aviso da vitrine (§5.15), cancelado pela pessoa | 30 dias do cancelamento | Idem |
+| IP do consentimento do aviso da vitrine (§5.15) | 90 dias do pedido | Idem |
 | CPF do certificado (§5.5.1) | Enquanto houver certificado que o exija; apagável pela tela | Manual (auditado) |
 | Comprovante de qualificação do instrutor (§5.14) | O dos certificados que o instrutor assinou | Manual: inativar não apaga; o arquivo segue a política do anexo |
 | Logs da função no Netlify | Prazo do plano do Netlify | Fora do controle do setor; por isso nada pessoal vai para lá |

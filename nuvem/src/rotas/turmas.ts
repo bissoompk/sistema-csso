@@ -65,6 +65,10 @@ import * as servico_presenca from "../servicos/presenca.js";
 import * as qualificacao_instrutor from "../servicos/qualificacao_instrutor.js";
 import * as setor_promotor from "../servicos/setor_promotor.js";
 import * as setor_equipe from "../servicos/setor_equipe.js";
+import * as vitrine from "../servicos/vitrine.js";
+import * as vitrine_arte from "../servicos/vitrine_arte.js";
+import * as aviso_interesse from "../servicos/aviso_interesse.js";
+import * as anexos from "../servicos/anexos.js";
 import * as servico_turma from "../servicos/turma.js";
 import { RegraDaTurma, type InscricaoCarregada, type TurmaCarregada } from "../servicos/turma.js";
 import * as datas_br from "../servicos/datas_br.js";
@@ -881,6 +885,18 @@ async function _tela_ficha(
       !servico_turma.aberta_a_pedido_proprio(turma, hoje) &&
       vagas_restantes !== 0,
     link_impedimento,
+    // a vitrine pública (/cursos): quem publica, o que falta e as listas fixas
+    vitrine_pode: vitrine.pode_divulgar(usuario, turma),
+    vitrine_pendencias: vitrine.pendencias(turma),
+    vitrine_publicos: vitrine.PUBLICOS,
+    vitrine_modalidades: vitrine.MODALIDADES,
+    vitrine_arte_declaracao: vitrine_arte.DECLARACAO,
+    // só contagem: ninguém da equipe vê quem pediu aviso
+    vitrine_aviso: {
+      aguardando: (await aviso_interesse.contar_para_turma(tx, turma)).aguardando,
+      ativo: await aviso_interesse.ativo(tx),
+      pode_ligar: usuario.pode("treinamento.gerenciar"),
+    },
     aviso_modelo: aba === "emissao" ? aviso_modelo : "",
     avisos_linha,
     impedimentos_exclusao,
@@ -1591,6 +1607,87 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/desligar`, async (c) => {
   if (!turma) return redirecionar(c, TURMAS);
   await inscricao_publica.desligar_link(tx, usuario, turma);
   return _volta(c, `${TURMAS}/${turma.id}?aba=inscricoes`, "Link público desligado: o endereço deixou de funcionar.");
+});
+
+/** Publica a turma na vitrine pública (/cursos), ou a retira dela. */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/vitrine`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
+  try {
+    await _no_savepoint(c, (sp) =>
+      vitrine.configurar(sp, usuario, turma, {
+        divulgar: f.texto("divulgar") === "sim",
+        titulo: f.texto("titulo_vitrine"),
+        modalidade: f.texto("modalidade"),
+        publico: f.todos("publico"),
+        pre_requisito: f.texto("pre_requisito"),
+      }),
+    );
+  } catch (erro) {
+    if (erro instanceof vitrine.VitrineRecusada || erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, turma.divulgar_na_vitrine ? "Turma publicada na vitrine de cursos." : "Dados da vitrine salvos; a turma não está publicada.");
+});
+
+/** Liga ou desliga o aviso de interesse da vitrine (vale para todas as turmas). */
+rotas.post(`${TURMAS}/vitrine/aviso-interesse`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const f = await formulario(c);
+  const ligado = f.texto("ligado") === "sim";
+  await _no_savepoint(c, (sp) => aviso_interesse.definir_ativo(sp, usuario, ligado));
+  const volta = f.texto("volta").startsWith(`${TURMAS}/`) ? f.texto("volta") : TURMAS;
+  return _volta(c, volta, ligado ? "Aviso de interesse da vitrine ligado." : "Aviso de interesse da vitrine desligado.");
+});
+
+/** Envia a arte da turma para a vitrine (um arquivo por requisição), ou a retira. */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/vitrine/arte`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
+  const arquivo = f.arquivo("arte");
+  if (!arquivo) return _erro(c, volta, "Escolha o arquivo da arte (PNG, JPEG ou WEBP).");
+  const conteudo = new Uint8Array(await arquivo.arrayBuffer());
+  try {
+    await _no_savepoint(c, (sp) =>
+      vitrine_arte.enviar(sp, usuario, turma, {
+        conteudo,
+        nome_original: arquivo.name || "arte",
+        alt: f.texto("arte_alt"),
+        declaracao: f.texto("declaracao") === "sim",
+      }),
+    );
+  } catch (erro) {
+    if (erro instanceof vitrine_arte.ArteRecusada || erro instanceof anexos.AnexoGrandeDemais) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, "Arte gravada. Os metadados da imagem (como a localização) foram removidos.");
+});
+
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/vitrine/arte/remover`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma.id}?aba=inscricoes`;
+  try {
+    await _no_savepoint(c, (sp) => vitrine_arte.remover(sp, usuario, turma));
+  } catch (erro) {
+    if (erro instanceof vitrine_arte.ArteRecusada) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, "Arte retirada: a vitrine volta a usar a capa gerada.");
 });
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async (c) => {

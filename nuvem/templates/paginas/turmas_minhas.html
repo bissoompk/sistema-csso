@@ -28,7 +28,7 @@
       <p class="sub">
         {%- if abertas|length and pode_pedir %}Escolha uma turma e clique em <strong>Quero me inscrever</strong>.
         {%- elif abertas|length %}{{ abertas|length }} turma(s) com inscrições abertas.
-        {%- else %}Nenhuma turma aberta agora — veja o <a href="/treinamentos/catalogo">catálogo de treinamentos</a>.{% endif %}
+        {%- else %}Nenhuma turma aberta agora — {% if usuario.pode_na_equipe('treinamento.ver') %}veja o <a href="/treinamentos/catalogo">catálogo de treinamentos</a>{% else %}volte aqui quando a equipe abrir inscrições{% endif %}.{% endif %}
         {% if inscricoes|length %}Abaixo, as suas inscrições.{% endif %}</p>
       {% call ui.info('pedir-vaga', 'como funciona pedir a própria vaga') %}
         <p><strong>Havendo vaga, a inscrição já sai confirmada</strong>: ninguém precisa aprovar.

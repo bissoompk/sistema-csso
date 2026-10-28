@@ -726,6 +726,11 @@ export async function mudar_situacao(
     comentario: limpo,
     usuario,
   });
+  if (destino === "INSCRICOES_ABERTAS" && turma.divulgar_na_vitrine) {
+    // NUVEM: quem pediu aviso na vitrine (e confirmou) é avisado, uma vez por turma
+    const aviso = await import("./aviso_interesse.js");
+    await aviso.avisar_turma(tx, turma as unknown as TurmaCarregada);
+  }
   if (destino === "CONCLUIDA") {
     // concluir é UM ato: calcula a frequência de cada inscrito e atribui
     // APROVADO/REPROVADO na mesma transação. Import dinâmico pelo mesmo motivo

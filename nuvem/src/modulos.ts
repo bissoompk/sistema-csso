@@ -633,7 +633,7 @@ export const MODULOS: readonly Modulo[] = [
         "Registrar a ocorrência: quem, quando, onde e o que aconteceu.",
       ),
       new Item("Fila de ocorrências", "/acidentes/fila", "acidente.ver", "Todas as ocorrências, com situação e prazo."),
-      new Item("Plano de ação", "/acidentes/acoes", "acidente.ver", "As ações corretivas e preventivas e os seus prazos."),
+      new Item("Plano de ação", "/acidentes/acoes", ["acidente.investigar", "acidente.siass"], "As ações corretivas e preventivas e os seus prazos."),
       new Item(
         "Indicadores",
         "/acidentes/indicadores",

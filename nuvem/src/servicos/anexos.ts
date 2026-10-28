@@ -47,11 +47,14 @@ export const CATEGORIAS_ACIDENTES = ["CAT_SP", "RELATORIO_INVESTIGACAO", "EVIDEN
 
 // O conjunto que `guardar` aceita e que `ck_anexo_cat` admite — as duas listas
 // têm de casar, e um teste compara. A lista do CHECK é a de `dominio/auditoria`.
+export const CATEGORIAS_VITRINE = ["TURMA_ARTE"] as const;
+
 export const CATEGORIAS: readonly string[] = [
   ...CATEGORIAS_PROCESSO,
   ...CATEGORIAS_EPI,
   ...CATEGORIAS_CERTIFICADOS,
   ...CATEGORIAS_ACIDENTES,
+  ...CATEGORIAS_VITRINE,
 ];
 
 /**

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% set sem_casca = true %}
+{% block titulo %}{{ (curso.titulo ~ ' · Cursos') if curso else 'Curso' }} · SISA{% endblock %}
+{% block classe_conteudo %}tela-vitrine{% endblock %}
+{% block cabeca %}{% if curso %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sistema SISA · UFVJM">
+  <meta property="og:title" content="{{ curso.titulo }}">
+  <meta property="og:description" content="{{ divulgue.resumo }}">
+  <meta property="og:url" content="{{ divulgue.url }}">
+  {% if divulgue.imagem %}<meta property="og:image" content="{{ divulgue.imagem }}">
+  <meta name="twitter:card" content="summary_large_image">{% else %}<meta name="twitter:card" content="summary">{% endif %}
+  <meta name="description" content="{{ divulgue.resumo }}">
+{% endif %}{% endblock %}
+
+{% block conteudo %}
+{% if not curso %}
+<div class="cartao">
+  {% if encerrada %}
+  <h1>Esta turma já foi realizada</h1>
+  <p>A ficha deste curso saiu do ar. Veja os cursos com inscrições abertas.</p>
+  {% else %}
+  <h1>Curso não encontrado</h1>
+  <p>Este endereço não corresponde a um curso divulgado. A turma pode ter sido retirada da vitrine.</p>
+  {% endif %}
+  <p><a class="botao" href="/cursos">Ver todos os cursos</a></p>
+</div>
+{% else %}
+<p class="discreto sem-margem"><a href="/cursos">Início › Cursos</a> › {{ curso.titulo }}</p>
+
+<div class="cartao curso-ficha">
+  {% if curso.arte %}
+  <div class="curso-capa curso-capa--ficha curso-capa--arte">
+    <img src="/cursos/{{ curso.codigo }}/arte?v={{ curso.arte.v }}" alt="{{ curso.arte.alt }}" width="280" height="350"></div>
+  {% else %}
+  <div class="curso-capa curso-capa--ficha setor--{{ curso.setor.cor if (curso.setor and curso.setor.cor) else 'padrao' }}" aria-hidden="true">
+    <span class="curso-capa-sigla">{{ curso.setor.sigla if curso.setor else 'SISA' }}</span>
+    <span class="curso-capa-nome">{{ curso.treinamento }}</span>
+    {% if curso.norma %}<span class="curso-capa-norma">{{ curso.norma }}</span>{% endif %}
+  </div>
+  {% endif %}
+  <div>
+    {% if curso.setor %}<p class="curso-setor">{{ ui.selo_setor(curso.setor) }}</p>{% endif %}
+    <h1>{{ curso.titulo }}</h1>
+    <p class="curso-selos">{% for s in curso.selos %}<span class="curso-selo curso-selo--{{ s.tom }}">{{ s.texto }}</span>{% endfor %}</p>
+    <dl class="tabela-dados">
+      <dt>Quando</dt><dd>{{ curso.data_inicio|data }}{% if curso.data_fim != curso.data_inicio %} a {{ curso.data_fim|data }}{% endif %}
+        {%- if curso.hora_inicio %} · {{ curso.hora_inicio }}{% if curso.hora_fim %}–{{ curso.hora_fim }}{% endif %}{% endif %}</dd>
+      <dt>Onde</dt><dd>{{ curso.modalidade_rotulo }}{% if curso.modalidade != 'EAD' and (curso.local or curso.campus) %} · {{ curso.local or '' }}{% if curso.local and curso.campus %}, {% endif %}{{ curso.campus or '' }}{% endif %}</dd>
+      {% if curso.carga_horas %}<dt>Carga horária</dt><dd>{{ curso.carga_horas|num }} h</dd>{% endif %}
+      <dt>Vagas</dt><dd>{% if curso.vagas_restantes is none %}Vagas abertas{% elif curso.vagas_restantes == 0 %}Sem vagas{% else %}{{ curso.vagas_restantes }} de {{ curso.vagas_total }}{% endif %}</dd>
+      {% if curso.inscricao_ate %}<dt>Inscrições até</dt><dd>{{ curso.inscricao_ate|data }}</dd>{% endif %}
+      {% if curso.publico|length %}<dt>Público</dt><dd>{{ curso.publico|join(', ') }}</dd>{% endif %}
+      {% if curso.pre_requisito %}<dt>Pré-requisito</dt><dd>{{ curso.pre_requisito }}</dd>{% endif %}
+    </dl>
+    {% if curso.aberta and not curso.cheia %}<p><a class="botao largo" href="#inscricao">Inscrever-se</a></p>{% endif %}
+  </div>
+</div>
+
+{% if curso.descricao %}
+<div class="cartao"><h2>Sobre o curso</h2><p><span class="texto-literal">{{ curso.descricao }}</span></p></div>
+{% endif %}
+{% if curso.conteudo|length %}
+<div class="cartao"><h2>Conteúdo programático</h2>
+  <ul>{% for l in curso.conteudo %}<li>{{ l }}</li>{% endfor %}</ul></div>
+{% endif %}
+<div class="cartao"><h2>Certificado</h2>
+  <p>Certificado digital com QR de validação, emitido pela {{ curso.setor.sigla if curso.setor else 'SISA' }}.
+    {% if curso.validade_meses > 0 %}Vale {{ curso.validade_meses }} meses{% if curso.norma %} ({{ curso.norma }}){% endif %}.{% else %}Não tem prazo de validade.{% endif %}</p>
+</div>
+
+{% if curso.aba != 'realizados' %}
+<div class="cartao" id="divulgue"><h2>Divulgue</h2>
+  <div class="divulgue">
+    <img class="divulgue-qr" src="/cursos/{{ curso.codigo }}/qr.png" width="160" height="160" alt="QR code que abre esta página do curso">
+    <div>
+      <label for="divulgue-link">Endereço desta página</label>
+      <input id="divulgue-link" class="divulgue-endereco" type="text" readonly value="{{ divulgue.url }}">
+      <p class="divulgue-links">
+        <a class="botao" href="{{ divulgue.whatsapp }}" rel="noopener" target="_blank">Compartilhar no WhatsApp</a>
+        <a class="botao secundario" href="{{ divulgue.email }}">Enviar por e-mail</a>
+        <a class="botao secundario" href="/cursos/{{ curso.codigo }}/cartaz.pdf">Baixar cartaz (PDF A4)</a>
+        <a class="botao secundario" href="/cursos/{{ curso.codigo }}/agenda.ics">Adicionar à agenda (.ics)</a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if curso.cheia or not curso.aberta %}
+<div class="cartao">{% include "partes/vitrine_avise.html" %}</div>
+{% endif %}
+
+<div class="cartao" id="inscricao">
+  {% if excedeu %}
+  <div class="aviso aviso-alerta" role="alert"><p><strong>Envios demais deste endereço.</strong>
+    Espere alguns minutos e tente de novo.</p></div>
+  {% elif recebido %}
+  <div class="aviso aviso-ok" role="status">
+    <p><strong>{{ resposta_padrao }}</strong></p>
+    <p>Recebemos o pedido de <strong>{{ recebido.nome }}</strong>
+      {%- if recebido.email %}, com o e-mail <strong>{{ recebido.email }}</strong>{% endif %}.
+      {%- if recebido.email %} Abra o e-mail que enviamos e clique em «Confirmar»: havendo vaga, ela fica garantida na hora.{% endif %}</p>
+    <p>{{ linha_neutra }}</p>
+  </div>
+  <p class="sem-margem"><a href="/cursos/{{ curso.codigo }}?novo=1#inscricao">Pedir a vaga para outra pessoa</a></p>
+  {% elif curso.aberta and not curso.cheia %}
+  {% include "partes/inscricao_formulario.html" %}
+  {% else %}
+  <h2>Inscrições</h2>
+  <p>{% if curso.cheia and curso.aberta %}As vagas desta turma se esgotaram.
+    {%- elif curso.aba == 'breve' %}As inscrições ainda não abriram.
+    {%- else %}As inscrições desta turma estão encerradas.{% endif %}
+    <a href="/cursos">Veja os outros cursos.</a></p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
