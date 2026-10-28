@@ -11,6 +11,8 @@ import * as e from "../src/db/esquema/index.js";
 import type { Banco } from "../src/db/cliente.js";
 import { hoje_iso, somar_dias } from "../src/dominio/datas.js";
 import * as inscricao_publica from "../src/servicos/inscricao_publica.js";
+import * as divulgacao from "../src/servicos/vitrine_divulgacao.js";
+import { matriz_qr } from "../src/servicos/qr.js";
 import { bancoLimpo, contas, entrar, type Cliente } from "./ajuda";
 
 let db: Banco;
@@ -219,5 +221,61 @@ describe("a vitrine pública", () => {
     expect(r.status).toBe(403);
     const [t] = await db.select().from(e.turma).where(eq(e.turma.id, id));
     expect(t!.divulgar_na_vitrine).toBe(false);
+  });
+});
+
+describe("a divulgação da ficha", () => {
+  it("turma não publicada não entrega QR, cartaz nem agenda", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    const visitante = novoCliente();
+    for (const f of ["qr.png", "cartaz.pdf", "agenda.ics"]) {
+      expect((await visitante.get(`/cursos/${codigo}/${f}`)).status, f).toBe(404);
+    }
+  });
+
+  it("publicada: a ficha traz o bloco Divulgue e os três arquivos saem", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    expect((await _publicar(id)).status).toBe(303);
+    const visitante = novoCliente();
+    const ficha = await visitante.get(`/cursos/${codigo}`);
+    expect(ficha.text).toContain("Divulgue");
+    expect(ficha.text).toContain(`/cursos/${codigo}/cartaz.pdf`);
+    expect(ficha.text).toContain("https://wa.me/?text=");
+    expect(ficha.text).toContain(`value="http://127.0.0.1:8766/cursos/${codigo}"`);
+
+    const qr = await visitante.get(`/cursos/${codigo}/qr.png`);
+    expect(qr.status).toBe(200);
+    expect(qr.cabecalho("content-type")).toBe("image/png");
+    expect(qr.text).toContain("PNG");
+
+    const pdf = await visitante.get(`/cursos/${codigo}/cartaz.pdf`);
+    expect(pdf.status).toBe(200);
+    expect(pdf.cabecalho("content-type")).toBe("application/pdf");
+    expect(pdf.text.startsWith("%PDF")).toBe(true);
+    expect(pdf.cabecalho("content-disposition")).toContain(`cartaz-${codigo}.pdf`);
+
+    const agenda = await visitante.get(`/cursos/${codigo}/agenda.ics`);
+    expect(agenda.status).toBe(200);
+    expect(agenda.cabecalho("content-type")).toContain("text/calendar");
+    expect(agenda.text).toContain("BEGIN:VCALENDAR");
+    expect(agenda.text).toContain(`/cursos/${codigo}`);
+    expect(agenda.text).not.toMatch(/\/turmas\/\d+/);
+    expect(agenda.text.split("\r\n").every((l) => Buffer.byteLength(l) <= 75)).toBe(true);
+  });
+
+  it("o QR codifica o endereço absoluto da ficha e o texto do WhatsApp o leva junto", () => {
+    const url = divulgacao.url_da_ficha("https://exemplo.ufvjm.test/", "TUR-2026-0031");
+    expect(url).toBe("https://exemplo.ufvjm.test/cursos/TUR-2026-0031");
+    expect(matriz_qr(url).tamanho).toBeGreaterThan(20);
+    const curso = { titulo: "NR-35 Trabalho em altura", aberta: true, data_inicio: "2026-11-18", data_fim: "2026-11-19", local: "Campus JK", campus: null, modalidade: "PRESENCIAL" };
+    const link = divulgacao.link_whatsapp(curso as never, url);
+    expect(decodeURIComponent(link)).toContain("Inscrições abertas: NR-35 Trabalho em altura · 18/11/2026 a 19/11/2026");
+    expect(decodeURIComponent(link)).toContain(url);
+  });
+
+  it("o cartaz troca o que a Helvetica não desenha por interrogação, sem derrubar", () => {
+    expect(divulgacao.so_winansi("Água — ação ✓ 日本")).toBe("Água — ação ? ??");
   });
 });

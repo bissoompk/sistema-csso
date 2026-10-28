@@ -55,6 +55,24 @@
     {% if curso.validade_meses > 0 %}Vale {{ curso.validade_meses }} meses{% if curso.norma %} ({{ curso.norma }}){% endif %}.{% else %}Não tem prazo de validade.{% endif %}</p>
 </div>
 
+{% if curso.aba != 'realizados' %}
+<div class="cartao" id="divulgue"><h2>Divulgue</h2>
+  <div class="divulgue">
+    <img class="divulgue-qr" src="/cursos/{{ curso.codigo }}/qr.png" width="160" height="160" alt="QR code que abre esta página do curso">
+    <div>
+      <label for="divulgue-link">Endereço desta página</label>
+      <input id="divulgue-link" class="divulgue-endereco" type="text" readonly value="{{ divulgue.url }}">
+      <p class="divulgue-links">
+        <a class="botao" href="{{ divulgue.whatsapp }}" rel="noopener" target="_blank">Compartilhar no WhatsApp</a>
+        <a class="botao secundario" href="{{ divulgue.email }}">Enviar por e-mail</a>
+        <a class="botao secundario" href="/cursos/{{ curso.codigo }}/cartaz.pdf">Baixar cartaz (PDF A4)</a>
+        <a class="botao secundario" href="/cursos/{{ curso.codigo }}/agenda.ics">Adicionar à agenda (.ics)</a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="cartao" id="inscricao">
   {% if excedeu %}
   <div class="aviso aviso-alerta" role="alert"><p><strong>Envios demais deste endereço.</strong>

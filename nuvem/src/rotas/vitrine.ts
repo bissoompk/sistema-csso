@@ -16,7 +16,9 @@ import * as email from "../servicos/email.js";
 import * as emissao from "../servicos/emissao_certificado.js";
 import * as inscricao from "../servicos/inscricao_publica.js";
 import { RegraDaTurma } from "../servicos/turma.js";
+import { qr_png } from "../servicos/qr.js";
 import * as vitrine from "../servicos/vitrine.js";
+import * as divulgacao from "../servicos/vitrine_divulgacao.js";
 import { pagina, redirecionar } from "../web.js";
 import { ipDoCliente } from "./autenticacao.js";
 import { COOKIE_RECEBIDO } from "./inscricao_publica.js";
@@ -59,6 +61,7 @@ async function _ficha(
   }
   const { turma, curso } = f;
   const promotor = curso.setor?.sigla ?? "";
+  const url_ficha = divulgacao.url_da_ficha(await emissao.url_base_validacao(c.get("tx")), curso.codigo);
   const resposta = await pagina(
     c,
     "paginas/vitrine_curso.html",
@@ -78,6 +81,7 @@ async function _ficha(
       publico: inscricao.publico_da_turma(turma),
       equipe_de: promotor ? ` da ${promotor}` : " responsável",
       acao: `${CURSOS}/${curso.codigo}/inscricao`,
+      divulgue: { url: url_ficha, whatsapp: divulgacao.link_whatsapp(curso, url_ficha), email: divulgacao.link_email(curso, url_ficha) },
     },
     d.status ?? 200,
   );
@@ -104,6 +108,39 @@ rotas.get(`${CURSOS}/:codigo`, async (c) => {
     return _ficha(c);
   }
   return _ficha(c, { recebido: Boolean(getCookie(c, COOKIE_RECEBIDO)) });
+});
+
+/** A ficha de um código, só se estiver publicada e viva; senão 404 sem corpo útil. */
+async function _publicada(c: Ctx) {
+  const f = await vitrine.ficha(c.get("tx"), c.req.param("codigo") ?? "");
+  return f.tipo === "ok" ? f.curso : null;
+}
+
+function _arquivo(corpo: ConstructorParameters<typeof Response>[0], tipo: string, nome: string | null): Response {
+  const r = new Response(corpo, { headers: { "content-type": tipo } });
+  if (nome) r.headers.set("content-disposition", `attachment; filename="${nome}"`);
+  return _publica(r);
+}
+
+rotas.get(`${CURSOS}/:codigo/qr.png`, async (c) => {
+  const curso = await _publicada(c);
+  if (!curso) return _publica(new Response("Não encontrado", { status: 404 }), false);
+  const url = divulgacao.url_da_ficha(await emissao.url_base_validacao(c.get("tx")), curso.codigo);
+  return _arquivo(qr_png(url, 6), "image/png", null);
+});
+
+rotas.get(`${CURSOS}/:codigo/cartaz.pdf`, async (c) => {
+  const curso = await _publicada(c);
+  if (!curso) return _publica(new Response("Não encontrado", { status: 404 }), false);
+  const url = divulgacao.url_da_ficha(await emissao.url_base_validacao(c.get("tx")), curso.codigo);
+  return _arquivo(await divulgacao.cartaz_pdf(curso, url), "application/pdf", `cartaz-${curso.codigo}.pdf`);
+});
+
+rotas.get(`${CURSOS}/:codigo/agenda.ics`, async (c) => {
+  const curso = await _publicada(c);
+  if (!curso) return _publica(new Response("Não encontrado", { status: 404 }), false);
+  const a = divulgacao.agenda(curso, await emissao.url_base_validacao(c.get("tx")));
+  return _arquivo(a.texto, "text/calendar; charset=utf-8", a.nome);
 });
 
 rotas.post(`${CURSOS}/:codigo/inscricao`, async (c) => {
