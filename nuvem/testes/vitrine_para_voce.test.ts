@@ -1,5 +1,5 @@
 /**
- * A vitrine no início do servidor ("Inscrições abertas para você") e no aviso
+ * A vitrine no início do servidor ("Cursos abertos para você") e no aviso
  * de reciclagem: a reciclagem vai na frente, depois o mesmo campus, depois a
  * data; a turma em que já pediu vaga sai por último com o rótulo no lugar do
  * botão; cheia, não divulgada e abandonada não entram; sem `turma.inscrever_se`
@@ -150,7 +150,7 @@ describe("o início do servidor", () => {
     await entrar(cliente, "titular_clarice");
     const inicio = await cliente.get("/inicio");
     expect(inicio.status).toBe(200);
-    expect(inicio.text).toContain("Inscrições abertas para você");
+    expect(inicio.text).toContain("Cursos abertos para você");
     expect(inicio.text).toContain("Seu certificado vence em");
     expect(inicio.text).toContain(`/turmas/${turma_reciclagem.id}/inscrever-me`);
     expect(inicio.text).not.toContain("Você já pediu vaga");

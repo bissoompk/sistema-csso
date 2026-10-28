@@ -9,9 +9,9 @@
  * O que sai daqui é um DTO (`CursoPublico`): sem id interno, sem instrutor e
  * sem nome de ninguém. Vaga é número, nunca lista.
  */
-import { and, eq, ne } from "drizzle-orm";
+import { and, count, eq, gte, ne } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { turma as tabela_turma, unidade_uorg } from "../db/esquema/index.js";
+import { inscricao, turma as tabela_turma, unidade_uorg } from "../db/esquema/index.js";
 import { Turma } from "../dominio/treinamento.js";
 import * as auditoria from "./auditoria.js";
 import { PermissaoNegada, type UsuarioAtual } from "./rbac.js";
@@ -229,6 +229,59 @@ export type Ficha =
   | { tipo: "ok"; turma: TurmaCarregada; curso: CursoPublico }
   | { tipo: "encerrada" }
   | { tipo: "inexistente" };
+
+/** Abaixo disto o contador não aparece: número pequeno demais aponta para gente. */
+export const PISO_DOS_CAPACITADOS = 5;
+
+/**
+ * Quantas pessoas foram aprovadas nas turmas divulgadas que aparecem em
+ * "Realizados" (o último ano). Só o número: nenhum nome, nenhuma turma. Devolve
+ * `null` abaixo do piso de anonimato.
+ */
+export async function capacitados(tx: Executor, hoje: string = datas_br.hoje()): Promise<number | null> {
+  const desde = datas_br.somar_dias(hoje, -DIAS_REALIZADOS);
+  const [r] = await tx
+    .select({ n: count() })
+    .from(inscricao)
+    .innerJoin(tabela_turma, eq(tabela_turma.id, inscricao.turma_id))
+    .where(
+      and(
+        eq(tabela_turma.divulgar_na_vitrine, true),
+        eq(tabela_turma.situacao, "CONCLUIDA"),
+        gte(tabela_turma.data_fim, desde),
+        eq(inscricao.situacao, "APROVADO"),
+      ),
+    );
+  const n = r?.n ?? 0;
+  return n >= PISO_DOS_CAPACITADOS ? n : null;
+}
+
+/** O feed público (`/cursos.json`): o que está aberto e o que vem em breve, sem dado pessoal. */
+export async function feed(tx: Executor, url_base: string, hoje: string = datas_br.hoje()) {
+  const todas = await Promise.all((await _divulgadas(tx)).map(async (t) => ({ t, c: await _dto(tx, t, hoje) })));
+  const base = url_base.replace(/\/+$/, "");
+  return todas
+    .filter(({ c }) => c.aba === "abertas" || c.aba === "breve")
+    .sort((a, b) => a.c.data_inicio.localeCompare(b.c.data_inicio) || a.c.codigo.localeCompare(b.c.codigo))
+    .map(({ c }) => ({
+      codigo: c.codigo,
+      titulo: c.titulo,
+      situacao: c.aba,
+      setor: c.setor?.sigla ?? null,
+      campus: c.campus,
+      modalidade: c.modalidade,
+      local: c.local,
+      data_inicio: c.data_inicio,
+      data_fim: c.data_fim,
+      hora_inicio: c.hora_inicio,
+      hora_fim: c.hora_fim,
+      carga_horas: c.carga_horas,
+      inscricao_ate: c.inscricao_ate,
+      vagas_restantes: c.vagas_restantes,
+      url: `${base}/cursos/${c.codigo}`,
+      arte_url: c.arte ? `${base}/cursos/${c.codigo}/arte?v=${c.arte.v}` : null,
+    }));
+}
 
 /** O setor (unidade promotora) pela sigla do filtro da lista, ou `null`. */
 export async function setor_por_sigla(tx: Executor, sigla: string): Promise<{ id: number; nome: string } | null> {

@@ -228,6 +228,8 @@ const ABERTAS_SEM_SESSAO: Record<string, string> = {
   "/validar": "o formulário da validação pública por chave",
   "/cursos":
     "a vitrine pública de cursos (`servicos/vitrine.ts`): só a turma que a equipe publicou, sem id, instrutor nem nome de ninguém — vaga é número",
+  "/cursos.json":
+    "o feed público dos cursos abertos e em breve para o portal da UFVJM (`servicos/vitrine.ts`, `feed`): o mesmo que a vitrine mostra, sem id, instrutor nem dado pessoal",
   "/certificados/acesso":
     "o formulário em que o participante sem conta pede, por e-mail, o link dos próprios certificados (`servicos/acesso_participante.ts`): não mostra dado de ninguém, e a resposta é a mesma para e-mail conhecido ou não",
   "/cadastre-se":

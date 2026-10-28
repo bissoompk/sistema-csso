@@ -1,5 +1,5 @@
 /**
- * "Inscrições abertas para você" no início do servidor, e o link da próxima
+ * "Cursos abertos para você" no início do servidor, e o link da próxima
  * turma no aviso de reciclagem: as duas pontas ligam a conta à vitrine pública
  * sem criar tratamento novo. O cálculo usa só o que é do próprio titular (os
  * certificados dele e as inscrições dele) e a turma divulgada, que já é pública.

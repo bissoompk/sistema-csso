@@ -3,6 +3,16 @@
 {% set sem_casca = true %}
 {% block titulo %}{{ (curso.titulo ~ ' · Cursos') if curso else 'Curso' }} · SISA{% endblock %}
 {% block classe_conteudo %}tela-vitrine{% endblock %}
+{% block cabeca %}{% if curso %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sistema SISA · UFVJM">
+  <meta property="og:title" content="{{ curso.titulo }}">
+  <meta property="og:description" content="{{ divulgue.resumo }}">
+  <meta property="og:url" content="{{ divulgue.url }}">
+  {% if divulgue.imagem %}<meta property="og:image" content="{{ divulgue.imagem }}">
+  <meta name="twitter:card" content="summary_large_image">{% else %}<meta name="twitter:card" content="summary">{% endif %}
+  <meta name="description" content="{{ divulgue.resumo }}">
+{% endif %}{% endblock %}
 
 {% block conteudo %}
 {% if not curso %}

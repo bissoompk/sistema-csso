@@ -5,6 +5,15 @@
 {% set sem_casca = true %}
 {% block titulo %}Cursos da SISA · UFVJM{% endblock %}
 {% block classe_conteudo %}tela-vitrine{% endblock %}
+{% block cabeca %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sistema SISA · UFVJM">
+  <meta property="og:title" content="Cursos da SISA · UFVJM">
+  <meta property="og:description" content="Capacitações em saúde, segurança e qualidade de vida para quem trabalha e estuda na UFVJM.">
+  <meta property="og:url" content="{{ url_base }}/cursos">
+  <meta name="description" content="Capacitações em saúde, segurança e qualidade de vida para quem trabalha e estuda na UFVJM.">
+  <link rel="alternate" type="application/json" href="/cursos.json" title="Cursos abertos e em breve">
+{% endblock %}
 
 {% block conteudo %}
 <header class="vitrine-topo">
@@ -40,6 +49,10 @@
       <a class="botao secundario" href="/cursos?aba={{ filtros.aba }}">Limpar</a></div>
   </form>
 </details>
+
+{% if filtros.aba == 'realizados' and capacitados %}
+<p class="discreto"><strong>{{ capacitados }}</strong> pessoas foram capacitadas nos cursos desta aba, no último ano.</p>
+{% endif %}
 
 {% if itens|length %}
 <div class="vitrine-grade">

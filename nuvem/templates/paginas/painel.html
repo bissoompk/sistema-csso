@@ -88,7 +88,7 @@
      na frente. O botão é o mesmo da tela de turmas: um formulário só com a
      turma, e quem se inscreve sai da sessão. #}
   <section class="cartao" id="para-voce">
-    <div class="cabecalho-cartao"><h2>Inscrições abertas para você</h2></div>
+    <div class="cabecalho-cartao"><h2>Cursos abertos para você</h2></div>
     {% if para_voce.itens|length %}
     <div class="para-voce">
       {% for s in para_voce.itens %}
@@ -97,7 +97,7 @@
         <h3><a href="/cursos/{{ s.curso.codigo }}">{{ s.curso.titulo }}</a></h3>
         <p class="discreto">{{ s.curso.data_inicio|data }}{% if s.curso.data_fim != s.curso.data_inicio %} a {{ s.curso.data_fim|data }}{% endif %}
           {% if s.curso.local %} · {{ s.curso.local }}{% endif %}
-          {% if s.curso.vagas_restantes is not none %} · {{ s.curso.vagas_restantes }} vaga(s){% endif %}</p>
+          {% if s.curso.vagas_restantes is not none %} · {{ 'sem vagas' if s.curso.vagas_restantes <= 0 else (s.curso.vagas_restantes ~ (' vaga' if s.curso.vagas_restantes == 1 else ' vagas')) }}{% endif %}</p>
         {% if s.ja_pediu %}
         <p><span class="pilula ok">Você já pediu vaga</span></p>
         {% else %}

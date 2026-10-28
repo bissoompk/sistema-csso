@@ -14,7 +14,8 @@ import * as inscricao_publica from "../src/servicos/inscricao_publica.js";
 import * as divulgacao from "../src/servicos/vitrine_divulgacao.js";
 import * as arte from "../src/servicos/vitrine_arte.js";
 import { matriz_qr } from "../src/servicos/qr.js";
-import { bancoLimpo, contas, entrar, type Cliente } from "./ajuda";
+import { COM_TURMA, type TurmaCarregada } from "../src/servicos/turma.js";
+import { bancoLimpo, contas, entrar, usuarioAtual, type Cliente } from "./ajuda";
 
 let db: Banco;
 let cliente: Cliente;
@@ -409,5 +410,92 @@ describe("a arte da turma", () => {
     const r = await servidor.post(`/turmas/${id}/vitrine/arte`, { arte: arquivo, declaracao: "sim" }, { seguir: false });
     expect(r.status).toBe(403);
     expect((await db.select().from(e.turma).where(eq(e.turma.id, id)))[0]!.arte_anexo_id).toBeNull();
+  });
+});
+
+describe("a vitrine para fora dela", () => {
+  it("a tela de entrada aponta para a vitrine", async () => {
+    const r = await novoCliente().get("/login");
+    expect(r.text).toContain('href="/cursos"');
+  });
+
+  it("a ficha tem Open Graph (com a arte como imagem, quando há) e a lista aponta para o feed", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    expect((await _publicar(id)).status).toBe(303);
+    const v = novoCliente();
+    const ficha = (await v.get(`/cursos/${codigo}`)).text;
+    expect(ficha).toContain('property="og:title" content="Trabalho em Altura');
+    expect(ficha).toContain(`property="og:url" content="http://127.0.0.1:8766/cursos/${codigo}"`);
+    expect(ficha).toContain('name="twitter:card" content="summary"');
+    expect(ficha).not.toContain("og:image");
+    const [t] = await db.select().from(e.turma).where(eq(e.turma.id, id));
+    const [a] = await db
+      .insert(e.anexo)
+      .values({ entidade: "turma", entidade_id: id, nome_arquivo: "a.png", nome_original: "a.png", mime_type: "image/png", tamanho_bytes: 10, sha256: "a".repeat(64), storage_key: "x", categoria: "TURMA_ARTE" } as never)
+      .returning();
+    await db.update(e.turma).set({ arte_anexo_id: a!.id }).where(eq(e.turma.id, t!.id));
+    const com_arte = (await v.get(`/cursos/${codigo}`)).text;
+    expect(com_arte).toContain(`property="og:image" content="http://127.0.0.1:8766/cursos/${codigo}/arte?v=${a!.id}"`);
+    expect(com_arte).toContain("summary_large_image");
+    const lista = (await v.get("/cursos")).text;
+    expect(lista).toContain('href="/cursos.json"');
+    expect(lista).toContain('property="og:title" content="Cursos da SISA');
+  });
+
+  it("o feed /cursos.json traz só o aberto e o que vem em breve, sem dado pessoal, para qualquer origem", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    expect((await novoCliente().get("/cursos.json")).json().cursos).toEqual([]);
+    expect((await _publicar(id)).status).toBe(303);
+    const r = await novoCliente().get("/cursos.json");
+    expect(r.status).toBe(200);
+    expect(r.cabecalho("content-type")).toContain("application/json");
+    expect(r.cabecalho("access-control-allow-origin")).toBe("*");
+    const corpo = r.json<{ cursos: Record<string, unknown>[] }>();
+    expect(corpo.cursos).toHaveLength(1);
+    expect(corpo.cursos[0]).toMatchObject({ codigo, situacao: "abertas", url: `http://127.0.0.1:8766/cursos/${codigo}`, vagas_restantes: 10 });
+    expect(Object.keys(corpo.cursos[0]!)).not.toContain("instrutor");
+    expect(JSON.stringify(corpo)).not.toMatch(/@|siape/i);
+    // encerrada some do feed
+    await db.update(e.turma).set({ situacao: "CONCLUIDA", data_inicio: somar_dias(hoje_iso(), -3), data_fim: somar_dias(hoje_iso(), -2), ano: Number(somar_dias(hoje_iso(), -3).slice(0, 4)) }).where(eq(e.turma.id, id));
+    expect((await novoCliente().get("/cursos.json")).json().cursos).toEqual([]);
+  });
+
+  it("o contador de capacitados só aparece com 5 aprovados ou mais, e é só o número", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    expect((await _publicar(id)).status).toBe(303);
+    await db.update(e.turma).set({ situacao: "CONCLUIDA", data_inicio: somar_dias(hoje_iso(), -3), data_fim: somar_dias(hoje_iso(), -2), ano: Number(somar_dias(hoje_iso(), -3).slice(0, 4)), inscricao_aberta_ate: null }).where(eq(e.turma.id, id));
+    const alfabeto = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
+    const inscrever = async (n: number) => {
+      const [p] = await db.insert(e.participante).values({ nome: `Pessoa ${n}`, vinculo: "VISITANTE", identificador_publico: `PTC-${alfabeto[n]!.repeat(8)}` } as never).returning();
+      await db.insert(e.inscricao).values({ turma_id: id, participante_id: p!.id, situacao: "APROVADO", origem: "INTERNA" } as never);
+    };
+    for (let i = 0; i < 4; i++) await inscrever(i);
+    const v = novoCliente();
+    expect((await v.get("/cursos?aba=realizados")).text).not.toContain("pessoas foram capacitadas");
+    await inscrever(4);
+    const pagina = (await v.get("/cursos?aba=realizados")).text;
+    expect(pagina).toContain("<strong>5</strong> pessoas foram capacitadas");
+    expect(pagina).not.toContain("Pessoa 1");
+    expect(codigo).toMatch(/^TUR-/);
+  });
+
+  it("a inscrição pública mostra vagas, validade do certificado e conteúdo, sem o CSSO fixo", async () => {
+    const id = await _turma();
+    const [antes] = await db.select().from(e.turma).where(eq(e.turma.id, id));
+    await db.update(e.treinamento).set({ conteudo_programatico: "Teoria básica\nPrática supervisionada" }).where(eq(e.treinamento.id, antes!.treinamento_id));
+    const turma = (await db.query.turma.findFirst({ where: eq(e.turma.id, id), with: COM_TURMA as never })) as unknown as TurmaCarregada;
+    const token = await inscricao_publica.gerar_link(db, await usuarioAtual(db, "coordenador_csso"), turma);
+    const pagina = (await novoCliente().get(`/inscricao/${token}`)).text;
+    expect(pagina).toContain("10 vagas restantes");
+    expect(pagina).toContain("Vale 24 meses");
+    expect(pagina).toContain("Teoria básica");
+    expect(pagina).toContain("Prática supervisionada");
+    // o texto visível (fora de <script>, <style> e atributos) não tem a sigla fixa
+    const visivel = pagina.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<style[\s\S]*?<\/style>/g, "").replace(/<[^>]*>/g, " ");
+    // (o aviso de configuração do ambiente de teste cita CSSO_CHAVE_SECRETA: variável, não rótulo)
+    expect(visivel.match(/[\s\S]{0,40}\bCSSO\b(?!_)[\s\S]{0,40}/g) ?? [], "ocorrências de CSSO no texto visível").toEqual([]);
   });
 });

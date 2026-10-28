@@ -37,6 +37,16 @@ function _publica(resposta: Response, cache = true): Response {
   return resposta;
 }
 
+/** O feed público para o portal da UFVJM: só o que está aberto ou vem em breve. Sem dado pessoal. */
+rotas.get(`${CURSOS}.json`, async (c) => {
+  const tx = c.get("tx");
+  const cursos = await vitrine.feed(tx, await emissao.url_base_validacao(tx));
+  const r = new Response(JSON.stringify({ gerado_em: new Date().toISOString(), cursos }), {
+    headers: { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "x-content-type-options": "nosniff" },
+  });
+  return _publica(r);
+});
+
 /** O formulário "Quero ser avisado": os interesses possíveis, o marcado, os campi. */
 async function _avise(
   tx: Ambiente["Variables"]["tx"],
@@ -61,12 +71,15 @@ rotas.get(CURSOS, async (c) => {
   const aba = vitrine.ABAS.some((a) => a.chave === pedida) ? (pedida as vitrine.Aba) : "abertas";
   const filtros = { aba, setor: q("setor"), campus: q("campus"), modalidade: q("modalidade") };
   const lista = await vitrine.listar(c.get("tx"), filtros);
+  const url_base = await emissao.url_base_validacao(c.get("tx"));
   // o setor do filtro vira o interesse já marcado no "Quero ser avisado"
   const setor = filtros.setor ? await vitrine.setor_por_sigla(c.get("tx"), filtros.setor) : null;
   return _publica(
     await pagina(c, "paginas/vitrine.html", null, {
       ...lista,
       avise: await _avise(c.get("tx"), { setor }),
+      url_base,
+      capacitados: aba === "realizados" ? await vitrine.capacitados(c.get("tx")) : null,
       filtros,
       abas: vitrine.ABAS,
       modalidades: vitrine.MODALIDADES,
@@ -109,7 +122,7 @@ async function _ficha(
         treinamento_id: turma.treinamento_id,
         setor: turma.unidade_promotora ? { id: turma.unidade_promotora.id, nome: turma.unidade_promotora.sigla ?? turma.unidade_promotora.nome_extenso } : null,
       }),
-      divulgue: { url: url_ficha, whatsapp: divulgacao.link_whatsapp(curso, url_ficha), email: divulgacao.link_email(curso, url_ficha) },
+      divulgue: { url: url_ficha, resumo: divulgacao.resumo(curso) + (curso.inscricao_ate ? ` · Inscrições até ${curso.inscricao_ate.split("-").reverse().join("/")}` : ""), imagem: curso.arte ? `${url_ficha}/arte?v=${curso.arte.v}` : null, whatsapp: divulgacao.link_whatsapp(curso, url_ficha), email: divulgacao.link_email(curso, url_ficha) },
     },
     d.status ?? 200,
   );

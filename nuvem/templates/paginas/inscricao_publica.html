@@ -42,14 +42,17 @@
   <p class="discreto sem-margem">Turma <span class="mono">{{ turma.codigo }}</span> · {{ promotor or 'Sisa' }} / UFVJM
     {%- if turma.inscricao_aberta_ate %} · inscrições até {{ turma.inscricao_aberta_ate|data }}{% endif %}</p>
   <p class="discreto sem-margem turma-publico">{{ ui.icone('people') }} Para: {{ publico }}</p>
-  {% if turma.instrutores|length or turma.unidade_promotora or turma.descricao %}
+  {% if turma.instrutores|length or turma.unidade_promotora or turma.descricao or conteudo|length or vagas_restantes is not none %}
   <details class="recolhido">
     <summary>Mais sobre a turma</summary>
     <dl class="tabela-dados">
       {% if turma.instrutores|length %}<dt>{{ 'Instrutores' if turma.instrutores|length > 1 else 'Instrutor' }}</dt>
       <dd>{% for v in turma.instrutores %}{{ v.instrutor.nome_exibicao }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
       {% if turma.unidade_promotora %}<dt>Promoção</dt><dd>{{ turma.unidade_promotora.nome_extenso }}</dd>{% endif %}
+      {% if vagas_restantes is not none %}<dt>Vagas</dt><dd>{{ 'Sem vaga no momento' if vagas_restantes <= 0 else (vagas_restantes ~ (' vaga restante' if vagas_restantes == 1 else ' vagas restantes')) }}</dd>{% endif %}
+      <dt>Certificado</dt><dd>{% if turma.treinamento.validade_meses %}Vale {{ turma.treinamento.validade_meses }} meses{% else %}Não tem prazo de validade{% endif %}</dd>
     </dl>
+    {% if conteudo|length %}<p><strong>Conteúdo</strong></p><ul>{% for l in conteudo %}<li>{{ l }}</li>{% endfor %}</ul>{% endif %}
     {% if turma.descricao %}<p><span class="texto-literal">{{ turma.descricao }}</span></p>{% endif %}
   </details>
   {% endif %}
