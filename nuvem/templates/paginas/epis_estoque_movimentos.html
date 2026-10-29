@@ -30,7 +30,7 @@
       <p class="identificacao">
         <span>Lote <span class="mono">{{ entrada.lote or 'sem número' }}</span></span>
         <span class="ponto">·</span>
-        <span>entrada em <span class="mono">{{ entrada.data_entrada|data }}</span></span>
+        <span>entrada em <span>{{ entrada.data_entrada|data }}</span></span>
         <span class="ponto">·</span>
         <span>{{ entrada.fornecedor_nome or 'fornecedor não informado' }}</span>
         {%- if entrada.empenho %}

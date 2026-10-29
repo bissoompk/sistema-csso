@@ -106,7 +106,7 @@
       <p class="identificacao">
         <strong>{{ turma.treinamento.nome }}</strong>
         <span class="ponto">·</span>
-        <span class="mono">{{ turma.data_inicio|data }}
+        <span>{{ turma.data_inicio|data }}
           {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
           {%- if turma|horario_turma %}, {{ turma|horario_turma }}{% endif %}</span>
         <span class="ponto">·</span>
@@ -179,7 +179,7 @@
       <dd>{{ direito.nome_do_dono }}{% if direito.eh_dono %} <span class="pilula ok">você</span>{% endif %}</dd>
       {% if turma.descricao %}<dt>Descrição do evento</dt><dd><span class="texto-literal">{{ turma.descricao }}</span></dd>{% endif %}
       <dt>Período</dt>
-      <dd class="mono">{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
+      <dd>{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
       <dt>Horário</dt>
       <dd>{{ turma|horario_turma or 'dia inteiro (sem hora definida)' }}</dd>
       <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
@@ -195,12 +195,12 @@
       <dt>Vagas</dt><dd>{{ turma.vagas or 'sem limite' }}</dd>
       <dt>Público</dt><dd>{{ publico }}</dd>
       <dt>Inscrições até</dt>
-      <dd class="mono">{{ turma.inscricao_aberta_ate|data or '—' }}</dd>
+      <dd>{{ turma.inscricao_aberta_ate|data or '—' }}</dd>
       <dt>Nota mínima</dt>
       <dd>{{ turma.nota_minima_aprovacao|num if turma.nota_minima_aprovacao is not none else 'não avalia por nota' }}</dd>
       <dt>Frequência mínima</dt>
       <dd class="mono">{{ turma.frequencia_minima_percentual|num }}%</dd>
-      <dt>Data base do vencimento</dt><dd class="mono">{{ turma.data_base|data }}</dd>
+      <dt>Data base do vencimento</dt><dd>{{ turma.data_base|data }}</dd>
       <dt>Observações</dt><dd>{{ turma.observacoes or '—' }}</dd>
     </dl>
     {# NUVEM (24/10/2026): vagas acima da capacidade e choque de sala — não
@@ -456,7 +456,7 @@
 {# ===================== aba 2 — inscrições ===================== #}
 {% if aba == 'inscricoes' %}
 {% if pode_aqui('turma.criar') and (turma.aceita_inscricao or turma.inscricao_publica) %}
-{# o link público: o token não mora no banco, então aqui só se diz se há um no ar #}
+{# o link público: o token não mora no banco (deriva de um sal), então aqui só se diz se há um no ar; "Ver" o recalcula #}
 <section class="cartao" id="link-publico">
   <div class="cabecalho-cartao">
     <h2>Inscrição pública por link</h2>
@@ -474,6 +474,10 @@
      "Desligar" continua — é o que se faz com o link de uma turma que acabou. #}
   {% if link_impedimento %}<p class="discreto sem-margem">{{ link_impedimento }}</p>{% endif %}
   <div class="acoes">
+    {% if link_no_ar %}
+    <form method="post" action="/turmas/{{ turma.id }}/link-publico/ver">
+      <button type="submit">Ver o link e o QR</button></form>
+    {% endif %}
     {% if not link_impedimento %}
     <form method="post" action="/turmas/{{ turma.id }}/link-publico">
       <button type="submit" class="secundario">

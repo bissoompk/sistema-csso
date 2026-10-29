@@ -90,7 +90,7 @@
       {% for r in rejeitadas %}
       <tr><td>{{ r.origem }}</td><td class="mono">{{ r.ref }}</td>
           <td>{{ r.motivo }}</td>
-          <td class="mono discreto">{{ r.expurgar_apos|data }}</td></tr>
+          <td class="discreto">{{ r.expurgar_apos|data }}</td></tr>
       {% else %}<tr><td colspan="4" class="nada">Nada rejeitado.</td></tr>{% endfor %}
     </table>
   </section>

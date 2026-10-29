@@ -92,7 +92,7 @@
     </thead>
     {% for x in itens %}
     <tr>
-      <td class="mono curta" data-coluna="Vencimento">{{ x.data_vencimento|data }}</td>
+      <td class="curta" data-coluna="Vencimento">{{ x.data_vencimento|data }}</td>
       <td class="curta" data-coluna="Situação">
         {%- if x.situacao == 'VENCIDO' %}<span class="pilula erro">Vencido</span>
         {%- elif x.situacao == 'A_VENCER' %}<span class="pilula alerta">A vencer</span>

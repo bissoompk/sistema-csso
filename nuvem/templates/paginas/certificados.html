@@ -89,9 +89,9 @@
       <td data-coluna="Treinamento">{{ congelado['treinamento_nome'] or c.treinamento.nome }}
         {% if congelado['turma_codigo'] %}
         <span class="quebra discreto mono">{{ congelado['turma_codigo'] }}</span>{% endif %}</td>
-      <td class="mono curta" data-coluna="Emissão">{{ c.data_emissao|data }}</td>
+      <td class="curta" data-coluna="Emissão">{{ c.data_emissao|data }}</td>
       <td class="curta" data-coluna="Vencimento">
-        {% if c.data_vencimento %}<span class="mono">{{ c.data_vencimento|data }}</span>
+        {% if c.data_vencimento %}<span>{{ c.data_vencimento|data }}</span>
         {% else %}<span class="selo">não expira</span>{% endif %}
       </td>
       <td class="curta" data-coluna="Situação">{{ ui.pilula_certificado(situacao_publica[c.id]) }}</td>

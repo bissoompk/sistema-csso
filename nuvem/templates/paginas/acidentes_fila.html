@@ -4,7 +4,7 @@
 
 {% macro linha_prazo(o) %}
 {%- set efetivo = o.prazo_prorrogado_ate or o.prazo_comunicacao -%}
-<span class="mono">{{ efetivo|data }}</span>
+<span>{{ efetivo|data }}</span>
 {%- if o.prazo_prorrogado_ate %} <span class="discreto">(prorrogado)</span>{% endif %}
 {%- if o.estado not in ACIDENTE_ENCERRADO and o.estado != 'ENCAMINHADA_SIASS' and efetivo < hoje %} <span class="pilula erro">vencido</span>{% endif %}
 {%- endmacro %}

@@ -83,7 +83,7 @@
       <tr>
         <td><a class="mono" href="/turmas/{{ t.id }}">{{ t.codigo }}</a></td>
         <td data-coluna="Treinamento">{{ t.treinamento }}</td>
-        <td class="mono curta" data-coluna="Período">{{ t.data_inicio|data }}{% if t.data_fim != t.data_inicio %} a {{ t.data_fim|data }}{% endif %}</td>
+        <td class="curta" data-coluna="Período">{{ t.data_inicio|data }}{% if t.data_fim != t.data_inicio %} a {{ t.data_fim|data }}{% endif %}</td>
         <td class="curta" data-coluna="Local">{{ t.local or '—' }}</td>
         <td data-coluna="Situação">{{ ui.pilula_turma(t.situacao) }}</td>
       </tr>

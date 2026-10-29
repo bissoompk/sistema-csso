@@ -307,7 +307,7 @@
             <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
               {%- else %}{{ quem.nome }}{% endif %}</td>
             <td data-coluna="EPI">{{ r.nome_epi_snapshot }}</td>
-            <td data-coluna="Entregue" class="mono curta">{{ r.data_evento|data }}</td>
+            <td data-coluna="Entregue" class="curta">{{ r.data_evento|data }}</td>
             <td data-coluna="Troca prevista" class="curta">{{ ui.pilula_troca(r.previsao_troca, hoje) }}</td>
             <td class="acao-linha"><a class="botao secundario compacto" href="/epis/fichas/{{ r.servidor_id }}">Abrir ficha</a></td>
           </tr>
@@ -430,7 +430,7 @@
             <td class="nome">{% if quem.suprimida %}<span class="mono discreto">{{ quem.nome }}</span>
               {%- else %}{{ quem.nome }}{% endif %}</td>
             <td data-coluna="EPI">{{ r.nome_epi_snapshot }}</td>
-            <td data-coluna="Data" class="mono curta">{{ r.data_evento|data }}</td>
+            <td data-coluna="Data" class="curta">{{ r.data_evento|data }}</td>
             <td data-coluna="Qtd." class="numerico curta">{{ r.quantidade }}</td>
           </tr>
           {% else %}

@@ -195,7 +195,7 @@
       <tr>
         <td class="mono"><a href="/turmas/{{ t.id }}">{{ t.codigo }}</a></td>
         <td>{{ t.treinamento.nome if t.treinamento else '—' }}</td>
-        <td class="mono">{{ t.data_inicio|data }} — {{ t.data_fim|data }}</td>
+        <td>{{ t.data_inicio|data }} — {{ t.data_fim|data }}</td>
         <td><a class="botao secundario compacto" href="/turmas/{{ t.id }}">abrir</a></td>
       </tr>
       {% endfor %}
@@ -210,7 +210,7 @@
       <tr>
         <td class="mono"><a href="/certificados/{{ c.id }}">{{ c.rotulo }}</a></td>
         <td>{{ c.treinamento.nome if c.treinamento else '—' }}</td>
-        <td class="mono">{{ c.data_emissao|data }}</td>
+        <td>{{ c.data_emissao|data }}</td>
         <td><a class="botao secundario compacto" href="/certificados/{{ c.id }}">abrir</a></td>
       </tr>
       {% endfor %}

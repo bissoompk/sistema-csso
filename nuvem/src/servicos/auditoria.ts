@@ -304,6 +304,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   AVISO_INTERESSE_APAGADO: "Pedido do titular: cadastros de aviso da vitrine apagados pela equipe",
   INSCRICAO_LINK_GERADO: "Link público de inscrição gerado",
   INSCRICAO_LINK_DESLIGADO: "Link público de inscrição desligado",
+  INSCRICAO_LINK_VISTO: "Link público de inscrição revisto pela equipe",
   INSCRICAO_PEDIDA_PELO_LINK: "Inscrição pedida pelo link público",
   INSCRICAO_PEDIDO_CONFERIDO: "Pedido do link público aceito pela equipe",
   PARTICIPANTE_CRIADO: "Participante externo cadastrado",

@@ -118,15 +118,15 @@
           <dd class="mono">{{ contexto.url_validacao }}</dd>
 
           <dt>Emitido em</dt>
-          <dd class="mono">{{ certificado.data_emissao|data }}</dd>
+          <dd>{{ certificado.data_emissao|data }}</dd>
 
           <dt>Data base do vencimento</dt>
-          <dd class="mono">{{ certificado.data_base_vencimento|data }}</dd>
+          <dd>{{ certificado.data_base_vencimento|data }}</dd>
 
           <dt>Vencimento</dt>
           <dd>
             {% if certificado.data_vencimento %}
-            <span class="mono">{{ certificado.data_vencimento|data }}</span>
+            <span>{{ certificado.data_vencimento|data }}</span>
             <span class="discreto">({{ certificado.validade_meses_congelada }} meses)</span>
             {% else %}<span class="selo">validade indeterminada</span>{% endif %}
           </dd>
@@ -248,7 +248,7 @@
         <dd class="mono">{{ contexto.carga_horaria|num }} h</dd>
 
         <dt>Período</dt>
-        <dd class="mono">{{ contexto.turma_data_inicio|data }}
+        <dd>{{ contexto.turma_data_inicio|data }}
           {%- if contexto.turma_data_fim != contexto.turma_data_inicio %}
           a {{ contexto.turma_data_fim|data }}{% endif %}</dd>
 

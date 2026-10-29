@@ -12,9 +12,11 @@
  * quando alguém com `turma.inscrever` o aceita (`conferida_por`, ver a CHECK
  * `ck_inscricao_email_confirmado`). Recusar é cancelar, com motivo.
  *
- * O token do link é sorteado aqui e mostrado UMA vez; o banco guarda só o
- * SHA-256 (a mesma disciplina de `sessao.token_hash`). Gerar de novo troca o
- * link e mata o anterior — é como se desfaz um cartaz que vazou.
+ * O token do link é derivado de um sal sorteado a cada geração (HMAC da chave
+ * secreta); o banco guarda o SHA-256 do token e o sal, nunca o token. Quem tem
+ * `turma.criar` pode rever o link (`ver_link`, com trilha); sem o sal (link de
+ * antes de 29/10/2026) só gerando de novo. Gerar de novo troca o link e mata o
+ * anterior — é como se desfaz um cartaz que vazou.
  *
  * **Sem oráculo.** A resposta ao público é sempre a mesma frase: quem já
  * estava inscrito, o SIAPE de outra pessoa e o pedido novo são indistinguíveis
@@ -27,8 +29,9 @@
  * **Sem CPF.** O formulário não tem o campo, e recusa o número digitado em
  * qualquer outro (o CPF só entra pela tela interna, e só para o certificado).
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { and, count, eq, gt, isNull, sql } from "drizzle-orm";
+import { obterConfig } from "../config.js";
 import type { Executor } from "../db/cliente.js";
 import {
   agora_utc,
@@ -240,6 +243,13 @@ function _hash(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
+/** O token de uma turma e de um sal: determinístico, para poder rever o link sem guardá-lo. */
+function _token_do_sal(turma_id: number, sal: string): string {
+  return createHmac("sha256", obterConfig().chaveSecreta)
+    .update(`inscricao-link:${turma_id}:${sal}`, "utf8")
+    .digest("base64url");
+}
+
 /** O fim do último dia de inscrição, no fuso do negócio (UTC−3, sem horário de verão). */
 function _expira_em(ate: string): Date {
   return new Date(`${somar_dias(ate, 1)}T03:00:00Z`);
@@ -268,11 +278,13 @@ export async function gerar_link(
   }
   const impedimento = servico_turma.aberta_a_pedido_proprio(turma, hoje);
   if (impedimento) throw new RegraDaTurma(impedimento.replace(servico_turma.FALE_COM_A_EQUIPE, ""));
-  const token = randomBytes(24).toString("base64url");
+  const sal = randomBytes(16).toString("base64url");
+  const token = _token_do_sal(turma.id, sal);
   const ja_havia = turma.inscricao_publica;
   const campos = {
     inscricao_publica: true,
     inscricao_token_hash: _hash(token),
+    inscricao_token_sal: sal,
     inscricao_token_expira_em: _expira_em(turma.inscricao_aberta_ate),
   };
   await tx.update(tabela_turma).set(campos).where(eq(tabela_turma.id, turma.id));
@@ -292,7 +304,12 @@ export async function gerar_link(
 export async function desligar_link(tx: Executor, usuario: UsuarioAtual, turma: TurmaCarregada): Promise<void> {
   usuario.exigir("turma.criar");
   if (!turma.inscricao_publica && turma.inscricao_token_hash === null) return;
-  const campos = { inscricao_publica: false, inscricao_token_hash: null, inscricao_token_expira_em: null };
+  const campos = {
+    inscricao_publica: false,
+    inscricao_token_hash: null,
+    inscricao_token_sal: null,
+    inscricao_token_expira_em: null,
+  };
   await tx.update(tabela_turma).set(campos).where(eq(tabela_turma.id, turma.id));
   Object.assign(turma, campos);
   await auditoria.registrar(tx, {
@@ -302,6 +319,30 @@ export async function desligar_link(tx: Executor, usuario: UsuarioAtual, turma: 
     descricao: `${turma.codigo}: link público desligado`,
     usuario,
   });
+}
+
+/**
+ * O token do link no ar, para a equipe rever o endereço; `null` quando não há
+ * link no ar ou ele é de antes do sal (gere de novo). Fica na trilha, sem o token.
+ */
+export async function ver_link(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada,
+  hoje: string | null = null,
+): Promise<string | null> {
+  usuario.exigir("turma.criar");
+  if (!link_no_ar(turma, hoje) || turma.inscricao_token_sal === null) return null;
+  const token = _token_do_sal(turma.id, turma.inscricao_token_sal);
+  if (_hash(token) !== turma.inscricao_token_hash) return null;
+  await auditoria.registrar(tx, {
+    entidade: "turma",
+    entidade_id: turma.id,
+    tipo_evento: "INSCRICAO_LINK_VISTO",
+    descricao: `${turma.codigo}: link público revisto pela equipe`,
+    usuario,
+  });
+  return token;
 }
 
 /** O link ligado e ainda válido hoje — o que a ficha mostra como "no ar". */

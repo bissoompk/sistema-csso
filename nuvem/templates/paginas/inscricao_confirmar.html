@@ -20,7 +20,7 @@
   <div class="aviso aviso-ok" role="status">
     <p><strong>A vaga é sua</strong> em {{ turma.treinamento.nome }}
       (<span class="mono">{{ turma.codigo }}</span>), em
-      <span class="mono">{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
+      <span>{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
       {%- if turma|horario_turma %}, <span class="mono">{{ turma|horario_turma }}</span>{% endif %}
       {%- if turma.local %}, {{ turma.local }}{% endif %}.</p>
     <p>Se não puder ir, avise a equipe responsável para liberar a vaga a outra pessoa.</p>
@@ -41,7 +41,7 @@
 <div class="cartao">
   <h1>Confirmar a inscrição</h1>
   <p class="sub">{{ turma.treinamento.nome }} · <span class="mono">{{ turma.codigo }}</span> ·
-    <span class="mono">{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span></p>
+    <span>{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span></p>
   <p>Confirme que este e-mail é seu. Havendo vaga, a inscrição fica garantida na hora.</p>
   <form method="post" action="{{ caminho }}/{{ token }}">
     <div class="acoes"><button type="submit" class="largo">Confirmar</button></div>

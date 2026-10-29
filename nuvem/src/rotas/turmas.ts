@@ -1587,7 +1587,25 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico`, async (c) => {
   return _tela_link(c, usuario, turma, token);
 });
 
-/** A única vez em que o link aparece: o endereço, o QR e a mensagem pronta. */
+/** Rever o link no ar (e o QR): só para quem gera, com trilha. Link antigo, sem sal, pede para gerar de novo. */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/link-publico/ver`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const turma = await _turma_para_alterar(tx, usuario, Number(c.req.param("turma_id")), "turma.criar", dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const token = await inscricao_publica.ver_link(tx, usuario, turma);
+  if (token === null) {
+    return _erro(
+      c,
+      `${TURMAS}/${turma.id}?aba=inscricoes`,
+      "Este link não pode ser revisto: é de antes da opção de rever, ou não está no ar. Gere um novo.",
+    );
+  }
+  return _tela_link(c, usuario, turma, token);
+});
+
+/** O endereço, o QR e a mensagem pronta (na geração e ao rever o link). */
 async function _tela_link(c: Ctx, usuario: UsuarioAtual, turma: TurmaCarregada, token: string): Promise<Response> {
   const endereco = `${await servico_emissao.url_base_validacao(c.get("tx"))}${inscricao_publica.CAMINHO}/${token}`;
   const resposta = await pagina(c, "paginas/turma_link.html", usuario, {

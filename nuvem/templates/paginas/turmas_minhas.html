@@ -95,7 +95,7 @@
         {%- if turma|horario_turma %}<span class="quebra discreto turma-horario">{{ turma|horario_turma }}</span>{% endif %}</td>
       <td data-coluna="Local"><span class="recorte" title="{{ turma.local or '' }}">
           {{- turma.local or '—' -}}</span></td>
-      <td class="mono" data-coluna="Inscrições até">{{ turma.inscricao_aberta_ate|data if turma.inscricao_aberta_ate else '—' }}</td>
+      <td  data-coluna="Inscrições até">{{ turma.inscricao_aberta_ate|data if turma.inscricao_aberta_ate else '—' }}</td>
       {# "Restam 2 vagas", e não "1 de 3": a fração se lia como "1 vaga". Turma
          sem limite declarado não é turma com zero vaga, e a frase diz isso. #}
       <td data-coluna="Vagas">

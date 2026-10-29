@@ -60,15 +60,15 @@
           <dd>{{ laudo.subscritor.nome if laudo.subscritor else '—' }}</dd>
 
           <dt>Emissão</dt>
-          <dd class="mono">{{ laudo.data_emissao|data or '—' }}</dd>
+          <dd>{{ laudo.data_emissao|data or '—' }}</dd>
 
           <dt>Avaliação</dt>
-          <dd class="mono">{{ laudo.data_avaliacao|data or '—' }}</dd>
+          <dd>{{ laudo.data_avaliacao|data or '—' }}</dd>
 
           <dt>Última conferência</dt>
           <dd>
             {% if laudo.data_ultima_conferencia %}
-              <span class="mono">{{ laudo.data_ultima_conferencia|data }}</span>
+              <span>{{ laudo.data_ultima_conferencia|data }}</span>
               {% if laudo.motivo_ultima_conferencia %}
               <span class="discreto">· {{ laudo.motivo_ultima_conferencia }}</span>{% endif %}
             {% else %}<span class="discreto">nunca</span>{% endif %}

@@ -302,6 +302,13 @@
       "when": 1793236491369,
       "tag": "0042_indices_sessao_atribuicao",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793289804081,
+      "tag": "0043_turma_link_sal",
+      "breakpoints": true
     }
   ]
 }

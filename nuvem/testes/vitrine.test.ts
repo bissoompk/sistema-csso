@@ -498,4 +498,28 @@ describe("a vitrine para fora dela", () => {
     // (o aviso de configuração do ambiente de teste cita CSSO_CHAVE_SECRETA: variável, não rótulo)
     expect(visivel.match(/[\s\S]{0,40}\bCSSO\b(?!_)[\s\S]{0,40}/g) ?? [], "ocorrências de CSSO no texto visível").toEqual([]);
   });
+
+  it("a equipe revê o link no ar (mesmo token), com trilha; sem sal ou desligado, não", async () => {
+    const id = await _turma();
+    const carregar = async () =>
+      (await db.query.turma.findFirst({ where: eq(e.turma.id, id), with: COM_TURMA as never })) as unknown as TurmaCarregada;
+    const coord = await usuarioAtual(db, "coordenador_csso");
+    const token = await inscricao_publica.gerar_link(db, coord, await carregar());
+    expect(await inscricao_publica.ver_link(db, coord, await carregar())).toBe(token);
+    expect((await novoCliente().get(`/inscricao/${token}`)).status).toBe(200);
+    const trilha = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "INSCRICAO_LINK_VISTO"));
+    expect(trilha).toHaveLength(1);
+    expect(JSON.stringify(trilha)).not.toContain(token);
+    // trocar o link troca o token revisto
+    const novo = await inscricao_publica.gerar_link(db, coord, await carregar());
+    expect(novo).not.toBe(token);
+    expect(await inscricao_publica.ver_link(db, coord, await carregar())).toBe(novo);
+    // link de antes do sal: só gerando de novo
+    await db.update(e.turma).set({ inscricao_token_sal: null }).where(eq(e.turma.id, id));
+    expect(await inscricao_publica.ver_link(db, coord, await carregar())).toBeNull();
+    // desligado: nada a rever
+    await inscricao_publica.gerar_link(db, coord, await carregar());
+    await inscricao_publica.desligar_link(db, coord, await carregar());
+    expect(await inscricao_publica.ver_link(db, coord, await carregar())).toBeNull();
+  });
 });

@@ -189,7 +189,7 @@
               <div class="cartao liso">
                 <p><strong>{{ a.perfil.nome }}</strong>
                   <span class="discreto">· {{ sigla_campus[a.campus_id] if a.campus_id else 'todos os campi' }}</span>
-                  <span class="discreto mono">{{ a.vigencia_inicio|data }} —
+                  <span class="discreto">{{ a.vigencia_inicio|data }} —
                     {{ a.vigencia_fim|data or 'sem termo' }}</span>
                   {% if a.vigencia_inicio > hoje %}<span class="pilula alerta">ainda não começou</span>{% endif %}</p>
                 <form method="post" action="/usuarios/atribuicoes/{{ a.id }}/ato">

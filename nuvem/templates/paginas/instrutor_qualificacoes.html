@@ -62,9 +62,9 @@
       <td data-coluna="Habilita">
         {%- if q.treinamento_rotulo %}{{ q.treinamento_rotulo }}{% endif %}
         {%- if q.norma %}<span class="{{ 'quebra ' if q.treinamento_rotulo }}mono">{{ q.norma }}</span>{% endif %}</td>
-      <td data-coluna="Emissão" class="mono">{{ q.data_emissao|data }}</td>
+      <td data-coluna="Emissão" >{{ q.data_emissao|data }}</td>
       <td data-coluna="Validade">
-        {%- if q.valida_ate %}<span class="mono">até {{ q.valida_ate|data }}</span>{% endif %}
+        {%- if q.valida_ate %}<span>até {{ q.valida_ate|data }}</span>{% endif %}
         <span class="quebra"><span class="pilula {{ NATUREZA[q.situacao.codigo] }}">{{ q.situacao.rotulo }}</span></span></td>
       <td data-coluna="Comprovante">
         {%- if q.comprovante_anexo_id %}<a href="/anexos/{{ q.comprovante_anexo_id }}">baixar</a>
