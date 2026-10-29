@@ -39,6 +39,14 @@ export interface Config {
    */
   acidenteEmailLigado: boolean;
   acidenteEmailSetor: string;
+  /**
+   * E-mail do módulo de ocorrências de urgência e emergência (28/10/2026), no
+   * padrão do de acidentes: DESLIGADO por padrão, só com `CSSO_OCORRENCIA_EMAIL=sim`;
+   * o corpo leva só o protocolo e o link, nunca o relato. `CSSO_OCORRENCIA_EMAIL_SETOR`
+   * é o endereço da equipe avisada de cada ocorrência nova.
+   */
+  ocorrenciaEmailLigado: boolean;
+  ocorrenciaEmailSetor: string;
   supabaseUrl: string;
   supabaseChaveServico: string;
   bucketArquivos: string;
@@ -186,6 +194,8 @@ export function obterConfig(): Config {
     epiEmailSetor: (env.CSSO_EPI_EMAIL_SETOR ?? "").trim(),
     acidenteEmailLigado: (env.CSSO_ACIDENTE_EMAIL ?? "").trim().toLowerCase() === "sim",
     acidenteEmailSetor: (env.CSSO_ACIDENTE_EMAIL_SETOR ?? "").trim(),
+    ocorrenciaEmailLigado: (env.CSSO_OCORRENCIA_EMAIL ?? "").trim().toLowerCase() === "sim",
+    ocorrenciaEmailSetor: (env.CSSO_OCORRENCIA_EMAIL_SETOR ?? "").trim(),
     supabaseUrl: env.SUPABASE_URL ?? "",
     supabaseChaveServico: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
     bucketArquivos: env.CSSO_BUCKET ?? "csso",

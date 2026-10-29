@@ -18,6 +18,9 @@
     </div>
   </div>
 
+  {% if o.expurgada_em %}
+  <div class="aviso" role="note"><p>Os dados pessoais e o relato desta ocorrência foram apagados em {{ o.expurgada_em|data }}, pelo prazo de guarda. Ficam só os dados para a estatística.</p></div>
+  {% endif %}
   <section class="cartao">
     <div class="titulo-cartao"><h2>O que aconteceu</h2></div>
     <dl class="ficha">

@@ -506,7 +506,9 @@ O módulo (`/ocorrencias`) também fica **travado na produção**: o cartão apa
 
 1. **Antes:** o encarregado confere a ROPA (finalidade, base legal, quem lê, prazo de guarda do relato) para estudantes, terceirizados e visitantes, e a equipe que vai tratar as ocorrências (perfis coordenação, engenharia, técnico, médico e secretaria) combina quem assume cada caso.
 2. **Ligar:** no painel do Netlify, acrescente `CSSO_MODULO_OCORRENCIAS=sim` e publique de novo. A migração `0040_ocorrencias` roda no deploy.
-3. **Conferir:** com uma conta de estudante de teste, registre uma ocorrência; com a coordenação, abra a fila, assuma, acompanhe e conclua; baixe a planilha e confirme que ela não traz o nome nem o relato.
+3. **E-mail (opcional):** `CSSO_OCORRENCIA_EMAIL=sim` e `CSSO_OCORRENCIA_EMAIL_SETOR=<endereço da equipe>`. O e-mail traz só o protocolo e o link, nunca o relato. Sem o endereço da equipe, só quem registrou recebe a confirmação, e a trilha diz por quê.
+4. **Guarda:** a rotina noturna anonimiza a ocorrência encerrada há mais de 5 anos (nome, relato, contato e acompanhamento); a estatística fica. O prazo é `ANOS_DE_GUARDA` em `servicos/ocorrencia_expurgo.ts`: ajuste se o encarregado decidir outro.
+5. **Conferir:** com uma conta de estudante de teste, registre uma ocorrência; com a coordenação, abra a fila, assuma, acompanhe e conclua; baixe a planilha e confirme que ela não traz o nome nem o relato.
 
 ## Migração dos casos do CAT/SP antigo (uma vez)
 

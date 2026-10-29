@@ -288,6 +288,13 @@
       "when": 1793230062933,
       "tag": "0040_ocorrencias",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793233541235,
+      "tag": "0041_ocorrencia_expurgada_em",
+      "breakpoints": true
     }
   ]
 }

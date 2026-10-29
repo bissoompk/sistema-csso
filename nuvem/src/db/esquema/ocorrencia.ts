@@ -88,6 +88,8 @@ export const ocorrencia = pgTable(
 
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
     atualizado_em: MomentoUTC('atualizado_em'),
+    // quando o prazo de guarda apagou os dados pessoais (`servicos/ocorrencia_expurgo.ts`)
+    expurgada_em: MomentoUTC('expurgada_em'),
   },
   (t) => [
     foreignKey({ name: 'fk_ocorrencia_campus', columns: [t.campus_id], foreignColumns: [campus.id] }),

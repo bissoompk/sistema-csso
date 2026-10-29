@@ -293,6 +293,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   AVISO_INTERESSE_CANCELADO: "Pedido de aviso da vitrine cancelado pela própria pessoa",
   AVISO_INTERESSE_CHAVE: "Aviso de interesse da vitrine ligado ou desligado",
   OCORRENCIA_REGISTRADA: "Ocorrência de urgência/emergência registrada",
+  OCORRENCIA_EMAIL_ENFILEIRADO: "E-mail da ocorrência de urgência/emergência posto na fila",
+  OCORRENCIA_EXPURGADA: "Dados pessoais de ocorrências de urgência/emergência apagados pelo prazo de guarda",
   OCORRENCIA_ASSUMIDA: "Ocorrência de urgência/emergência assumida pela equipe",
   OCORRENCIA_ACOMPANHADA: "Acompanhamento acrescentado à ocorrência de urgência/emergência",
   OCORRENCIA_CONCLUIDA: "Ocorrência de urgência/emergência concluída",
