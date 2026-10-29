@@ -19,3 +19,4 @@ export * from './operacao';
 export * from './privacidade';
 export * from './vitrine_aviso';
 export * from './relacoes';
+export * from './ocorrencia';

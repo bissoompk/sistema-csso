@@ -117,8 +117,8 @@ export const TABELAS_VOLATEIS: readonly string[] = [
 // =====================================================================
 // Os módulos
 // =====================================================================
-export type CodigoModulo = "treinamentos" | "acidentes" | "epi" | "processos";
-export const CODIGOS_MODULO: readonly CodigoModulo[] = ["treinamentos", "acidentes", "epi", "processos"];
+export type CodigoModulo = "treinamentos" | "acidentes" | "ocorrencias" | "epi" | "processos";
+export const CODIGOS_MODULO: readonly CodigoModulo[] = ["treinamentos", "acidentes", "ocorrencias", "epi", "processos"];
 export const CONTAS = "contas";
 
 export interface ModuloLimpeza {
@@ -198,6 +198,7 @@ async function arquivos_de_processos(tx: Executor): Promise<ArquivosOrfaos> {
 export const NUMERACAO: Readonly<Record<CodigoModulo, readonly string[]>> = {
   treinamentos: ["turma_sequencia", "certificado_sequencia", "certificado_sequencia_prefixo"],
   acidentes: ["acidente_cat_sp_sequencia"],
+  ocorrencias: ["ocorrencia_sequencia"],
   epi: ["epi_requisicao_sequencia"],
   processos: ["parecer_sequencia"],
 };
@@ -287,7 +288,8 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       ...NUMERACAO.acidentes,
     ],
     tipos_email: [acidente_email.TIPO_NOVA_SETOR, acidente_email.TIPO_CONFIRMACAO, acidente_email.TIPO_COMPLEMENTACAO],
-    desvincular: ["acesso_dado_sensivel.acidente_id", "acesso_dado_sensivel.acidentado_id"],
+    // a ocorrência de urgência/emergência que apontava para a CAT/SP fica, sem o vínculo
+    desvincular: ["acesso_dado_sensivel.acidente_id", "acesso_dado_sensivel.acidentado_id", "ocorrencia.acidente_id"],
     travas: [
       "trg_acidente_ocorrencia_sem_delete",
       "trg_acidentado_sem_delete",
@@ -302,6 +304,16 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "trg_acidente_encaminhamento_sem_delete",
       "trg_acidente_decisao_sem_delete",
     ],
+  },
+  ocorrencias: {
+    codigo: "ocorrencias",
+    nome: "Ocorrências de urgência e emergência",
+    apaga: "as ocorrências registradas e o acompanhamento da equipe",
+    mantem: "o cadastro de campi. A numeração dos protocolos volta a zero",
+    apagar: ["ocorrencia_acompanhamento", "ocorrencia", ...NUMERACAO.ocorrencias],
+    tipos_email: [],
+    desvincular: [],
+    travas: [],
   },
   epi: {
     codigo: "epi",

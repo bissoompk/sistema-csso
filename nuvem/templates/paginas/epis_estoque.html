@@ -173,7 +173,7 @@
         <td data-coluna="Entrada">{{ l.entrada.data_entrada|data }}</td>
         <td data-coluna="Compra" class="discreto">
           <span class="mono">{{ l.entrada.empenho or 'sem empenho' }}</span>
-          {%- if l.entrada.nota_fiscal %} · NF {{ l.entrada.nota_fiscal }}{% endif %}
+          {%- if l.entrada.nota_fiscal %} · NF {{ l.entrada.nota_fiscal }}{% endif %}{%- if l.entrada.oficio %} · ofício {{ l.entrada.oficio }}{% endif %}
           <details>
             <summary>detalhes</summary>
             {%- if l.entrada.pregao %}<span class="quebra">Pregão {{ l.entrada.pregao }}
@@ -333,6 +333,10 @@
       <label for="nf-{{ l.entrada.id }}">Nota fiscal</label>
       <input id="nf-{{ l.entrada.id }}" name="nota_fiscal"
              value="{{ l.entrada.nota_fiscal or '' }}"></div>
+    <div class="campo">
+      <label for="of-{{ l.entrada.id }}">Nº do ofício</label>
+      <input id="of-{{ l.entrada.id }}" name="oficio" maxlength="40"
+             value="{{ l.entrada.oficio or '' }}"></div>
     <div class="campo">
       <label for="ct-{{ l.entrada.id }}">Contato do fornecedor</label>
       <input id="ct-{{ l.entrada.id }}" name="fornecedor_contato"

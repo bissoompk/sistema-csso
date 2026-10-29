@@ -32,6 +32,7 @@ export const SEQUENCIAS: Readonly<Record<string, string>> = Object.freeze({
   certificado_sequencia: "certificado",
   epi_requisicao_sequencia: "epi_requisicao",
   acidente_cat_sp_sequencia: "acidente_ocorrencia",
+  ocorrencia_sequencia: "ocorrencia",
 });
 
 export const COLUNAS_ADMITIDAS: ReadonlySet<string> = new Set(["numero"]);
@@ -118,6 +119,11 @@ export function proximo_numero_requisicao_epi(tx: Executor, ano: number): Promis
  */
 export function proximo_numero_cat_sp(tx: Executor, ano: number): Promise<number> {
   return proximo_numero(tx, ano, { tabela_sequencia: "acidente_cat_sp_sequencia", tabela_alvo: "acidente_ocorrencia" });
+}
+
+/** O número do protocolo `OCO-AAAA-NNNN` da ocorrência de urgência/emergência, consumido no registro. */
+export function proximo_numero_ocorrencia(tx: Executor, ano: number): Promise<number> {
+  return proximo_numero(tx, ano, { tabela_sequencia: "ocorrencia_sequencia", tabela_alvo: "ocorrencia" });
 }
 
 /** Após a importação: ultimo_numero = max(numero) por ano. */

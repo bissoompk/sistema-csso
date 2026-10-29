@@ -36,6 +36,9 @@
         {%- if entrada.empenho %}
         <span class="ponto">·</span>
         <span>empenho <span class="mono">{{ entrada.empenho }}</span></span>{% endif %}
+        {%- if entrada.oficio %}
+        <span class="ponto">·</span>
+        <span>ofício <span class="mono">{{ entrada.oficio }}</span></span>{% endif %}
       </p>
     </div>
     <div class="ao-lado">

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Registrar ocorrência · SISA{% endblock %}
+
+{# Registro de urgência, emergência ou acidente, de QUALQUER pessoa na
+   universidade (servidor, estudante, terceirizado, visitante): é o «Informar
+   ocorrência» do sistema antigo. Em quatro seções; a recusa devolve tudo o que
+   foi digitado (`d`). Sem JavaScript os campos de cada vínculo ficam à vista e
+   o servidor guarda só os do vínculo escolhido. #}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Registrar ocorrência</h1>
+      <p class="sub">Desmaio, queda, corte, crise convulsiva, acidente… Em caso de risco de vida, ligue antes para o
+        SAMU (192) ou o Corpo de Bombeiros (193): o registro pode ser feito depois, com calma.</p>
+    </div>
+  </div>
+
+  {% if erro_form %}<div class="aviso aviso-erro" role="alert" id="erro-ocorrencia">{{ erro_form }}</div>{% endif %}
+
+  <form method="post" action="/ocorrencias/registrar" data-rascunho-local="ocorrencia-registrar" data-rascunho-versao="1">
+    <details class="recolhido" open>
+      <summary>1. Onde e quando</summary>
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="data_hora">Data e hora *</label>
+          <input id="data_hora" name="data_hora" type="datetime-local" required value="{{ d.data_hora or '' }}">
+        </div>
+        <div class="campo">
+          <label for="campus_id">Campus *</label>
+          <select id="campus_id" name="campus_id" required>
+            <option value="">—</option>
+            {% for k in campi %}<option value="{{ k.id }}"{{ ui.sel(d.campus_id, k.id|string) }}>{{ k.nome }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="campo">
+        <label for="local_descricao">Local exato *</label>
+        <input id="local_descricao" name="local_descricao" maxlength="200" required value="{{ d.local_descricao or '' }}"
+               placeholder="Prédio, sala, laboratório, pátio…">
+      </div>
+    </details>
+
+    <details class="recolhido" open>
+      <summary>2. O que aconteceu</summary>
+      <fieldset class="campo">
+        <legend>Tipo de ocorrência * (marque um ou mais)</legend>
+        {% for t in TIPOS %}
+        <label><input type="checkbox" name="tipo" value="{{ t }}"{{ ' checked' if t in tipos_marcados }}> {{ ROTULO_TIPO[t] }}</label>
+        {% endfor %}
+      </fieldset>
+      <div class="campo" data-mostra-quando="tipo=OUTRA">
+        <label for="tipo_outro">Qual outra ocorrência?</label>
+        <input id="tipo_outro" name="tipo_outro" maxlength="120" value="{{ d.tipo_outro or '' }}">
+      </div>
+      <div class="campo">
+        <label for="descricao">Descrição do que aconteceu *</label>
+        <textarea id="descricao" name="descricao" rows="5" maxlength="4000" required>{{ d.descricao or '' }}</textarea>
+        <span class="dica">Descreva os fatos e o socorro prestado. Não escreva CPF nem código de doença (CID).</span>
+      </div>
+      <div class="campo">
+        <label for="observacoes">Observações (opcional)</label>
+        <textarea id="observacoes" name="observacoes" rows="3" maxlength="4000">{{ d.observacoes or '' }}</textarea>
+      </div>
+      <div class="campo">
+        <label for="durante_atividade">Aconteceu durante o horário de trabalho ou de estudo?</label>
+        <select id="durante_atividade" name="durante_atividade">
+          <option value="">—</option>
+          {% for v in ['SIM', 'NAO', 'NAO_SEI'] %}<option value="{{ v }}"{{ ui.sel(d.durante_atividade, v) }}>{{ ROTULO_SIM_NAO[v] }}</option>{% endfor %}
+        </select>
+      </div>
+    </details>
+
+    <details class="recolhido" open>
+      <summary>3. Quem foi atendido</summary>
+      <div class="campo">
+        <label><input type="checkbox" name="eh_a_pessoa" value="1"{{ ' checked' if d.eh_a_pessoa == '1' }}>
+          A ocorrência aconteceu comigo</label>
+      </div>
+      <div class="campo" data-mostra-quando="eh_a_pessoa=">
+        <label for="pessoa_nome">Nome da pessoa atendida *</label>
+        <input id="pessoa_nome" name="pessoa_nome" maxlength="160" value="{{ d.pessoa_nome or '' }}">
+        <span class="dica">O nome só é visto pela equipe e por quem registra.</span>
+      </div>
+      <div class="campo">
+        <label for="pessoa_vinculo">Vínculo com a UFVJM *</label>
+        <select id="pessoa_vinculo" name="pessoa_vinculo" required>
+          {% for v in VINCULOS %}<option value="{{ v }}"{{ ui.sel(d.pessoa_vinculo, v) }}>{{ ROTULO_VINCULO[v] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="campo" data-mostra-quando="pessoa_vinculo=OUTRO">
+        <label for="pessoa_vinculo_outro">Quem é a pessoa?</label>
+        <input id="pessoa_vinculo_outro" name="pessoa_vinculo_outro" maxlength="80" value="{{ d.pessoa_vinculo_outro or '' }}"
+               placeholder="Visitante, acompanhante, participante de evento…">
+      </div>
+      <div data-mostra-quando="pessoa_vinculo=ESTUDANTE">
+        <div class="linha-campos">
+          <div class="campo">
+            <label for="nivel_ensino">Nível de ensino</label>
+            <select id="nivel_ensino" name="nivel_ensino">
+              <option value="">—</option>
+              {% for v in NIVEIS_ENSINO %}<option value="{{ v }}"{{ ui.sel(d.nivel_ensino, v) }}>{{ ROTULO_NIVEL_ENSINO[v] }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="campo">
+            <label for="curso">Curso</label>
+            <input id="curso" name="curso" maxlength="120" value="{{ d.curso or '' }}">
+          </div>
+        </div>
+      </div>
+      <div data-mostra-quando="pessoa_vinculo=SERVIDOR">
+        <div class="linha-campos">
+          <div class="campo">
+            <label for="setor_lotacao">Setor de lotação</label>
+            <input id="setor_lotacao" name="setor_lotacao" maxlength="120" value="{{ d.setor_lotacao or '' }}">
+          </div>
+          <div class="campo">
+            <label for="acidente_em_servico">É um acidente em serviço?</label>
+            <select id="acidente_em_servico" name="acidente_em_servico">
+              <option value="">—</option>
+              {% for v in ['SIM', 'NAO', 'NAO_SEI'] %}<option value="{{ v }}"{{ ui.sel(d.acidente_em_servico, v) }}>{{ ROTULO_SIM_NAO[v] }}</option>{% endfor %}
+            </select>
+            <span class="dica">Se for, a equipe orienta a comunicação do acidente (CAT/SP).</span>
+          </div>
+        </div>
+      </div>
+      <div data-mostra-quando="pessoa_vinculo=TERCEIRIZADO">
+        <div class="linha-campos">
+          <div class="campo">
+            <label for="empresa">Empresa</label>
+            <input id="empresa" name="empresa" maxlength="120" value="{{ d.empresa or '' }}">
+          </div>
+          <div class="campo">
+            <label for="funcao">Função</label>
+            <input id="funcao" name="funcao" maxlength="120" value="{{ d.funcao or '' }}">
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="recolhido" open>
+      <summary>4. O socorro prestado e o seu contato</summary>
+      <div class="campo">
+        <label for="encaminhada">A pessoa foi levada a um pronto atendimento?</label>
+        <select id="encaminhada" name="encaminhada">
+          <option value="nao"{{ ui.sel(d.encaminhada, 'nao') }}>Não</option>
+          <option value="sim"{{ ui.sel(d.encaminhada, 'sim') }}>Sim</option>
+        </select>
+      </div>
+      <div data-mostra-quando="encaminhada=sim">
+        <div class="linha-campos">
+          <div class="campo">
+            <label for="meio_deslocamento">O deslocamento foi feito por</label>
+            <select id="meio_deslocamento" name="meio_deslocamento">
+              <option value="">—</option>
+              {% for v in MEIOS_DESLOCAMENTO %}<option value="{{ v }}"{{ ui.sel(d.meio_deslocamento, v) }}>{{ ROTULO_MEIO_DESLOCAMENTO[v] }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="campo" data-mostra-quando="meio_deslocamento=OUTRO">
+            <label for="meio_deslocamento_outro">Qual?</label>
+            <input id="meio_deslocamento_outro" name="meio_deslocamento_outro" maxlength="80" value="{{ d.meio_deslocamento_outro or '' }}">
+          </div>
+        </div>
+      </div>
+      <div class="campo">
+        <label for="notificante_telefone">Telefone para a equipe falar com você (opcional)</label>
+        <input id="notificante_telefone" name="notificante_telefone" maxlength="30" inputmode="tel" value="{{ d.notificante_telefone or '' }}">
+        <span class="dica">O seu nome e o seu e-mail vêm da sua conta.</span>
+      </div>
+    </details>
+
+    <div class="acoes">
+      <button type="submit">Registrar ocorrência</button>
+      <a class="botao secundario" href="/ocorrencias">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

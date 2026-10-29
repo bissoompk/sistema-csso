@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}{{ o.protocolo }} · Ocorrência · SISA{% endblock %}
+
+{# A ficha da ocorrência. Quem registrou vê o que registrou e a situação; a
+   equipe vê também o acompanhamento e trata. O nome da pessoa atendida e o
+   relato só aparecem aqui, nunca na lista. #}
+
+{% block conteudo %}
+<div class="tela">
+  {% if mensagem %}<div class="aviso aviso-ok" role="status">{{ mensagem }}</div>{% endif %}
+  {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1><span class="mono">{{ o.protocolo }}</span></h1>
+      <p class="sub">{{ ROTULO_SITUACAO[o.situacao] or o.situacao }} · registrada em {{ o.criado_em|momento }}</p>
+    </div>
+  </div>
+
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>O que aconteceu</h2></div>
+    <dl class="ficha">
+      <dt>Data e hora</dt><dd>{{ o.data_hora|momento }}</dd>
+      <dt>Onde</dt><dd>{{ campus }} · {{ o.local_descricao }}</dd>
+      <dt>Tipos</dt><dd>{% for t in tipos %}{{ ROTULO_TIPO[t] }}{% if t == 'OUTRA' and o.tipo_outro %} ({{ o.tipo_outro }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}</dd>
+      {% if o.durante_atividade %}<dt>Durante o trabalho/estudo</dt><dd>{{ ROTULO_SIM_NAO[o.durante_atividade] }}</dd>{% endif %}
+      <dt>Descrição</dt><dd class="texto-longo">{{ o.descricao }}</dd>
+      {% if o.observacoes %}<dt>Observações</dt><dd class="texto-longo">{{ o.observacoes }}</dd>{% endif %}
+    </dl>
+  </section>
+
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Quem foi atendido</h2></div>
+    <dl class="ficha">
+      <dt>Nome</dt><dd>{{ o.pessoa_nome or '—' }}</dd>
+      <dt>Vínculo</dt><dd>{{ ROTULO_VINCULO[o.pessoa_vinculo] }}{% if o.pessoa_vinculo_outro %} ({{ o.pessoa_vinculo_outro }}){% endif %}</dd>
+      {% if o.nivel_ensino %}<dt>Nível de ensino</dt><dd>{{ ROTULO_NIVEL_ENSINO[o.nivel_ensino] }}</dd>{% endif %}
+      {% if o.curso %}<dt>Curso</dt><dd>{{ o.curso }}</dd>{% endif %}
+      {% if o.setor_lotacao %}<dt>Setor</dt><dd>{{ o.setor_lotacao }}</dd>{% endif %}
+      {% if o.acidente_em_servico %}<dt>Acidente em serviço?</dt><dd>{{ ROTULO_SIM_NAO[o.acidente_em_servico] }}</dd>{% endif %}
+      {% if o.empresa %}<dt>Empresa</dt><dd>{{ o.empresa }}</dd>{% endif %}
+      {% if o.funcao %}<dt>Função</dt><dd>{{ o.funcao }}</dd>{% endif %}
+    </dl>
+  </section>
+
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Socorro e contato</h2></div>
+    <dl class="ficha">
+      <dt>Levada a pronto atendimento</dt>
+      <dd>{% if o.encaminhada_pronto_atendimento %}Sim{% if o.meio_deslocamento %}, por {{ ROTULO_MEIO_DESLOCAMENTO[o.meio_deslocamento] }}{% if o.meio_deslocamento_outro %} ({{ o.meio_deslocamento_outro }}){% endif %}{% endif %}{% else %}Não{% endif %}</dd>
+      <dt>Quem registrou</dt><dd>{{ o.notificante_nome }}{% if o.notificante_eh_a_pessoa %} (a própria pessoa){% endif %}</dd>
+      {% if equipe %}
+      {% if o.notificante_telefone %}<dt>Telefone</dt><dd>{{ o.notificante_telefone }}</dd>{% endif %}
+      {% if o.notificante_email %}<dt>E-mail</dt><dd>{{ o.notificante_email }}</dd>{% endif %}
+      {% endif %}
+    </dl>
+  </section>
+
+  {% if o.pessoa_vinculo == 'SERVIDOR' and o.acidente_em_servico == 'SIM' and not cat_protocolo %}
+  <div class="aviso aviso-atencao" role="note">
+    <p>Foi marcada como <strong>acidente em serviço</strong> de servidor: a comunicação da CAT/SP tem prazo de 10 dias.
+      {% if pode_comunicar_acidente %}<a href="/acidentes/comunicar">Comunicar o acidente</a>.{% endif %}</p>
+  </div>
+  {% endif %}
+  {% if cat_protocolo %}
+  <p class="discreto">Vinculada à comunicação de acidente <a class="mono" href="/acidentes/{{ o.acidente_id }}">{{ cat_protocolo }}</a>.</p>
+  {% endif %}
+
+  {% if equipe %}
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Acompanhamento da equipe</h2></div>
+    {% if o.conclusao %}<p><strong>{{ 'Cancelamento' if o.situacao == 'CANCELADA' else 'Conclusão' }}:</strong> {{ o.conclusao }}</p>{% endif %}
+    {% for a in acompanhamentos %}
+    <p><span class="discreto">{{ a.criado_em|momento }} · {{ a.autor }}</span><br>{{ a.texto }}</p>
+    {% else %}<p class="discreto">Nenhum acompanhamento registrado.</p>{% endfor %}
+
+    {% if pode_tratar %}
+    {% if o.situacao == 'REGISTRADA' %}
+    <form method="post" action="/ocorrencias/{{ o.id }}/assumir"><div class="acoes"><button type="submit">Assumir a ocorrência</button></div></form>
+    {% endif %}
+    <form method="post" action="/ocorrencias/{{ o.id }}/acompanhar">
+      <div class="campo"><label for="texto">Registrar acompanhamento</label>
+        <textarea id="texto" name="texto" rows="3" maxlength="4000" required></textarea></div>
+      <div class="acoes"><button type="submit" class="secundario">Registrar</button></div>
+    </form>
+    {% if pode_vincular and not cat_protocolo %}
+    <form method="post" action="/ocorrencias/{{ o.id }}/vincular-acidente">
+      <div class="campo"><label for="protocolo_cat">Vincular à comunicação de acidente (protocolo CAT)</label>
+        <input id="protocolo_cat" name="protocolo_cat" maxlength="16" placeholder="CAT-2026-0001" required></div>
+      <div class="acoes"><button type="submit" class="secundario">Vincular</button></div>
+    </form>
+    {% endif %}
+    <form method="post" action="/ocorrencias/{{ o.id }}/concluir">
+      <div class="campo"><label for="conclusao">Concluir: o que foi feito</label>
+        <textarea id="conclusao" name="conclusao" rows="2" maxlength="4000" required></textarea></div>
+      <div class="acoes"><button type="submit">Concluir</button></div>
+    </form>
+    <form method="post" action="/ocorrencias/{{ o.id }}/cancelar">
+      <div class="campo"><label for="motivo">Cancelar (registro feito por engano): motivo</label>
+        <input id="motivo" name="motivo" maxlength="400" required></div>
+      <div class="acoes"><button type="submit" class="perigo-discreto">Cancelar a ocorrência</button></div>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

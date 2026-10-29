@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "partes/macros.html" as ui with context %}
+{% block titulo %}Indicadores de ocorrências · SISA{% endblock %}
+
+{% block conteudo %}
+<div class="tela">
+  <div class="cabecalho-pagina">
+    <div class="titulo">
+      <h1>Indicadores de ocorrências</h1>
+      <p class="sub">{{ ind.total }} ocorrência(s) no recorte (as canceladas não contam); {{ ind.encaminhadas }} levada(s) a pronto atendimento. Só números: nenhum nome.</p>
+    </div>
+  </div>
+
+  <form method="get" action="/ocorrencias/indicadores" class="filtros">
+    <div class="linha-campos">
+      <div class="campo"><label for="f-campus">Campus</label>
+        <select id="f-campus" name="campus"><option value="">Todos</option>
+          {% for k in campi %}<option value="{{ k.id }}"{{ ui.sel((filtro.campus_id or '')|string, k.id|string) }}>{{ k.nome }}</option>{% endfor %}</select></div>
+      <div class="campo"><label for="f-de">De</label><input id="f-de" name="de" type="date" value="{{ filtro.de or '' }}"></div>
+      <div class="campo"><label for="f-ate">Até</label><input id="f-ate" name="ate" type="date" value="{{ filtro.ate or '' }}"></div>
+    </div>
+    <div class="acoes"><button type="submit" class="secundario">Filtrar</button></div>
+  </form>
+
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Por tipo</h2></div>
+    <table class="tabela-dados"><thead><tr><th scope="col">Tipo</th><th scope="col">Ocorrências</th></tr></thead>
+      {% for l in ind.por_tipo %}<tr><td>{{ l.rotulo }}</td><td class="mono">{{ l.n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="nada">Nada no recorte.</td></tr>{% endfor %}</table>
+  </section>
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Por campus</h2></div>
+    <table class="tabela-dados"><thead><tr><th scope="col">Campus</th><th scope="col">Ocorrências</th></tr></thead>
+      {% for l in ind.por_campus %}<tr><td>{{ l.campus }}</td><td class="mono">{{ l.n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="nada">Nada no recorte.</td></tr>{% endfor %}</table>
+  </section>
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Por vínculo da pessoa</h2></div>
+    <table class="tabela-dados"><thead><tr><th scope="col">Vínculo</th><th scope="col">Ocorrências</th></tr></thead>
+      {% for l in ind.por_vinculo %}<tr><td>{{ ROTULO_VINCULO[l.vinculo] or l.vinculo }}</td><td class="mono">{{ l.n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="nada">Nada no recorte.</td></tr>{% endfor %}</table>
+  </section>
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Por mês</h2></div>
+    <table class="tabela-dados"><thead><tr><th scope="col">Mês</th><th scope="col">Ocorrências</th></tr></thead>
+      {% for l in ind.por_mes %}<tr><td class="mono">{{ l.mes }}</td><td class="mono">{{ l.n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="nada">Nada no recorte.</td></tr>{% endfor %}</table>
+  </section>
+</div>
+{% endblock %}

@@ -80,6 +80,20 @@ export function acidentesLiberado(env: NodeJS.ProcessEnv = process.env): boolean
   return !ehProducao(env.CSSO_AMBIENTE ?? "");
 }
 
+/**
+ * O módulo de ocorrências de urgência e emergência (28/10/2026) guarda o
+ * relato de saúde de qualquer pessoa na universidade. Como o de acidentes, na
+ * produção só abre com `CSSO_MODULO_OCORRENCIAS=sim` (depois que o encarregado
+ * confere a ROPA); antes, aparece "em desenvolvimento" e as rotas dão 404. Fora
+ * da produção vale por padrão; `nao` desliga em qualquer ambiente.
+ */
+export function ocorrenciasLiberado(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.CSSO_MODULO_OCORRENCIAS ?? "").trim().toLowerCase();
+  if (v === "sim") return true;
+  if (v === "nao" || v === "não") return false;
+  return !ehProducao(env.CSSO_AMBIENTE ?? "");
+}
+
 export class ConfiguracaoInsegura extends Error {
   constructor(readonly problemas: string[]) {
     super(

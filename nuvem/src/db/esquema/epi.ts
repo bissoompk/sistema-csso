@@ -217,6 +217,8 @@ export const epi_entrada_estoque = pgTable(
     item_pregao: varchar('item_pregao', { length: 10 }),
     empenho: varchar('empenho', { length: 30 }),
     nota_fiscal: varchar('nota_fiscal', { length: 30 }),
+    // o ofício que acompanha a compra (o sistema PROACE antigo já o guardava)
+    oficio: varchar('oficio', { length: 40 }),
     fornecedor_nome: varchar('fornecedor_nome', { length: 160 }),
     // CNPJ e dado de pessoa JURIDICA: nao e dado pessoal, e nao colide com a
     // decisao 1 — o que nao entra em campo nenhum e CPF.

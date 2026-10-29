@@ -194,11 +194,12 @@ describe("menu do Meu espaço", () => {
     const u = await usuarioAtual(db, "titular_mariana");
     const nav = modulos.navegacao("/", u);
     // o grupo "Adicional" só com a exceção da pessoa em Processos SEI (25/10/2026)
-    expect(nav.grupos_meu_espaco.map((g) => g.titulo)).toEqual([null, "Treinamentos", "EPI", "Acidentes", "Eu"]);
+    expect(nav.grupos_meu_espaco.map((g) => g.titulo)).toEqual([null, "Treinamentos", "EPI", "Ocorrências", "Acidentes", "Eu"]);
     expect(nav.grupos_meu_espaco.map((g) => g.itens.map((i) => i.rotulo))).toEqual([
       ["Início"],
       ["Meus treinamentos", "Meus certificados", "Comprovante de treinamentos"],
       ["Minha ficha de EPI", "Meus pedidos de EPI", "Pedir EPI"],
+      ["Registrar ocorrência", "Minhas ocorrências"],
       ["Comunicar acidente", "Minhas comunicações"],
       ["Minha atividade", "Meu perfil"],
     ]);
