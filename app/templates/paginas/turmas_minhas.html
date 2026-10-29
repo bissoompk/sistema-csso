@@ -56,55 +56,75 @@
   {% endif %}
 
   <h2 id="abertas">Turmas com inscrições abertas</h2>
-  <div class="tabela-cartao lista">
-  <table>
-    <thead>
-      <tr>
-        <th scope="col">Código</th><th scope="col">Treinamento</th>
-        <th scope="col">Período</th><th scope="col">Local</th>
-        <th scope="col">Inscrições até</th><th scope="col">Vagas</th>
-        <th scope="col">{{ 'Pedir vaga' if pode_pedir else '' }}</th>
-      </tr>
-    </thead>
+  {# Cartão, e não tabela: esta seção é a "vitrine" — o que a trilha A de
+     `docs/PROPOSTA_CURSOS_E_EVENTOS.md` chama de Cursos e Eventos. "Minhas
+     inscrições", abaixo, continua tabela: é status de poucas linhas, não
+     vitrine, e o formulário de desistência com campo de texto cabe melhor
+     numa linha do que num cartão. #}
+  {% if abertas %}
+  <div class="grade grade-3">
     {% for turma in abertas %}
     {% set restantes = vagas_restantes.get(turma.id) %}
-    <tr>
-      <td><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a></td>
-      <td class="nome">{{ turma.treinamento.nome }}</td>
-      <td class="mono">{{ turma.data_inicio|data }}
-        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</td>
-      <td><span class="recorte" title="{{ turma.local or '' }}">
-          {{- turma.local or '—' -}}</span></td>
-      <td class="mono">{{ turma.inscricao_aberta_ate|data if turma.inscricao_aberta_ate else '—' }}</td>
-      {# "18 de 20" e não "2 livres": quem lê decide pela ocupação, e a fração diz
-         as duas coisas de uma vez. Turma sem limite declarado não é turma com
-         zero vaga, e a tela precisa da diferença. #}
-      <td><span class="selo">{{ inscritos.get(turma.id, 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% else %} · sem limite{% endif %}</span></td>
-      <td>
+    {% set esgotada = restantes is not none and restantes <= 0 %}
+    <div class="cartao curso-card">
+      <div class="curso-card__selo">
         {% if turma.id in ja_inscrito %}
-        <span class="discreto">já inscrito</span>
+        <span class="pilula info sem-ponto">Já inscrito</span>
         {% elif not pode_pedir %}
-        <span class="discreto">—</span>
-        {% elif restantes is not none and restantes <= 0 %}
-        <span class="discreto">sem vaga</span>
+        <span class="pilula sem-ponto">Inscrição pela CSSO</span>
+        {% elif esgotada %}
+        <span class="pilula alerta sem-ponto">Vagas esgotadas</span>
+        {% else %}
+        <span class="pilula ok sem-ponto">Inscrições abertas</span>
+        {% endif %}
+      </div>
+      <h3 class="curso-card__titulo">
+        <a href="/turmas/{{ turma.id }}">{{ turma.treinamento.nome }}</a>
+      </h3>
+      <p class="discreto mono">{{ turma.codigo }}</p>
+      <dl class="curso-card__dados">
+        <dt>Período</dt>
+        <dd>{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</dd>
+        <dt>Local</dt>
+        <dd><span class="recorte" title="{{ turma.local or '' }}">{{- turma.local or '—' -}}</span></dd>
+        <dt>Carga</dt>
+        <dd>{{ turma.carga_efetiva }}h</dd>
+        {# "18 de 20" e não "2 livres": quem lê decide pela ocupação, e a
+           fração diz as duas coisas de uma vez. Turma sem limite declarado
+           não é turma com zero vaga, e a tela precisa da diferença. #}
+        <dt>Vagas</dt>
+        <dd><span class="selo">{{ inscritos.get(turma.id, 0) }}{% if turma.vagas %} de {{ turma.vagas }}{% else %} · sem limite{% endif %}</span></dd>
+        {% if turma.inscricao_aberta_ate %}
+        <dt>Inscrições até</dt>
+        <dd>{{ turma.inscricao_aberta_ate|data }}</dd>
+        {% endif %}
+      </dl>
+      <div class="curso-card__acao">
+        {% if turma.id in ja_inscrito %}
+        <span class="discreto">Você já está inscrito nesta turma.</span>
+        {% elif not pode_pedir %}
+        <span class="discreto">Fale com a CSSO informando o código da turma.</span>
+        {% elif esgotada %}
+        <span class="discreto">Sem vaga disponível.</span>
         {% else %}
         {# Um botão, e nenhum campo: a rota não tem onde receber "quem". O
            formulário carrega só a turma, que já está na URL. #}
         <form method="post" action="/turmas/{{ turma.id }}/inscrever-me">
-          <button type="submit" class="compacto">Quero me inscrever</button>
+          <button type="submit">Inscrever-se</button>
         </form>
         {% endif %}
-      </td>
-    </tr>
-    {% else %}
-    {{ ui.vazio_de_lista(
-         'Nenhuma turma com inscrições abertas hoje.',
-         'Turma planejada ainda não recebe inscrição, e turma que já começou é
-          inscrita pela CSSO. O catálogo de treinamentos mostra o que o setor
-          oferece; a turma é a oferta com data.', 7) }}
+      </div>
+    </div>
     {% endfor %}
-  </table>
   </div>
+  {% else %}
+  <div class="vazio">
+    <strong>Nenhuma turma com inscrições abertas hoje.</strong>
+    <span>Turma planejada ainda não recebe inscrição, e turma que já começou é
+      inscrita pela CSSO. O catálogo de treinamentos mostra o que o setor
+      oferece; a turma é a oferta com data.</span>
+  </div>
+  {% endif %}
 
   <h2 id="minhas">Minhas inscrições</h2>
   <div class="tabela-cartao lista">

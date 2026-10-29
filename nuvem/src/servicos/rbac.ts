@@ -225,7 +225,7 @@ export const PERMISSOES: Record<string, string> = {
  * Separado de `PERMISSOES` de propósito: aquele texto é o `descricao` gravado
  * em `permissao` pela semeadura, em ASCII como no Python, e mudá-lo mexeria no
  * banco de todas as instalações. Este é só a tela. Toda chave de `PERMISSOES`
- * está aqui exatamente uma vez — `rbac.test.ts` confere.
+ * está aqui exatamente uma vez — `correcoes_base.test.ts` confere.
  */
 export const GRUPOS_PERMISSAO_TELA: readonly (readonly [string, Readonly<Record<string, string>>])[] = [
   [
@@ -345,6 +345,13 @@ export const TEXTO_PERMISSAO: Readonly<Record<string, string>> = Object.freeze(
   Object.assign({}, ...GRUPOS_PERMISSAO_TELA.map(([, textos]) => textos)) as Record<string, string>,
 );
 
+/**
+ * Ocorrências de urgência e emergência (28/10/2026): a equipe toda — coordenação,
+ * engenharia, medicina, técnico de segurança e secretaria — vê todas e trata.
+ * Extraída porque entrou idêntica, por patch, em cada um desses perfis.
+ */
+const PERMISSOES_OCORRENCIA_EQUIPE: readonly string[] = Object.freeze(["ocorrencia.registrar", "ocorrencia.ver", "ocorrencia.tratar"]);
+
 /** A lista do coordenador — o superintendente parte dela (ver abaixo). */
 const PERMISSOES_COORDENADOR: string[] = [
   "processo.ver",
@@ -400,10 +407,7 @@ const PERMISSOES_COORDENADOR: string[] = [
   "acidente.identificacao_ver",
   "acidente.saude_detalhe_ver",
   "acidente.saude_registrar",
-  // ocorrencias de urgencia e emergencia (28/10/2026)
-  "ocorrencia.registrar",
-  "ocorrencia.ver",
-  "ocorrencia.tratar",
+  ...PERMISSOES_OCORRENCIA_EQUIPE,
 ];
 
 /**
@@ -578,10 +582,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.relatorio_emitir",
       "acidente.saude_ver",
       "acidente.identificacao_ver",
-      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
-      "ocorrencia.registrar",
-      "ocorrencia.ver",
-      "ocorrencia.tratar",
+      ...PERMISSOES_OCORRENCIA_EQUIPE,
     ],
   },
   medico_trabalho: {
@@ -638,10 +639,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.identificacao_ver",
       "acidente.saude_detalhe_ver",
       "acidente.saude_registrar",
-      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
-      "ocorrencia.registrar",
-      "ocorrencia.ver",
-      "ocorrencia.tratar",
+      ...PERMISSOES_OCORRENCIA_EQUIPE,
     ],
   },
   tecnico_seguranca: {
@@ -700,10 +698,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.relatorio_emitir",
       "acidente.saude_ver",
       "acidente.identificacao_ver",
-      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
-      "ocorrencia.registrar",
-      "ocorrencia.ver",
-      "ocorrencia.tratar",
+      ...PERMISSOES_OCORRENCIA_EQUIPE,
     ],
   },
   almoxarife_sesmt: {
@@ -792,10 +787,7 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
       "acidente.ver",
       "acidente.comunicar",
       "acidente.triar",
-      // ocorrencias de urgencia e emergencia (28/10/2026): a equipe ve todas e trata
-      "ocorrencia.registrar",
-      "ocorrencia.ver",
-      "ocorrencia.tratar",
+      ...PERMISSOES_OCORRENCIA_EQUIPE,
     ],
   },
   consulta_progep: {
@@ -877,17 +869,9 @@ export const MATRIZ_PERFIS: Record<string, DadosPerfil> = {
     //
     // `processo.ver` e `parecer.ver` sairam em 25/10/2026 (PERMISSOES_RETIRADAS):
     // por padrao o servidor nao ve Processos SEI nem Adicionais.
-    permissoes: [
-      "treinamento.ver",
-      "turma.inscrever_se",
-      "epi.ver",
-      "epi.requisitar",
-      // acidentes (D10): comunica e ve as proprias ocorrencias (escopo proprio)
-      "acidente.comunicar",
-      "acidente.ver",
-      // ocorrencias (28/10/2026): registra e ve as proprias
-      "ocorrencia.registrar",
-    ],
+    // É a mesma lista de PERMISSOES_DO_EXTERNO (terceirizado/discente) mais o
+    // que só o servidor tem: pedir EPI.
+    permissoes: [...PERMISSOES_DO_EXTERNO, "epi.ver", "epi.requisitar"],
   },
   auditor_interno: {
     nome: "Auditor interno",
@@ -1071,9 +1055,7 @@ _conferir_escopos();
 // (`dono_turma.ts`). Não dá permissão nenhuma: a regra de dono é uma camada a
 // mais sobre o RBAC (precisa ter a permissão E ser dono, superior ou ajudante).
 //
-// - administrador do sistema (4) — `administrador_sistema`, acima de todos
-//   (o perfil vem da branch do perfil de administração; enquanto não existir
-//   aqui, a entrada é inofensiva — `PERFIS_PREVISTOS_NA_HIERARQUIA`); altera tudo;
+// - administrador do sistema (4) — `administrador_sistema`, acima de todos; altera tudo;
 // - superintendente (3) — altera tudo;
 // - coordenação (2) — `coordenador_csso` e os equivalentes de outros setores
 //   (perfil de coordenação novo entra AQUI com 2): altera o que foi criado por
@@ -1098,9 +1080,6 @@ export const NIVEL_HIERARQUICO_POR_PERFIL: Readonly<Record<string, number>> = Ob
   ),
 );
 
-/** Perfis citados na hierarquia antes de existirem na matriz (vêm de outra branch). */
-export const PERFIS_PREVISTOS_NA_HIERARQUIA: ReadonlySet<string> = new Set(["administrador_sistema"]);
-
 /** O nível da conta: o mais alto entre os perfis vigentes (sem perfil listado, "demais"). */
 export function nivel_hierarquico(perfis: Iterable<string>): number {
   let nivel = NIVEL_DEMAIS;
@@ -1113,9 +1092,7 @@ export function nivel_hierarquico(perfis: Iterable<string>): number {
 
 /** Perfil da hierarquia que não existe é erro de digitação: derruba a importação. */
 export function _conferir_hierarquia(): void {
-  const sobra = Object.keys(NIVEL_HIERARQUICO_POR_PERFIL).filter(
-    (p) => !Object.hasOwn(MATRIZ_PERFIS, p) && !PERFIS_PREVISTOS_NA_HIERARQUIA.has(p),
-  );
+  const sobra = Object.keys(NIVEL_HIERARQUICO_POR_PERFIL).filter((p) => !Object.hasOwn(MATRIZ_PERFIS, p));
   if (sobra.length) throw new Error("Hierarquia mal declarada — perfil inexistente: " + sobra.join(", "));
   const esperado: Record<string, number> = {
     administrador_sistema: NIVEL_ADMINISTRACAO_SISTEMA,

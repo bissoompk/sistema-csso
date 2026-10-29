@@ -710,6 +710,25 @@ h3 { font-size: 15px; font-weight: 700; line-height: 1.4; margin: 16px 0 8px; }
 .grade-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .grade-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .grade-kpi { grid-template-columns: repeat(auto-fit, minmax(186px, 1fr)); gap: 12px; }
+
+/* Cartão de turma com inscrição aberta (Cursos e Eventos, trilha A de
+   `docs/PROPOSTA_CURSOS_E_EVENTOS.md`). Mesmo `.cartao`, só com layout
+   interno próprio: o cartão é flex em coluna e a ação fica em
+   `margin-top: auto`, para o botão cair sempre no rodapé mesmo quando o
+   cartão vizinho, na mesma linha da grade, tem mais dado e por isso é mais
+   alto. */
+.curso-card { display: flex; flex-direction: column; gap: 10px; }
+.curso-card__selo { display: flex; justify-content: flex-end; }
+.curso-card__titulo { margin: 0; font-size: 16px; line-height: 1.3; }
+.curso-card__titulo a { color: var(--tinta); text-decoration: none; }
+.curso-card__titulo a:hover { color: var(--acento); text-decoration: underline; }
+.curso-card__dados {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: 13px;
+}
+.curso-card__dados dt { color: var(--tinta-dica); }
+.curso-card__dados dd { margin: 0; color: var(--tinta-media); }
+.curso-card__acao { margin-top: auto; padding-top: 4px; }
+.curso-card__acao form, .curso-card__acao button { width: 100%; }
 .lado-a-lado { display: grid; grid-template-columns: minmax(360px, 1fr) 1.2fr; gap: 18px; align-items: start; }
 /* Mesmo motivo do `.tela > *`: sem o piso em zero, uma tabela larga numa das
    colunas estica a trilha da grade e leva a pagina junto. */

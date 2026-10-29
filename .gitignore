@@ -53,3 +53,5 @@ desktop.ini
 
 # ---- nuvem (Netlify) ----------------------------------------------------
 .netlify/
+nuvem/node_modules
+nuvem/node_modules/

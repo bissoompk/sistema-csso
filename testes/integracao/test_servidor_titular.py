@@ -419,7 +419,7 @@ def test_o_servidor_se_inscreve_de_ponta_a_ponta(app_cliente, contas, turma_com_
     tela = app_cliente.get(MINHAS_TURMAS)
     assert tela.status_code == 200
     assert turma_com_vaga["codigo"] in tela.text
-    assert "Quero me inscrever" in tela.text
+    assert "Inscrever-se" in tela.text
 
     resposta = app_cliente.post(
         f"/turmas/{turma_com_vaga['turma_id']}/inscrever-me", follow_redirects=True
