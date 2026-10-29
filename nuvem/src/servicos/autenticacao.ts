@@ -253,13 +253,14 @@ function casefold(s: string): string {
  * Acha a conta pelo e-mail ou pelo usuário, sem depender de maiúsculas.
  * 'Bisso' e 'bisso' são a mesma pessoa; a SENHA continua sensível a caixa.
  */
-export async function buscar_por_login(tx: Executor, login: string): Promise<Usuario | null> {
+export async function buscar_por_login(tx: Executor, login: string, travar = false): Promise<Usuario | null> {
   const procurado = (login ?? "").trim();
   if (!procurado) return null;
-  const achados = await tx
-    .select()
-    .from(usuario)
-    .where(or(eq(usuario.email, procurado), eq(usuario.login, procurado)));
+  // `travar`: a entrada pega a linha com FOR UPDATE já na busca, em vez de
+  // buscar e depois reler a mesma conta só para travá-la (uma ida a menos).
+  const achados = await (travar
+    ? tx.select().from(usuario).where(or(eq(usuario.email, procurado), eq(usuario.login, procurado))).for("update")
+    : tx.select().from(usuario).where(or(eq(usuario.email, procurado), eq(usuario.login, procurado))));
   if (achados.length === 1) return achados[0]!;
   if (achados.length > 1) {
     // o `scalar_one_or_none` do Python levantaria: e-mail de um igual ao login
@@ -269,12 +270,13 @@ export async function buscar_por_login(tx: Executor, login: string): Promise<Usu
   const alvo = casefold(procurado);
   // No Python a varredura era em Python, conta por conta; aqui o banco compara
   // em minúsculas — o mesmo resultado, sem trazer a tabela inteira.
-  const [candidato] = await tx
+  const consulta = tx
     .select()
     .from(usuario)
     .where(or(sql`lower(${usuario.email}) = ${alvo}`, sql`lower(${usuario.login}) = ${alvo}`))
     .orderBy(usuario.id)
     .limit(1);
+  const [candidato] = await (travar ? consulta.for("update") : consulta);
   return candidato ?? null;
 }
 
@@ -304,21 +306,22 @@ export async function autenticar(
   const agora = agora_utc();
 
   // O teto por endereço vem ANTES de tudo: não custa Argon2 nem diz nada da conta.
-  const ip_ate = await ip_bloqueado_ate(tx, ip, agora);
+  // A busca da conta (já travada, FOR UPDATE) vai junto na mesma ida: se o
+  // endereço está barrado a leitura é descartada, sem Argon2 e sem gravar nada.
+  const [ip_ate, conta] = await Promise.all([
+    ip_bloqueado_ate(tx, ip, agora),
+    buscar_por_login(tx, login, true),
+  ]);
   if (ip_ate) {
     throw new FalhaDeAutenticacao(
       `Muitas tentativas de entrada a partir deste endereço. Tente de novo depois de ${local_formatado(ip_ate)}.`,
     );
   }
 
-  const achada = await buscar_por_login(tx, login);
-  // A linha da conta TRAVADA até o fim da requisição: sem isto, N tentativas
+  // `conta` veio TRAVADA até o fim da requisição: sem isto, N tentativas
   // em paralelo liam todas `tentativas_falhas` igual, passavam todas pelo
   // bloqueio e gravavam +1 cada uma por cima da outra — o limite de 5 por
   // janela virava quantas o atacante conseguisse disparar de uma vez.
-  const conta = achada
-    ? ((await tx.select().from(usuario).where(eq(usuario.id, achada.id)).for("update"))[0] ?? null)
-    : null;
 
   if (!conta || !conta.ativo) {
     // Mesmo custo de Argon2 da conta que existe: sem isto, "usuário não
@@ -357,16 +360,21 @@ export async function autenticar(
   // caracteres da política anterior) vira troca obrigatória: o único momento
   // em que o sistema conhece a senha em claro é este, e ela não é guardada.
   const precisa_trocar_senha = conta.precisa_trocar_senha || politica_de_senha(senha).length > 0;
-  await tx
-    .update(usuario)
-    .set({ tentativas_falhas: 0, bloqueado_ate: null, ultimo_login_em: agora, precisa_trocar_senha })
-    .where(eq(usuario.id, conta.id));
+  // A conta e a sessão gravam na mesma ida; os expurgos saíram do caminho da
+  // entrada (a rotina noturna já os faz).
+  const [, token] = await Promise.all([
+    tx
+      .update(usuario)
+      .set({ tentativas_falhas: 0, bloqueado_ate: null, ultimo_login_em: agora, precisa_trocar_senha })
+      .where(eq(usuario.id, conta.id)),
+    abrir_sessao(tx, conta.id, ip, user_agent, agora),
+  ]);
   conta.tentativas_falhas = 0;
   conta.bloqueado_ate = null;
   conta.ultimo_login_em = agora;
   conta.precisa_trocar_senha = precisa_trocar_senha;
 
-  return [conta, await abrir_sessao(tx, conta.id, ip, user_agent, agora)];
+  return [conta, token];
 }
 
 /**
@@ -390,8 +398,8 @@ export async function abrir_sessao(
     ip,
     user_agent,
   });
-  await expurgar_sessoes(tx, agora);
-  await expurgar_limites_ip(tx, agora);
+  // Sem expurgo aqui: eram dois DELETEs a mais no caminho de toda entrada. A
+  // `rotinas_noturnas` apaga as sessões vencidas e os contadores por IP.
   return token;
 }
 
