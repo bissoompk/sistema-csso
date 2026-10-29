@@ -295,6 +295,13 @@
       "when": 1793233541235,
       "tag": "0041_ocorrencia_expurgada_em",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793236491369,
+      "tag": "0042_indices_sessao_atribuicao",
+      "breakpoints": true
     }
   ]
 }
