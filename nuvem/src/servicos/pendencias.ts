@@ -6,7 +6,7 @@
  * (`web.ts`): o sino decora TODA tela, e quem decide se ele aparece e quanto ele
  * conta é esta regra — não uma segunda cópia dela na casca.
  */
-import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
   acidente_ocorrencia,
@@ -682,12 +682,16 @@ ganchos.sino = async (c, usuario) => {
   // as linhas já lidas, no mesmo recorte de `abertas(..., apenas_minhas)`
   const itens = lidas.filter((p) => p.responsavel_id === usuario.id);
   const hoje = hoje_iso();
-  return [itens.length, itens.filter((p) => atrasada(p, hoje)).length];
+  const soma = (l: typeof itens) => l.reduce((t, p) => t + (p.n ?? 1), 0);
+  return [soma(itens), soma(itens.filter((p) => atrasada(p, hoje)))];
 };
 /**
  * Tela inteira (GET que não é HTMX nem API) lê as pendências abertas na mesma
  * ida ao banco da sessão: sem isto, o sino era mais uma ida só para ele, no fim.
  * Lê sem recorte (ainda não se sabe quem é); o recorte vem no `sino` acima.
+ * Vem AGRUPADA (responsável, prazo, tipo, com a contagem em `n`): a tabela de
+ * pendências cresce com o uso, e trazer uma linha por pendência em toda tela
+ * era trafegar a tabela inteira para contar.
  */
 ganchos.anteciparSino = async (c) => {
   if (c.req.method !== "GET" || c.req.header("hx-request") || new URL(c.req.url).pathname.startsWith("/api/")) return;
@@ -703,9 +707,16 @@ ganchos.anteciparSino = async (c) => {
           // o tipo vai junto para a Visão geral (`/inicio`) contar as pendências
           // de cada módulo sem outra ida ao banco (`servicos/visao_geral.ts`)
           tipo: tabela_pendencia.tipo,
+          n: sql<number>`count(*)::int`,
         })
         .from(tabela_pendencia)
-        .where(eq(tabela_pendencia.concluida, false)),
+        .where(eq(tabela_pendencia.concluida, false))
+        .groupBy(
+          tabela_pendencia.responsavel_id,
+          tabela_pendencia.prazo,
+          tabela_pendencia.concluida,
+          tabela_pendencia.tipo,
+        ),
     );
   } catch {
     // o sino nunca derruba a tela: sem a leitura antecipada, ele lê sozinho

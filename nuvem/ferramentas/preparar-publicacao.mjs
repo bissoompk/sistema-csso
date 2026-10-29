@@ -9,11 +9,39 @@
  * migração é pulada com aviso, e a publicação segue.
  */
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 function rodar(cmd, args) {
   const r = spawnSync(cmd, args, { stdio: "inherit", shell: false });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
+
+/**
+ * Minifica as folhas e os scripts da casca (`csso.css` 278 KB, `csso.js` 66 KB)
+ * NA CÓPIA DA PUBLICAÇÃO: o repositório guarda o fonte legível e só o que vai
+ * ao CDN é minificado. O esbuild já vem com o `tsx`; sem ele, avisa e segue.
+ * Os nomes não mudam, então nenhum template precisa saber. O `sw.js` fica de fora.
+ */
+function minificar_casca() {
+  const esbuild = "node_modules/.bin/esbuild";
+  if (!existsSync(esbuild)) {
+    console.warn("[publicacao] esbuild ausente: css/js NAO minificados nesta publicacao.");
+    return;
+  }
+  const arquivos = [
+    "public/estaticos/css/csso.css",
+    "public/estaticos/css/tema.css",
+    "public/estaticos/css/celular.css",
+    "public/estaticos/js/csso.js",
+    "public/estaticos/js/celular.js",
+    "public/estaticos/js/gravador.js",
+  ];
+  for (const a of arquivos) {
+    rodar(esbuild, [a, "--minify", "--allow-overwrite", "--log-level=warning", `--outfile=${a}`]);
+  }
+}
+
+minificar_casca();
 
 if (!process.env.DATABASE_URL) {
   console.warn("[publicacao] DATABASE_URL ausente: banco NAO migrado nesta publicacao.");

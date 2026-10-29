@@ -109,7 +109,7 @@ export function primeiro_nome(nome: string | null | undefined): string {
 }
 
 /** A pendência aberta, como a casca a lê para o sino. */
-type PendenciaLida = { responsavel_id: number | null; concluida: boolean; tipo?: string | null };
+type PendenciaLida = { responsavel_id: number | null; concluida: boolean; tipo?: string | null; n?: number };
 
 /**
  * As pendências abertas da pessoa por cartão. Usa a leitura do sino quando a
@@ -120,7 +120,7 @@ async function _pendencias_minhas(
   usuario: UsuarioAtual,
   lidas: readonly PendenciaLida[] | undefined,
 ): Promise<Record<string, number>> {
-  let minhas: { tipo?: string | null }[];
+  let minhas: { tipo?: string | null; n?: number }[];
   if (lidas && lidas.every((p) => p.tipo !== undefined)) {
     minhas = lidas.filter((p) => !p.concluida && p.responsavel_id === usuario.id);
   } else {
@@ -131,7 +131,7 @@ async function _pendencias_minhas(
   }
   const por: Record<string, number> = {};
   for (const [codigo, tipos] of Object.entries(TIPOS_DE)) {
-    por[codigo] = minhas.filter((p) => p.tipo && tipos.includes(p.tipo)).length;
+    por[codigo] = minhas.filter((p) => p.tipo && tipos.includes(p.tipo)).reduce((t, p) => t + (p.n ?? 1), 0);
   }
   return por;
 }

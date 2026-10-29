@@ -506,16 +506,19 @@ describe("retenção de sessão", () => {
     }
   });
 
-  it("o login poda a tabela, e a sessão nova continua valendo", async () => {
+  it("o login não poda a tabela (a rotina noturna poda), e a sessão nova continua valendo", async () => {
     await sessao(await conta(), 120);
     const cliente = novoCliente();
     const r = await cliente.post("/login", { login: "coordenador_csso", senha: SENHA_TESTE }, { seguir: false });
     expect(r.status).toBe(303);
     const limite = new Date(agora_utc().getTime() - 90 * 86_400_000);
     const [velhas] = await db.select({ n: count() }).from(e.sessao).where(lt(e.sessao.expira_em, limite));
-    const [vivas] = await db.select({ n: count() }).from(e.sessao);
-    expect(Number(velhas!.n)).toBe(0);
-    expect(Number(vivas!.n)).toBeGreaterThanOrEqual(1);
+    expect(Number(velhas!.n)).toBeGreaterThanOrEqual(1);
+    expect((await cliente.get("/kanban", { seguir: false })).status).toBe(200);
+    // a poda é da rotina noturna: depois dela a vencida some e a nova fica
+    expect(await naTransacao((tx) => autenticacao.expurgar_sessoes(tx))).toBeGreaterThanOrEqual(1);
+    const [depois] = await db.select({ n: count() }).from(e.sessao).where(lt(e.sessao.expira_em, limite));
+    expect(Number(depois!.n)).toBe(0);
     expect((await cliente.get("/kanban", { seguir: false })).status).toBe(200);
   });
 });

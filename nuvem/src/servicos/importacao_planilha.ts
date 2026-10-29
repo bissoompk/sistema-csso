@@ -15,7 +15,9 @@
  * A leitura é do exceljs no lugar do openpyxl (`data_only=True`: fórmula vale
  * pelo resultado gravado).
  */
-import ExcelJS from "exceljs";
+// só o tipo: o ExcelJS (23 MB) é carregado sob demanda, na leitura da planilha, e não
+// na partida a frio de toda função
+import type ExcelJS from "exceljs";
 import { and, asc, eq } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -255,7 +257,8 @@ export const MAXIMO_LINHAS_PLANILHA = 5000;
 export async function carregar_staging(tx: Executor, arquivo: ArquivoPlanilha): Promise<Registro[]> {
   // antes do ExcelJS, que descompacta tudo em memória (zip-bomb)
   conferir_zip(arquivo.conteudo);
-  const wb = new ExcelJS.Workbook();
+  const { default: ExcelJSLib } = await import("exceljs");
+  const wb = new ExcelJSLib.Workbook();
   await wb.xlsx.load(Buffer.from(arquivo.conteudo) as unknown as ArrayBuffer);
   const ws = wb.worksheets[0];
   const registros: Registro[] = [];

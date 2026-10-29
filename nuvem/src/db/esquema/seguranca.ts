@@ -10,6 +10,7 @@ import {
   check,
   integer,
   pgTable,
+  index,
   primaryKey,
   smallint,
   text,
@@ -86,37 +87,47 @@ export const perfil_permissao = pgTable(
   (t) => [primaryKey({ columns: [t.perfil_id, t.permissao_id] })],
 );
 
-export const atribuicao = pgTable('atribuicao', {
-  id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
-  usuario_id: integer('usuario_id')
-    .notNull()
-    .references(() => usuario.id),
-  perfil_id: integer('perfil_id')
-    .notNull()
-    .references(() => perfil.id),
-  coordenadoria: varchar('coordenadoria', { length: 16 }).notNull().default('CSSO'),
-  campus_id: integer('campus_id').references((): AnyPgColumn => campus.id),
-  vigencia_inicio: DataPura('vigencia_inicio').notNull(),
-  vigencia_fim: DataPura('vigencia_fim'),
-  ato_normativo: text('ato_normativo'),
-  concedido_por: integer('concedido_por').references(() => usuario.id),
-});
+export const atribuicao = pgTable(
+  'atribuicao',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    usuario_id: integer('usuario_id')
+      .notNull()
+      .references(() => usuario.id),
+    perfil_id: integer('perfil_id')
+      .notNull()
+      .references(() => perfil.id),
+    coordenadoria: varchar('coordenadoria', { length: 16 }).notNull().default('CSSO'),
+    campus_id: integer('campus_id').references((): AnyPgColumn => campus.id),
+    vigencia_inicio: DataPura('vigencia_inicio').notNull(),
+    vigencia_fim: DataPura('vigencia_fim'),
+    ato_normativo: text('ato_normativo'),
+    concedido_por: integer('concedido_por').references(() => usuario.id),
+  },
+  // O RBAC lê as atribuições da conta a cada pedido (`rbac.ts`).
+  (t) => [index('ix_atribuicao_usuario').on(t.usuario_id, t.vigencia_fim)],
+);
 
-export const sessao = pgTable('sessao', {
-  id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
-  token_hash: varchar('token_hash', { length: 64 }).notNull().unique(),
-  usuario_id: integer('usuario_id')
-    .notNull()
-    .references(() => usuario.id),
-  criada_em: MomentoUTC('criada_em').notNull().$defaultFn(agora_utc),
-  expira_em: MomentoUTC('expira_em').notNull(),
-  ip: Inet('ip'),
-  user_agent: text('user_agent'),
-  revogada: boolean('revogada').notNull().default(false),
-  // Último pedido atendido com esta sessão: a expiração por inatividade
-  // (`CSSO_SESSAO_INATIVIDADE_MINUTOS`). Nula = nunca usada depois do login.
-  ultimo_uso_em: MomentoUTC('ultimo_uso_em'),
-});
+export const sessao = pgTable(
+  'sessao',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    token_hash: varchar('token_hash', { length: 64 }).notNull().unique(),
+    usuario_id: integer('usuario_id')
+      .notNull()
+      .references(() => usuario.id),
+    criada_em: MomentoUTC('criada_em').notNull().$defaultFn(agora_utc),
+    expira_em: MomentoUTC('expira_em').notNull(),
+    ip: Inet('ip'),
+    user_agent: text('user_agent'),
+    revogada: boolean('revogada').notNull().default(false),
+    // Último pedido atendido com esta sessão: a expiração por inatividade
+    // (`CSSO_SESSAO_INATIVIDADE_MINUTOS`). Nula = nunca usada depois do login.
+    ultimo_uso_em: MomentoUTC('ultimo_uso_em'),
+  },
+  // `revogar_sessoes` filtra por conta; o expurgo noturno, por validade.
+  (t) => [index('ix_sessao_usuario').on(t.usuario_id, t.revogada), index('ix_sessao_expira').on(t.expira_em)],
+);
 
 /**
  * Falhas de login por endereço de origem. Nao existe no Python: la o sistema

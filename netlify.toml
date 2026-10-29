@@ -21,3 +21,22 @@
   included_files = ["templates/**", "modelos-docx/**", "public/estaticos/app/index.html", "public/estaticos/js/sw.js"]
   # o Nunjucks carrega o `chokidar` opcionalmente; empacotado, o esbuild tropeça
   external_node_modules = ["nunjucks"]
+
+# Cache do navegador para o que não muda de conteúdo: as fontes e o bundle do
+# `/app` (nome com hash) para sempre; as imagens por uma semana. As folhas e os
+# scripts da casca (`csso.css`, `csso.js`) ficam como estão — o CDN os
+# revalida por ETag, e uma versão nova entra na hora, sem `?v=` nos templates.
+[[headers]]
+  for = "/estaticos/fontes/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/estaticos/app/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/estaticos/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
