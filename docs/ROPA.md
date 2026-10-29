@@ -8,7 +8,7 @@ Ocupacional (CSSO), da Superintendência Integrada de Saúde (Sisa)
 **Contato do setor:** `csso.sisa@ufvjm.edu.br`
 **Encarregado (DPO):** indicar o encarregado institucional da UFVJM — pendente
 (ver `PENDENCIAS.md`)
-**Versão deste registro:** 1.7, de 27/10/2026 — Acidentes coleta o Anexo III
+**Versão deste registro:** 1.8, de 29/10/2026 — Ocorrências de urgência e emergência, registro geral com relato de saúde de qualquer pessoa (§0.7) · 1.7, de 27/10/2026 — Acidentes coleta o Anexo III
 completo, com identificação pessoal restrita e campos clínicos no nível 2 (§0.6);
 em 04/09/2026 o titular passou a alcançar o que é dele (§0.5) ·
 revisar a cada mudança de finalidade, de categoria de dado ou de local de
@@ -293,6 +293,65 @@ próprio sistema, para quem tem `acidente.identificacao_ver` **e**
 base legal do dado de comunicante e de testemunha, e o prazo do expurgo da
 identificação. **Enquanto a revogação do legado CAT/SP (Drive público, senha
 compartilhada) não for feita, o módulo de Acidentes não é ligado em produção.**
+
+
+### 0.7 Emenda de 29/10/2026 — Ocorrências de urgência e emergência (registro geral)
+
+**Decisão do coordenador (28/10/2026):** além de Acidentes (servidores, CAT/SP),
+o sistema ganha o módulo **Ocorrências**, o registro geral de um mal-estar,
+queda, acidente ou socorro de **qualquer pessoa** na universidade (servidor,
+estudante, terceirizado, visitante), sem CAT/SP. Substitui o «Informar
+ocorrência de urgência/emergência» do sistema PROACE antigo. **A decisão traz
+dado de saúde de gente que este registro não alcançava**: estudantes,
+terceirizados e visitantes.
+
+**1. O que é tratado.** Quem registrou (conta autenticada: **só com login**, sem
+link público); a pessoa atendida (nome, vínculo, e, conforme o vínculo, curso,
+setor, empresa ou função); contato do notificante (nome, telefone, e-mail); data,
+campus e local; tipo da ocorrência (lista fechada de 12 tipos, com «Outra»);
+**relato em texto livre**; socorro prestado e **encaminhamento** (SAMU, Bombeiros,
+veículo da UFVJM ou particular); observações, conclusão e acompanhamentos da
+equipe. **O relato é campo aberto e pode conter dado de saúde** (sintoma, lesão,
+medicamento): é tratado como dado sensível por inteiro, e não só o tipo.
+
+**2. Quem vê.** A pessoa que registrou vê as próprias («Minhas ocorrências»). A
+equipe (coordenação, engenharia, médico, técnico de segurança e secretaria),
+com `ocorrencia.ver`, vê todas e as trata. O que sai em **CSV não leva nome nem
+relato**; os indicadores são agregados. O **e-mail** (desligado por padrão) à
+equipe e a quem registrou traz só o **protocolo e o link**, nunca o relato nem
+a identificação; a trilha diz o nº de destinatários, nunca o endereço.
+
+**3. Base legal (proposta, a confirmar pelo encarregado).** Art. 7º, II
+(obrigação legal de segurança e saúde no trabalho, para servidor e terceirizado)
+e art. 7º, VII (proteção da vida); para o dado de saúde, **art. 11, II, "e"**
+(proteção da vida ou da incolumidade física do titular ou de terceiro) e "f"
+(tutela da saúde, em procedimento por profissional de saúde). A finalidade é
+**prestar e acompanhar o socorro e produzir a estatística de ocorrências**, e só
+essa. **Não alimenta o módulo de Acidentes nem a CAT/SP**: o vínculo com um
+acidente é feito à mão, pela equipe, e a ocorrência continua sendo uma ficha
+própria.
+
+**4. Retenção: 5 anos depois de encerrada, depois anonimiza.** A rotina noturna
+anonimiza a ocorrência **concluída ou cancelada há mais de 5 anos**: apaga os
+acompanhamentos e anula nome, relato, observações, conclusão, contato, curso,
+setor, empresa e função. **Ficam** protocolo, data, campus, local, tipos,
+vínculo, socorro prestado e situação, para a estatística. A ocorrência aberta
+nunca é apagada. Cada rodada deixa um evento na trilha com a **quantidade**,
+nunca os valores. O prazo está em `ANOS_DE_GUARDA`
+(`servicos/ocorrencia_expurgo.ts`): **é proposta**, e o encarregado ainda tem de
+confirmar os 5 anos (§9, item 10); mudar o prazo é mudar uma constante.
+
+**5. Menor de idade.** Um estudante atendido pode ser menor. O módulo **não
+distingue o menor** nem tem o bloqueio de Acidentes (§0.6, item 1): a decisão do
+art. 14 da LGPD (§9, item 4) **vale também aqui e continua em aberto**.
+
+**6. Trilha.** Registro, assunção, acompanhamento, conclusão, cancelamento,
+vínculo com acidente, e-mail enfileirado e expurgo entram na trilha com
+identificadores, **nunca com valores** (RN-19).
+
+**Fica em aberto:** o prazo de 5 anos, a base legal do dado de saúde de quem não
+é servidor e a decisão sobre o menor. **Enquanto isso, o módulo fica travado em
+produção** (`CSSO_MODULO_OCORRENCIAS=sim` libera; `nuvem/PRODUCAO.md`, §12).
 
 ---
 
@@ -817,5 +876,5 @@ que dê para alguém agir sobre ela.
 | 7 | **Autocadastro** (decisão 8, em aberto). Se existir, muda como a conta nasce, exige confirmação de e-mail e exige regra de qual perfil ela recebe | Nenhum dos módulos depende dele hoje, então não force a decisão — mas ela muda este registro quando vier | Fabrício |
 | 8 | **Quem responde ao pedido de ficha de EPI, e por qual canal.** A linha nova do §5 registra que o compartilhamento vai existir; ela não diz quem executa | A ficha passou a existir hoje, e o §12.8 do desenho já avisava: assim que ela existir de verdade, PROGEP, procuradoria e eventualmente a Justiça do Trabalho vão pedi-la. É decisão de processo, não de engenharia — e é a diferença entre uma ficha que ajuda e uma que vira passivo. Enquanto não houver canal definido, o pedido cai em quem tiver `epi.ficha`, e cada leitura fica registrada | Fabrício, com o encarregado |
 | 9 | **A assinatura manuscrita do titular é dado biométrico?** O comprovante `FICHA_EPI` carrega a assinatura do próprio servidor, digitalizada | Tratei-a como dado pessoal comum de acesso `RESTRITO`, que é o mínimo defensável, e **não** como dado sensível do art. 11. Assinatura manuscrita não está na lista fechada daquele artigo, mas é um identificador com função de autenticação, e não conferi a leitura da ANPD sobre isso. Se ela for sensível, muda a base legal desta linha no §2 e o recorte de acesso no §6 | Encarregado |
-| 10 | **Prazo do expurgo da identificação pessoal do acidentado** (§0.6) | A proposta de 5 anos após a conclusão vem do detalhe de saúde, que já é proposta e depende da tabela de temporalidade da UFVJM. Não há norma conferida para o prazo | Encarregado, com o arquivo institucional |
+| 10 | **Prazo do expurgo da identificação pessoal do acidentado** (§0.6) **e da anonimização das ocorrências de urgência e emergência** (§0.7) | A proposta de 5 anos após a conclusão vem do detalhe de saúde, que já é proposta e depende da tabela de temporalidade da UFVJM. Não há norma conferida para o prazo | Encarregado, com o arquivo institucional |
 | 11 | **Legado CAT/SP.** O sistema antigo guarda CPF, RG, nascimento e endereço em Drive com link público e senha compartilhada | Não é tratamento do SISA, mas é o mesmo dado: o módulo novo não deve subir enquanto o antigo estiver exposto. Revogar o link, trocar a senha e registrar em ata | Fabrício |
