@@ -130,11 +130,11 @@
        o papel — um rótulo diferente do documento faria duvidar de um certificado
        autêntico. #}
     <dt>Término do treinamento</dt>
-    <dd class="mono">{{ resposta.termino|data }}</dd>
+    <dd>{{ resposta.termino|data }}</dd>
 
     <dt>Vencimento</dt>
     <dd>
-      {% if resposta.vencimento %}<span class="mono">{{ resposta.vencimento|data }}</span>
+      {% if resposta.vencimento %}<span>{{ resposta.vencimento|data }}</span>
       <span class="discreto">({{ resposta.validade_meses }} meses)</span>
       {% else %}<span class="selo">validade indeterminada</span>{% endif %}
     </dd>

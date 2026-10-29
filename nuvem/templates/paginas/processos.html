@@ -39,7 +39,7 @@
     {%- if r.processo.responsavel %}
     <span class="recorte discreto" title="Responsável: {{ r.processo.responsavel.nome }}">{{ r.processo.responsavel.nome }}</span>
     {%- endif %}</td>
-  <td class="mono curta" data-coluna="Prazo">{{ r.processo.prazo|data or '—' }}</td>
+  <td class="curta" data-coluna="Prazo">{{ r.processo.prazo|data or '—' }}</td>
 </tr>
 {% endmacro %}
 

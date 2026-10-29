@@ -137,8 +137,8 @@
       <td data-coluna="Portaria de concessão"><span class="recorte" title="{{ v.portaria_concessao or '' }}">
           {{- v.portaria_concessao or 'aguarda portaria' -}}</span></td>
       <td data-coluna="Vigência">
-        <span class="mono">{{ v.data_inicio|data or '—' }}</span>
-        {% if v.data_fim %}<span class="mono quebra">até {{ v.data_fim|data }}</span>{% endif %}
+        <span>{{ v.data_inicio|data or '—' }}</span>
+        {% if v.data_fim %}<span class="quebra">até {{ v.data_fim|data }}</span>{% endif %}
         {% if v.base_legal_suspensao %}
         <span class="discreto quebra">{{ v.base_legal_suspensao }}</span>{% endif %}
       </td>

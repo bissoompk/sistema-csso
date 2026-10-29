@@ -96,7 +96,7 @@
       {% for l in lotacoes %}
       <tr>
         <td>
-          <span class="mono">{{ l.vigencia_inicio|data }} —
+          <span>{{ l.vigencia_inicio|data }} —
             {%- if not l.aberta %} {{ l.vigencia_fim|data }}{% endif %}</span>
           {% if l.aberta %}<span class="pilula ok">atual</span>{% endif %}
         </td>
@@ -148,7 +148,7 @@
         <tr>
           <td><a class="mono" href="/processos/{{ p.id }}">{{ p.nup }}</a></td>
           <td class="curta" data-coluna="Estado">{{ ui.pilula_estado(p.estado_tecnico) }}</td>
-          <td class="mono curta" data-coluna="Autuação">{{ p.data_autuacao|data or '—' }}</td>
+          <td class="curta" data-coluna="Autuação">{{ p.data_autuacao|data or '—' }}</td>
         </tr>
         {% endfor %}
       </table>
@@ -176,7 +176,7 @@
         <tr>
           <td><a class="mono" href="/pareceres/{{ p.id }}">{{ p.numero }}/{{ p.ano }}</a></td>
           <td class="curta" data-coluna="Situação">{{ ui.pilula_parecer(p.situacao) }}</td>
-          <td class="mono curta" data-coluna="Emissão">{{ p.data_emissao|data or '—' }}</td>
+          <td class="curta" data-coluna="Emissão">{{ p.data_emissao|data or '—' }}</td>
           <td class="curta" data-coluna="Laudo">
             {#- Sem `laudo.ver` o número sai como texto (D81): o servidor abre a
                 própria ficha, e o link dava 403 na cara dele. #}
@@ -228,8 +228,8 @@
         <td class="mono curta" data-coluna="Percentual">{{ v.percentual.rotulo if v.percentual else '—' }}</td>
         <td data-coluna="Portaria de concessão"><span class="recorte" title="{{ v.portaria_concessao or '' }}">
             {{- v.portaria_concessao or '—' -}}</span></td>
-        <td class="mono curta" data-coluna="Início">{{ v.data_inicio|data or '—' }}</td>
-        <td class="mono curta" data-coluna="Fim">{{ v.data_fim|data or '—' }}</td>
+        <td class="curta" data-coluna="Início">{{ v.data_inicio|data or '—' }}</td>
+        <td class="curta" data-coluna="Fim">{{ v.data_fim|data or '—' }}</td>
         <td class="discreto" data-coluna="Base da suspensão">{{ v.motivo_suspensao or '' }} {{ v.base_legal_suspensao or '' }}</td>
       </tr>
       {% endfor %}
@@ -269,7 +269,7 @@
       {% for l in epi_linhas %}
       {% set r = l.registro %}
       <tr>
-        <td class="mono curta" data-coluna="Data">{{ r.data_evento|data }}</td>
+        <td class="curta" data-coluna="Data">{{ r.data_evento|data }}</td>
         <td class="curta" data-coluna="Evento">{{ ui.pilula_ficha(r.tipo) }}
           {% if l.estornado %}<span class="pilula erro">estornado</span>{% endif %}</td>
         <td>{{ r.nome_epi_snapshot }}

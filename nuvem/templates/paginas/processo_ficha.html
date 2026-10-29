@@ -100,13 +100,13 @@
           <dd>{{ processo.responsavel.nome if processo.responsavel else '—' }}</dd>
 
           <dt>Autuação</dt>
-          <dd class="mono">{{ processo.data_autuacao|data or '—' }}</dd>
+          <dd>{{ processo.data_autuacao|data or '—' }}</dd>
 
           <dt>Solicitação no SEST</dt>
-          <dd class="mono">{{ processo.data_solicitacao_sest|data or '—' }}</dd>
+          <dd>{{ processo.data_solicitacao_sest|data or '—' }}</dd>
 
           <dt>Prazo</dt>
-          <dd class="mono">{{ processo.prazo|data or '—' }}</dd>
+          <dd>{{ processo.prazo|data or '—' }}</dd>
 
           <dt>Observações</dt>
           <dd>{{ processo.observacoes or '—' }}</dd>
@@ -192,7 +192,7 @@
       <tr>
         <td class="mono">{{ p.numero }}/{{ p.ano }}</td>
         <td>{{ ui.pilula_parecer(p.situacao) }}</td>
-        <td class="mono">{{ p.data_emissao|data or '—' }}</td>
+        <td>{{ p.data_emissao|data or '—' }}</td>
         <td class="mono">{{ p.laudo.numero_siape if p.laudo else '—' }}</td>
         <td>{{ p.signatario.nome if p.signatario else '—' }}</td>
         <td><a href="/pareceres/{{ p.id }}">abrir</a></td>
@@ -326,7 +326,7 @@
          quem e o processo, entao o titular continua lendo a propria tarefa. #}
       <tr><td>{{ texto_livre(p.descricao, processo) }}</td>
           <td>{% if p.atrasada() %}<span class="selo erro">{{ p.prazo|data }}</span>
-              {% else %}<span class="mono">{{ p.prazo|data or '—' }}</span>{% endif %}</td></tr>
+              {% else %}<span>{{ p.prazo|data or '—' }}</span>{% endif %}</td></tr>
       {% endfor %}
     </table>
   </section>

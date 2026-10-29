@@ -1,0 +1,1 @@
+ALTER TABLE "turma" ADD COLUMN "inscricao_token_sal" varchar(32);

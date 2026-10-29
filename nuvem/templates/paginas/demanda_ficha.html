@@ -135,7 +135,7 @@
       </thead>
       {% for e in demanda.encaminhamentos %}
       <tr>
-        <td class="mono">{{ e.data_encaminhamento|data }}</td>
+        <td>{{ e.data_encaminhamento|data }}</td>
         <td>{{ e.para_quem }}</td>
         <td class="texto-literal">{{ e.pedido }}</td>
         <td class="discreto">{{ e.autor.nome if e.autor else 'sistema' }}</td>
@@ -168,7 +168,7 @@
       {% if demanda.desfecho_setor %}
       <dt>Encaminhada a</dt>
       <dd>{{ demanda.desfecho_setor }}
-        {%- if demanda.desfecho_data %} <span class="mono">({{ demanda.desfecho_data|data }})</span>{% endif %}</dd>
+        {%- if demanda.desfecho_data %} <span>({{ demanda.desfecho_data|data }})</span>{% endif %}</dd>
       {% endif %}
     </dl>
     {% if demanda.desfecho_relato %}

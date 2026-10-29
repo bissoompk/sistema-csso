@@ -409,9 +409,9 @@
                     <tr>
                       <td>{{ f.quantidade }} × {{ f.epi }}</td>
                       <td class="mono">{{ f.numero_ca or '—' }}</td>
-                      <td class="mono">{{ f.validade_ca|data or '—' }}</td>
-                      <td class="mono">{{ f.previsao_troca|data or '—' }}</td>
-                      <td class="mono">{{ f.entregue_em|data }}</td>
+                      <td>{{ f.validade_ca|data or '—' }}</td>
+                      <td>{{ f.previsao_troca|data or '—' }}</td>
+                      <td>{{ f.entregue_em|data }}</td>
                       <td>{% if f.sustenta_neutralizacao %}<span class="pilula ok">sim</span>
                           {% else %}<span class="pilula alerta">não</span>{% endif %}</td>
                     </tr>

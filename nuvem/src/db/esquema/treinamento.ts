@@ -665,6 +665,9 @@ export const turma = pgTable(
     // entra quando a equipe marca na turma
     aceita_comunidade_externa: boolean('aceita_comunidade_externa').notNull().default(false),
     inscricao_token_hash: varchar('inscricao_token_hash', { length: 64 }),
+    // 29/10/2026: o sal sorteado a cada link; o token e derivado dele por HMAC
+    // da chave secreta (nao e guardado), o que deixa a equipe rever o link.
+    inscricao_token_sal: varchar('inscricao_token_sal', { length: 32 }),
     inscricao_token_expira_em: MomentoUTC('inscricao_token_expira_em'),
 
     // --- vitrine publica /cursos (27/10/2026) ---

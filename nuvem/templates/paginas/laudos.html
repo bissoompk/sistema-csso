@@ -90,8 +90,8 @@
             {{- l.unidade.nome_extenso if l.unidade else '—' -}}</span></td>
         <td data-coluna="Tipo">{{ l.tipo_adicional.nome if l.tipo_adicional else '—' }}</td>
         <td data-coluna="Subscritor">{{ l.subscritor.nome if l.subscritor else '—' }}</td>
-        <td class="mono curta" data-coluna="Emissão">{{ l.data_emissao|data or '—' }}</td>
-        <td class="curta" data-coluna="Última conferência">{% if l.data_ultima_conferencia %}<span class="mono">{{ l.data_ultima_conferencia|data }}</span>
+        <td class="curta" data-coluna="Emissão">{{ l.data_emissao|data or '—' }}</td>
+        <td class="curta" data-coluna="Última conferência">{% if l.data_ultima_conferencia %}<span>{{ l.data_ultima_conferencia|data }}</span>
             {% else %}<span class="selo">nunca</span>{% endif %}</td>
         <td class="curta" data-coluna="Pareceres"><span class="contador">{{ derivados[l.id]|length }}</span></td>
         <td class="curta" data-coluna="Situação">{{ ui.pilula_laudo(l.status) }}</td>

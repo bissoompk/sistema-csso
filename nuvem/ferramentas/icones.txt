@@ -87,3 +87,4 @@ inboxes
 journal-album
 file-earmark-person
 bell-fill
+bandaid

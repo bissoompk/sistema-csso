@@ -159,7 +159,7 @@
       <span class="cartao-status-valor cartao-status-valor--texto">{{ ui.pilula_direito(adicional.estado) }}
         {%- if adicional.percentual %} {{ adicional.percentual }}{% endif %}</span>
       <p>{{ adicional.tipo or 'Adicional ocupacional' }}
-        {%- if adicional.desde %} · desde <span class="mono">{{ adicional.desde|data }}</span>{% endif %}</p>
+        {%- if adicional.desde %} · desde <span>{{ adicional.desde|data }}</span>{% endif %}</p>
       {% else %}
       <span class="cartao-status-valor cartao-status-valor--texto">Nenhum</span>
       <p>Nenhum adicional registrado em seu nome. Se você pediu, o andamento está em Meus processos.</p>

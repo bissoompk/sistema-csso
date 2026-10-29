@@ -108,7 +108,7 @@
           <span class="selo erro" title="{{ dias_entre(p.prazo, hoje) }} dia(s) de atraso">
             {{ p.prazo|data }}</span>
           {% elif p.prazo %}
-          <span class="mono">{{ p.prazo|data }}</span>
+          <span>{{ p.prazo|data }}</span>
           {% else %}
           <span class="discreto">sem prazo</span>
           {% endif %}

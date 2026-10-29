@@ -35,7 +35,7 @@
 <div class="cartao">
   <h1>{{ turma.treinamento.nome }}</h1>
   <p class="sub">
-    <span class="mono">{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
+    <span>{{ turma.data_inicio|data }}{% if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
     {%- if turma|horario_turma %} · <span class="mono">{{ turma|horario_turma }}</span>{% endif %}
     {%- if turma.local or turma.campus %} · {{ turma.local or '' }}{% if turma.local and turma.campus %}, {% endif %}{{ turma.campus.nome if turma.campus else '' }}{% endif %}
     {%- if turma.carga_efetiva %} · <span class="mono">{{ turma.carga_efetiva|num }} h</span>{% endif %}</p>

@@ -18,7 +18,7 @@
       <p class="identificacao">
         <strong>{{ turma.treinamento.nome }}</strong>
         <span class="ponto">·</span>
-        <span class="mono">{{ turma.data_inicio|data }}
+        <span>{{ turma.data_inicio|data }}
           {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}</span>
         {{ ui.pilula_turma(turma.situacao) }}
       </p>

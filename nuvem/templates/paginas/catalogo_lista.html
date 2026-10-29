@@ -319,7 +319,7 @@
     <td>{{ p.texto_original }}</td>
     <td data-coluna="Emissora">{{ p.unidade_emissora.sigla or p.unidade_emissora.nome_extenso }}</td>
     <td data-coluna="Nº" class="mono">{{ p.numero }}</td>
-    <td data-coluna="Publicação" class="mono">{{ p.data_publicacao|data }}</td>
+    <td data-coluna="Publicação" >{{ p.data_publicacao|data }}</td>
     {{ editar('editar-port-' ~ p.id) }}
   </tr>{% else %}{{ nenhum(5) }}{% endfor %}</tbody></table>
 
@@ -334,8 +334,8 @@
     <td>{{ a.nome }}</td>
     <td data-coluna="Cargo">{{ a.cargo }}</td>
     <td data-coluna="Tratamento">{{ a.tratamento }}</td>
-    <td data-coluna="Desde" class="mono">{{ a.vigencia_inicio|data }}</td>
-    <td data-coluna="Até" class="mono">{{ a.vigencia_fim|data if a.vigencia_fim else '—' }}</td>
+    <td data-coluna="Desde" >{{ a.vigencia_inicio|data }}</td>
+    <td data-coluna="Até" >{{ a.vigencia_fim|data if a.vigencia_fim else '—' }}</td>
     {{ editar('editar-aut-' ~ a.id) }}
   </tr>{% else %}{{ nenhum(6) }}{% endfor %}</tbody></table>
 
@@ -353,8 +353,8 @@
     <td data-coluna="Contato">{% if st.email or st.telefone %}{{ st.email or '' }}
       {%- if st.telefone %}<span class="quebra">{{ st.telefone }}</span>{% endif %}{% else %}—{% endif %}</td>
     <td data-coluna="Cidade">{{ st.cidade }}</td>
-    <td data-coluna="Desde" class="mono">{{ st.vigencia_inicio|data }}</td>
-    <td data-coluna="Até" class="mono">{{ st.vigencia_fim|data if st.vigencia_fim else '—' }}</td>
+    <td data-coluna="Desde" >{{ st.vigencia_inicio|data }}</td>
+    <td data-coluna="Até" >{{ st.vigencia_fim|data if st.vigencia_fim else '—' }}</td>
     {{ editar('editar-setor-emissor-' ~ st.id) }}
   </tr>{% else %}{{ nenhum(8) }}{% endfor %}</tbody></table>
 
