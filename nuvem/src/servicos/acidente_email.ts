@@ -15,12 +15,16 @@
  * - comunicação nova: o SETOR (`CSSO_ACIDENTE_EMAIL_SETOR`) e o comunicante
  *   logado (confirmação de recebimento);
  * - pedido de complementação: o comunicante logado.
- * O comunicante do formulário por link (F2) não recebe (D6). Prazo de ação,
- * relatório emitido e caso concluído são das fatias que criam esses atos.
+ * O comunicante do formulário por link (F2) não recebe (D6). Prazo de ação é
+ * de outra fatia.
+ *
+ * Relatório emitido e caso concluído (decisão de 29/10/2026): o ACIDENTADO que
+ * é servidor e tem conta recebe o aviso — só «há novidade na sua ocorrência»,
+ * o protocolo e o link; nada do relatório, da lesão ou da conclusão no corpo.
  */
 import { eq } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { acidente_ocorrencia, usuario as tabela_usuario } from "../db/esquema/index.js";
+import { acidente_ocorrencia, acidentado as tabela_acidentado, usuario as tabela_usuario } from "../db/esquema/index.js";
 import { obterConfig } from "../config.js";
 import * as auditoria from "./auditoria.js";
 import * as email from "./email.js";
@@ -34,6 +38,8 @@ const ENTIDADE = "acidente_ocorrencia";
 export const TIPO_NOVA_SETOR = "ACIDENTE_NOVA_SETOR";
 export const TIPO_CONFIRMACAO = "ACIDENTE_CONFIRMACAO";
 export const TIPO_COMPLEMENTACAO = "ACIDENTE_COMPLEMENTACAO";
+export const TIPO_RELATORIO = "ACIDENTE_RELATORIO";
+export const TIPO_CONCLUSAO = "ACIDENTE_CONCLUSAO";
 
 export function ligado(): boolean {
   return obterConfig().acidenteEmailLigado;
@@ -73,7 +79,7 @@ export async function destino_da_conta(tx: Executor, usuario_id: number | null):
 }
 
 interface Mensagem {
-  quem: "setor" | "comunicante";
+  quem: "setor" | "comunicante" | "acidentado";
   destino: Destino;
   tipo: string;
   assunto: string;
@@ -172,4 +178,86 @@ export async function avisar_complementacao(
         ASSINATURA,
     },
   ]);
+}
+
+/**
+ * A conta de cada acidentado que é servidor (uma por pessoa, sem repetir). Sem
+ * servidor vinculado, ou sem conta ativa com e-mail, a trilha diz que não foi.
+ */
+async function _destinos_dos_acidentados(tx: Executor, ocorrencia: Ocorrencia): Promise<Destino[]> {
+  const envolvidos = await tx
+    .select({ servidor_id: tabela_acidentado.servidor_id })
+    .from(tabela_acidentado)
+    .where(eq(tabela_acidentado.ocorrencia_id, ocorrencia.id));
+  const servidores = [...new Set(envolvidos.map((e) => e.servidor_id).filter((id): id is number => id !== null))];
+  const destinos: Destino[] = [];
+  const vistos = new Set<string>();
+  for (const servidor_id of servidores) {
+    const [conta] = await tx
+      .select({ id: tabela_usuario.id })
+      .from(tabela_usuario)
+      .where(eq(tabela_usuario.servidor_id, servidor_id));
+    const d = await destino_da_conta(tx, conta?.id ?? null);
+    if ("para" in d) {
+      if (vistos.has(d.para.toLowerCase())) continue;
+      vistos.add(d.para.toLowerCase());
+    }
+    destinos.push(d);
+  }
+  if (!envolvidos.some((e) => e.servidor_id !== null)) {
+    destinos.push({ falta: "nenhum acidentado é servidor com conta" });
+  }
+  return destinos;
+}
+
+async function _avisar_acidentados(
+  tx: Executor,
+  ocorrencia: Ocorrencia,
+  usuario: UsuarioAtual | null,
+  momento: string,
+  tipo: string,
+  assunto: string,
+  texto: string,
+): Promise<number> {
+  if (!ligado()) return 0;
+  const destinos = await _destinos_dos_acidentados(tx, ocorrencia);
+  return _enviar(
+    tx,
+    ocorrencia,
+    usuario,
+    momento,
+    destinos.map((destino) => ({
+      quem: "acidentado" as const,
+      destino,
+      tipo,
+      assunto: `${assunto} — ${ocorrencia.protocolo}`,
+      corpo: `${texto} Ocorrência ${ocorrencia.protocolo}. O que há de novo está no sistema:\n${link_da_ocorrencia(ocorrencia)}${ASSINATURA}`,
+    })),
+  );
+}
+
+/** Relatório emitido: avisa o acidentado servidor. */
+export function avisar_relatorio_emitido(tx: Executor, ocorrencia: Ocorrencia, usuario: UsuarioAtual | null): Promise<number> {
+  return _avisar_acidentados(
+    tx,
+    ocorrencia,
+    usuario,
+    "relatório emitido",
+    TIPO_RELATORIO,
+    "Há novidade na sua ocorrência",
+    "A equipe de segurança do trabalho emitiu o relatório da ocorrência em que você é um dos envolvidos.",
+  );
+}
+
+/** Caso concluído: avisa o acidentado servidor. */
+export function avisar_conclusao(tx: Executor, ocorrencia: Ocorrencia, usuario: UsuarioAtual | null): Promise<number> {
+  return _avisar_acidentados(
+    tx,
+    ocorrencia,
+    usuario,
+    "caso concluído",
+    TIPO_CONCLUSAO,
+    "Sua ocorrência foi concluída",
+    "A equipe de segurança do trabalho concluiu a ocorrência em que você é um dos envolvidos.",
+  );
 }

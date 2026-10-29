@@ -288,7 +288,13 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
       "acidente_link_publico",
       ...NUMERACAO.acidentes,
     ],
-    tipos_email: [acidente_email.TIPO_NOVA_SETOR, acidente_email.TIPO_CONFIRMACAO, acidente_email.TIPO_COMPLEMENTACAO],
+    tipos_email: [
+      acidente_email.TIPO_NOVA_SETOR,
+      acidente_email.TIPO_CONFIRMACAO,
+      acidente_email.TIPO_COMPLEMENTACAO,
+      acidente_email.TIPO_RELATORIO,
+      acidente_email.TIPO_CONCLUSAO,
+    ],
     // a ocorrência de urgência/emergência que apontava para a CAT/SP fica, sem o vínculo
     desvincular: ["acesso_dado_sensivel.acidente_id", "acesso_dado_sensivel.acidentado_id", "ocorrencia.acidente_id"],
     travas: [

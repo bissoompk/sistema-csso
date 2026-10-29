@@ -58,6 +58,7 @@ import { gerar_pdf, texto_plano, type ContextoRelatorio } from "./acidente_relat
 import * as saude from "./acidente_saude.js";
 import * as anexo_acesso from "./anexo_acesso.js";
 import * as anexos from "./anexos.js";
+import * as acidente_email from "./acidente_email.js";
 import * as auditoria from "./auditoria.js";
 import * as pendencias from "./pendencias.js";
 import type { UsuarioAtual } from "./rbac.js";
@@ -326,6 +327,7 @@ export async function emitir(tx: Executor, usuario: UsuarioAtual, ocorrencia: Oc
     descricao: `${ocorrencia.protocolo}: relatório versão 1 emitido (completa e sem saúde).`,
     usuario,
   });
+  await acidente_email.avisar_relatorio_emitido(tx, ocorrencia, usuario);
   return criados;
 }
 
