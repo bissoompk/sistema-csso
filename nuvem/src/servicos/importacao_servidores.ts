@@ -21,7 +21,9 @@
  * hoje) — nada é sobrescrito. A trilha leva um evento por importação, com as
  * contagens; a mudança de lotação de cada servidor continua com o seu.
  */
-import ExcelJS from "exceljs";
+// só o tipo: o ExcelJS (23 MB) é carregado sob demanda, na leitura da planilha, e não
+// na partida a frio de toda função
+import type ExcelJS from "exceljs";
 import { eq } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -143,7 +145,8 @@ function decodificar(bytes: Uint8Array): string {
 async function _celulas_xlsx(bytes: Uint8Array): Promise<string[][]> {
   // antes do ExcelJS, que descompacta tudo em memória (zip-bomb)
   conferir_zip(bytes);
-  const wb = new ExcelJS.Workbook();
+  const { default: ExcelJSLib } = await import("exceljs");
+  const wb = new ExcelJSLib.Workbook();
   await wb.xlsx.load(Buffer.from(bytes) as unknown as ArrayBuffer);
   const ws = wb.worksheets[0];
   if (!ws) return [];
