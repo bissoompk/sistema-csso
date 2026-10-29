@@ -11,7 +11,8 @@ import { redefinirConfig } from "../src/config.js";
 import * as comunicacao from "../src/servicos/acidente_comunicacao.js";
 import * as triagem from "../src/servicos/acidente_triagem.js";
 import { bancoLimpo, contas, usuarioAtual } from "./ajuda.js";
-import { dados, titular } from "./acidente_ajuda.js";
+import * as siass from "../src/servicos/acidente_siass.js";
+import { com_relatorio, dados, titular } from "./acidente_ajuda.js";
 
 let db: Banco;
 
@@ -79,5 +80,34 @@ describe("e-mail do módulo de acidentes", () => {
     const [m] = await db.select().from(e.email_saida).where(eq(e.email_saida.tipo, "ACIDENTE_COMPLEMENTACAO"));
     expect(m!.corpo).toContain("/complementar");
     expect(m!.corpo).not.toContain("modelo do frasco");
+  });
+
+  it("relatório emitido e caso concluído avisam o acidentado servidor, só com protocolo e link", async () => {
+    ligar();
+    const { oc, equipe, ler } = await com_relatorio(db, "NAO");
+    const [emitido] = await db.select().from(e.email_saida).where(eq(e.email_saida.tipo, "ACIDENTE_RELATORIO"));
+    expect(emitido!.corpo).toContain(oc.protocolo);
+    expect(emitido!.corpo).toContain(`/acidentes/${oc.id}`);
+    expect(emitido!.corpo).not.toContain("tampa de segurança");
+    expect(emitido!.corpo).not.toContain("Titular Fictício");
+
+    const antes = await ler();
+    const coord = await usuarioAtual(db, "coordenador_csso");
+    await db.transaction((tx) => siass.concluir(tx, coord, antes, "Sem encaminhamento ao SIASS: o caso não requer CAT.", antes.versao));
+    const [concluido] = await db.select().from(e.email_saida).where(eq(e.email_saida.tipo, "ACIDENTE_CONCLUSAO"));
+    expect(concluido!.corpo).toContain(oc.protocolo);
+    expect(concluido!.corpo).not.toContain("não requer CAT");
+    expect(equipe).toBeTruthy();
+    const eventos = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "ACIDENTE_EMAIL_ENFILEIRADO"));
+    for (const ev of eventos) expect(ev.descricao).not.toContain("@");
+  });
+
+  it("desligado, relatório e conclusão não enfileiram nada", async () => {
+    const { oc, ler } = await com_relatorio(db, "NAO");
+    expect(oc.id).toBeGreaterThan(0);
+    const antes = await ler();
+    const coord = await usuarioAtual(db, "coordenador_csso");
+    await db.transaction((tx) => siass.concluir(tx, coord, antes, "Sem encaminhamento ao SIASS: o caso não requer CAT.", antes.versao));
+    expect(await db.select().from(e.email_saida)).toHaveLength(0);
   });
 });

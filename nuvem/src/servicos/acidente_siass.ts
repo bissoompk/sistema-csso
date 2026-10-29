@@ -34,6 +34,7 @@ import { exigir_transicao_acidente } from "../dominio/estados.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import type { Ocorrencia } from "./acidente_comunicacao.js";
 import * as investigacao from "./acidente_investigacao.js";
+import * as acidente_email from "./acidente_email.js";
 import * as auditoria from "./auditoria.js";
 import * as nup from "./nup.js";
 import * as pendencias from "./pendencias.js";
@@ -272,6 +273,7 @@ export async function concluir(tx: Executor, usuario: UsuarioAtual, ocorrencia: 
     descricao: `${ocorrencia.protocolo}: ocorrência concluída${decisao ? " (com decisão pericial)" : " sem decisão pericial"}.`,
     usuario,
   });
+  await acidente_email.avisar_conclusao(tx, ocorrencia, usuario);
 }
 
 // ---------------------------------------------------------------------

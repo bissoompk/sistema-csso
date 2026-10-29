@@ -488,7 +488,7 @@ Confira se as atribuições vigentes estão certas: quem não devia ver CPF não
 
 ### D. E-mails do módulo (opcional, desligados por padrão)
 
-Com o módulo estável, para avisar o setor de cada comunicação nova e confirmar ao comunicante: `CSSO_ACIDENTE_EMAIL=sim` e `CSSO_ACIDENTE_EMAIL_SETOR=<endereço do setor>`, e publique. Antes, teste o envio com `npm run testar-email`. O corpo leva só protocolo, o que aconteceu e o link; nunca dado de saúde ou identificação.
+Com o módulo estável, para avisar o setor de cada comunicação nova, confirmar ao comunicante e, quando o relatório é emitido ou o caso concluído, avisar o acidentado que é servidor (só protocolo e link): `CSSO_ACIDENTE_EMAIL=sim` e `CSSO_ACIDENTE_EMAIL_SETOR=<endereço do setor>`, e publique. Antes, teste o envio com `npm run testar-email`. O corpo leva só protocolo, o que aconteceu e o link; nunca dado de saúde ou identificação.
 
 ### E. Casos do sistema antigo (uma vez)
 
