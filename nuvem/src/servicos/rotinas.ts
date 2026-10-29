@@ -38,6 +38,7 @@ import { ambienteDeProducao } from "./instalacao.js";
 import { TAMANHO_MINIMO_SENHA_BACKUP } from "../config.js";
 import { expurgos_de_privacidade, mensagem_sem_dados } from "./privacidade.js";
 import * as aviso_interesse from "./aviso_interesse.js";
+import * as ocorrencia_expurgo from "./ocorrencia_expurgo.js";
 import { expurgar_corpos } from "./email.js";
 import * as acesso_participante from "./acesso_participante.js";
 import * as avaliacao_reacao from "./avaliacao_reacao.js";
@@ -245,13 +246,15 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
         (await avaliacao_reacao.expurgar_convites(tx)),
       pedidos: await pedido_conta.expurgar(tx),
       avisos: await aviso_interesse.expurgar(tx),
+      ocorrencias: await ocorrencia_expurgo.expurgar(tx),
     }),
     (r) => [
       true,
       `${r.acessos} linha(s) de registro de acesso e ${r.exportacoes} exportação(ões) apagada(s); ` +
         `IP de ${r.ips} pedido(s) pelo link limpo(s); texto de ${r.corpos} e-mail(s), ${r.links} link(s) de acesso ` +
         `${r.pedidos} pedido(s) de conta apagado(s); aviso de interesse da vitrine: ` +
-        `${r.avisos.nao_confirmados} sem confirmar, ${r.avisos.expirados} expirado(s), ${r.avisos.cancelados} cancelado(s), ${r.avisos.ips} IP(s) limpo(s)`,
+        `${r.avisos.nao_confirmados} sem confirmar, ${r.avisos.expirados} expirado(s), ${r.avisos.cancelados} cancelado(s), ${r.avisos.ips} IP(s) limpo(s); ` +
+        `${r.ocorrencias} ocorrência(s) de urgência/emergência com os dados pessoais apagados pelo prazo de guarda`,
     ],
   );
   passos.push({ rotina: ROTINA_PRIVACIDADE, ok: expurgos.ok, detalhe: expurgos.detalhe });

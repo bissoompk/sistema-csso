@@ -53,6 +53,7 @@ import * as acesso_participante from "./acesso_participante.js";
 import * as envio_certificado from "./envio_certificado.js";
 import * as epi_email from "./epi_email.js";
 import * as acidente_email from "./acidente_email.js";
+import * as ocorrencia_email from "./ocorrencia_email.js";
 import * as governanca from "./governanca.js";
 import { TOPO_DA_HIERARQUIA, type UsuarioAtual } from "./rbac.js";
 
@@ -311,7 +312,7 @@ export const MODULOS: Readonly<Record<CodigoModulo, ModuloLimpeza>> = {
     apaga: "as ocorrências registradas e o acompanhamento da equipe",
     mantem: "o cadastro de campi. A numeração dos protocolos volta a zero",
     apagar: ["ocorrencia_acompanhamento", "ocorrencia", ...NUMERACAO.ocorrencias],
-    tipos_email: [],
+    tipos_email: [ocorrencia_email.TIPO_NOVA_EQUIPE, ocorrencia_email.TIPO_CONFIRMACAO],
     desvincular: [],
     travas: [],
   },

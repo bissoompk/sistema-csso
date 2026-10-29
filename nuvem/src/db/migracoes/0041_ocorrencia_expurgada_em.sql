@@ -1,0 +1,1 @@
+ALTER TABLE "ocorrencia" ADD COLUMN "expurgada_em" timestamp with time zone;

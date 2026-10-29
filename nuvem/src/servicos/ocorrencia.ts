@@ -34,6 +34,7 @@ import {
 import { ErroHttp, RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
+import * as ocorrencia_email from "./ocorrencia_email.js";
 import { proximo_numero_ocorrencia } from "./numeracao.js";
 import type { UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
@@ -181,6 +182,8 @@ export async function registrar(tx: Executor, usuario: UsuarioAtual, d: DadosOco
     descricao: `Ocorrência ${nova!.protocolo} registrada`,
     usuario,
   });
+  // desligado por padrão; o corpo leva só o protocolo e o link
+  await ocorrencia_email.avisar_nova_ocorrencia(tx, nova!, usuario);
   return nova!;
 }
 
