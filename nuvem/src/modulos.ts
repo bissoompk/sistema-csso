@@ -632,7 +632,13 @@ export const MODULOS: readonly Modulo[] = [
         "acidente.comunicar",
         "Registrar a ocorrência: quem, quando, onde e o que aconteceu.",
       ),
-      new Item("Fila de ocorrências", "/acidentes/fila", "acidente.ver", "Todas as ocorrências, com situação e prazo."),
+      new Item("Fila de acidentes", "/acidentes/fila", "acidente.ver", "Todas as comunicações de acidente, com situação e prazo."),
+      new Item(
+        "Link de comunicação",
+        "/acidentes/link",
+        "acidente.triar",
+        "O endereço e o QR para quem não tem conta comunicar um acidente.",
+      ),
       new Item("Plano de ação", "/acidentes/acoes", ["acidente.investigar", "acidente.siass"], "As ações corretivas e preventivas e os seus prazos."),
       new Item(
         "Indicadores",
@@ -1175,6 +1181,33 @@ export interface Navegacao extends Record<string, unknown> {
   cartao_meu_espaco: CartaoMeuEspaco | null;
   /** o "Meu espaço" é o menu inteiro: a lateral da equipe não aparece */
   so_meu_espaco: boolean;
+  /**
+   * O "← Voltar" da tela: da ficha/formulário para a lista do item da lateral;
+   * da lista para o início do módulo. Nulo no início do módulo, na base e no
+   * Meu espaço, que não têm um "acima".
+   */
+  voltar: { href: string; rotulo: string } | null;
+}
+
+/**
+ * Para onde o "← Voltar" leva. Tela mais funda que o seu item da lateral (uma
+ * ficha, um formulário) volta à lista do item; a própria lista do item volta ao
+ * início do módulo (a primeira tela dele, onde ficam os cartões).
+ */
+export function destino_do_voltar(
+  caminho: string,
+  item: Item | null,
+  no_modulo: boolean,
+  itens_modulo: readonly Item[],
+): { href: string; rotulo: string } | null {
+  if (item === null) return null;
+  const limpo = caminho.length > 1 ? caminho.replace(/\/+$/, "") : caminho;
+  if (limpo !== item.caminho) return { href: item.caminho, rotulo: `Voltar a ${item.rotulo}` };
+  const inicio = itens_modulo[0];
+  if (no_modulo && inicio && inicio.caminho !== item.caminho) {
+    return { href: inicio.caminho, rotulo: `Voltar ao ${inicio.rotulo}` };
+  }
+  return null;
 }
 
 /**
@@ -1226,6 +1259,12 @@ export function navegacao(
     grupos_meu_espaco: meu_espaco.length ? meu_espaco_grupos_de(usuario, meu_espaco) : [],
     cartao_meu_espaco: meu_espaco.length ? cartao_meu_espaco(usuario) : null,
     so_meu_espaco: so_o_proprio(usuario) && meu_espaco.length > 0,
+    voltar: destino_do_voltar(
+      caminho,
+      do_meu ?? (item !== null && item.visivel_para(usuario) ? item : null),
+      no_modulo,
+      ativo ? ativo.itens_de(usuario) : [],
+    ),
   };
 }
 
@@ -1245,7 +1284,7 @@ const ICONES: Readonly<Record<string, string>> = {
   "/": "grid-1x2",
   "/kanban": "kanban",
   "/processos": "file-earmark-text",
-  "/laudos": "clipboard-data",
+  "/laudos": "clipboard2-check",
   "/adicionais": "cash-coin",
   "/relatorios": "bar-chart",
   "/importar": "cloud-upload",
@@ -1262,6 +1301,7 @@ const ICONES: Readonly<Record<string, string>> = {
   "/acidentes/comunicar": "journal-plus",
   "/acidentes/fila": "inbox",
   "/acidentes/acoes": "list-check",
+  "/acidentes/link": "link-45deg",
   "/acidentes/indicadores": "bar-chart",
   "/acidentes/minhas": "exclamation-triangle",
   "/ocorrencias": "grid-1x2",

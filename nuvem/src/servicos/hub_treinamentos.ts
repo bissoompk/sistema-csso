@@ -250,16 +250,26 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
     href: "/treinamentos/catalogo",
     icone: "journal-bookmark",
     cor: "roxo",
-    titulo: gerencia ? "Treinamentos e modelos" : "Treinamentos",
-    descricao: gerencia
-      ? "Treinamentos, validade da reciclagem e o modelo (.docx) do certificado."
-      : "Treinamentos, carga horária e validade da reciclagem.",
+    titulo: "Treinamentos",
+    descricao: "Treinamentos, carga horária e validade da reciclagem.",
     contagem: null,
   });
+  // o mesmo nome, caminho e ícone do item da lateral (`modulos.ts`): o cartão e
+  // o menu levam ao mesmo lugar
+  if (gerencia) {
+    lista.push({
+      href: "/treinamentos/modelos",
+      icone: "file-earmark-easel",
+      cor: "roxo",
+      titulo: "Modelos",
+      descricao: "Modelos de certificado: o .docx e o dicionário de tags.",
+      contagem: null,
+    });
+  }
   if (usuario.pode("assinatura.gerenciar")) {
     lista.push({
       href: "/treinamentos/assinaturas",
-      icone: "pen-fill",
+      icone: "pen",
       cor: "escuro",
       titulo: "Instrutores",
       descricao: "Quem assina o certificado: nome, título e rubrica.",
@@ -268,7 +278,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
   }
   lista.push({
     href: "/turmas",
-    icone: "collection-fill",
+    icone: "collection",
     cor: "amarelo",
     titulo: "Turmas",
     descricao: usuario.pode("turma.criar")
@@ -299,7 +309,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
   });
   lista.push({
     href: "/certificados/fila",
-    icone: "printer-fill",
+    icone: "printer",
     cor: "verde",
     titulo: "Fila de emissão",
     descricao: usuario.pode("certificado.emitir")
@@ -321,7 +331,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
   if (r.emails) {
     lista.push({
       href: "/certificados/emails",
-      icone: "envelope-paper",
+      icone: "envelope",
       cor: "azul",
       titulo: "Envios por e-mail",
       descricao: "O que foi enviado, o que está na fila e o que falhou.",
@@ -357,10 +367,28 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
   if (usuario.pode("indicador.ver")) {
     lista.push({
       href: "/treinamentos/indicadores",
-      icone: "bar-chart-fill",
+      icone: "bar-chart",
       cor: "laranja",
       titulo: "Indicadores",
       descricao: "Turmas, participantes e emissão por período e setor promotor.",
+      contagem: null,
+    });
+  }
+  if (usuario.pode("treinamento.ver")) {
+    lista.push({
+      href: "/treinamentos/setores-promotores",
+      icone: "building",
+      cor: "escuro",
+      titulo: "Setores promotores",
+      descricao: "Os setores que aparecem em “Unidade promotora” da turma.",
+      contagem: null,
+    });
+    lista.push({
+      href: "/treinamentos/locais",
+      icone: "geo-alt",
+      cor: "escuro",
+      titulo: "Locais",
+      descricao: "Onde as turmas acontecem: campus, sala e capacidade.",
       contagem: null,
     });
   }

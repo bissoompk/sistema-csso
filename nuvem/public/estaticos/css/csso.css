@@ -691,6 +691,17 @@ button.sair:hover { text-decoration: underline; }
 }
 .cabecalho .volta-origem:hover { color: var(--acento); background: var(--superficie-fraca); }
 
+/* ---------- o "← Voltar" da tela ----------
+   Um passo acima: da ficha para a lista, da lista para o inicio do modulo. E
+   link de navegacao (desenho de link, nao de botao), mas com alvo de 44px. */
+.conteudo > .voltar {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
+  margin: 0 0 4px -8px; padding: 8px 12px; border-radius: var(--raio);
+  font-size: 14px; color: var(--tinta-media); text-decoration: none;
+}
+.conteudo > .voltar:hover { color: var(--acento); background: var(--superficie-fraca); }
+.conteudo > .voltar .ico { width: 16px; height: 16px; flex: none; }
+
 /* ---------- faixas ---------- */
 .faixa-alerta {
   background: var(--alerta-fundo); color: var(--alerta-texto-longo);
@@ -2221,7 +2232,8 @@ a.kpi:hover {
 .grade-telas .tela:hover {
   border-color: var(--acento); background: var(--acento-claro); text-decoration: none;
 }
-.grade-telas .tela strong { color: var(--acento); font-size: 15px; }
+.grade-telas .tela strong { color: var(--acento); font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.grade-telas .tela strong .ico { width: 18px; height: 18px; flex: none; }
 .grade-telas .tela .discreto { font-size: 13px; line-height: 1.35; }
 /* o subtitulo do grupo no mapa, o mesmo da lateral: o mapa e o menu falam
    igual. Em tinta-fraca (9,20:1), e nao no cinza da lateral, que e escuro. */
@@ -4633,6 +4645,19 @@ background: transparent; color: var(--acento); font-size: 13px; font-weight: 600
 }
 .campo-senha button.mostrar-senha:hover { background: var(--acento-suave); color: var(--acento-forte); }
 
+/* ---------- alvos de toque ----------
+   Em tela de toque (e abaixo de 900px) o que se aperta tem 44px de altura: a
+   trilha, as abas, os filtros, os botoes compactos e a lateral. Um bloco so,
+   em vez de uma regra local para cada componente. */
+@media (pointer: coarse), (max-width: 900px) {
+  .trilha a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+  .abas a { display: inline-flex; align-items: center; min-height: 44px; }
+  .ficha-filtro { min-height: 44px; display: inline-flex; align-items: center; }
+  .botao, .botao.compacto, .acoes-pagina .botao { min-height: 44px; }
+  .lateral .menu a, .lateral .modulo { min-height: 44px; }
+  .cabecalho .volta-origem { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
 /* ---------- impressao ----------
    A previa do parecer e impressa. Sem isto a lateral escura vira uma faixa de
    252px em branco na esquerda de toda folha.
@@ -4672,7 +4697,7 @@ background: transparent; color: var(--acento); font-size: 13px; font-weight: 600
   .assinaturas-guia dd { margin: 0; border-bottom: 1px solid #000; min-height: 1.2em; }
 
   body { display: block; background: #fff; }
-  .cabecalho, .cabecalho-marca, .faixa-alerta, .rodape, .acoes-pagina { display: none; }
+  .cabecalho, .cabecalho-marca, .faixa-alerta, .rodape, .acoes-pagina, .conteudo > .voltar { display: none; }
   /* O interruptor do menu do celular e interface: em A4 (largura de celular
      para o @media) ele apareceria como um botao "Menu" no alto da folha, e o
      :has dele esconderia a linha de identidade. */
@@ -4799,3 +4824,4 @@ background: transparent; color: var(--acento); font-size: 13px; font-weight: 600
   }
   .rodape-lateral .versao { color: var(--tinta-fraca); }
 }
+

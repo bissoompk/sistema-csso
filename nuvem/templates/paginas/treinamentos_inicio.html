@@ -28,7 +28,7 @@
     {% for x in cartoes %}
     <a class="acao-hub {{ x.cor }}" href="{{ x.href }}">
       {{ ui.icone(x.icone) }}
-      <strong>{{ x.numero }}. {{ x.titulo }}</strong>
+      <strong>{{ x.titulo }}</strong>
       <span>{{ x.descricao }}</span>
       {% if x.contagem %}<span class="contagem {{ x.contagem.classe }}">{{ x.contagem.texto }}</span>{% endif %}
     </a>

@@ -512,8 +512,16 @@
   <div class="acoes-pagina">{% block acoes_cabecalho %}{% endblock %}</div>
   {% endif %}
   <main class="conteudo {% block classe_conteudo %}{% endblock %}" id="conteudo" tabindex="-1">
-    {% if mensagem %}<div class="aviso aviso-ok">{{ mensagem }}</div>{% endif %}
-    {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+    {# O "← Voltar" de toda tela com casca: a trilha diz onde se está, e este
+       botão leva um passo acima (ver `destino_do_voltar`). A tela pode mandar o
+       seu (`voltar_href` e `voltar_rotulo`), quando a origem é outra. Quem veio
+       da fila de pendências já tem o link dela no cabeçalho. #}
+    {% set _voltar_href = voltar_href or (voltar.href if voltar else '') %}
+    {% if com_casca and _voltar_href and not (sino_visivel and request.query_params.get('de') == 'pendencias') %}
+    <a class="voltar" href="{{ _voltar_href }}">{{ ico('arrow-left') }}<span>{{ voltar_rotulo or (voltar.rotulo if voltar else 'Voltar') }}</span></a>
+    {% endif %}
+    {% if mensagem %}<div class="aviso aviso-ok" role="status">{{ mensagem }}</div>{% endif %}
+    {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
     {% block conteudo %}{% endblock %}
   </main>
   {# A PORTA PARA A TELA DE BOLSO (`/celular`): só abaixo de 900px e só na tela

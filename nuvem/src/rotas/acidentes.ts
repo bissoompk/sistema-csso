@@ -310,7 +310,7 @@ rotas.get(FILA, async (c) => {
   ).toString();
   return pagina(c, "paginas/acidentes_fila.html", usuario, {
     ...CONTEXTO_LISTA,
-    titulo_tela: "Fila de ocorrências",
+    titulo_tela: "Fila de acidentes",
     subtitulo: "As ocorrências ao seu alcance, da mais recente para a mais antiga. Nenhuma linha traz nome: o protocolo identifica.",
     ocorrencias,
     filtros: f,
