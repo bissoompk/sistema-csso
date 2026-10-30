@@ -2,11 +2,15 @@
  * NUVEM: o certificado em PDF com o QR da validação, desenhado sem
  * LibreOffice (`servicos/certificado_pdf.ts`), e o PNG do QR para o .docx.
  */
+import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
+import PizZip from "pizzip";
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import { ContextoCertificado } from "../src/servicos/certificado.js";
 import { gerar_pdf } from "../src/servicos/certificado_pdf.js";
+import { carimbar_qr } from "../src/servicos/docx_baixo_nivel.js";
+import { extrair_texto } from "../src/servicos/documento.js";
 import { matriz_qr, qr_png } from "../src/servicos/qr.js";
 
 function contexto(extra: Record<string, unknown> = {}): ContextoCertificado {
@@ -88,5 +92,22 @@ describe("QR", () => {
     const dados = inflateSync(png.subarray(idat + 4, idat + 4 + png.readUInt32BE(idat - 4)));
     expect(dados.length).toBe(largura * (largura + 1));
     expect(new Set(dados.filter((_, i) => i % (largura + 1) !== 0))).toEqual(new Set([0, 255]));
+  });
+});
+
+describe("QR carimbado no .docx", () => {
+  const modelo = new Uint8Array(readFileSync("modelos-docx/certificados/certificado_padrao_v2.docx"));
+  const png = qr_png("https://cssosisa.netlify.app/validar/CSSO-2026-K7QMX-3FTB9-H");
+
+  it("entra como imagem ancorada na página, sem mudar o texto", () => {
+    const saida = carimbar_qr(modelo, png, 22);
+    const zip = new PizZip(saida);
+    const xml = zip.file("word/document.xml")!.asText();
+    expect(xml).toContain("<wp:anchor");
+    expect(xml).toContain('relativeFrom="page"');
+    expect(zip.file("word/media/csso_qr_validacao.png")).toBeTruthy();
+    expect(zip.file("word/_rels/document.xml.rels")!.asText()).toContain("csso_qr_validacao.png");
+    expect(zip.file("[Content_Types].xml")!.asText()).toMatch(/Extension="png"/i);
+    expect(extrair_texto(saida)).toBe(extrair_texto(modelo));
   });
 });

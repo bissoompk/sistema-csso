@@ -31,6 +31,7 @@ import { obterArmazenamento } from "./armazenamento.js";
 import * as envio from "./modelo_certificado_envio.js";
 import * as datas_br from "./datas_br.js";
 import * as documento from "./documento.js";
+import { carimbar_qr } from "./docx_baixo_nivel.js";
 import { qr_png } from "./qr.js";
 import * as textos from "./textos.js";
 import { numero as numero_br } from "./presenca.js";
@@ -41,6 +42,8 @@ export const DIR_MODELOS_CERTIFICADO = "certificados";
 // a rubrica sai impressa; 35 mm é a largura típica de uma assinatura digitalizada
 export const LARGURA_RUBRICA_MM = 35.0;
 export const LARGURA_QR_MM = 25.0;
+/** O QR carimbado no canto do modelo sem marcador de QR. */
+const LARGURA_QR_CANTO_MM = 22;
 
 export const SEM_VENCIMENTO = "não expira";
 // a frase inteira do rodapé quando o treinamento não vence (o v2 do padrão);
@@ -919,12 +922,27 @@ export function conferir_modelo(modelo: ArquivoDoModelo, mapa: Record<string, st
  * `destino` é a chave no armazenamento.
  */
 export async function renderizar(contexto: ContextoCertificado, destino: string | null) {
-  return documento.renderizar_modelo(contexto.modelo_arquivo, contexto.como_dicionario(), {
-    destino,
+  const info = await documento.renderizar_modelo(contexto.modelo_arquivo, contexto.como_dicionario(), {
+    destino: null,
     pasta: DIR_MODELOS_CERTIFICADO,
     origem: await _origem_enviada(contexto.modelo_chave, contexto.modelo_arquivo, contexto.modelo_sha256),
     dica: "Confira o arquivo do modelo em /treinamentos/modelos.",
   });
+  // modelo sem marcador de QR: o QR da validação vai no canto da página. Só
+  // imagem, então o hash do texto (já calculado) segue valendo.
+  const tem_qr = Object.values(contexto.mapa_tags).includes("certificado_qrcode");
+  const bytes =
+    tem_qr || !contexto.url_validacao
+      ? info.bytes
+      : carimbar_qr(info.bytes, qr_png(contexto.url_validacao), LARGURA_QR_CANTO_MM);
+  if (destino) {
+    await obterArmazenamento().gravar(
+      destino,
+      bytes,
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+  }
+  return { ...info, bytes, arquivo: destino };
 }
 
 /** O .docx enviado, lido do armazenamento (ou undefined: o embutido). */
@@ -968,5 +986,7 @@ export async function renderizar_exemplo(
     pasta: DIR_MODELOS_CERTIFICADO,
     origem: await _origem_enviada(chave_do_modelo(modelo), _nome(modelo), sha256_do_modelo(modelo)),
   });
-  return info.bytes;
+  // a pré-visualização mostra o mesmo que sai: sem marcador de QR, o QR no canto
+  if (modelo.tags.some((t) => t.campo === "certificado_qrcode")) return info.bytes;
+  return carimbar_qr(info.bytes, qr_png("https://exemplo.invalid/validar/CSSO-NR35-2026-0001-K7QMX"), LARGURA_QR_CANTO_MM);
 }

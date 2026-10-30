@@ -449,7 +449,7 @@ export function sugerir_campo(
     [tem("campus") && /campus\s*$/.test(antes), _o_que_houver(campos, "turma_campus_curto", "turma_campus")],
     [tem("campus"), "turma_campus"],
     // «link de validação», «endereço da validação»: o endereço que abre /validar
-    [tem("validacao", "validar") && tem("endereco", "link", "url", "site"), "certificado_url_validacao"],
+    [tem("validacao", "validar", "verificacao", "verificar") && tem("endereco", "link", "url", "site"), "certificado_url_validacao"],
     [tem("endereco", "local do curso", "local de realizacao"), "turma_local"],
     [tem("tecnico", "engenheir", "cargo", "titulo", "formacao profissional") && !tem("credenciamento", "registro"), _o_que_houver(campos, "instrutor_titulo", "assinante_titulo")],
     [tem("credenciamento", "registro no conselho", "registro crea", "registro profissional"), _o_que_houver(campos, "instrutor_registro")],
@@ -457,7 +457,7 @@ export function sugerir_campo(
     [tem("descricao do evento", "descricao da turma", "descricao do curso", "sobre o evento"), _o_que_houver(campos, "turma_descricao")],
     [tem("conteudo"), "treinamento_conteudo"],
     [tem("periodo"), "turma_periodo_extenso"],
-    [tem("chave", "codigo de validacao"), "certificado_chave"],
+    [tem("chave", "codigo de validacao", "codigo de verificacao", "codigo verificacao"), "certificado_chave"],
     [tem("qr"), "certificado_qrcode"],
     [tem("vencimento", "validade"), "certificado_data_vencimento"],
     [tem("frequencia"), "frequencia_percentual"],
