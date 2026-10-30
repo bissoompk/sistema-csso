@@ -12,6 +12,7 @@ import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import {
   anexo as tabela_anexo,
+  certificado as tabela_certificado,
   assinatura_instrutor as tabela_assinatura,
   instrutor_qualificacao as tabela_qualificacao,
   certificado_modelo as tabela_modelo,
@@ -796,6 +797,51 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
     },
     { permissao: "treinamento.gerenciar", rotulo: "Modelo", volta },
   );
+});
+
+/**
+ * Exclui um modelo de certificado que nunca foi usado: sem certificado emitido
+ * com ele e fora do catálogo (nenhum treinamento aponta para ele). Os marcadores
+ * saem junto. O que já gerou certificado fica, porque é o layout que reimprime a
+ * segunda via; para aposentá-lo, publique uma versão nova.
+ */
+rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/excluir`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const tx = c.get("tx");
+  const modelo_id = Number(c.req.param("modelo_id"));
+  const volta = `${MODELOS}/${modelo_id}`;
+  const [modelo] = await tx.select().from(tabela_modelo).where(eq(tabela_modelo.id, modelo_id));
+  if (!modelo) return redirecionar(c, MODELOS);
+  const [emitidos] = await tx.select({ n: count() }).from(tabela_certificado).where(eq(tabela_certificado.modelo_id, modelo_id));
+  if ((emitidos?.n ?? 0) > 0) {
+    return _erro(
+      c,
+      volta,
+      `Este modelo gerou ${emitidos!.n} certificado(s) e é o layout da segunda via deles: não se exclui. ` +
+        "Para aposentá-lo, publique uma versão nova.",
+    );
+  }
+  const [no_catalogo] = await tx
+    .select({ n: count() })
+    .from(tabela_treinamento)
+    .where(eq(tabela_treinamento.modelo_vigente_id, modelo_id));
+  if ((no_catalogo?.n ?? 0) > 0) {
+    return _erro(
+      c,
+      volta,
+      `${no_catalogo!.n} treinamento(s) do catálogo usam este modelo. Aponte-os para outro modelo e exclua depois.`,
+    );
+  }
+  await auditoria.registrar(tx, {
+    entidade: "certificado_modelo",
+    entidade_id: modelo_id,
+    tipo_evento: "CERTIFICADO_MODELO_EXCLUIDO",
+    descricao: `${CertificadoModelo.rotulo(modelo)} · ${modelo.arquivo} excluído (nunca usado).`,
+    usuario,
+  });
+  await tx.delete(tabela_modelo).where(eq(tabela_modelo.id, modelo_id));
+  return _volta(c, MODELOS, `Modelo “${modelo.nome}” excluído.`);
 });
 
 /**

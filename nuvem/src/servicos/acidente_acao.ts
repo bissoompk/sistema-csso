@@ -205,6 +205,7 @@ export async function alterar(
     depois,
     usuario,
     tipo_evento: auditoria.ACIDENTE_ACAO_ALTERADA,
+    so_o_campo: true,
   });
   // o prazo e o responsável da ação são os da pendência
   const p = await _pendencia(tx, atual.id);

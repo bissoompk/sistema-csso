@@ -43,9 +43,10 @@ describe("comunicar", () => {
     expect(b.numero).toBe(a.numero + 1);
   });
 
-  it("vários envolvidos: servidor pelo SIAPE, externo pelo nome, sem CPF; a chefia marca a origem", async () => {
+  it("vários envolvidos, todos servidores pelo SIAPE; a chefia marca a origem", async () => {
     const { usuario } = await titular(db);
     const colega = await servidorFicticio(db, "7000002");
+    const outro = await servidorFicticio(db, "7000003");
     const oc = await db.transaction((tx) =>
       comunicacao.comunicar(
         tx,
@@ -54,7 +55,7 @@ describe("comunicar", () => {
           sou_chefia: true,
           envolvidos: [
             envolvido({ siape: colega.siape }),
-            envolvido({ vinculo: "TERCEIRIZADO", nome_externo: "Externo Fictício", identificacao_externa: "CRACHA-77", empresa_contratada: "Empresa X", condicao: "ENVOLVIDO_SEM_LESAO", houve_lesao: "NAO" }),
+            envolvido({ siape: outro.siape, condicao: "ENVOLVIDO_SEM_LESAO", houve_lesao: "NAO" }),
           ],
         }),
       ),
@@ -64,12 +65,11 @@ describe("comunicar", () => {
     const acidentados = await db.select().from(e.acidentado).where(eq(e.acidentado.ocorrencia_id, oc.id)).orderBy(e.acidentado.ordem);
     expect(acidentados).toHaveLength(2);
     expect(acidentados[0]!.siape).toBe(colega.siape);
-    expect(acidentados[1]!.nome_externo).toBe("Externo Fictício");
-    expect(acidentados[1]!.servidor_id).toBeNull();
+    expect(acidentados[1]!.siape).toBe(outro.siape);
+    expect(acidentados[1]!.servidor_id).toBe(outro.id);
   });
 
   it.each([
-    ["na identificação do externo", (d: comunicacao.DadosComunicacao) => { d.envolvidos = [envolvido({ vinculo: "VISITANTE", nome_externo: "Fulano", identificacao_externa: "123.456.789-09" })]; }],
     ["no relato", (d: comunicacao.DadosComunicacao) => { d.relato.descricao = "O servidor de CPF 12345678909 caiu"; }],
     ["no nome da testemunha", (d: comunicacao.DadosComunicacao) => { d.testemunhas = [{ nome: "Beltrano 123.456.789-09", vinculo: null, contato: null }]; }],
   ])("CPF digitado %s é recusado, com a saída escrita", async (_onde, mexer) => {
@@ -127,18 +127,15 @@ describe("comunicar", () => {
     expect(por_tipo.ACIDENTE_TRIAR!.descricao).not.toContain("Titular");
   });
 
-  it("menor de idade deixa a ocorrência restrita à SST", async () => {
-    const { usuario } = await titular(db);
-    const oc = await db.transaction((tx) =>
-      comunicacao.comunicar(
-        tx,
-        usuario,
-        dados({ envolvidos: [envolvido({ vinculo: "ESTUDANTE", nome_externo: "Estudante Fictício", menor_de_idade: true })] }),
-      ),
-    );
-    expect(oc.restrita_sst).toBe(true);
-    expect(oc.servidor_id).toBeNull();
-  });
+  it.each(["TERCEIRIZADO", "ESTUDANTE", "VISITANTE"])(
+    "envolvido %s é recusado: CAT/SP é só de servidor e o caminho é Ocorrências",
+    async (vinculo) => {
+      const { usuario } = await titular(db);
+      await expect(
+        db.transaction((tx) => comunicacao.comunicar(tx, usuario, dados({ envolvidos: [envolvido({ vinculo, nome_externo: "Pessoa Fictícia" })] }))),
+      ).rejects.toThrow(/só para servidor.*Ocorrências/s);
+    },
+  );
 
   it("a trilha registra o ato sem nome de ninguém", async () => {
     const { usuario } = await titular(db);

@@ -112,33 +112,24 @@ describe.each(EXTERNOS)("conta %s", (login, vinculo, nome) => {
     expect(r.text).toContain("Meus treinamentos");
   });
 
-  it("a tela de comunicar oferece o Sou eu com o vínculo do perfil pré-marcado", async () => {
+  it("a tela de comunicar só oferece o vínculo Servidor ao acidentado (CAT/SP é do servidor)", async () => {
     const cli = await como(login);
     const r = await cli.get("/acidentes/comunicar");
     expect(r.status).toBe(200);
     expect(r.text).toContain('name="env_1_sou_eu"');
-    expect(r.text).toMatch(new RegExp(`<option value="${vinculo}"\\s+selected`));
+    const ini = r.text.indexOf('name="env_1_vinculo"');
+    const select = r.text.slice(ini, r.text.indexOf("</select>", ini));
+    expect(select).toContain('value="SERVIDOR"');
+    expect(select).not.toContain(`value="${vinculo}"`);
   });
 
-  it("comunica marcando Sou eu: o acidentado entra pelo nome da conta e o vínculo do perfil", async () => {
+  it("marcar Sou eu com vínculo externo é recusado: quem não é servidor registra em Ocorrências", async () => {
     const cli = await como(login);
     const r = await cli.post("/acidentes/comunicar", formulario(), { seguir: false });
-    expect(r.status).toBe(303);
-    const id = Number(/^\/acidentes\/(\d+)\?/.exec(r.location ?? "")?.[1]);
-    expect(id).toBeGreaterThan(0);
-    const [oc] = await db.select().from(e.acidente_ocorrencia).where(eq(e.acidente_ocorrencia.id, id));
-    expect(oc!.origem).toBe("TITULAR");
-    expect(oc!.servidor_id).toBeNull();
-    const acidentados = await db.select().from(e.acidentado).where(eq(e.acidentado.ocorrencia_id, id));
-    expect(acidentados).toHaveLength(1);
-    expect(acidentados[0]!.nome_externo).toBe(nome);
-    expect(acidentados[0]!.vinculo).toBe(vinculo);
-    expect(acidentados[0]!.servidor_id).toBeNull();
-    // a ficha abre para quem comunicou, e a ocorrência está nas comunicações dela
-    expect((await cli.get(r.location!)).status).toBe(200);
-    const minhas = await cli.get("/acidentes/minhas");
-    expect(minhas.status).toBe(200);
-    expect(minhas.text).toContain(oc!.protocolo);
+    expect(r.status).toBe(422);
+    expect(r.text).toContain("só para servidor");
+    expect(r.text).toContain("Ocorrências");
+    expect(await db.select().from(e.acidente_ocorrencia)).toHaveLength(0);
   });
 
   it("não pede EPI: /epis/requisicoes/nova dá 403", async () => {

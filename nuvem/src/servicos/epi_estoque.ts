@@ -863,6 +863,9 @@ export async function atualizar_lote(
     observacao: string;
     ativo: boolean;
     motivo_inativacao: string;
+    /** CA e validade do CA transcritos errados se corrigem (30/10/2026); `undefined` deixa como está */
+    numero_ca?: string;
+    validade_ca?: string;
   },
 ): Promise<void> {
   usuario.exigir("epi.estoque");
@@ -875,9 +878,26 @@ export async function atualizar_lote(
         "olhar o saldo parado depois, por que aquelas unidades não saem",
     ]);
   }
+  const numero_ca = d.numero_ca === undefined ? entrada.numero_ca : _ou_nada(d.numero_ca);
+  const validade_ca = d.validade_ca === undefined ? entrada.validade_ca : d.validade_ca.trim() || null;
+  if (validade_ca !== null && !/^\d{4}-\d{2}-\d{2}$/.test(validade_ca)) {
+    throw new EstoqueBloqueado(["a validade do CA é uma data válida"], "validade_ca");
+  }
+  if (numero_ca !== null && numero_ca.length > 10) {
+    throw new EstoqueBloqueado(["o número do CA tem no máximo 10 caracteres"], "numero_ca");
+  }
+  if (entrada.data_fabricacao && validade_ca !== null && entrada.data_fabricacao > validade_ca) {
+    throw new EstoqueBloqueado(["a fabricação é posterior à validade do CA: confira as duas datas"], "validade_ca");
+  }
+  const [catalogo] = await tx.select({ exige_ca: epi_item.exige_ca }).from(epi_item).where(eq(epi_item.id, entrada.epi_item_id));
+  if (catalogo?.exige_ca && numero_ca === null) {
+    throw new EstoqueBloqueado(["este equipamento exige o número do CA no lote"], "numero_ca");
+  }
   const campos = {
     nota_fiscal: _ou_nada(d.nota_fiscal),
     oficio: d.oficio === undefined ? entrada.oficio : _ou_nada(d.oficio),
+    numero_ca,
+    validade_ca,
     fornecedor_contato: _ou_nada(d.fornecedor_contato),
     observacao: limpa || null,
     ativo,

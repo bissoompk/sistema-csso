@@ -340,6 +340,14 @@ async function _resolver_envolvidos(
     const rotulo = `do envolvido ${n}`;
     const vinculo = _da_lista(e.vinculo, VINCULOS_ACIDENTADO, `o vínculo ${rotulo}`, true)!;
     const condicao = _da_lista(e.condicao, CONDICOES_ENVOLVIDO, `a condição ${rotulo}`, true)!;
+    // a CAT/SP é do servidor (decisão de 30/10/2026): quem não é servidor vai por Ocorrências
+    if (vinculo !== "SERVIDOR") {
+      throw new ComunicacaoRecusada(
+        `A análise de acidentes e a CAT/SP valem só para servidor. Para quem não é servidor (${rotulo}), ` +
+          "use o módulo Ocorrências.",
+        `o vínculo ${rotulo}`,
+      );
+    }
     let servidor: typeof tabela_servidor.$inferSelect | null = null;
     // sem conta (formulário por link), nada se consulta no cadastro: o SIAPE
     // digitado é guardado como veio e a equipe vincula depois — consultar daria

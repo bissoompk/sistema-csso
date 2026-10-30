@@ -219,6 +219,36 @@ describe("ler", () => {
   });
 });
 
+describe("completar depois da comunicação", () => {
+  const VAZIA = identificacao.IDENTIFICACAO_VAZIA;
+
+  it("comunicada sem identificação, a equipe completa; o que não foi digitado fica, e a trilha não leva valor", async () => {
+    const { usuario } = await titular(db);
+    const oc = await db.transaction((tx) => comunicacao.comunicar(tx, usuario, dados()));
+    const [env] = await db.select().from(e.acidentado).where(eq(e.acidentado.ocorrencia_id, oc.id));
+    const medico = await usuarioAtual(db, "medico_trabalho");
+    const tecnico = await usuarioAtual(db, "tecnico_seguranca");
+    await db.transaction((tx) => identificacao.completar(tx, tecnico, oc, env!.id, { ...VAZIA, cpf: CPF, rg: RG }));
+    await db.transaction((tx) => identificacao.completar(tx, tecnico, oc, env!.id, { ...VAZIA, telefone: "(38) 99999-1234" }));
+    const [linha] = await db.select().from(e.acidente_identificacao).where(eq(e.acidente_identificacao.acidentado_id, env!.id));
+    expect(linha).toMatchObject({ cpf: CPF_DIGITOS, rg: RG, telefone: "38999991234" });
+    await expect(db.transaction((tx) => identificacao.completar(tx, tecnico, oc, env!.id, VAZIA))).rejects.toThrow(/ao menos um campo/);
+    await expect(db.transaction((tx) => identificacao.completar(tx, tecnico, oc, env!.id, { ...VAZIA, cpf: "111.111.111-11" }))).rejects.toThrow(/CPF inválido/);
+    const trilha = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "ACIDENTE_IDENTIFICACAO_REGISTRADA"));
+    expect(JSON.stringify(trilha)).not.toContain(CPF_DIGITOS);
+    expect(JSON.stringify(trilha)).not.toContain(RG);
+    expect(medico).toBeDefined();
+  });
+
+  it("quem não tem acidente.identificacao_ver é negado", async () => {
+    const { usuario } = await titular(db);
+    const oc = await db.transaction((tx) => comunicacao.comunicar(tx, usuario, dados()));
+    const [env] = await db.select().from(e.acidentado).where(eq(e.acidentado.ocorrencia_id, oc.id));
+    const secretaria = await usuarioAtual(db, "secretaria_csso");
+    await expect(db.transaction((tx) => identificacao.completar(tx, secretaria, oc, env!.id, { ...VAZIA, rg: RG }))).rejects.toThrow();
+  });
+});
+
 describe("a exportação em claro", () => {
   it("leva só as chaves das duas tabelas restritas", async () => {
     await comunicar();

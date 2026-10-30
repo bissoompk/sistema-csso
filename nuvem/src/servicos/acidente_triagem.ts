@@ -27,9 +27,9 @@ import {
   acidente_ocorrencia,
   pendencia as tabela_pendencia,
 } from "../db/esquema/index.js";
-import { MOTIVOS_CANCELAMENTO, PRAZO_COMPLEMENTACAO_DIAS, PRAZO_INVESTIGACAO_DIAS, prazo_de_comunicacao } from "../dominio/acidente.js";
+import { MOTIVOS_CANCELAMENTO, MOTIVOS_REABERTURA, PRAZO_COMPLEMENTACAO_DIAS, PRAZO_INVESTIGACAO_DIAS, prazo_de_comunicacao } from "../dominio/acidente.js";
 import { somar_dias, hoje_iso } from "../dominio/datas.js";
-import { ACIDENTE_CANCELAVEL, ACIDENTE_ENCERRADO, exigir_transicao_acidente } from "../dominio/estados.js";
+import { ACIDENTE_CANCELAVEL, ACIDENTE_ENCERRADO, ACIDENTE_REABRIVEL, exigir_transicao_acidente } from "../dominio/estados.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import {
   ComunicacaoRecusada,
@@ -45,7 +45,7 @@ import {
 import * as acidente_email from "./acidente_email.js";
 import * as auditoria from "./auditoria.js";
 import * as pendencias from "./pendencias.js";
-import type { UsuarioAtual } from "./rbac.js";
+import { da_coordenacao, type UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
 
 /** Outra pessoa mudou a ocorrência depois que a tela foi aberta. */
@@ -403,6 +403,58 @@ export async function cancelar(
       ),
     );
   for (const p of abertas) await pendencias.concluir(tx, p, usuario);
+  return ocorrencia;
+}
+
+// ---------------------------------------------------------------------
+// Reabrir (coordenação)
+// ---------------------------------------------------------------------
+/**
+ * Devolve à investigação o caso com relatório emitido, encaminhado ao SIASS ou
+ * concluído. A investigação destrava; o relatório novo sai pela retificação. O
+ * motivo é da lista (a trilha não leva texto livre).
+ */
+export async function reabrir(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  ocorrencia: Ocorrencia,
+  motivo: string,
+  versao: number,
+): Promise<Ocorrencia> {
+  usuario.exigir("acidente.triar");
+  if (!da_coordenacao(usuario)) throw new RegraViolada("Reabrir a investigação é com a coordenação.");
+  const de = ocorrencia.estado;
+  if (!ACIDENTE_REABRIVEL.has(de)) {
+    throw new RegraViolada(`A ocorrência ${ocorrencia.protocolo} não está num ponto em que se reabra a investigação.`);
+  }
+  if (!(MOTIVOS_REABERTURA as readonly string[]).includes(motivo)) {
+    throw new ComunicacaoRecusada("Escolha o motivo da reabertura na lista.", "o motivo");
+  }
+  await _gravar(tx, ocorrencia, versao, {
+    estado: "EM_INVESTIGACAO",
+    concluida_em: null,
+    responsavel_id: ocorrencia.responsavel_id ?? usuario.id,
+  });
+  await auditoria.registrar(tx, {
+    entidade: ENTIDADE,
+    entidade_id: ocorrencia.id,
+    tipo_evento: auditoria.ACIDENTE_REABERTO,
+    descricao: `${ocorrencia.protocolo} reaberta: ${motivo}.`,
+    campo: "estado",
+    valor_anterior: de,
+    valor_novo: "EM_INVESTIGACAO",
+    usuario,
+  });
+  await pendencias.abrir(tx, {
+    tipo: "ACIDENTE_INVESTIGAR",
+    chave: `ACIDENTE_INVESTIGAR:${ocorrencia.id}`,
+    descricao: `Investigar ${ocorrencia.protocolo} e emitir o relatório`,
+    entidade: ENTIDADE,
+    entidade_id: ocorrencia.id,
+    responsavel_id: ocorrencia.responsavel_id,
+    prazo: somar_dias(hoje_iso(), PRAZO_INVESTIGACAO_DIAS),
+    usuario,
+  });
   return ocorrencia;
 }
 

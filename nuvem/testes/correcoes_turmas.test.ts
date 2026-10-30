@@ -310,6 +310,43 @@ describe("mensagens de validação (D41)", () => {
     ).rejects.toThrow("E-mail inválido");
   });
 
+  it("cancelar a turma cancela as inscrições vivas, com o motivo, e avisa por e-mail quem tem endereço", async () => {
+    const id = await turma();
+    await por_situacao(id, "INSCRICOES_ABERTAS");
+    await inscrever_servidor(id, "1110654", "Adelaide Nunes Prata");
+    const [insc] = await inscricoes();
+    await db
+      .insert(e.participante_email)
+      .values({ participante_id: insc!.participante_id, email: "adelaide@exemplo.org", email_normalizado: "adelaide@exemplo.org" });
+    const coordenador = await usuarioAtual(db, "coordenador_csso");
+    const t = (await servico_turma.carregar_turma(db, id))!;
+    await servico_turma.mudar_situacao(db, coordenador, t, "CANCELADA", { motivo: "sem quórum" });
+    const [i] = await inscricoes();
+    expect(i!.situacao).toBe("CANCELADA");
+    expect(i!.motivo_cancelamento).toBe("Turma cancelada: sem quórum");
+    const avisos = await db.select().from(e.email_saida).where(eq(e.email_saida.tipo, "TURMA_CANCELADA"));
+    expect(avisos).toHaveLength(1);
+    for (const a of avisos) expect(a.corpo).not.toContain("sem quórum");
+  });
+
+  it("a coordenação reativa a inscrição cancelada, com motivo e trilha; sem motivo não", async () => {
+    const id = await turma();
+    await por_situacao(id, "INSCRICOES_ABERTAS");
+    await inscrever_servidor(id, "1110654", "Adelaide Nunes Prata");
+    const coordenador = await usuarioAtual(db, "coordenador_csso");
+    const [viva] = await inscricoes();
+    const carregar = async () => (await servico_turma.carregar_inscricao(db, viva!.id))!;
+    await servico_turma.mudar_situacao_inscricao(db, coordenador, await carregar(), "CANCELADA", { motivo: "desistiu" });
+    await expect(servico_turma.reativar_inscricao(db, coordenador, await carregar(), " ")).rejects.toThrow(/exige o motivo/);
+    await servico_turma.reativar_inscricao(db, coordenador, await carregar(), "foi engano");
+    const [depois] = await inscricoes();
+    expect(depois!.situacao).toBe("CONFIRMADA");
+    expect(depois!.motivo_cancelamento).toBeNull();
+    const trilha = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "INSCRICAO_REATIVADA"));
+    expect(trilha).toHaveLength(1);
+    await expect(servico_turma.reativar_inscricao(db, coordenador, await carregar(), "de novo")).rejects.toThrow(/Só inscrição cancelada/);
+  });
+
   it("excluir turma cancelada não manda cancelar de novo", async () => {
     const id = await turma();
     const coordenador = await usuarioAtual(db, "coordenador_csso");

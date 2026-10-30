@@ -685,6 +685,19 @@
           {% endif %}
         {% endcall %}
         {% endif -%}
+        {% if i.situacao == 'CANCELADA' and usuario.pode('turma.concluir') and turma.situacao in ['INSCRICOES_ABERTAS', 'PLANEJADA'] %}
+        {% call ui.popup_gaveta('reativar-inscricao-' ~ i.id, 'reativar',
+                                'Reativar · ' ~ (i.participante.nome_exibicao if nominal else quem.nome),
+                                nota='cancelada') %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}/reativar">
+            <p class="discreto">A pessoa volta como confirmada, se ainda houver vaga. O motivo fica na trilha.</p>
+            <div class="campo">
+              <label for="motivo-reativar-{{ i.id }}">Motivo</label>
+              <input id="motivo-reativar-{{ i.id }}" name="motivo" required placeholder="desistiu por engano, vaga liberada…"></div>
+            <div class="acoes"><button type="submit" class="compacto">Reativar inscrição</button></div>
+          </form>
+        {% endcall %}
+        {% endif %}
         {#- Corrigir o cadastro do externo: nome, vínculo, organização. O de
            servidor mora no cadastro de servidores. Só para quem lê o nome —
            a camada mostra o nome atual para ser corrigido. -#}

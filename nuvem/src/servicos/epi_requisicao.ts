@@ -103,6 +103,7 @@ export const EPI_REQUISICAO_TERMO_ACEITO = "EPI_REQUISICAO_TERMO_ACEITO";
 // --- eventos do item (máquina D) ---
 export const EPI_ITEM_APROVADO = "EPI_ITEM_APROVADO";
 export const EPI_ITEM_RECUSADO = "EPI_ITEM_RECUSADO";
+export const EPI_ITEM_REABERTO = "EPI_ITEM_REABERTO";
 export const EPI_ITEM_CANCELADO = "EPI_ITEM_CANCELADO";
 export const EPI_ITEM_ENTREGUE = "EPI_ITEM_ENTREGUE";
 export const EPI_ITEM_RESERVADO = "EPI_ITEM_RESERVADO";
@@ -1249,8 +1250,8 @@ export async function indeferir(
 }
 
 /**
- * INDEFERIDA → EM_ANALISE. O único caminho de volta de um terminal. Os itens
- * NÃO voltam sozinhos.
+ * INDEFERIDA → EM_ANALISE. O único caminho de volta de um terminal. As linhas
+ * recusadas pelo indeferimento do pedido voltam a solicitado (30/10/2026).
  */
 export async function reconsiderar(
   tx: Executor,
@@ -1260,8 +1261,39 @@ export async function reconsiderar(
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
   const limpo = _motivo_obrigatorio(motivo, "motivo da reconsideração");
+  // as linhas recusadas PELO indeferimento do envelope (mesmo motivo do pedido) voltam a
+  // "solicitado", para a análise poder aprová-las; a recusa dada a uma linha à mão, por
+  // outro motivo, continua valendo
+  const reabrir = requisicao.motivo_recusa_id === null
+    ? []
+    : (await itens_de(tx, requisicao.id)).filter(
+        (i) => i.estado === "RECUSADO" && i.motivo_recusa_id === requisicao.motivo_recusa_id,
+      );
   await _gravar(tx, requisicao, { analisado_por: usuario.id, analisado_em: agora_utc() });
-  return _mover(tx, requisicao, "EM_ANALISE", usuario, { tipo_evento: EPI_REQUISICAO_RECONSIDERADA, comentario: limpo });
+  const nova = await _mover(tx, requisicao, "EM_ANALISE", usuario, { tipo_evento: EPI_REQUISICAO_RECONSIDERADA, comentario: limpo });
+  for (const linha of reabrir) {
+    const item = await _item(tx, linha.epi_item_id);
+    await _gravar_linha(tx, linha, {
+      estado: "SOLICITADO",
+      motivo_recusa_id: null,
+      complemento_recusa: null,
+      texto_recusa_snapshot: null,
+      quantidade_aprovada: null,
+      decidido_por: null,
+      decidido_em: null,
+    });
+    await auditoria.registrar(tx, {
+      entidade: ENTIDADE_ITEM,
+      entidade_id: linha.id,
+      tipo_evento: EPI_ITEM_REABERTO,
+      descricao: `${item.nome}: Recusado → Solicitado — pedido reconsiderado`,
+      campo: "estado",
+      valor_anterior: "RECUSADO",
+      valor_novo: "SOLICITADO",
+      usuario,
+    });
+  }
+  return nova;
 }
 
 /**

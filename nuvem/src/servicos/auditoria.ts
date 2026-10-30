@@ -103,6 +103,7 @@ export const ACIDENTE_ESTADO_ALTERADO = "ACIDENTE_ESTADO_ALTERADO";
 export const ACIDENTE_COMPLEMENTACAO_PEDIDA = "ACIDENTE_COMPLEMENTACAO_PEDIDA";
 export const ACIDENTE_COMPLEMENTACAO_RESPONDIDA = "ACIDENTE_COMPLEMENTACAO_RESPONDIDA";
 export const ACIDENTE_CANCELADO = "ACIDENTE_CANCELADO";
+export const ACIDENTE_REABERTO = "ACIDENTE_REABERTO";
 export const ACIDENTE_CAT_SP_RETIFICADA = "ACIDENTE_CAT_SP_RETIFICADA";
 export const ACIDENTE_PRAZO_PRORROGADO = "ACIDENTE_PRAZO_PRORROGADO";
 export const ACIDENTE_SAUDE_REGISTRADA = "ACIDENTE_SAUDE_REGISTRADA";
@@ -283,6 +284,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // desistiu dela?" são fatos diferentes de "a secretaria inscreveu".
   INSCRICAO_PEDIDA_PELO_TITULAR: "Inscrição pedida pelo próprio servidor",
   INSCRICAO_DESISTIDA: "Desistência do próprio inscrito",
+  INSCRICAO_REATIVADA: "Inscrição cancelada reativada pela equipe",
   // NUVEM: a inscrição pública por link (sem e-mail; a equipe confere o pedido)
   TURMA_VITRINE_PUBLICADA: "Turma publicada na vitrine de cursos",
   TURMA_VITRINE_DESPUBLICADA: "Turma retirada da vitrine de cursos",
@@ -299,6 +301,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   OCORRENCIA_ACOMPANHADA: "Acompanhamento acrescentado à ocorrência de urgência/emergência",
   OCORRENCIA_CONCLUIDA: "Ocorrência de urgência/emergência concluída",
   OCORRENCIA_CANCELADA: "Ocorrência de urgência/emergência cancelada",
+  OCORRENCIA_REABERTA: "Ocorrência de urgência/emergência reaberta pela coordenação",
   OCORRENCIA_VINCULADA_ACIDENTE: "Ocorrência de urgência/emergência vinculada a uma CAT/SP",
   AVISO_INTERESSE_CONSULTADO: "Pedido de acesso do titular: cadastros de aviso da vitrine consultados pela equipe",
   AVISO_INTERESSE_APAGADO: "Pedido do titular: cadastros de aviso da vitrine apagados pela equipe",
@@ -339,6 +342,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   CERTIFICADO_DIVERGENTE: "Divergência no certificado",
   CERTIFICADO_MODELO_CRIADO: "Modelo de certificado cadastrado",
   CERTIFICADO_MODELO_VERSIONADO: "Modelo de certificado versionado",
+  CERTIFICADO_MODELO_EXCLUIDO: "Modelo de certificado excluído (nunca usado)",
   TREINAMENTO_MODELO_REPONTADO: "Treinamento passou à versão nova do modelo",
   ASSINATURA_INSTRUTOR_CRIADA: "Assinatura de instrutor cadastrada",
   ASSINATURA_INSTRUTOR_CPF_ALTERADO: "CPF do instrutor (certificado) alterado",
@@ -382,6 +386,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   // --- EPI: item da requisição (onde a decisão acontece) ---
   EPI_ITEM_APROVADO: "Item do pedido aprovado",
   EPI_ITEM_RECUSADO: "Item do pedido recusado",
+  EPI_ITEM_REABERTO: "Item do pedido reaberto pela reconsideração",
   EPI_ITEM_CANCELADO: "Item do pedido cancelado",
   EPI_ITEM_RESERVADO: "Item do pedido reservado",
   EPI_ITEM_RESERVA_SOLTA: "Reserva do item solta",
@@ -415,6 +420,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   ACIDENTE_COMPLEMENTACAO_PEDIDA: "Complementação da comunicação pedida",
   ACIDENTE_COMPLEMENTACAO_RESPONDIDA: "Complementação da comunicação respondida",
   ACIDENTE_CANCELADO: "Ocorrência de acidente cancelada",
+  ACIDENTE_REABERTO: "Investigação do acidente reaberta pela coordenação",
   ACIDENTE_CAT_SP_RETIFICADA: "CAT/SP retificada (versão nova)",
   ACIDENTE_PRAZO_PRORROGADO: "Prazo de comunicação do acidente prorrogado",
   ACIDENTE_SAUDE_REGISTRADA: "Saúde do acidentado registrada",
@@ -775,6 +781,8 @@ export async function registrar_diferencas(
     usuario: UsuarioAtual | null;
     processo_id?: number | null;
     tipo_evento?: string;
+    /** RN-19: texto livre (investigação, ações) não entra na trilha; ela diz só qual campo mudou. */
+    so_o_campo?: boolean;
   },
 ): Promise<HistoricoEvento[]> {
   const eventos: HistoricoEvento[] = [];
@@ -788,10 +796,10 @@ export async function registrar_diferencas(
         entidade: d.entidade,
         entidade_id: d.entidade_id,
         tipo_evento: d.tipo_evento ?? "CAMPO_ALTERADO",
-        descricao: `${campo}: ${repr_python(a)} -> ${repr_python(dp)}`,
+        descricao: d.so_o_campo ? `${campo} alterado` : `${campo}: ${repr_python(a)} -> ${repr_python(dp)}`,
         campo,
-        valor_anterior: a,
-        valor_novo: dp,
+        valor_anterior: d.so_o_campo ? null : a,
+        valor_novo: d.so_o_campo ? null : dp,
         usuario: d.usuario,
         processo_id: d.processo_id ?? null,
       }),

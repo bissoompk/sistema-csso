@@ -726,6 +726,7 @@ export async function mudar_situacao(
     comentario: limpo,
     usuario,
   });
+  if (destino === "CANCELADA") await _cancelar_inscricoes_da_turma(tx, usuario, turma, limpo!);
   if (destino === "INSCRICOES_ABERTAS" && turma.divulgar_na_vitrine) {
     // NUVEM: quem pediu aviso na vitrine (e confirmou) é avisado, uma vez por turma
     const aviso = await import("./aviso_interesse.js");
@@ -743,6 +744,42 @@ export async function mudar_situacao(
     await avaliacao.convidar_turma(tx, usuario, turma);
   }
   return turma;
+}
+
+/**
+ * Turma cancelada leva as inscrições vivas junto (pedido do link, inscrita,
+ * confirmada), com o motivo da turma, e quem deixou e-mail é avisado. Antes elas
+ * ficavam "Confirmada" numa turma que não existe mais.
+ */
+async function _cancelar_inscricoes_da_turma(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada,
+  motivo: string,
+): Promise<void> {
+  const vivas = (await inscricoes_da_turma(tx, turma)).filter((i) =>
+    ["AGUARDANDO_EMAIL", "INSCRITA", "CONFIRMADA"].includes(i.situacao),
+  );
+  for (const inscricao of vivas) {
+    const origem = inscricao.situacao;
+    const porque = `Turma cancelada: ${motivo}`;
+    await gravar_inscricao(tx, inscricao, { situacao: "CANCELADA", motivo_cancelamento: porque });
+    await auditoria.registrar(tx, {
+      entidade: "inscricao",
+      entidade_id: inscricao.id,
+      tipo_evento: auditoria.ESTADO_ALTERADO,
+      descricao:
+        `${turma.codigo} · ${inscricao.participante.identificador_publico}: ` +
+        `${ROTULO_INSCRICAO[origem] ?? origem} -> ${ROTULO_INSCRICAO.CANCELADA ?? "CANCELADA"} (turma cancelada)`,
+      campo: "situacao",
+      valor_anterior: origem,
+      valor_novo: "CANCELADA",
+      comentario: porque,
+      usuario,
+    });
+    await fechar_pendencia_de_confirmacao(tx, inscricao, usuario);
+    await avisos_inscricao.avisar_turma_cancelada(tx, inscricao, usuario.id);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -1175,6 +1212,51 @@ export async function mudar_situacao_inscricao(
   if (aceitando_pedido || recusando_pedido) {
     await avisos_inscricao.avisar(tx, inscricao, aceitando_pedido, usuario.id);
   }
+  return inscricao;
+}
+
+/**
+ * Quem responde pela turma desfaz um cancelamento de inscrição (desistência ou
+ * engano): a pessoa volta CONFIRMADA, com motivo e trilha, se a turma ainda
+ * recebe inscrição e há vaga. A desistência pelo próprio inscrito continua sem
+ * volta pela tela dele.
+ */
+export async function reativar_inscricao(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  inscricao: InscricaoCarregada,
+  motivo: string | null | undefined,
+): Promise<InscricaoCarregada> {
+  usuario.exigir("turma.concluir");
+  if (inscricao.situacao !== "CANCELADA") {
+    throw new RegraDaTurma("Só inscrição cancelada se reativa.");
+  }
+  const limpo = (motivo ?? "").trim();
+  if (!limpo) throw new RegraDaTurma("Reativar a inscrição exige o motivo: fica na trilha.");
+  if (!T.aceita_inscricao(inscricao.turma)) {
+    throw new RegraDaTurma(
+      `${inscricao.turma.codigo} está ${ROTULO_TURMA_TELA[inscricao.turma.situacao]!.toLowerCase()} e não recebe inscrição.`,
+    );
+  }
+  await _conferir_vaga(tx, inscricao.turma);
+  const agora = agora_utc();
+  await gravar_inscricao(tx, inscricao, {
+    situacao: "CONFIRMADA",
+    motivo_cancelamento: null,
+    confirmada_em: agora,
+    confirmada_por: usuario.id,
+  });
+  await auditoria.registrar(tx, {
+    entidade: "inscricao",
+    entidade_id: inscricao.id,
+    tipo_evento: "INSCRICAO_REATIVADA",
+    descricao: `${inscricao.turma.codigo} · ${inscricao.participante.identificador_publico}: reativada — ${limpo}`,
+    campo: "situacao",
+    valor_anterior: "CANCELADA",
+    valor_novo: "CONFIRMADA",
+    comentario: limpo,
+    usuario,
+  });
   return inscricao;
 }
 

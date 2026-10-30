@@ -32,7 +32,7 @@ import {
 import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { linha_csv } from "../servicos/csv.js";
 import { data_local, hoje, local_formatado } from "../servicos/datas_br.js";
-import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
+import { ESCOPO_PROPRIO, da_coordenacao, type UsuarioAtual } from "../servicos/rbac.js";
 import * as servico from "../servicos/ocorrencia.js";
 import { comMensagem, marcarDownload, pagina, redirecionar } from "../web.js";
 
@@ -301,6 +301,7 @@ rotas.get("/ocorrencias/:id{[0-9]+}", async (c) => {
     equipe,
     pode_tratar: equipe && usuario.pode("ocorrencia.tratar") && !SITUACOES_ENCERRADAS.has(o.situacao),
     encerrada: SITUACOES_ENCERRADAS.has(o.situacao),
+    pode_reabrir: equipe && usuario.pode("ocorrencia.tratar") && da_coordenacao(usuario) && SITUACOES_ENCERRADAS.has(o.situacao),
     campus: campi[o.campus_id] ?? "",
     tipos: tipos_da_lista(o.tipos),
     acompanhamentos: equipe ? await servico.acompanhamentos(tx, o.id) : [],
@@ -349,6 +350,10 @@ _acao("concluir", async (tx, u, o, f) => {
 _acao("cancelar", async (tx, u, o, f) => {
   await servico.cancelar(tx, u, o, f.texto("motivo"));
   return `${o.protocolo} cancelada.`;
+});
+_acao("reabrir", async (tx, u, o, f) => {
+  await servico.reabrir(tx, u, o, f.texto("motivo"));
+  return `${o.protocolo} reaberta: a ocorrência está em acompanhamento.`;
 });
 _acao("vincular-acidente", async (tx, u, o, f) => {
   await servico.vincular_acidente(tx, u, o, f.texto("protocolo_cat"));

@@ -37,6 +37,13 @@ describe("o MAPA", () => {
       .from(e.historico_evento)
       .where(and(eq(e.historico_evento.tipo_evento, "ACIDENTE_INVESTIGACAO_SALVA"), eq(e.historico_evento.entidade_id, oc.id)));
     expect(evs.map((x) => x.campo).sort()).toEqual(["ambiente_fator", "trabalho_habitual"]);
+    // RN-19: a trilha diz qual campo mudou, nunca o texto escrito
+    for (const x of evs) {
+      expect(x.descricao).toBe(`${x.campo} alterado`);
+      expect(x.valor_anterior).toBeNull();
+      expect(x.valor_novo).toBeNull();
+      expect(x.descricao).not.toContain("prateleiras");
+    }
   });
 
   it("a tela velha é recusada (409 pela tela) e nada é gravado", async () => {

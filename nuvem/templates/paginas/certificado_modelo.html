@@ -26,6 +26,7 @@
    cabeçalho ABRE a camada que explica isso, e não dispara nada sozinho. #}
 {{ ui.botao_cadastro('publicar-versao', PUBLICAR, 'secundario') }}
 {% endif %}
+{{ ui.botao_cadastro('excluir-modelo', 'Excluir o modelo', 'perigo') }}
 {% endblock %}
 
 {% block conteudo %}
@@ -406,6 +407,14 @@
     </select></div>
   <div class="campo"><label for="observacao">Observação</label>
     <input id="observacao" name="observacao" value="{{ modelo.observacao or '' }}"></div>
+{% endcall %}
+
+{% call ui.popup_cadastro('excluir-modelo', 'Excluir o modelo',
+                          '/treinamentos/modelos/' ~ modelo.id ~ '/excluir', 'Excluir o modelo',
+                          classe_botao='perigo') %}
+  <p>Exclui “{{ modelo.nome }}” (v{{ modelo.versao }}) e os marcadores dele. Só vale para modelo que
+    nunca gerou certificado e que nenhum treinamento do catálogo usa; senão o sistema recusa e diz
+    o motivo. Não dá para desfazer.</p>
 {% endcall %}
 
 {% call ui.popup_cadastro('publicar-versao', PUBLICAR,

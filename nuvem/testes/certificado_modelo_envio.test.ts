@@ -303,6 +303,26 @@ describe("envio pela tela", () => {
     expect(await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.nome, "Falso"))).toEqual([]);
   });
 
+  it("exclui o modelo nunca usado (com os marcadores) e recusa o que está no catálogo", async () => {
+    await entrar(cliente, "coordenador_csso");
+    await enviar("Sobrando");
+    await enviar("Em uso");
+    const sobrando = await modelo_por_nome("Sobrando");
+    const em_uso = await modelo_por_nome("Em uso");
+    const [trein] = await db
+      .insert(e.treinamento)
+      .values({ codigo: "NR-99", nome: "Treinamento fictício", carga_horaria_horas: "4", modelo_vigente_id: em_uso.id })
+      .returning();
+    expect(trein).toBeDefined();
+    const recusa = await cliente.post(`/treinamentos/modelos/${em_uso.id}/excluir`, {}, { seguir: false });
+    expect(decodeURIComponent(recusa.headers.get("location") ?? "")).toContain("usam este modelo");
+    expect(await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.id, em_uso.id))).toHaveLength(1);
+    const ok = await cliente.post(`/treinamentos/modelos/${sobrando.id}/excluir`, {}, { seguir: false });
+    expect(decodeURIComponent(ok.headers.get("location") ?? "")).toContain("excluído");
+    expect(await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.id, sobrando.id))).toHaveLength(0);
+    expect(await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, sobrando.id))).toHaveLength(0);
+  });
+
   it("aplicar sugestões, completar com 'deixar em branco' e conferir o exemplo", async () => {
     await entrar(cliente, "coordenador_csso");
     await enviar();

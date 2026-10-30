@@ -167,6 +167,27 @@ describe("o trâmite da equipe", () => {
     expect(decodeURIComponent(tarde.headers.get("location") ?? "")).toContain("já está encerrada");
   });
 
+  it("só a coordenação reabre ocorrência encerrada, com motivo; o técnico não vê o botão", async () => {
+    await registrar("terceirizado");
+    const id = await ultima();
+    const base = `/ocorrencias/${id}`;
+    const tecnico = await entrar(novoCliente(), "tecnico_seguranca");
+    await tecnico.post(`${base}/concluir`, { conclusao: "Atendida." }, { seguir: false });
+    expect((await tecnico.get(base, { seguir: false })).text).not.toContain(`action="${base}/reabrir"`);
+    const negada = await tecnico.post(`${base}/reabrir`, { motivo: "faltou algo" }, { seguir: false });
+    expect(decodeURIComponent(negada.headers.get("location") ?? "")).toContain("com a coordenação");
+    const coord = await entrar(novoCliente(), "coordenador_csso");
+    expect((await coord.get(base, { seguir: false })).text).toContain(`action="${base}/reabrir"`);
+    const sem = await coord.post(`${base}/reabrir`, { motivo: " " }, { seguir: false });
+    expect(decodeURIComponent(sem.headers.get("location") ?? "")).toContain("motivo");
+    await coord.post(`${base}/reabrir`, { motivo: "Faltou o retorno à pessoa." }, { seguir: false });
+    const [o] = await db.select().from(e.ocorrencia).where(eq(e.ocorrencia.id, id));
+    expect(o!.situacao).toBe("EM_ACOMPANHAMENTO");
+    expect(o!.concluida_em).toBeNull();
+    const [ev] = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "OCORRENCIA_REABERTA"));
+    expect(ev!.descricao).not.toContain("retorno");
+  });
+
   it("quem registrou não trata a própria ocorrência", async () => {
     const { cli, r } = await registrar("discente");
     const res = await cli.post(`/ocorrencias/${await ultima()}/assumir`, {}, { seguir: false });

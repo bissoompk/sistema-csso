@@ -45,6 +45,31 @@ describe("nº do ofício no lote do estoque", () => {
       expect(lido!.oficio).toBe("124/2026-PROACE");
     });
   });
+
+  it("corrige o CA e a validade do lote, com a diferença na trilha; sem os campos o CA fica", async () => {
+    await desfeito(async (tx) => {
+      const cen = await cenario(tx);
+      const u = await usuario(tx, { login: "estoquista", permissoes: [...ANALISTA, "epi.estoque"] });
+      const entrada = await epi_estoque.registrar_entrada(tx, u, {
+        item: cen.item,
+        quantidade_recebida: 4,
+        tamanho: "M",
+        lote: "L-CA-1",
+        numero_ca: "41234",
+        validade_ca: cen.item.validade_ca,
+      });
+      const base = { entrada, nota_fiscal: "", fornecedor_contato: "", observacao: "", ativo: true, motivo_inativacao: "" };
+      await epi_estoque.atualizar_lote(tx, u, base);
+      expect(entrada.numero_ca).toBe("41234");
+      await epi_estoque.atualizar_lote(tx, u, { ...base, numero_ca: "55555", validade_ca: "2030-06-30" });
+      const [lido] = await tx.select().from(e.epi_entrada_estoque).where(eq(e.epi_entrada_estoque.id, entrada.id));
+      expect(lido!.numero_ca).toBe("55555");
+      expect(lido!.validade_ca).toBe("2030-06-30");
+      const trilha = await tx.select().from(e.historico_evento).where(eq(e.historico_evento.campo, "numero_ca"));
+      expect(trilha.length).toBeGreaterThan(0);
+      await expect(epi_estoque.atualizar_lote(tx, u, { ...base, numero_ca: "" })).rejects.toThrow(/exige o número do CA/);
+    });
+  });
 });
 
 describe("planilha nominal de pedidos de EPI", () => {

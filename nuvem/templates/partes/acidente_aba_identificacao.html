@@ -39,6 +39,42 @@
         <span class="discreto">Traz o CPF por inteiro e o detalhe de saúde; cada emissão fica registrada.</span></p>
       {% endif %}
 
+      {% if usuario.pode('acidente.identificacao_ver') and ocorrencia.estado != 'CANCELADA' %}
+      <details class="recolhido">
+        <summary>Completar a identificação</summary>
+        <form method="post" action="/acidentes/{{ ocorrencia.id }}/identificacao">
+          <input type="hidden" name="acidentado" value="{{ a.id }}">
+          <p class="discreto">Preencha só o que falta: o que já está gravado e ficar em branco aqui continua como está.
+            A trilha registra os grupos de campo informados, nunca o valor.</p>
+          <div class="linha-campos">
+            <div class="campo"><label for="idsx-{{ a.id }}">Sexo</label>
+              <select id="idsx-{{ a.id }}" name="sexo"><option value="">—</option>
+                {% for k in ROTULO_SEXO %}<option value="{{ k }}">{{ ROTULO_SEXO[k] }}</option>{% endfor %}</select></div>
+            <div class="campo"><label for="idnas-{{ a.id }}">Data de nascimento</label>
+              <input id="idnas-{{ a.id }}" name="data_nascimento" placeholder="dd/mm/aaaa" autocomplete="off"></div>
+            <div class="campo"><label for="idcpf-{{ a.id }}">CPF</label>
+              <input id="idcpf-{{ a.id }}" name="cpf" inputmode="numeric" autocomplete="off"></div>
+            <div class="campo"><label for="idrg-{{ a.id }}">RG</label>
+              <input id="idrg-{{ a.id }}" name="rg" maxlength="20" autocomplete="off"></div>
+          </div>
+          <div class="linha-campos">
+            <div class="campo"><label for="idcep-{{ a.id }}">CEP</label><input id="idcep-{{ a.id }}" name="cep" autocomplete="off"></div>
+            <div class="campo"><label for="idlog-{{ a.id }}">Logradouro</label><input id="idlog-{{ a.id }}" name="logradouro" maxlength="160" autocomplete="off"></div>
+            <div class="campo"><label for="idnum-{{ a.id }}">Número</label><input id="idnum-{{ a.id }}" name="numero" maxlength="20" autocomplete="off"></div>
+            <div class="campo"><label for="idcmp-{{ a.id }}">Complemento</label><input id="idcmp-{{ a.id }}" name="complemento" maxlength="80" autocomplete="off"></div>
+          </div>
+          <div class="linha-campos">
+            <div class="campo"><label for="idbai-{{ a.id }}">Bairro</label><input id="idbai-{{ a.id }}" name="bairro" maxlength="80" autocomplete="off"></div>
+            <div class="campo"><label for="idcid-{{ a.id }}">Cidade</label><input id="idcid-{{ a.id }}" name="cidade" maxlength="80" autocomplete="off"></div>
+            <div class="campo"><label for="iduf-{{ a.id }}">UF</label><input id="iduf-{{ a.id }}" name="uf" maxlength="2" autocomplete="off"></div>
+            <div class="campo"><label for="idtel-{{ a.id }}">Telefone</label><input id="idtel-{{ a.id }}" name="telefone" inputmode="tel" autocomplete="off"></div>
+            <div class="campo"><label for="idema-{{ a.id }}">E-mail</label><input id="idema-{{ a.id }}" name="email" type="email" maxlength="160" autocomplete="off"></div>
+          </div>
+          <div class="acoes"><button type="submit" class="secundario">Salvar a identificação</button></div>
+        </form>
+      </details>
+      {% endif %}
+
       {% if ident_aberta and ident_aberta.acidentado_id == a.id and ident_lida %}
       {% set l = ident_lida %}
       <hr>

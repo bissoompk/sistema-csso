@@ -1432,6 +1432,14 @@ export interface DadosUsuarioAtual {
  * leia `usuario.ve_dado_nominal` como no Jinja. `permissoes` é um `Set`
  * congelado (o `frozenset` do Python).
  */
+/**
+ * Quem responde pela coordenação (ou acima): reabrir um caso encerrado é decisão
+ * dela, não da equipe que o encerrou. Vale por perfil, sem permissão nova.
+ */
+export function da_coordenacao(usuario: { perfis: readonly string[] }): boolean {
+  return usuario.perfis.includes("coordenador_csso") || usuario.perfis.includes("superintendente");
+}
+
 export class UsuarioAtual {
   readonly id: number;
   readonly login: string;

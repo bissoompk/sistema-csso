@@ -401,6 +401,8 @@
       {# `|estado` e nao `rotulos[d]`: aquele mapa e o ASCII da trilha
          de auditoria, e quem escreve na tela e o filtro. #}
       {% for d in proximos %}<option value="{{ d }}"{{ ui.sel(md.get('destino'), d) }}>{{ d|estado }}</option>{% endfor %}
+      {% if etapa_anterior %}
+      <option value="__etapa_anterior__"{{ ui.sel(md.get('destino'), '__etapa_anterior__') }}>Voltar uma etapa (para “{{ etapa_anterior|estado }}”, com motivo no comentário)</option>{% endif %}
       {% if processo.estado_tecnico not in ['ARQUIVADO', 'SOBRESTADO'] %}
       <option value="SOBRESTADO"{{ ui.sel(md.get('destino'), 'SOBRESTADO') }}>Sobrestar</option>{% endif %}
     </select>

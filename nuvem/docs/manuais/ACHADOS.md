@@ -6,6 +6,8 @@ Siglas dos módulos: PRO (Processos SEI), EPI, TUR (Turmas), CER (Certificados),
 
 ## O que muda o uso do sistema já
 
+> **Regra nova (30/10/2026, no lote em preparo): Acidentes e CAT/SP só para acidentado servidor.** A comunicação, com login ou pelo link público, recusa envolvido terceirizado, estudante, visitante e outros, e manda registrar em Ocorrências. Os manuais de Acidentes ainda descrevem envolvidos externos e precisam ser ajustados.
+
 Pontos que alteram o jeito de trabalhar hoje. Orientação provisória até a correção.
 
 1. **Bloqueador: médico não abre o Detalhe da saúde (nível 2) sem natureza da lesão (ACI).** Dá erro 500. Contorno: gravar a natureza antes (por quem puder) ou pedir correção à TI.
@@ -34,13 +36,28 @@ Pontos que alteram o jeito de trabalhar hoje. Orientação provisória até a co
 24. **Gestão de contas depende do superintendente e do administrador do sistema (TRA).** Se ambos faltarem, ninguém concede perfil. Coordenador recebe 403 em /usuarios.
 25. **CISSP e PGR não existem (PGR).** Atas, mandato e inventário de riscos seguem por planilha, SEI e papel.
 
+## Corrigido no lote de 30/10/2026
+
+Decisões do usuário, já no código (cada uma com teste). Os manuais ainda descrevem o comportamento antigo e serão ajustados.
+
+- **Turma cancelada** cancela as inscrições vivas, com o motivo da turma, e avisa por e-mail quem tem endereço (o motivo não vai no e-mail).
+- **Inscrição cancelada** pode ser reativada por quem responde pela turma (`turma.concluir`), com motivo e trilha; volta confirmada se houver vaga.
+- **Ocorrências** concluídas ou canceladas são reabertas pela coordenação, com motivo (entra no acompanhamento).
+- **Acidentes**: a coordenação reabre a investigação de caso com relatório emitido ou encaminhado ao SIASS, com motivo da lista. **Concluída continua final** (o banco recusa sair dela): o caso que volta é ocorrência nova.
+- **Acidentes**: identificação pessoal do Anexo III se completa na aba Identificação (`acidente.identificacao_ver`); só o digitado entra.
+- **Processos**: arquivar e indeferir cabem depois da triagem; "Voltar uma etapa" (com motivo) no meio do trabalho técnico; anular parecer fecha as pendências dele e leva o adicional ligado a "Em reavaliação", com pendência de decisão.
+- **EPI**: reconsiderar pedido indeferido reabre as linhas recusadas com o motivo do indeferimento; CA e validade do CA do lote se corrigem, com a diferença na trilha (renovar CA fica para depois).
+- **Certificados**: exclusão de modelo nunca usado (sem certificado emitido e fora do catálogo).
+
 ## Bloqueador
 
 - **[ACI] Detalhe da saúde (nível 2) dá erro 500 com natureza da lesão vazia.**
+  - **Situação: CORRIGIDO em 30/10/2026: o template trata o nulo; teste em acidente_saude.test.ts.**
   - Onde: aba Saúde, Finalidade "Investigar o acidente", O que abrir "Detalhe (nível 2)"; templates/partes/acidente_aba_saude.html, filtro `|string` sobre null.
   - O que acontece: médico recebe 500 nas CAT-0006 a 0009. É o único caminho para confirmar a saúde declarada e fechar a tarefa. POST direto funciona, a tela não.
   - Sugestão: tratar o null antes do filtro, por exemplo `(sd.natureza_lesao_id or l.natureza_lesao_id or '')|string`. Revisar outros `|string`, `|momento` e `momento_campo` sobre null. Cobrir o nível 2 sem natureza em teste. Datas de afastamento invertidas também dão 500, deveriam dar 422.
 - **[OCO] Campo "Nome da pessoa atendida" provavelmente fica oculto sempre.** (Por leitura de código, não visto em navegador.)
+  - **Situação: CORRIGIDO em 30/10/2026: caixa ou rádio sem marca vale como vazio em `data-mostra-quando` (csso.js). Falta conferir em navegador.**
   - Onde: templates/paginas/ocorrencias_registrar.html linha 82 (`data-mostra-quando="eh_a_pessoa="`) e csso.js (`valoresDe`, `avaliarMostraQuando`).
   - O que acontece: caixa desmarcada não gera valor, marcada gera "1"; a regra espera vazio. O servidor exige o nome, e a recusa 422 reexibe o formulário com o campo ainda oculto.
   - Sugestão: confirmar em navegador; tratar caixa desmarcada como "" ou trocar por rádio "Eu / Outra pessoa"; teste de interface.
@@ -64,11 +81,13 @@ Pontos que alteram o jeito de trabalhar hoje. Orientação provisória até a co
 ### Certificados
 - **Servidor inscrito sem e-mail não recebe certificado e não há onde corrigir.** Onde: /certificados/{id}, inscrição copia servidor.email só no ato. Acontece: "O participante não tem e-mail cadastrado."; turma concluída recusa nova inscrição; a rota de correção só vale para externo. Sugestão: usar servidor.email como destinatário ou campo editável na linha da inscrição.
 - **Aviso de reciclagem é tratado como envio do certificado.** Onde: src/servicos/envio_certificado.ts. Acontece: "0 certificado(s) na fila; 1 já enviado(s) antes" sem nunca ter enviado. Sugestão: filtrar por tipo = CERTIFICADO e rotular o tipo na ficha.
+  - **Situação: CORRIGIDO em 30/10/2026: o envio e a ficha olham só e-mails do tipo CERTIFICADO (sem teste próprio ainda).**
 - **Reciclagem usa o último emitido, não o curso mais recente.** Onde: src/servicos/reciclagem.ts, /certificados/vencimentos. Acontece: mostra "Vencido" para quem tem certificado válido. Sugestão: ordenar por data base de vencimento; aplicar também em Meus certificados.
 - **Busca e nome dos arquivos usam o número interno, não o impresso.** Onde: src/rotas/certificados.ts, emissao_certificado.ts:346. Acontece: impresso SISA-NR32-2026-0001 baixa como Certificado_0003-2026_...; busca "1/2026" acha outro. Sugestão: usar numero_impresso na busca e no nome do arquivo.
 
 ### Análise de Acidentes
 - **Trilha grava o texto da investigação e das ações.** Onde: acidente_investigacao.ts, acidente_acao.ts; aba Histórico. Acontece: valores como "objetivo: None -> Entender o respingo; vitima com queimadura" ficam imutáveis. Sugestão: gravar só nome do campo e versão; limpar eventos já gravados.
+  - **Situação: CORRIGIDO em 30/10/2026 para os registros novos: a trilha diz só `<campo> alterado`. Eventos antigos seguem na cadeia de hash e não foram limpos.**
 - **Identificação pessoal do Anexo III não pode ser informada nem completada depois.** Onde: aba Identificação (somente leitura). Acontece: CPF, nascimento, endereço etc. só entram no Comunicar; o PDF sai em branco; link público nem tem o bloco. Sugestão: POST e formulário na aba, restrito a acidente.identificacao_ver, com trilha de identificadores.
 - **Indicador "Por unidade do local" sempre "Sem unidade informada".** Onde: acidente_indicadores.ts; local_unidade_uorg_id nunca gravado. Sugestão: derivar da lotação ou oferecer o campo; esconder o recorte enquanto isso.
 - **Depois do relatório emitido não se corrige a investigação, e caso concluído não reabre.** Onde: acidente_investigacao.ts, acidente_relatorio.ts. Acontece: "Retificar o relatório" só regenera; Relatório emitido → Em investigação não existe; reabertura é nova ocorrência com novo prazo de 10 dias. Sugestão: "Reabrir a investigação" e "Reabrir ocorrência" com motivo e trilha.
