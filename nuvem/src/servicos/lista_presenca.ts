@@ -27,6 +27,34 @@ import { inscricoes_da_turma, type TurmaCarregada } from "./turma.js";
 // A folha não congela nada (ver acima): não há lista antiga a reimprimir no
 // v1. Ele continua em `app/templates/` porque é o do sistema da rede
 export const MODELO = "lista_presenca_v2.docx";
+// v3: A4 em retrato, com horário, uma coluna de assinatura por dia (até 5),
+// linhas em branco, observações e rodapé com a página. Há um arquivo por
+// quantidade de colunas (`lista_presenca_v3_d1` … `_d5`), gerado por
+// `ferramentas/gerar-lista-presenca-v3.mjs`; a turma de mais dias usa o d5 com
+// o cabeçalho das datas em branco, para preencher à mão.
+export const MAX_DIAS = 5;
+export const LINHAS_EM_BRANCO = 5;
+
+export function modelo_da_turma(dias: number): string {
+  return `lista_presenca_v3_d${Math.min(Math.max(dias, 1), MAX_DIAS)}.docx`;
+}
+
+/** Os dias da turma, de `data_inicio` a `data_fim`, como dd/mm. */
+export function dias_da_turma(turma: { data_inicio: string; data_fim: string }): string[] {
+  const dias: string[] = [];
+  const fim = new Date(`${turma.data_fim}T12:00:00Z`);
+  for (let d = new Date(`${turma.data_inicio}T12:00:00Z`); d <= fim && dias.length <= 400; d = new Date(d.getTime() + 86400000)) {
+    dias.push(datas_br.numerica(d.toISOString().slice(0, 10)).slice(0, 5));
+  }
+  return dias;
+}
+
+function _horario(turma: TurmaCarregada): string {
+  const corta = (h: string | null | undefined) => (h ? h.slice(0, 5) : null);
+  const ini = corta(turma.hora_inicio);
+  const fim = corta(turma.hora_fim);
+  return ini && fim ? `${ini} às ${fim}` : "—";
+}
 export const SUBPASTA = "listas_presenca";
 export const LISTA_GERADA = "LISTA_PRESENCA_GERADA";
 export const TIPO_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -63,7 +91,21 @@ export async function montar_contexto(tx: Executor, turma: TurmaCarregada): Prom
   const instrutores = turma.instrutores.map(
     (v) => AssinaturaInstrutor.nome_exibicao(v.instrutor) + (v.instrutor.titulo ? ` — ${v.instrutor.titulo}` : ""),
   );
+  const dias = dias_da_turma(turma);
+  const cabecalhos = Object.fromEntries(
+    Array.from({ length: MAX_DIAS }, (_, i) => [`d${i + 1}`, dias.length <= MAX_DIAS ? (dias[i] ?? "") : "Data: ____"]),
+  );
+  const extras = Array.from({ length: LINHAS_EM_BRANCO }, (_, n) => ({
+    ordem: participantes.length + n + 1,
+    nome: "",
+    identificador: "",
+    vinculo: "",
+  }));
   return {
+    ...cabecalhos,
+    horario: _horario(turma),
+    extras,
+    dias_total: dias.length,
     setor_sigla: setor ? setor.sigla_composta : "",
     setor_nome: setor ? setor.nome_extenso : "",
     cidade: setor ? setor.cidade : "",
@@ -91,7 +133,7 @@ export async function montar_contexto(tx: Executor, turma: TurmaCarregada): Prom
 export async function gerar(tx: Executor, usuario: UsuarioAtual, turma: TurmaCarregada) {
   usuario.exigir("turma.avaliar");
   const contexto = await montar_contexto(tx, turma);
-  const resultado = await documento.renderizar_modelo(MODELO, contexto, { destino: caminho_saida(turma) });
+  const resultado = await documento.renderizar_modelo(modelo_da_turma(dias_da_turma(turma).length), contexto, { destino: caminho_saida(turma) });
   await auditoria.registrar(tx, {
     entidade: "turma",
     entidade_id: turma.id,

@@ -615,3 +615,83 @@ export function carimbar_tarja(bytes: Uint8Array, texto: string): Uint8Array {
   zip.file("word/document.xml", xml);
   return zip.generate({ type: "uint8array", compression: "DEFLATE" });
 }
+
+// =====================================================================
+// 5. QR da validação
+// =====================================================================
+const MARGEM_QR_MM = 10;
+
+/**
+ * Estampa o QR da validação, ancorado na página (canto inferior direito, sem
+ * quebra de texto), num .docx já renderizado. Serve ao modelo que não tem
+ * marcador de QR: o papel sai com o QR sem o Word do setor precisar mudar e o
+ * layout não se mexe. Só imagem: o texto do documento (e o hash) não muda.
+ */
+export function carimbar_qr(bytes: Uint8Array, png: Uint8Array, largura_mm = 22): Uint8Array {
+  const zip = new PizZip(bytes);
+  const parte = zip.file("word/document.xml");
+  if (!parte) return bytes;
+  let xml = parte.asText();
+  const abre = /<w:p(?: [^>]*)?>/.exec(xml);
+  if (!abre || abre[0].endsWith("/>")) return bytes;
+  const fecha = xml.indexOf("</w:p>", abre.index);
+  if (fecha < 0) return bytes;
+
+  const pagina = /<w:pgSz\b[^>]*>/.exec(xml)?.[0] ?? "";
+  const largura_pg = Number(/w:w="(\d+)"/.exec(pagina)?.[1] ?? 11906);
+  const altura_pg = Number(/w:h="(\d+)"/.exec(pagina)?.[1] ?? 16838);
+  const img = preparar_imagem(png, largura_mm);
+  const x = Math.max(0, largura_pg * 635 - img.largura_emu - MARGEM_QR_MM * EMU_POR_MM);
+  const y = Math.max(0, altura_pg * 635 - img.altura_emu - MARGEM_QR_MM * EMU_POR_MM);
+
+  const relsNome = "word/_rels/document.xml.rels";
+  let rels =
+    zip.file(relsNome)?.asText() ??
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+  let tipos = zip.file("[Content_Types].xml")!.asText();
+  let n = 1;
+  while (rels.includes(`Id="rIdCssoQr${n}"`)) n++;
+  const rId = `rIdCssoQr${n}`;
+  const midia = `media/csso_qr_validacao.${img.extensao}`;
+  zip.file(`word/${midia}`, img.bytes);
+  rels = rels.replace(
+    "</Relationships>",
+    `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${midia}"/></Relationships>`,
+  );
+  if (!new RegExp(`<Default Extension="${img.extensao}"`, "i").test(tipos)) {
+    tipos = tipos.replace("</Types>", `<Default Extension="${img.extensao}" ContentType="image/${img.extensao}"/></Types>`);
+  }
+  const docPr = Math.max(0, ...[...xml.matchAll(/<wp:docPr [^>]*id="(\d+)"/g)].map((m) => Number(m[1]))) + 1;
+  const desenho =
+    `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251659264" ` +
+    `behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">` +
+    `<wp:simplePos x="0" y="0"/>` +
+    `<wp:positionH relativeFrom="page"><wp:posOffset>${x}</wp:posOffset></wp:positionH>` +
+    `<wp:positionV relativeFrom="page"><wp:posOffset>${y}</wp:posOffset></wp:positionV>` +
+    `<wp:extent cx="${img.largura_emu}" cy="${img.altura_emu}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>` +
+    `<wp:docPr id="${docPr}" name="QR da validação" descr="QR code para conferir a autenticidade do certificado"/>` +
+    `<wp:cNvGraphicFramePr/>` +
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:nvPicPr><pic:cNvPr id="0" name="qr_validacao.${img.extensao}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${img.largura_emu}" cy="${img.altura_emu}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>` +
+    `</wp:anchor></w:drawing></w:r>`;
+  xml = xml.slice(0, fecha) + desenho + xml.slice(fecha);
+
+  const raiz = /<w:document\b[^>]*>/.exec(xml)!;
+  let abertura = raiz[0];
+  if (!/xmlns:wp=/.test(abertura)) {
+    abertura = abertura.replace(/>$/, ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">');
+  }
+  if (!/xmlns:r=/.test(abertura)) {
+    abertura = abertura.replace(/>$/, ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">');
+  }
+  xml = xml.replace(raiz[0], abertura);
+  zip.file("word/document.xml", xml);
+  zip.file(relsNome, rels);
+  zip.file("[Content_Types].xml", tipos);
+  return zip.generate({ type: "uint8array", compression: "DEFLATE" });
+}
