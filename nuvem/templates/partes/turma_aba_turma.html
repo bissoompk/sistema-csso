@@ -1,0 +1,298 @@
+{# A aba "turma" da ficha da turma (`turma_ficha.html`), movida para cá sem mudar uma linha:
+   o arquivo tinha 1.900 linhas. As variáveis vêm do contexto e das definições da ficha. #}
+{% import "partes/macros.html" as ui with context %}
+{% import "partes/local_turma.html" as lt %}
+<div class="lado-a-lado igual">
+
+  <section class="cartao liso">
+    <div class="cabecalho-cartao">
+      <h2>Dados da turma</h2>
+      {% if turma.encerrada and pode_editar and not corrigivel %}
+      <span class="pilula" title="turma encerrada não se edita">somente leitura</span>{% endif %}
+      {% if editavel %}
+      {{ ui.botao_cadastro('editar-turma', EDITAR_TURMA, 'secundario compacto a-direita') }}
+      {% elif corrigivel %}
+      {{ ui.botao_cadastro('corrigir-turma', CORRIGIR_TURMA, 'secundario compacto a-direita') }}
+      {% endif %}
+    </div>
+    <dl class="tabela-dados">
+      <dt>Treinamento</dt><dd>{{ turma.treinamento.nome }}</dd>
+      {# o dono: a conta que abriu a turma (nominal, como quem opera na trilha) #}
+      <dt>Responsável (dono)</dt>
+      <dd>{{ direito.nome_do_dono }}{% if direito.eh_dono %} <span class="pilula ok">você</span>{% endif %}</dd>
+      {% if turma.descricao %}<dt>Descrição do evento</dt><dd><span class="texto-literal">{{ turma.descricao }}</span></dd>{% endif %}
+      <dt>Período</dt>
+      <dd>{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
+      {% if turma.tipo_capacitacao %}<dt>Tipo de capacitação</dt>
+      <dd>{{ {'INICIAL': 'Inicial', 'PERIODICO': 'Periódico', 'EVENTUAL': 'Eventual'}[turma.tipo_capacitacao] }}</dd>{% endif %}
+      <dt>Horário</dt>
+      <dd>{{ turma|horario_turma or 'dia inteiro (sem hora definida)' }}</dd>
+      <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
+      <dt>Local</dt><dd>{{ turma.local or '—' }}
+        {#- NUVEM (24/10/2026): do local cadastrado, o que leva até a porta #}
+        {%- if turma.local_cadastrado %}
+        {%- if turma.local_cadastrado.endereco %}<span class="quebra discreto">{{ turma.local_cadastrado.endereco }}</span>{% endif %}
+        {%- if turma.local_cadastrado.capacidade %}<span class="quebra discreto">comporta {{ turma.local_cadastrado.capacidade }} pessoas</span>{% endif %}
+        {%- endif %}</dd>
+      <dt>Campus</dt><dd>{{ turma.campus.nome if turma.campus else '—' }}</dd>
+      <dt>Unidade promotora</dt>
+      <dd>{{ turma.unidade_promotora.nome_extenso if turma.unidade_promotora else '—' }}</dd>
+      <dt>Vagas</dt><dd>{{ turma.vagas or 'sem limite' }}</dd>
+      <dt>Público</dt><dd>{{ publico }}</dd>
+      <dt>Inscrições até</dt>
+      <dd>{{ turma.inscricao_aberta_ate|data or '—' }}</dd>
+      <dt>Nota mínima</dt>
+      <dd>{{ turma.nota_minima_aprovacao|num if turma.nota_minima_aprovacao is not none else 'não avalia por nota' }}</dd>
+      <dt>Frequência mínima</dt>
+      <dd class="mono">{{ turma.frequencia_minima_percentual|num }}%</dd>
+      <dt>Data base do vencimento</dt><dd>{{ turma.data_base|data }}</dd>
+      <dt>Observações</dt><dd>{{ turma.observacoes or '—' }}</dd>
+    </dl>
+    {# NUVEM (24/10/2026): vagas acima da capacidade e choque de sala — não
+       impedem nada; quem planeja decide (`local_treinamento.avisos_da_turma`) #}
+    {% if gerencia and avisos_local and avisos_local|length %}
+    <div class="corpo">
+      <div class="aviso aviso-alerta" role="status">
+        <strong>{{ 'Aviso' if avisos_local|length == 1 else 'Avisos' }} do local</strong>
+        <ul class="sem-margem">{% for a in avisos_local %}<li>{{ a }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    {% endif %}
+    {% if turma.encerrada and pode_editar %}
+    {# FICA: quem tem `turma.criar` e não acha o botão de editar precisa saber que
+       a ausência dele é regra, e não permissão que falta. #}
+    <div class="corpo">
+      <p class="discreto sem-margem">
+        Turma {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }} não se edita — o que ela
+        diz já foi comunicado a quem participou.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="pilha">
+    <section class="cartao" id="situacao">
+      <div class="titulo-cartao"><h2>Situação da turma</h2></div>
+
+      {# O caminho inteiro, com o passo atual sólido: a máquina de estados é a
+         regra que decide o que a tela oferece abaixo, e vê-la é o que explica
+         por que "concluir" ainda não aparece. #}
+      <div class="fileira trilho-estado">
+        {% set ordem = ['PLANEJADA', 'INSCRICOES_ABERTAS', 'EM_ANDAMENTO', 'CONCLUIDA'] %}
+        {% set posicao = ordem.indexOf(turma.situacao) if turma.situacao in ordem else -1 %}
+        {% for passo in ordem %}
+        {% if passo == turma.situacao %}{{ ui.pilula_turma(passo) }}
+        {% else %}
+        <span class="passo {{ 'passado' if posicao > loop.index0 else 'futuro' }}">
+          {{- ui.ROTULO_TURMA_TELA[passo] -}}</span>
+        {% endif %}
+        {% if not loop.last %}<span class="seta" aria-hidden="true">→</span>{% endif %}
+        {% endfor %}
+        {% if turma.situacao == 'CANCELADA' %}
+        <span class="separador" aria-hidden="true">·</span>
+        {{ ui.pilula_turma('CANCELADA') }}
+        {% endif %}
+      </div>
+
+      {% if minha_inscricao %}
+      {# Para quem participa, e não opera a turma: a própria inscrição, e só. #}
+      <p class="sem-margem">Minha inscrição: <strong>{{ minha_situacao }}</strong>
+        · <a href="/turmas/minhas">Meus treinamentos</a></p>
+      {% elif pode_pedir_aqui %}
+      <form method="post" action="/turmas/{{ turma.id }}/inscrever-me" class="acoes">
+        <button type="submit">Inscrever-se</button>
+        <span class="dica">Havendo vaga, a inscrição já sai confirmada.</span>
+      </form>
+      {% endif %}
+
+      {% if gerencia %}
+      {% if ja_realizada %}
+      {# O curso que já aconteceu, num clique: presença de todos pela carga e o
+         fecho com a apuração. Com nota mínima, só a presença — nota não se inventa. #}
+      <form method="post" action="/turmas/{{ turma.id }}/realizada" class="acoes">
+        <button type="submit">Registrar turma já realizada</button>
+        <span class="dica">
+          {%- if turma.nota_minima_aprovacao is not none %} Marca todos presentes pela carga
+          inteira; a turma exige nota mínima, então as notas se lançam depois, na aba
+          <em>Presença e notas</em>.
+          {%- else %} Marca todos presentes pela carga inteira e conclui a turma (apura
+          aprovados). Quem faltou: lance a presença na aba <em>Presença e notas</em>.
+          {%- endif %}</span>
+      </form>
+      {% endif %}
+
+      {% if conclui_a_partir %}
+      {# Concluir libera o certificado, e o certificado atesta curso que terminou:
+         o botão só aparece no último dia. A frase diz por que ele não está aqui. #}
+      <p class="discreto">“{{ CONCLUIR_TURMA }}” aparece a partir de {{ conclui_a_partir|data }},
+        o último dia da turma.</p>
+      {% endif %}
+
+      {% if destinos %}
+      <div class="acoes">
+        {% for codigo, rotulo in destinos %}
+        {% if pode_aqui(permissao_por_destino[codigo]) %}
+        {% if codigo == 'CONCLUIDA' %}
+        {# Concluir é irreversível — `CONCLUIDA` não tem destino de saída. Saía com
+           `secundario`, a classe menos enfática do sistema, ao lado de "Cancelar
+           turma", que é igualmente final e sai em `perigo` COM motivo. Aqui o
+           botão de destaque ABRE a confirmação, e não executa: ela diz o que a
+           apuração vai gravar em cada inscrito e que não há volta. #}
+        {{ ui.botao_cadastro('concluir-turma', CONCLUIR_TURMA ~ '…') }}
+        {% elif codigo == 'CANCELADA' %}
+        {# Cancelar exige motivo escrito: o botão abre a camada com o campo. #}
+        {{ ui.botao_cadastro('cancelar-turma', CANCELAR_TURMA, 'perigo-discreto') }}
+        {% if impedimentos_exclusao != none %}
+        {{ ui.botao_cadastro('excluir-turma', EXCLUIR_TURMA, 'perigo-discreto') }}
+        {% endif %}
+        {% else %}
+        {# Os passos sem campo nenhum continuam sendo um clique só, na tela: um
+           popup aqui cobraria dois cliques para não mostrar informação alguma. #}
+        <form method="post" action="/turmas/{{ turma.id }}/situacao">
+          <input type="hidden" name="destino" value="{{ codigo }}">
+          <button type="submit" class="secundario"
+                  title="passa a turma para {{ (ui.ROTULO_TURMA_TELA[codigo] or rotulo)|lower }}">
+            {{- (ui.ACAO_TURMA[codigo] or 'Passar para ' ~ rotulo|lower) -}}</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+        {# Os passos da máquina se explicam uma vez; o que NÃO sai da tela é o que
+           "concluir" faz, e ele está escrito dentro da própria confirmação, que é
+           o instante da decisão. #}
+        {% call ui.info('passos-da-turma', 'o que cada passo da turma faz') %}
+          <p>Fechar as inscrições sem cancelar a turma é <strong>voltar para
+            planejada</strong>: a turma continua de pé, só deixa de receber gente.
+            Cancelar exige motivo escrito e é situação final — adiar para outra data
+            pede abrir outra turma, com código próprio.</p>
+          <p><strong>Concluir é um ato só</strong>: encerra a turma e apura cada
+            inscrito — calcula a frequência a partir dos lançamentos e atribui
+            aprovado ou reprovado. Depois disso, corrigir presença ou nota continua
+            possível na aba <em>Presença e notas</em>, como retificação com motivo.</p>
+        {% endcall %}
+      </div>
+      {% else %}
+      <div class="vazio">
+        <strong>{{ ui.ROTULO_TURMA_TELA[turma.situacao] }} é situação final</strong>
+        <span>Não há para onde ir. Erro em turma encerrada se corrige por anulação e
+          reemissão do certificado, nunca por volta de estado.</span>
+      </div>
+      {% endif %}
+      {% endif %}
+    </section>
+
+    <section class="cartao liso">
+      <div class="cabecalho-cartao">
+        <h2>Instrutores</h2>
+        <span class="contador">{{ turma.instrutores|length }}</span>
+      </div>
+      {% if turma.instrutores %}
+      <table class="empilhavel">
+        <thead>
+          <tr><th scope="col">Nome</th><th scope="col">Título</th><th scope="col">Certificado</th>
+              {% if instrutor_editavel %}<th scope="col"></th>{% endif %}</tr>
+        </thead>
+        {% for vinculo in turma.instrutores %}
+        <tr>
+          <td class="nome">{{ vinculo.instrutor.nome_exibicao }}
+            {# a qualificação que a norma cobra (NR-10/33/35): aviso, não bloqueio #}
+            {% if avisos_qualificacao[vinculo.assinatura_instrutor_id] %}
+            <span class="quebra aviso-qualificacao"><span class="pilula alerta">sem qualificação</span>
+              <span class="discreto">{{ avisos_qualificacao[vinculo.assinatura_instrutor_id] }}</span>
+              {%- if usuario.pode('assinatura.gerenciar') %}
+              <a href="/treinamentos/assinaturas/{{ vinculo.assinatura_instrutor_id }}/qualificacoes">ficha do instrutor</a>{% endif %}</span>
+            {% endif %}</td>
+          <td class="curta" data-coluna="Título">{{ vinculo.instrutor.titulo or '—' }}</td>
+          <td class="curta" data-coluna="Certificado">{% if vinculo.assina_certificado %}<span class="pilula ok">assina</span>
+              {% else %}<span class="pilula sem-ponto">não assina</span>{% endif %}</td>
+          {% if instrutor_editavel %}
+          <td class="acao-linha">
+            <form method="post" action="/turmas/{{ turma.id }}/instrutores">
+              <input type="hidden" name="assinatura_instrutor_id"
+                     value="{{ vinculo.assinatura_instrutor_id }}">
+              <input type="hidden" name="remover" value="1">
+              <button type="submit" class="secundario marcador">tirar</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="corpo">
+        <div class="vazio">
+          <strong>Nenhum instrutor vinculado</strong>
+          <span>Sem alguém marcado para assinar, a emissão do certificado é recusada:
+            o papel precisa de quem responde por ele.</span>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if instrutor_editavel %}
+      <div class="corpo">
+        <div class="acoes">
+          {{ ui.botao_cadastro('vincular-instrutor', VINCULAR_INSTRUTOR, 'secundario') }}
+        </div>
+      </div>
+      {% endif %}
+    </section>
+
+    {% if gerencia %}
+    {# NUVEM (23/10/2026): quem o dono (ou quem está acima dele) designou para
+       operar a turma, e em quê. Ajudante não designa ninguém. #}
+    <section class="cartao liso" id="ajudantes">
+      <div class="cabecalho-cartao">
+        <h2>Ajudantes</h2>
+        <span class="contador">{{ ajudantes|length }}</span>
+        {% call ui.info('ajudantes-da-turma', 'quem pode alterar esta turma') %}
+          <p>Só o dono da turma (quem a abriu) altera. Acima dele, a coordenação do
+            setor promotor — quando o dono é de perfil abaixo — e a superintendência.
+            As outras contas da equipe só consultam.</p>
+          <p>O dono pode designar <strong>ajudantes</strong>, cada um num ou mais papéis:
+            {% for papel in papeis_ajudante %}<strong>{{ papel.rotulo|lower }}</strong> ({{ papel.dica }}){{ '; ' if not loop.last else '.' }}{% endfor %}
+            Editar a turma, mudar a situação, instrutores, link e designar ajudantes
+            continuam só do dono.</p>
+        {% endcall %}
+      </div>
+      {% if ajudantes|length %}
+      <table class="empilhavel">
+        <thead>
+          <tr><th scope="col">Conta</th><th scope="col">Papéis</th>
+              {% if direito.designa %}<th scope="col"><span class="oculto">Ações</span></th>{% endif %}</tr>
+        </thead>
+        {% for a in ajudantes %}
+        <tr>
+          <td class="nome">{{ a.nome }} <span class="quebra discreto mono">{{ a.login }}</span></td>
+          <td data-coluna="Papéis">{% for r in a.rotulos %}<span class="pilula sem-ponto">{{ r }}</span> {% endfor %}</td>
+          {% if direito.designa %}
+          <td class="acao-linha">
+            <form method="post" action="/turmas/{{ turma.id }}/ajudantes/{{ a.usuario_id }}/retirar">
+              <button type="submit" class="secundario marcador">retirar</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="corpo">
+        <p class="discreto sem-margem">Nenhum ajudante: só {{ direito.nome_do_dono if direito.dono else 'a coordenação do setor' }}
+          {{- '' if direito.dono else ' e a superintendência' }} alteram esta turma.</p>
+      </div>
+      {% endif %}
+      {% if direito.designa and pode_aqui('turma.criar') %}
+      <div class="corpo">
+        <div class="acoes">
+          {% if candidatos_ajudante|length %}
+          {{ ui.botao_cadastro('designar-ajudante', DESIGNAR_AJUDANTE, 'secundario') }}
+          {% else %}
+          <p class="discreto sem-margem">Nenhuma outra conta ativa está vinculada ao setor promotor
+            desta turma — vincule a pessoa ao setor em Usuários antes de designá-la.</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+</div>
