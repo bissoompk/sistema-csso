@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAMPOS_CERTIFICADO, SUGESTOES_NR35, sugerir_campo, sugerir_campo_da_turma } from "../src/servicos/certificado.js";
+import { CAMPOS_CERTIFICADO, SUGESTOES_NR35, campo_de_marca, sugerir_campo, sugerir_campo_da_turma } from "../src/servicos/certificado.js";
 
 const marcador = (m: string) => ({ marcador: m, rotulo: m, antes: "", depois: "", ocorrencia: 1 });
 
@@ -24,5 +24,20 @@ describe("sugestões do modelo de NR-35", () => {
     }
     expect(sugerir_campo_da_turma("H_TEO_A")).toContain("teoria");
     expect(sugerir_campo_da_turma("CARGO")).toBeNull();
+  });
+
+  it("as três caixas de modalidade imprimem X só no tipo da turma e não bloqueiam", () => {
+    expect(sugerir_campo(marcador("MOD_INICIAL"))).toBe("turma_marca_inicial");
+    expect(sugerir_campo(marcador("MOD_PERIODICO"))).toBe("turma_marca_periodico");
+    expect(sugerir_campo(marcador("MOD_EVENTUAL"))).toBe("turma_marca_eventual");
+    const saida = (tipo: string | null) =>
+      ["turma_marca_inicial", "turma_marca_periodico", "turma_marca_eventual"].map((k) =>
+        CAMPOS_CERTIFICADO[k]!.obter({ turma_tipo_capacitacao: tipo } as never),
+      );
+    expect(saida("PERIODICO")).toEqual(["", "X", ""]);
+    expect(saida("INICIAL")).toEqual(["X", "", ""]);
+    expect(saida(null)).toEqual(["", "", ""]);
+    expect(campo_de_marca("turma_marca_eventual")).toBe(true);
+    expect(campo_de_marca("turma_local")).toBe(false);
   });
 });

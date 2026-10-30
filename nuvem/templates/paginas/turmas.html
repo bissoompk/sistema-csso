@@ -245,6 +245,14 @@
              value="{{ d['carga_horaria_horas'] or '' }}"
              aria-describedby="dica-carga">
       <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
+    <div class="campo"><label for="nova-tipo">Tipo de capacitação</label>
+      <select id="nova-tipo" name="tipo_capacitacao" aria-describedby="dica-nova-tipo">
+        <option value=""{{ ' selected' if not d['tipo_capacitacao'] }}>— não informar —</option>
+        <option value="INICIAL"{{ ' selected' if d['tipo_capacitacao'] == 'INICIAL' }}>Inicial</option>
+        <option value="PERIODICO"{{ ' selected' if d['tipo_capacitacao'] == 'PERIODICO' }}>Periódico</option>
+        <option value="EVENTUAL"{{ ' selected' if d['tipo_capacitacao'] == 'EVENTUAL' }}>Eventual</option>
+      </select>
+      <span class="dica" id="dica-nova-tipo">Marca o “X” de inicial, periódico ou eventual no certificado da NR-35.</span></div>
   </div>
   {# a hora é opcional: sem ela a turma é de dia inteiro (e a agenda .ics
      também). O mesmo horário vale para todos os dias da turma. #}

@@ -212,7 +212,7 @@
           <input class="detalhe-tag" form="f-mapa" name="detalhe__{{ l.marcador }}" value="{{ l.detalhe }}"
                  placeholder="texto fixo, ou nome do campo" aria-label="Texto fixo ou nome do campo de {{ l.rotulo }}"></td>
         <td><label class="discreto"><input form="f-mapa" type="checkbox" name="obrigatorio__{{ l.marcador }}" value="1"
-            {% if (l.tag and l.tag.obrigatorio) or (not l.tag and l.escolhido != 'em_branco') %}checked{% endif %}> bloqueia</label></td>
+            {% if (l.tag and l.tag.obrigatorio) or (not l.tag and l.escolhido != 'em_branco' and not (l.escolhido or '').startswith('turma_marca_')) %}checked{% endif %}> bloqueia</label></td>
         {% else %}
         <td>{% if l.tag and l.tipo != 'SISTEMA' %}<span class="campo-fixo">{{ rotulo_tipo_tag[l.tipo] }}: {{ l.detalhe }}</span>
             {%- elif l.tag %}<span class="campo-fixo">{{ campos[l.campo].rotulo if l.campo in campos else l.campo }}</span>
@@ -220,7 +220,7 @@
         <td>{% if l.tag %}{{ ui.pilula_sim_nao(l.tag.obrigatorio, 'bloqueia', 'não bloqueia') }}{% endif %}</td>
         {% endif %}
         <td>{% if l.tag %}<span class="pilula ok">ligado</span>
-            {% elif l.sugestao %}<span class="pilula alerta" title="sugerido: {{ l.sugestao_rotulo }}">sugerido, falta salvar</span>
+            {% elif l.sugestao or l.sugestao_turma %}<span class="pilula alerta" title="sugerido: {{ l.sugestao_rotulo }}">sugerido, falta salvar</span>
             {% else %}<span class="pilula erro">falta escolher</span>{% endif %}</td>
       </tr>
       {% endfor %}

@@ -1042,7 +1042,9 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
         ...(sugestao ? {} : { tipo: "TURMA", rotulo: sugestao_turma }),
         ordem: ++ordem,
         // no modelo enviado, todo dado escolhido bloqueia se vier vazio (menos "deixar em branco")
-        obrigatorio: certificado.OBRIGATORIOS.includes(marcador) || (!!modelo.arquivo_enviado && campo !== "em_branco"),
+        obrigatorio:
+          certificado.OBRIGATORIOS.includes(marcador) ||
+          (!!modelo.arquivo_enviado && campo !== "em_branco" && !certificado.campo_de_marca(campo)),
       })
       .returning();
     await auditoria.registrar(tx, {

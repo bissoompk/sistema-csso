@@ -474,3 +474,13 @@ export function situacao_do_cartao(
   if (dias <= JANELA_A_VENCER_DIAS) return { tipo: 'a_vencer', dias };
   return { tipo: 'valido', dias };
 }
+
+
+/** NUVEM (30/10/2026): a natureza da capacitação da turma (o "X" do certificado da NR-35). */
+export const TIPOS_CAPACITACAO = ["INICIAL", "PERIODICO", "EVENTUAL"] as const;
+export type TipoCapacitacao = (typeof TIPOS_CAPACITACAO)[number];
+export const ROTULO_TIPO_CAPACITACAO: Readonly<Record<TipoCapacitacao, string>> = {
+  INICIAL: "Inicial",
+  PERIODICO: "Periódico",
+  EVENTUAL: "Eventual",
+};

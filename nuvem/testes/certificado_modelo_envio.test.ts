@@ -453,6 +453,24 @@ describe("envio pela tela", () => {
     expect(por.CARGO).toBeUndefined();
   });
 
+  it("a situação de uma horas-por-tema sugerida diz sugerido, não falta escolher", async () => {
+    await entrar(cliente, "coordenador_csso");
+    await enviar();
+    const v1 = await modelo_por_nome("Brigadista");
+    await cliente.post(
+      `/treinamentos/modelos/${v1.id}/versao`,
+      { docx: arquivo(docx_minimo(par(run("{{H_TEO_A}}"))), "nr35_horas.docx") },
+      { seguir: false },
+    );
+    const [v2] = await db
+      .select()
+      .from(e.certificado_modelo)
+      .where(and(eq(e.certificado_modelo.versao, 2), eq(e.certificado_modelo.nome, "Brigadista")));
+    const ficha = await cliente.get(`/treinamentos/modelos/${v2!.id}`);
+    expect(ficha.text).toContain("sugerido, falta salvar");
+    expect(ficha.text).not.toContain("falta escolher");
+  });
+
   it("campo fora do vocabulário é recusado sem salvar meio mapa", async () => {
     await entrar(cliente, "coordenador_csso");
     await enviar();

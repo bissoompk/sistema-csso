@@ -212,6 +212,7 @@ export interface DadosContextoCertificado {
   carga_horaria: string;
   turma_local: string;
   turma_descricao?: string;
+  turma_tipo_capacitacao?: string | null;
   turma_unidade_promotora: string;
   turma_campus: string;
   turma_campus_cidade?: string;
@@ -258,7 +259,7 @@ const CAMPOS_CONGELADOS = [
   "participante_organizacao", "participante_siape", "participante_lotacao",
   "participante_cpf", "treinamento_nome", "treinamento_norma", "treinamento_conteudo",
   "validade_meses", "turma_codigo", "turma_data_inicio", "turma_data_fim",
-  "carga_horaria", "turma_local", "turma_descricao", "turma_unidade_promotora", "turma_campus",
+  "carga_horaria", "turma_local", "turma_descricao", "turma_tipo_capacitacao", "turma_unidade_promotora", "turma_campus",
   "turma_campus_cidade", "data_base_vencimento", "nota_final", "frequencia_percentual",
   "nota_minima", "frequencia_minima", "instrutores", "numero", "ano", "numero_impresso",
   "data_emissao", "chave_validacao", "data_vencimento", "url_validacao",
@@ -293,6 +294,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   turma_local!: string;
   // NUVEM: entrou depois; o congelado antigo não tem, e lê vazio
   turma_descricao = "";
+  turma_tipo_capacitacao: string | null = null;
   turma_unidade_promotora!: string;
   turma_campus!: string;
   turma_campus_cidade = "";
@@ -333,6 +335,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
     // certificado emitido antes destes campos não os tem no congelado
     this.turma_campus_cidade = d.turma_campus_cidade ?? "";
     this.turma_descricao = d.turma_descricao ?? "";
+    this.turma_tipo_capacitacao = d.turma_tipo_capacitacao ?? null;
     this.redacao = Number(d.redacao ?? 1) || 1;
     this.campos_livres = Object.fromEntries(
       Object.entries(d.campos_livres ?? {}).map(([k, v]) => [k, { ...v }]),
@@ -522,6 +525,10 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
     "Formação de brigadistas do Campus JK, com prática de combate a incêndio",
     (c) => c.turma_descricao,
   ),
+  // o "X" da capacitação inicial/periódica/eventual (NR-35); vazio quando a turma é outra
+  turma_marca_inicial: _c("Turma", "“X” se a capacitação é inicial", "X", (c) => (c.turma_tipo_capacitacao === "INICIAL" ? "X" : "")),
+  turma_marca_periodico: _c("Turma", "“X” se a capacitação é periódica", "", (c) => (c.turma_tipo_capacitacao === "PERIODICO" ? "X" : "")),
+  turma_marca_eventual: _c("Turma", "“X” se a capacitação é eventual", "", (c) => (c.turma_tipo_capacitacao === "EVENTUAL" ? "X" : "")),
   turma_campus: _c("Turma", "Campus", "Campus JK", (c) => c.turma_campus),
   // para o modelo que já escreve "Campus «...»": "Campus JK / Diamantina" vira "JK"
   turma_campus_curto: _c("Turma", "Campus sem a palavra “Campus”", "JK", (c) =>
@@ -812,6 +819,9 @@ export function marcadores_detalhados(modelo: ArquivoDoModelo): MarcadorDoModelo
  * aquele mapa também semeia o modelo padrão.
  */
 export const SUGESTOES_NR35: Readonly<Record<string, string>> = {
+  MOD_INICIAL: "turma_marca_inicial",
+  MOD_PERIODICO: "turma_marca_periodico",
+  MOD_EVENTUAL: "turma_marca_eventual",
   NOME_SERVIDOR: "participante_nome",
   SIAPE: "participante_siape",
   LOTACAO: "participante_lotacao",
@@ -850,6 +860,11 @@ export function sugerir_campo_da_turma(marcador: string): string | null {
   if (marcador === "H_PRA_TOT") return "Total de horas de prática";
   if (marcador === "H_AVALIACAO") return "Horas de avaliação de aprendizagem";
   return null;
+}
+
+/** O "X" da capacitação: fica vazio de propósito na turma que é de outro tipo, então não bloqueia. */
+export function campo_de_marca(campo: string): boolean {
+  return campo.startsWith("turma_marca_");
 }
 
 /** A sugestão de campo para o marcador (`modelo_certificado_envio.sugerir_campo`). */
