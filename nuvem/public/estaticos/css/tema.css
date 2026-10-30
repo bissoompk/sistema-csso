@@ -423,3 +423,7 @@ td a.mono, td > .mono:only-child { white-space: nowrap; }
     font-family: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   }
 }
+
+/* Meus treinamentos: a grade da vitrine dentro da casca (a lateral já come largura) */
+.tela .vitrine-grade--minhas { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); margin-bottom: 1.5rem; }
+.curso-acoes form { margin: 0; }

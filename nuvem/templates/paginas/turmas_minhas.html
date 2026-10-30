@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partes/macros.html" as ui with context %}
+{% import "partes/vitrine_cartao.html" as vc with context %}
 
 {# A tela do próprio servidor: o cartaz e o que é dele.
 
@@ -26,16 +27,16 @@
     <div class="titulo">
       <h1>Meus treinamentos</h1>
       <p class="sub">
-        {%- if abertas|length and pode_pedir %}Escolha uma turma e clique em <strong>Quero me inscrever</strong>.
+        {%- if abertas|length and pode_pedir %}Escolha uma turma e clique em <strong>Inscrever-se</strong>.
         {%- elif abertas|length %}{{ abertas|length }} turma(s) com inscrições abertas.
         {%- else %}Nenhuma turma aberta agora — {% if usuario.pode_na_equipe('treinamento.ver') %}veja o <a href="/treinamentos/catalogo">catálogo de treinamentos</a>{% else %}volte aqui quando a equipe abrir inscrições{% endif %}.{% endif %}
         {% if inscricoes|length %}Abaixo, as suas inscrições.{% endif %}</p>
-      {% call ui.info('pedir-vaga', 'como funciona pedir a própria vaga') %}
+      {% call ui.info('inscricao', 'como funciona a inscrição') %}
         <p><strong>Havendo vaga, a inscrição já sai confirmada</strong>: ninguém precisa aprovar.
           A vaga sai da conta no mesmo instante, e o sistema não aceita mais inscrições do que
           lugares.</p>
         <p>Só a turma com <strong>inscrições abertas</strong>, dentro do prazo e que
-          ainda não começou recebe pedido seu. Turma planejada ou já em andamento
+          ainda não começou recebe inscrição sua. Turma planejada ou já em andamento
           continua recebendo inscrição <em>pela equipe responsável</em>, que tem o contexto na mão.</p>
         <p><strong>Desistir</strong> vale até a véspera do início, e não apaga nada: a
           inscrição fica cancelada, com o motivo escrito e o registro na trilha. Depois
@@ -73,69 +74,24 @@
     {% endfor %}
   </ul>
   {% endif %}
-  <div class="tabela-cartao lista sem-altura">
-  <table class="empilhavel">
-    <thead>
-      <tr>
-        <th scope="col">Treinamento</th>
-        <th scope="col">Período</th><th scope="col">Local</th>
-        <th scope="col">Inscrições até</th><th scope="col">Vagas</th>
-        <th scope="col">{{ 'Pedir vaga' if pode_pedir else '' }}</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for turma in abertas %}
-    {% set restantes = vagas_restantes[turma.id] %}
-    {% set minha = minha_situacao[turma.id] %}
-    <tr>
-      <td class="nome">{{ turma.treinamento.nome }}
-        <span class="quebra discreto"><a class="mono" href="/turmas/{{ turma.id }}">{{ turma.codigo }}</a></span></td>
-      <td class="mono" data-coluna="Período">{{ turma.data_inicio|data }}
-        {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
-        {%- if turma|horario_turma %}<span class="quebra discreto turma-horario">{{ turma|horario_turma }}</span>{% endif %}</td>
-      <td data-coluna="Local"><span class="recorte" title="{{ turma.local or '' }}">
-          {{- turma.local or '—' -}}</span></td>
-      <td  data-coluna="Inscrições até">{{ turma.inscricao_aberta_ate|data if turma.inscricao_aberta_ate else '—' }}</td>
-      {# "Restam 2 vagas", e não "1 de 3": a fração se lia como "1 vaga". Turma
-         sem limite declarado não é turma com zero vaga, e a frase diz isso. #}
-      <td data-coluna="Vagas">
-        {%- if restantes is not none and restantes <= 0 %}<span class="pilula erro sem-ponto">{{ frase_vagas[turma.id] }}</span>
-        {%- else %}<span class="selo">{{ frase_vagas[turma.id] }}</span>{% endif %}</td>
-      <td class="acao-linha">
-        {# A situação REAL de quem já tem inscrição nesta turma: inscrita, pedido
-           em análise, ou "você desistiu" — e não "já inscrito" para todas. #}
-        {% if minha %}
-        <span class="discreto">{{ minha }}</span>
-        {% elif not pode_pedir %}
-        <span class="discreto">—</span>
-        {% elif restantes is not none and restantes <= 0 %}
-        <span class="discreto">sem vaga</span>
-        {% else %}
-        {# Um botão, e nenhum campo: a rota não tem onde receber "quem". O
-           formulário carrega só a turma, que já está na URL. #}
-        <form method="post" action="/turmas/{{ turma.id }}/inscrever-me">
-          <button type="submit" class="compacto">Quero me inscrever</button>
-        </form>
-        {% endif %}
-      </td>
-    </tr>
-    {% else %}
-    {% if treinamento_filtro or filtro_turno %}
-    {{ ui.vazio_de_lista(
-         'Nenhuma turma aberta nesta seleção.',
-         ('Sem turma aberta de ' ~ treinamento_filtro.nome ~ ' agora: avisaremos por e-mail quando abrir. '
-           if treinamento_filtro else '') ~ '“Ver todas” ou “Todos os turnos” desfazem o recorte.', 6) }}
-    {% else %}
-    {{ ui.vazio_de_lista(
-         'Nenhuma turma aberta agora.',
-         'Veja no catálogo de treinamentos o que os
-          setores da Sisa oferecem: a turma é a oferta com data, e aparece aqui quando abre
-          inscrições. Turma que já começou é inscrita pela equipe responsável.', 6) }}
-    {% endif %}
-    {% endfor %}
-    </tbody>
-  </table>
+  {# A vitrine por dentro: os mesmos cartões de /cursos (capa na cor do setor, data, local,
+     vagas), com o botão de inscrever-se no lugar do "Inscrever-se" público, que leva à ficha. #}
+  {% if cursos|length %}
+  <div class="vitrine-grade vitrine-grade--minhas">
+    {% for curso in cursos %}{{ vc.cartao(curso, contexto_cartao[curso.codigo]) }}{% endfor %}
   </div>
+  {% else %}
+  <div class="cartao vazio">
+    {% if treinamento_filtro or filtro_turno %}
+    <p><strong>Nenhuma turma aberta nesta seleção.</strong>
+      {% if treinamento_filtro %}Sem turma aberta de {{ treinamento_filtro.nome }} agora: avisaremos por e-mail quando abrir. {% endif %}“Ver todas” ou “Todos os turnos” desfazem o recorte.</p>
+    {% else %}
+    <p><strong>Nenhuma turma aberta agora.</strong> Veja no catálogo de treinamentos o que os
+      setores da Sisa oferecem: a turma é a oferta com data, e aparece aqui quando abre
+      inscrições. Turma que já começou é inscrita pela equipe responsável.</p>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <h2 id="minhas">Minhas inscrições</h2>
   <div class="tabela-cartao lista sem-altura">
@@ -198,7 +154,7 @@
     {% else %}
     {{ ui.vazio_de_lista(
          'Você ainda não tem inscrição.',
-         'Escolha uma turma na tabela acima e clique em “Quero me inscrever”. Turma
+         'Escolha uma turma nos cartões acima e clique em “Inscrever-se”. Turma
           fora do prazo ou já em andamento é inscrita pela equipe responsável — fale com o setor
           com o código da turma.', 4) }}
     {% endif %}

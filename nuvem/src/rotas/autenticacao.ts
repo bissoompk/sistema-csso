@@ -138,7 +138,9 @@ rotas.post("/login", async (c) => {
   // `usuarioOpcional`: sem isto ele sairia no registro de acesso como `conta=-`
   c.set("conta_id", conta.id);
 
-  const destino = conta.precisa_trocar_senha ? "/trocar-senha" : destino_seguro(proximo);
+  // Entrar leva sempre à Visão geral; o `proximo` do formulário não manda mais
+  // (a sessão que expira volta ao login, e a pessoa recomeça pelo início).
+  const destino = conta.precisa_trocar_senha ? "/trocar-senha" : INICIO;
   setCookie(c, autenticacao.COOKIE_SESSAO, token, {
     httpOnly: true,
     sameSite: "Lax",

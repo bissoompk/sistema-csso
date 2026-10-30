@@ -498,9 +498,26 @@ rotas.get(MINHAS, async (c) => {
   for (const turma of abertas) restantes[turma.id] = await servico_turma.vagas_restantes(tx, turma);
   // a lotada vai para o fim: quem procura vaga lê de cima para baixo
   abertas.sort((a, b) => Number(restantes[a.id] === 0) - Number(restantes[b.id] === 0));
+  // a vitrine por dentro: o mesmo cartão público de /cursos, com o contexto de quem pede
+  const cursos = [];
+  const contexto_cartao: Record<string, { id: number; situacao: string; pode_pedir: boolean; divulgada: boolean; horario: string; vagas: string }> = {};
+  for (const t of abertas) {
+    const curso = await vitrine.curso_publico(tx, t as TurmaCarregada, hoje);
+    cursos.push(curso);
+    contexto_cartao[curso.codigo] = {
+      id: t.id,
+      situacao: minha_situacao[t.id] ?? "",
+      pode_pedir: usuario.pode("turma.inscrever_se"),
+      divulgada: Boolean(t.divulgada_em),
+      horario: servico_turma.horario_curto(t),
+      vagas: frase_das_vagas(restantes[t.id] ?? null),
+    };
+  }
   return pagina(c, "paginas/turmas_minhas.html", usuario, {
     hoje,
     abertas,
+    cursos,
+    contexto_cartao,
     vagas_restantes: restantes,
     frase_vagas: Object.fromEntries(abertas.map((t) => [t.id, frase_das_vagas(restantes[t.id] ?? null)])),
     minha_situacao,
