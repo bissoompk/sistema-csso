@@ -222,7 +222,7 @@ describe("login", () => {
     expect(r.location).toBe("/inicio");
   });
 
-  it("o login só devolve para dentro do sistema", async () => {
+  it("o login leva sempre à Visão geral, mesmo com `proximo` de fora ou de dentro", async () => {
     const cliente = novoCliente();
     for (const fora of ["https://evil.example", "//evil.example", "/\\evil.example", "inicio"]) {
       const tela = await cliente.get("/login?" + new URLSearchParams({ proximo: fora }).toString());
@@ -240,7 +240,8 @@ describe("login", () => {
       { login: "coordenador_csso", senha: SENHA_TESTE, proximo: "/processos?estado=EM_TRIAGEM" },
       { seguir: false },
     );
-    expect(r.location).toBe("/processos?estado=EM_TRIAGEM");
+    // `proximo` do sistema também não desvia: entrar leva sempre à Visão geral
+    expect(r.location).toBe("/inicio");
   });
 
   it("quem precisa trocar a senha vai para /trocar-senha, com a faixa", async () => {
