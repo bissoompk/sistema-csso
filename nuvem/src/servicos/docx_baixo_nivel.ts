@@ -621,6 +621,20 @@ export function carimbar_tarja(bytes: Uint8Array, texto: string): Uint8Array {
 // =====================================================================
 const MARGEM_QR_MM = 10;
 
+/** Onde termina (`</w:p>`) o último parágrafo que é filho direto do corpo; -1 se não há. */
+function _ultimo_paragrafo_do_corpo(xml: string): number {
+  const inicio = xml.indexOf("<w:body>");
+  if (inicio < 0) return -1;
+  let tabelas = 0;
+  let ultimo = -1;
+  for (const m of xml.slice(inicio).matchAll(/<w:tbl>|<\/w:tbl>|<\/w:p>|<w:sectPr\b/g)) {
+    if (m[0] === "<w:tbl>") tabelas++;
+    else if (m[0] === "</w:tbl>") tabelas--;
+    else if (m[0] === "</w:p>" && tabelas === 0) ultimo = inicio + m.index!;
+  }
+  return ultimo;
+}
+
 /**
  * Estampa o QR da validação, ancorado na página (canto inferior direito, sem
  * quebra de texto), num .docx já renderizado. Serve ao modelo que não tem
@@ -632,10 +646,11 @@ export function carimbar_qr(bytes: Uint8Array, png: Uint8Array, largura_mm = 22)
   const parte = zip.file("word/document.xml");
   if (!parte) return bytes;
   let xml = parte.asText();
-  const abre = /<w:p(?: [^>]*)?>/.exec(xml);
-  if (!abre || abre[0].endsWith("/>")) return bytes;
-  const fecha = xml.indexOf("</w:p>", abre.index);
-  if (fecha < 0) return bytes;
+  // a âncora vai num parágrafo do corpo (fora de tabela e de caixa de texto,
+  // onde o LibreOffice a perde ou a prende à célula)
+  const ancora_em = _ultimo_paragrafo_do_corpo(xml);
+  const fim_do_corpo = xml.lastIndexOf("<w:sectPr");
+  if (ancora_em < 0 && fim_do_corpo < 0) return bytes;
 
   const pagina = /<w:pgSz\b[^>]*>/.exec(xml)?.[0] ?? "";
   const largura_pg = Number(/w:w="(\d+)"/.exec(pagina)?.[1] ?? 11906);
@@ -664,7 +679,7 @@ export function carimbar_qr(bytes: Uint8Array, png: Uint8Array, largura_mm = 22)
   const docPr = Math.max(0, ...[...xml.matchAll(/<wp:docPr [^>]*id="(\d+)"/g)].map((m) => Number(m[1]))) + 1;
   const desenho =
     `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251659264" ` +
-    `behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">` +
+    `behindDoc="0" locked="0" layoutInCell="0" allowOverlap="1">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="page"><wp:posOffset>${x}</wp:posOffset></wp:positionH>` +
     `<wp:positionV relativeFrom="page"><wp:posOffset>${y}</wp:posOffset></wp:positionV>` +
@@ -679,7 +694,13 @@ export function carimbar_qr(bytes: Uint8Array, png: Uint8Array, largura_mm = 22)
     `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${img.largura_emu}" cy="${img.altura_emu}"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>` +
     `</wp:anchor></w:drawing></w:r>`;
-  xml = xml.slice(0, fecha) + desenho + xml.slice(fecha);
+  if (ancora_em >= 0) {
+    xml = xml.slice(0, ancora_em) + desenho + xml.slice(ancora_em);
+  } else {
+    // o corpo só tem tabela: um parágrafo de 1 pt antes da seção leva a âncora
+    const vazio = `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr>${desenho}</w:p>`;
+    xml = xml.slice(0, fim_do_corpo) + vazio + xml.slice(fim_do_corpo);
+  }
 
   const raiz = /<w:document\b[^>]*>/.exec(xml)!;
   let abertura = raiz[0];
