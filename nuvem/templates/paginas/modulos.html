@@ -47,7 +47,7 @@
       <div class="grade-telas">
         {% for item in g.itens %}
         <a class="tela" href="{{ item.caminho }}">
-          <strong>{{ item.rotulo }}</strong>
+          <strong>{{ ico(icone_de(item.caminho)) }}{{ item.rotulo }}</strong>
           <span class="discreto">{{ item.descricao }}</span>
         </a>
         {% endfor %}
@@ -101,7 +101,7 @@
       <div class="grade-telas">
         {% for item in itens_base %}
         <a class="tela" href="{{ item.caminho }}">
-          <strong>{{ item.rotulo }}</strong>
+          <strong>{{ ico(icone_de(item.caminho)) }}{{ item.rotulo }}</strong>
           <span class="discreto">{{ item.descricao }}</span>
         </a>
         {% endfor %}

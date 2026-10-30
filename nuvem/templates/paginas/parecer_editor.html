@@ -4,6 +4,12 @@
 
 {# Terceiro nível da trilha: o processo (pelo NUP, em mono) e depois o parecer.
    `/pareceres/{id}` não é item de menu, então o segundo nível vem daqui. #}
+{# `/pareceres/{id}` não tem item na lateral, e o "← Voltar" do base leva ao
+   que o item levaria: aqui, ao processo do parecer. #}
+{% if parecer.processo %}
+{% set voltar_href = '/processos/' ~ parecer.processo.id ~ '?aba=parecer' %}
+{% set voltar_rotulo = 'Voltar ao processo' %}
+{% endif %}
 {% block trilha %}
 {% if parecer.processo %}
 <a class="mono" href="/processos/{{ parecer.processo.id }}">{{ parecer.processo.nup }}</a>

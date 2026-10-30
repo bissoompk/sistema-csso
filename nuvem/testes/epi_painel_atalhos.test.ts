@@ -23,12 +23,15 @@ const logins = Object.keys(await contas(db));
   await db.update(e.usuario).set({ servidor_id: s!.id }).where(eq(e.usuario.login, "servidor_consulta"));
 }
 
+// os cartões têm o nome, o caminho e a permissão do item da lateral (`modulos.ts`)
 const EQUIPE: [string, string, (u: Awaited<ReturnType<typeof usuarioAtual>>) => boolean][] = [
-  ["Analisar requisições", 'href="/epis/requisicoes"', (u) => u.pode("epi.analisar")],
-  ["Controle de estoque", 'href="/epis/estoque"', (u) => u.pode("epi.estoque")],
-  ["Catálogo de EPIs", 'href="/epis/catalogo"', (u) => u.pode("epi.catalogo")],
-  ["Relatórios e indicadores", 'href="/epis/relatorios"', (u) => u.pode("indicador.ver")],
+  ["Entregar EPI", 'href="/epis/entregas/nova"', (u) => u.pode("epi.entregar")],
+  ["Requisições", 'href="/epis/requisicoes"', () => true],
+  ["Nova requisição", 'href="/epis/requisicoes/nova"', (u) => u.pode("epi.requisitar")],
   ["Fichas de EPI", 'href="/epis/fichas"', (u) => u.pode("epi.ficha")],
+  ["Estoque", 'href="/epis/estoque"', () => true],
+  ["Catálogo", 'href="/epis/catalogo"', () => true],
+  ["Relatórios", 'href="/epis/relatorios"', (u) => u.pode("indicador.ver")],
 ];
 
 function _hub(html: string): string {
@@ -48,10 +51,10 @@ describe("primeira tela de EPI: atalhos do IntegraSST", () => {
       const hub = _hub(r.text);
       if (u.escopo_de("epi.ver") === ESCOPO_PROPRIO) {
         pessoal++;
-        expect(hub, login).toContain("Visualizar requisições");
+        expect(hub, login).toContain("Meus pedidos");
         expect(hub, login).toContain('href="/epis/fichas/minha"');
-        expect(hub.includes("Fazer requisição"), login).toBe(u.pode("epi.requisitar"));
-        expect(hub, login).not.toContain("Controle de estoque");
+        expect(hub.includes("Pedir EPI"), login).toBe(u.pode("epi.requisitar"));
+        expect(hub, login).not.toContain('href="/epis/estoque"');
       } else {
         equipe++;
         for (const [titulo, href, pode] of EQUIPE) {

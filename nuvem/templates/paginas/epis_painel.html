@@ -52,19 +52,19 @@
   <div class="acoes-hub">
     {% if pode_pedir %}
     <a class="acao-hub azul" href="/epis/requisicoes/nova">
-      {{ ui.icone('shield-plus') }}
-      <strong>Fazer requisição</strong>
+      {{ ui.icone(icone_de('/epis/requisicoes/nova')) }}
+      <strong>Pedir EPI</strong>
       <span>Solicitar novo EPI</span>
     </a>
     {% endif %}
     <a class="acao-hub escuro" href="/epis/requisicoes">
-      {{ ui.icone('list-check') }}
-      <strong>Visualizar requisições</strong>
+      {{ ui.icone(icone_de('/epis/requisicoes')) }}
+      <strong>Meus pedidos</strong>
       <span>Acompanhar andamento</span>
     </a>
     <a class="acao-hub teal" href="/epis/fichas/minha">
-      {{ ui.icone('file-earmark-person') }}
-      <strong>Ficha de EPI</strong>
+      {{ ui.icone(icone_de('/epis/fichas/minha')) }}
+      <strong>Minha ficha de EPI</strong>
       <span>Consultar recibos legais</span>
     </a>
   </div>
@@ -150,41 +150,53 @@
   {# Os cinco cartões do "Gestão de Segurança do Trabalho (EPI)" do IntegraSST,
      na mesma ordem; cada um só para quem tem o ato. O selo de "novas" vira a
      contagem do cartão de análise (só número, RN-19). #}
+  {# Os cartões são os itens da lateral (`modulos.ts`), na mesma ordem, com o
+     mesmo nome, caminho e ícone (`icone_de`); a frase de cada um diz o que se
+     faz lá. Cada um só para quem tem o ato. O selo de "novas" é a contagem do
+     cartão das requisições (só número, RN-19). #}
   <div class="acoes-hub">
-    {% if usuario.pode('epi.analisar') %}
+    {% if usuario.pode('epi.entregar') %}
+    <a class="acao-hub verde" href="/epis/entregas/nova">
+      {{ ui.icone(icone_de('/epis/entregas/nova')) }}
+      <strong>Entregar EPI</strong>
+      <span>Entrega direta no balcão, sem pedido; imprime o comprovante.</span>
+    </a>
+    {% endif %}
     <a class="acao-hub azul" href="/epis/requisicoes">
-      {{ ui.icone('inboxes') }}
-      <strong>Analisar requisições</strong>
-      <span>Avalie pedidos de EPI, libere estoque e justifique recusas.</span>
+      {{ ui.icone(icone_de('/epis/requisicoes')) }}
+      <strong>Requisições</strong>
+      <span>{{ 'Avalie pedidos de EPI, libere estoque e justifique recusas.' if usuario.pode('epi.analisar') else 'Acompanhe os pedidos de EPI e a decisão de cada item.' }}</span>
       {% if a_tratar.a_analisar and a_tratar.a_analisar.total %}<span class="contagem urgente">{{ ui.icone('bell-fill') }}{{ a_tratar.a_analisar.total }} {{ 'nova' if a_tratar.a_analisar.total == 1 else 'novas' }}</span>{% endif %}
     </a>
-    {% endif %}
-    {% if usuario.pode('epi.estoque') %}
-    <a class="acao-hub escuro" href="/epis/estoque">
-      {{ ui.icone('box-seam') }}
-      <strong>Controle de estoque</strong>
-      <span>Dê entrada em novos lotes de EPI via pregão/empenho.</span>
-    </a>
-    {% endif %}
-    {% if usuario.pode('epi.catalogo') %}
-    <a class="acao-hub roxo" href="/epis/catalogo">
-      {{ ui.icone('journal-album') }}
-      <strong>Catálogo de EPIs</strong>
-      <span>Cadastre os equipamentos, CAs e manuais em PDF.</span>
-    </a>
-    {% endif %}
-    {% if pode_indicador %}
-    <a class="acao-hub amarelo" href="/epis/relatorios">
-      {{ ui.icone('bar-chart-fill') }}
-      <strong>Relatórios e indicadores</strong>
-      <span>Volume de EPIs entregues por perfil, material e local.</span>
+    {% if usuario.pode('epi.requisitar') %}
+    <a class="acao-hub escuro" href="/epis/requisicoes/nova">
+      {{ ui.icone(icone_de('/epis/requisicoes/nova')) }}
+      <strong>Nova requisição</strong>
+      <span>Pedido formal para análise do SESMT.</span>
     </a>
     {% endif %}
     {% if usuario.pode('epi.ficha') %}
     <a class="acao-hub teal" href="/epis/fichas">
-      {{ ui.icone('file-earmark-person') }}
+      {{ ui.icone(icone_de('/epis/fichas')) }}
       <strong>Fichas de EPI</strong>
       <span>Consulte o histórico legal de retiradas por servidor.</span>
+    </a>
+    {% endif %}
+    <a class="acao-hub escuro" href="/epis/estoque">
+      {{ ui.icone(icone_de('/epis/estoque')) }}
+      <strong>Estoque</strong>
+      <span>Lotes por pregão e empenho; dê entrada em novos lotes.</span>
+    </a>
+    <a class="acao-hub roxo" href="/epis/catalogo">
+      {{ ui.icone(icone_de('/epis/catalogo')) }}
+      <strong>Catálogo</strong>
+      <span>Cadastre os equipamentos, CAs e manuais em PDF.</span>
+    </a>
+    {% if pode_indicador %}
+    <a class="acao-hub amarelo" href="/epis/relatorios">
+      {{ ui.icone(icone_de('/epis/relatorios')) }}
+      <strong>Relatórios</strong>
+      <span>Volume de EPIs entregues por perfil, material e local.</span>
     </a>
     {% endif %}
   </div>

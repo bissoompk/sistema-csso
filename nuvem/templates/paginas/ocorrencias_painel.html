@@ -20,13 +20,13 @@
   <div class="acoes-hub">
     {% if pode_registrar %}
     <a class="acao-hub azul" href="/ocorrencias/registrar">
-      {{ ui.icone('plus-circle') }}
+      {{ ui.icone(icone_de('/ocorrencias/registrar')) }}
       <strong>Registrar ocorrência</strong>
       <span>O que aconteceu, com quem e onde</span>
     </a>
     {% endif %}
     <a class="acao-hub escuro" href="/ocorrencias/minhas">
-      {{ ui.icone('list-check') }}
+      {{ ui.icone(icone_de('/ocorrencias/minhas')) }}
       <strong>Minhas ocorrências</strong>
       <span>{{ total if pessoal else 'as que eu registrei' }}{% if pessoal %} {{ 'ocorrência' if total == 1 else 'ocorrências' }}{% endif %}</span>
     </a>
@@ -37,18 +37,18 @@
       <span>{{ contagem.get('REGISTRADA', 0) }} aguardando a equipe</span>
     </a>
     <a class="acao-hub" href="/ocorrencias/fila?situacao=EM_ACOMPANHAMENTO">
-      {{ ui.icone('inbox') }}
+      {{ ui.icone('search') }}
       <strong>Em acompanhamento</strong>
       <span>{{ contagem.get('EM_ACOMPANHAMENTO', 0) }}</span>
     </a>
     <a class="acao-hub" href="/ocorrencias/fila">
-      {{ ui.icone('grid-1x2') }}
-      <strong>Todas</strong>
+      {{ ui.icone(icone_de('/ocorrencias/fila')) }}
+      <strong>Fila de ocorrências</strong>
       <span>{{ total }} no total</span>
     </a>
     {% if pode_indicadores %}
     <a class="acao-hub" href="/ocorrencias/indicadores">
-      {{ ui.icone('bar-chart') }}
+      {{ ui.icone(icone_de('/ocorrencias/indicadores')) }}
       <strong>Indicadores</strong>
       <span>Por tipo, campus, vínculo e mês</span>
     </a>

@@ -21,14 +21,14 @@
   <div class="acoes-hub">
     {% if pode_comunicar %}
     <a class="acao-hub azul" href="/acidentes/comunicar">
-      {{ ui.icone('plus-circle') }}
+      {{ ui.icone(icone_de('/acidentes/comunicar')) }}
       <strong>Comunicar acidente</strong>
       <span>Registrar o que aconteceu, com quem e onde</span>
     </a>
     {% endif %}
     {% if pessoal %}
     <a class="acao-hub escuro" href="/acidentes/minhas">
-      {{ ui.icone('list-check') }}
+      {{ ui.icone(icone_de('/acidentes/minhas')) }}
       <strong>Minhas comunicações</strong>
       <span>{{ minhas }} {{ 'ocorrência' if minhas == 1 else 'ocorrências' }}</span>
     </a>
@@ -47,27 +47,27 @@
       <span>{{ contagem['EM_INVESTIGACAO'] or 0 }} em andamento</span>
     </a>
     <a class="acao-hub escuro" href="/acidentes/fila">
-      {{ ui.icone('list-check') }}
-      <strong>Fila de ocorrências</strong>
+      {{ ui.icone(icone_de('/acidentes/fila')) }}
+      <strong>Fila de acidentes</strong>
       <span>Todas ao seu alcance, com filtros</span>
     </a>
     {% if usuario.pode('acidente.triar') %}
     <a class="acao-hub verde" href="/acidentes/link">
-      {{ ui.icone('send') }}
+      {{ ui.icone(icone_de('/acidentes/link')) }}
       <strong>Link de comunicação</strong>
       <span>Para quem não tem conta comunicar</span>
     </a>
     {% endif %}
     {% if ve_plano %}
     <a class="acao-hub teal" href="/acidentes/acoes?mostrar=vencidas">
-      {{ ui.icone('list-check') }}
+      {{ ui.icone(icone_de('/acidentes/acoes')) }}
       <strong>Plano de ação</strong>
       <span>{{ acoes_vencidas }} {{ 'vencida' if acoes_vencidas == 1 else 'vencidas' }}</span>
     </a>
     {% endif %}
     {% if ve_indicadores %}
     <a class="acao-hub verde" href="/acidentes/indicadores">
-      {{ ui.icone('bar-chart') }}
+      {{ ui.icone(icone_de('/acidentes/indicadores')) }}
       <strong>Indicadores</strong>
       <span>Casos por ano, espécie, campus e unidade</span>
     </a>
