@@ -1125,6 +1125,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/retificar`, async (c) => {
           unidade_promotora_id: id_opcional(f.texto("unidade_promotora_id")),
           carga_horaria_horas: _decimal(f.texto("carga_horaria_horas"), "a carga horária"),
           data_base_vencimento: _data(f.texto("data_base_vencimento"), "a data base", false),
+          tipo_capacitacao: texto_ou_nulo(f.texto("tipo_capacitacao")),
           observacoes: texto_ou_nulo(f.texto("observacoes")),
         },
         f.texto("motivo"),

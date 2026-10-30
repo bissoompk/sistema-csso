@@ -1529,6 +1529,14 @@
     <input id="r-data_base_vencimento" type="date" name="data_base_vencimento"
            value="{{ turma.data_base_vencimento if turma.data_base_vencimento else '' }}">
     <span class="dica">Vazio usa o término.</span></div>
+  <div class="campo"><label for="r-tipo_capacitacao">Tipo de capacitação</label>
+    <select id="r-tipo_capacitacao" name="tipo_capacitacao">
+      <option value=""{{ ' selected' if not turma.tipo_capacitacao }}>— não informar —</option>
+      <option value="INICIAL"{{ ' selected' if turma.tipo_capacitacao == 'INICIAL' }}>Inicial</option>
+      <option value="PERIODICO"{{ ' selected' if turma.tipo_capacitacao == 'PERIODICO' }}>Periódico</option>
+      <option value="EVENTUAL"{{ ' selected' if turma.tipo_capacitacao == 'EVENTUAL' }}>Eventual</option>
+    </select>
+    <span class="dica">O “X” do certificado da NR-35. Certificado já emitido não muda: anule e reemita.</span></div>
   <div class="campo"><label for="r-descricao">Descrição do evento</label>
     <textarea id="r-descricao" name="descricao" rows="3">{{ turma.descricao or '' }}</textarea></div>
   <div class="campo"><label for="r-observacoes">Observações</label>
