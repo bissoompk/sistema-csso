@@ -424,6 +424,35 @@ describe("envio pela tela", () => {
     expect(sem_nome.text).toContain("Dê um nome ao campo");
   });
 
+  it("aplicar sugestões liga o dado do sistema e deixa as horas por tema como campo da turma", async () => {
+    await entrar(cliente, "coordenador_csso");
+    await enviar();
+    const v1 = await modelo_por_nome("Brigadista");
+    const doc = docx_minimo(
+      par(run("{{NOME_SERVIDOR}} {{DATA_REALIZACAO}} {{RT_NOME}} {{H_TEO_A}} {{H_AVALIACAO}} {{CARGO}}")),
+    );
+    const r = await cliente.post(
+      `/treinamentos/modelos/${v1.id}/versao`,
+      { docx: arquivo(doc, "nr35_v2.docx") },
+      { seguir: false },
+    );
+    expect(r.status).toBe(303);
+    const [v2] = await db
+      .select()
+      .from(e.certificado_modelo)
+      .where(and(eq(e.certificado_modelo.versao, 2), eq(e.certificado_modelo.nome, "Brigadista")));
+    await cliente.post(`/treinamentos/modelos/${v2!.id}/tags/sugeridas`, {}, { seguir: false });
+    const tags = await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, v2!.id));
+    const por = Object.fromEntries(tags.map((t) => [t.marcador, t]));
+    expect(por.NOME_SERVIDOR?.campo).toBe("participante_nome");
+    expect(por.DATA_REALIZACAO?.campo).toBe("turma_periodo_extenso");
+    expect(por.RT_NOME?.campo).toBe("assinante_nome");
+    expect(por.H_TEO_A?.tipo).toBe("TURMA");
+    expect(por.H_TEO_A?.rotulo).toContain("teoria");
+    expect(por.H_AVALIACAO?.tipo).toBe("TURMA");
+    expect(por.CARGO).toBeUndefined();
+  });
+
   it("campo fora do vocabulário é recusado sem salvar meio mapa", async () => {
     await entrar(cliente, "coordenador_csso");
     await enviar();

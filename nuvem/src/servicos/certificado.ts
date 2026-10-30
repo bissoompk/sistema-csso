@@ -806,8 +806,60 @@ export function marcadores_detalhados(modelo: ArquivoDoModelo): MarcadorDoModelo
   }));
 }
 
+/**
+ * Os marcadores do modelo de NR-35 (Certificado_NR35_SISA_modelo.docx), em
+ * maiúsculas como o Word os traz. Fica à parte do `MAPA_SUGERIDO` porque
+ * aquele mapa também semeia o modelo padrão.
+ */
+export const SUGESTOES_NR35: Readonly<Record<string, string>> = {
+  NOME_SERVIDOR: "participante_nome",
+  SIAPE: "participante_siape",
+  LOTACAO: "participante_lotacao",
+  TIPO_TREINAMENTO: "treinamento_nome",
+  CARGA_HORARIA: "treinamento_carga_horaria",
+  LOCAL: "turma_local",
+  NUMERO_CERTIFICADO: "certificado_rotulo",
+  CODIGO_VERIFICACAO: "certificado_chave",
+  DATA_REALIZACAO: "turma_periodo_extenso",
+  DATA_RECICLAGEM: "certificado_data_vencimento",
+  INSTRUTOR_NOME: "instrutor_nome",
+  INSTRUTOR_QUALIFICACAO: "instrutor_titulo",
+  RT_NOME: "assinante_nome",
+  RT_QUALIFICACAO: "assinante_titulo",
+};
+
+const TEMAS_NR35: Readonly<Record<string, string>> = {
+  A: "normas e regulamentos",
+  B: "análise de risco e condições impeditivas",
+  C: "riscos potenciais e medidas de controle",
+  D: "proteção coletiva",
+  E: "EPI para trabalho em altura",
+  F: "acidentes típicos",
+  G: "emergência, resgate e primeiros socorros",
+};
+
+/**
+ * Marcadores que não são dado do sistema e cabem em "Campo da turma": as horas
+ * de teoria e prática por tema (NR-35, 35.4.2.1), os totais e a avaliação.
+ * Devolve o nome do campo, ou null.
+ */
+export function sugerir_campo_da_turma(marcador: string): string | null {
+  const tema = /^H_(TEO|PRA)_([A-G])$/.exec(marcador);
+  if (tema) return `Horas de ${tema[1] === "TEO" ? "teoria" : "prática"} — ${TEMAS_NR35[tema[2]!]}`;
+  if (marcador === "H_TEO_TOT") return "Total de horas de teoria";
+  if (marcador === "H_PRA_TOT") return "Total de horas de prática";
+  if (marcador === "H_AVALIACAO") return "Horas de avaliação de aprendizagem";
+  return null;
+}
+
 /** A sugestão de campo para o marcador (`modelo_certificado_envio.sugerir_campo`). */
 export function sugerir_campo(m: MarcadorDoModelo): string | null {
+  const nr35 = SUGESTOES_NR35[m.marcador];
+  if (nr35 && Object.hasOwn(CAMPOS_CERTIFICADO, nr35)) return nr35;
+  if (sugerir_campo_da_turma(m.marcador)) return null;
+  // o cargo do participante não é campo do sistema; a regra de «cargo» do envio
+  // pensa no título do instrutor e ligaria o dado errado
+  if (m.marcador === "CARGO") return null;
   return envio.sugerir_campo(m, CAMPOS_CERTIFICADO, MAPA_SUGERIDO);
 }
 
