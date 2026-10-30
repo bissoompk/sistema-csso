@@ -40,4 +40,11 @@ describe("sugestões do modelo de NR-35", () => {
     expect(campo_de_marca("turma_marca_eventual")).toBe(true);
     expect(campo_de_marca("turma_local")).toBe(false);
   });
+
+  it("a nota final sem o símbolo serve ao modelo que já imprime o %", () => {
+    expect(sugerir_campo(marcador("NOTA_FINAL"))).toBe("nota_final_percentual_numero");
+    const campo = CAMPOS_CERTIFICADO.nota_final_percentual_numero!;
+    expect(campo.obter({ nota_final: "9.5" } as never)).toBe("95");
+    expect(campo.obter({ nota_final: null } as never)).toBe("");
+  });
 });

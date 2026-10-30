@@ -729,6 +729,22 @@ describe("integração dos lotes", () => {
     ).rejects.toThrow("O fim da turma não pode ser anterior ao início.");
   });
 
+  it("a retificação da turma concluída corrige o tipo de capacitação, com motivo", async () => {
+    const { retificar_turma } = await import("../src/servicos/retificacao.js");
+    const id = await turma({ data_inicio: HOJE, data_fim: HOJE, tipo_capacitacao: "INICIAL" });
+    await por_situacao(id, "CONCLUIDA");
+    const coordenador = await usuarioAtual(db, "coordenador_csso");
+    const carregada = (await servico_turma.carregar_turma(db, id))!;
+    const r = await retificar_turma(db, coordenador, carregada, { tipo_capacitacao: "PERIODICO" }, "marcado inicial por engano");
+    expect(r.mudou).toBe(true);
+    expect((await ler_turma(id)).tipo_capacitacao).toBe("PERIODICO");
+    const eventos = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "TURMA_RETIFICADA"));
+    expect(eventos.map((x) => x.descricao).join(" ")).toContain("tipo de capacitação");
+    await expect(
+      retificar_turma(db, coordenador, await servico_turma.carregar_turma(db, id).then((t) => t!), { tipo_capacitacao: "QUALQUER" }, "x"),
+    ).rejects.toThrow("Escolha inicial, periódico ou eventual");
+  });
+
   it("M84: mudar a situação sem nenhuma permissão de destino é 403 antes do formulário", async () => {
     const id = await turma({ data_inicio: FUTURO, data_fim: FUTURO });
     const antes = (await ler_turma(id)).situacao;

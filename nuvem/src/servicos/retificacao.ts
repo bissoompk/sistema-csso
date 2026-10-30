@@ -223,6 +223,7 @@ export const CAMPOS_DA_TURMA_CONCLUIDA = [
   "unidade_promotora_id",
   "carga_horaria_horas",
   "data_base_vencimento",
+  "tipo_capacitacao",
   "observacoes",
 ] as const;
 
@@ -235,6 +236,7 @@ const ROTULO_CAMPO_TURMA: Record<string, string> = {
   unidade_promotora_id: "unidade promotora",
   carga_horaria_horas: "carga horária",
   data_base_vencimento: "data base do vencimento",
+  tipo_capacitacao: "tipo de capacitação",
   observacoes: "observações",
 };
 
