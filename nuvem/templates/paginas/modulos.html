@@ -116,5 +116,31 @@
     </div>
   </section>
 
+  {% if grupos_meu_espaco and grupos_meu_espaco|length and not so_meu_espaco %}
+  {# O mesmo bloco "Meu espaço" da lateral, nos mesmos grupos: o mapa e o menu
+     falam igual (itens e caminhos vindos de `grupos_meu_espaco`). #}
+  <section class="cartao liso" id="meu-espaco">
+    <div class="cabecalho-cartao">
+      <h2>Meu espaço</h2>
+      <span class="contador">{{ meu_espaco|length }}</span>
+      <span class="pilula sem-ponto">o que é seu</span>
+    </div>
+    <div class="corpo">
+      <p class="sub">O que é seu no sistema: treinamentos, EPI e adicional da sua conta de servidor.</p>
+      {% for g in grupos_meu_espaco %}
+      {% if g.titulo %}<h3 class="rotulo-grupo-mapa">{{ g.titulo }}</h3>{% endif %}
+      <div class="grade-telas">
+        {% for item in g.itens %}
+        <a class="tela" href="{{ item.caminho }}">
+          <strong>{{ ico(icone_de(item.rotulo) or icone_de(item.caminho)) }}{{ item.rotulo }}</strong>
+          <span class="discreto">{{ item.descricao }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
 </div>
 {% endblock %}
