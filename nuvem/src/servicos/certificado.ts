@@ -609,6 +609,10 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   nota_final_percentual: _c("Resultado", "Nota final em %", "95%", (c) =>
     c.nota_final !== null ? `${numero_br(Number(c.nota_final) * 10)}%` : "",
   ),
+  // para o modelo que já imprime o «%» depois do marcador («{{NOTA_FINAL}}%»): 9,5 -> 95
+  nota_final_percentual_numero: _c("Resultado", "Nota final em % (sem o símbolo)", "95", (c) =>
+    c.nota_final !== null ? numero_br(Number(c.nota_final) * 10) : "",
+  ),
   frequencia_percentual: _c("Resultado", "Frequência", "100%", (c) =>
     c.frequencia_percentual !== null ? `${numero_br(c.frequencia_percentual)}%` : "",
   ),
@@ -822,6 +826,7 @@ export const SUGESTOES_NR35: Readonly<Record<string, string>> = {
   MOD_INICIAL: "turma_marca_inicial",
   MOD_PERIODICO: "turma_marca_periodico",
   MOD_EVENTUAL: "turma_marca_eventual",
+  NOTA_FINAL: "nota_final_percentual_numero",
   NOME_SERVIDOR: "participante_nome",
   SIAPE: "participante_siape",
   LOTACAO: "participante_lotacao",
