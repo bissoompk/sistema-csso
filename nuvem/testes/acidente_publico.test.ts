@@ -48,11 +48,10 @@ function formulario(extra: Campos = {}): Campos {
     com_vinculo: "TERCEIRIZADO",
     env_indice: ["1", "2", "3"],
     env_1_nome_externo: "Acidentado Fictício",
-    env_1_vinculo: "TERCEIRIZADO",
-    env_1_siape: "CRACHA-12",
+    env_1_vinculo: "SERVIDOR",
+    env_1_siape: "7000012",
     env_1_condicao: "ACIDENTADO",
     env_1_houve_lesao: "SIM",
-    env_1_empresa_contratada: "Limpeza Fictícia Ltda",
     especie: "TIPICO",
     data_evento: somar_dias(hoje_iso(), -1),
     local_tipo: "ESTABELECIMENTO_UFVJM",
@@ -114,7 +113,7 @@ describe("comunicar pelo link", () => {
     expect(com!.nome).toBe("Comunicante Fictícia");
     expect(com!.ip).toMatch(/^203\.0\.113\./);
     const [acid] = await db.select().from(e.acidentado);
-    expect(acid!.identificacao_externa).toBe("CRACHA-12");
+    expect(acid!.siape).toBe("7000012");
     // PRG: o GET mostra o protocolo e recarregar não reenvia
     const tela = await cliente.get(r.location!);
     expect(tela.text).toContain(oc!.protocolo);

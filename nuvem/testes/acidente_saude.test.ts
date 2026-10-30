@@ -244,6 +244,13 @@ describe("pela tela", () => {
     expect(await acessos(acid.id)).toHaveLength(1);
   });
 
+  it("o médico abre o detalhe (nível 2) mesmo sem natureza da lesão gravada (antes dava 500)", async () => {
+    const { oc, acid } = await cenario();
+    const cli = await entrar(novoCliente(), "medico_trabalho");
+    const r = await cli.get(`/acidentes/${oc.id}/saude?acidentado=${acid.id}&nivel=2&finalidade=INVESTIGACAO`, { seguir: false });
+    expect(r.status).toBe(200);
+  });
+
   it("a secretaria não abre a saúde", async () => {
     const { oc, acid } = await cenario();
     const cli = await entrar(novoCliente(), "secretaria_csso");

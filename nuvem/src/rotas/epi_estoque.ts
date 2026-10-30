@@ -295,6 +295,9 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}`, async (c) => {
       entrada,
       nota_fiscal: f.texto("nota_fiscal"),
       oficio: f.texto("oficio"),
+      // só quando a tela mandou o campo: quem posta sem ele não apaga o CA
+      numero_ca: f.tem("numero_ca") ? f.texto("numero_ca") : undefined,
+      validade_ca: f.tem("validade_ca") ? f.texto("validade_ca") : undefined,
       fornecedor_contato: f.texto("fornecedor_contato"),
       observacao: f.texto("observacao"),
       ativo: f.texto("ativo") === "1",

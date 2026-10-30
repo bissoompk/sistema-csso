@@ -30,6 +30,7 @@ import { ChecklistModelo } from "../dominio/dominios.js";
 import {
   ATALHO_REUSO_LAUDO,
   CADEIA_ADICIONAL,
+  ETAPA_ANTERIOR,
   INCISOS_ART11,
   ORIGENS_DA_TRIAGEM,
   ROTULO_ESTADO,
@@ -219,7 +220,7 @@ export async function requisitos_de_saida(
   // DESVIO (corrige o porte): valia qualquer texto em Observações — inclusive o
   // que foi escrito na criação, antes de alguém pensar em quantificar. A
   // justificativa agora é do ATO: vai no comentário do movimento e fica na trilha.
-  if (origem === "AGUARDANDO_QUANTIFICACAO") {
+  if (origem === "AGUARDANDO_QUANTIFICACAO" && !["ARQUIVADO", "INDEFERIDO_TECNICAMENTE"].includes(destino)) {
     const categorias = await _categorias_anexadas(tx, processo.id);
     const justificativa = (opcoes.comentario ?? "").trim();
     if (!categorias.has("RELATORIO_CAMPO") && justificativa.length < MINIMO_JUSTIFICATIVA_QUALITATIVA) {
@@ -739,6 +740,27 @@ export async function voltar_do_sobrestamento<P extends Processo>(
   if (processo.estado_tecnico !== "SOBRESTADO") throw new TransicaoInvalida("o processo não está sobrestado");
   const destino = processo.estado_anterior || "EM_TRIAGEM";
   return mover(tx, processo, destino, usuario, { forcar: true });
+}
+
+/**
+ * Volta o processo uma etapa, com motivo na trilha. Só na cadeia do adicional e
+ * só no meio do trabalho técnico (`ETAPA_ANTERIOR`): antes, o engano de quem
+ * avançou cedo demais não tinha saída além do Sobrestado.
+ */
+export async function voltar_uma_etapa<P extends Processo>(
+  tx: Executor,
+  processo: P,
+  usuario: UsuarioAtual,
+  motivo: string | null,
+): Promise<P> {
+  usuario.exigir("processo.status");
+  const curto = await fluxo_curto_de(tx, processo);
+  const anterior = curto ? undefined : ETAPA_ANTERIOR[processo.estado_tecnico];
+  if (!anterior) throw new TransicaoInvalida(`de “${rotulo_tela(processo.estado_tecnico)}” não há etapa anterior para onde voltar`);
+  const limpo = (motivo ?? "").trim();
+  if (!limpo) throw new RequisitoDeSaidaNaoAtendido(["voltar uma etapa exige o motivo, no comentário do movimento"]);
+  await _passo(tx, processo, anterior, usuario, curto, `voltou uma etapa — ${limpo}`, null);
+  return processo;
 }
 
 async function _etapa_da_coluna(tx: Executor, coluna: string): Promise<number> {

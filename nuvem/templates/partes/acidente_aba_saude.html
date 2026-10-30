@@ -95,7 +95,7 @@
           <div class="campo"><label for="nat-{{ a.id }}">Natureza da lesão</label>
             <select id="nat-{{ a.id }}" name="natureza_lesao_id">
               <option value="">—</option>
-              {% for n in saude_catalogos.naturezas %}<option value="{{ n.id }}"{% if (sd.natureza_lesao_id or l.natureza_lesao_id)|string == n.id|string %} selected{% endif %}>{{ n.rotulo }}</option>{% endfor %}
+              {% for n in saude_catalogos.naturezas %}<option value="{{ n.id }}"{% if (sd.natureza_lesao_id or l.natureza_lesao_id or '')|string == n.id|string %} selected{% endif %}>{{ n.rotulo }}</option>{% endfor %}
             </select></div>
           <div class="campo"><label for="lat-{{ a.id }}">Lateralidade</label>
             <select id="lat-{{ a.id }}" name="lateralidade">

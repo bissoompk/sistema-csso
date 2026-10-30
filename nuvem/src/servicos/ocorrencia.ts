@@ -36,7 +36,7 @@ import * as auditoria from "./auditoria.js";
 import * as datas_br from "./datas_br.js";
 import * as ocorrencia_email from "./ocorrencia_email.js";
 import { proximo_numero_ocorrencia } from "./numeracao.js";
-import type { UsuarioAtual } from "./rbac.js";
+import { da_coordenacao, type UsuarioAtual } from "./rbac.js";
 import * as textos from "./textos.js";
 
 export type { Ocorrencia };
@@ -291,6 +291,25 @@ export async function concluir(tx: Executor, usuario: UsuarioAtual, o: Ocorrenci
     .set({ situacao: "CONCLUIDA", conclusao: c, concluida_em: agora, atualizado_em: agora, assumida_por: o.assumida_por ?? usuario.id, assumida_em: o.assumida_em ?? agora })
     .where(eq(tabela.id, o.id));
   await _evento(tx, usuario, o, "OCORRENCIA_CONCLUIDA", `Ocorrência ${o.protocolo} concluída`);
+}
+
+/**
+ * A coordenação reabre ocorrência concluída ou cancelada (conclusão precoce,
+ * cancelamento por engano). Volta a EM_ACOMPANHAMENTO; o motivo entra como
+ * acompanhamento e na trilha, e o texto da conclusão antiga fica no histórico.
+ */
+export async function reabrir(tx: Executor, usuario: UsuarioAtual, o: Ocorrencia, motivo: string, agora: Date = new Date()): Promise<void> {
+  usuario.exigir("ocorrencia.tratar");
+  if (!da_coordenacao(usuario)) throw new OcorrenciaInvalida("Reabrir ocorrência encerrada é com a coordenação.");
+  if (!SITUACOES_ENCERRADAS.has(o.situacao)) throw new OcorrenciaInvalida(`${o.protocolo} não está encerrada.`);
+  const m = _limpo(motivo, "o motivo da reabertura", true)!;
+  await tx
+    .update(tabela)
+    .set({ situacao: "EM_ACOMPANHAMENTO", conclusao: null, concluida_em: null, atualizado_em: agora })
+    .where(eq(tabela.id, o.id));
+  await tx.insert(tabela_acomp).values({ ocorrencia_id: o.id, texto: `Reaberta: ${m}`, autor_id: usuario.id });
+  // a trilha leva só a situação de antes; o motivo mora no acompanhamento
+  await _evento(tx, usuario, o, "OCORRENCIA_REABERTA", `Ocorrência ${o.protocolo} reaberta (era ${o.situacao})`);
 }
 
 /** Cancelar é para o registro feito por engano; o número não volta. */

@@ -38,7 +38,7 @@ import {
   historico_evento,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
-import { ESTADOS_ACIDENTE, ROTULO_ACIDENTE, ACIDENTE_ENCERRADO, ACIDENTE_CANCELAVEL, TRANSICOES_ACIDENTE } from "../dominio/estados.js";
+import { ESTADOS_ACIDENTE, ROTULO_ACIDENTE, ACIDENTE_ENCERRADO, ACIDENTE_CANCELAVEL, ACIDENTE_REABRIVEL, TRANSICOES_ACIDENTE } from "../dominio/estados.js";
 import {
   CONDICOES_ENVOLVIDO,
   ESPECIES,
@@ -46,6 +46,8 @@ import {
   LOCAIS_TIPO,
   MENSAGEM_MENOR_DE_IDADE,
   MOTIVOS_CANCELAMENTO,
+  MOTIVOS_REABERTURA,
+  ROTULO_MOTIVO_REABERTURA,
   ROTULO_CARACTERIZACAO,
   ROTULO_CONDICAO_ENVOLVIDO,
   ROTULO_SEXO,
@@ -76,7 +78,7 @@ import {
 } from "../dominio/acidente.js";
 import { somar_dias } from "../dominio/datas.js";
 import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
-import { ESCOPO_PROPRIO, type UsuarioAtual } from "../servicos/rbac.js";
+import { ESCOPO_PROPRIO, da_coordenacao, type UsuarioAtual } from "../servicos/rbac.js";
 import { escopo_ocorrencias, filtro_restrita, pode_ver_restrita_sst } from "../servicos/acidente_acesso.js";
 import * as comunicacao from "../servicos/acidente_comunicacao.js";
 import * as triagem from "../servicos/acidente_triagem.js";
@@ -804,6 +806,8 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       ROTULO_MOTIVO_CANCELAMENTO,
       ROTULO_ORIGEM_CAT_SP,
       MOTIVOS_CANCELAMENTO,
+      MOTIVOS_REABERTURA,
+      ROTULO_MOTIVO_REABERTURA,
       ocorrencia,
       abas: ABAS_FICHA,
       aba,
@@ -827,6 +831,7 @@ async function _tela_ficha(c: Ctx, usuario: UsuarioAtual, ocorrencia: comunicaca
       nominais_rn19: NOMINAIS_ACIDENTE,
       pode_triar,
       pode_cancelar: pode_triar && ACIDENTE_CANCELAVEL.has(ocorrencia.estado),
+      pode_reabrir: pode_triar && da_coordenacao(usuario) && ACIDENTE_REABRIVEL.has(ocorrencia.estado),
       // só se pede a quem comunicou com uma conta: é ela que responde
       pode_complementar:
         pode_triar && !!comunicante?.usuario_id && TRANSICOES_ACIDENTE[ocorrencia.estado]?.has("AGUARDANDO_COMPLEMENTACAO"),
@@ -939,6 +944,15 @@ rotas.post("/acidentes/:id{[0-9]+}/cancelar", (c) =>
     "cancelar",
     (sp, u, oc, f, v) => triagem.cancelar(sp, u, oc, f.texto("motivo"), f.opcional("texto"), v),
     (oc) => `${oc.protocolo} cancelada. O registro fica, com o motivo — nada foi apagado.`,
+  ),
+);
+
+rotas.post("/acidentes/:id{[0-9]+}/reabrir", (c) =>
+  _ato(
+    c,
+    "reabrir",
+    (sp, u, oc, f, v) => triagem.reabrir(sp, u, oc, f.texto("motivo"), v),
+    (oc) => `${oc.protocolo} reaberta: voltou para a investigação, e o relatório novo sai pela retificação.`,
   ),
 );
 

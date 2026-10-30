@@ -27,6 +27,7 @@ import { agora_utc } from "../db/esquema/base.js";
 import { ChecklistModelo } from "../dominio/dominios.js";
 import {
   CADEIA_ADICIONAL,
+  ETAPA_ANTERIOR,
   INCISOS_ART11,
   ORIGENS_DA_TRIAGEM,
   ROTULO_ESTADO_TELA,
@@ -69,6 +70,7 @@ import {
   resumir_varios,
   sla_vigente,
   voltar_do_sobrestamento,
+  voltar_uma_etapa,
   type Processo,
 } from "../servicos/processo.js";
 
@@ -654,6 +656,7 @@ async function _ficha(c: Ctx, usuario: UsuarioAtual, processo_id: number, o: Opc
     categorias: servico_anexos.CATEGORIAS_PROCESSO,
     rotulos_categoria: dicionario(ROTULO_CATEGORIA_ANEXO_TELA),
     proximos,
+    etapa_anterior: curto ? null : (ETAPA_ANTERIOR[origem] ?? null),
     saltos,
     livres_das_faltas,
     sem_documento: [...sem_documento],
@@ -708,6 +711,7 @@ rotas.post("/processos/:processo_id{[0-9]+}/estado", async (c) => {
   if (!destino) return recusar("Escolha para onde o processo vai.");
   try {
     if (destino === "__voltar__") await voltar_do_sobrestamento(tx, processo, usuario);
+    else if (destino === "__etapa_anterior__") await voltar_uma_etapa(tx, processo, usuario, f.opcional("comentario"));
     else {
       const curto = await fluxo_curto_de(tx, processo);
       if (!pode_transitar(processo.estado_tecnico, destino, curto) && digitado.confirmo_salto !== "1") {

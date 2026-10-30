@@ -90,6 +90,8 @@ export async function pedir_envio(
         .where(
           and(
             inArray(tabela_email.certificado_id, certificado_ids),
+            // o aviso de reciclagem também aponta para o certificado, mas não é o envio dele
+            eq(tabela_email.tipo, TIPO),
             inArray(tabela_email.situacao, ["PENDENTE", "ENVIADO"]),
           ),
         )
@@ -136,7 +138,10 @@ export async function pedir_envio(
 
 /** Os envios de um certificado, o mais novo primeiro (a ficha). */
 export async function envios_do_certificado(tx: Executor, certificado_id: number) {
-  const linhas = await tx.select().from(tabela_email).where(eq(tabela_email.certificado_id, certificado_id));
+  const linhas = await tx
+    .select()
+    .from(tabela_email)
+    .where(and(eq(tabela_email.certificado_id, certificado_id), eq(tabela_email.tipo, TIPO)));
   return linhas.sort((a, b) => b.id - a.id);
 }
 
@@ -147,7 +152,7 @@ export async function ultimo_envio_por_certificado(tx: Executor, certificado_ids
   const linhas = await tx
     .select({ id: tabela_email.id, certificado_id: tabela_email.certificado_id, situacao: tabela_email.situacao })
     .from(tabela_email)
-    .where(inArray(tabela_email.certificado_id, certificado_ids));
+    .where(and(inArray(tabela_email.certificado_id, certificado_ids), eq(tabela_email.tipo, TIPO)));
   for (const l of linhas.sort((a, b) => a.id - b.id)) saida[l.certificado_id!] = l.situacao;
   return saida;
 }

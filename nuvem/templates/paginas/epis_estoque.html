@@ -325,9 +325,19 @@
 {% call ui.popup_cadastro('documento-lote-' ~ l.entrada.id, 'Documento do lote',
                           '/epis/estoque/' ~ l.entrada.id, 'Salvar',
                           nota=nota_lote) %}
-  <p class="discreto">Nota fiscal, contato e observação se corrigem porque são
-    transcrição de papel. <strong>Quantidade não está aqui</strong>: ela muda
+  <p class="discreto">Nota fiscal, CA, validade do CA, contato e observação se corrigem porque são
+    transcrição de papel; a diferença fica na trilha. <strong>Quantidade não está aqui</strong>: ela muda
     por movimento, que diz quando mudou e por quê.</p>
+  <div class="linha-campos">
+    <div class="campo">
+      <label for="ca-{{ l.entrada.id }}">Nº do CA</label>
+      <input id="ca-{{ l.entrada.id }}" name="numero_ca" maxlength="10"
+             value="{{ l.entrada.numero_ca or '' }}"></div>
+    <div class="campo">
+      <label for="vca-{{ l.entrada.id }}">Validade do CA</label>
+      <input id="vca-{{ l.entrada.id }}" type="date" name="validade_ca"
+             value="{{ l.entrada.validade_ca or '' }}"></div>
+  </div>
   <div class="linha-campos">
     <div class="campo">
       <label for="nf-{{ l.entrada.id }}">Nota fiscal</label>

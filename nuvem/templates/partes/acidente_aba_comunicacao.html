@@ -20,6 +20,7 @@
   {% if pode_complementar %}{{ ui.botao_cadastro('pedir-complementacao', 'Pedir complementação', 'secundario') }}{% endif %}
   {{ ui.botao_cadastro('prorrogar', 'Prorrogar o prazo', 'secundario') }}
   {{ ui.botao_cadastro('retificar', 'Retificar a CAT/SP', 'secundario') }}
+  {% if pode_reabrir %}{{ ui.botao_cadastro('reabrir', 'Reabrir a investigação', 'secundario') }}{% endif %}
   {% if pode_cancelar %}{{ ui.botao_cadastro('cancelar', 'Cancelar', 'perigo') }}{% endif %}
 </div>
 
@@ -85,6 +86,22 @@
     <textarea id="motivo-ret" name="motivo" required maxlength="1000" rows="2">{{ d['motivo'] or '' }}</textarea>
   </div>
 {% endcall %}
+
+{% if pode_reabrir %}
+{% call ui.popup_cadastro('reabrir', 'Reabrir a investigação', '/acidentes/' ~ oc.id ~ '/reabrir', 'Reabrir',
+                          aberto=popup_aberto == 'reabrir', erro=erro if popup_aberto == 'reabrir' else '') %}
+  <input type="hidden" name="versao" value="{{ oc.versao }}">
+  <p>{{ oc.protocolo }} volta para a investigação, que destrava. O relatório novo sai pela retificação e a CAT/SP
+    mantém o mesmo número. O motivo fica na trilha, só pelo código da lista.</p>
+  <div class="campo">
+    <label for="motivo-reabrir">Motivo</label>
+    <select id="motivo-reabrir" name="motivo" required>
+      <option value="">Escolha…</option>
+      {% for m in MOTIVOS_REABERTURA %}<option value="{{ m }}">{{ ROTULO_MOTIVO_REABERTURA[m] }}</option>{% endfor %}
+    </select>
+  </div>
+{% endcall %}
+{% endif %}
 
 {% if pode_cancelar %}
 {% call ui.popup_cadastro('cancelar', 'Cancelar a ocorrência', '/acidentes/' ~ oc.id ~ '/cancelar', 'Cancelar a ocorrência',

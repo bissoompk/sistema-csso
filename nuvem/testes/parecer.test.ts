@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import type { Executor } from "../src/db/cliente.js";
+import * as pendencias from "../src/servicos/pendencias.js";
 import * as servico from "../src/servicos/parecer.js";
 import type { ParecerCompleto } from "../src/servicos/parecer.js";
 import * as documento from "../src/servicos/documento.js";
@@ -415,6 +416,37 @@ describe("emissão ponta a ponta", () => {
       expect(p.situacao).toBe("ANULADO");
       expect(p.motivo_anulacao).toBeTruthy();
       expect((await parecerDe(tx, p.id)).situacao).toBe("ANULADO");
+    }));
+
+  it("anular o parecer leva o adicional dele à reavaliação, com pendência de decisão, e fecha as pendências do parecer", () =>
+    comCenario(async (tx, a, _c, p) => {
+      await servico.emitir(tx, p, a.COORDENADOR, { gerar_pdf: false });
+      const [vigencia] = await tx
+        .insert(e.adicional_vigencia)
+        .values({
+          servidor_id: p.servidor_id!,
+          parecer_id: p.id,
+          tipo_adicional_id: p.tipo_adicional_id!,
+          percentual_id: p.exposicoes[0]!.percentual_id,
+          estado: "VIGENTE",
+        })
+        .returning();
+      await pendencias.abrir(tx, {
+        tipo: "INSERIR_NO_SEI",
+        chave: `teste:parecer:${p.id}`,
+        descricao: "Incluir o parecer assinado no SEI",
+        usuario: a.COORDENADOR,
+        processo_id: p.processo_id,
+        parecer_id: p.id,
+      });
+      await servico.anular(tx, p, a.COORDENADOR, "erro material no percentual");
+      const [depois] = await tx.select().from(e.adicional_vigencia).where(eq(e.adicional_vigencia.id, vigencia!.id));
+      expect(depois!.estado).toBe("EM_REAVALIACAO");
+      const todas = await tx.select().from(e.pendencia).where(eq(e.pendencia.parecer_id, p.id));
+      const antiga = todas.find((x) => x.chave === `teste:parecer:${p.id}`)!;
+      expect(antiga.concluida).toBe(true);
+      const decisao = todas.find((x) => x.tipo === "REAVALIACAO_PARECER_ANULADO")!;
+      expect(decisao.concluida).toBe(false);
     }));
 
   it("RN-11: cascata de reavaliação", () =>

@@ -606,8 +606,10 @@ describe("as duas máquinas de estado", () => {
       await recusa(servico.reconsiderar(tx, analista, requisicao, ""), servico.RequisicaoBloqueada);
       await servico.reconsiderar(tx, analista, requisicao, "A chefia trouxe a descrição correta da atividade");
       expect(requisicao.estado).toBe("EM_ANALISE");
-      // os itens NÃO voltam sozinhos
-      expect((await itens(tx, requisicao))[0]!.estado).toBe("RECUSADO");
+      // as linhas recusadas com o motivo do indeferimento voltam, e dá para aprová-las
+      expect((await itens(tx, requisicao))[0]!.estado).toBe("SOLICITADO");
+      await servico.aprovar_item(tx, analista, (await itens(tx, requisicao))[0]!);
+      expect((await itens(tx, requisicao))[0]!.estado).toBe("APROVADO");
       const tipos = (await eventos(tx, "epi_requisicao", requisicao.id)).map((ev) => ev.tipo_evento);
       expect(tipos).toContain(servico.EPI_REQUISICAO_RECONSIDERADA);
     }));

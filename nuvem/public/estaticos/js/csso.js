@@ -594,15 +594,19 @@
   // -------------------------------------------------------------------
   function valoresDe(escopo, nome) {
     var valores = [];
+    var caixas = 0;
     var campos = escopo.querySelectorAll('[name]');
     for (var i = 0; i < campos.length; i++) {
       var c = campos[i];
       if (c.name !== nome || c.disabled) continue;
-      if (c.type === 'checkbox' || c.type === 'radio') { if (c.checked) valores.push(c.value); }
+      if (c.type === 'checkbox' || c.type === 'radio') { caixas++; if (c.checked) valores.push(c.value); }
       else if (c.tagName === 'SELECT') {
         for (var j = 0; j < c.options.length; j++) if (c.options[j].selected) valores.push(c.options[j].value);
       } else valores.push(c.value);
     }
+    // Caixa ou rádio sem marca não manda valor ao servidor: para a regra, é o valor vazio
+    // (`eh_a_pessoa=` mostra o campo enquanto a caixa está desmarcada).
+    if (caixas && !valores.length) valores.push('');
     return valores;
   }
 

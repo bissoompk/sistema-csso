@@ -13,6 +13,8 @@ import type { Ambiente } from "../nucleo/contexto.js";
 import { ErroHttp, RegraViolada } from "../nucleo/erros.js";
 import * as anexo from "../servicos/acidente_anexo_iii.js";
 import * as identificacao from "../servicos/acidente_identificacao.js";
+import { formulario } from "../dependencias.js";
+import { comMensagem, redirecionar } from "../web.js";
 import * as acidentes from "./acidentes.js";
 import { baixar } from "./turmas.js";
 
@@ -34,6 +36,40 @@ rotas.get("/acidentes/:id{[0-9]+}/identificacao", async (c) => {
     if (!(erro instanceof RegraViolada)) throw erro;
     return acidentes.tela_ficha(c, usuario, ocorrencia, { ...base, erro: erro.message }, 422);
   }
+});
+
+/** Completa a identificação pessoal depois da comunicação: só quem lê a identificação (acidente.identificacao_ver). */
+rotas.post("/acidentes/:id{[0-9]+}/identificacao", async (c) => {
+  const usuario = await acidentes.porta_titular(c, "acidente.ver");
+  const oc_id = Number(c.req.param("id"));
+  const ocorrencia = await acidentes.ocorrencia_no_alcance(c, usuario, oc_id);
+  const f = await formulario(c);
+  const acidentado_id = f.inteiro("acidentado") ?? -1;
+  const t = (nome: string) => f.opcional(nome) ?? null;
+  try {
+    await c.get("tx").transaction((sp) =>
+      identificacao.completar(sp, usuario, ocorrencia, acidentado_id, {
+        sexo: t("sexo"),
+        cpf: t("cpf"),
+        rg: t("rg"),
+        data_nascimento: t("data_nascimento"),
+        cep: t("cep"),
+        logradouro: t("logradouro"),
+        numero: t("numero"),
+        complemento: t("complemento"),
+        bairro: t("bairro"),
+        cidade: t("cidade"),
+        uf: t("uf"),
+        telefone: t("telefone"),
+        email: t("email"),
+      }),
+    );
+  } catch (erro) {
+    if (erro instanceof identificacao.IdentificacaoInexistente) throw new ErroHttp(404, erro.message);
+    if (!(erro instanceof RegraViolada)) throw erro;
+    return acidentes.tela_ficha(c, usuario, ocorrencia, { aba: "identificacao", erro: erro.message }, 422);
+  }
+  return redirecionar(c, comMensagem(`/acidentes/${oc_id}?aba=identificacao`, "Identificação completada. O que já estava gravado e não foi digitado continua como estava."));
 });
 
 /** A CAT/SP no formato do Anexo III, um acidentado por vez, para a perícia do SIASS. Não é guardada. */

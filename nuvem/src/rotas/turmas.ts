@@ -1798,6 +1798,26 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}`, async
   );
 });
 
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/reativar`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.concluir");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.concluir", dono_turma.INSCRICOES);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
+  const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
+  if (!inscricao || inscricao.turma_id !== turma.id) return redirecionar(c, volta);
+  try {
+    await _no_savepoint(c, (sp) => servico_turma.reativar_inscricao(sp, usuario, inscricao, f.texto("motivo")));
+  } catch (erro) {
+    if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  return _volta(c, volta, `${nome_exibicao(inscricao.participante)}: inscrição reativada.`);
+});
+
 /**
  * O CPF do participante, só para o certificado que a norma exige
  * (`cpf_certificado.ts`). Quem inscreve é quem gerencia o participante; a

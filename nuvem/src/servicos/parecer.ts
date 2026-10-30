@@ -31,6 +31,7 @@ import { ContextoParecer } from "./documento.js";
 import * as numeracao from "./numeracao.js";
 import * as servico_pdf from "./pdf.js";
 import * as pendencias from "./pendencias.js";
+import { pendencia as tabela_pendencia } from "../db/esquema/index.js";
 import * as servico_processo from "./processo.js";
 import * as textos from "./textos.js";
 import { declarar_porta } from "./anexo_acesso.js";
@@ -1121,6 +1122,29 @@ export async function anular(
     usuario,
     processo_id: parecer.processo_id,
   });
+  // 30/10/2026: o que apontava para o parecer anulado não fica solto. As pendências dele perdem
+  // o objeto; o adicional vigente ligado a ele vai para reavaliação, com uma pendência que
+  // obriga a decidir (novo parecer, cessar ou manter com base em outro).
+  const abertas = await tx
+    .select()
+    .from(tabela_pendencia)
+    .where(and(eq(tabela_pendencia.parecer_id, parecer.id), eq(tabela_pendencia.concluida, false)));
+  for (const p of abertas) await pendencias.concluir_pela_rotina(tx, p, "o parecer foi anulado");
+  const vigencias = await tx
+    .select()
+    .from(adicional_vigencia)
+    .where(and(eq(adicional_vigencia.parecer_id, parecer.id), inArray(adicional_vigencia.estado, ["VIGENTE", "ALTERADO", "SUSPENSO"])));
+  for (const v of vigencias) {
+    await tx.update(adicional_vigencia).set({ estado: "EM_REAVALIACAO" }).where(eq(adicional_vigencia.id, v.id));
+    await pendencias.abrir(tx, {
+      tipo: "REAVALIACAO_PARECER_ANULADO",
+      chave: `anulado:parecer:${parecer.id}:vigencia:${v.id}`,
+      descricao: `Parecer ${parecer.rotulo} anulado — decidir o adicional que se apoiava nele (novo parecer, cessar ou manter).`,
+      usuario,
+      processo_id: parecer.processo_id,
+      parecer_id: parecer.id,
+    });
+  }
   return parecer;
 }
 

@@ -80,6 +80,15 @@ export const SIM_NAO_NAO_SEI = ['SIM', 'NAO', 'NAO_SABE'] as const;
 export const ROTULO_SIM_NAO_NAO_SEI: Rotulos = { SIM: 'Sim', NAO: 'Não', NAO_SABE: 'Não sei' };
 
 // Por que se cancela uma ocorrência: lista fechada mais texto (D13/§3.1)
+/** Por que a coordenação reabre o caso: lista fechada, para a trilha não levar texto livre (RN-19). */
+export const MOTIVOS_REABERTURA = ['CORRIGIR_RELATORIO', 'INFORMACAO_NOVA', 'ENCERRAMENTO_INDEVIDO', 'OUTRO'] as const;
+export const ROTULO_MOTIVO_REABERTURA: Readonly<Record<string, string>> = {
+  CORRIGIR_RELATORIO: 'Corrigir a investigação ou o relatório',
+  INFORMACAO_NOVA: 'Informação nova sobre o caso',
+  ENCERRAMENTO_INDEVIDO: 'Encerrado por engano',
+  OUTRO: 'Outro motivo',
+};
+
 export const MOTIVOS_CANCELAMENTO = ['DUPLICADA', 'COMUNICACAO_INDEVIDA', 'NAO_E_ACIDENTE_EM_SERVICO', 'OUTRO'] as const;
 export const ROTULO_MOTIVO_CANCELAMENTO: Rotulos = {
   DUPLICADA: 'Comunicação duplicada',

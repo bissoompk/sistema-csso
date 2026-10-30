@@ -92,25 +92,41 @@ export const TRANSICOES: Transicoes = {
   RECEBIDO: conjunto('EM_TRIAGEM', ...SAIDAS_DA_TRIAGEM),
   EM_TRIAGEM: SAIDAS_DA_TRIAGEM,
   PENDENTE_DOCUMENTO: conjunto('EM_TRIAGEM', 'SOBRESTADO', 'ARQUIVADO'),
-  AGUARDANDO_INSPECAO: conjunto('INSPECIONADO'),
+  // Arquivar e indeferir cabem também depois da triagem (30/10/2026): o processo
+  // que não segue (servidor saiu, pedido retirado, requisito que não se cumpre)
+  // não fica preso até o parecer. Voltar uma etapa é ato à parte (`ETAPA_ANTERIOR`).
+  AGUARDANDO_INSPECAO: conjunto('INSPECIONADO', 'INDEFERIDO_TECNICAMENTE', 'ARQUIVADO'),
   INSPECIONADO: conjunto(
     'AGUARDANDO_QUANTIFICACAO',
     'LAUDO_EM_ELABORACAO',
     'INDEFERIDO_TECNICAMENTE',
+    'ARQUIVADO',
   ),
-  AGUARDANDO_QUANTIFICACAO: conjunto('LAUDO_EM_ELABORACAO'),
-  LAUDO_EM_ELABORACAO: conjunto('LAUDO_EMITIDO'),
-  LAUDO_EMITIDO: conjunto('PARECER_EM_ELABORACAO'),
-  PARECER_EM_ELABORACAO: conjunto('PARECER_PRONTO_P_ASSINATURA'),
-  PARECER_PRONTO_P_ASSINATURA: conjunto('PARECER_ASSINADO'),
-  PARECER_ASSINADO: conjunto('INSERIDO_NO_SEI'),
-  INSERIDO_NO_SEI: conjunto('DEVOLVIDO_A_PROGEP'),
-  DEVOLVIDO_A_PROGEP: conjunto('CONCLUIDO'),
+  AGUARDANDO_QUANTIFICACAO: conjunto('LAUDO_EM_ELABORACAO', 'INDEFERIDO_TECNICAMENTE', 'ARQUIVADO'),
+  LAUDO_EM_ELABORACAO: conjunto('LAUDO_EMITIDO', 'INDEFERIDO_TECNICAMENTE', 'ARQUIVADO'),
+  LAUDO_EMITIDO: conjunto('PARECER_EM_ELABORACAO', 'INDEFERIDO_TECNICAMENTE', 'ARQUIVADO'),
+  PARECER_EM_ELABORACAO: conjunto('PARECER_PRONTO_P_ASSINATURA', 'INDEFERIDO_TECNICAMENTE', 'ARQUIVADO'),
+  PARECER_PRONTO_P_ASSINATURA: conjunto('PARECER_ASSINADO', 'ARQUIVADO'),
+  PARECER_ASSINADO: conjunto('INSERIDO_NO_SEI', 'ARQUIVADO'),
+  INSERIDO_NO_SEI: conjunto('DEVOLVIDO_A_PROGEP', 'ARQUIVADO'),
+  DEVOLVIDO_A_PROGEP: conjunto('CONCLUIDO', 'ARQUIVADO'),
   CONCLUIDO: conjunto('EM_RECURSO'),
   INDEFERIDO_TECNICAMENTE: conjunto('EM_RECURSO'),
   EM_RECURSO: conjunto('EM_TRIAGEM'),
   ARQUIVADO: conjunto(),
   SOBRESTADO: conjunto(), // volta ao estado_anterior
+};
+
+// "Voltar uma etapa" (30/10/2026): a etapa de trás de quem está no meio do trabalho
+// técnico, com motivo. Com o parecer emitido (pronto para assinatura em diante) não
+// se volta: o parecer anulado é que desfaz esses estados. Não é aresta da máquina, para não virar caminho de salto.
+export const ETAPA_ANTERIOR: Readonly<Record<string, string>> = {
+  AGUARDANDO_INSPECAO: 'EM_TRIAGEM',
+  INSPECIONADO: 'AGUARDANDO_INSPECAO',
+  AGUARDANDO_QUANTIFICACAO: 'INSPECIONADO',
+  LAUDO_EM_ELABORACAO: 'INSPECIONADO',
+  LAUDO_EMITIDO: 'LAUDO_EM_ELABORACAO',
+  PARECER_EM_ELABORACAO: 'LAUDO_EMITIDO',
 };
 
 // Atalho legitimo: EM_TRIAGEM -> PARECER_EM_ELABORACAO exige laudo vigente
@@ -693,6 +709,12 @@ export const ROTULO_ACIDENTE: Rotulos = {
 
 // Os terminais: fila, pendencia e indicador leem daqui em vez de repetir a lista.
 export const ACIDENTE_ENCERRADO: ReadonlySet<string> = conjunto('CONCLUIDA', 'CANCELADA');
+
+// Reabrir é ato à parte da máquina (30/10/2026): a coordenação devolve à investigação
+// o caso com relatório emitido ou encaminhado ao SIASS, com motivo da lista. CONCLUIDA
+// continua final (o banco recusa sair dela): o caso que volta é ocorrência nova. Não é aresta da
+// máquina para que "Mudar a situação" não a ofereça a quem não é coordenação.
+export const ACIDENTE_REABRIVEL: ReadonlySet<string> = conjunto('RELATORIO_EMITIDO', 'ENCAMINHADA_SIASS');
 
 // Onde ainda cabe cancelar (com motivo): antes de a investigacao comecar.
 export const ACIDENTE_CANCELAVEL: ReadonlySet<string> = conjunto(

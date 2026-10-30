@@ -26,7 +26,7 @@
     <div class="campo">
       <label for="{{ p }}vinculo">Vínculo</label>
       <select id="{{ p }}vinculo" name="{{ p }}vinculo" required>
-        {% for v in VINCULOS_ACIDENTADO %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'vinculo'] or vinculo_padrao, v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
+        {% for v in ['SERVIDOR'] %}<option value="{{ v }}"{{ ui.sel(d[p ~ 'vinculo'] or vinculo_padrao, v) }}>{{ ROTULO_VINCULO_ACIDENTADO[v] }}</option>{% endfor %}
       </select>
     </div>
     <div class="campo">

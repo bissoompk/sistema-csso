@@ -11,7 +11,7 @@ import type { Banco } from "../src/db/cliente.js";
 import * as comunicacao from "../src/servicos/acidente_comunicacao.js";
 import * as triagem from "../src/servicos/acidente_triagem.js";
 import { bancoLimpo, contas, usuarioAtual } from "./ajuda.js";
-import { dados, titular } from "./acidente_ajuda.js";
+import { dados, em_investigacao, titular } from "./acidente_ajuda.js";
 
 let db: Banco;
 
@@ -196,5 +196,25 @@ describe("cancelar e prorrogar", () => {
     expect(c.prazo_comunicacao).toBe(oc.prazo_comunicacao);
     expect(c.prazo_prorrogado_ate).toBe(depois);
     expect((await pendencia(`ACIDENTE_PRAZO_COMUNICACAO:${oc.id}`))!.prazo).toBe(depois);
+  });
+});
+
+describe("reabrir a investigação (coordenação)", () => {
+  it("só a coordenação reabre caso com relatório emitido, por motivo da lista; a investigação destrava", async () => {
+    const { oc, equipe } = await em_investigacao(db);
+    const coord = await usuarioAtual(db, "coordenador_csso");
+    await db.update(e.acidente_ocorrencia).set({ estado: "RELATORIO_EMITIDO" }).where(eq(e.acidente_ocorrencia.id, oc.id));
+    const emitida = await ler(oc.id);
+    await expect(db.transaction((tx) => triagem.reabrir(tx, equipe, emitida, "INFORMACAO_NOVA", emitida.versao))).rejects.toThrow(
+      /com a coordenação/,
+    );
+    await expect(db.transaction((tx) => triagem.reabrir(tx, coord, emitida, "porque sim", emitida.versao))).rejects.toThrow(/motivo/);
+    await db.transaction((tx) => triagem.reabrir(tx, coord, emitida, "INFORMACAO_NOVA", emitida.versao));
+    expect((await ler(oc.id)).estado).toBe("EM_INVESTIGACAO");
+    const [ev] = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, "ACIDENTE_REABERTO"));
+    expect(ev!.descricao).toContain("INFORMACAO_NOVA");
+    // em investigação não há o que reabrir
+    const aberta = await ler(oc.id);
+    await expect(db.transaction((tx) => triagem.reabrir(tx, coord, aberta, "OUTRO", aberta.versao))).rejects.toThrow(/não está num ponto/);
   });
 });

@@ -245,6 +245,45 @@ export async function gravar(
   return true;
 }
 
+/**
+ * Completa a identificação depois da comunicação (30/10/2026): quem tem
+ * `acidente.identificacao_ver` informa o que faltou no Anexo III. Só o que foi
+ * digitado entra: o resto do que já estava gravado fica como está, e campo em
+ * branco não apaga. A trilha diz só os grupos de campo, nunca o valor.
+ */
+export async function completar(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  ocorrencia: Ocorrencia,
+  acidentado_id: number,
+  bruto: DadosIdentificacao,
+): Promise<void> {
+  usuario.exigir("acidente.identificacao_ver");
+  const [acidentado] = await tx
+    .select()
+    .from(tabela_acidentado)
+    .where(and(eq(tabela_acidentado.id, acidentado_id), eq(tabela_acidentado.ocorrencia_id, ocorrencia.id)));
+  if (!acidentado || !_alcanca(usuario, ocorrencia, acidentado)) throw new IdentificacaoInexistente("Acidentado não encontrado.");
+  if (ocorrencia.estado === "CANCELADA") throw new IdentificacaoRecusada("A ocorrência está cancelada: não há o que completar.");
+  const novo = conferir(bruto);
+  if (!novo) throw new IdentificacaoRecusada("Preencha ao menos um campo para completar a identificação.");
+  const [atual] = await tx.select().from(acidente_identificacao).where(eq(acidente_identificacao.acidentado_id, acidentado_id));
+  if (atual?.expurgado_em) throw new IdentificacaoRecusada("A identificação deste envolvido já foi expurgada pelo prazo de guarda.");
+  const informados = Object.fromEntries(Object.entries(novo).filter(([, v]) => v !== null)) as Partial<DadosIdentificacao>;
+  const valores = { ...informados, registrado_por: usuario.id, registrado_em: new Date() };
+  await tx
+    .insert(acidente_identificacao)
+    .values({ acidentado_id, ...valores })
+    .onConflictDoUpdate({ target: acidente_identificacao.acidentado_id, set: valores });
+  await auditoria.registrar(tx, {
+    entidade: ENTIDADE,
+    entidade_id: ocorrencia.id,
+    tipo_evento: auditoria.ACIDENTE_IDENTIFICACAO_REGISTRADA,
+    descricao: `${ocorrencia.protocolo}: identificação pessoal do envolvido nº ${acidentado.ordem} completada (${_grupos(novo).join(", ")}).`,
+    usuario,
+  });
+}
+
 export async function gravar_contato_testemunha(
   tx: Executor,
   usuario: UsuarioAtual | null,

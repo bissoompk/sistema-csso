@@ -18,6 +18,7 @@ import * as ics from "./ics.js";
 
 export const TIPO_ACEITA = "INSCRICAO_ACEITA";
 export const TIPO_RECUSADA = "INSCRICAO_RECUSADA";
+export const TIPO_TURMA_CANCELADA = "TURMA_CANCELADA";
 
 interface InscricaoDoAviso {
   id: number;
@@ -78,6 +79,40 @@ export async function avisar(
     destinatario: para,
     assunto,
     corpo,
+    inscricao_id: inscricao.id,
+    criado_por,
+  });
+  return true;
+}
+
+/**
+ * A turma foi cancelada: quem tinha vaga (ou pedido) e deixou e-mail fica sabendo.
+ * O motivo não vai no e-mail — ele é escrito para a trilha. Vale para qualquer
+ * origem, porque o inscrito pela equipe também precisa saber que não há turma.
+ */
+export async function avisar_turma_cancelada(
+  tx: Executor,
+  inscricao: InscricaoDoAviso,
+  criado_por: number | null,
+): Promise<boolean> {
+  const para = Participante.email_exibicao(inscricao.participante);
+  if (!email.email_valido(para)) return false;
+  const t = inscricao.turma;
+  const promotor = t.unidade_promotora ?? null;
+  const nome = inscricao.participante.servidor?.nome ?? inscricao.participante.nome ?? "";
+  const periodo =
+    t.data_inicio === t.data_fim
+      ? `em ${datas_br.numerica(t.data_inicio)}`
+      : `de ${datas_br.numerica(t.data_inicio)} a ${datas_br.numerica(t.data_fim)}`;
+  await email.enfileirar(tx, {
+    tipo: TIPO_TURMA_CANCELADA,
+    destinatario: para,
+    assunto: `Turma cancelada — ${t.treinamento.nome}`,
+    corpo:
+      `Olá, ${nome}.\n\n` +
+      `A turma ${t.codigo} do treinamento ${t.treinamento.nome} (${periodo}) foi cancelada, ` +
+      "e a sua inscrição não vale mais. Em caso de dúvida, fale com a equipe responsável.\n\n" +
+      _assinatura(promotor?.nome_extenso ?? ""),
     inscricao_id: inscricao.id,
     criado_por,
   });

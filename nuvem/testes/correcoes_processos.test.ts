@@ -181,17 +181,41 @@ describe("D0: estados do parecer só com o parecer", () => {
     expect(await estado_de(p.id)).toBe("INSPECIONADO");
   });
 
-  it("sem passo manual, “Mover” não sobresta o processo por engano (revisão)", async () => {
+  it("“Mover” sem escolher destino não move nem sobresta o processo por engano (revisão)", async () => {
     const cliente = await como("coordenador_csso");
     const p = await processo_em("PARECER_EM_ELABORACAO");
     const ficha = (await cliente.get(`/processos/${p.id}`, { cabecalhos: FORMULARIO })).text;
     const select = ficha.slice(ficha.indexOf('id="mover-destino"'), ficha.indexOf("</select>", ficha.indexOf('id="mover-destino"')));
-    // a primeira opção é a vazia, e não "Sobrestar"
-    expect(select.indexOf('<option value="">')).toBeGreaterThan(-1);
-    expect(select.indexOf('<option value="">')).toBeLessThan(select.indexOf('value="SOBRESTADO"'));
+    // desde 30/10/2026 arquivar e indeferir cabem aqui: a primeira opção é um passo de fluxo, e não "Sobrestar"
+    expect(select.indexOf('value="ARQUIVADO"')).toBeGreaterThan(-1);
+    expect(select.indexOf('value="ARQUIVADO"')).toBeLessThan(select.indexOf('value="SOBRESTADO"'));
     const r = await cliente.post(`/processos/${p.id}/estado`, { destino: "" }, { cabecalhos: FORMULARIO });
     expect(r.text).toContain("Escolha para onde o processo vai.");
     expect(await estado_de(p.id)).toBe("PARECER_EM_ELABORACAO");
+  });
+
+  it("depois da triagem dá para arquivar, indeferir (com inciso) e voltar uma etapa (com motivo)", async () => {
+    const cliente = await como("coordenador_csso");
+    const a = await processo_em("LAUDO_EM_ELABORACAO");
+    await cliente.post(`/processos/${a.id}/estado`, { destino: "ARQUIVADO", comentario: "servidor saiu" }, { cabecalhos: FORMULARIO });
+    expect(await estado_de(a.id)).toBe("ARQUIVADO");
+
+    const i = await processo_em("INSPECIONADO", { nup: "23086.000002/2026-01" });
+    const sem_inciso = await cliente.post(`/processos/${i.id}/estado`, { destino: "INDEFERIDO_TECNICAMENTE" }, { cabecalhos: FORMULARIO });
+    expect(sem_inciso.text).toContain("inciso");
+    expect(await estado_de(i.id)).toBe("INSPECIONADO");
+
+    const v = await processo_em("INSPECIONADO", { nup: "23086.000003/2026-01" });
+    const sem_motivo = await cliente.post(`/processos/${v.id}/estado`, { destino: "__etapa_anterior__" }, { cabecalhos: FORMULARIO });
+    expect(sem_motivo.text).toContain("exige o motivo");
+    expect(await estado_de(v.id)).toBe("INSPECIONADO");
+    await cliente.post(`/processos/${v.id}/estado`, { destino: "__etapa_anterior__", comentario: "inspeção marcada por engano" }, { cabecalhos: FORMULARIO });
+    expect(await estado_de(v.id)).toBe("AGUARDANDO_INSPECAO");
+    // o parecer não se desfaz voltando etapa
+    const pe = await processo_em("PARECER_PRONTO_P_ASSINATURA", { nup: "23086.000004/2026-01" });
+    const nao = await cliente.post(`/processos/${pe.id}/estado`, { destino: "__etapa_anterior__", comentario: "x" }, { cabecalhos: FORMULARIO });
+    expect(nao.text).not.toContain("Voltar uma etapa (para");
+    expect(await estado_de(pe.id)).toBe("PARECER_PRONTO_P_ASSINATURA");
   });
 
   it("soltar no quadro não leva a “Pronto para assinatura” sem parecer", async () => {

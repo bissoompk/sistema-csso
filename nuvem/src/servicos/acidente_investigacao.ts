@@ -154,6 +154,7 @@ export async function salvar(
     depois,
     usuario,
     tipo_evento: auditoria.ACIDENTE_INVESTIGACAO_SALVA,
+    so_o_campo: true,
   });
   return gravada;
 }

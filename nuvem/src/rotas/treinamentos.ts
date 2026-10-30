@@ -12,6 +12,7 @@ import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import type { Executor } from "../db/cliente.js";
 import {
   anexo as tabela_anexo,
+  certificado as tabela_certificado,
   assinatura_instrutor as tabela_assinatura,
   instrutor_qualificacao as tabela_qualificacao,
   certificado_modelo as tabela_modelo,
@@ -583,6 +584,7 @@ function _linhas_do_mapa(modelo: any) {
   return certificado.marcadores_detalhados(modelo).map((m) => {
     const tag = por_marcador.get(m.marcador) ?? null;
     const sugestao = certificado.sugerir_campo(m);
+    const da_turma = sugestao ? null : certificado.sugerir_campo_da_turma(m.marcador);
     const tipo: string = tag?.tipo ?? "SISTEMA";
     return {
       ...m,
@@ -590,12 +592,13 @@ function _linhas_do_mapa(modelo: any) {
       tipo,
       campo: tag ? (tag.campo as string) : null,
       sugestao,
-      sugestao_rotulo: sugestao ? certificado.CAMPOS_CERTIFICADO[sugestao]!.rotulo : null,
+      sugestao_turma: da_turma,
+      sugestao_rotulo: sugestao ? certificado.CAMPOS_CERTIFICADO[sugestao]!.rotulo : da_turma ? `Campo da turma: ${da_turma}` : null,
       // o que o seletor mostra escolhido: o mapa gravado, senão a sugestão;
       // preenchimento à parte aparece como "@TIPO"
-      escolhido: tag ? (tipo === "SISTEMA" ? (tag.campo as string) : `@${tipo}`) : (sugestao ?? ""),
+      escolhido: tag ? (tipo === "SISTEMA" ? (tag.campo as string) : `@${tipo}`) : (sugestao ?? (da_turma ? "@TURMA" : "")),
       // texto fixo ou nome do campo; sem nada gravado, o próprio texto do Word
-      detalhe: (tag?.texto_fixo || tag?.rotulo || _nome_sugerido(m)) as string,
+      detalhe: (tag?.texto_fixo || tag?.rotulo || da_turma || _nome_sugerido(m)) as string,
     };
   });
 }
@@ -722,7 +725,7 @@ async function _tela_modelo(c: Ctx, usuario: UsuarioAtual, modelo_id: number, d:
     enviado: Boolean(modelo.arquivo_enviado),
     limite_mb: envio.LIMITE_BYTES / 1024 / 1024,
     // os sem mapa que o "aplicar sugestões" resolve
-    com_sugestao: linhas.filter((l) => !l.tag && l.sugestao),
+    com_sugestao: linhas.filter((l) => !l.tag && (l.sugestao || l.sugestao_turma)),
     campos_por_grupo: certificado.campos_por_grupo(),
     campos: certificado.CAMPOS_CERTIFICADO,
     arquivos: certificado.arquivos_de_modelo(),
@@ -796,6 +799,51 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}`, async (c) => {
     },
     { permissao: "treinamento.gerenciar", rotulo: "Modelo", volta },
   );
+});
+
+/**
+ * Exclui um modelo de certificado que nunca foi usado: sem certificado emitido
+ * com ele e fora do catálogo (nenhum treinamento aponta para ele). Os marcadores
+ * saem junto. O que já gerou certificado fica, porque é o layout que reimprime a
+ * segunda via; para aposentá-lo, publique uma versão nova.
+ */
+rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/excluir`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const tx = c.get("tx");
+  const modelo_id = Number(c.req.param("modelo_id"));
+  const volta = `${MODELOS}/${modelo_id}`;
+  const [modelo] = await tx.select().from(tabela_modelo).where(eq(tabela_modelo.id, modelo_id));
+  if (!modelo) return redirecionar(c, MODELOS);
+  const [emitidos] = await tx.select({ n: count() }).from(tabela_certificado).where(eq(tabela_certificado.modelo_id, modelo_id));
+  if ((emitidos?.n ?? 0) > 0) {
+    return _erro(
+      c,
+      volta,
+      `Este modelo gerou ${emitidos!.n} certificado(s) e é o layout da segunda via deles: não se exclui. ` +
+        "Para aposentá-lo, publique uma versão nova.",
+    );
+  }
+  const [no_catalogo] = await tx
+    .select({ n: count() })
+    .from(tabela_treinamento)
+    .where(eq(tabela_treinamento.modelo_vigente_id, modelo_id));
+  if ((no_catalogo?.n ?? 0) > 0) {
+    return _erro(
+      c,
+      volta,
+      `${no_catalogo!.n} treinamento(s) do catálogo usam este modelo. Aponte-os para outro modelo e exclua depois.`,
+    );
+  }
+  await auditoria.registrar(tx, {
+    entidade: "certificado_modelo",
+    entidade_id: modelo_id,
+    tipo_evento: "CERTIFICADO_MODELO_EXCLUIDO",
+    descricao: `${CertificadoModelo.rotulo(modelo)} · ${modelo.arquivo} excluído (nunca usado).`,
+    usuario,
+  });
+  await tx.delete(tabela_modelo).where(eq(tabela_modelo.id, modelo_id));
+  return _volta(c, MODELOS, `Modelo “${modelo.nome}” excluído.`);
 });
 
 /**
@@ -980,17 +1028,18 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
     return _erro(c, volta, `O arquivo '${modelo.arquivo}' não foi encontrado — não há marcadores para mapear.`);
   }
   const sem_tag = _linhas_do_mapa(modelo).filter((l) => !l.tag);
-  const a_mapear = sem_tag.filter((l) => l.sugestao);
+  const a_mapear = sem_tag.filter((l) => l.sugestao || l.sugestao_turma);
   if (!a_mapear.length) return _erro(c, volta, "Nenhum marcador sem dado tem sugestão — escolha à mão.");
   let ordem = modelo.tags.length;
-  for (const { marcador, sugestao } of a_mapear) {
-    const campo = sugestao!;
+  for (const { marcador, sugestao, sugestao_turma } of a_mapear) {
+    const campo = sugestao ?? "";
     const [tag] = await tx
       .insert(tabela_tag)
       .values({
         modelo_id: modelo.id,
         marcador,
         campo,
+        ...(sugestao ? {} : { tipo: "TURMA", rotulo: sugestao_turma }),
         ordem: ++ordem,
         // no modelo enviado, todo dado escolhido bloqueia se vier vazio (menos "deixar em branco")
         obrigatorio: certificado.OBRIGATORIOS.includes(marcador) || (!!modelo.arquivo_enviado && campo !== "em_branco"),
@@ -1000,7 +1049,7 @@ rotas.post(`${MODELOS}/:modelo_id{[0-9]+}/tags/sugeridas`, async (c) => {
       entidade: "certificado_modelo_tag",
       entidade_id: tag!.id,
       tipo_evento: "MODELO_TAG_MAPEADA",
-      descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${marcador} }} ← ${campo} (sugerido)`,
+      descricao: `${CertificadoModelo.rotulo(modelo)}: {{ ${marcador} }} ← ${sugestao ?? `campo da turma: ${sugestao_turma}`} (sugerido)`,
       usuario,
     });
   }

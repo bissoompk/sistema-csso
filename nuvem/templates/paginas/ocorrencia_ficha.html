@@ -78,6 +78,13 @@
     <p><span class="discreto">{{ a.criado_em|momento }} · {{ a.autor }}</span><br>{{ a.texto }}</p>
     {% else %}<p class="discreto">Nenhum acompanhamento registrado.</p>{% endfor %}
 
+    {% if pode_reabrir %}
+    <form method="post" action="/ocorrencias/{{ o.id }}/reabrir">
+      <div class="campo"><label for="motivo-reabrir">Reabrir esta ocorrência: motivo</label>
+        <input id="motivo-reabrir" name="motivo" maxlength="400" required></div>
+      <div class="acoes"><button type="submit" class="secundario">Reabrir</button></div>
+    </form>
+    {% endif %}
     {% if pode_tratar %}
     {% if o.situacao == 'REGISTRADA' %}
     <form method="post" action="/ocorrencias/{{ o.id }}/assumir"><div class="acoes"><button type="submit">Assumir a ocorrência</button></div></form>
