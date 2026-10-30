@@ -114,7 +114,7 @@
       <td data-coluna="Lotação">{{ x.participante_lotacao or '—' }}</td>
       <td data-coluna="Treinamento">{{ x.treinamento_nome }}
         {% if x.turma_codigo %}<span class="quebra discreto mono">{{ x.turma_codigo }}</span>{% endif %}</td>
-      <td data-coluna="Certificado"><a class="mono" href="/certificados/{{ x.id }}">{{ x.rotulo }}</a>
+      <td data-coluna="Certificado"><a class="mono" href="/certificados/{{ x.id }}?de=reciclagem">{{ x.rotulo }}</a>
         <span class="quebra discreto">emitido em {{ x.data_emissao|data }}</span></td>
     </tr>
     {% else %}

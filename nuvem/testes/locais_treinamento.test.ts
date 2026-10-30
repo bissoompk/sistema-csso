@@ -418,7 +418,7 @@ describe("Turmas encerrando, no Início de Treinamentos", () => {
     await entrar(cliente, "coordenador_csso");
     const tela = texto((await cliente.get("/treinamentos")).text);
     expect(tela).toContain("Turmas encerrando");
-    expect(tela).toContain(`href="/turmas/${atrasada.id}"`);
+    expect(tela).toContain(`href="/turmas/${atrasada.id}?de=inicio"`);
     expect(tela).toContain("atrasada");
     expect(tela).toContain("presença não lançada de 1 inscrito(s); nota faltando de 1; 2 certificado(s) não emitido(s); concluir a turma");
     expect(tela).not.toContain(cancelada.codigo);

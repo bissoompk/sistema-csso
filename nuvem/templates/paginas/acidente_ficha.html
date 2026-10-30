@@ -22,7 +22,12 @@
   </div>
 
   <nav class="abas" aria-label="Abas da ocorrência">
+    {# Doze abas numa linha só: os três grupos do caso (o que se comunicou, a
+       investigação, o encaminhamento) vêm com o subtítulo, em texto, que não é
+       aba e some se o perfil não abre nenhuma do grupo. #}
+    {% set _grupo_de = {'comunicacao': 'Caso', 'identificacao': 'Investigação', 'acoes': 'Encaminhamento'} %}
     {% for chave, rotulo in abas %}
+    {% if _grupo_de.get(chave) %}<span class="abas-grupo">{{ _grupo_de.get(chave) }}</span>{% endif %}
     <a href="/acidentes/{{ ocorrencia.id }}?aba={{ chave }}"
        class="{{ 'ativa' if aba == chave }}"
        {% if aba == chave %}aria-current="page"{% endif %}>{{ rotulo }}</a>
