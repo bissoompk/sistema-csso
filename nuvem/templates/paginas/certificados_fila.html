@@ -110,7 +110,7 @@
         <span class="quebra discreto">{{ x.treinamento_nome }}</span></td>
       <td class="curta" data-coluna="Terminou em">{{ x.turma_fim|data }}</td>
       <td class="curta" data-coluna="{{ 'Certificado' if filtro_etapa == 'EMITIDO' else 'Situação' }}">
-        {%- if x.etapa == 'EMITIDO' %}<a class="mono" href="/certificados/{{ x.certificado_id }}">{{ x.certificado_rotulo }}</a>
+        {%- if x.etapa == 'EMITIDO' %}<a class="mono" href="/certificados/{{ x.certificado_id }}?de=fila">{{ x.certificado_rotulo }}</a>
           {% if envios[x.certificado_id] %}<span class="quebra"><span class="pilula {{ 'ok' if envios[x.certificado_id] == 'ENVIADO' else ('erro' if envios[x.certificado_id] == 'FALHOU' else 'sem-ponto') }}">
             e-mail: {{ rotulo_envio[envios[x.certificado_id]]|lower }}</span></span>{% endif %}
         {%- elif x.etapa == 'TRAVADO' %}<span class="pilula alerta">travado</span>

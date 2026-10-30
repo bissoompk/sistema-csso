@@ -27,7 +27,7 @@
   {% set partes_nup = p.nup.split('/') %}
   <div class="meta nup"><span class="mono"><span class="parte">{{ partes_nup[0] }}/</span><wbr><span class="parte">{{ partes_nup.slice(1).join('/') }}</span></span></div>
   <span class="titulo">
-    <a href="/processos/{{ p.id }}">{{ identificar(p, vazio=p.nup) }}</a>
+    <a href="/processos/{{ p.id }}?de=kanban">{{ identificar(p, vazio=p.nup) }}</a>
   </span>
   {% if p.prazo or r.anexos or p.observacoes %}
   <div class="meta">

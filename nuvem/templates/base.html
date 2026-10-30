@@ -516,9 +516,20 @@
        botão leva um passo acima (ver `destino_do_voltar`). A tela pode mandar o
        seu (`voltar_href` e `voltar_rotulo`), quando a origem é outra. Quem veio
        da fila de pendências já tem o link dela no cabeçalho. #}
-    {% set _voltar_href = voltar_href or (voltar.href if voltar else '') %}
+    {# A origem pedida (`?de=`) vale mais que o padrão: quem abriu o certificado
+       pela fila volta à fila. Só chaves conhecidas, com o destino fixo aqui —
+       o endereço nunca vem da URL. #}
+    {% set _origens = {
+      'fila': ['/certificados/fila', 'Voltar à Fila de emissão'],
+      'reciclagem': ['/certificados/vencimentos', 'Voltar à Reciclagem'],
+      'inicio': ['/treinamentos', 'Voltar ao Início'],
+      'kanban': ['/kanban', 'Voltar ao Kanban']
+    } %}
+    {% set _de = _origens.get(request.query_params.get('de')) if request and request.query_params else none %}
+    {% set _voltar_href = (_de[0] if _de else '') or voltar_href or (voltar.href if voltar else '') %}
+    {% set _voltar_texto = (_de[1] if _de else '') or voltar_rotulo or (voltar.rotulo if voltar else 'Voltar') %}
     {% if com_casca and _voltar_href and not (sino_visivel and request.query_params.get('de') == 'pendencias') %}
-    <a class="voltar" href="{{ _voltar_href }}">{{ ico('arrow-left') }}<span>{{ voltar_rotulo or (voltar.rotulo if voltar else 'Voltar') }}</span></a>
+    <a class="voltar" href="{{ _voltar_href }}">{{ ico('arrow-left') }}<span>{{ _voltar_texto }}</span></a>
     {% endif %}
     {% if mensagem %}<div class="aviso aviso-ok" role="status">{{ mensagem }}</div>{% endif %}
     {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}

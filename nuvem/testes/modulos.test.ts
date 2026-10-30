@@ -400,12 +400,15 @@ describe("grupos do menu do módulo", () => {
     expect(so_itens.grupos[0]!.titulo).toBeNull();
   });
 
-  it.each([modulos.PROCESSOS_SEI, "epis"])("%s, que não se divide, sai num grupo só e sem título", (codigo) => {
+  it.each([
+    [modulos.PROCESSOS_SEI, [null, "Trabalho", "Acompanhamento"]],
+    ["epis", [null, "Balcão e pedidos", "Fichas", "Estoque e cadastros"]],
+  ])("%s tem os subtítulos, o primeiro grupo é só o painel e a ordem plana é a de sempre", (codigo, titulos) => {
     const m = modulos.por_codigo(codigo)!;
     const grupos = m.grupos_de(do_perfil("coordenador_csso"));
-    expect(grupos).toHaveLength(1);
-    expect(grupos[0]!.titulo).toBeNull();
-    expect(grupos[0]!.itens).toEqual(m.itens_de(do_perfil("coordenador_csso")));
+    expect(grupos.map((g) => g.titulo)).toEqual(titulos);
+    expect(grupos[0]!.itens).toHaveLength(1);
+    expect(grupos.flatMap((g) => g.itens)).toEqual(m.itens_de(do_perfil("coordenador_csso")));
   });
 
   it("a secretaria vê cinco grupos, e em Cadastros só o que abre", () => {

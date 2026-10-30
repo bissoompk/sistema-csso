@@ -274,8 +274,14 @@ export const MODULOS: readonly Modulo[] = [
       "Do requerimento ao parecer técnico assinado: instrução do processo " +
       "de adicional ocupacional, laudo que o sustenta e o direito que " +
       "nasce dele.",
-    itens: [
-      new Item("Painel", "/", "processo.ver", "Indicadores e o que precisa de você hoje."),
+    grupos: [
+      {
+        titulo: null,
+        itens: [new Item("Painel", "/", "processo.ver", "Indicadores e o que precisa de você hoje.")],
+      },
+      {
+        titulo: "Trabalho",
+        itens: [
       new Item("Kanban", "/kanban", "processo.ver", "Os processos por estado."),
       new Item(
         "Processos",
@@ -295,6 +301,11 @@ export const MODULOS: readonly Modulo[] = [
         "processo.ver",
         "O direito concedido: vigência, percentual e suspensão.",
       ),
+        ],
+      },
+      {
+        titulo: "Acompanhamento",
+        itens: [
       new Item("Relatórios", "/relatorios", "indicador.ver", "Extrações e conferências.", false, ["processo.ver"]),
       new Item(
         "Importar",
@@ -302,6 +313,8 @@ export const MODULOS: readonly Modulo[] = [
         "catalogo.gerenciar",
         "Carga da planilha e do Trello, com reconciliação.",
       ),
+        ],
+      },
     ],
     // `/pendencias` esteve aqui e saiu: a pendência deixou de ser só do
     // processo — reciclagem de treinamento já cai no mesmo sino, e EPI e
@@ -317,7 +330,10 @@ export const MODULOS: readonly Modulo[] = [
       "Do catálogo à ficha assinada: CA e validade, entrada por pregão e " +
       "empenho, requisição analisada item a item, entrega registrada. A " +
       "ficha é prova legal de que o equipamento foi entregue.",
-    itens: [
+    grupos: [
+      {
+        titulo: null,
+        itens: [
       new Item(
         "Painel",
         "/epis",
@@ -329,6 +345,11 @@ export const MODULOS: readonly Modulo[] = [
         "epi.ver",
         "Requisições, falta de estoque, CA a vencer, entregas e trocas devidas.",
       ),
+        ],
+      },
+      {
+        titulo: "Balcão e pedidos",
+        itens: [
       // O caminho direto vem logo depois do painel: entregar no balcão não
       // exige pedido nem lote de estoque (sem lote, confere-se o CA do
       // catálogo). Requisição é para quando há o que analisar.
@@ -365,6 +386,11 @@ export const MODULOS: readonly Modulo[] = [
         "epi.requisitar",
         "Pedido formal para análise do SESMT — opcional: a entrega direta não depende dele.",
       ),
+        ],
+      },
+      {
+        titulo: "Fichas",
+        itens: [
       new Item(
         // A porta do titular para o que é dele. `epi.ver`, exatamente
         // como a rota `/epis/fichas/minha` exige — e NÃO `epi.ficha`,
@@ -392,6 +418,11 @@ export const MODULOS: readonly Modulo[] = [
         "epi.ficha",
         "A prova de entrega, congelada no ato e com o comprovante assinado.",
       ),
+        ],
+      },
+      {
+        titulo: "Estoque e cadastros",
+        itens: [
       new Item(
         "Estoque",
         "/epis/estoque",
@@ -413,6 +444,8 @@ export const MODULOS: readonly Modulo[] = [
         false,
         ["epi.ver"],
       ),
+        ],
+      },
     ],
     // `itens_previstos` fica vazio com a fatia 7: as três telas que faltavam
     // existem. Reserva de lote entrou na fatia 5 (é ação dentro da ficha do

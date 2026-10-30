@@ -55,4 +55,12 @@ describe("o botão na tela", () => {
     expect(novo.status).toBe(200);
     expect(_voltar(novo.text)).toMatchObject({ href: "/processos", texto: "Voltar a Processos" });
   });
+
+  it("a origem pedida em `?de=` vale mais que o padrão, e chave desconhecida é ignorada", async () => {
+    const cliente = await entrar(novoCliente(), "coordenador_csso");
+    const do_kanban = await cliente.get("/processos/novo?de=kanban", { seguir: false });
+    expect(_voltar(do_kanban.text)).toEqual({ href: "/kanban", texto: "Voltar ao Kanban" });
+    const solta = await cliente.get("/processos/novo?de=https://evil.example", { seguir: false });
+    expect(_voltar(solta.text)).toMatchObject({ href: "/processos" });
+  });
 });

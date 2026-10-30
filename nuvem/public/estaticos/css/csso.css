@@ -4645,6 +4645,16 @@ background: transparent; color: var(--acento); font-size: 13px; font-weight: 600
 }
 .campo-senha button.mostrar-senha:hover { background: var(--acento-suave); color: var(--acento-forte); }
 
+/* ---------- subtitulo de grupo de abas ----------
+   Texto pequeno entre as abas (ficha do acidente): diz a que grupo pertencem
+   as abas seguintes. Nao e link nem recebe foco. */
+.abas .abas-grupo {
+  align-self: center; flex: none; margin: 0 4px 0 12px; padding-left: 12px;
+  border-left: 1px solid var(--borda); font-size: 11px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--tinta-fraca);
+}
+.abas .abas-grupo:first-child { margin-left: 0; padding-left: 0; border-left: 0; }
+
 /* ---------- alvos de toque ----------
    Em tela de toque (e abaixo de 900px) o que se aperta tem 44px de altura: a
    trilha, as abas, os filtros, os botoes compactos e a lateral. Um bloco so,

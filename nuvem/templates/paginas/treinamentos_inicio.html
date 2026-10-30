@@ -46,7 +46,7 @@
       <tbody>
       {% for t in r.encerrando.itens %}
       <tr>
-        <td><a class="mono" href="/turmas/{{ t.id }}">{{ t.codigo }}</a>
+        <td><a class="mono" href="/turmas/{{ t.id }}?de=inicio">{{ t.codigo }}</a>
           <span class="quebra">{{ ui.pilula_turma(t.situacao) }}</span></td>
         <td data-coluna="Treinamento">{{ t.treinamento }}{% if t.local %}<span class="quebra discreto">{{ t.local }}</span>{% endif %}</td>
         <td class="mono curta" data-coluna="Término">{{ t.data_fim|data }}
@@ -81,7 +81,7 @@
       <tbody>
       {% for t in r.proximas %}
       <tr>
-        <td><a class="mono" href="/turmas/{{ t.id }}">{{ t.codigo }}</a></td>
+        <td><a class="mono" href="/turmas/{{ t.id }}?de=inicio">{{ t.codigo }}</a></td>
         <td data-coluna="Treinamento">{{ t.treinamento }}</td>
         <td class="curta" data-coluna="Período">{{ t.data_inicio|data }}{% if t.data_fim != t.data_inicio %} a {{ t.data_fim|data }}{% endif %}</td>
         <td class="curta" data-coluna="Local">{{ t.local or '—' }}</td>
