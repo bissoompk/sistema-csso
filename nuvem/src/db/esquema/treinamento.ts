@@ -679,6 +679,9 @@ export const turma = pgTable(
     // vazio = o nome do treinamento
     titulo_vitrine: varchar('titulo_vitrine', { length: 160 }),
     modalidade: varchar('modalidade', { length: 12 }).notNull().default('PRESENCIAL'),
+    // NUVEM (30/10/2026): se a turma é capacitação inicial, periódica ou eventual
+    // (o "X" do certificado da NR-35). Vazio = não informado; nada é marcado.
+    tipo_capacitacao: varchar('tipo_capacitacao', { length: 10 }),
     // SERVIDOR, TERCEIRIZADO, DISCENTE, COMUNIDADE (lista fixa em servicos/vitrine.ts)
     publico_alvo: varchar('publico_alvo', { length: 16 }).array().notNull().default(sql`'{}'::varchar[]`),
     pre_requisito: varchar('pre_requisito', { length: 300 }),
@@ -729,6 +732,7 @@ export const turma = pgTable(
     check('ck_turma_cancelada', sql.raw(`situacao <> 'CANCELADA' OR motivo_cancelamento IS NOT NULL`)),
     check('ck_turma_vagas', sql.raw(`vagas IS NULL OR vagas > 0`)),
     check('ck_turma_modalidade', sql.raw(`modalidade IN ('PRESENCIAL','EAD','HIBRIDO')`)),
+    check('ck_turma_tipo_capacitacao', sql.raw(`tipo_capacitacao IS NULL OR tipo_capacitacao IN ('INICIAL','PERIODICO','EVENTUAL')`)),
     index('ix_turma_vitrine').on(t.situacao, t.data_inicio).where(sql`divulgar_na_vitrine`),
     check('ck_turma_carga', sql.raw(`carga_horaria_horas IS NULL OR carga_horaria_horas > 0`)),
     // link publico sem data de fechamento fica aberto para sempre

@@ -742,3 +742,28 @@ describe("integração dos lotes", () => {
     expect((await ler_turma(id)).situacao).toBe(antes);
   });
 });
+
+
+// =====================================================================
+// Tipo de capacitação (o "X" do certificado da NR-35)
+// =====================================================================
+describe("tipo de capacitação da turma", () => {
+  it("grava ao criar e ao editar, e recusa valor fora da lista", async () => {
+    const id = await turma({ tipo_capacitacao: "PERIODICO" });
+    expect((await ler_turma(id)).tipo_capacitacao).toBe("PERIODICO");
+
+    const sem = await turma();
+    expect((await ler_turma(sem)).tipo_capacitacao).toBeNull();
+
+    const ruim = await cliente.post(
+      "/turmas",
+      { treinamento_id: String(await treinamento()), data_inicio: FUTURO, data_fim: FUTURO, tipo_capacitacao: "QUALQUER" },
+      { seguir: false },
+    );
+    expect(texto(ruim.text)).toContain("Escolha inicial, periódico ou eventual");
+
+    const ficha = await cliente.get(`/turmas/${id}`);
+    expect(texto(ficha.text)).toContain("Tipo de capacitação");
+    expect(texto(ficha.text)).toContain("Periódico");
+  });
+});

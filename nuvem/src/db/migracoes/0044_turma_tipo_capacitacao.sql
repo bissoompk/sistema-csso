@@ -1,0 +1,2 @@
+ALTER TABLE "turma" ADD COLUMN "tipo_capacitacao" varchar(10);--> statement-breakpoint
+ALTER TABLE "turma" ADD CONSTRAINT "ck_turma_tipo_capacitacao" CHECK (tipo_capacitacao IS NULL OR tipo_capacitacao IN ('INICIAL','PERIODICO','EVENTUAL'));

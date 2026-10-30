@@ -46,7 +46,7 @@ import {
   exigir_transicao_inscricao,
   exigir_transicao_turma,
 } from "../dominio/estados.js";
-import { AssinaturaInstrutor, ROTULO_INSCRICAO_TELA, Turma as T } from "../dominio/treinamento.js";
+import { AssinaturaInstrutor, ROTULO_INSCRICAO_TELA, TIPOS_CAPACITACAO, Turma as T } from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as auditoria from "./auditoria.js";
 import * as avisos_inscricao from "./avisos_inscricao.js";
@@ -457,6 +457,8 @@ export interface DadosTurma {
   /** o local cadastrado; com ele, `local` é ignorado e vira o nome do local */
   local_id?: number | null;
   descricao?: string | null;
+  /** INICIAL, PERIODICO ou EVENTUAL; vazio = não informado */
+  tipo_capacitacao?: string | null;
   campus_id?: number | null;
   unidade_promotora_id?: number | null;
   carga_horaria_horas?: string | null;
@@ -501,6 +503,9 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
   await _conferir_unidade_promotora(tx, unidade_promotora_id, null);
   const local = await _local_escolhido(tx, d.local_id ?? null, d.campus_id ?? null, null);
 
+  if (d.tipo_capacitacao && !(TIPOS_CAPACITACAO as readonly string[]).includes(d.tipo_capacitacao)) {
+    throw new RegraDaTurma("Escolha inicial, periódico ou eventual para o tipo de capacitação.");
+  }
   const ano = datas_br.partes(d.data_inicio)[0];
   const numero = await numeracao.proximo_numero_turma(tx, ano);
   const [linha] = await tx
@@ -517,6 +522,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
       local: local ? local.nome : (d.local ?? null),
       local_id: local ? local.id : null,
       descricao: d.descricao ?? null,
+      tipo_capacitacao: d.tipo_capacitacao ?? null,
       campus_id: d.campus_id ?? null,
       unidade_promotora_id,
       vagas: d.vagas ?? null,
@@ -583,6 +589,10 @@ export async function editar_turma(
   if ("hora_inicio" in campos) campos = { ...campos, hora_inicio: normalizar_hora(campos.hora_inicio, "Hora de início") };
   if ("hora_fim" in campos) campos = { ...campos, hora_fim: normalizar_hora(campos.hora_fim, "Hora de término") };
   conferir_horas(valor("hora_inicio"), valor("hora_fim"));
+  const tipo = valor("tipo_capacitacao");
+  if (tipo !== null && !(TIPOS_CAPACITACAO as readonly string[]).includes(tipo)) {
+    throw new RegraDaTurma("Escolha inicial, periódico ou eventual para o tipo de capacitação.");
+  }
   // a turma concluída (retificação) não tem mais prazo de inscrição a respeitar;
   // e o prazo só se confere quando ele ou o início mudam — a turma antiga com o
   // prazo depois do início não trava a correção do local (o link e o pedido

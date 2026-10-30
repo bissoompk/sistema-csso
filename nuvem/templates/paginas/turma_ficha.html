@@ -180,6 +180,8 @@
       {% if turma.descricao %}<dt>Descrição do evento</dt><dd><span class="texto-literal">{{ turma.descricao }}</span></dd>{% endif %}
       <dt>Período</dt>
       <dd>{{ turma.data_inicio|data }} a {{ turma.data_fim|data }}</dd>
+      {% if turma.tipo_capacitacao %}<dt>Tipo de capacitação</dt>
+      <dd>{{ {'INICIAL': 'Inicial', 'PERIODICO': 'Periódico', 'EVENTUAL': 'Eventual'}[turma.tipo_capacitacao] }}</dd>{% endif %}
       <dt>Horário</dt>
       <dd>{{ turma|horario_turma or 'dia inteiro (sem hora definida)' }}</dd>
       <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
@@ -1610,6 +1612,14 @@
              value="{{ turma.data_base_vencimento if turma.data_base_vencimento else '' }}"
              aria-describedby="dica-base">
       <span class="dica" id="dica-base">Vazio usa o término.</span></div>
+    <div class="campo"><label for="tipo_capacitacao">Tipo de capacitação</label>
+      <select id="tipo_capacitacao" name="tipo_capacitacao" aria-describedby="dica-tipo_capacitacao">
+        <option value=""{{ ' selected' if not turma.tipo_capacitacao }}>— não informar —</option>
+        <option value="INICIAL"{{ ' selected' if turma.tipo_capacitacao == 'INICIAL' }}>Inicial</option>
+        <option value="PERIODICO"{{ ' selected' if turma.tipo_capacitacao == 'PERIODICO' }}>Periódico</option>
+        <option value="EVENTUAL"{{ ' selected' if turma.tipo_capacitacao == 'EVENTUAL' }}>Eventual</option>
+      </select>
+      <span class="dica" id="dica-tipo_capacitacao">Marca o “X” de inicial, periódico ou eventual no certificado da NR-35.</span></div>
   </div>
   <div class="campo"><label for="descricao">Descrição do evento</label>
     <textarea id="descricao" name="descricao" rows="4" aria-describedby="dica-descricao">{{ turma.descricao or '' }}</textarea>

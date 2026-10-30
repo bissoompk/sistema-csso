@@ -618,6 +618,7 @@ export async function montar_contexto_para_emitir(
     carga_horaria: T.carga_efetiva(turma),
     turma_local: turma.local || "",
     turma_descricao: turma.descricao || "",
+    turma_tipo_capacitacao: turma.tipo_capacitacao ?? null,
     turma_unidade_promotora: turma.unidade_promotora ? turma.unidade_promotora.nome_extenso : "",
     turma_campus: turma.campus ? turma.campus.nome : "",
     turma_campus_cidade: turma.campus ? turma.campus.cidade : "",
