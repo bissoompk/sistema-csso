@@ -110,4 +110,28 @@ describe("QR carimbado no .docx", () => {
     expect(zip.file("[Content_Types].xml")!.asText()).toMatch(/Extension="png"/i);
     expect(extrair_texto(saida)).toBe(extrair_texto(modelo));
   });
+
+  const abertas = (xml: string, ate: number) =>
+    (xml.slice(0, ate).match(/<w:tbl>/g) ?? []).length - (xml.slice(0, ate).match(/<\/w:tbl>/g) ?? []).length;
+
+  it("a âncora fica num parágrafo do corpo, fora de tabela", () => {
+    const xml = new PizZip(carimbar_qr(modelo, png)).file("word/document.xml")!.asText();
+    expect(abertas(xml, xml.indexOf("<wp:anchor"))).toBe(0);
+    expect(xml).toContain('layoutInCell="0"');
+  });
+
+  it("corpo só com tabela: um parágrafo de 1 pt antes da seção leva o QR", () => {
+    const zip = new PizZip(modelo);
+    const xml = zip.file("word/document.xml")!.asText();
+    const sect = xml.slice(xml.lastIndexOf("<w:sectPr"));
+    const so_tabela =
+      xml.slice(0, xml.indexOf("<w:body>") + 8) +
+      '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+      sect;
+    zip.file("word/document.xml", so_tabela);
+    const saida = new PizZip(carimbar_qr(zip.generate({ type: "uint8array" }), png)).file("word/document.xml")!.asText();
+    const a = saida.indexOf("<wp:anchor");
+    expect(a).toBeGreaterThan(saida.indexOf("</w:tbl>"));
+    expect(abertas(saida, a)).toBe(0);
+  });
 });
