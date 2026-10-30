@@ -72,8 +72,8 @@ export function chave_do_pdf(
   // depois de anulado (e vice-versa)
   tarja = "",
 ): string {
-  // "qr1": o Word passou a sair com o QR no canto; PDF guardado antes não o tem
-  const semente = `${hash_conteudo}\u0000${modelo_sha256}\u0000qr1` + (tarja ? `\u0000${tarja}` : "");
+  // "qr2": o QR do canto passou a ir em parágrafo do corpo (o PDF guardado com "qr1" o perdia)
+  const semente = `${hash_conteudo}\u0000${modelo_sha256}\u0000qr2` + (tarja ? `\u0000${tarja}` : "");
   const resumo = createHash("sha256").update(semente).digest("hex").slice(0, 32);
   return `certificados-pdf/${certificado_id}-${resumo}.pdf`;
 }
