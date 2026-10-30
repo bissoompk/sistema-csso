@@ -1,0 +1,213 @@
+{# A aba "presencas" da ficha da turma (`turma_ficha.html`), movida para cá sem mudar uma linha:
+   o arquivo tinha 1.900 linhas. As variáveis vêm do contexto e das definições da ficha. #}
+{% import "partes/macros.html" as ui with context %}
+{% import "partes/local_turma.html" as lt %}
+{# Os parâmetros sob os quais a grade abaixo foi apurada. Ficam no topo porque
+   são o que explica cada "reprovado" da última coluna. #}
+<div class="cartao tira-medidas">
+  <span class="medida"><span class="rotulo">Carga da turma</span>
+    <span class="valor">{{ carga_efetiva|num }} h</span></span>
+  <span class="traco" aria-hidden="true"></span>
+  <span class="medida"><span class="rotulo">Frequência mínima</span>
+    <span class="valor">{{ turma.frequencia_minima_percentual|num }}%</span></span>
+  <span class="traco" aria-hidden="true"></span>
+  <span class="medida"><span class="rotulo">Nota mínima</span>
+    {% if turma.nota_minima_aprovacao is not none %}
+    <span class="valor">{{ turma.nota_minima_aprovacao|num }}</span>
+    {% else %}<span class="valor ausente">não avalia por nota</span>{% endif %}</span>
+  <span class="traco" aria-hidden="true"></span>
+  <span class="medida"><span class="rotulo">Na apuração</span>
+    <span class="valor">{{ grade|length }}</span></span>
+  {# A primeira frase FICA: sem ela, quem procura um campo "frequência" na grade
+     conclui que a tela está incompleta. O resto — por que falta justificada
+     continua sendo falta — é explicação, e vai para o (i). #}
+  <div class="nota">A frequência é <strong>calculada</strong>, nunca digitada.
+    {% call ui.info('como-a-frequencia-e-apurada', 'como a frequência é apurada') %}
+      <p>A frequência é a soma das <strong>horas presentes</strong> sobre a carga da
+        turma — nunca um número digitado. É por isso que a carga da turma importa: é
+        ela o denominador, e mudá-la muda o resultado de todo mundo.</p>
+      <p><strong>Falta justificada continua sendo falta.</strong> A justificativa
+        explica a ausência; ela não abate a carga nem entra na conta. Quem precisar
+        tratar a ausência de outro jeito trata fora do sistema — a apuração aqui é
+        aritmética, e é dela que o certificado depende.</p>
+    {% endcall %}
+  </div>
+</div>
+
+{% if retificando %}
+<div class="aviso aviso-erro">
+  <span class="mono">{{ turma.codigo }}</span> já foi concluída e cada inscrito já tem
+  resultado. Lançar aqui agora é <strong>retificação</strong>: exige motivo por escrito,
+  recalcula a frequência e pode virar o resultado. Nada volta atrás em silêncio — e
+  quem já tem certificado não recebe lançamento nenhum: o documento que circulou se
+  anula e se reemite.
+</div>
+{% endif %}
+
+{# `id` para o 303 ter para onde voltar: toda ação sem JavaScript termina num
+   redirecionamento, e sem âncora ele devolve o topo da página a quem estava na
+   linha 27 de uma grade de 30. As rotas de presença e nota mandam
+   `#grade-presenca`. #}
+<section class="cartao liso" id="grade-presenca">
+  <div class="cabecalho-cartao">
+    <h2>Presença e notas</h2>
+    <span class="contador">{{ dias|length }} dia(s)</span>
+    {% if contagem['APROVADO'] or contagem['REPROVADO'] %}
+    <span class="selo ok">{{ (contagem['APROVADO'] or 0) }} aprovado(s)</span>
+    <span class="selo erro">{{ (contagem['REPROVADO'] or 0) }} reprovado(s)</span>
+    {% endif %}
+  </div>
+
+  {# A FOLHA É UM FORMULÁRIO SÓ (`presenca.salvar_folha`): uma caixa por dia em
+     cada linha, e um "Salvar folha" no pé. O cabeçalho de cada dia marca a
+     coluna inteira (`data-marca-grupo`, csso.js) — a folha do dia em papel. #}
+  {% if pode_lancar %}<form method="post" action="/turmas/{{ turma.id }}/presencas/folha" id="f-folha">{% endif %}
+  <table class="coluna-fixa">
+    {# O `<thead>` vem antes dos vários `<tbody>` — é HTML válido e é a ordem que
+       o navegador exige. Aqui ele rende duas vezes mais que na tabela comum: com
+       uma coluna por dia de aula, é o `scope="col"` que faz o leitor de tela
+       dizer DE QUE DIA é a caixa marcada, e sem ele a inferência se perde
+       justamente na grade em que ninguém consegue contar coluna de cabeça. #}
+    <thead>
+      <tr>
+        <th scope="col">Participante</th>
+        {% for dia in dias %}<th class="mono" scope="col">
+          {%- if pode_lancar and dia <= hoje %}<label><input type="checkbox" data-marca-grupo="dia-{{ dia }}"
+            aria-label="Presença de todos em {{ dia|data }} (a coluna inteira)" title="Marcar ou desmarcar a coluna inteira"> {{ dia|data }}</label>
+          {%- else %}{{ dia|data }}{% endif %}</th>{% endfor %}
+        <th scope="col">Horas</th><th scope="col">Frequência</th>
+        <th scope="col">Nota</th><th scope="col">Situação</th>
+      </tr>
+    </thead>
+    {# A LINHA MORA EM `partes/linha_presenca.html`, e não aqui, porque ela é o
+       alvo da troca parcial: as rotas de presença e de nota devolvem ESTE mesmo
+       arquivo quando quem chamou foi o HTMX, e é isso que transforma as 150
+       recargas de página de uma turma de 30 × 5 dias em 150 trocas de linha. O
+       argumento inteiro — por que a linha e não a célula, por que a recusa volta
+       em 200, e por que sem JavaScript nada muda — está escrito lá. #}
+    {# UM `<tbody>` POR LINHA, e não um em volta da grade toda. É ele o alvo da
+       troca parcial: medido no navegador, um `hx-swap="outerHTML"` sobre o
+       `<tr>` deixa o tratador global realçando um nó já desligado do documento,
+       e a troca sai sem nenhum sinal de que algo mudou. O `<tbody>` sobrevive à
+       troca e os três estados voltam a valer. Vários `<tbody>` numa tabela é
+       HTML válido, e o `<thead>` continua sendo um só. #}
+    {% for linha in grade %}
+    <tbody>{% include "partes/linha_presenca.html" %}</tbody>
+    {% else %}
+    <tr><td colspan="{{ dias|length + 5 }}" class="nada">
+      Ninguém a avaliar: a turma não tem inscrição ativa.
+    </td></tr>
+    {% endfor %}
+  </table>
+  {% if pode_lancar %}
+  <div class="corpo">
+    {% if retificando %}
+    <div class="campo"><label for="motivo-folha">Motivo da retificação</label>
+      <input id="motivo-folha" name="motivo" required maxlength="300"
+             placeholder="por que a folha está sendo corrigida"></div>
+    {% endif %}
+    <div class="acoes">
+      <button type="submit">Salvar folha</button>
+      <p class="discreto sem-margem">Caixa marcada é presença com a carga do dia
+        {%- if dias|length > 1 %} ({% for dia in dias %}{{ dia|data }}: {{ horas_padrao[dia]|num if horas_padrao[dia] else '—' }} h{% if not loop.last %}; {% endif %}{% endfor %}){% endif %};
+        desmarcada num dia já lançado é falta. Quem chegou atrasado: “ajustar horas”.</p>
+    </div>
+  </div>
+  </form>
+  {% endif %}
+
+  {% if pode_lancar and dias|length > 1 %}
+  {# ===============================================================
+     O BOTÃO POR COLUNA — a folha de presença como ela chega em papel
+     ===============================================================
+     "Marcar todos presentes" existe e está certo em recusar-se a rodar em
+     turma de mais de um dia: num clique só, quem faltou um dia sairia com
+     100%. O que faltava é a unidade do meio. A folha de presença não chega
+     por turma nem por pessoa — chega POR DIA, uma folha assinada por quem
+     esteve naquele dia —, e transcrever a folha de 12/03 abrindo trinta
+     formulários idênticos é o trabalho que a coluna faz de uma vez.
+
+     A diferença para o botão da turma inteira é essa e só essa: aqui o
+     lote tem o mesmo escopo do papel que o originou. Quem faltou naquele
+     dia é desmarcado em seguida, célula a célula — que é o gesto real, e é
+     por isso que a célula continua existindo.
+
+     Marcar a coluna SOBRESCREVE quem já estava lançado naquele dia,
+     inclusive as faltas, e cada sobrescrita entra na trilha com o valor de
+     antes. Está escrito DENTRO da camada, acima dos formulários, porque é
+     a única surpresa possível deste controle — e porque, virando camada,
+     "ao lado dos botões" deixou de existir.
+
+     `<form method="post">` comum, sem `hx-post`, e a assimetria é
+     deliberada: a troca parcial paga por si onde a repetição está — 150
+     células —, e a coluna são cinco cliques numa turma de cinco dias.
+     Trocar a página inteira aqui custa uma recarga a cada folha
+     transcrita, e o 303 volta com âncora na grade. Cada linha da tabela
+     mudaria de qualquer forma, então o alvo da troca seria a tabela
+     inteira: um fragmento a mais para manter, e um realce de "algo mudou"
+     que cobriria as trinta linhas sem dizer o que. #}
+  {# A gaveta que virou camada: são `dias` formulários irmãos, um por folha, e
+     `popup_gaveta` é exatamente o macro para isso (`partes/macros.html`). O botão
+     não repete o verbo do lote da turma inteira ("Marcar todos presentes"), e não
+     é preciosismo: são controles diferentes, com alcances diferentes, e a tela que
+     os chama pela mesma frase convida a confundir uma coluna com a turma. #}
+  <div class="corpo">
+    {% call ui.popup_gaveta('lancar-folha-do-dia', 'Lançar a folha de um dia',
+                            'Lançar a folha de um dia · ' ~ turma.codigo,
+                            nota=dias|length ~ ' dia(s) de aula') %}
+      {# FICA escrito, e fica AQUI: é a única surpresa possível deste controle, e
+         quem clica precisa saber dela antes — não depois. #}
+      <div class="aviso aviso-alerta">
+        Marca <strong>todo mundo</strong> presente naquele dia, com as horas informadas
+        ao lado — <strong>inclusive quem já estava lançado como falta</strong>. Cada
+        sobrescrita entra na trilha com o valor de antes. Quem faltou se desmarca
+        depois na grade, e “Salvar folha” grava a falta.
+      </div>
+      {% for dia in dias %}
+      <form method="post" action="/turmas/{{ turma.id }}/presencas/dia">
+        <h3>{{ dia|data }}</h3>
+        <div class="linha-campos">
+          <div class="campo"><label for="horas-{{ dia }}">Horas</label>
+            <input id="horas-{{ dia }}" name="horas" inputmode="decimal"
+                   required placeholder="h"></div>
+          {% if retificando %}
+          <div class="campo"><label for="motivo-dia-{{ dia }}">Motivo da retificação</label>
+            <input id="motivo-dia-{{ dia }}" name="motivo" required
+                   placeholder="por que a folha está sendo refeita"></div>
+          {% endif %}
+        </div>
+        <input type="hidden" name="data" value="{{ dia }}">
+        <div class="acoes"><button type="submit" class="secundario compacto">
+          Lançar {{ dia|data }} para todos</button></div>
+      </form>
+      {% endfor %}
+    {% endcall %}
+  </div>
+  {% endif %}
+
+  {% if pode_lancar and dias|length == 1 %}
+  <div class="corpo">
+    <div class="acoes">
+      {{ ui.botao_cadastro('marcar-todos-presentes',
+                           MARCAR_TODOS ~ ' (' ~ (carga_efetiva|num) ~ ' h)', 'secundario') }}
+      {% call ui.info('lote-de-um-dia', 'por que o lote só existe em curso de um dia') %}
+        <p>Numa turma de mais de um dia este botão não aparece — e a rota recusa
+          mesmo que alguém a chame direto: num clique só, quem faltou um dia sairia
+          com 100% de frequência e receberia certificado.</p>
+        <p>Em turma de vários dias o lote existe, mas com o escopo do papel que o
+          originou: a folha de UM dia, na camada <em>Lançar a folha de um dia</em>.</p>
+      {% endcall %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if not lancamento_aberto and pode_avaliar %}
+  <div class="corpo">
+    <div class="aviso aviso-alerta">
+      <span class="mono">{{ turma.codigo }}</span> está
+      {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }}: passe a turma para
+      <em>em andamento</em>, na aba <em>Turma</em>, antes de lançar presença ou nota.
+    </div>
+  </div>
+  {% endif %}
+</section>

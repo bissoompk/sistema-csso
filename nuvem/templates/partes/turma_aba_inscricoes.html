@@ -1,0 +1,516 @@
+{# A aba "inscricoes" da ficha da turma (`turma_ficha.html`), movida para cá sem mudar uma linha:
+   o arquivo tinha 1.900 linhas. As variáveis vêm do contexto e das definições da ficha. #}
+{% import "partes/macros.html" as ui with context %}
+{% import "partes/local_turma.html" as lt %}
+{% if pode_aqui('turma.criar') and (turma.aceita_inscricao or turma.inscricao_publica) %}
+{# o link público: o token não mora no banco (deriva de um sal), então aqui só se diz se há um no ar; "Ver" o recalcula #}
+<section class="cartao" id="link-publico">
+  <div class="cabecalho-cartao">
+    <h2>Inscrição pública por link</h2>
+    {% if link_no_ar %}<span class="pilula ok">no ar até {{ turma.inscricao_aberta_ate|data }}</span>
+    {% elif turma.inscricao_publica %}<span class="pilula alerta">ligado, mas fora do prazo ou da situação</span>
+    {% else %}<span class="pilula sem-ponto">desligado</span>{% endif %}
+  </div>
+  <p class="discreto">Quem tem o link pede a vaga sem conta. Quem informa e-mail recebe um link
+    para confirmá-lo: confirmado, havendo vaga, a inscrição sai <strong>confirmada sozinha</strong>.
+    O pedido sem e-mail (ou que casou com o cadastro de um servidor por outro e-mail) entra aqui
+    como <strong>pedido pelo link, a conferir</strong>, não ocupa vaga e vira inscrição quando
+    alguém o aceita. Só funciona com a turma em “inscrições abertas” e até a data de “inscrições até”.</p>
+  {# "Gerar" só onde daria certo: com a turma fechada, encerrada ou fora do
+     prazo o botão sempre falhava. O motivo fica escrito no lugar dele, e o
+     "Desligar" continua — é o que se faz com o link de uma turma que acabou. #}
+  {% if link_impedimento %}<p class="discreto sem-margem">{{ link_impedimento }}</p>{% endif %}
+  <div class="acoes">
+    {% if link_no_ar %}
+    <form method="post" action="/turmas/{{ turma.id }}/link-publico/ver">
+      <button type="submit">Ver o link e o QR</button></form>
+    {% endif %}
+    {% if not link_impedimento %}
+    <form method="post" action="/turmas/{{ turma.id }}/link-publico">
+      <button type="submit" class="secundario">
+        {{- 'Gerar um link novo (o atual para de funcionar)' if turma.inscricao_publica else 'Gerar o link e o QR' -}}
+      </button></form>
+    {% endif %}
+    {% if turma.inscricao_publica %}
+    <form method="post" action="/turmas/{{ turma.id }}/link-publico/desligar">
+      <button type="submit" class="perigo">Desligar o link</button></form>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+{% if vitrine_pode %}
+<section class="cartao" id="vitrine">
+  <div class="cabecalho-cartao">
+    <h2>Vitrine de cursos</h2>
+    {% if turma.divulgar_na_vitrine %}<span class="pilula ok">publicada</span>{% else %}<span class="pilula sem-ponto">não publicada</span>{% endif %}
+  </div>
+  <p class="discreto">A turma publicada aparece em <a href="/cursos">/cursos</a>, aberta a qualquer pessoa, e
+    <a href="/cursos/{{ turma.codigo }}">tem ficha própria</a> com o formulário de pedir a vaga. Só a turma
+    sem pendência pode ser publicada. Retirar da vitrine não apaga nada: a ficha pública passa a dar “não encontrado”.</p>
+  {% if vitrine_pendencias|length and not turma.divulgar_na_vitrine %}
+  <div class="aviso aviso-alerta"><p>Falta para publicar:</p>
+    <ul>{% for p in vitrine_pendencias %}<li>{{ p }}</li>{% endfor %}</ul></div>
+  {% endif %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine">
+    <div class="campo"><label for="v-titulo">Título na vitrine (opcional)</label>
+      <input id="v-titulo" name="titulo_vitrine" maxlength="160" value="{{ turma.titulo_vitrine or '' }}"
+             placeholder="{{ turma.treinamento.nome }}"></div>
+    <div class="campo"><label for="v-mod">Modalidade</label>
+      <select id="v-mod" name="modalidade">
+        {% for k, v in vitrine_modalidades %}<option value="{{ k }}"{{ ' selected' if k == turma.modalidade }}>{{ v }}</option>{% endfor %}
+      </select></div>
+    <fieldset class="campo"><legend>Público</legend>
+      {% for k, v in vitrine_publicos %}
+      <label><input type="checkbox" name="publico" value="{{ k }}"{{ ' checked' if k in turma.publico_alvo }}> {{ v }}</label>
+      {% endfor %}</fieldset>
+    <div class="campo"><label for="v-pre">Pré-requisito (opcional)</label>
+      <input id="v-pre" name="pre_requisito" maxlength="300" value="{{ turma.pre_requisito or '' }}"></div>
+    <div class="campo"><label><input type="checkbox" name="divulgar" value="sim"{{ ' checked' if turma.divulgar_na_vitrine }}>
+      Divulgar na vitrine pública</label></div>
+    <div class="acoes"><button type="submit">Salvar</button></div>
+  </form>
+  <h3>Quem pediu aviso</h3>
+  <p class="discreto">{% if vitrine_aviso.aguardando == 0 %}Ninguém aguarda aviso de turma como esta.
+    {%- elif vitrine_aviso.aguardando == 1 %}1 pessoa aguarda aviso de turma como esta.
+    {%- else %}{{ vitrine_aviso.aguardando }} pessoas aguardam aviso de turma como esta.{% endif %}
+    A equipe vê só a contagem: não há lista de quem pediu. O aviso {{ 'está ligado' if vitrine_aviso.ativo else 'está desligado' }}.</p>
+  {% if vitrine_aviso.pode_ligar %}
+  <form method="post" action="/turmas/vitrine/aviso-interesse">
+    <input type="hidden" name="volta" value="/turmas/{{ turma.id }}?aba=inscricoes">
+    <input type="hidden" name="ligado" value="{{ 'nao' if vitrine_aviso.ativo else 'sim' }}">
+    <div class="acoes"><button type="submit" class="secundario">{{ 'Desligar o aviso de interesse' if vitrine_aviso.ativo else 'Ligar o aviso de interesse' }}</button></div>
+  </form>
+  {% endif %}
+  {% if vitrine_aviso.pode_ligar %}
+  <p class="discreto"><a href="/turmas/vitrine/titular">Pedido do titular</a>: consultar ou apagar os cadastros de um e-mail.</p>
+  {% endif %}
+  <h3>Arte da turma</h3>
+  <p class="discreto">Opcional. Sem arte, a vitrine mostra uma capa gerada na cor do setor. PNG, JPEG ou WEBP, até 3 MB,
+    entre 600×750 e 2160×2700 px, de preferência na proporção 4:5. A localização e os outros metadados da imagem são
+    apagados na gravação.</p>
+  {% if turma.arte_anexo_id %}
+  <p><img class="vitrine-previa-arte" src="/cursos/{{ turma.codigo }}/arte?v={{ turma.arte_anexo_id }}" alt="Arte atual da turma" width="120" height="150"></p>
+  {% endif %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine/arte" enctype="multipart/form-data">
+    <div class="campo"><label for="v-arte">Arquivo da arte</label>
+      <input id="v-arte" type="file" name="arte" accept="image/png,image/jpeg,image/webp" required></div>
+    <div class="campo"><label for="v-arte-alt">Texto alternativo (opcional)</label>
+      <input id="v-arte-alt" name="arte_alt" maxlength="160" value="{{ turma.arte_alt or '' }}"
+             placeholder="Descreva a imagem para quem não a enxerga"></div>
+    <div class="campo"><label><input type="checkbox" name="declaracao" value="sim" required> {{ vitrine_arte_declaracao }}</label></div>
+    <div class="acoes"><button type="submit">{{ 'Trocar a arte' if turma.arte_anexo_id else 'Enviar a arte' }}</button></div>
+  </form>
+  {% if turma.arte_anexo_id %}
+  <form method="post" action="/turmas/{{ turma.id }}/vitrine/arte/remover">
+    <div class="acoes"><button type="submit" class="secundario">Voltar para a capa gerada</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+<section class="cartao liso">
+  <div class="cabecalho-cartao">
+    <h2>Inscrições</h2>
+    <span class="contador">{{ inscricoes|length }}</span>
+    {% if turma.vagas %}
+    <span class="selo">{{ vagas_restantes }} vaga(s) livre(s) de {{ turma.vagas }}</span>{% endif %}
+    {% if not turma.aceita_inscricao %}
+    <span class="pilula alerta">não recebe inscrição</span>{% endif %}
+    {% if not pode_nominal %}
+    {# O aviso fica aqui, uma vez, e não repetido em cada linha — a mesma
+       decisão de `servidores.html`: coluna em branco sem explicação é o que faz
+       alguém concluir que a inscrição está incompleta e inscrever de novo. #}
+    <span class="pilula alerta"
+          title="Sem `certificado.ver` o nome de quem está na turma não é exibido; o código SRV-… identifica a pessoa dentro desta sessão">
+      identificação suprimida</span>
+    {% endif %}
+  </div>
+  {# Os pedidos do link de uma vez, como no IntegraSST (lá o link inscrevia
+     sozinho). A mesma rota de /turmas/pedidos; o que travar volta com o motivo. #}
+  {% set pedidos_link = inscricoes|selectattr('situacao', 'equalto', 'AGUARDANDO_EMAIL')|list %}
+  {% if pode_inscrever and pedidos_link|length %}
+  <div class="corpo">
+    <form method="post" action="/turmas/pedidos" class="aviso aviso-alerta sem-margem">
+      <input type="hidden" name="turma_id" value="{{ turma.id }}">
+      {% for i in pedidos_link %}<input type="hidden" name="inscricao_id" value="{{ i.id }}">{% endfor %}
+      {# mais pedidos do que vagas: "aceitar todos" seria recusado inteiro
+         (`pedidos_link.decidir`), então a tela já manda escolher #}
+      {% set cabem = vagas_restantes is none or pedidos_link|length <= vagas_restantes %}
+      <p><strong>{{ pedidos_link|length }} pedido(s) pelo link a conferir.</strong>
+        {% if cabem %}Conferidos na lista abaixo, aceite todos de uma vez; para recusar um, use “ações” na linha.
+        {%- else %}A turma tem {{ vagas_restantes }} vaga(s) livre(s): escolha quem aceitar em
+        <a href="/turmas/pedidos">Pedidos pelo link</a>, ou um por um em “ações”, na linha.{% endif %}</p>
+      {% if cabem %}
+      <div class="acoes sem-margem">
+        <button type="submit" name="acao" value="aceitar" class="compacto">{{ ui.icone('check-circle') }} Aceitar os {{ pedidos_link|length }} pedidos</button>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+  {% endif %}
+  {% if inscricoes %}
+  <table class="empilhavel">
+    <thead>
+      <tr><th scope="col">Participante</th><th scope="col">Identificador</th>
+          <th scope="col">Vínculo</th><th scope="col">E-mail</th>
+          <th scope="col">Situação</th><th scope="col">Origem</th>
+          {% if pode_inscrever %}<th scope="col"></th>{% endif %}</tr>
+    </thead>
+    {% for i in inscricoes %}
+    {# Uma linha, uma decisão, e ela é do helper: `quem.nominal` já contém o
+       titular e quem tem `exposicao.ver`; `pode_nominal` acrescenta a equipe. #}
+    {% set quem = identificar(i.participante.servidor, vazio=SUPRIMIDO) %}
+    {% set nominal = pode_nominal or quem.nominal %}
+    <tr>
+      <td class="nome">
+        {%- if nominal %}{{ i.participante.nome_exibicao }}
+        {%- else %}<span class="mono">{{ quem }}</span>{% endif %}
+        {% if nominal and i.participante.e_servidor %}
+        <span class="quebra discreto mono"
+              title="lido do cadastro de servidor">SIAPE {{ i.participante.servidor.siape }}</span>
+        {% endif %}</td>
+      <td class="mono curta" data-coluna="Identificador">
+        {{- i.participante.identificador_publico if nominal else '—' -}}</td>
+      <td class="curta" data-coluna="Vínculo">{{ (rotulo_vinculo[i.participante.vinculo] or i.participante.vinculo) }}</td>
+      <td data-coluna="E-mail"><span class="recorte"
+                title="{{ (i.participante.email_exibicao or '') if nominal else '' }}">
+          {{- (i.participante.email_exibicao or '—') if nominal else '—' -}}</span></td>
+      <td class="curta" data-coluna="Situação">{{ ui.pilula_inscricao(i.situacao) }}
+        {% if i.motivo_cancelamento %}
+        <span class="quebra discreto">{{ i.motivo_cancelamento }}</span>{% endif %}
+        {% if i.situacao == 'AGUARDANDO_EMAIL' and i.observacao %}
+        <span class="quebra discreto">{{ i.observacao }}</span>{% endif %}</td>
+      <td class="discreto curta" data-coluna="Origem">{{ 'link público' if i.origem == 'PUBLICA' else i.origem|lower }}</td>
+      {% if pode_inscrever %}
+      <td class="acao-linha">
+        {%- if i.situacao in ['INSCRITA', 'CONFIRMADA', 'AGUARDANDO_EMAIL'] %}
+        {# A gaveta que virou camada: os dois formulários da linha moravam numa
+           célula de ~190px, e o campo de motivo do cancelamento saía com 140px de
+           largura para uma frase. Ver `popup_gaveta` em `partes/macros.html` — a
+           camada não cobra um clique a mais, porque o que virou camada foi a
+           gaveta, e não cada ação dentro dela. #}
+        {# o título da camada nomeia a pessoa: é a mesma leitura da linha, e
+           passa pela mesma decisão — senão a supressão da tabela sairia por
+           cima dela, no cabeçalho de um diálogo #}
+        {% call ui.popup_gaveta('acoes-inscricao-' ~ i.id, 'ações',
+                                'Ações · ' ~ (i.participante.nome_exibicao
+                                              if nominal else quem.nome),
+                                nota=(ui.ROTULO_INSCRICAO_TELA[i.situacao] or i.situacao)|lower) %}
+          {% if i.situacao == 'AGUARDANDO_EMAIL' %}
+          {# o pedido do link: a conferência da equipe é a trava que o e-mail seria #}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
+            <h3>Aceitar o pedido</h3>
+            <p class="discreto">Confira se a pessoa é quem diz ser (nome, SIAPE, vínculo).
+              Aceito, o pedido vira inscrição e passa a ocupar vaga.</p>
+            <input type="hidden" name="destino" value="INSCRITA">
+            <div class="acoes"><button type="submit" class="secundario compacto">
+              Aceitar</button></div>
+          </form>
+          {% endif %}
+          {% if i.situacao == 'INSCRITA' %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
+            <h3>Confirmar a inscrição</h3>
+            <input type="hidden" name="destino" value="CONFIRMADA">
+            <div class="acoes"><button type="submit" class="secundario compacto">
+              Confirmar</button></div>
+          </form>
+          {% endif %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}">
+            <h3>{{ 'Recusar o pedido' if i.situacao == 'AGUARDANDO_EMAIL' else 'Cancelar a inscrição' }}</h3>
+            <input type="hidden" name="destino" value="CANCELADA">
+            <div class="campo">
+              <label for="motivo-cancelar-{{ i.id }}">Motivo do cancelamento</label>
+              <input id="motivo-cancelar-{{ i.id }}" name="motivo" required
+                     placeholder="desistiu, remanejado, turma cheia…"></div>
+            <div class="acoes"><button type="submit" class="perigo compacto">
+              {{ 'Recusar' if i.situacao == 'AGUARDANDO_EMAIL' else 'Cancelar inscrição' }}</button></div>
+          </form>
+          {# o atalho da junção (23/10/2026): a tela saiu do menu #}
+          {% if nominal and usuario.pode('participante.mesclar') %}
+          <h3>Cadastro repetido?</h3>
+          <p class="sem-margem"><a href="/treinamentos/participantes?de={{ i.participante.id }}">Juntar
+            {{ i.participante.identificador_publico }} com outro cadastro</a></p>
+          {% endif %}
+        {% endcall %}
+        {% endif -%}
+        {% if i.situacao == 'CANCELADA' and usuario.pode('turma.concluir') and turma.situacao in ['INSCRICOES_ABERTAS', 'PLANEJADA'] %}
+        {% call ui.popup_gaveta('reativar-inscricao-' ~ i.id, 'reativar',
+                                'Reativar · ' ~ (i.participante.nome_exibicao if nominal else quem.nome),
+                                nota='cancelada') %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}/reativar">
+            <p class="discreto">A pessoa volta como confirmada, se ainda houver vaga. O motivo fica na trilha.</p>
+            <div class="campo">
+              <label for="motivo-reativar-{{ i.id }}">Motivo</label>
+              <input id="motivo-reativar-{{ i.id }}" name="motivo" required placeholder="desistiu por engano, vaga liberada…"></div>
+            <div class="acoes"><button type="submit" class="compacto">Reativar inscrição</button></div>
+          </form>
+        {% endcall %}
+        {% endif %}
+        {#- Corrigir o cadastro do externo: nome, vínculo, organização. O de
+           servidor mora no cadastro de servidores. Só para quem lê o nome —
+           a camada mostra o nome atual para ser corrigido. -#}
+        {%- if i.situacao != 'CANCELADA' and i.participante.servidor_id is none and nominal %}
+        {% call ui.popup_gaveta('corrigir-participante-' ~ i.id, 'corrigir',
+                                'Corrigir dados · ' ~ i.participante.nome_exibicao,
+                                nota=i.participante.identificador_publico) %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}/participante">
+            <p class="discreto">Vale para o cadastro e para os próximos certificados.
+              Certificado já emitido se corrige pela ficha dele (“Corrigir certificado”),
+              que anula e reemite com número novo.</p>
+            <div class="campo"><label for="corrigir-nome-{{ i.id }}">Nome</label>
+              <input id="corrigir-nome-{{ i.id }}" name="nome" value="{{ i.participante.nome }}" required maxlength="160"></div>
+            <div class="campo"><label for="corrigir-vinculo-{{ i.id }}">Vínculo</label>
+              <select id="corrigir-vinculo-{{ i.id }}" name="vinculo">
+                {% for v in vinculos %}
+                <option value="{{ v }}"{{ ui.sel(i.participante.vinculo, v) }}>{{ rotulo_vinculo[v] }}</option>
+                {% endfor %}
+              </select></div>
+            <div class="campo"><label for="corrigir-organizacao-{{ i.id }}">Organização</label>
+              <input id="corrigir-organizacao-{{ i.id }}" name="organizacao"
+                     value="{{ i.participante.organizacao or '' }}" maxlength="160"></div>
+            <div class="acoes"><button type="submit" class="secundario compacto">Gravar a correção</button></div>
+          </form>
+        {% endcall %}
+        {% endif -%}
+        {#- CPF só para o certificado que a norma exige (brigadista, CBMMG; ver
+           `cpf_certificado.ts`). A tela recebe só a máscara sem dígito. -#}
+        {%- if i.situacao != 'CANCELADA' %}
+        {% call ui.popup_gaveta('cpf-inscricao-' ~ i.id, ('CPF ✓' if i.participante.tem_cpf else 'CPF'),
+                                'CPF para o certificado · ' ~ (i.participante.nome_exibicao
+                                                               if nominal else quem.nome),
+                                nota=i.participante.cpf_exibicao, largo=false) %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}/cpf">
+            <p class="discreto">Só preencha se o certificado deste treinamento exigir o CPF
+              (ex.: brigadista). Ele sai apenas no documento do certificado; nenhuma tela o mostra.</p>
+            <div class="campo">
+              <label for="cpf-{{ i.id }}">{{ 'Novo CPF' if i.participante.tem_cpf else 'CPF' }}</label>
+              <input id="cpf-{{ i.id }}" name="cpf_certificado" value="" inputmode="numeric"
+                     autocomplete="off" placeholder="000.000.000-00"></div>
+            {% if i.participante.tem_cpf %}
+            <label class="discreto"><input type="checkbox" name="apagar_cpf" value="1"> apagar o CPF</label>
+            {% endif %}
+            <div class="acoes"><button type="submit" class="secundario compacto">Gravar</button></div>
+          </form>
+        {% endcall %}
+        {% endif -%}
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="corpo">
+    <div class="vazio">
+      <strong>Ninguém inscrito ainda</strong>
+      <span>{% if turma.aceita_inscricao %}Use o cartão abaixo para procurar quem já
+        está na base — e, só se não achar, cadastrar um participante externo.
+        {%- else %}A turma não recebe mais inscrição.{% endif %}</span>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{% if pode_inscrever and turma.aceita_inscricao %}
+  {% if servidor_parecidos and servidor_parecidos|length %}
+  {# O servidor escolhido da base já tem cadastro de EXTERNO parecido (fez curso
+     antes de estar no SIAPE): a pergunta antes de criar o ponteiro. Só chega
+     aqui quem lê os nomes listados (`duplicados.visiveis`). #}
+  <section class="cartao" id="servidor-parecido">
+    <div class="aviso aviso-alerta" role="alert">
+      <p><strong>{{ servidor_escolhido.nome }} (SIAPE {{ servidor_escolhido.siape }}) parece já ter cadastro
+        de participante externo. É a mesma pessoa?</strong></p>
+      <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
+        <input type="hidden" name="servidor_id" value="{{ servidor_escolhido.id }}">
+        <input type="hidden" name="busca" value="{{ busca }}">
+        <ul class="motivos">
+          {% for p in servidor_parecidos %}
+          <li><span class="mono">{{ p.identificador }}</span>{% if p.nome %} {{ p.nome }}{% endif %}
+            <span class="discreto">· {{ p.rotulo_motivo }}</span>
+            {% if pode_juntar %}
+            <button type="submit" name="juntar_externo_id" value="{{ p.id }}" class="secundario compacto">
+              Sim: juntar {{ p.identificador }} ao servidor e inscrever</button>
+            {% endif %}
+            <input type="hidden" name="parecido_id" value="{{ p.id }}"></li>
+          {% endfor %}
+        </ul>
+        {% if not pode_juntar %}
+        <p class="discreto">Juntar os dois cadastros é com quem pode juntar cadastros duplicados:
+          inscrevendo o servidor, o par aparece nos possíveis duplicados.</p>
+        {% endif %}
+        <div class="acoes">
+          <button type="submit" name="confirmar_servidor" value="1" class="secundario">
+            Não é a mesma pessoa: inscrever o servidor</button>
+          {% if not pode_juntar %}
+          <button type="submit" name="confirmar_servidor" value="depois" class="secundario">
+            Inscrever o servidor e deixar a junção para depois</button>
+          {% endif %}
+          <a class="botao secundario" href="/turmas/{{ turma.id }}?aba=inscricoes">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+  <section class="cartao">
+    <div class="titulo-cartao"><h2>Inscrever participante</h2>
+      <span class="nota">procure primeiro; cadastre só quem não estiver aqui</span>
+      {% call ui.info('participante-ponteiro', 'como o participante se liga ao cadastro') %}
+        <p>O servidor entra como <strong>ponteiro</strong> para o cadastro: nome, cargo e
+          lotação continuam morando em <code>servidor</code> e são lidos de lá. Copiá-los
+          para cá faria os dois divergirem no dia em que um fosse corrigido — e o
+          certificado sairia com o errado.</p>
+        <p>O participante externo é o contrário: <strong>é o único lugar do sistema onde
+          o nome dessa pessoa existe</strong>. O identificador é o e-mail confirmado, e a
+          identidade pública é o <code>PTC-…</code> que o sistema gera. CPF não
+          identifica ninguém aqui: ele só é guardado, em campo próprio, para o
+          certificado cuja norma o exige, e nenhuma tela o mostra.</p>
+        <p>São duas listas porque são duas perguntas: a primeira procura quem já esteve
+          em alguma turma; a segunda, quem está no cadastro de servidor e nunca
+          participou. Não achar em nenhuma das duas é o único caso em que cadastrar como
+          externo está certo — do contrário a mesma pessoa entra duas vezes, uma com
+          SIAPE e outra sem.</p>
+      {% endcall %}
+    </div>
+    <form method="get" action="/turmas/{{ turma.id }}">
+      <input type="hidden" name="aba" value="inscricoes">
+      {# O rótulo diz o que a busca faz DE VERDADE. Sem permissão nominal ela
+         não casa por nome — casar devolveria uma linha e diria de quem é o
+         código, que é o oráculo que a RN-19 existe para fechar. Prometer nome e
+         não achar é pior do que não prometer: é o que faz alguém concluir que a
+         pessoa não está na base e cadastrá-la de novo. #}
+      <div class="campo"><label for="busca-part">Procurar por
+          {% if pode_nominal %}nome, {% endif %}SIAPE, e-mail ou PTC-…</label>
+        <input id="busca-part" type="search" name="busca" value="{{ busca }}"
+               placeholder="{% if pode_nominal %}Maria, {% endif %}1234567, PTC-…"
+               aria-describedby="dica-busca-part">
+        {% if not pode_nominal %}
+        <span class="dica" id="dica-busca-part">Sem <code>certificado.ver</code> a
+          busca não casa por nome: o nome está suprimido nesta tela, e casar por
+          ele diria de quem é cada código. O SIAPE e o
+          <code>PTC-…</code> continuam achando.</span>
+        {% endif %}</div>
+      <div class="acoes"><button type="submit" class="secundario">Procurar</button></div>
+    </form>
+
+    {% if busca %}
+    <h3>Já participaram de alguma turma</h3>
+    <table class="empilhavel">
+      <thead>
+        <tr><th scope="col">Nome</th><th scope="col">Identificador</th>
+            <th scope="col">Vínculo</th><th scope="col"></th></tr>
+      </thead>
+      {% for p in achados %}
+      {% set quem = identificar(p.servidor, vazio=SUPRIMIDO) %}
+      {% set nominal = pode_nominal or quem.nominal %}
+      <tr>
+        <td class="nome">
+          {%- if nominal %}{{ p.nome_exibicao }}
+          {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
+        <td class="mono curta" data-coluna="Identificador">{{ p.identificador_publico if nominal else '—' }}</td>
+        <td class="curta" data-coluna="Vínculo">{{ (rotulo_vinculo[p.vinculo] or p.vinculo) }}</td>
+        <td class="acao-linha">
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
+            <input type="hidden" name="participante_id" value="{{ p.id }}">
+            <input type="hidden" name="busca" value="{{ busca }}">
+            <button type="submit" class="secundario marcador">inscrever</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      {# As duas tabelas desta busca respondem perguntas diferentes, e por isso
+         cada uma diz onde OLHOU: esta procura quem já passou por alguma turma
+         (participante), a de baixo procura na base de servidores. Quem lê só
+         "ninguém encontrado" conclui que a pessoa não está no sistema e a
+         recadastra como externa — a mesma pessoa duas vezes, uma com SIAPE e
+         outra sem, que é o defeito que a segunda tabela existe para evitar. #}
+      {{ ui.vazio_de_lista(
+           'Ninguém já participante com “' ~ busca ~ '”.',
+           ('Esta lista é de quem já esteve em alguma turma. A busca olha nome,
+             SIAPE, e-mail e o identificador PTC-…. Quem nunca participou aparece
+             na tabela de servidores, logo abaixo.'
+            if pode_nominal else
+            'Esta lista é de quem já esteve em alguma turma, e nesta sessão ela
+             olha só o SIAPE e o PTC-… — o nome está suprimido, e casar por ele
+             diria de quem é cada código. Vazio aqui não quer dizer que a
+             pessoa não está na base.'), 4) }}
+      {% endfor %}
+    </table>
+
+    <h3>Servidores da UFVJM ainda sem turma</h3>
+    <table class="empilhavel">
+      <thead>
+        <tr><th scope="col">Nome</th><th scope="col">SIAPE</th>
+            <th scope="col">Unidade</th><th scope="col"></th></tr>
+      </thead>
+      {% for sv in servidores_achados %}
+      {# Esta é a lista do CADASTRO — gente que nunca teve nada com treinamento
+         —, e por isso aqui não há a porta do `certificado.ver`: vale a RN-19 de
+         `/servidores`, tal e qual. Sem ela, procurar "1110" devolveria todo
+         SIAPE que contém 1110 com o nome ao lado, e esta tela seria o buraco
+         por onde o cadastro inteiro sai nominal. #}
+      {% set quem = identificar(sv) %}
+      <tr>
+        <td class="nome">
+          {%- if quem.nominal %}{{ quem.nome }}
+          {%- else %}<span class="mono">{{ quem }}</span>{% endif %}</td>
+        <td class="mono curta" data-coluna="SIAPE">{{ quem.siape or '—' }}</td>
+        <td class="curta" data-coluna="Unidade">{{ sv.unidade.sigla if sv.unidade else '—' }}</td>
+        <td class="acao-linha">
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes">
+            <input type="hidden" name="servidor_id" value="{{ sv.id }}">
+            <input type="hidden" name="busca" value="{{ busca }}">
+            <button type="submit" class="secundario marcador">inscrever</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      {# "Novo" aqui quer dizer "que ainda não é participante", e é a metade da
+         frase que faltava: um servidor que JÁ fez treinamento não aparece nesta
+         lista de propósito — ele está na de cima. Sem isso, quem acha a pessoa em
+         nenhuma das duas cai no cadastro de externo, que é a duplicidade que
+         `buscar_servidores` existe para impedir. #}
+      {{ ui.vazio_de_lista(
+           'Nenhum servidor ainda sem turma com “' ~ busca ~ '”.',
+           ('Esta lista mostra só quem nunca participou de nenhuma turma, por nome
+             ou SIAPE. Quem já participou está na tabela acima — e não estando em
+             nenhuma das duas, o cadastro do servidor é que falta, em /servidores.'
+            if pode_aqui('exposicao.ver') else
+            'Esta lista é o cadastro de servidor, e aqui vale a mesma regra de
+             /servidores: sem `exposicao.ver` ela casa só pelo SIAPE, que vem no
+             processo do SEI. Quem já participou de alguma turma está na tabela
+             acima.'), 4) }}
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {# ===========================================================
+       O PAR QUE NÃO SE QUEBRA — e por que o externo virou camada
+       ===========================================================
+       "Procure primeiro, cadastre só se não achar" era um `lado-a-lado`: as duas
+       metades apareciam ao mesmo tempo, e a ordem entre elas era só a da leitura
+       da esquerda para a direita. Converter uma das duas em camada quebraria o
+       par — a menos que a camada seja a SEGUNDA, e que o botão dela more no pé
+       da PRIMEIRA. É o que está aqui: o cadastro de externo deixou de ser uma
+       coluna que compete com a busca e passou a ser a continuação dela, no lugar
+       exato onde a busca falha. A ordem, que antes dependia do olho, virou
+       estrutura.
+
+       O botão fica fora do `{% if busca %}`: quem já sabe que a pessoa é externa
+       (o terceirizado que chegou com a empresa) não precisa fazer uma busca
+       inútil primeiro. #}
+    <div class="corpo">
+      <div class="acoes">
+        {{ ui.botao_cadastro('cadastrar-externo', CADASTRAR_EXTERNO, 'secundario') }}
+        {# a turma fechada com a lista pronta: a planilha colada, conferida antes de gravar #}
+        <a class="botao secundario" href="/turmas/{{ turma.id }}/inscricoes/lote">Inscrever em lote</a>
+        <p class="discreto sem-margem">Não achou nas duas listas? Terceirizado, discente
+          e visitante não estão no cadastro de servidor — entram por aqui. Com a lista
+          pronta numa planilha, use a inscrição em lote.</p>
+      </div>
+    </div>
+  </section>
+{% elif pode_inscrever %}
+<div class="aviso aviso-alerta">
+  <span class="mono">{{ turma.codigo }}</span> está
+  {{ ui.ROTULO_TURMA_TELA[turma.situacao]|lower }} e não recebe inscrição.
+  Inscrever em turma fechada é reescrever história.
+</div>
+{% endif %}
