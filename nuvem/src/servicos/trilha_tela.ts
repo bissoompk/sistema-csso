@@ -37,6 +37,8 @@ export const ROTULO_CAMPO: Record<string, string> = {
   texto_reavaliacao: "Texto da reavaliação",
   numero_documento_sei: "Nº do documento SEI",
   categoria: "Categoria",
+  cor_setor: "Cor do setor",
+  icone_setor: "Ícone do setor",
 };
 
 const vazio = (v: unknown) => v === null || v === undefined || v === "";
@@ -73,4 +75,32 @@ export function alteracao_na_tela(ev: {
   if (vazio(a)) return `${nome}: ${valor(d)}`;
   if (vazio(d)) return `${nome}: ${valor(a)} → (vazio)`;
   return `${nome}: ${valor(a)} → ${valor(d)}`;
+}
+
+/** Um valor como o `repr` do Python o gravou: None, True/False, número ou 'texto'. */
+function _do_repr(texto: string): unknown {
+  const t = texto.trim();
+  if (t === "None") return null;
+  if (t === "True") return true;
+  if (t === "False") return false;
+  if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+  const aspas = /^(['"])([\s\S]*)\1$/.exec(t);
+  return aspas ? aspas[2] : t;
+}
+
+/**
+ * A frase de tela de um evento que só tem a descrição gravada, `campo: antes ->
+ * depois` (a trilha geral não guarda campo e valores em colunas, como a do
+ * processo). Descrição que não segue esse desenho volta como veio.
+ */
+export function alteracao_da_descricao(descricao: string | null | undefined): string {
+  const texto = descricao ?? "";
+  const m = /^([a-z][a-z0-9_]*): ([\s\S]+?) -> ([\s\S]+)$/.exec(texto);
+  if (!m) return texto;
+  return alteracao_na_tela({
+    campo: m[1]!,
+    valor_anterior: _do_repr(m[2]!),
+    valor_novo: _do_repr(m[3]!),
+    descricao: texto,
+  });
 }

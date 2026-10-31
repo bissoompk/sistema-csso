@@ -153,9 +153,45 @@ async function _tela_lista(
   const tx = c.get("tx");
   const hoje = hoje_iso();
   const agora = agora_utc();
-  const usuarios = await tx.select().from(tabela_usuario).orderBy(asc(tabela_usuario.nome));
-  const todas = await tx.query.atribuicao.findMany({ with: { perfil: true }, orderBy: [asc(atribuicao.id)] });
-  const perfis_completos = await _perfis_com_permissoes(tx);
+  // As leituras da tela não dependem umas das outras: saem juntas, e na mesma
+  // conexão viram uma ida só ao banco (`db/cliente.ts`). Uma atrás da outra,
+  // eram onze idas — o grosso dos 2 s que a tela levava.
+  const vincula = usuario.pode("perfil.conceder") && usuario.pode("exposicao.ver");
+  const administra = usuario.pode("perfil.conceder");
+  const [
+    usuarios,
+    todas,
+    perfis_completos,
+    ultima_que_concede,
+    servidores,
+    campi,
+    fim_cobertura,
+    perfis,
+    excecoes,
+    setores_da_conta,
+    setores,
+    habilitados,
+  ] = await Promise.all([
+    tx.select().from(tabela_usuario).orderBy(asc(tabela_usuario.nome)),
+    tx.query.atribuicao.findMany({ with: { perfil: true }, orderBy: [asc(atribuicao.id)] }),
+    _perfis_com_permissoes(tx),
+    governanca.contas_que_concedem(tx),
+    // Nome e SIAPE de todo servidor só vão para a página de quem vincula conta a
+    // servidor (`perfil.conceder`) E lê dado nominal (`exposicao.ver`): o
+    // `admin_ti` abre esta tela e não lê dado nominal (RN-19). Conceder perfil não
+    // traz a leitura nominal por si.
+    vincula ? tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)) : Promise.resolve([]),
+    tx.select().from(campus).orderBy(asc(campus.sigla)),
+    // O sino avisa quem concede; a tela de quem concede avisa também (D17).
+    administra ? governanca.fim_da_cobertura(tx, hoje) : Promise.resolve(null),
+    tx.select().from(tabela_perfil).orderBy(asc(tabela_perfil.codigo)),
+    // Liberação por módulo e setores promotores (22/10/2026): só para quem
+    // administra acesso, que é quem grava as duas coisas na gaveta "Gerir"
+    administra ? liberacao.excecoes_por_conta(tx) : Promise.resolve(new Map()),
+    administra ? liberacao.setores_por_conta(tx) : Promise.resolve(new Map()),
+    administra ? liberacao.setores_promotores(tx) : Promise.resolve([]),
+    tx.select().from(profissional_habilitado).orderBy(asc(profissional_habilitado.id)),
+  ]);
   const atribuicoes: Record<number, typeof todas> = {};
   const vigentes_por_usuario: Record<number, typeof todas> = {};
   for (const u of usuarios) {
@@ -197,13 +233,6 @@ async function _tela_lista(
   }
   // A conta que, inativada, deixaria o sistema sem quem conceda perfil: a
   // linha dela não oferece "Inativar" (a rota recusa do mesmo jeito, D66).
-  const ultima_que_concede = await governanca.contas_que_concedem(tx);
-  // Nome e SIAPE de todo servidor só vão para a página de quem vincula conta a
-  // servidor (`perfil.conceder`) E lê dado nominal (`exposicao.ver`): o
-  // `admin_ti` abre esta tela e não lê dado nominal (RN-19). Conceder perfil não
-  // traz a leitura nominal por si.
-  const vincula = usuario.pode("perfil.conceder") && usuario.pode("exposicao.ver");
-  const servidores = vincula ? await tx.select().from(tabela_servidor).orderBy(asc(tabela_servidor.nome)) : [];
   const rotulo_servidor: Record<number, string> = {};
   const sugestao_servidor: Record<number, string> = {};
   for (const s of servidores) rotulo_servidor[s.id] = _rotulo_servidor(s);
@@ -212,11 +241,8 @@ async function _tela_lista(
     const sugerido = _unico_pelo_email(servidores, usuarios, u.email);
     if (sugerido) sugestao_servidor[u.id] = _rotulo_servidor(sugerido);
   }
-  const campi = await tx.select().from(campus).orderBy(asc(campus.sigla));
   const sigla_campus: Record<number, string> = {};
   for (const cp of campi) sigla_campus[cp.id] = cp.sigla;
-  // O sino avisa quem concede; a tela de quem concede avisa também (D17).
-  const fim_cobertura = usuario.pode("perfil.conceder") ? await governanca.fim_da_cobertura(tx, hoje) : null;
   const aviso_cobertura =
     fim_cobertura !== null && fim_cobertura <= somar_dias(hoje, governanca.JANELA_DE_AVISO_DIAS)
       ? governanca.texto_do_aviso(fim_cobertura)
@@ -233,13 +259,6 @@ async function _tela_lista(
   ) {
     digitado = { forma: "perfil", usuario_alvo: conceder_a };
   }
-  const perfis = await tx.select().from(tabela_perfil).orderBy(asc(tabela_perfil.codigo));
-  // Liberação por módulo e setores promotores (22/10/2026): só para quem
-  // administra acesso, que é quem grava as duas coisas na gaveta "Gerir"
-  const administra = usuario.pode("perfil.conceder");
-  const excecoes = administra ? await liberacao.excecoes_por_conta(tx) : new Map();
-  const setores_da_conta = administra ? await liberacao.setores_por_conta(tx) : new Map();
-  const setores = administra ? await liberacao.setores_promotores(tx) : [];
   return pagina(c, "paginas/usuarios.html", usuario, {
     excecoes: Object.fromEntries(excecoes),
     setores_da_conta: Object.fromEntries(setores_da_conta),
@@ -283,7 +302,7 @@ async function _tela_lista(
     sigla_campus,
     atribuicoes,
     vigentes_por_usuario,
-    habilitados: await tx.select().from(profissional_habilitado).orderBy(asc(profissional_habilitado.id)),
+    habilitados,
     servidores,
     rotulo_servidor,
     sugestao_servidor,

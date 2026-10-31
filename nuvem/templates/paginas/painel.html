@@ -375,7 +375,7 @@
                sistema, entao nao ha um titular a quem perguntar — e o painel e
                a tela que mais gente abre, que foi o que ja fez dele o pior caso
                da supressao estatistica. #}
-            <strong>{{ evento.tipo_evento|evento }}</strong> — {{ texto_livre(evento.descricao_tela) }}
+            <strong>{{ evento.tipo_evento|evento }}</strong> — {{ texto_livre(evento.descricao_tela) }}{% if evento.repeticoes > 1 %} <span class="selo">{{ evento.repeticoes }} vezes</span>{% endif %}
             <div class="quando">{{ evento.ocorrido_em|momento }} · {{ evento.usuario_nome }}</div>
           </li>
           {% else %}<li class="nada">Sem eventos.</li>{% endfor %}
