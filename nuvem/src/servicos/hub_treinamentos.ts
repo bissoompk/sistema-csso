@@ -350,7 +350,8 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
   lista.push({
     href: "/certificados/vencimentos",
     icone: "shield-exclamation",
-    cor: "vermelho",
+    // vermelho só com o que alarmar: sem vencido, o cartão é neutro como os outros
+    cor: r.reciclagem.VENCIDO ? "vermelho" : "escuro",
     titulo: "Reciclagem",
     descricao: "Quem venceu e quem vence em 30 dias.",
     contagem: {
@@ -374,7 +375,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
     lista.push({
       href: "/treinamentos/indicadores",
       icone: "bar-chart",
-      cor: "laranja",
+      cor: "teal",
       titulo: "Indicadores",
       descricao: "Turmas, participantes e emissão por período e setor promotor.",
       contagem: null,
