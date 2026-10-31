@@ -227,7 +227,7 @@ describe("datas da turma", () => {
     const t = (await servico_turma.carregar_turma(db, turma_id))!;
     expect(servico_turma.aberta_a_pedido_proprio(t)).toContain(`começou em ${br(ONTEM)}`);
     const cartaz = texto((await novoCliente().get(`/inscricao/${token}`)).text);
-    expect(cartaz).toContain("não recebe mais pedido de vaga");
+    expect(cartaz).toContain("não recebe mais inscrição pelo link");
     expect(cartaz).not.toContain("Pedir a vaga</button>");
     const { c } = await servidor_logado();
     expect(texto((await c.get("/turmas/minhas")).text)).not.toContain(t.codigo);

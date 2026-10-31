@@ -1097,7 +1097,7 @@ describe("inscrição pública por link", () => {
     expect(await _msg(cliente, r)).toContain("Defina antes até quando");
     await db.update(e.turma).set({ inscricao_aberta_ate: somar_dias(hoje_iso(), 5) }).where(eq(e.turma.id, turma_id));
     const r2 = await cliente.post(`/turmas/${turma_id}/link-publico`, {}, { seguir: false });
-    expect(await _msg(cliente, r2)).toContain("só se pede vaga em turma com inscrições abertas");
+    expect(await _msg(cliente, r2)).toContain("só se inscreve em turma com inscrições abertas");
     expect((await _turma(turma_id)).inscricao_publica).toBe(false);
   });
 

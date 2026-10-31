@@ -1409,7 +1409,7 @@ export function aberta_a_pedido_proprio(turma: TurmaRegistro, hoje: string | nul
   if (turma.situacao !== "INSCRICOES_ABERTAS") {
     return (
       `${turma.codigo} está ${ROTULO_TURMA_TELA[turma.situacao]!.toLowerCase()}: só se ` +
-      "pede vaga em turma com inscrições abertas." +
+      "inscreve em turma com inscrições abertas." +
       FALE_COM_A_EQUIPE
     );
   }
@@ -1422,7 +1422,7 @@ export function aberta_a_pedido_proprio(turma: TurmaRegistro, hoje: string | nul
   // dia do início já conta como começada: desistir também vale só até a véspera
   if (turma.data_inicio <= dia) {
     const quando = turma.data_inicio === dia ? "começa hoje" : `começou em ${datas_br.numerica(turma.data_inicio)}`;
-    return `${turma.codigo} ${quando} e não recebe mais pedido de vaga.`;
+    return `${turma.codigo} ${quando} e não recebe mais inscrição pelo link nem por "Inscrever-se".`;
   }
   return "";
 }
@@ -1518,7 +1518,7 @@ export async function inscrever_se(
     entidade: "inscricao",
     entidade_id: inscricao.id,
     tipo_evento: "INSCRICAO_PEDIDA_PELO_TITULAR",
-    descricao: `${turma.codigo}: ${pessoa.identificador_publico} pediu a própria vaga (confirmada: havia vaga)`,
+    descricao: `${turma.codigo}: ${pessoa.identificador_publico} se inscreveu sozinho(a) (confirmada na hora: havia vaga)`,
     usuario,
   });
   return inscricao;
