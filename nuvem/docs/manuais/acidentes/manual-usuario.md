@@ -4,7 +4,7 @@
 
 Para quem usa o módulo "Análise de Acidentes" no dia a dia:
 
-- **Quem comunica um acidente**: servidor, terceirizado, estudante, chefia, ou qualquer pessoa pelo link público.
+- **Quem comunica um acidente**: servidor, chefia ou qualquer pessoa com conta, ou qualquer pessoa pelo link público. O acidentado, porém, tem de ser servidor: acidente com terceirizado, estudante, visitante etc. é registrado em Ocorrências, não aqui.
 - **Secretaria**: recebe e faz a triagem das comunicações.
 - **Equipe de segurança do trabalho** (técnico, engenheiro, coordenação, superintendência): investiga, emite o relatório, encaminha ao SIASS e conclui.
 - **Médico do trabalho**: registra a saúde e encaminha ao SIASS.
@@ -21,7 +21,7 @@ Base legal que aparece na tela: Lei 8.112, arts. 211 a 214. A equipe tem **10 di
 
 | Perfil | O que faz no módulo |
 |---|---|
-| Servidor, terceirizado, estudante (com conta) | Comunica; vê "Minhas comunicações"; responde pedido de complementação. O servidor que é o acidentado lê a própria saúde e a própria identificação (sem informar finalidade). Não vê a fila, o Plano de ação, os indicadores nem o link público (acesso negado). A tela das abas "Relatórios" e "Histórico" diz "Restrito à equipe que investiga" |
+| Servidor (com conta) | Comunica; vê "Minhas comunicações"; responde pedido de complementação. O servidor que é o acidentado lê a própria saúde e a própria identificação (sem informar finalidade). Não vê a fila, o Plano de ação, os indicadores nem o link público (acesso negado). A tela das abas "Relatórios" e "Histórico" diz "Restrito à equipe que investiga" |
 | Secretaria | Comunica; vê a fila; faz a triagem; gera o link público; vê os indicadores (sem exportar). Não lê saúde ("Seu perfil não abre a saúde."), identificação, plano de ação (acesso negado), SIASS, relatório, entrevistas nem histórico |
 | Técnico, engenheiro | Tudo da triagem, investigação, plano de ação, relatório e SIASS; resumo da saúde (nível 1). Não abrem o detalhe da saúde, a identificação nem o Anexo III em PDF |
 | Médico | Vê as abas; registra saúde; encaminha ao SIASS; baixa o Anexo III. Lê (sem editar) a investigação, o checklist, as entrevistas, o plano de ação e o histórico. Não investiga nem emite relatório; não gera link público |
@@ -61,13 +61,12 @@ A tela "Comunicar acidente" tem seções recolhíveis. O sistema guarda um rascu
 
 1. Abra "Comunicar acidente".
 2. Na seção **1. Quem se envolveu**, preencha o "Envolvido 1". Use o botão **+ Outro envolvido** para incluir "Envolvido 2", "Envolvido 3" etc. (até 20).
-   - **Sou eu o envolvido** (a caixa aparece só para contas de servidor ou de externo) **já vem marcada** em um formulário novo. Marcada, o sistema usa o seu cadastro e você dispensa o SIAPE. **Se você está comunicando o acidente de outra pessoa, desmarque.**
+   - **Sou eu o envolvido** (a caixa aparece só para contas de servidor ou de externo; conta de externo não é servidor, então o envio com ela é recusado e o caso vai para Ocorrências) **já vem marcada** em um formulário novo. Marcada, o sistema usa o seu cadastro e você dispensa o SIAPE. **Se você está comunicando o acidente de outra pessoa, desmarque.**
    - Servidor que marca "Sou eu" e está sem cargo ou lotação no cadastro precisa informar os dois ("Cargo e lotação (só se o cadastro estiver sem)"; escolha na lista ou digite em "Não está na lista?"). Sem isso o envio é recusado: "Informe o cargo e a lotação no seu cadastro (escolha na lista ou digite em «Não está na lista?») antes de comunicar." Para outro servidor, esses campos só valem se o cadastro dele estiver sem.
-   - **Vínculo**: Servidor, Terceirizado, Estudante, Bolsista, Residente, Visitante ou Outro.
+   - **Vínculo**: só "Servidor". Acidentes e CAT/SP valem só para servidor: se o envolvido não é servidor (terceirizado, estudante, bolsista, residente, visitante etc.), o envio é recusado com a mensagem "A análise de acidentes e a CAT/SP valem só para servidor. Para quem não é servidor (do envolvido N), use o módulo Ocorrências." e o caso deve ser registrado no módulo Ocorrências.
    - **Condição no acidente**: Servidor acidentado, Servidor envolvido sem lesão, Condutor, Passageiro, Pedestre, Ciclista, Motociclista, Testemunha envolvida ou Outro.
    - **Houve lesão?**: Sim, Não ou Não sei.
    - **SIAPE** (7 dígitos): só para vínculo Servidor.
-   - Para quem não é servidor: **Nome**, "Matrícula ou crachá (opcional, nunca CPF)", "Empresa contratada (opcional)" e a caixa **Menor de idade** (a dica diz que "o responsável legal é avisado": o sistema não avisa ninguém, ver capítulo 14).
    - **Contato para a investigação (opcional)**: e-mail institucional ou ramal.
    - Blocos opcionais: "Dados pessoais do envolvido — Anexo III da CAT/SP (opcional)" e "O que você sabe sobre a lesão (opcional)" (atendimento, afastamento, internação, óbito, parte do corpo atingida).
 3. Na seção **2. O que aconteceu**, preencha:
@@ -95,13 +94,13 @@ A tela "Comunicar acidente" tem seções recolhíveis. O sistema guarda um rascu
 - Se o relato for recusado, o formulário volta preenchido. Só o CPF digitado não volta; digite de novo.
 - O sistema **não avisa se o mesmo acidente já foi comunicado**. Antes de comunicar, confira com colegas e com "Minhas comunicações" para não gerar protocolos repetidos.
 - Se você comunica o acidente de outra pessoa, desmarque "Sou eu o envolvido". Mesmo assim, a menos que você marque "Sou a chefia imediata" ou tenha perfil de triagem (equipe), a ficha escreve "Pelo próprio acidentado" na origem: é erro de rótulo, só a equipe tem como saber quem de fato comunicou (ver capítulo 14).
-- Os rótulos "Servidor acidentado" e "Servidor envolvido sem lesão" aparecem também para terceirizado, estudante e visitante. Escolha o que mais se aproxima.
+- Os rótulos de condição "Servidor acidentado" e "Servidor envolvido sem lesão" são coerentes com a regra: o acidentado é sempre servidor.
 
 ---
 
 ## 2. Comunicar sem conta (link público)
 
-Serve para terceirizados, estudantes, visitantes e servidores sem conta.
+Serve para servidores sem conta, ou para quem comunica por eles. O acidentado informado tem de ser servidor: a comunicação pelo link também recusa terceirizado, estudante, visitante etc., com a mesma mensagem "A análise de acidentes e a CAT/SP valem só para servidor. Para quem não é servidor (do envolvido N), use o módulo Ocorrências.", e manda registrar em Ocorrências.
 
 ### 2.1 Quem gera o link (secretaria ou equipe)
 
@@ -124,7 +123,7 @@ Regras:
 
 1. Abra o endereço recebido.
 2. Seção **1. Quem está comunicando**: Seu nome, Seu e-mail (só para a equipe falar com você; nada é enviado automaticamente) e Seu vínculo.
-3. Seção **2. Quem se envolveu**: três quadros; o primeiro é obrigatório e os outros dois opcionais (Nome, Vínculo, "SIAPE, matrícula ou crachá (opcional)", Condição, Houve lesão?, Empresa contratada, Menor de idade).
+3. Seção **2. Quem se envolveu**: três quadros; o primeiro é obrigatório e os outros dois opcionais (Nome, Vínculo [só "Servidor"], "SIAPE, matrícula ou crachá (opcional)", Condição, Houve lesão?, Empresa contratada, Menor de idade).
 4. Seção **3. O que aconteceu** (mesmos campos do capítulo 1).
 5. Seção **4. Testemunhas (opcional)**: até 2, com nome e contato (e-mail ou ramal).
 6. Seção **5. Privacidade e envio**: marque **Li o aviso de privacidade.** e **Declaro que as informações são verdadeiras.** (as duas são obrigatórias) e clique em **Enviar comunicação**.
@@ -358,7 +357,7 @@ Resultado: a origem passa a "Registrado pelo médico do trabalho" e a tarefa "Co
 
 Mostra sexo, data de nascimento, CPF mascarado, RG, endereço, telefone, e-mail e contatos das testemunhas. A secretaria não acessa. O próprio acidentado servidor abre a sua sem informar finalidade (se nada foi informado, a tela diz "Nada foi informado para este envolvido.").
 
-**A aba é só de leitura.** Não existe tela para informar ou completar esses dados depois da comunicação; eles só entram no bloco "Dados pessoais do envolvido" do formulário de comunicação. A aba Análise pode mandar "abrir" a Identificação para algo que ali não se edita.
+**Completar a identificação.** Quem tem a permissão de ver a identificação (acidente.identificacao_ver) completa o que faltou no Anexo III depois da comunicação: na aba Identificação, em cada envolvido, abra "Completar a identificação", preencha só o que falta (sexo, data de nascimento, CPF, RG, endereço, telefone, e-mail) e clique em **Salvar a identificação**. Só o que foi digitado entra: o que já estava gravado e fica em branco continua como estava, e campo em branco não apaga. Sem nenhum campo preenchido a tela recusa ("Preencha ao menos um campo para completar a identificação."). Não se completa em ocorrência cancelada nem em identificação já expurgada. A mensagem de sucesso é "Identificação completada. O que já estava gravado e não foi digitado continua como estava." A trilha registra só os grupos de campo, nunca o valor. A "Retificar a CAT/SP" continua sem incluir esses dados.
 
 ### 6.4 CAT/SP no formato do Anexo III (PDF)
 
@@ -479,7 +478,9 @@ Regras:
 - Antes do relatório: "O caso só se conclui depois de emitido o relatório."
 - Repetir: "O caso já está concluído."
 
-**"Concluída" é final.** Não há reabrir: "Se o caso voltou, comunique de novo: a reabertura é uma ocorrência nova." (novo protocolo, novo prazo de 10 dias).
+**Reabrir a investigação (só a coordenação).** Na aba Comunicação, o botão **Reabrir a investigação** aparece para a coordenação quando o caso está em "Relatório emitido" ou "Encaminhada ao SIASS". Escolha o **Motivo** na lista (Corrigir a investigação ou o relatório; Informação nova sobre o caso; Encerrado por engano; Outro motivo) e clique em **Reabrir**. O caso volta para "Em investigação", a investigação destrava e abre-se de novo a tarefa de investigar com prazo; o relatório novo sai pela retificação. Se você não é da coordenação, peça a ela.
+
+**"Concluída" é final.** A investigação de um caso concluído não reabre: "Se o caso voltou, comunique de novo: a reabertura é uma ocorrência nova." (novo protocolo, novo prazo de 10 dias).
 
 ---
 
@@ -535,7 +536,7 @@ Período invertido ou inválido é recusado.
 | "Escolha a espécie do acidente na lista." | Escolha a espécie |
 | "Diga onde foi o acidente (sala, prédio, trecho)." | Preencha "Onde foi" |
 | "a data do acidente não pode ser depois de hoje." | Corrija a data |
-| "O SIAPE 9999999 do envolvido 1 não está no cadastro de servidores. Confira o número ou, se a pessoa não for servidora, escolha outro vínculo e informe o nome." | Confira o SIAPE ou mude o vínculo |
+| "O SIAPE 9999999 do envolvido 1 não está no cadastro de servidores. Confira o número ou, se a pessoa não for servidora, escolha outro vínculo e informe o nome." | Confira o SIAPE (só servidor entra aqui; quem não é servidor vai para Ocorrências) |
 | "Informe o SIAPE (7 dígitos) do envolvido 1." | Digite os 7 dígitos |
 | "Informe o nome do envolvido 1 (quem não é servidor entra pelo nome)." | Informe o nome |
 | "O CNPJ da contratada vai como 00.000.000/0000-00." | Use esse formato |
@@ -575,8 +576,8 @@ Período invertido ou inválido é recusado.
 Para você não ser pego de surpresa. Quando um destes pontos o afetar, avise a coordenação.
 
 1. **Registro inicial da saúde.** Abrir o Detalhe (nível 2) como médico, com a "Natureza da lesão" ainda vazia, dá erro e a página não abre. Até a correção, o registro inicial da saúde pela tela fica indisponível.
-2. **Identificação do Anexo III.** Só entra na comunicação. Depois não há tela para completá-la, e "Retificar a CAT/SP" não inclui esses dados. Preencha o bloco "Dados pessoais do envolvido" quando comunicar, se tiver os dados.
-3. **Depois do relatório emitido**, não se corrige a síntese nem as escolhas da investigação, e um caso concluído não reabre (só nova comunicação). Revise a investigação antes de clicar em **Emitir relatório**.
+2. **Identificação do Anexo III.** Pode entrar na comunicação (bloco "Dados pessoais do envolvido") e ser completada depois na aba Identificação, por quem tem a permissão de ver a identificação (ver 6.3). A "Retificar a CAT/SP" não inclui esses dados.
+3. **Depois do relatório emitido**, não se corrige a síntese nem as escolhas da investigação, e um caso concluído não reabre (só nova comunicação). Com o relatório emitido ou encaminhado ao SIASS, a coordenação pode reabrir a investigação (ver o capítulo 9). Revise a investigação antes de clicar em **Emitir relatório**.
 4. **Indicador "Por unidade do local"** sempre mostra "Sem unidade informada". As taxas de frequência e de gravidade ainda não existem.
 5. **Aviso de responsável legal (menor de idade)** continua aparecendo, e não há onde registrar que o responsável foi avisado. Registre fora do sistema.
 6. **Telas desatualizadas ou duas pessoas ao mesmo tempo** podem gerar tela de erro em vez de mensagem clara. Recarregue.
@@ -586,7 +587,7 @@ Para você não ser pego de surpresa. Quando um destes pontos o afetar, avise a 
 10. **Origem da comunicação**: a caixa "Sou eu o envolvido" já vem marcada, e quem comunica o acidente de outra pessoa (sem ser chefia nem equipe de triagem) fica registrado como "Pelo próprio acidentado", mesmo desmarcando a caixa.
 11. **Comunicação duplicada** não é detectada. A saída é cancelar com o motivo "Comunicação duplicada".
 12. **Incidente / quase acidente** segue o mesmo fluxo de um acidente com CAT: mesmo prazo de 10 dias e mesmo caminho até o SIASS.
-13. Os rótulos "Servidor acidentado" e "Servidor envolvido sem lesão" aparecem também para terceirizado, estudante e visitante.
+13. Acidente de quem não é servidor não entra neste módulo: a comunicação é recusada e o caso vai para Ocorrências.
 14. A aba Análise pede "Município e UF" mesmo quando a UF já vem preenchida.
 15. O **Anexo III em PDF** é gerado pelo médico, pela coordenação ou pela superintendência; técnico e engenheiro não veem o link na aba Identificação.
 16. **Linha do tempo, entrevistas e evidências** não se editam nem se reordenam. O **link público** não aparece de novo depois de gerado.

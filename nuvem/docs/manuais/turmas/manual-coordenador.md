@@ -33,7 +33,7 @@ Todos os exemplos usam nomes e códigos fictícios.
 - **Servidor:** usa "Meus treinamentos", vê a ficha da turma só para leitura, inscreve-se (também pelo botão "Inscrever-se" da ficha), desiste e avalia. Abre "Setores promotores" só para ler e não abre Início (403).
 - **Almoxarife e administrador de TI:** não têm acesso a nada deste módulo (403 em todas as telas, inclusive "Meus treinamentos").
 
-**Início do módulo.** A tela "Início" (**/treinamentos**) tem dez cartões na ordem do trabalho (Treinamentos e modelos, Instrutores, Turmas, Pedidos pelo link, Presença e notas, Fila de emissão, Emitidos, Envios por e-mail, Reciclagem, Indicadores), cada um com a contagem do que espera, mais as listas "Turmas encerrando" e "Próximas turmas". Use-a como ponto de partida da rotina (capítulo 13). "Turmas encerrando" inclui turmas planejadas que vão acabar logo, marcadas "nada pendente: só concluir no término": isso não é alarme de problema.
+**Início do módulo.** A tela "Início" (**/treinamentos**) tem dez cartões na ordem do trabalho (com os mesmos nomes e ícones da lateral, conforme o perfil: Treinamentos, Modelos, Instrutores, Turmas, Pedidos pelo link, Presença e notas, Fila de emissão, Emitidos, Envios por e-mail, Reciclagem, Possíveis duplicados (só aparece quando há o que conferir), Indicadores, Setores promotores e Locais), muitos deles com a contagem do que espera, mais as listas "Turmas encerrando" e "Próximas turmas". Use-a como ponto de partida da rotina (capítulo 13). "Turmas encerrando" inclui turmas planejadas que vão acabar logo, marcadas "nada pendente: só concluir no término": isso não é alarme de problema.
 - **Terceirizado e discente:** podem ver treinamentos e se inscrever. Este manual não cobre a tela deles, porque não foi possível testá-los.
 
 **Concessão de acesso.** O acesso é dado pelo perfil da conta. Se alguém precisa abrir uma tela e recebe "403 — acesso negado", o perfil dela não tem a permissão. As permissões do módulo, pelos nomes que o sistema usa:
@@ -93,7 +93,7 @@ Uma **turma** é uma oferta de um treinamento: quando, onde, com quem e para qua
 | Inscrições abertas | Recebe pedidos de vaga, inclusive pelo link e pela vitrine. | Planejada (é a forma de fechar inscrições sem cancelar), Em andamento, Cancelada |
 | Em andamento | A turma começou. Aceita ainda inscrição pela equipe (retardatário). | Concluída, Cancelada. **Não volta** |
 | Concluída | Foi apurada. Final. | Nenhuma. Corrige-se por "Corrigir dados da turma" |
-| Cancelada | Final. | Nenhuma |
+| Cancelada | Final. Leva junto as inscrições vivas (capítulo 10.1). | Nenhuma |
 
 **Situações da inscrição:**
 
@@ -103,7 +103,7 @@ Uma **turma** é uma oferta de um treinamento: quando, onde, com quem e para qua
 | Inscrita / Confirmada | Vaga garantida | Sim |
 | Presente / Ausente | Presença lançada | Sim |
 | Aprovado / Reprovado | Resultado após a conclusão | Sim |
-| Cancelada | Desistência ou cancelamento. **Situação final** | Não |
+| Cancelada | Desistência ou cancelamento. Quem responde pela turma pode **reativar** (capítulo 7.2) | Não |
 
 A inscrição feita pela equipe, pelo próprio participante logado ou pelo aceite de um pedido nasce **Confirmada**.
 
@@ -293,13 +293,20 @@ Formas de inscrever:
 
 Dicas: a busca da aba Inscrições **não ignora acento** (procure "Cíntia" com acento, ou use parte do nome ou o SIAPE). No lote, a busca por nome ignora acento. Uma linha só com nome, sem SIAPE, é procurada entre os servidores e, se houver um só com esse nome, entra esse servidor ("servidor, pelo nome" na coluna "Como foi achado"); se não houver, entra como externo novo. Confira essa coluna antes de gravar, porque homônimo ou grafia diferente leva à pessoa errada ou a um cadastro duplicado. Prefira o SIAPE.
 
-### 7.2 Cancelar inscrição: decisão sem volta
+### 7.2 Cancelar e reativar inscrição
 
 Na linha da pessoa, **"Cancelar a inscrição"** exige o "Motivo do cancelamento". O cancelamento devolve a vaga.
 
-**Atenção, é o ponto mais sensível deste módulo:** a inscrição **cancelada é situação final**. Não há como reinscrever a mesma pessoa **na mesma turma**, nem pela equipe ("... já consta em TUR-... como cancelada." e "Transição proibida: Cancelada → Inscrita."). Isso vale também quando o próprio participante desiste em "Meus treinamentos". A tela dele diz que "a equipe resolve", mas a equipe não consegue reativar.
+**Reativar.** Quem responde pela turma (permissão de concluir turma) desfaz o cancelamento, seja desistência do próprio participante em "Meus treinamentos", seja engano da equipe. Na linha da inscrição **cancelada**, abra o painel (**"reativar"**, com a nota "cancelada"), escreva o **"Motivo"** (obrigatório) e clique em **"Reativar inscrição"**. Resposta: "{nome}: inscrição reativada."
 
-Por isso, antes de cancelar, confirme que o cancelamento é mesmo definitivo. Se a pessoa precisa voltar, a saída é inscrevê-la em **outra turma** do mesmo treinamento, quando houver.
+- A pessoa volta **Confirmada**, o motivo do cancelamento é apagado da linha e o motivo da reativação fica na trilha de auditoria (evento "INSCRICAO_REATIVADA").
+- **Só se houver vaga.** Sem vaga: "TUR-... não tem vaga: N de N ocupadas." Aumente as vagas e tente de novo.
+- **Só em turma que ainda recebe inscrição.** Em turma concluída ou cancelada: "TUR-... está concluída e não recebe inscrição." / "... está cancelada ...". A inscrição cancelada por causa do cancelamento da turma, portanto, não se reativa.
+- Sem motivo: "Reativar a inscrição exige o motivo: fica na trilha." Em inscrição que não está cancelada: "Só inscrição cancelada se reativa."
+- O botão só aparece com a turma Planejada ou com Inscrições abertas. Em outras situações a tela não o oferece.
+- Inscrever de novo a mesma pessoa pelo botão de inscrever continua recusado ("... já consta em TUR-... como cancelada."): use a reativação.
+
+Cancelar continua exigindo o motivo e devolvendo a vaga; a reativação ocupa uma vaga de novo.
 
 ### 7.3 Pedidos pelo link: conferir e decidir
 
@@ -419,11 +426,12 @@ Mensagens comuns: "Ninguém apto a emitir nesta turma." / "Emissão bloqueada: .
 
 **Atenção, o cancelamento é só da turma:**
 
-- As inscrições **não são canceladas** e continuam "Confirmada".
-- **Ninguém é avisado**, nem por e-mail.
-- Em "Meus treinamentos", a pessoa continua vendo "Confirmada", com a observação "a turma já começou", mesmo que a turma nem tenha começado.
+- O cancelamento da turma **cancela junto as inscrições vivas** (pedido pelo link a conferir, Inscrita e Confirmada). Cada uma fica "Cancelada" com o motivo "Turma cancelada: {motivo que você escreveu}" e entra na trilha ("... (turma cancelada)"). Em "Meus treinamentos", a pessoa vê "Cancelada" com esse motivo.
+- **Quem tem e-mail no cadastro recebe aviso** ("Turma cancelada — {treinamento}", com o código e o período, dizendo que a inscrição não vale mais). **O motivo não vai no e-mail**: fica só na trilha e na ficha.
+- Quem **não tem e-mail** não é avisado: avise por outro meio (telefone, mensagem). Confira também a coluna de e-mail da aba Inscrições antes de cancelar.
+- Turma cancelada não reabre e as inscrições canceladas por ela não se reativam (capítulo 7.2).
 
-Portanto, ao cancelar, **você precisa avisar os inscritos por outro meio** (e-mail institucional, telefone ou mensagem). Se a turma estava publicada na vitrine, confira se saiu de "Inscrições abertas". Se o link estava ligado, a turma cancelada deixa de aceitar pedidos, mas confira a página pública.
+Se a turma estava publicada na vitrine, confira se saiu de "Inscrições abertas". Se o link estava ligado, a turma cancelada deixa de aceitar pedidos, mas confira a página pública.
 
 ### 10.2 Excluir turma
 
@@ -502,7 +510,7 @@ A trilha **não grava e-mail nem CPF**. Ela grava, porém, a nota e a frequênci
 - Nenhuma turma concluída com participantes aprovados e sem certificado, a não ser por motivo conhecido.
 - Todo instrutor ativo tem título preenchido e não está duplicado.
 - Cada turma em andamento ou com inscrições abertas tem ao menos um instrutor marcado "assina" (se for concluir em breve).
-- Nenhum inscrito de turma cancelada continua sem aviso.
+- Nenhum inscrito sem e-mail de turma cancelada continua sem aviso (quem tem e-mail é avisado pelo sistema).
 - A vitrine só mostra turmas que de fato recebem inscrição, e o público marcado combina com "Aceita comunidade externa".
 - O setor da própria equipe está em "Setores promotores".
 - O e-mail do sistema está ativo, se você depende de confirmação de inscrição, aceite e avaliação de reação.
@@ -519,7 +527,7 @@ A trilha **não grava e-mail nem CPF**. Ela grava, porém, a nota e a frequênci
 | "Transição proibida: Em andamento → Inscricoes abertas. ..." | Não existe volta de "Em andamento". |
 | "... termina em ...: só se conclui turma que já aconteceu." | Aguarde o último dia. |
 | "TUR-... não tem vaga: 3 de 3 ocupadas." | Aumente as vagas ("Editar dados da turma") ou abra outra turma. |
-| "... já consta em TUR-... como cancelada." | Cancelamento é final. Inscreva a pessoa em outra turma. |
+| "... já consta em TUR-... como cancelada." | Use "reativar" na linha da inscrição cancelada (capítulo 7.2), com motivo, se a turma ainda recebe inscrição e há vaga. |
 | "Defina antes até quando ... recebe inscrição ..." | Preencha "Inscrições até" na aba Turma. |
 | "Envios demais deste endereço. ..." | Limite de 8 envios por 10 minutos por rede. Espere alguns minutos ou inscreva em lote. |
 | "Turma com link público precisa começar depois de hoje ..." | Link só vale antes do início. Depois disso a equipe inscreve. |
@@ -557,8 +565,8 @@ Estes pontos afetam o uso hoje. Conheça-os para orientar a equipe e evitar surp
 
 **Alta atenção**
 
-1. **Inscrição cancelada não volta.** Vale para cancelamento pela equipe e para desistência do participante. A tela do participante diz que a equipe resolve, mas a equipe não consegue reinscrever na mesma turma. Alternativa: inscrever em outra turma.
-2. **Cancelar a turma não cancela as inscrições nem avisa ninguém.** O participante continua vendo "Confirmada", com a observação "a turma já começou". Avise os inscritos por outro meio.
+1. **Reativar inscrição exige vaga e turma que ainda recebe inscrição.** A reativação (capítulo 7.2) vale para cancelamento pela equipe e para desistência do participante, mas não para inscrição cancelada pelo cancelamento da turma, nem em turma lotada. O botão só aparece em turma Planejada ou com Inscrições abertas.
+2. **O aviso de turma cancelada só chega a quem tem e-mail**, e sem o motivo. Os demais precisam ser avisados por outro meio.
 
 **Atenção média**
 

@@ -7,7 +7,7 @@ Sistema SISA, UFVJM.
 Para quem registra ou trata ocorrências no dia a dia:
 
 - **Quem registra:** servidor, terceirizado ou estudante (as contas desses perfis já trazem a permissão de registrar, desde que o módulo esteja ligado no ambiente). Registra e acompanha só o que ele mesmo registrou.
-- **Equipe:** coordenador, engenheiro, técnico, médico, secretaria e superintendente. Vê todas as ocorrências, assume, acompanha, conclui, cancela e vincula à comunicação de acidente.
+- **Equipe:** coordenador, engenheiro, técnico, médico, secretaria e superintendente. Vê todas as ocorrências, assume, acompanha, conclui, cancela e vincula à comunicação de acidente. **Reabrir** uma ocorrência encerrada é só do coordenador e do superintendente.
 
 Este manual não trata de configuração nem de decisões de gestão.
 
@@ -76,8 +76,8 @@ Quem pode: todos com acesso ao módulo (veja a tabela acima).
 
 **Seção "3. Quem foi atendido"**
 
-- Caixa **"A ocorrência aconteceu comigo"**. Se marcada, o nome da pessoa passa a ser o seu.
-- **Nome da pessoa atendida \*:** para quando a ocorrência foi com outra pessoa. **Atenção:** pela leitura do código da tela, este campo fica escondido o tempo todo, esteja a caixa "comigo" marcada ou não, e o sistema continua exigindo o nome. Se ele não aparecer para você, não é engano seu: veja o capítulo 11. (Pelo envio direto do formulário, sem a tela, o registro para outra pessoa funciona; o defeito está só na exibição do campo.)
+- Caixa **"A ocorrência aconteceu comigo"**. Se marcada, o nome da pessoa atendida passa a ser o seu (o do seu cadastro) e o campo do nome some da tela.
+- **Nome da pessoa atendida \*:** aparece **enquanto a caixa "comigo" estiver desmarcada** e é obrigatório nesse caso. Ao marcar a caixa, o campo se esconde e deixa de ser exigido; ao desmarcar, ele volta. Se o navegador estiver sem JavaScript, o campo fica sempre à vista: deixe-o em branco quando for "comigo". O nome só é visto pela equipe e por quem registra.
 - **Vínculo com a UFVJM \*:** Estudante (já vem marcado), Servidor, Terceirizado ou Outro. **Confira sempre**, porque o sistema não usa o seu cadastro para preencher.
 - Conforme o vínculo, aparecem campos extras:
   - Outro: "Quem é a pessoa?" (visitante, acompanhante, participante de evento etc.).
@@ -167,7 +167,7 @@ Para abrir uma ocorrência, clique no protocolo.
 
 ## 5. Tratar uma ocorrência (equipe)
 
-Quem pode: equipe com permissão de tratar. Na ficha, os formulários aparecem **só enquanto a ocorrência não estiver encerrada**.
+Quem pode: equipe com permissão de tratar. Na ficha, os formulários de assumir, acompanhar, vincular, concluir e cancelar aparecem **só enquanto a ocorrência não estiver encerrada**. Para a coordenação, a ocorrência encerrada mostra o formulário de **reabrir** (item 5.6).
 
 A ficha da equipe mostra, além do que o registrante vê: o cartão **Acompanhamento da equipe**, com cada acompanhamento (data, hora e autor), o telefone e o e-mail de quem registrou e, ao final, a "Conclusão:" ou o "Cancelamento:". **A ficha não mostra quem assumiu a ocorrência.** Combine isso com a equipe por fora do sistema.
 
@@ -213,7 +213,17 @@ Use **só para registro feito por engano** (por exemplo, duplicado).
 
 Se vier vazio: "Informe o motivo do cancelamento."
 
-**Atenção: Concluída e Cancelada são finais.** Não existe reabrir, editar ou desfazer. Se errar, não há correção pela tela. Procure a coordenação e registre uma nova ocorrência se necessário. Qualquer tentativa de assumir, acompanhar, concluir ou cancelar depois disso mostra: "OCO-AAAA-NNNN já está encerrada e não muda mais."
+**Atenção: Concluída e Cancelada fecham a ficha para a equipe em geral.** Não dá para editar nem apagar nada. Se errou (conclusão precoce, cancelamento por engano), peça à **coordenação** que reabra a ocorrência (item 5.6). Qualquer tentativa de assumir, acompanhar, concluir ou cancelar uma ocorrência encerrada mostra: "OCO-AAAA-NNNN já está encerrada e não muda mais."
+
+### 5.6 Reabrir (só coordenação)
+
+Quem pode: coordenador e superintendente, com a permissão de tratar. Os demais da equipe (engenheiro, técnico, médico, secretaria) **não veem o botão**; se tentarem por outro meio, recebem "Reabrir ocorrência encerrada é com a coordenação."
+
+1. Abra a ficha de uma ocorrência **Concluída** ou **Cancelada**.
+2. No formulário **Reabrir esta ocorrência: motivo**, escreva o motivo (obrigatório, até 400 caracteres).
+3. Clique em **Reabrir**. Aparece "OCO-… reaberta: a ocorrência está em acompanhamento."
+
+O que acontece: a situação volta para **Em acompanhamento** (não para Registrada); o motivo entra como acompanhamento, com o texto "Reaberta: …", seu nome e a data; o texto da conclusão ou do cancelamento sai do cartão. Com a ocorrência aberta de novo, aparecem de volta os formulários de acompanhar, **vincular à CAT**, concluir e cancelar. Motivo em branco é recusado ("Informe o motivo da reabertura."). Reabrir uma ocorrência que não está encerrada é recusado com "OCO-… não está encerrada."
 
 ## 6. Ocorrência de servidor que vira CAT/SP
 
@@ -251,8 +261,8 @@ Não há gráfico, nem tempo até assumir ou concluir.
 |---|---|---|
 | **Registrada** | Chegou e aguarda a equipe. | Assumir ou registrar o primeiro acompanhamento; concluir; cancelar |
 | **Em acompanhamento** | A equipe assumiu e está cuidando. | Mais acompanhamentos; concluir; cancelar |
-| **Concluída** | Encerrada, com a conclusão registrada. Final. | Nada pela tela (vincule à CAT antes de concluir) |
-| **Cancelada** | Registro feito por engano. Final. | Nada pela tela (vincule à CAT antes de cancelar) |
+| **Concluída** | Encerrada, com a conclusão registrada. | A coordenação pode reabrir (volta a Em acompanhamento). Para os demais, nada (vincule à CAT antes de concluir) |
+| **Cancelada** | Registro feito por engano. | A coordenação pode reabrir (volta a Em acompanhamento). Para os demais, nada (vincule à CAT antes de cancelar) |
 
 **Guarda dos dados.** Uma ocorrência encerrada há mais de 5 anos tem os dados pessoais apagados automaticamente: nome, descrição, observações, conclusão, curso, setor, empresa, função, contato e acompanhamentos. Ficam protocolo, data, campus, local, tipos, vínculo, socorro e situação, só para estatística. A ficha avisa: "Os dados pessoais e o relato desta ocorrência foram apagados em dd/mm/aaaa, pelo prazo de guarda. Ficam só os dados para a estatística." Ocorrência aberta nunca é apagada.
 
@@ -270,13 +280,16 @@ Não há gráfico, nem tempo até assumir ou concluir.
 | "Marque ao menos um tipo de ocorrência." | Marque pelo menos um tipo. |
 | "Descreva a «outra ocorrência» marcada." | Preencha "Qual outra ocorrência?". |
 | "Informe a descrição do que aconteceu." | Preencha a descrição. |
-| "Informe o nome da pessoa atendida." | Preencha o nome. Se o campo não aparecer, veja o capítulo 11. |
+| "Informe o nome da pessoa atendida." | Preencha o nome (ou marque "A ocorrência aconteceu comigo", se foi com você). |
 | "Escolha o meio de deslocamento." | Se marcou pronto atendimento "Sim", escolha o meio. |
 | "Informe o meio de deslocamento «outro»." | Preencha "Qual?". |
 | "A descrição do que aconteceu passa de 4000 caracteres." | Resuma o texto. |
 | "O campo … não pode ter CPF nem código de doença (CID): descreva o que aconteceu, sem identificar por número." | Apague números de CPF e códigos como "CID-10 G40". A frase vale para descrição, observações, local, acompanhamento e conclusão. |
 | "OCO-… já foi assumida." | Alguém da equipe já assumiu. Abra a ficha e siga com acompanhamento. |
-| "OCO-… já está encerrada e não muda mais." | A ocorrência é final. Não há reabertura. |
+| "OCO-… já está encerrada e não muda mais." | A ocorrência está encerrada. Peça à coordenação que a reabra, se for caso. |
+| "Reabrir ocorrência encerrada é com a coordenação." | Só coordenador e superintendente reabrem. Peça a eles. |
+| "Informe o motivo da reabertura." | Preencha o motivo no formulário de reabrir. |
+| "OCO-… não está encerrada." | A ocorrência já está aberta; não há o que reabrir. |
 | "Informe o acompanhamento." / "Informe a conclusão." / "Informe o motivo do cancelamento." | Preencha o campo antes de enviar. |
 | "Não há comunicação de acidente com esse protocolo." | Confira o número da CAT. |
 | "A ocorrência não existe ou não é sua." | Você abriu uma ocorrência que não registrou. Use **Minhas ocorrências**. |
@@ -302,10 +315,9 @@ Se a tela pedir login, entre no sistema e tente de novo.
 
 Pontos que afetam o uso. Saiba deles antes de começar.
 
-- **Campo "Nome da pessoa atendida" não aparece.** Quando a caixa "A ocorrência aconteceu comigo" está desmarcada, o campo deveria aparecer, mas a regra da tela o esconde nos dois casos (marcada ou desmarcada). Confirmado pela leitura do código; não foi visto em navegador real, porque o ambiente de teste não abre o Chrome. Resultado esperado: ao registrar para outra pessoa, o envio recusa com "Informe o nome da pessoa atendida." sem campo para digitar. Registrar **comigo** (a própria pessoa) funciona normalmente. Para outra pessoa, avise a coordenação e procure a equipe por outro meio até a correção.
-- **Vincular à CAT só antes de encerrar.** Depois de Concluída ou Cancelada, a tela não oferece mais o formulário de vínculo.
+- **Vincular à CAT só com a ocorrência aberta.** Depois de Concluída ou Cancelada, a tela não oferece o formulário de vínculo; se precisar, a coordenação reabre a ocorrência, vincula e conclui de novo.
 - **Número de ocorrência absurdo na barra de endereço** (por exemplo, com mais de 18 dígitos) devolve erro 422 em vez de "não existe". Só acontece digitando o endereço à mão.
-- **Não há como corrigir.** Concluída e Cancelada são finais. Não dá para editar, reabrir ou apagar acompanhamentos. Revise antes de enviar.
+- **Correção limitada.** Não dá para editar nem apagar acompanhamentos, conclusão ou cancelamento. Só a coordenação reabre ocorrência encerrada (item 5.6); o texto da conclusão antiga sai da ficha ao reabrir. Revise antes de enviar.
 - **Quem registra não vê o acompanhamento nem a conclusão**, só a mudança de situação.
 - **Sem alerta de ocorrência parada.** Não há prazo, aviso nem destaque de atraso. A equipe precisa abrir o Painel ou a Fila.
 - **A ficha não mostra quem assumiu**, e não há reatribuição.

@@ -85,7 +85,7 @@ Como conferir:
 
 Clique no protocolo (por exemplo OCO-2026-0001). Na ficha você vê o relato, a pessoa atendida, o socorro, o telefone e o e-mail de quem registrou, e o cartão **Acompanhamento da equipe**.
 
-Os formulários aparecem nesta ordem, enquanto a ocorrência não estiver encerrada.
+Os formulários de assumir, acompanhar, vincular, concluir e cancelar aparecem nesta ordem, enquanto a ocorrência não estiver encerrada. Na encerrada, a coordenação vê o de reabrir (item 4.6).
 
 ### 4.1 Assumir
 1. Na situação "Registrada", clique em **Assumir a ocorrência**.
@@ -115,9 +115,17 @@ Veja o capítulo 5.
 3. Clique em **Cancelar a ocorrência**.
 4. Mensagem: "OCO-… cancelada."
 
-**Atenção, decisões sem volta.** Concluída e Cancelada são finais: não há reabrir, editar nem desfazer. Antes de clicar, confira se é a ocorrência certa. Depois de encerrada, a ficha não oferece mais nenhum formulário, nem o de vincular à CAT: **vincule antes de concluir ou cancelar**. O número de uma ocorrência cancelada não é reaproveitado.
+**Atenção.** Concluída e Cancelada não se editam nem se desfazem, mas a coordenação pode reabrir (item 4.6). Antes de clicar, confira se é a ocorrência certa. Depois de encerrada, a ficha não oferece os formulários de acompanhar, vincular à CAT, concluir e cancelar: **vincule antes de concluir ou cancelar**, ou reabra. O número de uma ocorrência cancelada não é reaproveitado.
 
 Qualquer pessoa da equipe pode concluir ou cancelar uma ocorrência assumida por colega. Combine na equipe quem decide encerrar.
+
+### 4.6 Reabrir (só coordenador e superintendente)
+1. Abra a ficha de uma ocorrência **Concluída** ou **Cancelada**.
+2. Preencha **Reabrir esta ocorrência: motivo** (obrigatório, até 400 caracteres).
+3. Clique em **Reabrir**.
+4. Mensagem: "OCO-… reaberta: a ocorrência está em acompanhamento."
+
+A situação volta para **Em acompanhamento**. O motivo entra como acompanhamento ("Reaberta: …", com autor e data) e o texto da conclusão ou do cancelamento anterior sai da ficha. A trilha de auditoria registra a reabertura e a situação de antes, sem o texto do motivo. Os demais perfis da equipe não veem o botão; pelo envio direto recebem "Reabrir ocorrência encerrada é com a coordenação." Sem motivo: "Informe o motivo da reabertura." Ocorrência aberta: "OCO-… não está encerrada." Serve para conclusão precoce, cancelamento por engano e para vincular à CAT depois de encerrada.
 
 ## 5. Ocorrência de servidor em acidente de serviço (CAT/SP)
 
@@ -184,8 +192,8 @@ Por padrão os e-mails estão **desligados**. A TI pode ligá-los. Quando ligado
 |---|---|---|
 | Registrada | Chegou e ninguém assumiu | Assumir, acompanhar, concluir, cancelar |
 | Em acompanhamento | A equipe assumiu e está tratando | Acompanhar, concluir, cancelar |
-| Concluída | Encerrada com o que foi feito | Nada pela tela (vincule à CAT antes) |
-| Cancelada | Registro feito por engano | Nada pela tela (vincule à CAT antes) |
+| Concluída | Encerrada com o que foi feito | Coordenação reabre (volta a Em acompanhamento) |
+| Cancelada | Registro feito por engano | Coordenação reabre (volta a Em acompanhamento) |
 
 Tentar mudar uma ocorrência encerrada dá: "OCO-AAAA-NNNN já está encerrada e não muda mais."
 
@@ -198,7 +206,7 @@ Tentar mudar uma ocorrência encerrada dá: "OCO-AAAA-NNNN já está encerrada e
 | "Página não encontrada." em todo o módulo | O módulo pode estar desligado no ambiente. Acione a TI. |
 | "Informe o acompanhamento." / "Informe a conclusão." / "Informe o motivo do cancelamento." | O campo está vazio. Preencha. |
 | "OCO-… já foi assumida." | Outra pessoa assumiu antes. Abra a ficha e acompanhe. |
-| "OCO-… já está encerrada e não muda mais." | Não há como corrigir. Veja os Limites conhecidos. |
+| "OCO-… já está encerrada e não muda mais." | Se for erro, reabra (coordenação, item 4.6). |
 | "Não há comunicação de acidente com esse protocolo." | Confira o protocolo CAT digitado. |
 | "O campo … não pode ter CPF nem código de doença (CID)…" | Tire o número e descreva o fato com palavras. A frase da mensagem sai um pouco truncada, mas o sentido é esse. |
 
@@ -216,7 +224,7 @@ Tentar mudar uma ocorrência encerrada dá: "OCO-AAAA-NNNN já está encerrada e
 
 Conheça estes pontos para planejar a rotina e evitar surpresas.
 
-1. **Sem correção.** Não existe reabrir, editar ou desfazer. Erros de conclusão ou de cancelamento não têm saída pela tela. Tratar um erro desses exige a TI.
+1. **Correção só por reabertura.** Não há editar nem apagar. Erro de conclusão ou de cancelamento se corrige reabrindo (coordenador ou superintendente, item 4.6) e concluindo de novo; o texto da conclusão antiga sai da ficha.
 2. **Sem alerta e sem prazo.** Nada avisa que uma ocorrência está parada em "Registrada". Dependa da rotina do capítulo 1.
 3. **Não mostra quem assumiu.** A ficha e a Fila não indicam o responsável, e não há como passar para outro colega. Registre no primeiro acompanhamento quem está cuidando.
 4. **Quem registrou não acompanha.** Ele vê só a mudança de situação, não os acompanhamentos nem a conclusão. Dê o retorno por telefone, se for o caso.
@@ -225,10 +233,10 @@ Conheça estes pontos para planejar a rotina e evitar surpresas.
 7. **Quem registra "comigo"** precisa escolher de novo o vínculo (o padrão é Estudante) e digitar o setor, mesmo tendo cadastro.
 8. **Almoxarife e administrador de TI** não conseguem registrar ocorrência.
 9. **Leitura da ficha sem registro** de acesso a dado sensível.
-10. **Registrar para outra pessoa:** o campo "Nome da pessoa atendida" fica escondido o tempo todo pela regra da tela (conferido no código, não visto em navegador real), o que impede registrar uma ocorrência que não é "comigo": o formulário diz "Informe o nome da pessoa atendida." e não há campo para digitar. Registrar "comigo" funciona. Enquanto não for corrigido, quem atende outra pessoa precisa de alternativa combinada com a equipe. Peça a correção à TI.
+10. **Nome da pessoa atendida:** o campo aparece enquanto a caixa "A ocorrência aconteceu comigo" está desmarcada e some quando ela é marcada (o nome passa a ser o de quem registra). Está corrigido; não é mais limite.
 11. A busca global e o modo celular não encontram o protocolo OCO nem têm atalho para a equipe. Use o menu do módulo.
 12. Os indicadores não têm filtros de tipo, vínculo ou situação, e "Por tipo" soma mais que o total.
 13. A trava de CID é parcial.
 14. Algumas mensagens de validação têm redação truncada.
-15. **Vincular à CAT só com a ocorrência aberta:** depois de encerrada, a ficha não tem mais formulário nenhum.
+15. **Vincular à CAT só com a ocorrência aberta:** depois de encerrada, só o formulário de reabrir aparece (para a coordenação); reabra, vincule e conclua de novo.
 16. **A equipe vê todos os campi:** não há recorte por campus para quem trata, e o filtro De/Até conta pela data do fato.
