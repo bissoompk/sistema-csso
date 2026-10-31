@@ -249,11 +249,15 @@ async function _tela_fila(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string 
   const treinamento_id = c.req.query("treinamento_id") ?? "";
   const busca = c.req.query("busca") ?? "";
   const busca_cpf = parece_cpf(busca);
-  const { itens, contagem, cortado } = await fila_emissao.fila(tx, usuario, {
-    etapa,
-    treinamento_id: id_opcional(treinamento_id),
-    busca: busca_cpf ? "" : busca,
-  });
+  // a lista do filtro não depende da fila: as duas idas ao banco saem juntas
+  const [{ itens, contagem, cortado }, treinamentos] = await Promise.all([
+    fila_emissao.fila(tx, usuario, {
+      etapa,
+      treinamento_id: id_opcional(treinamento_id),
+      busca: busca_cpf ? "" : busca,
+    }),
+    tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
+  ]);
   const filtro_etapa = (fila_emissao.ETAPAS as readonly string[]).includes(etapa) ? etapa : "AGUARDANDO";
   // nos emitidos, o último envio por e-mail de cada um (o que já foi vem desmarcado)
   const envios =
@@ -275,7 +279,7 @@ async function _tela_fila(c: Ctx, usuario: UsuarioAtual, d: { mensagem?: string 
     filtro_treinamento: treinamento_id,
     busca,
     busca_cpf,
-    treinamentos: await tx.select().from(tabela_treinamento).orderBy(asc(tabela_treinamento.nome)),
+    treinamentos,
     pode_emitir: usuario.pode("certificado.emitir"),
     travados: d.travados ?? [],
     sem_setor_promotor: setor_equipe.sem_setor(usuario),
