@@ -2,6 +2,7 @@
  * / — o painel do Processos SEI.
  * Porte de `app/rotas/painel.py`.
  */
+import { alteracao_da_descricao } from "../servicos/trilha_tela.js";
 import { JANELA_A_VENCER_DIAS } from "../dominio/treinamento.js";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
@@ -51,6 +52,34 @@ import * as vitrine_para_voce from "../servicos/vitrine_para_voce.js";
 import { cartao_meu_espaco, e_externo, icone_de, meu_espaco_de, primeira_tela, so_o_proprio as so_tem_o_proprio } from "../modulos.js";
 
 export const rotas = new Hono<Ambiente>();
+
+/** Quantas linhas "Últimos eventos" mostra, já com as repetições juntas. */
+export const EVENTOS_NO_CARTAO = 10;
+
+/**
+ * Eventos seguidos, iguais e do mesmo autor viram uma linha só, com a contagem
+ * e a hora do mais recente: quatro segundas vias do mesmo certificado enchiam o
+ * cartão e empurravam o resto para baixo.
+ */
+export function agrupar_repetidos<T extends { tipo_evento: string; descricao_tela: string | null; usuario_nome: string | null }>(
+  eventos: T[],
+): (T & { repeticoes: number })[] {
+  const saida: (T & { repeticoes: number })[] = [];
+  for (const ev of eventos) {
+    const anterior = saida[saida.length - 1];
+    if (
+      anterior &&
+      anterior.tipo_evento === ev.tipo_evento &&
+      anterior.descricao_tela === ev.descricao_tela &&
+      anterior.usuario_nome === ev.usuario_nome
+    ) {
+      anterior.repeticoes += 1;
+    } else {
+      saida.push({ ...ev, repeticoes: 1 });
+    }
+  }
+  return saida;
+}
 
 // Quantas linhas do cartão cabem sem o painel virar lista. O número TOTAL vai
 // junto e é o que o contador publica: cortar a lista é decisão de tela, cortar
@@ -163,7 +192,7 @@ rotas.get("/", async (c) => {
         .from(historico_evento)
         .where(so_o_proprio ? eq(historico_evento.usuario_id, usuario.id) : undefined)
         .orderBy(desc(historico_evento.id))
-        .limit(10),
+        .limit(40),
       // fatia G: o que espera a equipe de EPI (só para quem faz o ato; sem a
       // permissão, nenhuma consulta; com ela, as duas contagens numa ida só)
       epi_contagens.contagens_numa_ida(tx, usuario),
@@ -233,10 +262,17 @@ rotas.get("/", async (c) => {
     laudos_sem_conferencia: usuario.pode("laudo.ver") ? laudos_sem_conferencia : [],
     // a trilha de estado é gravada em ASCII com "->" (entra no digest da
     // cadeia): a tela acentua só na exibição, como a aba Histórico da ficha
-    eventos: eventos.map((ev) => ({
-      ...ev,
-      descricao_tela: ev.tipo_evento === ESTADO_ALTERADO ? rotulo_tela_do_ascii(ev.descricao) : ev.descricao,
-    })),
+    eventos: agrupar_repetidos(
+      eventos.map((ev) => ({
+        ...ev,
+        descricao_tela:
+          ev.tipo_evento === ESTADO_ALTERADO
+            ? rotulo_tela_do_ascii(ev.descricao)
+            : ev.tipo_evento === "CAMPO_ALTERADO"
+              ? alteracao_da_descricao(ev.descricao)
+              : ev.descricao,
+      })),
+    ).slice(0, EVENTOS_NO_CARTAO),
   });
 });
 

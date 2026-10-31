@@ -172,51 +172,57 @@ export async function resumo(tx: Executor, usuario: UsuarioAtual, hoje: string):
   const escopo = servico_turma.consulta_no_escopo(usuario, "treinamento.ver");
   const escopo_dos_pedidos = servico_turma.consulta_no_escopo(usuario, "turma.inscrever");
 
-  const por_situacao = await tx
-    .select({ situacao: tabela_turma.situacao, n: count() })
-    .from(tabela_turma)
-    .where(escopo)
-    .groupBy(tabela_turma.situacao);
+  // As consultas não dependem umas das outras: saem juntas, e na mesma conexão
+  // viram uma ida só ao banco (`db/cliente.ts`). Em fila, eram oito idas — com o
+  // banco em outro continente, o grosso dos 3 s que esta tela levava.
+  const [por_situacao, [pedidos], { contagem: fila }, { contagem: recicl }, proximas, emails, duplicadas, encerrando] =
+    await Promise.all([
+      tx
+        .select({ situacao: tabela_turma.situacao, n: count() })
+        .from(tabela_turma)
+        .where(escopo)
+        .groupBy(tabela_turma.situacao),
+      tx
+        .select({ n: count() })
+        .from(tabela_inscricao)
+        .innerJoin(tabela_turma, eq(tabela_turma.id, tabela_inscricao.turma_id))
+        .where(and(escopo_dos_pedidos, eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL"))),
+      fila_emissao.fila(tx, usuario, {}),
+      reciclagem.monitor(tx, usuario, hoje, {}),
+      tx
+        .select({
+          id: tabela_turma.id,
+          codigo: tabela_turma.codigo,
+          treinamento: tabela_treinamento.nome,
+          data_inicio: tabela_turma.data_inicio,
+          data_fim: tabela_turma.data_fim,
+          local: tabela_turma.local,
+          situacao: tabela_turma.situacao,
+        })
+        .from(tabela_turma)
+        .innerJoin(tabela_treinamento, eq(tabela_treinamento.id, tabela_turma.treinamento_id))
+        .where(and(escopo, inArray(tabela_turma.situacao, ["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"])))
+        .orderBy(asc(tabela_turma.data_inicio), asc(tabela_turma.id))
+        .limit(PROXIMAS),
+      // NUVEM: a caixa do setor de quem lê, como a tela de envios
+      usuario.pode("certificado.emitir") ? envio_certificado.contagem_do_setor(tx, usuario) : Promise.resolve(null),
+      // a contagem é a da tela de juntar (`duplicados.grupos`), para o número do
+      // cartão e o da tela nunca discordarem
+      usuario.pode("participante.mesclar") ? duplicados.contar(tx) : Promise.resolve(null),
+      turmas_encerrando(tx, usuario, hoje),
+    ]);
   const turmas: Record<string, number> = {};
   for (const linha of por_situacao) turmas[linha.situacao] = Number(linha.n);
-
-  const [pedidos] = await tx
-    .select({ n: count() })
-    .from(tabela_inscricao)
-    .innerJoin(tabela_turma, eq(tabela_turma.id, tabela_inscricao.turma_id))
-    .where(and(escopo_dos_pedidos, eq(tabela_inscricao.situacao, "AGUARDANDO_EMAIL")));
-
-  const { contagem: fila } = await fila_emissao.fila(tx, usuario, {});
-  const { contagem: recicl } = await reciclagem.monitor(tx, usuario, hoje, {});
-
-  const proximas = await tx
-    .select({
-      id: tabela_turma.id,
-      codigo: tabela_turma.codigo,
-      treinamento: tabela_treinamento.nome,
-      data_inicio: tabela_turma.data_inicio,
-      data_fim: tabela_turma.data_fim,
-      local: tabela_turma.local,
-      situacao: tabela_turma.situacao,
-    })
-    .from(tabela_turma)
-    .innerJoin(tabela_treinamento, eq(tabela_treinamento.id, tabela_turma.treinamento_id))
-    .where(and(escopo, inArray(tabela_turma.situacao, ["PLANEJADA", "INSCRICOES_ABERTAS", "EM_ANDAMENTO"])))
-    .orderBy(asc(tabela_turma.data_inicio), asc(tabela_turma.id))
-    .limit(PROXIMAS);
 
   return {
     turmas,
     pedidos_a_conferir: Number(pedidos?.n ?? 0),
     fila,
     reciclagem: recicl,
-    // NUVEM: a caixa do setor de quem lê, como a tela de envios
-    emails: usuario.pode("certificado.emitir") ? await envio_certificado.contagem_do_setor(tx, usuario) : null,
-    // a contagem é a da tela de juntar (`duplicados.grupos`), para o número do
-    // cartão e o da tela nunca discordarem
-    duplicados: usuario.pode("participante.mesclar") ? await duplicados.contar(tx) : null,
+    emails,
+    duplicados: duplicadas,
     proximas,
-    encerrando: await turmas_encerrando(tx, usuario, hoje),
+    encerrando,
   };
 }
 

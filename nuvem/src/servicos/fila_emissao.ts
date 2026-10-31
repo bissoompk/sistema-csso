@@ -90,18 +90,29 @@ async function _bloqueios(tx: Executor, inscricao_ids: number[]): Promise<Map<nu
     if (!por_turma.has(l.turma_id)) por_turma.set(l.turma_id, new Set());
     por_turma.get(l.turma_id)!.add(l.id);
   }
-  for (const [turma_id, ids] of por_turma) {
-    const turma = await servico_turma.carregar_turma(tx, turma_id);
-    if (!turma) continue;
-    const [modelo, sem_modelo] = await servico_emissao.modelo_da_turma(tx, turma);
-    for (const inscricao of await servico_turma.inscricoes_da_turma(tx, turma)) {
-      if (!ids.has(inscricao.id)) continue;
-      const validacao = await servico_emissao.validar(tx, inscricao);
-      const motivos = [...validacao.bloqueios];
-      if (modelo === null) motivos.push(sem_modelo || "não há modelo de certificado para esta turma");
-      saida.set(inscricao.id, motivos);
-    }
-  }
+  // As turmas, e dentro de cada uma os inscritos, são conferidos juntos: cada
+  // `validar` faz as suas consultas, e uma atrás da outra eram dezenas de idas
+  // ao banco (a Fila de emissão e o Início de Treinamentos levavam 2 a 3 s).
+  await Promise.all(
+    [...por_turma].map(async ([turma_id, ids]) => {
+      const turma = await servico_turma.carregar_turma(tx, turma_id);
+      if (!turma) return;
+      const [[modelo, sem_modelo], inscricoes] = await Promise.all([
+        servico_emissao.modelo_da_turma(tx, turma),
+        servico_turma.inscricoes_da_turma(tx, turma),
+      ]);
+      await Promise.all(
+        inscricoes
+          .filter((inscricao) => ids.has(inscricao.id))
+          .map(async (inscricao) => {
+            const validacao = await servico_emissao.validar(tx, inscricao);
+            const motivos = [...validacao.bloqueios];
+            if (modelo === null) motivos.push(sem_modelo || "não há modelo de certificado para esta turma");
+            saida.set(inscricao.id, motivos);
+          }),
+      );
+    }),
+  );
   return saida;
 }
 
