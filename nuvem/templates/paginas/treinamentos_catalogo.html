@@ -113,16 +113,20 @@
     </thead>
     {% for t in itens %}
     <tr>
-      <td><span class="mono">{{ t.codigo }}</span>
+      <td><span class="codigo-trein">{{ t.codigo }}</span>
         {% if t.norma_referencia and t.norma_referencia != t.codigo %}<span class="quebra discreto">{{ t.norma_referencia }}</span>{% endif %}</td>
       {# o código curto entra no número do certificado novo (CSSO-NR35-2026-0001) #}
-      <td data-coluna="Código curto" class="curta"><span class="mono codigo-curto">{{ t.codigo_curto }}</span></td>
+      <td data-coluna="Código curto" class="curta"><span class="codigo-trein codigo-curto">{{ t.codigo_curto }}</span></td>
       {# O conteúdo programático vem sob o nome, e não numa segunda linha da
          tabela: é o que distingue dois treinamentos de nome parecido, e numa
          linha própria ele se lia como outro registro. #}
       <td class="nome">{{ t.nome }}
         {% if t.topicos %}
-        <span class="quebra discreto">{{ t.topicos|join(' · ') }}</span>
+        {# recolhido: a lista inteira fazia a linha do nome crescer sem medida #}
+        <details class="conteudo-programatico">
+          <summary>Conteúdo programático ({{ t.topicos|length }})</summary>
+          <p class="discreto">{{ t.topicos|join(' · ') }}</p>
+        </details>
         {% endif %}</td>
       <td data-coluna="Carga" class="mono curta">{{ t.carga_horaria_horas|num }} h</td>
       <td class="curta" data-coluna="Reciclagem">{% if t.expira %}<span class="mono">{{ t.validade_meses }}</span>

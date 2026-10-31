@@ -415,7 +415,7 @@ Para ver de novo, use **"Ver o link e o QR"** (quem pode editar a turma; cada co
 | Mensagem | O que fazer |
 |---|---|
 | "Defina antes até quando TUR-... recebe inscrição (aba Turma, “inscrições até”) ..." | Preencha "Inscrições até" em "Editar dados da turma". |
-| "TUR-... está em andamento: só se pede vaga em turma com inscrições abertas." | O link só funciona com a turma em "Inscrições abertas". |
+| "TUR-... está em andamento: só se inscreve em turma com inscrições abertas." | O link só funciona com a turma em "Inscrições abertas". |
 
 ### Quando o link deixa de funcionar
 
@@ -643,6 +643,8 @@ Caminho: **Meus treinamentos** (bloco "Meu espaço"). A tela tem duas partes: "T
 
 ### Inscrever-se
 
+> **Inscrição direta não é "pedido".** Quem entra com conta (servidor, terceirizado ou discente) e clica em "Inscrever-se" fica **Confirmado na hora**, havendo vaga: a equipe não aprova nada. "Pedido pelo link, a conferir" existe só para quem pede a vaga **sem conta**, pelo link público, pelo QR ou pela vitrine (capítulo 17).
+
 1. Em "Turmas com inscrições abertas", use os filtros de turno se quiser.
 2. Veja as vagas: "Restam 4 vagas", "Resta 1 vaga", "Lotada" ou "Sem limite de vagas". As lotadas vão para o fim.
 3. Clique em **"Inscrever-se"**.
@@ -651,7 +653,7 @@ Caminho: **Meus treinamentos** (bloco "Meu espaço"). A tela tem duas partes: "T
 | Mensagem | O que significa |
 |---|---|
 | "Você já está inscrito(a) em TUR-...". | Você já tem vaga. |
-| "TUR-... está cancelada: só se pede vaga em turma com inscrições abertas. Fale com a equipe responsável." (também para planejada ou concluída) | A turma não recebe pedidos. |
+| "TUR-... está cancelada: só se inscreve em turma com inscrições abertas. Fale com a equipe responsável." (também para planejada ou concluída) | A turma não recebe inscrição agora. |
 
 ### Minhas inscrições
 
@@ -664,7 +666,7 @@ A lista mostra Treinamento, Período, Situação e Ações. As situações poss�
 
 > **A desistência é definitiva para você nesta tela.** Não há botão para voltar atrás: a tela diz "para voltar, fale com a equipe responsável", e é a equipe que reativa a inscrição (com motivo), se a turma ainda recebe inscrição e houver vaga. Só clique em "Desistir" se tiver certeza.
 
-O servidor também abre **"Turmas"** e a ficha (aba "Turma"), só para ler: vê instrutores, local, responsável e a linha "Minha inscrição: ...", mas não vê a lista dos inscritos. Na ficha de turma com inscrições abertas, o botão "Inscrever-se" (com "Havendo vaga, a inscrição já sai confirmada.") faz o mesmo pedido de "Meus treinamentos". Na lista "Turmas com inscrições abertas", a turma em que você desistiu mostra "Você desistiu — fale com a equipe responsável" no lugar do botão (veja o aviso acima: quem reativa é a equipe), e a turma lotada mostra "Lotada" e "sem vaga".
+O servidor também abre **"Turmas"** e a ficha (aba "Turma"), só para ler: vê instrutores, local, responsável e a linha "Minha inscrição: ...", mas não vê a lista dos inscritos. Na ficha de turma com inscrições abertas, o botão "Inscrever-se" (com "Havendo vaga, a inscrição já sai confirmada.") faz a mesma inscrição de "Meus treinamentos": direta, já confirmada, sem ninguém aprovar. Na lista "Turmas com inscrições abertas", a turma em que você desistiu mostra "Você desistiu — fale com a equipe responsável" no lugar do botão (veja o aviso acima: quem reativa é a equipe), e a turma lotada mostra "Lotada" e "sem vaga".
 
 ---
 
@@ -692,7 +694,7 @@ Depois do envio:
 | "O e-mail não parece completo." | Corrija o e-mail. |
 | "Para pedir a vaga é preciso concordar com o uso dos dados descrito acima." | Marque a caixa de concordância. |
 | "Envios demais deste endereço. Espere alguns minutos e tente de novo. ..." | Espere alguns minutos, ou peça à equipe para inscrever você. |
-| "... só se pede vaga em turma com inscrições abertas." | O prazo ou a abertura da turma não permite pedido agora. |
+| "... só se inscreve em turma com inscrições abertas." | O prazo ou a abertura da turma não permite inscrição agora. |
 
 O link **"Pedir a vaga para outra pessoa"** reabre o formulário limpo.
 

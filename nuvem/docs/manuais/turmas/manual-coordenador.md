@@ -310,6 +310,8 @@ Cancelar continua exigindo o motivo e devolvendo a vaga; a reativação ocupa um
 
 ### 7.3 Pedidos pelo link: conferir e decidir
 
+**Só passa por conferência quem pede sem conta.** O servidor, o terceirizado e o discente com conta que clicam em "Inscrever-se" (em "Meus treinamentos" ou na ficha) ficam **Confirmados na hora**, havendo vaga, e não entram nesta lista nem geram pendência. A conferência abaixo vale só para os pedidos feitos pelo link público, pelo QR ou pela vitrine.
+
 Caminho: **Pedidos pelo link** (ou a mesma lista na aba Inscrições). Cada pedido gera uma Pendência "Confirmar inscrição pedida pelo próprio participante", fechada quando você decide.
 
 **Todo pedido pelo link nasce como "Pedido pelo link, a conferir"** e aparece na lista, **sem ocupar vaga**, até alguém decidir:

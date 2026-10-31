@@ -139,7 +139,7 @@ describe("o catálogo", () => {
     await db.insert(e.treinamento).values({ codigo: "TESTE-LISTA", nome: "Curso da Lista", carga_horaria_horas: "4", codigo_curto: "LISTA" });
     const tela = (await cliente.get("/treinamentos/catalogo")).text;
     expect(tela).toContain("Código curto");
-    expect(tela).toContain('<span class="mono codigo-curto">LISTA</span>');
+    expect(tela).toContain('<span class="codigo-trein codigo-curto">LISTA</span>');
     expect(tela).toMatch(/name="codigo_curto"[^>]*required/);
     expect(tela).toContain('data-sugerir-codigo-curto="novo-nome"');
     expect(tela).toContain('maxlength="10" pattern="[A-Za-z0-9]{2,10}"');
