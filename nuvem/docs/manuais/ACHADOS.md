@@ -10,24 +10,24 @@ Siglas dos módulos: PRO (Processos SEI), EPI, TUR (Turmas), CER (Certificados),
 
 Pontos que alteram o jeito de trabalhar hoje. Orientação provisória até a correção.
 
-1. **Bloqueador: médico não abre o Detalhe da saúde (nível 2) sem natureza da lesão (ACI).** Dá erro 500. Contorno: gravar a natureza antes (por quem puder) ou pedir correção à TI.
-2. **Campo "Nome da pessoa atendida" pode ficar oculto (OCO).** Registrar ocorrência de outra pessoa pode não ser possível na tela. Confirmar em navegador antes de divulgar o módulo.
-3. **Concluída e Cancelada são finais, em quase tudo.** Ocorrência (OCO), processo Arquivado (PRO), inscrição cancelada (TUR), caso de acidente concluído (ACI), linha de pedido de EPI recusada (EPI) e certificado anulado não reabrem. Confira duas vezes antes de concluir, cancelar ou arquivar.
+1. **Bloqueador: médico não abre o Detalhe da saúde (nível 2) sem natureza da lesão (ACI).** Dava erro 500. **Situação: CORRIGIDO em 30/10/2026** (o template trata o nulo; teste em acidente_saude.test.ts). Histórico: o contorno era gravar a natureza antes.
+2. **Campo "Nome da pessoa atendida" ficava oculto (OCO).** **Situação: CORRIGIDO em 30/10/2026** (csso.js: caixa sem marca vale como vazio; o campo aparece com "comigo" desmarcado e some ao marcar). Falta só conferir em navegador real; o manual já descreve o comportamento atual.
+3. **Concluída e Cancelada ainda são finais em parte.** Mudou em 30/10/2026: ocorrência concluída ou cancelada (OCO) é reaberta pela coordenação, com motivo; inscrição cancelada (TUR) é reativada por quem responde pela turma; linha recusada de EPI volta ao reconsiderar o pedido; caso de acidente com relatório emitido ou encaminhado ao SIASS (ACI) tem a investigação reaberta pela coordenação. **Continuam sem volta:** processo Arquivado (PRO), caso de acidente Concluído (ACI; o que volta é ocorrência nova) e certificado anulado. Confira duas vezes antes de arquivar, concluir um caso ou anular.
 4. **Tipo e NUP do processo não se corrigem (PRO).** Confira o tipo na criação. NUP de arquivado continua bloqueado.
-5. **Depois de "Aguardando inspeção" o processo não arquiva nem indefere (PRO).** Só segue ou fica Sobrestado.
+5. **Depois de "Aguardando inspeção" o processo não arquivava nem indeferia (PRO).** **Situação: CORRIGIDO em 30/10/2026**: arquivar e indeferir cabem depois da triagem (até o parecer em elaboração; de parecer pronto para assinatura em diante só arquiva), e "Voltar uma etapa" (com motivo) existe no meio do trabalho técnico (src/dominio/estados.ts).
 6. **Conceder adicional sobre outro vigente exige tela que não existe (PRO).** Contorno: cessar o antigo antes.
-7. **Anular parecer não mexe no adicional nem nas pendências (PRO).** Ao anular, revise manualmente os direitos e as pendências ligados.
-8. **Lote de EPI com CA ou validade errados não se corrige (EPI).** Confira antes de gravar a entrada. A saída é descartar e dar nova entrada com outra nota fiscal.
-9. **Reconsiderar pedido de EPI indeferido não reabre as linhas (EPI).** Peça um pedido novo.
-10. **Turma cancelada deixa participantes "Confirmada" e ninguém é avisado (TUR).** Avise os inscritos por fora.
-11. **Desistência ou cancelamento de inscrição não tem volta (TUR).** Para voltar, só em outra turma. A tela diz "fale com a equipe", mas a equipe não consegue reativar.
+7. **Anular parecer não mexia no adicional nem nas pendências (PRO).** **Situação: CORRIGIDO em 30/10/2026**: anular fecha as pendências do parecer e leva o adicional ligado a "Em reavaliação", com pendência de decisão (conforme o lote; código em parecer.ts e direito.ts). Revise a decisão pendente.
+8. **Lote de EPI com CA ou validade errados não se corrigia (EPI).** **Situação: CORRIGIDO em 30/10/2026**: CA e validade do CA se corrigem, com a diferença na trilha. Continuam sem correção lote e tamanho, e "renovar o CA" fica para depois.
+9. **Reconsiderar pedido de EPI indeferido não reabria as linhas (EPI).** **Situação: CORRIGIDO em 30/10/2026**: reconsiderar reabre as linhas recusadas com o motivo do indeferimento (teste em epi_requisicao.test.ts).
+10. **Turma cancelada deixava participantes "Confirmada" e ninguém era avisado (TUR).** **Situação: CORRIGIDO em 30/10/2026**: cancelar a turma cancela as inscrições vivas, com o motivo da turma, e avisa por e-mail quem tem endereço (o motivo não vai no e-mail); teste em correcoes_turmas.test.ts. Sem e-mail cadastrado, avise por fora.
+11. **Desistência ou cancelamento de inscrição não tinha volta (TUR).** **Situação: CORRIGIDO em 30/10/2026**: quem responde pela turma (`turma.concluir`) reativa a inscrição, com motivo e trilha; volta confirmada se houver vaga (teste em correcoes_turmas.test.ts).
 12. **Inscrição em sala pelo QR passa só 8 pedidos por 10 minutos por rede (TUR).** Em turma presencial, use a inscrição em lote pela equipe.
 13. **"Assina o certificado" e vigência do instrutor (TUR, CER).** Confira a caixa ao vincular o instrutor (não se altera depois) e a vigência na data da emissão. Senão a emissão trava.
 14. **Servidor inscrito sem e-mail não recebe certificado por e-mail (CER).** Depois da conclusão da turma não há onde corrigir. Cadastre o e-mail antes de inscrever.
 15. **Aviso de reciclagem conta como envio do certificado (CER).** Depois de avisar pela Reciclagem, o envio do certificado é barrado. Reciclagem também mostra "Vencido" para quem tem certificado válido se o mais novo foi emitido antes.
-16. **Identificação pessoal do Anexo III só entra na comunicação (ACI).** Preencha o bloco "Dados pessoais do envolvido" ao comunicar. Depois não há onde completar.
+16. **Identificação pessoal do Anexo III só entrava na comunicação (ACI).** **Situação: CORRIGIDO em 30/10/2026**: completa-se na aba Identificação, por quem tem `acidente.identificacao_ver`; só o digitado entra (teste em acidente_identificacao.test.ts).
 17. **Anexo III em PDF só o médico (e coordenação) gera (ACI).** O técnico que encaminha ao SIASS precisa pedir ao médico.
-18. **Quem registra ocorrência não vê o acompanhamento nem a conclusão (OCO).** Não há e-mail de retorno. Avise por fora.
+18. **Quem registra ocorrência não vê o acompanhamento nem a conclusão (OCO).** (Segue assim; conferido na ficha atual.) Não há e-mail de retorno. Avise por fora.
 19. **Ficha de ocorrência não mostra quem assumiu (OCO).** Combine por fora quem cuida de cada uma. Não há alerta de ocorrência parada em "Registrada".
 20. **Pendências fecham sem conferir o trabalho e não fecham sozinhas (PRO, TRA).** Não confie na lista como prova de que algo foi feito.
 21. **Lotação futura digitada errada é irreversível (TRA).** Confira a data ao registrar mudança de lotação.
@@ -67,16 +67,22 @@ Decisões do usuário, já no código (cada uma com teste). Os manuais ainda des
 ### Processos SEI
 - **Tipo do processo e NUP não se corrigem; NUP de arquivado continua bloqueado.** Onde: /processos/N (Corrigir dados), /processos/novo. Acontece: tipo errado muda toda a máquina de estados e não há saída; criar de novo com o mesmo NUP dá "já existe processo com este NUP". Sugestão: permitir alterar tipo (em Recebido/Em triagem) e NUP com justificativa na trilha; permitir reabrir arquivado.
 - **Depois de "Aguardando inspeção" não há como arquivar, indeferir nem voltar.** Onde: src/dominio/estados.ts, Mover de estado. Acontece: "Transição proibida: Parecer em elaboração → Arquivado"; sem retrocesso, só Sobrestado. Sugestão: liberar Arquivado e Indeferido a partir dos estados intermediários; criar "Voltar uma etapa" com motivo.
+  - **Situação: CORRIGIDO em 30/10/2026: arquivar e indeferir cabem depois da triagem e há "Voltar uma etapa" com motivo (estados.ts).**
 - **Conceder adicional sobre outro vigente exige "registro de opção" sem tela.** Onde: /adicionais > Gerir > Conceder; src/servicos/direito.ts. Acontece: o campo registro_opcao_anexo_id nunca é preenchido; a pendência REGISTRO_DE_OPCAO "ainda não nasce". Sugestão: upload do registro na ficha do direito proposto; dispensar para revisão do mesmo tipo. Contorno: cessar o antigo antes.
 - **Anular parecer deixa adicional vigente e pendências apontando para o anulado.** Onde: /pareceres/N/anular, /adicionais, /pendencias. Acontece: adicional segue Vigente; pendências seguem abertas citando o parecer anulado. Sugestão: ao anular, listar direitos e pendências vinculados e exigir decisão; fechar as pendências do parecer.
+  - **Situação: CORRIGIDO em 30/10/2026: anular fecha as pendências do parecer e leva o adicional ligado a "Em reavaliação", com pendência de decisão.**
 
 ### Gestão de EPI
 - **Reconsiderar pedido indeferido não permite aprovar nada.** Onde: POST /epis/requisicoes/{id}/reconsiderar. Acontece: pedido volta a Em análise, linhas seguem Recusadas e finais ("Transição proibida: Recusado → Aprovado"); depois nem cancela. Sugestão: reabrir também as linhas recusadas no indeferimento global ou "desfazer recusa" item a item com motivo.
+  - **Situação: CORRIGIDO em 30/10/2026: reconsiderar reabre as linhas recusadas com o motivo do indeferimento.**
 - **Lote com CA, validade, lote ou tamanho errados não se corrige; "renovar o CA" não existe.** Onde: Estoque > Corrigir nota, contato ou situação. Acontece: só altera nota, ofício, contato, observação e ativo; lote impedido não reserva nem entrega; reentrada exige outra nota fiscal. Sugestão: permitir corrigir CA e validade (e renovar CA) com diferença na trilha.
+  - **Situação: PARCIAL, CORRIGIDO em 30/10/2026 para CA e validade do CA (com a diferença na trilha). Lote e tamanho seguem sem correção; renovar CA fica para depois.**
 
 ### Treinamentos: turmas
 - **Inscrição cancelada ou desistente não tem volta.** Onde: /turmas/minhas (desistir), /turmas/{id}/inscricoes. Acontece: "já consta ... como cancelada"; "Cancelada é situação final". Sugestão: permitir CANCELADA → INSCRITA com motivo e trilha, ou trocar o texto "fale com a equipe".
+  - **Situação: CORRIGIDO em 30/10/2026: quem responde pela turma (`turma.concluir`) reativa a inscrição, com motivo e trilha; volta confirmada se houver vaga.**
 - **Cancelar a turma não cancela as inscrições nem avisa ninguém.** Onde: /turmas/{id}/situacao (CANCELADA); /turmas/minhas. Acontece: participante vê "Confirmada · a turma já começou"; nenhum e-mail na fila. Sugestão: cancelar as inscrições vivas (ou exibir "Turma cancelada: motivo") e enfileirar e-mail.
+  - **Situação: CORRIGIDO em 30/10/2026: cancela as inscrições vivas, com o motivo da turma, e avisa por e-mail quem tem endereço.**
 
 ### Certificados
 - **Servidor inscrito sem e-mail não recebe certificado e não há onde corrigir.** Onde: /certificados/{id}, inscrição copia servidor.email só no ato. Acontece: "O participante não tem e-mail cadastrado."; turma concluída recusa nova inscrição; a rota de correção só vale para externo. Sugestão: usar servidor.email como destinatário ou campo editável na linha da inscrição.
@@ -89,11 +95,14 @@ Decisões do usuário, já no código (cada uma com teste). Os manuais ainda des
 - **Trilha grava o texto da investigação e das ações.** Onde: acidente_investigacao.ts, acidente_acao.ts; aba Histórico. Acontece: valores como "objetivo: None -> Entender o respingo; vitima com queimadura" ficam imutáveis. Sugestão: gravar só nome do campo e versão; limpar eventos já gravados.
   - **Situação: CORRIGIDO em 30/10/2026 para os registros novos: a trilha diz só `<campo> alterado`. Eventos antigos seguem na cadeia de hash e não foram limpos.**
 - **Identificação pessoal do Anexo III não pode ser informada nem completada depois.** Onde: aba Identificação (somente leitura). Acontece: CPF, nascimento, endereço etc. só entram no Comunicar; o PDF sai em branco; link público nem tem o bloco. Sugestão: POST e formulário na aba, restrito a acidente.identificacao_ver, com trilha de identificadores.
+  - **Situação: CORRIGIDO em 30/10/2026: completa-se na aba Identificação (`acidente.identificacao_ver`); só o digitado entra.**
 - **Indicador "Por unidade do local" sempre "Sem unidade informada".** Onde: acidente_indicadores.ts; local_unidade_uorg_id nunca gravado. Sugestão: derivar da lotação ou oferecer o campo; esconder o recorte enquanto isso.
 - **Depois do relatório emitido não se corrige a investigação, e caso concluído não reabre.** Onde: acidente_investigacao.ts, acidente_relatorio.ts. Acontece: "Retificar o relatório" só regenera; Relatório emitido → Em investigação não existe; reabertura é nova ocorrência com novo prazo de 10 dias. Sugestão: "Reabrir a investigação" e "Reabrir ocorrência" com motivo e trilha.
+  - **Situação: PARCIAL, CORRIGIDO em 30/10/2026: a coordenação reabre a investigação de caso com relatório emitido ou encaminhado ao SIASS, com motivo da lista. Concluída continua final; o caso que volta é ocorrência nova.**
 
 ### Ocorrências
 - **Concluída e Cancelada são finais.** Onde: src/servicos/ocorrencia.ts (_tratavel). Acontece: sem reabrir, editar, corrigir nome/tipo/campus, nem acompanhamento tardio. Sugestão: reabrir pela coordenação com motivo; retificação com trilha de identificadores.
+  - **Situação: CORRIGIDO em 30/10/2026: coordenador e superintendente reabrem ocorrência concluída ou cancelada, com motivo; volta a Em acompanhamento e o motivo entra no acompanhamento (`reabrir` em ocorrencia.ts; teste em ocorrencias.test.ts). Editar nome, tipo e campus continua sem tela.**
 - **Quem registrou não vê acompanhamento nem conclusão.** Onde: ocorrencia_ficha.html (blocos só para equipe). Acontece: só vê a situação; nenhum e-mail ao assumir ou concluir. Sugestão: mostrar retorno ao notificante e avisar por e-mail (só protocolo e link).
 - **Nenhum alerta ou prazo para ocorrência parada em "Registrada".** Onde: painel, fila, rotinas. Acontece: fila ordena pela data do fato; sem idade, sem pendência noturna; e-mail da equipe desligado por padrão. Sugestão: mostrar idade, destacar atraso, ordenar por chegada, criar pendência e ligar o e-mail.
 
@@ -287,7 +296,7 @@ Decisões do coordenador ou correções de código que os manuais só descrevem 
 - **TUR:** decidir se inscrição cancelada pode ser reativada; cancelar turma sem cancelar inscrições; "Iniciar turma" sem checar data; aviso de interesse ativo com a chave desligada; instrutor duplicado ou sem título; lote que casa homônimo por nome; confirmar a política do dono da turma para a secretaria.
 - **CER:** não há tela para corrigir e-mail do participante depois da inscrição (turma aberta: alternativa não verificada); decidir quem é dono dos treinamentos já cadastrados (técnico não edita treinamento de outro dono); textos de 30 dias; PDF em Carta; motivo de uma letra; instrutor duplicado.
 - **ACI:** corrigir erro 500 do detalhe e das transições, trilha com texto da investigação (depois revisar cap. 6.2 e 14 do usuário e 8, 12 e 16 do coordenador); decidir se secretaria e acidentado baixam o relatório "Sem saúde" (permissão existe, botão não); decidir sobre "Sou eu o envolvido" pré-marcado; pedir que a Auditoria mostre o protocolo; confirmar CSSO_ACIDENTE_EMAIL e o endereço do setor.
-- **OCO:** confirmar o campo oculto em navegador; decidir se o vínculo à CAT volta a ser possível em ocorrência encerrada (hoje o manual manda vincular antes de concluir); mensagens "Informe a conclusão." só aparecem sem JavaScript.
+- **OCO:** confirmar em navegador o campo "Nome da pessoa atendida" (corrigido no código); o vínculo à CAT em ocorrência encerrada segue só depois de reabrir (a coordenação reabre, vincula e conclui de novo); mensagens "Informe a conclusão." só aparecem sem JavaScript.
 - **TRA:** lotação futura irreversível, Excluir só no Cadastre-se, autocadastro sem conferir SIAPE, canal LGPD, concentração da gestão de contas e conta automática para qualquer e-mail dependem de código ou decisão; não foi confirmado por que o Cadastre-se de servidor com SIAPE novo não gerou e-mail (provável teto de 8 pedidos por hora por IP); o roteiro de referência trazia "Excluir" na tela Usuários, o que não existe.
 - **PGR:** decidir onde registrar atas, mandatos e inventário de riscos enquanto os módulos não existem (cap. 8 do manual do coordenador); o NUP de teste usou dispensa de DV, a validação com número válido não foi exercitada.
 - **Ambiente:** os servidores e bancos de teste foram encerrados e apagados, exceto o de Processos SEI (confirmação da remoção do banco csso_man_processos não foi vista na saída) e o de transversal (servidor da porta 3107, PID 3892510, e o banco csso_man_transversal seguiam de pé). O banco `csso` não foi tocado.

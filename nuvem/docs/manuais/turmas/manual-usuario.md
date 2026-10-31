@@ -30,7 +30,7 @@ Decisões de gestão e configuração (quem pode o quê no sistema, setores prom
 | Servidor | "Meus treinamentos". Vê a ficha da turma só para leitura (aba "Turma") e pode se inscrever pelo botão "Inscrever-se" da ficha ou de "Meus treinamentos". A lista "Turmas" dele não traz o filtro "Filtrar por setor promotor" nem a coluna "Ações". "Setores promotores" também abre para ele, só para ler. |
 | Almoxarife e administrador de TI | Não têm acesso ao módulo (nenhuma tela, nem "Meus treinamentos"). |
 
-**"Início" do módulo.** Quem opera o módulo cai em "Início" (**/treinamentos**): dez cartões na ordem do trabalho (Treinamentos e modelos, Instrutores, Turmas, Pedidos pelo link, Presença e notas, Fila de emissão, Emitidos, Envios por e-mail, Reciclagem, Indicadores), cada um com a contagem do que espera ali, o botão "Abrir turma" no topo e as listas "Turmas encerrando" e "Próximas turmas". A lista "Turmas encerrando" mostra também turma planejada que vai acabar nos próximos dias, com "nada pendente: só concluir no término": não é alarme de problema. O servidor comum não tem "Início" (recebe 403) e entra por "Turmas" ou "Meus treinamentos".
+**"Início" do módulo.** Quem opera o módulo cai em "Início" (**/treinamentos**): cartões na ordem do trabalho, com os mesmos nomes e ícones da lateral e só os que o seu perfil abre (Treinamentos, Modelos, Instrutores, Turmas, Pedidos pelo link, Presença e notas, Fila de emissão, Emitidos, Envios por e-mail, Reciclagem, Possíveis duplicados, Indicadores, Setores promotores e Locais), vários com a contagem do que espera ali (o cartão "Possíveis duplicados" só aparece quando há o que conferir), o botão "Abrir turma" no topo e as listas "Turmas encerrando" e "Próximas turmas". A lista "Turmas encerrando" mostra também turma planejada que vai acabar nos próximos dias, com "nada pendente: só concluir no término": não é alarme de problema. O servidor comum não tem "Início" (recebe 403) e entra por "Turmas" ou "Meus treinamentos".
 
 3. **Regra do dono.** Ter permissão não basta para mexer numa turma. Quem altera uma turma é:
    - o **dono** (quem a abriu; aparece em "Responsável (dono)" na ficha);
@@ -288,7 +288,7 @@ Passo a passo:
 - **Abrir inscrições**: clique no botão. Resposta: "TUR-2026-0006: inscrições abertas." Se a turma já terminou: "A turma terminou em ... — não há como abrir inscrição para ela."
 - **Iniciar turma**: use no dia em que o curso começa, se quiser marcar o andamento. Resposta: "TUR-2026-0006: em andamento." **Não dá para desfazer**, e o sistema não confere a data: clicar com a turma ainda distante a deixa "Em andamento" e fecha o link público. É opcional: você consegue lançar presença e concluir sem iniciar.
 - **Concluir turma…**: veja o capítulo 12.
-- **Cancelar turma**: escreva o **motivo** (obrigatório). Resposta: "TUR-2026-0007: cancelada." Leia o aviso do capítulo 21: as inscrições não são canceladas e ninguém é avisado.
+- **Cancelar turma**: escreva o **motivo** (obrigatório). Resposta: "TUR-2026-0007: cancelada." As inscrições vivas (pedido a conferir, Inscrita e Confirmada) são canceladas junto, com o motivo "Turma cancelada: ...", e quem tem e-mail no cadastro recebe um aviso sem o motivo (capítulo 21).
 - **Excluir turma**: só para turma planejada ou com inscrições abertas, sem história. Informe o **"Motivo da exclusão"**. O código não volta para a sequência ("Turma TUR-... excluída. O código não volta para a sequência."). As inscrições que a própria equipe lançou vão junto com a turma. O sistema recusa, listando os motivos na própria janela, quando já há presença ou nota lançada, certificado (mesmo anulado), e-mail que já saiu para algum inscrito, ou pedido feito pela própria pessoa (link público ou "Inscrever-se"); turma concluída ou cancelada também não se exclui. Nesses casos, cancele a turma com o motivo.
 
 | Mensagem | O que fazer |
@@ -381,7 +381,8 @@ Cuidados: linha só com nome, sem SIAPE, procura primeiro um servidor com esse n
 
 Na linha da pessoa, o botão **"ações"** abre o painel dela, com "Cancelar a inscrição", "Cadastro repetido? Juntar ... com outro cadastro" e "CPF".
 
-- **"Cancelar a inscrição"**: escreva o **"Motivo do cancelamento"**, que é obrigatório. Resposta: "{nome}: cancelada." O cancelamento devolve a vaga. **Cancelada é situação final**: não há como reinscrever a mesma pessoa na mesma turma (aparece "Transição proibida: Cancelada → Confirmada. “Cancelada” é situação final: não sai para lugar nenhum." ou "... já consta em TUR-... como cancelada."). Só cancele quando tiver certeza.
+- **"Cancelar a inscrição"**: escreva o **"Motivo do cancelamento"**, que é obrigatório. Resposta: "{nome}: cancelada." O cancelamento devolve a vaga. Inscrever de novo a mesma pessoa pelo botão de inscrever é recusado ("... já consta em TUR-... como cancelada."); para desfazer, use a reativação abaixo.
+- **"reativar"** (na linha de inscrição **cancelada**; só quem responde pela turma, com a permissão de concluir turma, e só com a turma Planejada ou com Inscrições abertas): abre o painel "Reativar" com o campo **"Motivo"** (obrigatório) e o botão **"Reativar inscrição"**. Resposta: "{nome}: inscrição reativada." A pessoa volta **Confirmada**, ocupa vaga de novo e o motivo fica na trilha. Sem vaga: "TUR-... não tem vaga: ...". Turma concluída ou cancelada: "... não recebe inscrição." Sem motivo: "Reativar a inscrição exige o motivo: fica na trilha." Não se reativa a inscrição cancelada pelo cancelamento da turma.
 - **Presente, Ausente, Aprovado, Reprovado**: não se digitam. Vêm da presença e da conclusão da turma ("Presença, ausência e resultado não se digitam...").
 - **"CPF"** > **"Gravar"**: grava o CPF para o certificado. Para apagar, marque "apagar". O sistema nunca mostra o número depois. Mensagens: "PTC-...: CPF gravado para o certificado." / "...: CPF apagado." / "Digite o CPF, ou marque “apagar”."
 - **"corrigir"** > **"Gravar a correção"**: corrige nome, vínculo e organização de participante externo. Se já houver certificado emitido, use "Corrigir certificado" na ficha dele. Nome de servidor se corrige no cadastro de servidores ("O nome de servidor vem do cadastro de servidores: corrija-o lá.").
@@ -654,16 +655,16 @@ Caminho: **Meus treinamentos** (bloco "Meu espaço"). A tela tem duas partes: "T
 
 ### Minhas inscrições
 
-A lista mostra Treinamento, Período, Situação e Ações. As situações possíveis são Confirmada, Cancelada (com o motivo), Aprovado e Reprovado.
+A lista mostra Treinamento, Período, Situação e Ações. As situações possíveis são Confirmada, Cancelada (com o motivo, inclusive "Turma cancelada: ..." quando a turma foi cancelada), Aprovado e Reprovado.
 
 - **"Adicionar à agenda"**: baixa um arquivo .ics com a data do curso, só da sua inscrição.
 - **"Desistir"**: abre o popup "Desistir de TUR-..." com **"Motivo (opcional)"**. Vale **até a véspera** do início. Resposta: "Desistência registrada em TUR-.... A vaga voltou para a turma e o motivo ficou escrito — nada foi apagado." Depois do início, o sistema recusa: "TUR-... começou em ...: a partir do início a falta é registrada como ausência, não desfeita como desistência."
 - **"Avaliar"**: capítulo 15.
 - Se o seu pedido veio pelo link e está "a conferir", você pode retirá-lo: "Pedido de vaga em TUR-... retirado. O registro fica, com o motivo — nada foi apagado."
 
-> **A desistência é definitiva naquela turma.** A tela diz "para voltar, fale com a equipe responsável", mas a equipe também não consegue reativar a inscrição. Se precisar da vaga de novo, procure a equipe para combinar outra turma. Só clique em "Desistir" se tiver certeza.
+> **A desistência é definitiva para você nesta tela.** Não há botão para voltar atrás: a tela diz "para voltar, fale com a equipe responsável", e é a equipe que reativa a inscrição (com motivo), se a turma ainda recebe inscrição e houver vaga. Só clique em "Desistir" se tiver certeza.
 
-O servidor também abre **"Turmas"** e a ficha (aba "Turma"), só para ler: vê instrutores, local, responsável e a linha "Minha inscrição: ...", mas não vê a lista dos inscritos. Na ficha de turma com inscrições abertas, o botão "Inscrever-se" (com "Havendo vaga, a inscrição já sai confirmada.") faz o mesmo pedido de "Meus treinamentos". Na lista "Turmas com inscrições abertas", a turma em que você desistiu mostra "Você desistiu — fale com a equipe responsável" no lugar do botão (veja o aviso acima: a equipe não reativa), e a turma lotada mostra "Lotada" e "sem vaga".
+O servidor também abre **"Turmas"** e a ficha (aba "Turma"), só para ler: vê instrutores, local, responsável e a linha "Minha inscrição: ...", mas não vê a lista dos inscritos. Na ficha de turma com inscrições abertas, o botão "Inscrever-se" (com "Havendo vaga, a inscrição já sai confirmada.") faz o mesmo pedido de "Meus treinamentos". Na lista "Turmas com inscrições abertas", a turma em que você desistiu mostra "Você desistiu — fale com a equipe responsável" no lugar do botão (veja o aviso acima: quem reativa é a equipe), e a turma lotada mostra "Lotada" e "sem vaga".
 
 ---
 
@@ -737,7 +738,7 @@ Recebe link ou QR > **"Pedir a vaga"** > com e-mail, confirma o e-mail e fica Co
 | "Transição proibida: ..." | Aquele caminho de situação não existe (por exemplo, voltar de "Em andamento"). |
 | "... não pode ser excluída: ..." | A turma já tem história. Cancele com motivo. |
 | "TUR-... não tem vaga: ..." | Turma lotada. Aumente as vagas em "Editar dados da turma". |
-| "... já consta em TUR-... como cancelada." | A inscrição cancelada não volta. Veja o capítulo 21. |
+| "... já consta em TUR-... como cancelada." | A inscrição está cancelada. A equipe responsável pode reativá-la (capítulo 7, item 7.3, "Ações em cada inscrição"), havendo vaga. |
 | "Falta para publicar: ..." | A vitrine exige os itens listados. Complete-os. |
 
 ---
@@ -764,8 +765,8 @@ Recebe link ou QR > **"Pedir a vaga"** > com e-mail, confirma o e-mail e fica Co
 
 Pontos em que o sistema não se comporta como seria de se esperar. Saber deles evita surpresa.
 
-1. **Inscrição cancelada não volta.** Vale tanto para o cancelamento pela equipe quanto para a desistência da própria pessoa. A tela manda "falar com a equipe", mas a equipe também não reativa. Antes de cancelar ou desistir, confirme. Se foi engano, combine outra turma.
-2. **Cancelar a turma não cancela as inscrições e não avisa ninguém.** Quem estava inscrito continua aparecendo como "Confirmada" em "Meus treinamentos", às vezes com a observação "a turma já começou". Depois de cancelar uma turma, avise os inscritos por outro meio (e-mail, telefone, mensagem).
+1. **Inscrição cancelada só volta pela equipe.** A pessoa não reativa sozinha (nem desistência, nem cancelamento): a equipe responsável reativa com motivo, se a turma ainda recebe inscrição e houver vaga. Inscrição cancelada porque a turma foi cancelada não se reativa.
+2. **Cancelar a turma cancela as inscrições e avisa por e-mail só quem tem endereço.** O aviso não traz o motivo (ele aparece em "Meus treinamentos" e na ficha). Quem não tem e-mail precisa ser avisado por outro meio (telefone, mensagem).
 3. **Limite de 8 pedidos por 10 minutos por rede** no link e na vitrine. Em sala de aula, com todos no mesmo Wi-Fi da universidade, só 8 pessoas passam em 10 minutos. Para turmas presenciais, inscreva pela lista em lote, ou peça aos participantes que usem a rede do celular.
 4. **A marcação "assina o certificado" não pode ser alterada depois de vincular** o instrutor. A caixa já vem marcada, mas quem a desmarcar por engano precisa remover o instrutor ("tirar") e vincular de novo.
 5. **O cadastro de instrutor aceita duplicata e título em branco.** Confira a lista antes de cadastrar e preencha o título.

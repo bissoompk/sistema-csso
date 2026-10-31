@@ -44,7 +44,7 @@ Este manual trata do que a coordenação decide e acompanha. Quem faz o trabalho
 | Coordenador, engenheiro, técnico, superintendente | Triar, investigar, emitir relatório, encaminhar ao SIASS, ver o resumo da saúde. |
 | Médico | Vê as abas, registra a saúde, abre o detalhe da saúde (nível 2), encaminha ao SIASS. Lê, sem editar, investigação, checklist, entrevistas, plano de ação e histórico. Não investiga, não emite relatório e não gera o link público (acesso negado). |
 | Secretaria | Comunica, vê a fila e faz a triagem (assumir, mudar a situação, pedir complementação, prorrogar, retificar, cancelar). Gera o link público e vê os indicadores (sem exportar). Não acessa Plano de ação (acesso negado), SIASS, saúde, identificação, relatório, entrevistas, histórico nem exportação. |
-| Servidor, terceirizado, estudante com conta ligada | Comunica, vê "Minhas comunicações", responde complementação. O servidor acidentado lê a própria saúde e a própria identificação. Não vê a fila, o plano de ação, os indicadores nem o link público (acesso negado). |
+| Servidor com conta ligada | Comunica, vê "Minhas comunicações", responde complementação. O servidor acidentado lê a própria saúde e a própria identificação. Não vê a fila, o plano de ação, os indicadores nem o link público (acesso negado). |
 | Almoxarife e administrador de TI sem servidor ligado | Sem acesso ao módulo. |
 
 Pontos que importam para quem coordena:
@@ -61,9 +61,9 @@ Pontos que importam para quem coordena:
 | Em triagem | Alguém da equipe conduz. | Aguardando complementação, Em investigação, Cancelada. |
 | Aguardando complementação | Foi pedida informação a quem comunicou (prazo de resposta: 5 dias). | Em triagem (com a resposta, ou se a equipe retomar sem esperar), ou Cancelada. |
 | Em investigação | Análise em curso. | Relatório emitido (botão "Emitir relatório"). Não volta para a triagem. |
-| Relatório emitido | Relatório técnico gerado. A investigação fica travada. | Encaminhada ao SIASS, ou Concluída (só se a investigação marcou que não requer CAT/SP no SIASS). |
-| Encaminhada ao SIASS | Encaminhamento registrado. | Concluída. |
-| Concluída | Final. Não reabre. | Se o caso voltou, comunique de novo: é uma ocorrência nova, com novo protocolo e novo prazo. |
+| Relatório emitido | Relatório técnico gerado. A investigação fica travada. | Encaminhada ao SIASS, ou Concluída (só se a investigação marcou que não requer CAT/SP no SIASS). A coordenação pode reabrir a investigação (botão "Reabrir a investigação"). |
+| Encaminhada ao SIASS | Encaminhamento registrado. | Concluída. A coordenação pode reabrir a investigação (botão "Reabrir a investigação"). |
+| Concluída | Final. A investigação não reabre. | Se o caso voltou, comunique de novo: é uma ocorrência nova, com novo protocolo e novo prazo. |
 | Cancelada | Final. O registro fica, com o motivo. | Nenhum. |
 
 Cancelar só cabe antes da investigação.
@@ -138,7 +138,7 @@ Na ficha da ocorrência, os botões do topo mudam conforme a situação: "Assumi
 
 ## 6. Link público de comunicação
 
-Serve para terceirizados, estudantes, visitantes e servidores sem conta comunicarem um acidente. Quem gera: quem tem permissão de triar (coordenação, secretaria, técnico etc.).
+Serve para servidores sem conta, ou quem comunica por eles. O formulário só oferece o vínculo "Servidor" e a comunicação pelo link recusa terceirizado, estudante, visitante etc. com a mensagem "A análise de acidentes e a CAT/SP valem só para servidor. Para quem não é servidor (do envolvido N), use o módulo Ocorrências." Quem gera: quem tem permissão de triar (coordenação, secretaria, técnico etc.).
 
 Passos para gerar:
 
@@ -195,7 +195,7 @@ O próprio acidentado servidor lê a própria saúde sem informar finalidade. Qu
 
 **Aba "Identificação".** Somente leitura. Escolha a "Finalidade" (Contatar o envolvido ou a testemunha, Investigar o acidente, Emitir a CAT/SP no formato do Anexo III, Instruir a perícia do SIASS, Auditoria) e clique em "Abrir identificação". Mostra sexo, data de nascimento, CPF mascarado, RG, endereço, telefone, e-mail e contatos das testemunhas. A secretaria não acessa.
 
-Não existe tela para informar ou completar a identificação depois da comunicação. Ela só entra no formulário "Comunicar acidente" (bloco "Dados pessoais do envolvido") e a "Retificar a CAT/SP" não a inclui. Se a CAT/SP no formato do Anexo III sair com campos em branco por isso, a coordenação precisa decidir como completar por fora do sistema.
+**Completar a identificação.** Quem tem a permissão acidente.identificacao_ver (coordenação, superintendência, médico) completa o Anexo III depois da comunicação: em cada envolvido, "Completar a identificação" (sexo, data de nascimento, CPF, RG, endereço, telefone, e-mail) e "Salvar a identificação". Só o digitado entra; o que já estava gravado e fica em branco continua como estava, e campo em branco não apaga. Recusas: nenhum campo preenchido ("Preencha ao menos um campo para completar a identificação."), ocorrência cancelada e identificação já expurgada. A trilha registra só os grupos de campo, nunca o valor. A "Retificar a CAT/SP" continua sem incluir a identificação.
 
 **CAT/SP no formato do Anexo III (PDF).** Botão "Baixar a CAT/SP no formato do Anexo III (para o SIASS)" na aba "Identificação". Exige identificação e detalhe da saúde, então só médico, coordenador e superintendente baixam. Para técnico e engenheiro o link nem aparece na aba (o endereço direto responde acesso negado). É o único lugar em que o CPF sai por inteiro. O arquivo não é guardado no sistema: cada geração fica registrada na trilha. Campos não informados saem em branco.
 
@@ -253,7 +253,9 @@ Atenção: o sistema só registra. Ele não envia nada ao SIASS nem anexa o Anex
 - Antes do relatório não se conclui.
 - Mensagem de sucesso: "Ocorrência concluída."
 
-Concluída é final: não há reabrir. A saída é uma nova comunicação.
+Concluída é final: a investigação não reabre. A saída é uma nova comunicação.
+
+**Reabrir a investigação (coordenação).** Com o caso em "Relatório emitido" ou "Encaminhada ao SIASS", a aba Comunicação mostra o botão "Reabrir a investigação" (rota `/acidentes/:id/reabrir`), só para a coordenação. Escolha o Motivo na lista: Corrigir a investigação ou o relatório, Informação nova sobre o caso, Encerrado por engano ou Outro motivo. O caso volta para "Em investigação", a investigação destrava, o responsável é mantido (ou passa a ser quem reabriu, se não havia) e a tarefa "Investigar ... e emitir o relatório" reabre com novo prazo. O relatório novo sai pela retificação e a CAT/SP mantém o mesmo número. O motivo fica na trilha só pelo código da lista. Fora desses estados, a recusa é "A ocorrência ... não está num ponto em que se reabra a investigação."; fora da coordenação, "Reabrir a investigação é com a coordenação."
 
 ## 11. Indicadores
 
@@ -342,9 +344,9 @@ Estas limitações foram observadas no teste. Leia antes de decidir como operar.
 
 1. **Saúde, registro inicial.** O médico não consegue abrir o detalhe da saúde (nível 2) quando a natureza da lesão está vazia: a página dá erro. Enquanto não for corrigido, o registro inicial da saúde fica indisponível pela tela e a tarefa "Confirmar a saúde declarada" não fecha.
 2. **Trilha com texto.** A aba "Histórico" guarda o texto da investigação e das ações, e não só identificadores. Trate-a como restrita.
-3. **Identificação do Anexo III.** Só entra na comunicação. Depois, não há tela para informar ou completar, e "Retificar a CAT/SP" não a inclui.
+3. **Identificação do Anexo III.** Pode entrar na comunicação e ser completada depois na aba Identificação (permissão acidente.identificacao_ver). A "Retificar a CAT/SP" não a inclui.
 4. **Indicador "Por unidade do local".** Sempre "Sem unidade informada". Taxas de frequência e gravidade não existem ainda.
-5. **Depois do relatório.** Não há como corrigir a síntese ou as escolhas da investigação, e o caso concluído não reabre. Revise antes de emitir.
+5. **Depois do relatório.** Não há como corrigir a síntese ou as escolhas da investigação, e o caso concluído não reabre. Com o relatório emitido ou encaminhado ao SIASS, a coordenação pode reabrir a investigação. Revise antes de emitir.
 6. **Atos fora de hora.** Em tela antiga ou com duas pessoas mexendo, um ato que já não vale pode dar tela de erro em vez de mensagem. Recarregue a ficha.
 7. **Data do PDF do relatório.** Entre 21h e 23h59 mostra o dia seguinte.
 8. **Responsável legal de menor de idade.** O aviso "o responsável legal precisa ser avisado" não some e não há onde registrar que ele foi avisado. Registre o aviso por fora (SEI ou ofício).
@@ -354,7 +356,7 @@ Estas limitações foram observadas no teste. Leia antes de decidir como operar.
 12. **Duplicadas.** Não são detectadas. Cancele com "Comunicação duplicada".
 13. **Anexo III em PDF.** Só médico, coordenador e superintendente baixam; técnico e engenheiro não veem o link.
 14. **Incidente / quase acidente.** Segue o fluxo de CAT, com prazo de 10 dias e SIASS.
-15. **Rótulos para quem não é servidor.** "Servidor acidentado" e "Servidor envolvido sem lesão" aparecem também para terceirizado, estudante e visitante.
+15. **Só servidor.** Acidente de quem não é servidor é recusado na comunicação (com conta ou por link) e vai para Ocorrências.
 16. **Aba "Análise".** Pede "Município e UF" mesmo com a UF já preenchida, e algumas mensagens de recusa usam termos internos (nomes de permissão).
 17. **Tarefa de ocorrência restrita.** A secretaria vê a tarefa "Triar" de menor de idade, mas não consegue abrir a ocorrência.
 18. **Itens que não se editam.** Linha do tempo, entrevistas e evidências não se editam nem se reordenam. O link público não reaparece depois de gerado.
