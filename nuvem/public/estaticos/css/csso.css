@@ -3977,13 +3977,15 @@ details.ajuste-horas input { margin-top: 4px; }
   font-weight: 600;
 }
 /* Catálogo de treinamentos: o código em fonte de texto (a monoespaçada de
-   reserva ficava larga e irregular), em negrito e sem quebra. */
+   reserva ficava larga e irregular), em negrito; só quebra depois de um
+   sublinhado (o `<wbr>` do catálogo), para a coluna não alargar. */
 .codigo-trein {
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 /* O conteúdo programático recolhido sob o nome do treinamento. */
 .conteudo-programatico { margin-top: 2px; }

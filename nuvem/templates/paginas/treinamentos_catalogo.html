@@ -113,7 +113,7 @@
     </thead>
     {% for t in itens %}
     <tr>
-      <td><span class="codigo-trein">{{ t.codigo }}</span>
+      <td><span class="codigo-trein">{{ (t.codigo|string|escape|replace("_", "_<wbr>"))|safe }}</span>
         {% if t.norma_referencia and t.norma_referencia != t.codigo %}<span class="quebra discreto">{{ t.norma_referencia }}</span>{% endif %}</td>
       {# o código curto entra no número do certificado novo (CSSO-NR35-2026-0001) #}
       <td data-coluna="Código curto" class="curta"><span class="codigo-trein codigo-curto">{{ t.codigo_curto }}</span></td>
