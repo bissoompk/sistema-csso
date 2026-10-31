@@ -78,17 +78,13 @@ function _etapa(situacao: string, turma_situacao: string, emitido: boolean): Eta
  * Os motivos de cada aprovado ainda sem certificado: `{inscricao_id: motivos}`,
  * vazio para quem a emissão aceitaria. Uma carga de turma por turma.
  */
-async function _bloqueios(tx: Executor, inscricao_ids: number[]): Promise<Map<number, string[]>> {
+async function _bloqueios(tx: Executor, aguardando: { inscricao_id: number; turma_id: number }[]): Promise<Map<number, string[]>> {
   const saida = new Map<number, string[]>();
-  if (!inscricao_ids.length) return saida;
-  const linhas = await tx
-    .select({ id: tabela_inscricao.id, turma_id: tabela_inscricao.turma_id })
-    .from(tabela_inscricao)
-    .where(inArray(tabela_inscricao.id, inscricao_ids));
+  if (!aguardando.length) return saida;
   const por_turma = new Map<number, Set<number>>();
-  for (const l of linhas) {
+  for (const l of aguardando) {
     if (!por_turma.has(l.turma_id)) por_turma.set(l.turma_id, new Set());
-    por_turma.get(l.turma_id)!.add(l.id);
+    por_turma.get(l.turma_id)!.add(l.inscricao_id);
   }
   // As turmas, e dentro de cada uma os inscritos, são conferidos juntos: cada
   // `validar` faz as suas consultas, e uma atrás da outra eram dezenas de idas
@@ -186,7 +182,7 @@ export async function fila(
   // o aguardando que a emissão recusaria vira travado, com o motivo
   const bloqueios = await _bloqueios(
     tx,
-    itens.filter((x) => x.etapa === "AGUARDANDO").map((x) => x.inscricao_id),
+    itens.filter((x) => x.etapa === "AGUARDANDO"),
   );
   for (const x of itens) {
     const motivos = bloqueios.get(x.inscricao_id);
