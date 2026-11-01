@@ -402,9 +402,12 @@ export async function resolver_servidor(
   unidade: Unidade | null,
 ): Promise<Servidor | null> {
   if (!siape) return null;
-  // `re.sub(r"\D", "", siape).zfill(7)[-7:]`
-  const limpo = String(siape).replace(/\D/g, "").padStart(7, "0").slice(-7);
-  if (!/^\d{7}$/.test(limpo)) return null;
+  // A mesma regra de `importacao_servidores.siape_normalizado`: com mais de 7
+  // dígitos a matrícula NÃO é cortada (o corte criava servidor com a matrícula
+  // errada, de outra pessoa) — vira pendência e quem confere corrige a planilha.
+  const digitos = String(siape).replace(/\D/g, "");
+  if (!digitos || digitos.length > 7) return null;
+  const limpo = digitos.padStart(7, "0");
   const [existente] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.siape, limpo));
   if (existente) return existente;
   const [novo] = await tx
@@ -727,7 +730,7 @@ async function _preencher(
   if (unidade === null) linha.pendencias.push("UORG não reconhecida");
   const cargo = await resolver_cargo(tx, registro.col_m_cargo);
   const servidor = await resolver_servidor(tx, registro.col_l_matricula, registro.col_c_nome_servidor, cargo, unidade);
-  if (servidor === null) linha.pendencias.push("matrícula SIAPE ausente");
+  if (servidor === null) linha.pendencias.push("matrícula SIAPE ausente ou com mais de 7 dígitos");
 
   const [processo, resultado_nup] = await resolver_processo(
     tx,

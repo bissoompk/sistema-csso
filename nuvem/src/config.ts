@@ -68,10 +68,14 @@ export const TAMANHO_MINIMO_CHAVE = 32;
 /** A senha dos backups cifrados: abaixo disto o PBKDF2 protege pouco. */
 export const TAMANHO_MINIMO_SENHA_BACKUP = 16;
 
-/** `CSSO_AMBIENTE=producao` (aceita `produção`, qualquer caixa). */
+/**
+ * `CSSO_AMBIENTE=producao` (aceita `produção`, `production` e `prod`, qualquer
+ * caixa). É a ÚNICA regra: `servicos/instalacao.ts` usa esta, para que uma
+ * grafia não ligue uma trava e deixe outra desligada.
+ */
 export function ehProducao(ambiente: string = process.env.CSSO_AMBIENTE ?? ""): boolean {
   const a = ambiente.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return a === "producao";
+  return a === "producao" || a === "production" || a === "prod";
 }
 
 /**

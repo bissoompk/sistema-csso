@@ -193,6 +193,15 @@ export function criarApp(): Hono<Ambiente> {
       if (pedeJson(c)) return c.json({ erro: detalhe, motivos: [] }, 422);
       return telaDeErro(c, "422 — formulário incompleto", detalhe, null, 422);
     }
+    // Registro que já existe (23505): reenvio do formulário, clique duplo ou
+    // duas pessoas gravando ao mesmo tempo. A transação foi desfeita; quem
+    // enviou precisa saber que o outro envio valeu, e não ler "erro interno".
+    if (codigo_pg === "23505") {
+      const detalhe =
+        "Este registro já existe — provavelmente o envio anterior já valeu (formulário enviado duas vezes, ou outra pessoa gravou ao mesmo tempo). Atualize a página para conferir; este envio não gravou nada.";
+      if (pedeJson(c)) return c.json({ erro: detalhe, motivos: [] }, 409);
+      return telaDeErro(c, "409 — já existe", detalhe, null, 409);
+    }
     // `resumoDoErro`: sem os valores da consulta nem o `detail` do Postgres —
     // o log do Netlify não é lugar de dado pessoal
     console.error("erro nao tratado", resumoDoErro(erro));

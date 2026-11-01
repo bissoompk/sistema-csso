@@ -432,6 +432,16 @@ describe("planilha — carga sintética", () => {
     });
   const linha = (r: planilha.RelatorioImportacao, n: number) => r.linhas.find((l) => l.linha === n)!;
 
+  it("matrícula com mais de 7 dígitos não é cortada: não cria servidor com a matrícula errada", () =>
+    desfeita(db, async (tx) => {
+      const antes = (await tx.select().from(e.servidor)).length;
+      expect(await planilha.resolver_servidor(tx, "123456789", "Fulano de Tal", null, null)).toBeNull();
+      expect((await tx.select().from(e.servidor)).length).toBe(antes);
+      // com 7 ou menos, completa com zeros à frente e cria
+      const criado = await planilha.resolver_servidor(tx, "12345", "Fulano de Tal", null, null);
+      expect(criado?.siape).toBe("0012345");
+    }));
+
   it("staging guarda as 25 colunas", () =>
     desfeita(db, async (tx) => {
       await carregar(tx);

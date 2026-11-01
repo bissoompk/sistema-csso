@@ -49,7 +49,10 @@ describe("/auditoria", () => {
 
     await entrar(amb.cliente, "auditor_interno");
     const corpo = (await amb.cliente.get("/auditoria")).text;
-    expect(corpo).toContain("1110655");
+    // RN-19: a trilha imutável diz QUE o SIAPE mudou, não o valor (antigo nem novo)
+    expect(corpo).toContain("siape alterado");
+    expect(corpo).not.toContain("1110655");
+    expect(corpo).not.toContain("1110654");
     expect(corpo).toContain("eventos desta página conferem");
   });
 

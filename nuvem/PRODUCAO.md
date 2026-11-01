@@ -93,6 +93,34 @@ resolver. LGPD: o .docx leva nome e, se o modelo pedir, CPF — o Cloud Run fica
 em São Paulo e não grava o documento; o Google está registrado como operador
 em `docs/ROPA_NUVEM.md` §3 e §5.7.
 
+#### 2.1.1 Fontes dos modelos no conversor
+
+O PDF fiel usa as fontes **instaladas no conversor**. O Gotenberg padrão traz um
+conjunto básico (as equivalentes livres de Arial, Times New Roman e Courier New
+entre elas); o modelo que pede outra — por exemplo Montserrat e Open Sans, as do
+modelo «Brigada Orgânica - Básica» — sai em outra fonte (Noto Sans), de largura
+diferente, e as linhas quebram em lugares diferentes dos do Word. Duas saídas:
+**embutir as fontes no .docx** (Word: Arquivo, Opções, Salvar, «Incorporar fontes
+no arquivo»; a licença da fonte tem que permitir) ou **instalá-las no conversor**,
+que serve a todos os modelos:
+
+```sh
+# na pasta nuvem/conversor-pdf (o Dockerfile soma Montserrat e Open Sans)
+gcloud run deploy csso-conversor-pdf \
+  --source=. --region=southamerica-east1
+```
+
+`--source` gera a imagem na nuvem a partir do `Dockerfile` e troca a do serviço;
+o que já estava configurado — a senha, a porta, a memória, `--command` e
+`--args` — **fica como está**, e o endereço não muda (nada a refazer no Netlify).
+Se o comando pedir a porta ou o comando de partida, repita os do passo anterior
+(`--port=3000`, `--command=gotenberg`, `--args=--api-enable-basic-auth`).
+
+Para conferir: emita um certificado de teste com o modelo e abra o PDF dele — tem
+que ser um certificado **novo**, porque o PDF já convertido fica guardado no
+Storage e não é refeito — e veja se a fonte saiu como no Word. Para outro modelo, repita:
+acrescente o pacote da fonte no `Dockerfile`.
+
 ### 2.2 Configurar o envio de e-mail
 
 O sistema envia e-mail em quatro situações: o **link «Ativar meu acesso /

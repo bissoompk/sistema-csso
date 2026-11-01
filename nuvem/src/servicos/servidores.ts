@@ -289,11 +289,24 @@ export async function atualizar_cadastro(
   };
   const [gravado] = await tx.update(tabela_servidor).set(depois).where(eq(tabela_servidor.id, servidor.id)).returning();
   Object.assign(servidor, depois);
+  // RN-19: a trilha é imutável e nunca expurgada; nome, SIAPE e e-mail dizem só
+  // QUE mudaram (o valor antigo e o novo ficam no cadastro, que se corrige e se
+  // anonimiza). A situação não é dado pessoal: guarda de quê para quê.
+  const { situacao: situacao_antes, ...pessoais_antes } = antes;
+  const { situacao: situacao_depois, ...pessoais_depois } = depois;
   await auditoria.registrar_diferencas(tx, {
     entidade: "servidor",
     entidade_id: servidor.id,
-    antes,
-    depois,
+    antes: pessoais_antes,
+    depois: pessoais_depois,
+    usuario,
+    so_o_campo: true,
+  });
+  await auditoria.registrar_diferencas(tx, {
+    entidade: "servidor",
+    entidade_id: servidor.id,
+    antes: { situacao: situacao_antes },
+    depois: { situacao: situacao_depois },
     usuario,
   });
   await ativar_acesso.garantir_acesso(tx, gravado!, { usuario });
