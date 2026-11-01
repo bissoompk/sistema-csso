@@ -29,6 +29,7 @@ import PizZip from "pizzip";
 import type { ArquivoEnviado, MarcadorDoModelo } from "../dominio/treinamento.js";
 import { RegraViolada } from "../nucleo/erros.js";
 import * as anexos from "./anexos.js";
+import { ArquivoZipRecusado, conferir_zip } from "./arquivo_zip.js";
 import { partes_renderizaveis } from "./docx_baixo_nivel.js";
 import { slug_ascii, sem_acento } from "./textos.js";
 
@@ -213,6 +214,13 @@ export function abrir_docx(bytes: Uint8Array): PizZip {
   }
   if (!zip.files["word/document.xml"] || !zip.files["[Content_Types].xml"]) {
     throw new ModeloInvalido("O arquivo não é um documento do Word (.docx). Abra-o no Word e use “Salvar como” › Documento do Word (.docx).");
+  }
+  // O tamanho declarado no cabeçalho do zip pode ser falso: confere descompactando de fato.
+  try {
+    conferir_zip(bytes, LIMITE_DESCOMPACTADO);
+  } catch (erro) {
+    if (erro instanceof ArquivoZipRecusado) throw new ModeloInvalido("O documento é grande demais para ser um modelo de certificado.");
+    throw erro;
   }
   const tipos = zip.files["[Content_Types].xml"]!.asText();
   if (/macroEnabled|vbaProject/i.test(tipos)) {

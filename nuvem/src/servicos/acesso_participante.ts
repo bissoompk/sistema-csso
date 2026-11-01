@@ -41,6 +41,7 @@ import { numero as numero_br } from "./presenca.js";
 import * as datas_br from "./datas_br.js";
 import * as email from "./email.js";
 import * as servico from "./emissao_certificado.js";
+import { dentro_do_limite as limite_generico } from "./inscricao_publica.js";
 
 export const CAMINHO = "/certificados/acesso";
 export const VALIDADE_MS = 2 * 3_600_000;
@@ -277,22 +278,15 @@ export async function expurgar(tx: Executor, agora: Date = new Date(), dias = DI
 }
 
 // ---------------------------------------------------------------------
-// Limite por IP — o desenho de /validar (memória da instância)
+// Limite por IP — no banco (o contador é próprio deste formulário)
 // ---------------------------------------------------------------------
-export const JANELA_S = 600;
 export const LIMITE_POR_JANELA = 5;
-const _tentativas = new Map<string, number[]>();
-export const relogio = { agora: (): number => performance.now() / 1000 };
+export const PREFIXO_CHAVE_IP = "acesso:";
 
-export function limpar_limites(): void {
-  _tentativas.clear();
-}
+/** Mantida para quem a chamava: o limite agora é do banco, que cada teste já recria. */
+export function limpar_limites(): void {}
 
-export function dentro_do_limite(ip: string | null | undefined): boolean {
-  const chave = ip || "desconhecido";
-  const agora = relogio.agora();
-  const fila = (_tentativas.get(chave) ?? []).filter((t) => agora - t <= JANELA_S);
-  fila.push(agora);
-  _tentativas.set(chave, fila);
-  return fila.length <= LIMITE_POR_JANELA;
+/** Conta o pedido de link no limite por IP (a janela e a limpeza são as de `limite_login_ip`). */
+export function dentro_do_limite(tx: Executor, ip: string | null | undefined, agora: Date = new Date()): Promise<boolean> {
+  return limite_generico(tx, ip, agora, PREFIXO_CHAVE_IP, LIMITE_POR_JANELA);
 }

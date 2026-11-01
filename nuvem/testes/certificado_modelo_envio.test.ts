@@ -170,6 +170,16 @@ describe("leitura dos marcadores", () => {
     expect(() => envio.converter_docx_enviado(docx_minimo(par(run("{% if x %}«a»{% endif %}"))))).toThrow(/\{%/);
     expect(() => envio.abrir_docx(new Uint8Array(envio.LIMITE_BYTES + 1))).toThrow(/limite/);
   });
+
+  it("recusa o .docx que descompacta muito além do tamanho enviado (zip bomb)", () => {
+    const bomba = new PizZip();
+    bomba.file("[Content_Types].xml", "<Types/>");
+    bomba.file("word/document.xml", "<w:document/>");
+    bomba.file("word/lixo.bin", new Uint8Array(70 * 1024 * 1024), { compression: "DEFLATE" });
+    const bytes = bomba.generate({ type: "uint8array", compression: "DEFLATE" });
+    expect(bytes.length).toBeLessThan(envio.LIMITE_BYTES);
+    expect(() => envio.abrir_docx(bytes)).toThrow(/grande demais/);
+  });
 });
 
 // =====================================================================

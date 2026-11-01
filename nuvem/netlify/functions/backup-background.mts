@@ -3,6 +3,11 @@
  * de 15 min). Faz o backup cifrado (`servicos/backup.ts`) e aplica a
  * retenção da POLITICA_RETENCAO §4 (`servicos/rotinas.ts`).
  *
+ * Depois do backup roda as rotinas leves (sessões, pendências, cadeia da trilha,
+ * expurgos de privacidade): na função agendada o teto é de 30 s, e a cadeia e os
+ * expurgos crescem com a base; aqui o teto é de 15 min. Uma falha do backup não
+ * impede as rotinas, nem o contrário: cada passo fica em `rotina_execucao`.
+ *
  * Quem chama é a função agendada `rotina-noturna`. A URL desta função é
  * pública (`/.netlify/functions/backup-background`) e o Netlify responde 202
  * a qualquer um antes de o código rodar — então o código confere o segredo
@@ -13,7 +18,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Config } from "@netlify/functions";
 import { fecharBanco, obterBanco } from "../../src/db/cliente.js";
-import { backup_diario } from "../../src/servicos/rotinas.js";
+import { backup_diario, rotinas_noturnas } from "../../src/servicos/rotinas.js";
 
 export function segredoConfere(recebido: string | null, esperado: string | undefined): boolean {
   if (!esperado || esperado.length < 32 || !recebido) return false;
@@ -28,8 +33,15 @@ export default async (req: Request) => {
     return;
   }
   try {
-    const r = await backup_diario(obterBanco());
-    (r.ok ? console.log : console.error)(`[backup-background] ${r.ok ? "ok" : "FALHA"} em ${r.ms} ms: ${r.detalhe}`);
+    try {
+      const r = await backup_diario(obterBanco());
+      (r.ok ? console.log : console.error)(`[backup-background] ${r.ok ? "ok" : "FALHA"} em ${r.ms} ms: ${r.detalhe}`);
+    } catch (erro) {
+      console.error(`[backup-background] FALHA no backup: ${(erro as Error).message}`);
+    }
+    const resumo = await rotinas_noturnas(obterBanco());
+    const linhas = resumo.passos.map((p) => `${p.ok ? "ok" : "FALHA"} ${p.rotina}: ${p.detalhe}`);
+    (resumo.ok ? console.log : console.error)(`[backup-background] rotinas: ${linhas.join(" | ")}`);
   } finally {
     await fecharBanco();
   }

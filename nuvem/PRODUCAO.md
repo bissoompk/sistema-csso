@@ -311,7 +311,7 @@ pode ser apagado depois.
 
 **Automático, todo dia às 01h30 (Brasília).** A função agendada
 `rotina-noturna` acorda a função de fundo `backup-background` (até 15 min),
-que:
+que primeiro:
 
 - grava `backups/csso-AAAAMMDD-HHMMSS.enc` no bucket: o banco inteiro (retrato
   consistente, REPEATABLE READ) cifrado com AES-256-GCM (`CSSO_BACKUP_SENHA`);
@@ -320,7 +320,7 @@ que:
 - aplica a retenção da `POLITICA_RETENCAO.md` §4: todos os dos últimos 90 dias
   + o primeiro de cada mês por 5 anos (e nunca menos de 7).
 
-A mesma passada (a própria `rotina-noturna`, 30 s) expurga sessões vencidas
+Depois do backup, a mesma função de fundo (sem o teto de 30 s) expurga sessões vencidas
 (90 dias) e janelas de limite de login por IP vencidas, roda os expurgos de
 privacidade (registro de acesso, cópias de exportação), varre as pendências de
 EPI (CA a vencer, troca devida) e confere a cadeia inteira da trilha.
@@ -392,6 +392,10 @@ planeje o Pro antes.
   entra por ele sem conseguir confirmar o código até a administração desligá-lo em
   `/usuarios` ("Desligar o segundo fator") e a pessoa ligar de novo em Minha conta.
   Avise as pessoas antes de trocar a chave.
+- **`npm audit --omit=dev`**: restam 8 avisos moderados, todos na cadeia do `exceljs`
+  (`uuid` e `minimatch`). O `uuid` só falha ao receber um buffer nas versões 3/5/6, e o
+  `exceljs` usa a v4; o conserto automático rebaixa o `exceljs` para a 3.4, pior. Reavalie
+  quando sair um `exceljs` novo.
 - **Cadeia rompida é incidente**: não se conserta pela tela. Preserve o banco
   (faça um backup na hora) e investigue.
 - **Netlify > Logs > Functions**: `rotina-noturna` e `backup-background`
