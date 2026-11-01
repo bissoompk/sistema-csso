@@ -34,6 +34,20 @@
         <p>Na ficha do modelo, escolha qual dado do sistema vai em cada marcador (o
           sistema já sugere) e baixe um exemplo preenchido para conferir.</p>
       {% endcall %}
+      {% call ui.info('fontes-do-modelo', 'que fonte usar no modelo') %}
+        <p>O PDF do certificado é feito por um conversor que só tem algumas fontes
+          instaladas. Se o modelo pede uma fonte que ele não tem, o PDF sai em outra, de
+          largura diferente, e as linhas podem quebrar em lugares diferentes dos do Word.</p>
+        <p><strong>Mais seguras</strong>: Arial, Times New Roman e Courier New — o conversor
+          tem equivalentes de mesma largura, e o PDF sai igual ao Word.
+          <strong>Evite, a menos que já testadas</strong>: Calibri, Cambria, Segoe UI e fontes
+          de marca ou baixadas da internet.</p>
+        <p>Fonte especial: no Word, ligue “Incorporar fontes no arquivo” (Arquivo, Opções,
+          Salvar) — a licença da fonte tem que permitir.</p>
+        <p>Depois de montar o modelo, <strong>gere um certificado de teste em PDF</strong> e
+          compare com o Word. Se a diferença aparecer, troque a fonte. A lista acima vale
+          para o conversor padrão; confirme com quem cuida do conversor se ele foi alterado.</p>
+      {% endcall %}
     </div>
   </div>
 
