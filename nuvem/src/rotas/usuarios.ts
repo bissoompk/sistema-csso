@@ -3,7 +3,7 @@
  * Porte de `app/rotas/usuarios.py`.
  */
 import { Hono } from "hono";
-import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { ErroHttp } from "../nucleo/erros.js";
@@ -17,6 +17,7 @@ import {
   perfil_nivel_modulo,
   profissional_habilitado,
   usuario_nivel_modulo,
+  usuario_segundo_fator,
   servidor as tabela_servidor,
   usuario as tabela_usuario,
 } from "../db/esquema/index.js";
@@ -27,6 +28,7 @@ import * as autenticacao from "../servicos/autenticacao.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as governanca from "../servicos/governanca.js";
 import * as liberacao from "../servicos/liberacao_modulo.js";
+import * as segundo_fator from "../servicos/segundo_fator.js";
 import * as niveis_modulo from "../servicos/niveis_modulo.js";
 import {
   ESCOPO_AGREGADO,
@@ -171,6 +173,7 @@ async function _tela_lista(
     setores_da_conta,
     setores,
     habilitados,
+    com_segundo_fator,
   ] = await Promise.all([
     tx.select().from(tabela_usuario).orderBy(asc(tabela_usuario.nome)),
     tx.query.atribuicao.findMany({ with: { perfil: true }, orderBy: [asc(atribuicao.id)] }),
@@ -191,7 +194,12 @@ async function _tela_lista(
     administra ? liberacao.setores_por_conta(tx) : Promise.resolve(new Map()),
     administra ? liberacao.setores_promotores(tx) : Promise.resolve([]),
     tx.select().from(profissional_habilitado).orderBy(asc(profissional_habilitado.id)),
+    // quem ligou o aplicativo autenticador: a administração pode desligá-lo (celular perdido)
+    administra
+      ? tx.select({ id: usuario_segundo_fator.usuario_id }).from(usuario_segundo_fator).where(isNotNull(usuario_segundo_fator.ativo_em))
+      : Promise.resolve([] as { id: number }[]),
   ]);
+  const tem_segundo_fator = new Set(com_segundo_fator.map((l) => l.id));
   const atribuicoes: Record<number, typeof todas> = {};
   const vigentes_por_usuario: Record<number, typeof todas> = {};
   for (const u of usuarios) {
@@ -291,6 +299,7 @@ async function _tela_lista(
     contas_de_governo,
     recusa_senha,
     bloqueio_ate,
+    tem_segundo_fator,
     ultima_que_concede: ultima_que_concede.length === 1 ? ultima_que_concede[0] : null,
     perfis,
     // o select de concessão só oferece perfil ativo, com o escopo ao lado (D23/D24)
@@ -1084,6 +1093,30 @@ rotas.post("/usuarios/:id{[0-9]+}/desbloquear", async (c) => {
     usuario,
   });
   return redirecionar(c, comMensagem("/usuarios", `Conta de ${alvo.nome} desbloqueada.`));
+});
+
+/**
+ * Desliga o segundo fator de OUTRA conta: quem perdeu o celular e os códigos de
+ * recuperação. Mesma permissão e mesma trava do desbloqueio (quem não se pode
+ * redefinir também não se desliga): desligar o fator reabre a conta à senha só.
+ * A própria conta se desliga em /minha-conta/segundo-fator, com a senha.
+ */
+rotas.post("/usuarios/:id{[0-9]+}/segundo-fator/desligar", async (c) => {
+  const usuario = await usuarioLogado(c);
+  if (!usuario.pode("perfil.conceder")) usuario.exigir("usuario.resetar_senha");
+  const tx = c.get("tx");
+  const [alvo] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, Number(c.req.param("id"))));
+  if (!alvo) return redirecionar(c, "/usuarios");
+  const recusa =
+    alvo.id === usuario.id
+      ? "a própria conta desliga o segundo fator em Minha conta, com a senha."
+      : await _recusa_de_redefinicao(tx, usuario, alvo.id);
+  if (recusa) return _tela_lista(c, usuario, { erro: `O segundo fator de ${alvo.nome} não foi desligado: ${recusa}` });
+  const desligado = await segundo_fator.desligar(tx, alvo, usuario);
+  return redirecionar(
+    c,
+    comMensagem("/usuarios", desligado ? `Segundo fator de ${alvo.nome} desligado.` : `${alvo.nome} não tinha segundo fator ligado.`),
+  );
 });
 
 rotas.post("/usuarios/:id{[0-9]+}/inativar", async (c) => {

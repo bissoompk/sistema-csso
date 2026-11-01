@@ -161,6 +161,16 @@
                 revoga as sessões abertas desta conta.</p>
               <div class="acoes">{{ ui.botao_cadastro('resetar-senha-' ~ u.id, 'Resetar senha…', 'secundario compacto') }}</div>
               {% endif %}
+              {% if tem_segundo_fator.has(u.id) and u.id != usuario.id and not recusa_senha[u.id]
+                    and (usuario.pode('perfil.conceder') or usuario.pode('usuario.resetar_senha')) %}
+              <form method="post" action="/usuarios/{{ u.id }}/segundo-fator/desligar">
+                <h3>Segundo fator ligado</h3>
+                <p class="discreto">Para quem perdeu o celular e os códigos de recuperação. Desligar
+                  faz a entrada voltar a pedir só a senha; a pessoa pode ligar de novo em Minha conta.</p>
+                <div class="acoes"><button type="submit" class="secundario compacto">
+                  Desligar o segundo fator</button></div>
+              </form>
+              {% endif %}
               {% if bloqueio_ate[u.id] and u.id != usuario.id and not recusa_senha[u.id]
                     and (usuario.pode('perfil.conceder') or usuario.pode('usuario.resetar_senha')) %}
               {# Desbloquear não revela senha nenhuma: um clique, sem confirmação.

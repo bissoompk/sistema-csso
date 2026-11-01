@@ -56,6 +56,45 @@ export async function expurgar_exportacoes(
   return apagadas;
 }
 
+/** Onde a importação (planilha, Trello, servidores) guarda a cópia do arquivo recebido. */
+export const PREFIXO_ENTRADA = "entrada";
+/** Por quantos dias a cópia fica: o suficiente para conferir o relatório e refazer. */
+export const DIAS_DA_ENTRADA = 7;
+
+const NOME_ENTRADA = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-/;
+
+/** A chave da cópia: `entrada/AAAAMMDD-HHMMSS-<nome>` (UTC), para a rotina noturna saber a idade. */
+export function chave_de_entrada(nome: string, agora: Date = new Date()): string {
+  const carimbo = agora.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+  return `${PREFIXO_ENTRADA}/${carimbo}-${nome}`;
+}
+
+/**
+ * A planilha ou o JSON importado tem CPF, nome e SIAPE em claro (só o dado já
+ * interpretado é mascarado), e a cópia não tinha prazo. Passados
+ * `DIAS_DA_ENTRADA`, sai. O nome sem o carimbo é de antes desta regra: nada lê
+ * essa pasta, e a cópia antiga também sai.
+ */
+export async function expurgar_entradas(
+  arm: Armazenamento = obterArmazenamento(),
+  agora: Date = new Date(),
+  dias: number = DIAS_DA_ENTRADA,
+): Promise<string[]> {
+  const limite = agora.getTime() - dias * 86_400_000;
+  const apagadas: string[] = [];
+  for (const item of await arm.listar(PREFIXO_ENTRADA)) {
+    const m = item.nome.match(NOME_ENTRADA);
+    if (m) {
+      const [a, me, d, h, mi, s] = m.slice(1).map(Number) as number[];
+      const t = Date.UTC(a!, me! - 1, d!, h!, mi!, s!);
+      if (!Number.isNaN(t) && t >= limite) continue;
+    }
+    await arm.remover(item.chave);
+    apagadas.push(item.chave);
+  }
+  return apagadas;
+}
+
 /** Por quanto tempo o IP de quem pediu vaga pelo link público fica no pedido. */
 export const DIAS_DO_IP_DA_INSCRICAO = 90;
 
@@ -98,11 +137,12 @@ export async function expurgar_ip_de_acidente(
 export async function expurgos_de_privacidade(
   tx: Executor,
   arm: Armazenamento = obterArmazenamento(),
-): Promise<{ acessos: number; exportacoes: number; ips: number }> {
+): Promise<{ acessos: number; exportacoes: number; entradas: number; ips: number }> {
   const acessos = await expurgar_registro_acesso(tx);
   const exportacoes = (await expurgar_exportacoes(arm)).length;
+  const entradas = (await expurgar_entradas(arm)).length;
   const ips = (await expurgar_ip_de_inscricao(tx)) + (await expurgar_ip_de_acidente(tx));
-  return { acessos, exportacoes, ips };
+  return { acessos, exportacoes, entradas, ips };
 }
 
 /**

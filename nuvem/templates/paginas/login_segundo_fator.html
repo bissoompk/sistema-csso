@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{# O segundo passo da entrada de quem ligou o aplicativo autenticador (01/11/2026).
+   Mesmo desenho do /login; o desafio entre a senha e este código vai num cookie
+   assinado de 5 minutos, e não há campo escondido com a identidade da conta. #}
+{% set sem_casca = true %}
+{% block titulo %}Código de segurança · SISA{% endblock %}
+{% block classe_conteudo %}tela-auxiliar tela-acesso{% endblock %}
+{% block conteudo %}
+<div class="acesso">
+  {% include "partes/acesso_marca.html" %}
+  <div class="acesso-corpo">
+    <h1>Código de segurança</h1>
+    <p class="sub">Digite o código de 6 dígitos do aplicativo autenticador. Sem o celular,
+      use um dos códigos de recuperação que você guardou (formato <span class="mono">abcde-fghij</span>).</p>
+    <form method="post" action="/login/segundo-fator">
+      <div class="campo">
+        <label for="codigo">Código</label>
+        <input id="codigo" name="codigo" autocomplete="one-time-code" inputmode="text"
+               autocapitalize="none" autocorrect="off" spellcheck="false" autofocus required
+               aria-describedby="dica-codigo">
+        <span class="dica" id="dica-codigo">Errar o código várias vezes seguidas bloqueia a conta por alguns minutos.</span>
+      </div>
+      <div class="acoes"><button type="submit" class="largo">Confirmar</button></div>
+    </form>
+    <p class="acesso-nota"><a href="/login">Voltar e entrar de novo</a></p>
+  </div>
+</div>
+{% endblock %}

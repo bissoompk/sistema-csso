@@ -11,7 +11,7 @@ import { desc, eq } from "drizzle-orm";
 import * as e from "../src/db/esquema/index.js";
 import * as textos from "../src/servicos/textos.js";
 import { ArmazenamentoLocal } from "../src/servicos/armazenamento.js";
-import { expurgar_exportacoes, momento_da_exportacao } from "../src/servicos/privacidade.js";
+import { chave_de_entrada, expurgar_entradas, expurgar_exportacoes, momento_da_exportacao } from "../src/servicos/privacidade.js";
 import { expurgar_registro_acesso } from "../src/servicos/registro_acesso.js";
 import { SENHA_TESTE, bancoLimpo, contas, entrar, naTransacao, type AmbienteDeTeste } from "./ajuda";
 
@@ -188,6 +188,26 @@ describe("a cópia da exportação completa (zip em claro) não fica no armazena
       ]);
       const ficaram = (await arm.listar("exportacoes")).map((i) => i.nome).sort();
       expect(ficaram).toEqual(["csso-export-20260924-230000.zip", "outra-coisa.zip", "sisa-export-20260925-090000.zip"]);
+    } finally {
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a cópia da planilha importada (CPF e nome em claro) tem prazo", () => {
+  it("apaga a de mais de 7 dias e a de antes da regra (sem carimbo), e guarda a recente", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "csso-ent-"));
+    try {
+      const arm = new ArmazenamentoLocal(raiz);
+      const bytes = new Uint8Array([1, 2, 3]);
+      const agora = new Date(Date.UTC(2026, 10, 1, 12, 0, 0));
+      expect(chave_de_entrada("planilha.xlsx", agora)).toBe("entrada/20261101-120000-planilha.xlsx");
+      await arm.gravar("entrada/20261020-100000-velha.xlsx", bytes);
+      await arm.gravar("entrada/20261030-100000-recente.xlsx", bytes);
+      await arm.gravar("entrada/sem-carimbo.xlsx", bytes);
+      const apagadas = await expurgar_entradas(arm, agora);
+      expect([...apagadas].sort()).toEqual(["entrada/20261020-100000-velha.xlsx", "entrada/sem-carimbo.xlsx"]);
+      expect((await arm.listar("entrada")).map((i) => i.nome)).toEqual(["20261030-100000-recente.xlsx"]);
     } finally {
       await rm(raiz, { recursive: true, force: true });
     }

@@ -58,7 +58,7 @@ describe("senha antiga, curta, vira troca obrigatória no login", () => {
 
     // a troca pede a política nova
     const fraca = await cliente.post("/trocar-senha", { senha_atual: "cs26x", nova: "out1x", confirmacao: "out1x" });
-    expect(fraca.text).toContain("mínimo de 6 caracteres");
+    expect(fraca.text).toContain("mínimo de 8 caracteres");
     const ok = await cliente.post(
       "/trocar-senha",
       { senha_atual: "cs26x", nova: SENHA_TESTE, confirmacao: SENHA_TESTE },

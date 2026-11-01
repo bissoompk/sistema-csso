@@ -24,19 +24,20 @@ await contas(db);
 // =====================================================================
 describe("política de senha", () => {
   it("mínimo é seis, com cinco caracteres diferentes", () => {
-    expect(autenticacao.TAMANHO_MINIMO_SENHA).toBe(6);
+    expect(autenticacao.TAMANHO_MINIMO_SENHA).toBe(8);
     expect(autenticacao.MINIMO_CARACTERES_DISTINTOS).toBe(5);
   });
 
   // sem regra de composição: frase só de letras passa (NIST SP 800-63B)
-  it.each(["sisa26", "csso-sisa-26", "Fabricio2026", "laboratorio quimico", "a1b2c3d4e5", "ação-segura"])("aceita %s", (senha) => {
+  it.each(["sisa-2026", "csso-sisa-26", "Fabricio2026", "laboratorio quimico", "a1b2c3d4e5", "ação-segura"])("aceita %s", (senha) => {
     expect(autenticacao.politica_de_senha(senha)).toEqual([]);
   });
 
   it.each([
-    ["a1b2", "mínimo de 6 caracteres"],
-    ["", "mínimo de 6 caracteres"],
-    ["cs26x", "mínimo de 6 caracteres"],
+    ["a1b2", "mínimo de 8 caracteres"],
+    ["", "mínimo de 8 caracteres"],
+    ["cs26x", "mínimo de 8 caracteres"],
+    ["cs26xyz", "mínimo de 8 caracteres"],
     ["aaaaaaaaaaaa", "use pelo menos 5 caracteres diferentes"],
     ["1212121212", "use pelo menos 5 caracteres diferentes"],
     ["1234567890", "senha trivial"],
@@ -49,7 +50,7 @@ describe("política de senha", () => {
 
   it("conta por code point, não por unidade UTF-16", () => {
     // 5 emojis são 10 unidades UTF-16 e 5 caracteres
-    expect(autenticacao.politica_de_senha("😀😁😂🤣😃")).toContain("mínimo de 6 caracteres");
+    expect(autenticacao.politica_de_senha("😀😁😂🤣😃")).toContain("mínimo de 8 caracteres");
   });
 
   it("a lista de triviais está em minúsculas (a comparação é em minúsculas)", () => {
@@ -110,7 +111,7 @@ describe("política de senha", () => {
     const cliente = novoCliente();
     await entrar(cliente, "coordenador_csso");
     const troca = await cliente.get("/trocar-senha");
-    expect(troca.text).toContain('"minimo":6');
+    expect(troca.text).toContain('"minimo":8');
     expect(troca.text).toContain('"distintos":5');
     expect(troca.text).toContain('"senha123456"');
   });

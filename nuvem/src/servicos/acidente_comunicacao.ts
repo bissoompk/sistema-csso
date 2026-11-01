@@ -20,7 +20,7 @@
  * e óbito) vai na CAT/SP em chave SEPARADA (`saude_declarada`), com a origem
  * DECLARADO_COMUNICANTE — quem a lê e a confirma é a fatia de saúde (F3).
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -50,6 +50,7 @@ import {
 } from "../dominio/acidente.js";
 import { hoje_iso } from "../dominio/datas.js";
 import { RegraViolada } from "../nucleo/erros.js";
+import { global } from "../web.js";
 import * as acidente_email from "./acidente_email.js";
 import * as acidente_saude from "./acidente_saude.js";
 import * as auditoria from "./auditoria.js";
@@ -153,7 +154,13 @@ export interface DadosComunicacao {
   declarou_veracidade: boolean;
   /** só no formulário por link (F2), quando não há conta: quem comunica se identifica */
   comunicante?: { nome: string; email: string; vinculo: string } | null;
+  /** o número do envio do formulário (campo oculto): o mesmo envio repetido não cria outra CAT */
+  token_envio?: string | null;
 }
+
+/** O número de envio que o formulário carrega, gerado ao abri-lo (`{{ token_de_envio() }}`). */
+global("token_de_envio", () => randomUUID());
+const PADRAO_TOKEN = /^[A-Za-z0-9-]{16,40}$/;
 
 // ---------------------------------------------------------------------
 // Conferências
@@ -615,6 +622,23 @@ export async function comunicar(
   const campus_id = fatos.campus_id ?? principal?.campus_snapshot ?? null;
   const restrita_sst = envolvidos.some((e) => e.menor_de_idade);
 
+  // Reenvio do mesmo formulário (clique duplo, "voltar" e enviar de novo): o
+  // número do envio já gravou uma ocorrência — não cria outra (nem outra CAT).
+  const token_envio = bruto.token_envio && PADRAO_TOKEN.test(bruto.token_envio) ? bruto.token_envio : null;
+  if (token_envio) {
+    const [ja] = await tx
+      .select({ protocolo: acidente_ocorrencia.protocolo })
+      .from(acidente_ocorrencia)
+      .where(eq(acidente_ocorrencia.token_envio, token_envio))
+      .limit(1);
+    if (ja) {
+      throw new ComunicacaoRecusada(
+        `Esta comunicação já foi recebida (protocolo ${ja.protocolo}): o formulário foi enviado duas vezes, e vale o primeiro envio. Nada novo foi gravado.`,
+        null,
+      );
+    }
+  }
+
   const hoje = hoje_iso();
   const ano = Number(hoje.slice(0, 4));
   const numero = await proximo_numero_cat_sp(tx, ano);
@@ -649,6 +673,7 @@ export async function comunicar(
       prazo_comunicacao: prazo_de_comunicacao(fatos.data_evento),
       restrita_sst,
       criado_por: usuario ? usuario.id : null,
+      token_envio,
     })
     .returning();
   const oc = ocorrencia!;

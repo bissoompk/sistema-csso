@@ -47,6 +47,12 @@ export interface Config {
    */
   ocorrenciaEmailLigado: boolean;
   ocorrenciaEmailSetor: string;
+  /**
+   * Quem recebe o aviso diário de saúde do sistema (backup que falhou, cadeia da
+   * trilha rompida, e-mail parado): `CSSO_ALERTA_EMAIL`. Vazio: nada é enviado e
+   * os alertas só aparecem em `/saude/db`.
+   */
+  alertaEmail: string;
   supabaseUrl: string;
   supabaseChaveServico: string;
   bucketArquivos: string;
@@ -200,6 +206,7 @@ export function obterConfig(): Config {
     acidenteEmailSetor: (env.CSSO_ACIDENTE_EMAIL_SETOR ?? "").trim(),
     ocorrenciaEmailLigado: (env.CSSO_OCORRENCIA_EMAIL ?? "").trim().toLowerCase() === "sim",
     ocorrenciaEmailSetor: (env.CSSO_OCORRENCIA_EMAIL_SETOR ?? "").trim(),
+    alertaEmail: (env.CSSO_ALERTA_EMAIL ?? "").trim(),
     supabaseUrl: env.SUPABASE_URL ?? "",
     supabaseChaveServico: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
     bucketArquivos: env.CSSO_BUCKET ?? "csso",

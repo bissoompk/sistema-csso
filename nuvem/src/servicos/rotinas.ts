@@ -250,7 +250,7 @@ export async function rotinas_noturnas(db: Banco): Promise<ResumoRotinas> {
     }),
     (r) => [
       true,
-      `${r.acessos} linha(s) de registro de acesso e ${r.exportacoes} exportação(ões) apagada(s); ` +
+      `${r.acessos} linha(s) de registro de acesso, ${r.exportacoes} exportação(ões) e ${r.entradas} cópia(s) de arquivo importado apagada(s); ` +
         `IP de ${r.ips} pedido(s) pelo link limpo(s); texto de ${r.corpos} e-mail(s), ${r.links} link(s) de acesso ` +
         `${r.pedidos} pedido(s) de conta apagado(s); aviso de interesse da vitrine: ` +
         `${r.avisos.nao_confirmados} sem confirmar, ${r.avisos.expirados} expirado(s), ${r.avisos.cancelados} cancelado(s), ${r.avisos.ips} IP(s) limpo(s); ` +

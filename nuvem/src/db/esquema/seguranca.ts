@@ -1,4 +1,37 @@
 /**
+ * O segundo fator (TOTP, aplicativo autenticador) — OPCIONAL, de cada pessoa
+ * (01/11/2026). Em tabela à parte, e não em colunas de `usuario`, para o segredo
+ * nunca vir junto em consulta nenhuma que lê a conta. O segredo fica CIFRADO
+ * (AES-GCM, chave derivada de `CSSO_CHAVE_SECRETA`); `ativo_em` nulo é o
+ * cadastro ainda não confirmado com um código. `ultimo_passo` impede o mesmo
+ * código de valer duas vezes.
+ */
+export const usuario_segundo_fator = pgTable('usuario_segundo_fator', {
+  usuario_id: integer('usuario_id')
+    .primaryKey()
+    .references((): AnyPgColumn => usuario.id, { onDelete: 'cascade' }),
+  segredo_cifrado: text('segredo_cifrado').notNull(),
+  ativo_em: MomentoUTC('ativo_em'),
+  ultimo_passo: integer('ultimo_passo'),
+  criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+});
+
+/** Os códigos de recuperação do segundo fator: só o HMAC, usados uma vez. */
+export const usuario_codigo_recuperacao = pgTable(
+  'usuario_codigo_recuperacao',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    usuario_id: integer('usuario_id')
+      .notNull()
+      .references((): AnyPgColumn => usuario.id, { onDelete: 'cascade' }),
+    codigo_hash: varchar('codigo_hash', { length: 64 }).notNull(),
+    usado_em: MomentoUTC('usado_em'),
+    criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [unique('uq_codigo_recuperacao').on(t.usuario_id, t.codigo_hash)],
+);
+
+/**
  * Usuarios, perfis, permissoes, atribuicoes, sessoes e habilitacao tecnica.
  * Porte de `app/modelos/seguranca.py`.
  */

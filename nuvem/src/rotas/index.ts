@@ -50,6 +50,7 @@ import { rotas as epi_indicadores } from "./epi_indicadores.js";
 import { rotas as demandas } from "./demandas.js";
 import { rotas as usuarios } from "./usuarios.js";
 import { rotas as minha_conta } from "./minha_conta.js";
+import { rotas as segundo_fator } from "./segundo_fator.js";
 import { rotas as relatorios } from "./relatorios.js";
 import { rotas as auditoria } from "./auditoria.js";
 import { rotas as configuracao } from "./configuracao.js";
@@ -105,6 +106,7 @@ export const ROTAS: Hono<Ambiente>[] = [
   demandas,
   usuarios,
   minha_conta,
+  segundo_fator,
   relatorios,
   auditoria,
   configuracao,

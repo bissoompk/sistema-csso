@@ -63,7 +63,14 @@ Se a conta tiver senha provisória, o sistema pede a troca antes de qualquer out
 
 A senha nova vale na hora e as outras sessões abertas da conta (outro navegador ou aparelho) são encerradas; a atual continua aberta. Errar a senha atual conta como tentativa de entrada.
 
-Regras da senha: no mínimo 6 caracteres, com pelo menos 5 caracteres diferentes entre si, e não pode ser uma senha comum (como sequências óbvias).
+Regras da senha: no mínimo 8 caracteres, com pelo menos 5 caracteres diferentes entre si, e não pode ser uma senha comum (como sequências óbvias).
+
+**Segundo fator de entrada (opcional)**: em Minha conta, na seção Segurança, o botão **Segundo fator de entrada** liga um código de 6 dígitos, gerado por um aplicativo autenticador no celular (Google Authenticator, Microsoft Authenticator, Aegis, FreeOTP), que passa a ser pedido depois da senha.
+1. Clique em **Ligar o segundo fator** e escaneie o código QR no aplicativo (ou digite a chave que aparece ao lado).
+2. Digite o código de 6 dígitos que o aplicativo mostra e clique em **Ligar o segundo fator**.
+3. Anote os **8 códigos de recuperação** que aparecem uma única vez e guarde-os longe do celular. Cada um vale uma vez, no lugar do código do aplicativo, se você perder o celular.
+
+Na entrada, depois da senha, o sistema pede o código. Errar o código várias vezes seguidas bloqueia a conta por alguns minutos, como acontece com a senha. Para desligar, volte à mesma tela e confirme a senha atual. Se perdeu o celular e os códigos de recuperação, a administração do sistema desliga o segundo fator da sua conta em **Usuários**, e você pode ligar de novo depois.
 
 **Sair**: use o link **sair** do topo. O sistema mostra a tela "Sair do sistema" e só encerra a sessão quando você clica em **Sair** (ou volta com **Continuar no sistema**).
 

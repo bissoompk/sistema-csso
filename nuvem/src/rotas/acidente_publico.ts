@@ -138,6 +138,7 @@ rotas.post(`${servico.CAMINHO}/:token`, async (c) => {
       sou_chefia: false,
       declarou_veracidade: f.texto("declaracao") === "1",
       comunicante: { nome: f.texto("com_nome"), email: f.texto("com_email"), vinculo: f.texto("com_vinculo") },
+      token_envio: f.texto("envio"),
     };
     try {
       const oc = await tx.transaction((sp) => servico.comunicar(sp, link, dados, ip));

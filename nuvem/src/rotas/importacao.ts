@@ -18,6 +18,7 @@ import { formulario, usuarioCom } from "../dependencias.js";
 import { marcarDownload, pagina } from "../web.js";
 import { migracao_rejeitada, stg_trello_cartao } from "../db/esquema/index.js";
 import { obterArmazenamento } from "../servicos/armazenamento.js";
+import { chave_de_entrada } from "../servicos/privacidade.js";
 import { ArquivoZipRecusado } from "../servicos/arquivo_zip.js";
 import * as importacao_planilha from "../servicos/importacao_planilha.js";
 import * as importacao_trello from "../servicos/importacao_trello.js";
@@ -110,7 +111,7 @@ async function _receber(c: Ctx, padrao: string) {
   if (arquivo === null) return null;
   const nome = (arquivo.name || padrao).replace(/[/\\\x00-\x1f]/g, "_") || padrao;
   const conteudo = new Uint8Array(await arquivo.arrayBuffer());
-  await obterArmazenamento().gravar(`entrada/${nome}`, conteudo, arquivo.type || "application/octet-stream");
+  await obterArmazenamento().gravar(chave_de_entrada(nome), conteudo, arquivo.type || "application/octet-stream");
   return { f, nome, conteudo };
 }
 
