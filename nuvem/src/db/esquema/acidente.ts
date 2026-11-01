@@ -284,9 +284,13 @@ export const acidente_ocorrencia = pgTable(
     criado_em: MomentoUTC('criado_em').notNull().$defaultFn(agora_utc),
     // controle otimista de quem muda o trâmite
     versao: integer('versao').notNull().default(1),
+    // o "número do envio" do formulário (campo oculto gerado ao abri-lo): o reenvio
+    // — clique duplo, "voltar" e enviar de novo — traz o mesmo e não vira outra CAT
+    token_envio: varchar('token_envio', { length: 40 }),
   },
   (t) => [
     primaryKey({ name: 'pk_acidente_ocorrencia', columns: [t.id] }),
+    unique('uq_acid_oc_token_envio').on(t.token_envio),
     foreignKey({ name: 'fk_acid_oc_reabre', columns: [t.reabre_id], foreignColumns: [t.id] }),
     foreignKey({ name: 'fk_acid_oc_campus', columns: [t.campus_id], foreignColumns: [campus.id] }),
     foreignKey({ name: 'fk_acid_oc_unidade', columns: [t.local_unidade_uorg_id], foreignColumns: [unidade_uorg.id] }),

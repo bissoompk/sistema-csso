@@ -9,7 +9,7 @@
  * banco migrado do Python continua aceitando as senhas de antes, e a
  * verificação lê os parâmetros do próprio hash, como o `verify` do argon2-cffi.
  */
-import { createHmac, randomBytes, randomInt } from "node:crypto";
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { argon2id, argon2Verify } from "hash-wasm";
 import { and, eq, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
@@ -19,6 +19,7 @@ import { obterConfig } from "../config.js";
 import { hoje_iso } from "../dominio/datas.js";
 import * as auditoria from "./auditoria.js";
 import { CONTA_BLOQUEADA, SENHA_TROCADA } from "./auditoria.js";
+import * as segundo_fator from "./segundo_fator.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { local_formatado } from "./datas_br.js";
 import { global } from "../web.js";
@@ -56,6 +57,41 @@ export class FalhaDeAutenticacao extends Error {
   constructor(mensagem: string = ERRO_GENERICO) {
     super(mensagem);
   }
+}
+
+/**
+ * A senha confere e a conta tem segundo fator: a entrada só termina com o código
+ * (`concluir_com_segundo_fator`). Ainda não há sessão; as tentativas falhas
+ * NÃO zeraram (só o segundo passo as zera), para quem sabe a senha não ganhar
+ * chutes de código sem limite.
+ */
+export class SegundoFatorNecessario extends Error {
+  constructor(
+    public usuario_id: number,
+    public precisa_trocar_senha: boolean,
+  ) {
+    super("segundo fator necessário");
+  }
+}
+
+export const COOKIE_DESAFIO = "csso_2fa";
+export const DESAFIO_MINUTOS = 5;
+
+/** O desafio entre a senha e o código: `id.expira.trocar.hmac`, sem estado no servidor. */
+export function assinar_desafio(usuario_id: number, precisa_trocar_senha: boolean, agora: Date = agora_utc()): string {
+  const corpo = `${usuario_id}.${agora.getTime() + DESAFIO_MINUTOS * 60_000}.${precisa_trocar_senha ? 1 : 0}`;
+  const mac = createHmac("sha256", obterConfig().chaveSecreta).update(`desafio:${corpo}`).digest("hex");
+  return `${corpo}.${mac}`;
+}
+
+export function ler_desafio(valor: string | undefined, agora: Date = agora_utc()): { usuario_id: number; precisa_trocar_senha: boolean } | null {
+  const m = /^(\d{1,10})\.(\d{10,16})\.([01])\.([0-9a-f]{64})$/.exec(valor ?? "");
+  if (!m) return null;
+  const corpo = `${m[1]}.${m[2]}.${m[3]}`;
+  const esperado = createHmac("sha256", obterConfig().chaveSecreta).update(`desafio:${corpo}`).digest("hex");
+  if (!timingSafeEqual(Buffer.from(esperado), Buffer.from(m[4]!))) return null;
+  if (Number(m[2]) < agora.getTime()) return null;
+  return { usuario_id: Number(m[1]), precisa_trocar_senha: m[3] === "1" };
 }
 
 /** Erro de política (o `ValueError` do Python). */
@@ -105,10 +141,13 @@ export function _hash_token(token: string): string {
  * regra de composição, e recusar as senhas que todo mundo tenta primeiro.
  *
  * Voltou a 6 a pedido do setor (22/10/2026): dez caracteres era a queixa de
- * quem usa. O que segura a senha curta passa a ser o resto da política — a
- * lista de triviais, os caracteres distintos — e o bloqueio por tentativas.
+ * quem usa. Na revisão para dados reais (01/11/2026) subiu a 8 para todos: o
+ * sistema passa a guardar CPF, SIAPE e dado de saúde, e 6 caracteres dependem
+ * só do bloqueio por tentativas. Oito é o meio-termo escolhido pelo setor entre
+ * as seis da queixa e as dez da primeira revisão. Quem tem senha antiga curta
+ * troca no próximo login (`autenticar` confere a política a cada entrada).
  */
-export const TAMANHO_MINIMO_SENHA = 6;
+export const TAMANHO_MINIMO_SENHA = 8;
 /** Caracteres diferentes exigidos: `aaaaaa` e `121212` têm seis, e nada de senha. */
 export const MINIMO_CARACTERES_DISTINTOS = 5;
 
@@ -360,6 +399,8 @@ export async function autenticar(
   // caracteres da política anterior) vira troca obrigatória: o único momento
   // em que o sistema conhece a senha em claro é este, e ela não é guardada.
   const precisa_trocar_senha = conta.precisa_trocar_senha || politica_de_senha(senha).length > 0;
+  // Segundo fator ligado: a senha sozinha não abre sessão
+  if (await segundo_fator.ativo(tx, conta.id)) throw new SegundoFatorNecessario(conta.id, precisa_trocar_senha);
   // A conta e a sessão gravam na mesma ida; os expurgos saíram do caminho da
   // entrada (a rotina noturna já os faz).
   const [, token] = await Promise.all([
@@ -374,6 +415,57 @@ export async function autenticar(
   conta.ultimo_login_em = agora;
   conta.precisa_trocar_senha = precisa_trocar_senha;
 
+  return [conta, token];
+}
+
+/**
+ * O segundo passo da entrada: o código do aplicativo (ou de recuperação). Errar
+ * conta no MESMO contador da senha (cinco seguidas bloqueiam a conta) e no teto
+ * por endereço. Certo, zera o contador e abre a sessão.
+ */
+export async function concluir_com_segundo_fator(
+  tx: Executor,
+  usuario_id: number,
+  precisa_trocar_senha: boolean,
+  entrada: string,
+  ip: string | null = null,
+  user_agent: string | null = null,
+): Promise<[Usuario, string]> {
+  const agora = agora_utc();
+  const [ip_ate, [conta]] = await Promise.all([
+    ip_bloqueado_ate(tx, ip, agora),
+    tx.select().from(usuario).where(eq(usuario.id, usuario_id)).for("update"),
+  ]);
+  if (ip_ate) {
+    throw new FalhaDeAutenticacao(
+      `Muitas tentativas de entrada a partir deste endereço. Tente de novo depois de ${local_formatado(ip_ate)}.`,
+    );
+  }
+  if (!conta || !conta.ativo) throw new FalhaDeAutenticacao();
+  if (conta.bloqueado_ate && conta.bloqueado_ate > agora) {
+    await registrar_falha_ip(tx, ip, agora);
+    throw new FalhaDeAutenticacao(_mensagem_de_bloqueio(conta.bloqueado_ate));
+  }
+  if (!(await segundo_fator.conferir_na_entrada(tx, conta, entrada, new Date()))) {
+    const { tentativas, bloqueado_ate } = _proxima_falha(conta, agora);
+    await tx.update(usuario).set({ tentativas_falhas: tentativas, bloqueado_ate }).where(eq(usuario.id, conta.id));
+    await registrar_falha_ip(tx, ip, agora);
+    if (bloqueado_ate && bloqueado_ate !== conta.bloqueado_ate) {
+      await _registrar_bloqueio(tx, conta, bloqueado_ate, "no segundo fator", { ip, user_agent });
+    }
+    throw new FalhaDeAutenticacao("Código inválido ou vencido. Confira o aplicativo (ou use um código de recuperação).");
+  }
+  const [, token] = await Promise.all([
+    tx
+      .update(usuario)
+      .set({ tentativas_falhas: 0, bloqueado_ate: null, ultimo_login_em: agora, precisa_trocar_senha: conta.precisa_trocar_senha || precisa_trocar_senha })
+      .where(eq(usuario.id, conta.id)),
+    abrir_sessao(tx, conta.id, ip, user_agent, agora),
+  ]);
+  conta.tentativas_falhas = 0;
+  conta.bloqueado_ate = null;
+  conta.ultimo_login_em = agora;
+  conta.precisa_trocar_senha = conta.precisa_trocar_senha || precisa_trocar_senha;
   return [conta, token];
 }
 

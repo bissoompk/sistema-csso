@@ -376,6 +376,22 @@ planeje o Pro antes.
 - **`/saude/db`** (JSON; superintendente, admin_ti ou auditor): `rotinas` (a
   última passada de cada uma) e `alertas` — vazio é o esperado. Alerta: sem
   backup, backup falho/parcial, backup com mais de 36 h, cadeia rompida.
+- **Aviso diário por e-mail** (função `alerta-saude`, 07h de Brasília): defina
+  `CSSO_ALERTA_EMAIL` no Netlify com uma caixa que alguém lê (não a mesma que
+  envia os e-mails do sistema, para o aviso não depender do que está falhando).
+  Havendo alerta — backup que falhou ou envelheceu, cadeia da trilha rompida,
+  rotina noturna parada há mais de 36 h, e-mail com falha ou parado há mais de
+  6 h — chega UM e-mail por dia, sem dado pessoal, até resolver. Sem a variável,
+  nada é enviado e o alerta só aparece em `/saude/db`. Se o próprio envio de
+  e-mail parar, o aviso também não sai: some um **monitor externo gratuito**
+  (por exemplo UptimeRobot, em `/saude` — é público e só diz que o sistema está
+  de pé) que avisa quando o endereço deixar de responder.
+- **Segundo fator (TOTP, opcional)**: o segredo de cada pessoa fica cifrado com uma
+  chave derivada de `CSSO_CHAVE_SECRETA`. Trocar essa chave (por exemplo, depois de um
+  incidente) derruba as sessões **e inutiliza os segredos**: quem tinha o segundo fator
+  entra por ele sem conseguir confirmar o código até a administração desligá-lo em
+  `/usuarios` ("Desligar o segundo fator") e a pessoa ligar de novo em Minha conta.
+  Avise as pessoas antes de trocar a chave.
 - **Cadeia rompida é incidente**: não se conserta pela tela. Preserve o banco
   (faça um backup na hora) e investigue.
 - **Netlify > Logs > Functions**: `rotina-noturna` e `backup-background`

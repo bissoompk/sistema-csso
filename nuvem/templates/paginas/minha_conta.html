@@ -213,7 +213,9 @@
     <div class="perfil-secao-corpo">
       <p>A senha nova vale na hora. As outras sessões abertas desta conta são
         encerradas; esta continua aberta.</p>
-      <p class="acoes"><a class="botao secundario" href="/trocar-senha">Trocar senha</a></p>
+      <p class="acoes"><a class="botao secundario" href="/trocar-senha">Trocar senha</a>
+        <a class="botao secundario" href="/minha-conta/segundo-fator">Segundo fator de entrada</a></p>
+      <p class="perfil-nota">O segundo fator é opcional: um código do aplicativo autenticador depois da senha.</p>
       <p class="perfil-nota">{% if inatividade_minutos > 0 %}Por segurança, a sessão parada é
         encerrada sozinha depois de {{ inatividade_minutos }} minutos sem uso, com um aviso
         pouco antes. {% endif %}Se você usa um computador compartilhado, saia ao terminar.</p>

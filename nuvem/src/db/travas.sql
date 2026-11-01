@@ -507,6 +507,7 @@ BEGIN
      OR NEW.origem IS DISTINCT FROM OLD.origem
      OR NEW.criado_por IS DISTINCT FROM OLD.criado_por
      OR NEW.criado_em IS DISTINCT FROM OLD.criado_em
+     OR NEW.token_envio IS DISTINCT FROM OLD.token_envio
   THEN
     RAISE EXCEPTION 'acidente_ocorrencia: protocolo, tipo, origem e autor nao mudam depois de gravados'
       USING ERRCODE = 'integrity_constraint_violation';

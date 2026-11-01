@@ -316,6 +316,20 @@
       "when": 1793367716977,
       "tag": "0044_turma_tipo_capacitacao",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793530591772,
+      "tag": "0045_acidente_token_envio",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793530953962,
+      "tag": "0046_segundo_fator",
+      "breakpoints": true
     }
   ]
 }

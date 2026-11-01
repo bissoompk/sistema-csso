@@ -115,6 +115,7 @@
           Li o aviso de privacidade.</label>
       </div>
       <div class="campo">
+        <input type="hidden" name="envio" value="{{ token_de_envio() }}">
         <label><input type="checkbox" name="declaracao" value="1" required{{ ' checked' if d['declaracao'] == '1' }}>
           Declaro que as informações são verdadeiras.</label>
       </div>

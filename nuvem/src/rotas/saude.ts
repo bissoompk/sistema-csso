@@ -16,10 +16,10 @@ import { usuarioLogado } from "../dependencias.js";
 import { PermissaoNegada } from "../servicos/rbac.js";
 import { parecer_tecnico, processo } from "../db/esquema/index.js";
 import { lerMarca } from "../servicos/instalacao.js";
-import { ROTINA_BACKUP, ultimas_execucoes } from "../servicos/rotinas.js";
+import { alertas_de_saude, BACKUP_ATRASADO_HORAS } from "../servicos/alertas_saude.js";
+import { ultimas_execucoes } from "../servicos/rotinas.js";
 
-/** Backup mais velho que isto é alerta: a rotina é diária, com folga de meio dia. */
-export const BACKUP_ATRASADO_HORAS = 36;
+export { BACKUP_ATRASADO_HORAS };
 
 export const rotas = new Hono<Ambiente>();
 
@@ -61,14 +61,7 @@ rotas.get("/saude/db", async (c) => {
   // janela nem log de máquina para olhar — a última passada de cada uma fica
   // aqui, e o backup atrasado ou falho vira alerta (ver PRODUCAO.md).
   const rotinas = await ultimas_execucoes(tx);
-  const alertas: string[] = [];
-  const ultimoBackup = rotinas.find((r) => r.rotina === ROTINA_BACKUP);
-  if (!ultimoBackup) alertas.push("nenhum backup registrado");
-  else if (!ultimoBackup.ok) alertas.push("o último backup FALHOU");
-  else if (Date.now() - new Date(ultimoBackup.concluida_em).getTime() > BACKUP_ATRASADO_HORAS * 3_600_000) {
-    alertas.push(`o último backup tem mais de ${BACKUP_ATRASADO_HORAS} horas`);
-  }
-  for (const r of rotinas) if (!r.ok && r.rotina !== ROTINA_BACKUP) alertas.push(`a última passada de ${r.rotina} falhou`);
+  const alertas = await alertas_de_saude(tx);
   const marca = await lerMarca(tx);
   return c.json({
     status: ok ? "ok" : "falha",

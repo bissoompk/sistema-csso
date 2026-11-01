@@ -61,10 +61,10 @@ describe("primeiro acesso", () => {
     expect(r.text).toContain('value="x@y.z"');
   });
 
-  it("senha de seis caracteres ou mais é aceita; a de cinco, não", async () => {
+  it("senha de oito caracteres ou mais é aceita; a de sete, não", async () => {
     const { cliente } = await bancoLimpo();
-    const curta = await cliente.post("/primeiro-acesso", { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "cs26x" });
-    expect(curta.text).toContain("mínimo de 6 caracteres");
+    const curta = await cliente.post("/primeiro-acesso", { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "cs26xyz" });
+    expect(curta.text).toContain("mínimo de 8 caracteres");
     const r = await cliente.post(
       "/primeiro-acesso",
       { nome: "Chefe", login: "chefe", email: "c@ufvjm.edu.br", senha: "csso-sisa-26" },

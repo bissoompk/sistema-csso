@@ -116,6 +116,7 @@ export const OCORRENCIA_IDENTIDADE = [
   'origem',
   'criado_por',
   'criado_em',
+  'token_envio',
 ] as const;
 
 export const OCORRENCIA_FATOS = [

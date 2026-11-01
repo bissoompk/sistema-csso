@@ -616,6 +616,7 @@ rotas.post(COMUNICAR, async (c) => {
     testemunhas: _ler_testemunhas(f),
     sou_chefia: f.texto("sou_chefia") === "1",
     declarou_veracidade: f.texto("declaracao") === "1",
+    token_envio: f.texto("envio"),
   };
   let ocorrencia: comunicacao.Ocorrencia;
   try {

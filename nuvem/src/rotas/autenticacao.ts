@@ -124,6 +124,17 @@ rotas.post("/login", async (c) => {
       c.req.header("user-agent") ?? null,
     );
   } catch (erro) {
+    if (erro instanceof autenticacao.SegundoFatorNecessario) {
+      // a senha conferiu, a conta tem aplicativo autenticador: falta o código
+      setCookie(c, autenticacao.COOKIE_DESAFIO, autenticacao.assinar_desafio(erro.usuario_id, erro.precisa_trocar_senha), {
+        httpOnly: true,
+        sameSite: "Lax",
+        path: "/login",
+        maxAge: autenticacao.DESAFIO_MINUTOS * 60,
+        secure: cookieSeguro(c.req.url),
+      });
+      return redirecionar(c, "/login/segundo-fator");
+    }
     if (!(erro instanceof autenticacao.FalhaDeAutenticacao)) throw erro;
     // O identificador volta; a senha, nunca (iria em claro para o HTML, para o
     // cache do navegador e para o histórico da tela).
@@ -151,6 +162,46 @@ rotas.post("/login", async (c) => {
     secure: cookieSeguro(c.req.url),
   });
   return redirecionar(c, destino);
+});
+
+rotas.get("/login/segundo-fator", async (c) => {
+  if (!autenticacao.ler_desafio(getCookie(c, autenticacao.COOKIE_DESAFIO))) return redirecionar(c, "/login");
+  return pagina(c, "paginas/login_segundo_fator.html", null, {});
+});
+
+rotas.post("/login/segundo-fator", async (c) => {
+  const cfg = obterConfig();
+  const desafio = autenticacao.ler_desafio(getCookie(c, autenticacao.COOKIE_DESAFIO));
+  if (!desafio) return redirecionar(c, "/login");
+  const f = await formulario(c);
+  exigidos(f, "codigo");
+  let conta: autenticacao.Usuario;
+  let token: string;
+  try {
+    [conta, token] = await autenticacao.concluir_com_segundo_fator(
+      c.get("tx"),
+      desafio.usuario_id,
+      desafio.precisa_trocar_senha,
+      f.texto("codigo"),
+      ipDoCliente(c),
+      c.req.header("user-agent") ?? null,
+    );
+  } catch (erro) {
+    if (!(erro instanceof autenticacao.FalhaDeAutenticacao)) throw erro;
+    // a falha fica gravada (retorno normal → COMMIT); o desafio continua valendo
+    // até vencer, e o contador da conta é o que limita as tentativas
+    return pagina(c, "paginas/login_segundo_fator.html", null, { erro: erro.message });
+  }
+  c.set("conta_id", conta.id);
+  deleteCookie(c, autenticacao.COOKIE_DESAFIO, { path: "/login" });
+  setCookie(c, autenticacao.COOKIE_SESSAO, token, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: cfg.sessaoHoras * 3600,
+    secure: cookieSeguro(c.req.url),
+  });
+  return redirecionar(c, conta.precisa_trocar_senha ? "/trocar-senha" : INICIO);
 });
 
 /**

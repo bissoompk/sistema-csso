@@ -43,6 +43,19 @@ describe("comunicar", () => {
     expect(b.numero).toBe(a.numero + 1);
   });
 
+  it("o mesmo envio do formulário (mesmo número de envio) não cria outra ocorrência nem outra CAT", async () => {
+    const { usuario } = await titular(db);
+    const envio = { ...dados(), token_envio: "envio-de-teste-0001-abcdef" };
+    const a = await db.transaction((tx) => comunicacao.comunicar(tx, usuario, envio));
+    await expect(db.transaction((tx) => comunicacao.comunicar(tx, usuario, envio))).rejects.toThrow(
+      new RegExp(`já foi recebida \\(protocolo ${a.protocolo}\\)`),
+    );
+    expect((await db.select().from(e.acidente_ocorrencia)).length).toBe(1);
+    // outro envio (outro número) segue a sequência normal
+    const b = await db.transaction((tx) => comunicacao.comunicar(tx, usuario, { ...dados(), token_envio: "envio-de-teste-0002-abcdef" }));
+    expect(b.numero).toBe(a.numero + 1);
+  });
+
   it("vários envolvidos, todos servidores pelo SIAPE; a chefia marca a origem", async () => {
     const { usuario } = await titular(db);
     const colega = await servidorFicticio(db, "7000002");
