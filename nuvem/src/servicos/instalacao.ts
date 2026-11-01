@@ -14,6 +14,7 @@
  */
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
+import { ehProducao } from "../config.js";
 import type { Executor } from "../db/cliente.js";
 import { instalacao } from "../db/esquema/index.js";
 
@@ -26,12 +27,7 @@ export type Marca = typeof instalacao.$inferSelect;
 
 /** `CSSO_AMBIENTE` diz produção? Aceita a grafia com e sem acento, e em inglês. */
 export function ambienteDeProducao(valor: string | undefined = process.env.CSSO_AMBIENTE): boolean {
-  const v = (valor ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-  return v === "producao" || v === "production" || v === "prod";
+  return ehProducao(valor ?? "");
 }
 
 /**

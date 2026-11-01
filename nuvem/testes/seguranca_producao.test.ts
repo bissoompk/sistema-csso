@@ -115,6 +115,10 @@ describe("produção recusa configuração insegura", () => {
   it("reconhece produção com e sem acento", () => {
     expect(ehProducao("producao")).toBe(true);
     expect(ehProducao(" Produção ")).toBe(true);
+    // a mesma regra de `ambienteDeProducao` (instalacao.ts): uma grafia não pode
+    // ligar uma trava e deixar outra desligada
+    expect(ehProducao("production")).toBe(true);
+    expect(ehProducao("PROD")).toBe(true);
     expect(ehProducao("homologacao")).toBe(false);
     expect(ehProducao("teste")).toBe(false);
   });

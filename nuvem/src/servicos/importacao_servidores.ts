@@ -446,12 +446,14 @@ export async function importar(tx: Executor, usuario: UsuarioAtual, linhas: Linh
         if (mudou.length) {
           await sp.update(tabela_servidor).set(depois).where(eq(tabela_servidor.id, existente.id));
           Object.assign(existente, depois);
+          // RN-19: a trilha diz só que o campo mudou, sem o nome nem o e-mail
           await auditoria.registrar_diferencas(sp, {
             entidade: "servidor",
             entidade_id: existente.id,
             antes,
             depois,
             usuario,
+            so_o_campo: true,
           });
           if (depois.email !== undefined) await ativar_acesso.garantir_acesso(sp, existente, { usuario });
         }

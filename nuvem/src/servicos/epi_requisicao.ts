@@ -2038,6 +2038,15 @@ export async function entregar_item(
   } = {},
 ): Promise<epi_ficha.EpiFichaRegistro> {
   usuario.exigir("epi.entregar");
+  // A linha travada e relida: duas entregas do mesmo item, ao mesmo tempo,
+  // liam a mesma quantidade devida e baixavam as duas. A segunda espera a
+  // primeira e enxerga o que ela entregou.
+  const [fresca] = await tx
+    .select()
+    .from(epi_requisicao_item)
+    .where(eq(epi_requisicao_item.id, linha.id))
+    .for("update");
+  if (fresca) Object.assign(linha, fresca);
   const requisicao = await _requisicao_da_linha(tx, linha);
   const item = await _item(tx, linha.epi_item_id);
   const reservado = linha.estado === "RESERVADO";

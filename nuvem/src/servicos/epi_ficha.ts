@@ -917,6 +917,11 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
     throw new EntregaBloqueada([`'${tamanho}' não é um dos tamanhos de '${item.nome}': ${tamanhos.join(", ")}`]);
   }
 
+  // O lote travado até o fim da transação ANTES de conferir o saldo: duas
+  // entregas simultâneas liam o mesmo disponível e o saldo ficava negativo.
+  if (entrada) {
+    await tx.select({ id: epi_entrada_estoque.id }).from(epi_entrada_estoque).where(eq(epi_entrada_estoque.id, entrada.id)).for("update");
+  }
   const validacao = await validar(tx, {
     servidor,
     item,

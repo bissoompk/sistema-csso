@@ -43,8 +43,16 @@ function minificar_casca() {
 
 minificar_casca();
 
+// So o deploy de PRODUCAO mexe no banco. A previa de um PR ou de uma branch
+// (CONTEXT=deploy-preview ou branch-deploy) usa a mesma DATABASE_URL quando ela
+// vale para todos os contextos: migrar e semear dali alteraria o banco real
+// com codigo ainda nao aprovado. Fora do Netlify (CONTEXT ausente) vale o
+// comportamento de sempre, para a publicacao feita a mao.
+const contexto = (process.env.CONTEXT || "").trim();
 if (!process.env.DATABASE_URL) {
   console.warn("[publicacao] DATABASE_URL ausente: banco NAO migrado nesta publicacao.");
+} else if (contexto && contexto !== "production") {
+  console.warn(`[publicacao] contexto '${contexto}': banco NAO migrado (so o deploy de producao migra).`);
 } else {
   rodar("npx", ["tsx", "ferramentas/migrar.ts"]);
   rodar("npx", ["tsx", "ferramentas/semear.ts"]);
