@@ -77,8 +77,8 @@ rotas.post(servico.CAMINHO, async (c) => {
   const f = await formulario(c);
   const digitado = f.texto("email").trim().slice(0, 160);
   if (!email.configurado()) return _tela(c, { digitado });
-  if (!servico.dentro_do_limite(ipDoCliente(c))) return _tela(c, { digitado, excedeu: true, status: 429 });
   const tx = c.get("tx");
+  if (!(await servico.dentro_do_limite(tx, ipDoCliente(c)))) return _tela(c, { digitado, excedeu: true, status: 429 });
   try {
     await servico.pedir_link(tx, digitado, ipDoCliente(c), await emissao.url_base_validacao(tx));
   } catch (erro) {
