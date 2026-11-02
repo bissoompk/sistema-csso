@@ -358,6 +358,7 @@ por e-mail; a nuvem não envia e-mail, e **quem confere cada pedido é a CSSO**.
 |---|---|---|
 | `registro_acesso` | 90 dias (`CSSO_LOG_RETENCAO_DIAS`) | Rotina noturna (`EXPURGO_PRIVACIDADE`) |
 | `limite_login_ip` (IP e contagem de falhas de login, tabela nova da migração 0003) | 1 dia | `autenticacao.expurgar_limites_ip` |
+| `historico_evento`: IP e user-agent de quem agiu | Enquanto a trilha for guardada: ela é imutável por desenho (RN-19, trava `trg_historico_sem_update`) e encadeada por hash, então o IP **não** é expurgado. Aceito como medida de segurança (LGPD art. 46); a trilha não guarda valor de dado pessoal, só identificadores | — |
 | `exportacoes/` (zip em claro) | 24 h | Rotina noturna (`EXPURGO_PRIVACIDADE`) |
 | `backups/` | 90 dias + 1 mensal por 5 anos | Rotina de retenção de backup |
 | `entrada/` (cópia da planilha/JSON importados) | Até o encerramento da migração, como `stg_*` (POLITICA §2.1) | **Manual**: apagar no painel do Storage ao encerrar a migração |
