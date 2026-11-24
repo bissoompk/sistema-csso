@@ -21,6 +21,7 @@ import {
   pedido_pronto,
   reler,
   usuario,
+  titular,
 } from "./ajuda_epi_requisicao";
 
 await bancoLimpo();
@@ -69,7 +70,7 @@ describe("e-mail do pedido de EPI", () => {
       redefinirConfig();
       expect(epi_email.ligado()).toBe(false);
       const { requerente, requisicao } = await montar(tx);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       expect(await caixa(tx)).toHaveLength(0);
       const evs = await eventos(tx, servico.ENTIDADE, requisicao.id);
       expect(evs.some((ev) => ev.tipo_evento === epi_email.EPI_EMAIL_ENFILEIRADO)).toBe(false);
@@ -79,7 +80,7 @@ describe("e-mail do pedido de EPI", () => {
     desfeito(async (tx) => {
       ligar();
       const { cen, requerente, requisicao } = await montar(tx);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       const linhas = await caixa(tx);
       expect(linhas.map((l) => [l.tipo, l.destinatario, l.situacao])).toEqual([
         [epi_email.TIPO_ABERTURA_SETOR, SETOR, "PENDENTE"],
@@ -107,7 +108,7 @@ describe("e-mail do pedido de EPI", () => {
     desfeito(async (tx) => {
       ligar();
       const { cen, requerente, analista, requisicao } = await montar(tx);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       const antes = (await caixa(tx)).length;
       await servico.iniciar_analise(tx, analista, requisicao);
       // pegar para análise não é decisão
@@ -132,7 +133,7 @@ describe("e-mail do pedido de EPI", () => {
       ligar();
       const { cen, requerente, analista, requisicao } = await montar(tx);
       // segunda linha do mesmo pedido, tamanho G, com lote próprio
-      await servico.adicionar_item(tx, requerente, requisicao, {
+      await servico.adicionar_item(tx, await titular(tx, requerente, requisicao), requisicao, {
         motivo: "USO_INICIAL",
         item: cen.item,
         quantidade: 1,
@@ -144,7 +145,7 @@ describe("e-mail do pedido de EPI", () => {
         .values({ ...base, tamanho: "G", lote: "LOTE-G" })
         .returning();
       await tx.insert(e.epi_movimento_estoque).values({ entrada_id: lote_g!.id, tipo: "ENTRADA", quantidade: 10 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       await servico.aprovar_tudo(tx, analista, (await reler(tx, requisicao))!);
       const almoxarife = await usuario(tx, { login: "almox", permissoes: ["epi.ver", "epi.estoque"] });
@@ -185,7 +186,7 @@ describe("e-mail do pedido de EPI", () => {
     desfeito(async (tx) => {
       ligar();
       const { cen, requerente, analista, requisicao } = await montar(tx);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const m = await motivo(tx);
       const complemento = "Posto sem exposição conforme visita técnica de setembro";
@@ -206,7 +207,7 @@ describe("e-mail do pedido de EPI", () => {
       const { requerente, requisicao } = await montar(tx, { email_servidor: "joana-sem-arroba" });
       // a conta ligada ao servidor também sem endereço válido
       await tx.update(e.usuario).set({ email: "conta-invalida" }).where(eq(e.usuario.id, requerente.id));
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       expect((await reler(tx, requisicao))!.estado).toBe("ENVIADA");
       expect(await caixa(tx)).toHaveLength(0);
       const ev = (await eventos(tx, servico.ENTIDADE, requisicao.id)).find(
@@ -222,7 +223,7 @@ describe("e-mail do pedido de EPI", () => {
     desfeito(async (tx) => {
       ligar("");
       const { requerente, requisicao } = await montar(tx);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       expect((await caixa(tx)).map((l) => l.tipo)).toEqual([epi_email.TIPO_ABERTURA_REQUERENTE]);
       const ev = (await eventos(tx, servico.ENTIDADE, requisicao.id)).find(
         (x) => x.tipo_evento === epi_email.EPI_EMAIL_ENFILEIRADO,

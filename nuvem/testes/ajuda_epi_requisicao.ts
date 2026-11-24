@@ -199,20 +199,46 @@ export async function ligar_ao_servidor(tx: Executor, u: UsuarioAtual, servidor:
 }
 
 let _seq_requerente = 0;
+// por transação: o banco é desfeito ou restaurado entre testes, e os ids se repetem
+const _donos = new WeakMap<object, Map<number, UsuarioAtual>>();
+
+/**
+ * Quem escreve o pedido: o titular (o pedido é individual). Para o alvo (pedido ou linha),
+ * devolve a conta ligada ao servidor do pedido — criada na primeira vez. Se o operador não tem
+ * `epi.requisitar` (teste de permissão) ou já é o titular, devolve o próprio operador.
+ */
+export async function titular(
+  tx: Executor,
+  u: UsuarioAtual,
+  alvo: { servidor_id?: number; requisicao_id?: number },
+): Promise<UsuarioAtual> {
+  if (!u.pode("epi.requisitar")) return u;
+  let servidor_id = alvo.servidor_id;
+  if (servidor_id === undefined && alvo.requisicao_id !== undefined) {
+    const [r] = await tx.select().from(e.epi_requisicao).where(eq(e.epi_requisicao.id, alvo.requisicao_id));
+    servidor_id = r!.servidor_id;
+  }
+  if (servidor_id === undefined || u.servidor_id === servidor_id) return u;
+  let do_tx = _donos.get(tx as object);
+  if (!do_tx) _donos.set(tx as object, (do_tx = new Map()));
+  const ja = do_tx.get(servidor_id);
+  if (ja) return ja;
+  const dono = await usuario(tx, {
+    permissoes: REQUERENTE,
+    login: `requerente${++_seq_requerente}`,
+    servidor_id,
+    perfis: ["servidor_consulta"],
+  });
+  do_tx.set(servidor_id, dono);
+  return dono;
+}
 /**
  * `criar_rascunho` como o próprio beneficiário: uma conta nova, ligada ao servidor, abre o
  * pedido (o pedido é individual). O operador `u` dos testes segue sendo quem analisa e entrega —
  * ligá-lo ao servidor o faria "analisar o próprio pedido" (RN-28).
  */
 export async function rascunho(tx: Executor, u: UsuarioAtual, opcoes: Parameters<typeof servico.criar_rascunho>[2]) {
-  if (!u.pode("epi.requisitar")) return servico.criar_rascunho(tx, u, opcoes); // o teste da recusa por permissão
-  const dono = await usuario(tx, {
-    permissoes: REQUERENTE,
-    login: `requerente${++_seq_requerente}`,
-    servidor_id: opcoes.servidor.id,
-    perfis: ["servidor_consulta"],
-  });
-  return servico.criar_rascunho(tx, dono, opcoes);
+  return servico.criar_rascunho(tx, await titular(tx, u, { servidor_id: opcoes.servidor.id }), opcoes);
 }
 
 export async function pedido_pronto(
@@ -225,7 +251,7 @@ export async function pedido_pronto(
     servidor: cen.servidor,
     descricao_atividade: "Manipulação de reagentes no laboratório de análises",
   });
-  await servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL",
+  await servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { motivo: "USO_INICIAL",
     item: cen.item,
     quantidade: o.quantidade ?? 2,
     tamanho: "M",

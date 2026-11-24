@@ -216,6 +216,42 @@ export const CONTEXTO_NEXO_OCUPACIONAL = "nexo_ocupacional";
 // em todo contexto (`TERMOS_SEMPRE_PROIBIDOS`).
 export const CONTEXTO_AVISO_SAUDE = "aviso_saude";
 
+/**
+ * EPI, nos campos que falam da PESSOA (observação da entrega, parecer, justificativas, motivos e
+ * complementos, campos do pedido, comunicação do titular): bloqueia a lista de sempre e mais os
+ * termos clínicos abaixo, e a mensagem fala de EPI, não de adicional (24/11/2026).
+ */
+export const CONTEXTO_EPI_PESSOA = "epi_pessoa";
+
+/**
+ * EPI, nos campos que descrevem o MATERIAL (lote, estoque): só a lista de sempre, com a mensagem do
+ * EPI. "Lesão", "laudo", "dermatite" aparecem na descrição normal de um equipamento ("protege contra
+ * lesões", "laudo de ensaio") e não podem ser bloqueados ali.
+ */
+export const CONTEXTO_EPI_MATERIAL = "epi_material";
+
+/**
+ * Termos clínicos a mais no EPI-pessoa. Palavra inteira, sem acento e em minúsculas na comparação.
+ * Ficam DE FORA de propósito: "lesão"/"ferimento" (o risco que o EPI evita), "laudo" (laudo de
+ * ensaio, LTCAT), "afastamento" sozinho, "ler" (é verbo) e "deficiência" (pode justificar EPI
+ * adaptado).
+ */
+export const TERMOS_SAUDE_EPI: readonly string[] = [
+  "cid",
+  "alergia", "alergias", "alergico", "alergica", "alergicos", "alergicas",
+  "dermatite", "dermatites", "eczema",
+  "asma", "asmatico", "asmatica", "bronquite", "rinite",
+  "hipertensao", "hipertenso", "hipertensa", "diabetes", "diabetico", "diabetica",
+  "epilepsia", "epileptico", "epileptica", "convulsao", "convulsoes",
+  "depressao", "ansiedade", "transtorno", "psiquiatrico", "psiquiatrica",
+  "cancer", "tumor", "hiv", "hepatite",
+  "tendinite", "bursite", "hernia", "lombalgia", "dort",
+  "cirurgia", "cirurgico", "cirurgica", "pos-operatorio", "operado", "operada",
+  "laudo medico", "licenca medica", "licenca para tratamento de saude", "afastamento medico",
+  "tratamento medico", "medicamento", "medicamentos", "medicacao", "remedio", "sintoma", "sintomas",
+  "intolerancia", "sensibilidade cutanea",
+];
+
 /** Identificador e código de doença: nem com confirmação. */
 export const TERMOS_SEMPRE_PROIBIDOS: readonly string[] = ["cid-10", "cid 10", "cpf"];
 
@@ -223,6 +259,8 @@ const DISPENSAS_POR_CONTEXTO: Record<string, readonly string[]> = {
   [CONTEXTO_PADRAO]: [],
   [CONTEXTO_NEXO_OCUPACIONAL]: ["doenca", "doença"],
   [CONTEXTO_AVISO_SAUDE]: [],
+  [CONTEXTO_EPI_PESSOA]: [],
+  [CONTEXTO_EPI_MATERIAL]: [],
 };
 
 /** Termo de saúde/dado sensível encontrado em campo de texto livre. */
@@ -271,7 +309,8 @@ export function termos_proibidos_em(texto: string | null | undefined, contexto: 
   if (!texto) return [];
   const alvo = chave_busca(texto);
   const achados = new Set<string>();
-  for (const termo of TERMOS_PROIBIDOS) {
+  const lista = contexto === CONTEXTO_EPI_PESSOA ? [...TERMOS_PROIBIDOS, ...TERMOS_SAUDE_EPI] : TERMOS_PROIBIDOS;
+  for (const termo of lista) {
     const chave = chave_busca(termo);
     if (dispensadas.has(chave)) continue;
     // `\b` do Python em str é Unicode; o do JS é só ASCII — daí os lookarounds
@@ -305,6 +344,14 @@ export function exigir_texto_limpo<T extends string | null | undefined>(
       );
     }
     achados = duros;
+  }
+  if (achados.length && (contexto === CONTEXTO_EPI_PESSOA || contexto === CONTEXTO_EPI_MATERIAL)) {
+    throw new TextoProibido(
+      `O campo ${campo} contém dado de saúde ou identificação (${achados.join(", ")}). ` +
+        "Estado de saúde, diagnóstico, CID e CPF não podem ser registrados no EPI (LGPD art. 11). " +
+        "Descreva a atividade, o risco e o equipamento, não a saúde da pessoa; se a condição " +
+        "de saúde muda o EPI, a orientação vem do médico do trabalho, fora deste campo.",
+    );
   }
   if (achados.length) {
     throw new TextoProibido(

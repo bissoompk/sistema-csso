@@ -183,6 +183,7 @@ const CAMPOS_ENTRADA = [
   "validade_ca",
   "data_fabricacao",
   "observacao",
+  "confirmo_diferenca_catalogo",
 ] as const;
 
 /** A entrada do lote: a compra pública e o primeiro movimento do razão. */
@@ -255,6 +256,7 @@ rotas.post(ESTOQUE, async (c) => {
       validade_ca: validade,
       data_fabricacao: fabricacao,
       observacao: d.observacao,
+      confirmo_diferenca_catalogo: d.confirmo_diferenca_catalogo === "1",
     });
   } catch (falha) {
     const texto = _texto_da_falha(falha);

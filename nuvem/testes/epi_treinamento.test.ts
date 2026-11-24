@@ -357,14 +357,17 @@ describe("entrega de balcão", () => {
     expect(await eventos(treino.EPI_SEM_TREINAMENTO_CONFIRMADO)).toHaveLength(0);
   });
 
-  it("exige sem vínculo: avisa e entrega sem a caixa", async () => {
+  it("exige sem vínculo: bloqueia a entrega e diz o que fazer (24/11/2026)", async () => {
     const c = await montar(db);
     await db.update(e.epi_item).set({ exige_treinamento: true }).where(eq(e.epi_item.id, c.item));
     const cli = await como("tecnico_seguranca");
     const frag = await cli.get(`/epis/entregas/opcoes?item_id=${c.item}&servidor_id=${c.servidor}`);
     expect(frag.text).toContain("o catálogo não diz qual");
     expect(frag.text).not.toContain('name="confirmar_sem_treinamento"');
-    expect((await entregar(cli, c)).status).toBe(303);
+    const r = await entregar(cli, c);
+    expect(r.status).toBe(200);
+    expect(recado(r)).toContain("vincular o treinamento");
+    expect(await registros(db)).toEqual([]);
   });
 });
 
@@ -379,7 +382,7 @@ describe("pedido", () => {
     const item_atual = await item(cen.item.id);
     const u = await ajuda_req.usuario(db, { login: "analista_e" });
     const requisicao = await ajuda_req.pedido_pronto(db, { ...cen, item: item_atual }, u);
-    await req.enviar(db, u, requisicao, { termo_aceito: true });
+    await req.enviar(db, await ajuda_req.titular(db, u, requisicao), requisicao, { termo_aceito: true });
     return { cen, t, u, requisicao };
   }
 

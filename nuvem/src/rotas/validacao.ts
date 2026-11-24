@@ -103,7 +103,9 @@ rotas.get(`${VALIDAR}/:chave`, async (c) => {
     return _tela(c, { digitada: chave, excedeu: true, status: 429 });
   }
   const resposta = await servico.consultar(c.get("tx"), chave.slice(0, TAMANHO_MAXIMO_CHAVE));
-  return _tela(c, { resposta, digitada: normalizar_chave(chave) });
+  // chave que não existe: a mesma tela, com 404 (24/11/2026) — leitor de QR e
+  // buscador entendem "não há documento aqui"; a negativa é a mesma de antes
+  return _tela(c, { resposta, digitada: normalizar_chave(chave), status: resposta.encontrado ? 200 : 404 });
 });
 
 /**
@@ -127,5 +129,6 @@ rotas.post(`${VALIDAR}/:chave/conferir`, async (c) => {
     confere,
     // o que foi digitado volta: sem isso "não confere" some junto com o texto
     nome_digitado: nome.trim(),
+    status: resposta.encontrado ? 200 : 404,
   });
 });

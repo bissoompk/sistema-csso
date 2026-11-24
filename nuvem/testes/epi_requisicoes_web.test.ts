@@ -134,18 +134,23 @@ async function amarrar_conta_ao_servidor(amb: Amb, login: string, servidor_id: n
  * outra pessoa (a RN-28 depende disso).
  */
 async function abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
+  // o pedido é individual: a conta do cliente passa a ser a do titular enquanto escreve o pedido
+  // (abrir, acrescentar, enviar); `desligar` a devolve a quem era, para decidir (RN-28)
   const dono = dono_do_cliente.get(cliente);
-  let antes: number | null = null;
-  if (dono) {
+  if (dono && !vinculo_anterior.has(cliente)) {
     const [u] = await dono.amb.db.select({ servidor_id: e.usuario.servidor_id }).from(e.usuario).where(eq(e.usuario.login, dono.login));
-    antes = u?.servidor_id ?? null;
+    vinculo_anterior.set(cliente, u?.servidor_id ?? null);
     await amarrar_conta_ao_servidor(dono.amb, dono.login, cen.servidor);
   }
-  try {
-    return await _abrir(cliente, cen, troca);
-  } finally {
-    if (dono) await dono.amb.db.update(e.usuario).set({ servidor_id: antes }).where(eq(e.usuario.login, dono.login));
-  }
+  return _abrir(cliente, cen, troca);
+}
+
+const vinculo_anterior = new WeakMap<object, number | null>();
+async function desligar(cliente: Cliente) {
+  const dono = dono_do_cliente.get(cliente);
+  if (!dono || !vinculo_anterior.has(cliente)) return;
+  await dono.amb.db.update(e.usuario).set({ servidor_id: vinculo_anterior.get(cliente)! }).where(eq(e.usuario.login, dono.login));
+  vinculo_anterior.delete(cliente);
 }
 
 function _abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
@@ -198,6 +203,7 @@ async function pedido_enviado(amb: Amb, cliente: Cliente, cen: Cenario, troca: C
   await acrescentar(cliente, requisicao.id, cen, troca);
   const r = await cliente.post(`${FILA}/${requisicao.id}/enviar`, { termo_aceito: "1" }, { seguir: false });
   expect(r.status, recado(r)).toBe(303);
+  await desligar(cliente);
   return requisicao.id;
 }
 
@@ -291,6 +297,7 @@ describe("o caminho inteiro", () => {
     expect(requisicao.unidade_uorg_id).toBe(cen.unidade);
     expect(requisicao.cargo_snapshot).toBeTruthy();
 
+    await desligar(cliente); // quem pediu não analisa (RN-28)
     expect((await cliente.post(`${FILA}/${requisicao.id}/analise`, {}, { seguir: false })).status).toBe(303);
     const linha = (await linhas(amb, requisicao.id))[0]!;
     const aprovada = await cliente.post(
@@ -329,6 +336,7 @@ describe("o caminho inteiro", () => {
     const requisicao_id = (await ultima(amb)).id;
     await acrescentar(cliente, requisicao_id, cen, { quantidade: "2" });
     await cliente.post(`${FILA}/${requisicao_id}/enviar`, { termo_aceito: "1" }, { seguir: false });
+    await desligar(cliente); // quem pediu não analisa (RN-28): a conta volta a ser da equipe
     await cliente.post(`${FILA}/${requisicao_id}/analise`, {}, { seguir: false });
     const linha = (await linhas(amb, requisicao_id))[0]!;
     await cliente.post(`${FILA}/${requisicao_id}/itens/${linha.id}/aprovar`, { quantidade_aprovada: "2" }, { seguir: false });
@@ -833,7 +841,7 @@ describe("a recusa no rascunho devolve o digitado", () => {
       justificativa: "uso exigido pelo atestado médico da chefia",
     });
     expect(r.status).toBe(200);
-    expect(r.text).toContain("termo proibido");
+    expect(r.text).toContain("dado de saúde");
     expect(r.text).toMatch(new RegExp(`<option value="${cen.item}"[^>]*\\bselected\\b`));
     expect(valor(r.text, "quantidade")).toBe("3");
     expect(r.text).toContain(html("uso exigido pelo atestado médico da chefia"));

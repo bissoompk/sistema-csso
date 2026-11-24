@@ -107,6 +107,7 @@ const CAMPOS_ITEM = [
   "periodo_maximo_meses",
   "exige_justificativa",
   "exige_treinamento",
+  "confirmo_ca_vencido",
 ] as const;
 
 /**
@@ -186,7 +187,10 @@ export function _campos_do_item(f: Record<string, string>): [CamposItem | null, 
 
   // RN-25 nasce aqui: item que exige CA sem número é item que a entrega não sabe conferir
   const exige = _marcado(f.exige_ca ?? "");
-  const ca = _texto(f.numero_ca);
+  const ca = numero_ca_digitado(f.numero_ca);
+  if (ca === false) {
+    return [null, "O número do CA tem só dígitos (até 6), como está no certificado do MTE: ex. 12345.", "numero_ca"];
+  }
   if (exige && !ca) {
     return [
       null,
@@ -224,6 +228,55 @@ export function _campos_do_item(f: Record<string, string>): [CamposItem | null, 
     "",
     "",
   ];
+}
+
+/**
+ * O CA como o MTE o publica: só dígitos. Aceita o que se costuma digitar ("CA 12.345", "12 345")
+ * e devolve "12345"; vazio é `null`; qualquer outra coisa é `false` (24/11/2026).
+ */
+export function numero_ca_digitado(bruto: string | null | undefined): string | null | false {
+  const limpo = (bruto ?? "").trim().replace(/^c\.?\s*a\.?\s*(n[º°o.]*)?\s*/i, "").replace(/[\s.]/g, "");
+  if (!limpo) return null;
+  return /^\d{1,6}$/.test(limpo) ? limpo.replace(/^0+(?=\d)/, "") : false;
+}
+
+/** Outro item com o mesmo CA: um CA aprova um modelo, e dois itens com ele são o mesmo EPI. */
+async function _ca_repetido(tx: Executor, ca: string | null, excluir: number | null = null) {
+  if (!ca) return null;
+  const condicoes: SQL[] = [eq(epi_item.numero_ca, ca)];
+  if (excluir !== null) condicoes.push(ne(epi_item.id, excluir));
+  const [achado] = await tx.select().from(epi_item).where(and(...condicoes));
+  return achado ?? null;
+}
+
+/**
+ * As conferências do catálogo que dependem do banco ou de confirmação, iguais no cadastro e na
+ * edição (24/11/2026). Devolve `[mensagem, campo]` da recusa, ou `null`.
+ */
+async function _conferir_item(
+  tx: Executor,
+  campos: CamposItem,
+  f: Record<string, string>,
+  item_id: number | null,
+): Promise<[string, string] | null> {
+  const outro = await _ca_repetido(tx, campos.numero_ca, item_id);
+  if (outro) {
+    return [`O CA ${campos.numero_ca} já está no item '${outro.nome}'${outro.modelo ? ` (${outro.modelo})` : ""}. ` +
+      "Um CA aprova um modelo: confira o número ou edite o item que já existe.", "numero_ca"];
+  }
+  if (campos.validade_ca && campos.validade_ca < datas_br.hoje() && !_marcado(f.confirmo_ca_vencido ?? "")) {
+    return [`O CA venceu em ${datas_br.numerica(campos.validade_ca)}: item com CA vencido não se entrega. ` +
+      "Confira a data no site do MTE; se ela está certa, marque “confirmo a validade vencida” e salve de novo.",
+      "confirmo_ca_vencido"];
+  }
+  if (campos.exige_treinamento) {
+    const vinculos = item_id === null ? [] : (await epi_treinamento.vinculados(tx, [item_id])).get(item_id) ?? [];
+    if (!vinculos.length) {
+      return ["“Exige treinamento” só vale com o treinamento escolhido: salve o item sem a marca e use o botão " +
+        "“Treinamentos” da linha dele — ao vincular, o item passa a exigir sozinho.", "exige_treinamento"];
+    }
+  }
+  return null;
 }
 
 /**
@@ -382,6 +435,8 @@ rotas.post(CATALOGO, async (c) => {
       "modelo",
     );
   }
+  const recusa_cadastro = await _conferir_item(tx, campos, digitado, null);
+  if (recusa_cadastro) return recusar(...recusa_cadastro);
   const [item] = await tx.insert(epi_item).values(campos).returning();
   await auditoria.registrar(tx, {
     entidade: "epi_item",
@@ -770,6 +825,8 @@ rotas.post(`${CATALOGO}/:item_id{[0-9]+}`, async (c) => {
   if (await _homonimo(tx, campos.nome, campos.modelo, item_id)) {
     return recusar(`Já existe outro item '${campos.nome}' com esse modelo.`, "modelo");
   }
+  const recusa_edicao = await _conferir_item(tx, campos, digitado, item_id);
+  if (recusa_edicao) return recusar(...recusa_edicao);
   campos.ativo = _marcado(f.texto("ativo"));
   // A edição é formulário comum, sem arquivo: foto e PDF têm envios próprios
   // (`/imagem`, `/orientacao`), um arquivo por requisição. Arquivo que chegue

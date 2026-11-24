@@ -132,6 +132,16 @@ export async function url_base_validacao(tx: Executor): Promise<string> {
   return `http://127.0.0.1:${(process.env.PORTA ?? "").trim() || "8766"}`;
 }
 
+/** O endereço é da própria máquina (loopback): não serve num papel que circula. */
+export function endereco_local(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\./.test(host) || host === "0.0.0.0";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * O endereço público foi DECLARADO (parâmetro, `CSSO_URL_PUBLICA` ou a `URL`
  * que o Netlify define para o site)? O recuo de desenvolvimento (`127.0.0.1`)
@@ -379,6 +389,15 @@ export async function validar(
       "o endereço público de validação (parâmetro certificado.url_publica) não foi definido — " +
         "ele fica congelado no QR do certificado; defina-o antes da primeira emissão (PRODUCAO.md)",
     );
+  }
+  // endereço da própria máquina (127.0.0.1, localhost) no QR: ninguém fora dela valida o papel.
+  // Em produção bloqueia, mesmo declarado; fora dela avisa (24/11/2026).
+  if (endereco_local(await url_base_validacao(tx))) {
+    const texto =
+      "o endereço de validação do QR aponta para esta máquina (127.0.0.1/localhost) — quem ler o QR " +
+      "em outro aparelho não abre o certificado; defina o parâmetro certificado.url_publica";
+    if (ambienteDeProducao()) v.bloqueios.push(texto);
+    else v.avisos.push(texto);
   }
 
   if (turma.situacao !== "CONCLUIDA") {

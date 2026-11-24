@@ -612,7 +612,7 @@ describe("texto livre", () => {
     const c = await montar(db);
     const cli = await como("coordenador_csso");
     const r = await entregar(cli, c, { observacao: "Servidora gestante, afastada do setor." });
-    expect(recado(r)).toContain("termo proibido");
+    expect(recado(r)).toContain("dado de saúde");
     expect(await registros(db)).toEqual([]);
   });
 

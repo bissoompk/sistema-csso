@@ -706,6 +706,19 @@ export async function criar_rascunho(
 }
 
 /** Edita o cabeçalho enquanto ele é rascunho, e só enquanto. */
+/**
+ * O pedido de EPI é individual (24/11/2026): só o beneficiário edita o rascunho, acrescenta ou
+ * tira itens, envia e aceita o termo NR-06. A equipe analisa e entrega, mas não escreve o pedido
+ * de outra pessoa nem declara por ela.
+ */
+function _exigir_titular(usuario: UsuarioAtual, requisicao: Pick<EpiRequisicao, "servidor_id">, ato: string): void {
+  if (usuario.servidor_id !== null && usuario.servidor_id === requisicao.servidor_id) return;
+  throw new PermissaoNegada(
+    "epi.requisitar",
+    `O pedido de EPI é individual: só o servidor que vai usar o equipamento pode ${ato}.`,
+  );
+}
+
 export async function atualizar_rascunho(
   tx: Executor,
   usuario: UsuarioAtual,
@@ -714,6 +727,7 @@ export async function atualizar_rascunho(
 ): Promise<EpiRequisicao> {
   usuario.exigir("epi.requisitar");
   _exigir_editavel(requisicao, "editar o pedido");
+  _exigir_titular(usuario, requisicao, "editar o pedido");
   const campos = _campos_do_cabecalho({
     finalidade: opcoes.finalidade ?? "ROTINA",
     descricao_atividade: opcoes.descricao_atividade ?? "",
@@ -744,7 +758,6 @@ function _campos_do_cabecalho(c: {
   riscos_declarados: string;
   urgencia: string;
   justificativa_urgencia: string;
-  confirmo_mencao_saude?: boolean;
 }) {
   const problemas: string[] = [];
   if (!(FINALIDADES_REQUISICAO as readonly string[]).includes(c.finalidade)) {
@@ -764,14 +777,14 @@ function _campos_do_cabecalho(c: {
 
   return {
     finalidade: c.finalidade,
-    // RN-21 em aviso (gestante, lactante...): `MencaoDeSaude` até a confirmação
+    // RN-21 no EPI fala da pessoa: termo de saúde é recusado, sem caixa de confirmação (24/11/2026)
     descricao_atividade:
-      textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
+      textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_EPI_PESSOA) || null,
     riscos_declarados:
-      textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
+      textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados", textos.CONTEXTO_EPI_PESSOA) || null,
     urgencia: c.urgencia,
     justificativa_urgencia:
-      textos.exigir_texto_limpo(justificativa, "justificativa da urgência", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
+      textos.exigir_texto_limpo(justificativa, "justificativa da urgência", textos.CONTEXTO_EPI_PESSOA) || null,
   };
 }
 
@@ -792,6 +805,7 @@ function _exigir_editavel(requisicao: EpiRequisicao, acao: string): void {
  */
 export async function excluir_rascunho(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<void> {
   usuario.exigir("epi.requisitar");
+  _exigir_titular(usuario, requisicao, "excluir o rascunho");
   if (requisicao.estado !== "RASCUNHO") {
     throw new RequisicaoBloqueada([
       `${identificacao(requisicao)} está em ` +
@@ -858,6 +872,7 @@ export async function adicionar_item(
 ): Promise<EpiRequisicaoItem> {
   usuario.exigir("epi.requisitar");
   _exigir_editavel(requisicao, "acrescentar item");
+  _exigir_titular(usuario, requisicao, "acrescentar item");
   const { item, quantidade } = opcoes;
   const problemas: string[] = [];
   if (quantidade <= 0) problemas.push("a quantidade pedida tem de ser maior que zero");
@@ -888,7 +903,7 @@ export async function adicionar_item(
       epi_item_id: item.id,
       tamanho: limpo || null,
       quantidade_solicitada: quantidade,
-      justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item") || null,
+      justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item", textos.CONTEXTO_EPI_PESSOA) || null,
       motivo,
       estado: "SOLICITADO",
     })
@@ -906,6 +921,7 @@ export async function editar_item(
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao_da_linha(tx, linha);
   _exigir_editavel(requisicao, "editar item");
+  _exigir_titular(usuario, requisicao, "editar item");
   const item = await _item(tx, linha.epi_item_id);
   const problemas: string[] = [];
   if (opcoes.quantidade <= 0) problemas.push("a quantidade pedida tem de ser maior que zero");
@@ -924,7 +940,7 @@ export async function editar_item(
   await _gravar_linha(tx, linha, {
     quantidade_solicitada: opcoes.quantidade,
     tamanho: limpo || null,
-    justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item") || null,
+    justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item", textos.CONTEXTO_EPI_PESSOA) || null,
     motivo,
   });
   return linha;
@@ -935,6 +951,7 @@ export async function remover_item(tx: Executor, usuario: UsuarioAtual, linha: E
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao_da_linha(tx, linha);
   _exigir_editavel(requisicao, "remover item");
+  _exigir_titular(usuario, requisicao, "remover item");
   await tx.delete(epi_requisicao_item).where(eq(epi_requisicao_item.id, linha.id));
 }
 
@@ -977,6 +994,7 @@ export async function enviar(
 ): Promise<EpiRequisicao> {
   usuario.exigir("epi.requisitar");
   const quando = opcoes.quando || datas_br.hoje();
+  if (requisicao.estado === "RASCUNHO") _exigir_titular(usuario, requisicao, "enviar o pedido e aceitar o termo NR-06");
   if (requisicao.estado !== "RASCUNHO") {
     throw new RequisicaoBloqueada([`${identificacao(requisicao)} já foi enviada — o protocolo é ` + "consumido uma vez só"]);
   }
@@ -1132,7 +1150,7 @@ export async function concluir_analise(
   if (problemas.length) throw new RequisicaoBloqueada(problemas);
 
   await _gravar(tx, requisicao, {
-    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise") || null,
+    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise", textos.CONTEXTO_EPI_PESSOA) || null,
     analisado_por: usuario.id,
     analisado_em: agora_utc(),
   });
@@ -1198,7 +1216,7 @@ export async function indeferir(
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
   const { motivo } = opcoes;
-  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento do indeferimento");
+  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento do indeferimento", textos.CONTEXTO_EPI_PESSOA);
   const itens = await itens_de(tx, requisicao.id);
   const problemas: string[] = [];
   if (!itens.some((i) => i.estado !== "CANCELADO")) problemas.push("não há item para indeferir");
@@ -1224,7 +1242,7 @@ export async function indeferir(
   await _gravar(tx, requisicao, {
     motivo_recusa_id: motivo.id,
     complemento_recusa: limpo || null,
-    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise") || null,
+    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise", textos.CONTEXTO_EPI_PESSOA) || null,
     analisado_por: usuario.id,
     analisado_em: agora_utc(),
   });
@@ -1372,7 +1390,7 @@ export async function aprovar_item(
   const requisicao = await _requisicao_da_linha(tx, linha);
   await _exigir_analista_diferente(tx, usuario, requisicao);
   const quando = opcoes.quando || datas_br.hoje();
-  const limpa = textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item");
+  const limpa = textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item", textos.CONTEXTO_EPI_PESSOA);
   const quantidade =
     opcoes.quantidade_aprovada === undefined || opcoes.quantidade_aprovada === null
       ? linha.quantidade_solicitada
@@ -1472,7 +1490,7 @@ export async function recusar_item(
   const requisicao = await _requisicao_da_linha(tx, linha);
   await _exigir_analista_diferente(tx, usuario, requisicao);
   const { motivo } = opcoes;
-  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da recusa");
+  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da recusa", textos.CONTEXTO_EPI_PESSOA);
   const problemas: string[] = [];
   if (requisicao.estado !== "EM_ANALISE") {
     problemas.push(
@@ -1819,7 +1837,7 @@ export async function marcar_sem_estoque(
   usuario.exigir("epi.estoque");
   const requisicao = await _requisicao_da_linha(tx, linha);
   const quando = opcoes.quando || datas_br.hoje();
-  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da falta de estoque");
+  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da falta de estoque", textos.CONTEXTO_EPI_PESSOA);
   const item = await _item(tx, linha.epi_item_id);
 
   const problemas: string[] = [];
@@ -2181,7 +2199,7 @@ export async function sincronizar_atendimento(
 
 // =====================================================================
 function _motivo_obrigatorio(motivo: string, campo: string): string {
-  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), campo);
+  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), campo, textos.CONTEXTO_EPI_PESSOA);
   if (!limpo) {
     throw new RequisicaoBloqueada([
       `${campo} é obrigatório: é o único registro que sobra para quem ` +

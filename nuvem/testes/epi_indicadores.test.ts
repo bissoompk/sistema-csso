@@ -33,7 +33,7 @@ import { UsuarioAtual } from "../src/servicos/rbac.js";
 import * as rota from "../src/rotas/epi_indicadores.js";
 import { MARCA_SUPRIMIDO, suprimir_aninhado } from "../src/rotas/epi_indicadores.js";
 import { bancoLimpo, contas, entrar, naTransacao, ORIGEM, SENHA_TESTE } from "./ajuda";
-import { rascunho } from "./ajuda_epi_requisicao";
+import { rascunho, titular } from "./ajuda_epi_requisicao";
 
 const HOJE = hoje();
 const DAQUI_A_UM_ANO = somar_dias(HOJE, 365);
@@ -345,9 +345,9 @@ async function _pedido_aprovado(tx: Executor, usuario: UsuarioAtual, servidor: S
     servidor,
     descricao_atividade: "Manipulação de reagentes no laboratório",
   });
-  await servico.adicionar_item(tx, usuario, requisicao, { motivo: "USO_INICIAL", item, quantidade, tamanho: "M" });
+  await servico.adicionar_item(tx, await titular(tx, usuario, requisicao), requisicao, { motivo: "USO_INICIAL", item, quantidade, tamanho: "M" });
   requisicao = await _requisicao(tx, requisicao.id);
-  await servico.enviar(tx, usuario, requisicao, { termo_aceito: true });
+  await servico.enviar(tx, await titular(tx, usuario, requisicao), requisicao, { termo_aceito: true });
   await servico.iniciar_analise(tx, usuario, await _requisicao(tx, requisicao.id));
   const [linha] = await _itens_de(tx, requisicao.id);
   await servico.aprovar_item(tx, usuario, linha!);
@@ -625,8 +625,8 @@ describe("indicadores", () => {
         servidor,
         descricao_atividade: "Atividade administrativa sem exposição",
       });
-      await servico.adicionar_item(tx, usuario, await _requisicao(tx, outro.id), { motivo: "USO_INICIAL", item, quantidade: 1, tamanho: "M" });
-      await servico.enviar(tx, usuario, await _requisicao(tx, outro.id), { termo_aceito: true });
+      await servico.adicionar_item(tx, await titular(tx, usuario, outro), await _requisicao(tx, outro.id), { motivo: "USO_INICIAL", item, quantidade: 1, tamanho: "M" });
+      await servico.enviar(tx, await titular(tx, usuario, outro), await _requisicao(tx, outro.id), { termo_aceito: true });
       await servico.iniciar_analise(tx, usuario, await _requisicao(tx, outro.id));
       const [linha] = await _itens_de(tx, outro.id);
       await servico.recusar_item(tx, usuario, linha!, { motivo: motivo!, complemento: "idem" });

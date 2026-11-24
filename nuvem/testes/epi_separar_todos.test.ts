@@ -28,6 +28,7 @@ import {
   reler,
   usuario,
   type Cenario,
+  titular,
 } from "./ajuda_epi_requisicao";
 
 await bancoLimpo();
@@ -80,11 +81,11 @@ async function montar(tx: Executor) {
   const analista = await usuario(tx, { login: "analista" });
   const almoxarife = await usuario(tx, { login: "almox", permissoes: ["epi.ver", "epi.estoque"] });
   const requisicao = await pedido_pronto(tx, cen, requerente);
-  await servico.adicionar_item(tx, requerente, requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "G" });
+  await servico.adicionar_item(tx, await titular(tx, requerente, requisicao), requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "G" });
   const avental = await outro_item(tx, cen, "Avental de PVC", "55555");
-  await servico.adicionar_item(tx, requerente, requisicao, { motivo: "USO_INICIAL", item: avental, quantidade: 1 });
+  await servico.adicionar_item(tx, await titular(tx, requerente, requisicao), requisicao, { motivo: "USO_INICIAL", item: avental, quantidade: 1 });
   const lote_g = await lote(tx, cen, { tamanho: "G", lote: "LOTE-G" });
-  await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+  await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
   await servico.iniciar_analise(tx, analista, requisicao);
   await servico.aprovar_tudo(tx, analista, (await reler(tx, requisicao))!);
   return { cen, requerente, analista, almoxarife, requisicao: (await reler(tx, requisicao))!, lote_g, avental };
@@ -142,7 +143,7 @@ describe("Separar todos (serviço)", () => {
       const almoxarife = await usuario(tx, { login: "almox", permissoes: ["epi.ver", "epi.estoque"] });
       const analisado = async () => {
         const req = await pedido_pronto(tx, cen, requerente, { quantidade: 2 });
-        await servico.enviar(tx, requerente, req, { termo_aceito: true });
+        await servico.enviar(tx, await titular(tx, requerente, req), req, { termo_aceito: true });
         await servico.iniciar_analise(tx, analista, req);
         await servico.aprovar_tudo(tx, analista, (await reler(tx, req))!);
         return (await reler(tx, req))!;
@@ -179,7 +180,7 @@ describe("Separar todos (serviço)", () => {
 
       // um segundo pedido, reservado item a item no mesmo lote
       const outro = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, outro, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, outro), outro, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, outro);
       await servico.aprovar_tudo(tx, analista, (await reler(tx, outro))!);
       const linha_unica = (await itens(tx, outro))[0]!;
@@ -251,8 +252,8 @@ async function pedido_web() {
     const coordenador = await usuarioAtual(tx, "coordenador_csso");
     const requisicao = await pedido_pronto(tx, cen, coordenador);
     const avental = await outro_item(tx, cen, "Avental de PVC", "55555");
-    await servico.adicionar_item(tx, coordenador, requisicao, { motivo: "USO_INICIAL", item: avental, quantidade: 1 });
-    await servico.enviar(tx, coordenador, requisicao, { termo_aceito: true });
+    await servico.adicionar_item(tx, await titular(tx, coordenador, requisicao), requisicao, { motivo: "USO_INICIAL", item: avental, quantidade: 1 });
+    await servico.enviar(tx, await titular(tx, coordenador, requisicao), requisicao, { termo_aceito: true });
     const analista = await usuario(tx, { login: "analista_web" });
     await servico.iniciar_analise(tx, analista, requisicao);
     await servico.aprovar_tudo(tx, analista, (await reler(tx, requisicao))!);

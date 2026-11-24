@@ -229,7 +229,7 @@ describe("RN-25: o lote vencido", () => {
   it("entra no estoque e avisa", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    const r = await _lote(cliente, cenario, { validade_ca: ONTEM });
+    const r = await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     expect(r.status).toBe(303);
     expect(_recado(r)).toContain("não pode ser entregue");
     expect((await _entradas()).length).toBe(1);
@@ -238,7 +238,7 @@ describe("RN-25: o lote vencido", () => {
   it("fica visível e marcado no estoque", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: ONTEM });
+    await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     const corpo = (await cliente.get(ESTOQUE)).text;
     expect(corpo).toContain(`/epis/estoque/${(await _entradas())[0]!.id}/movimentos`);
     expect(corpo).toContain("venceu em");
@@ -249,7 +249,7 @@ describe("RN-25: o lote vencido", () => {
   it("não sai, e o saldo não se move", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: ONTEM });
+    await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     const r = await _entregar(cliente, cenario, entrada.id);
     expect(_recado(r)).toContain("CA vencido");
@@ -512,7 +512,7 @@ describe("descarte", () => {
   it("descartar o lote vencido é como ele sai do estoque", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: ONTEM });
+    await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     await cliente.post(`${ESTOQUE}/${entrada.id}/descarte`, {
       quantidade: "10",
@@ -606,7 +606,7 @@ describe("a pendência do CA a vencer", () => {
   it("lote a vencer abre pendência com prazo na validade", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES });
+    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     const pendencias = await _pendencias_de_ca();
     expect(pendencias.length).toBe(1);
@@ -629,7 +629,7 @@ describe("a pendência do CA a vencer", () => {
   it("descartar o saldo fecha a pendência do CA", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES });
+    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     await cliente.post(`${ESTOQUE}/${entrada.id}/descarte`, { quantidade: "10", motivo: "CA a vencer sem previsão de renovação" });
     const pendencias = await _pendencias_de_ca();
@@ -814,5 +814,21 @@ describe("o CNPJ do fornecedor", () => {
     expect(epi_estoque.formatar_cnpj("12345678000195")).toBe("12.345.678/0001-95");
     expect(epi_estoque.formatar_cnpj("123")).toBe("123");
     expect(epi_estoque.formatar_cnpj(null)).toBe("");
+  });
+});
+
+describe("lote × catálogo (24/11/2026)", () => {
+  it("CA ou validade diferentes do catálogo pedem confirmação, e com ela o lote entra", async () => {
+    const cenario = await _cenario();
+    await entrar(cliente, "coordenador_csso");
+    const sem = await _lote(cliente, cenario, { numero_ca: "99999", validade_ca: DAQUI_A_UM_MES });
+    expect(sem.status).toBe(200);
+    expect(sem.text).toContain("o CA do lote é 99999");
+    expect(sem.text).toContain("a validade do CA no lote");
+    expect(sem.text).toContain('name="confirmo_diferenca_catalogo"');
+    expect(await _entradas()).toEqual([]);
+    const com = await _lote(cliente, cenario, { numero_ca: "99999", validade_ca: DAQUI_A_UM_MES, confirmo_diferenca_catalogo: "1" });
+    expect(com.status).toBe(303);
+    expect(await _entradas()).toHaveLength(1);
   });
 });

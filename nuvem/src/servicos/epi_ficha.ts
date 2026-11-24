@@ -718,9 +718,12 @@ export async function validar(tx: Executor, d: DadosValidacao): Promise<Validaca
       );
     }
   } else if (v.treinamento.codigo === "SEM_VINCULO") {
-    v.avisos.push(
-      `'${item.nome}' exige treinamento, mas o catálogo não diz qual: o sistema não tem o que conferir. ` +
-        "Confira antes de entregar e vincule o treinamento no catálogo de EPI",
+    // bloqueia (24/11/2026): a exigência sem vínculo é erro de cadastro, e entregar assim
+    // registra na ficha uma conferência que não houve
+    v.bloqueios.push(
+      `'${item.nome}' está marcado como “exige treinamento”, mas o catálogo não diz qual: ` +
+        "o sistema não tem o que conferir. Peça a quem cuida do catálogo de EPI para vincular o " +
+        "treinamento (botão “Treinamentos” da linha do item) ou desmarcar a exigência",
     );
   }
   return v;
@@ -915,8 +918,8 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
   const requisicao_item_id = d.requisicao_item_id ?? null;
 
   // RN-30: texto livre passa pelo filtro da RN-21 antes de qualquer gravação
-  textos.exigir_texto_limpo(observacao, "observação da entrega");
-  textos.exigir_texto_limpo(justificativa_excecao, "justificativa da exceção");
+  textos.exigir_texto_limpo(observacao, "observação da entrega", textos.CONTEXTO_EPI_PESSOA);
+  textos.exigir_texto_limpo(justificativa_excecao, "justificativa da exceção", textos.CONTEXTO_EPI_PESSOA);
 
   // Data futura seria prova de um fato que ainda não aconteceu. A rota do
   // balcão já recusava; a entrega pela requisição chegava aqui sem a conferência.
@@ -1109,7 +1112,7 @@ export async function estornar(
   motivo: string,
 ): Promise<EpiFichaRegistro> {
   usuario.exigir("epi.entregar");
-  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), "motivo do estorno") as string;
+  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), "motivo do estorno", textos.CONTEXTO_EPI_PESSOA) as string;
   if (!limpo) {
     throw new EntregaBloqueada([
       "estornar exige o motivo: é o único registro que sobra para quem " +
@@ -1197,7 +1200,7 @@ export async function registrar_devolucao(
   usuario.exigir("epi.entregar");
   const quantidade = d.quantidade;
   const motivo_codigo = (d.motivo_codigo ?? "").trim() || null;
-  const limpo = textos.exigir_texto_limpo((d.motivo || "").trim(), "motivo da devolução") as string;
+  const limpo = textos.exigir_texto_limpo((d.motivo || "").trim(), "motivo da devolução", textos.CONTEXTO_EPI_PESSOA) as string;
   const hoje = datas_br.hoje();
   const quando = d.data_evento || hoje;
   const bloqueios: string[] = [];
@@ -1703,8 +1706,8 @@ export async function recusar(
   usuario.exigir("epi.entregar");
   const { motivo } = d;
   const item = d.item ?? null;
-  const limpo = textos.exigir_texto_limpo((d.complemento || "").trim(), "complemento da recusa") as string;
-  const quem = textos.exigir_texto_limpo((d.a_quem || "").trim(), "a quem a recusa se dirige") as string;
+  const limpo = textos.exigir_texto_limpo((d.complemento || "").trim(), "complemento da recusa", textos.CONTEXTO_EPI_PESSOA) as string;
+  const quem = textos.exigir_texto_limpo((d.a_quem || "").trim(), "a quem a recusa se dirige", textos.CONTEXTO_EPI_PESSOA) as string;
   if (!quem) {
     throw new EntregaBloqueada([
       "diga a quem a recusa se dirige: sem isso o registro não serve " +

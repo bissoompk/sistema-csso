@@ -71,7 +71,12 @@
       <input id="{{ p }}-validade-ca" type="date" name="validade_ca"{{ ' autofocus' if marca == 'validade_ca' }}
              value="{{ v.validade_ca or '' }}"
              aria-describedby="{{ p }}-dica-validade-ca">
-      <span class="dica atencao" id="{{ p }}-dica-validade-ca">EPI com CA vencido não se entrega.</span></div>
+      <span class="dica atencao" id="{{ p }}-dica-validade-ca">EPI com CA vencido não se entrega.</span>
+      {# a rota recusou por CA vencido: a confirmação aparece só aí (24/11/2026) #}
+      {% if marca == 'confirmo_ca_vencido' %}
+      <label class="com-erro"><input type="checkbox" name="confirmo_ca_vencido" value="1" autofocus>
+        confirmo a validade vencida, conferida no site do MTE</label>
+      {% endif %}</div>
   </div>
 
   <div class="linha-campos">
@@ -126,13 +131,18 @@ placeholder="ABNT NBR 13697&#10;ABNT NBR 13698">{{ v.normas or '' }}</textarea><
     <label class="discreto"><input type="checkbox" name="exige_justificativa" value="1"
       {{- ' checked' if v.exige_justificativa == '1' }}>
       exige justificativa na requisição</label>
-    <label class="discreto"><input type="checkbox" name="exige_treinamento" value="1"
-      {{- ' checked' if v.exige_treinamento == '1' }}>
-      exige treinamento comprovado</label>
     {# fatia E: QUAL treinamento se escolhe no botão “Treinamentos” da linha do
-       item — marcar aqui sem vincular nenhum deixa a entrega sem o que conferir #}
-    <span class="dica">Qual treinamento: no botão “Treinamentos” da linha do
-      item, depois de salvar.</span>
+       item. Marcar sem vínculo é recusado (24/11/2026): no cadastro a marca nem
+       aparece — ao vincular, o item passa a exigir sozinho #}
+    {% if edicao %}
+    <label class="discreto{{ ' com-erro' if marca == 'exige_treinamento' }}"><input type="checkbox" name="exige_treinamento" value="1"
+      {{- ' checked' if v.exige_treinamento == '1' }}{{ ' autofocus' if marca == 'exige_treinamento' }}>
+      exige treinamento comprovado</label>
+    <span class="dica">Só com o treinamento vinculado no botão “Treinamentos” da linha do item.</span>
+    {% else %}
+    <span class="dica">Exige treinamento? Depois de salvar, use o botão “Treinamentos” da linha
+      do item: ao vincular o treinamento, o item passa a exigir.</span>
+    {% endif %}
     {% if edicao %}
     <label class="discreto"><input type="checkbox" name="ativo" value="1"
       {{- ' checked' if v.ativo == '1' }}>

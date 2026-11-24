@@ -111,7 +111,7 @@ export function chave_da_pendencia(comunicacao_id: number): string {
 }
 
 function _texto_curto(bruto: string | null | undefined, campo: string): string {
-  const limpo = (textos.exigir_texto_limpo((bruto ?? "").trim(), campo) as string) ?? "";
+  const limpo = (textos.exigir_texto_limpo((bruto ?? "").trim(), campo, textos.CONTEXTO_EPI_PESSOA) as string) ?? "";
   if (limpo.length > TAMANHO_MAXIMO_TEXTO) {
     throw new RegraViolada(`O campo ${campo} passa de ${TAMANHO_MAXIMO_TEXTO} caracteres: resuma.`);
   }

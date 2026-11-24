@@ -3,6 +3,7 @@
  * pedido e o termo NR-06 declarado no envio — mais o pedido de troca já
  * preenchido (`/epis/requisicoes/nova?item=…&comunicacao=…`).
  */
+import { PermissaoNegada } from "../src/servicos/rbac.js";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { asc, eq, sql } from "drizzle-orm";
@@ -26,6 +27,7 @@ import {
   reler,
   usuario,
   rascunho,
+  titular,
 } from "./ajuda_epi_requisicao";
 import { cenario as cenario_web, entregar, recado, registros } from "./ajuda_epi_ficha";
 
@@ -44,9 +46,9 @@ describe("termo NR-06 no envio", () => {
       const cen = await cenario(tx);
       const u = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, u);
-      const erro = await recusa(servico.enviar(tx, u, requisicao), servico.RequisicaoBloqueada);
+      const erro = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("termo NR-06");
-      const erro2 = await recusa(servico.enviar(tx, u, requisicao, { termo_aceito: false }), servico.RequisicaoBloqueada);
+      const erro2 = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: false }), servico.RequisicaoBloqueada);
       expect(erro2.message).toContain("termo NR-06");
       const relida = (await reler(tx, requisicao))!;
       expect(relida.estado).toBe("RASCUNHO");
@@ -54,16 +56,18 @@ describe("termo NR-06 no envio", () => {
       expect(relida.termo_aceito_em).toBeNull();
     }));
 
-  it("grava a conta de QUEM ENVIA (a chefia, pelo servidor), o instante e a versão, com evento próprio", () =>
+  it("só o titular aceita o termo: a chefia é recusada, e grava-se a conta do titular, o instante e a versão", () =>
     desfeito(async (tx) => {
       const cen = await cenario(tx);
-      // a chefia pede pela equipe: não é o titular
+      // a chefia não é o titular: não envia nem declara pelo servidor (pedido individual, 24/11/2026)
       const chefia = await usuario(tx, { permissoes: REQUERENTE, login: "chefia" });
       const requisicao = await pedido_pronto(tx, cen, chefia);
-      await servico.enviar(tx, chefia, requisicao, { termo_aceito: true });
+      await recusa(servico.enviar(tx, chefia, requisicao, { termo_aceito: true }), PermissaoNegada);
+      const dono = await titular(tx, chefia, requisicao);
+      await servico.enviar(tx, dono, requisicao, { termo_aceito: true });
       const relida = (await reler(tx, requisicao))!;
       expect(relida.estado).toBe("ENVIADA");
-      expect(relida.termo_aceito_por).toBe(chefia.id);
+      expect(relida.termo_aceito_por).toBe(dono.id);
       expect(relida.termo_versao).toBe(TERMO_NR06_VIGENTE);
       expect(relida.termo_aceito_em).toBeTruthy();
       expect(relida.termo_exigido).toBe(true);
@@ -72,7 +76,7 @@ describe("termo NR-06 no envio", () => {
       );
       expect(termo).toBeTruthy();
       expect(termo!.valor_novo).toBe(TERMO_NR06_VIGENTE);
-      expect(termo!.usuario_id).toBe(chefia.id);
+      expect(termo!.usuario_id).toBe(dono.id);
       // RN-19 na escrita: o titular sai pelo id
       expect(termo!.descricao).toContain(`#${cen.servidor.id}`);
       expect(termo!.descricao).not.toContain(cen.servidor.nome);
@@ -114,18 +118,18 @@ describe("motivo por item", () => {
       const u = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await rascunho(tx, u, { servidor: cen.servidor });
       const sem = await recusa(
-        servico.adicionar_item(tx, u, requisicao, { item: cen.item, quantidade: 1, tamanho: "M" }),
+        servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { item: cen.item, quantidade: 1, tamanho: "M" }),
         servico.RequisicaoBloqueada,
       );
       expect(sem.message).toContain("motivo do item");
       const fora = await recusa(
-        servico.adicionar_item(tx, u, requisicao, { item: cen.item, quantidade: 1, tamanho: "M", motivo: "QUALQUER" }),
+        servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { item: cen.item, quantidade: 1, tamanho: "M", motivo: "QUALQUER" }),
         servico.RequisicaoBloqueada,
       );
       expect(fora.message).toContain("motivo de item desconhecido");
       expect(await itens(tx, requisicao)).toHaveLength(0);
 
-      const linha = await servico.adicionar_item(tx, u, requisicao, {
+      const linha = await servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, {
         item: cen.item,
         quantidade: 1,
         tamanho: "M",
@@ -133,12 +137,12 @@ describe("motivo por item", () => {
       });
       expect(linha.motivo).toBe("DANO");
       // editar sem dizer o motivo mantém o da linha; dizendo, troca
-      await servico.editar_item(tx, u, linha, { quantidade: 2, tamanho: "M" });
+      await servico.editar_item(tx, await titular(tx, u, linha), linha, { quantidade: 2, tamanho: "M" });
       expect(linha.motivo).toBe("DANO");
-      await servico.editar_item(tx, u, linha, { quantidade: 2, tamanho: "M", motivo: "PERDA" });
+      await servico.editar_item(tx, await titular(tx, u, linha), linha, { quantidade: 2, tamanho: "M", motivo: "PERDA" });
       expect((await itens(tx, requisicao))[0]!.motivo).toBe("PERDA");
       await recusa(
-        servico.editar_item(tx, u, linha, { quantidade: 2, tamanho: "M", motivo: "" }),
+        servico.editar_item(tx, await titular(tx, u, linha), linha, { quantidade: 2, tamanho: "M", motivo: "" }),
         servico.RequisicaoBloqueada,
       );
     }));
@@ -151,7 +155,7 @@ describe("motivo por item", () => {
       await tx
         .insert(e.epi_requisicao_item)
         .values({ requisicao_id: requisicao.id, epi_item_id: cen.item.id, tamanho: "M", quantidade_solicitada: 1 });
-      const erro = await recusa(servico.enviar(tx, u, requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
+      const erro = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("sem o motivo do item");
     }));
 

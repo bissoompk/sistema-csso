@@ -11,7 +11,7 @@ import * as servico from "../src/servicos/epi_requisicao.js";
 import { PermissaoNegada } from "../src/servicos/rbac.js";
 import { exportar_requisicoes } from "../src/rotas/epi_requisicoes.js";
 import { bancoLimpo, contas, entrar } from "./ajuda";
-import { ANALISTA, cenario, desfeito, pedido_pronto, usuario } from "./ajuda_epi_requisicao";
+import { ANALISTA, cenario, desfeito, pedido_pronto, usuario, titular } from "./ajuda_epi_requisicao";
 
 const { novoCliente } = await bancoLimpo();
 const SEMENTE = "semente-de-teste";
@@ -78,7 +78,7 @@ describe("planilha nominal de pedidos de EPI", () => {
       const cen = await cenario(tx, { nome: "Maria Fictícia Souza", siape: "1234567" });
       const u = await usuario(tx, { login: "exportador", permissoes: [...ANALISTA, "exportar"] });
       const req = await pedido_pronto(tx, cen, u, { quantidade: 2 });
-      await servico.enviar(tx, u, req, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, req), req, { termo_aceito: true });
 
       const { nome, corpo } = await exportar_requisicoes(tx, u, SEMENTE);
       const texto = new TextDecoder().decode(corpo);
