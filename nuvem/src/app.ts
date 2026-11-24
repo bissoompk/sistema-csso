@@ -12,6 +12,10 @@ import { cabecalhos, novoNonce, origemCruzada, resumoDoErro } from "./nucleo/seg
 import { ErroHttp, PermissaoNegada, RecusaDaApi, RedirecionaParaLogin } from "./nucleo/erros.js";
 import { obterBanco, type Tx } from "./db/cliente.js";
 import { instalarRegistroDeAcesso } from "./servicos/registro_acesso.js";
+import * as recado from "./nucleo/recado.js";
+import * as csrf from "./nucleo/csrf.js";
+import { getCookie } from "hono/cookie";
+import { COOKIE_SESSAO } from "./servicos/autenticacao.js";
 import { pagina } from "./web.js";
 import { usuarioOpcional } from "./dependencias.js";
 import { ROTAS } from "./rotas/index.js";
@@ -85,6 +89,21 @@ export function criarApp(): Hono<Ambiente> {
   // para medir a requisição inteira e ver o status que de fato saiu.
   instalarRegistroDeAcesso(app);
 
+  // O recado do redirecionamento vai em cookie assinado, e não na URL (`nucleo/recado.ts`):
+  // `?mensagem=`/`?erro=` digitados no endereço não aparecem na tela.
+  app.use("*", async (c, next) => {
+    const { req, consumido } = recado.na_chegada(c.req.raw);
+    if (req !== c.req.raw) c.req.raw = req;
+    await next();
+    const saida = recado.na_saida(req, c.res, consumido);
+    if (saida !== c.res) {
+      // o setter de `c.res` copia os cabeçalhos da resposta anterior por cima da nova
+      // (o Location antigo voltaria): zera antes de trocar
+      c.res = undefined as never;
+      c.res = saida;
+    }
+  });
+
   // Cabeçalhos de segurança + nonce da CSP, em TODA resposta.
   app.use("*", async (c, next) => {
     const nonce = novoNonce();
@@ -110,6 +129,42 @@ export function criarApp(): Hono<Ambiente> {
       return c.text(recusa, 403);
     }
     return next();
+  });
+
+  // CSRF, segunda camada (`nucleo/csrf.ts`): com sessão, o formulário traz o token da sessão; e
+  // todo HTML de quem tem sessão sai com o token posto nos formulários e no htmx.
+  app.use("*", async (c, next) => {
+    const sessao = getCookie(c, COOKIE_SESSAO) ?? "";
+    if (sessao && csrf.exige_token(c.req.method, c.req.header("content-type"))) {
+      let enviado = c.req.header(csrf.CABECALHO_CSRF) ?? null;
+      const tipo = c.req.header("content-type") ?? "";
+      if (!enviado && (tipo.includes("form-urlencoded") || tipo.includes("multipart/form-data"))) {
+        try {
+          const v = (await c.req.formData()).get(csrf.CAMPO_CSRF);
+          enviado = typeof v === "string" ? v : null;
+        } catch {
+          enviado = null;
+        }
+      }
+      if (!csrf.confere(sessao, enviado)) {
+        const recusa =
+          "Pedido recusado: a página estava desatualizada (proteção contra CSRF). " +
+          "Recarregue a página e envie de novo — se você entrou de novo em outra aba, é isso.";
+        if (pedeJson(c as Ctx)) return c.json({ erro: recusa, motivos: ["token CSRF ausente ou inválido"] }, 403);
+        return c.text(recusa, 403);
+      }
+    }
+    await next();
+    const tipo_saida = c.res.headers.get("content-type") ?? "";
+    if (sessao && tipo_saida.startsWith("text/html") && c.res.body) {
+      const html = await c.res.text();
+      const headers = new Headers(c.res.headers);
+      headers.delete("content-length");
+      const nova = new Response(csrf.injetar(html, csrf.token_da_sessao(sessao)), { status: c.res.status, headers });
+      // o setter de `c.res` mistura os cabeçalhos da resposta anterior: zera antes
+      c.res = undefined as never;
+      c.res = nova;
+    }
   });
 
   // A transação da requisição: COMMIT no retorno normal, ROLLBACK quando a

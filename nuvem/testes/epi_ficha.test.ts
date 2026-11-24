@@ -247,6 +247,32 @@ describe("RN-24", () => {
 // 4. A janela da decisão 8 — registro sem prova é pendência
 // =====================================================================
 describe("decisão 8", () => {
+  it("quantidade quebrada pede número inteiro (24/11/2026)", async () => {
+    const c = await montar(db);
+    const cli = await como("coordenador_csso");
+    const r = await entregar(cli, c, { quantidade: "1,5" });
+    expect(recado(r)).toContain("número inteiro maior que zero");
+    expect(await registros(db)).toEqual([]);
+  });
+
+  it("devolução integral fecha a pendência do comprovante e tira a etiqueta (24/11/2026)", async () => {
+    const c = await montar(db);
+    const cli = await como("coordenador_csso");
+    await entregar(cli, c);
+    const [entrega] = await registros(db);
+    const r = await cli.post(
+      `${FICHAS}/registros/${entrega!.id}/devolucao`,
+      { quantidade: String(entrega!.quantidade), motivo: "desgaste no uso", data_evento: "" },
+      { seguir: false },
+    );
+    expect(r.status, r.text).toBe(303);
+    const ps = await pendencias_de("COMPROVANTE_EPI_PENDENTE");
+    expect(ps).toHaveLength(1);
+    expect(ps[0]!.concluida).toBe(true);
+    const corpo = (await cli.get(`${FICHAS}/${c.servidor}`)).text;
+    expect(corpo).not.toContain("registrada(s) sem o comprovante");
+  });
+
   it("entrega sem comprovante abre pendência e aparece na tela", async () => {
     const c = await montar(db);
     const cli = await como("coordenador_csso");

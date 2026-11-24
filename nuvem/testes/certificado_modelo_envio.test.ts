@@ -325,10 +325,10 @@ describe("envio pela tela", () => {
       .returning();
     expect(trein).toBeDefined();
     const recusa = await cliente.post(`/treinamentos/modelos/${em_uso.id}/excluir`, {}, { seguir: false });
-    expect(decodeURIComponent(recusa.headers.get("location") ?? "")).toContain("usam este modelo");
+    expect(decodeURIComponent(recusa.location ?? "")).toContain("usam este modelo");
     expect(await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.id, em_uso.id))).toHaveLength(1);
     const ok = await cliente.post(`/treinamentos/modelos/${sobrando.id}/excluir`, {}, { seguir: false });
-    expect(decodeURIComponent(ok.headers.get("location") ?? "")).toContain("excluído");
+    expect(decodeURIComponent(ok.location ?? "")).toContain("excluído");
     expect(await db.select().from(e.certificado_modelo).where(eq(e.certificado_modelo.id, sobrando.id))).toHaveLength(0);
     expect(await db.select().from(e.certificado_modelo_tag).where(eq(e.certificado_modelo_tag.modelo_id, sobrando.id))).toHaveLength(0);
   });

@@ -23,7 +23,7 @@ const ANTEONTEM = somar_dias(datas_br.hoje(), -2);
 
 function redireciona(r: Resposta) {
   expect(r.status, r.text.slice(0, 800)).toBe(303);
-  return r.headers.get("location") ?? "";
+  return r.location ?? "";
 }
 
 async function eventos(tipo: string) {

@@ -171,7 +171,7 @@ describe("a ficha e os atos de turma de outro setor", () => {
     const c = await _cliente("tec_csso");
     const r = await c.get(`/turmas/${t_cpel.turma.id}`, { seguir: false });
     expect(r.status).toBe(303);
-    expect(r.headers.get("location")).toBe("/turmas");
+    expect(r.location).toBe("/turmas");
     const propria = await c.get(`/turmas/${t_csso.turma.id}`, { seguir: false });
     expect(propria.status).toBe(200);
     const antiga = await c.get(`/turmas/${t_sem.turma.id}`, { seguir: false });
@@ -194,15 +194,15 @@ describe("a ficha e os atos de turma de outro setor", () => {
       { seguir: false },
     );
     expect(editar.status).toBe(303);
-    expect(editar.headers.get("location")).toBe("/turmas");
+    expect(editar.location).toBe("/turmas");
     const situacao = await c.post(`/turmas/${aberta.id}/situacao`, { destino: "CANCELADA", motivo: "x" }, { seguir: false });
-    expect(situacao.headers.get("location")).toBe("/turmas");
+    expect(situacao.location).toBe("/turmas");
     const inscrever = await c.post(`/turmas/${aberta.id}/inscricoes`, { nome: "Fulano", vinculo: "EXTERNO" }, { seguir: false });
-    expect(inscrever.headers.get("location")).toBe("/turmas");
+    expect(inscrever.location).toBe("/turmas");
     const lista = await c.get(`/turmas/${aberta.id}/lista-presenca`, { seguir: false });
     expect(lista.status).toBe(303);
     const emitir = await c.post(`/turmas/${t_cpel.turma.id}/certificados`, {}, { seguir: false });
-    expect(emitir.headers.get("location")).toBe("/turmas");
+    expect(emitir.location).toBe("/turmas");
 
     const [depois] = await db.select().from(e.turma).where(eq(e.turma.id, aberta.id));
     expect(depois!.local).toBe("Sala da CPEL");
@@ -250,7 +250,7 @@ describe("certificados por setor", () => {
     expect(venc.text).not.toContain(`/certificados/${t_cpel.certificado_id}"`);
     const ficha = await c.get(`/certificados/${t_cpel.certificado_id}`, { seguir: false });
     expect(ficha.status).toBe(303);
-    expect(ficha.headers.get("location")).toBe("/certificados");
+    expect(ficha.location).toBe("/certificados");
     const pdf = await c.get(`/certificados/${t_cpel.certificado_id}/pdf`, { seguir: false });
     expect(pdf.status).toBe(303);
   });
@@ -258,7 +258,7 @@ describe("certificados por setor", () => {
   it("anular e enviar por e-mail certificado de outro setor não fazem nada", async () => {
     const c = await _cliente("eng_cpel");
     const anular = await c.post(`/certificados/${t_csso.certificado_id}/anular`, { motivo: "teste de setor" }, { seguir: false });
-    expect(anular.headers.get("location")).toBe("/certificados");
+    expect(anular.location).toBe("/certificados");
     const [cert] = await db.select().from(e.certificado).where(eq(e.certificado.id, t_csso.certificado_id));
     expect(cert!.situacao).toBe("EMITIDO");
     await c.post(`/certificados/${t_csso.certificado_id}/email`, {}, { seguir: false });
@@ -332,7 +332,9 @@ describe("o titular continua vendo o que é dele", () => {
     expect(minhas.text).toContain(aberta.codigo);
     const r = await c.post(`/turmas/${aberta.id}/inscrever-me`, {}, { seguir: false });
     expect(r.status).toBe(303);
-    expect(r.headers.get("location")).not.toBe("/turmas");
+    // o destino cru: com o recado somado (`location`), "/turmas?mensagem=…" passaria por engano
+    expect(r.location_cru).not.toBe("/turmas");
+    expect(r.location_cru).toMatch(/^\/turmas\/minhas/);
     const [s] = await db.select().from(e.servidor).where(eq(e.servidor.siape, "2000001"));
     const inscritos = await db
       .select({ id: e.inscricao.id })

@@ -445,6 +445,20 @@ describe("meus treinamentos", () => {
 // Pedidos pelo link (D34, M38) e link da turma (D36)
 // =====================================================================
 describe("pedidos pelo link", () => {
+  it("CSRF (24/11/2026): sem sessão o link aceita o pedido; logado, passa com o token da página", async () => {
+    const { turma_id, token } = await com_link({ vagas: 5 });
+    expect((await novoCliente().post(`/inscricao/${token}`, PEDIDO, { seguir: false })).status).toBe(303);
+    const { c } = await servidor_logado();
+    const pagina = (await c.get(`/inscricao/${token}`)).text;
+    const m = /<input type="hidden" name="_csrf" value="([^"]+)">/.exec(pagina);
+    expect(m).not.toBeNull();
+    const outro = { ...PEDIDO, nome: "Pedro Alvares Cabral", email: "pedro@x.com" };
+    expect((await c.post(`/inscricao/${token}`, outro, { seguir: false, sem_csrf: true })).status).toBe(403);
+    const r = await c.post(`/inscricao/${token}`, { ...outro, _csrf: m![1]! }, { seguir: false, sem_csrf: true });
+    expect(r.status).toBe(303);
+    expect((await inscricoes()).filter((i) => i.turma_id === turma_id)).toHaveLength(2);
+  });
+
   it("D34: as caixas nascem desmarcadas, com “marcar todos desta turma”", async () => {
     const { turma_id, token } = await com_link({ vagas: 1 });
     await novoCliente().post(`/inscricao/${token}`, PEDIDO);

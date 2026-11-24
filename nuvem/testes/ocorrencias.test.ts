@@ -164,7 +164,7 @@ describe("o trâmite da equipe", () => {
     expect(o!.situacao).toBe("CONCLUIDA");
     // depois de encerrada, mexer devolve o recado
     const tarde = await equipe.post(`${base}/acompanhar`, { texto: "Tarde demais." }, { seguir: false });
-    expect(decodeURIComponent(tarde.headers.get("location") ?? "")).toContain("já está encerrada");
+    expect(decodeURIComponent(tarde.location ?? "")).toContain("já está encerrada");
   });
 
   it("só a coordenação reabre ocorrência encerrada, com motivo; o técnico não vê o botão", async () => {
@@ -175,11 +175,11 @@ describe("o trâmite da equipe", () => {
     await tecnico.post(`${base}/concluir`, { conclusao: "Atendida." }, { seguir: false });
     expect((await tecnico.get(base, { seguir: false })).text).not.toContain(`action="${base}/reabrir"`);
     const negada = await tecnico.post(`${base}/reabrir`, { motivo: "faltou algo" }, { seguir: false });
-    expect(decodeURIComponent(negada.headers.get("location") ?? "")).toContain("com a coordenação");
+    expect(decodeURIComponent(negada.location ?? "")).toContain("com a coordenação");
     const coord = await entrar(novoCliente(), "coordenador_csso");
     expect((await coord.get(base, { seguir: false })).text).toContain(`action="${base}/reabrir"`);
     const sem = await coord.post(`${base}/reabrir`, { motivo: " " }, { seguir: false });
-    expect(decodeURIComponent(sem.headers.get("location") ?? "")).toContain("motivo");
+    expect(decodeURIComponent(sem.location ?? "")).toContain("motivo");
     await coord.post(`${base}/reabrir`, { motivo: "Faltou o retorno à pessoa." }, { seguir: false });
     const [o] = await db.select().from(e.ocorrencia).where(eq(e.ocorrencia.id, id));
     expect(o!.situacao).toBe("EM_ACOMPANHAMENTO");
@@ -200,7 +200,7 @@ describe("o trâmite da equipe", () => {
     const equipe = await entrar(novoCliente(), "coordenador_csso");
     expect((await equipe.get(`/ocorrencias/${id}`, { seguir: false })).text).toContain("acidente em serviço");
     const ruim = await equipe.post(`/ocorrencias/${id}/vincular-acidente`, { protocolo_cat: "CAT-1999-0001" }, { seguir: false });
-    expect(decodeURIComponent(ruim.headers.get("location") ?? "")).toContain("Não há comunicação");
+    expect(decodeURIComponent(ruim.location ?? "")).toContain("Não há comunicação");
   });
 
   it("indicadores contam por tipo e não contam as canceladas", async () => {

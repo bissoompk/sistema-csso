@@ -145,6 +145,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
   const almoxarife = await ctx.atual("almoxarife");
   for (const [prefixo, quantidade, tamanho, lote, ca, validade] of LOTES) {
     await epi_estoque.registrar_entrada(tx, almoxarife, {
+      confirmo_diferenca_catalogo: true, // dado de exemplo: lote e catálogo podem diferir
       item: await item_de(prefixo),
       quantidade_recebida: quantidade,
       data_entrada: dias(-60),
@@ -193,7 +194,8 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
     data_evento: dias(-20),
     observacao: "Entrega de balcão registrada no ambiente de teste.",
   });
-  // devolução parcial: linha nova na ficha, nunca rasura na anterior
+  // devolução (integral: 1 de 1): linha nova na ficha, nunca rasura na anterior; fecha a
+  // cobrança do comprovante dessa entrega
   await epi_ficha.registrar_devolucao(tx, almoxarife, recente, {
     quantidade: 1,
     motivo: "Devolvido por troca de posto de trabalho.",
@@ -225,6 +227,12 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
   const titular = await ctx.atual("servidor");
   const analista = await ctx.atual("tecnico");
 
+  // o pedido é individual (24/11/2026): quem escreve, acrescenta e envia é o titular. A
+  // demonstração mostra pedidos de vários servidores, então a conta age "como" o dono do pedido
+  // só nesses passos; a análise e a entrega seguem com a equipe (RN-28)
+  const dono = (usuario: UsuarioAtual, requisicao: { servidor_id: number }): UsuarioAtual =>
+    Object.assign(Object.create(Object.getPrototypeOf(usuario)), usuario, { servidor_id: requisicao.servidor_id });
+
   const pedir = async (usuario: UsuarioAtual, siape: string, itens: [string, number, string][], atividade: string) => {
     // o pedido é individual: só o beneficiário abre. A demonstração mostra pedidos de vários
     // servidores, então o operador age "como" o dono do pedido só neste passo
@@ -238,7 +246,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
       riscos_declarados: "Agente químico e agente biológico no posto.",
     });
     for (const [prefixo, quantidade, tamanho] of itens) {
-      await epi_requisicao.adicionar_item(tx, usuario, requisicao, {
+      await epi_requisicao.adicionar_item(tx, como_dono, requisicao, {
         item: await item_de(prefixo),
         quantidade,
         tamanho,
@@ -260,11 +268,11 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
     [["Luva", 2, "M"]],
     "Análises clínicas no LEAC, com manipulação de reagentes.",
   );
-  await epi_requisicao.enviar(tx, titular, enviada, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(titular, enviada), enviada, { termo_aceito: true });
 
   // EM_ANALISE — o analista pegou e assumiu o nome no pedido
   const em_analise = await pedir(secretaria, "3010022", [["Avental", 1, "G"]], "Manipulação de ácidos no laboratório de química.");
-  await epi_requisicao.enviar(tx, secretaria, em_analise, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(secretaria, em_analise), em_analise, { termo_aceito: true });
   await epi_requisicao.iniciar_analise(tx, analista, em_analise);
 
   // ANALISADA — um item aprovado e outro recusado, com motivo do catálogo
@@ -277,7 +285,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
     ],
     "Rotina de bancada no laboratório de química do ICA.",
   );
-  await epi_requisicao.enviar(tx, secretaria, mista, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(secretaria, mista), mista, { termo_aceito: true });
   await epi_requisicao.iniciar_analise(tx, analista, mista);
   const [luva_mista, capacete_mista] = await linhas(mista);
   await epi_requisicao.aprovar_item(tx, analista, luva_mista!);
@@ -292,7 +300,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
 
   // EM_ATENDIMENTO — item aprovado e reservado num lote
   const reservada = await pedir(secretaria, "3010066", [["Bota", 1, "40"]], "Trabalho em tanques do laboratório de aquicultura.");
-  await epi_requisicao.enviar(tx, secretaria, reservada, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(secretaria, reservada), reservada, { termo_aceito: true });
   await epi_requisicao.iniciar_analise(tx, analista, reservada);
   await epi_requisicao.aprovar_item(tx, analista, (await linhas(reservada))[0]!);
   await epi_requisicao.concluir_analise(tx, analista, reservada);
@@ -302,7 +310,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
 
   // ATENDIDA — aprovado, reservado e entregue: a ficha nasce da entrega
   const atendida = await pedir(secretaria, "3010077", [["Protetor", 2, ""]], "Rotina no laboratório de doenças infecciosas.");
-  await epi_requisicao.enviar(tx, secretaria, atendida, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(secretaria, atendida), atendida, { termo_aceito: true });
   await epi_requisicao.iniciar_analise(tx, analista, atendida);
   await epi_requisicao.aprovar_item(tx, analista, (await linhas(atendida))[0]!);
   await epi_requisicao.concluir_analise(tx, analista, atendida);
@@ -314,7 +322,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
   // SEM_ESTOQUE — o item aprovado que a prateleira não tem, com a pendência
   // da fatia 7 aberta em nome de quem tem de decidir
   const faltando = await pedir(secretaria, "3010112", [["Macacão", 1, "G"]], "Apoio à limpeza de área com produto químico.");
-  await epi_requisicao.enviar(tx, secretaria, faltando, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(secretaria, faltando), faltando, { termo_aceito: true });
   await epi_requisicao.iniciar_analise(tx, analista, faltando);
   await epi_requisicao.aprovar_item(tx, analista, (await linhas(faltando))[0]!);
   await epi_requisicao.concluir_analise(tx, analista, faltando);
@@ -324,7 +332,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
 
   // INDEFERIDA e CANCELADA — os dois terminais que não entregam nada
   const indeferida = await pedir(secretaria, "3010099", [["Cinturão", 1, ""]], "Atividade administrativa em piso térreo.");
-  await epi_requisicao.enviar(tx, secretaria, indeferida, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(secretaria, indeferida), indeferida, { termo_aceito: true });
   await epi_requisicao.iniciar_analise(tx, analista, indeferida);
   // o envelope só se indefere depois de TODO item recusado: indeferir é a
   // resposta ao pedido inteiro, e não um atalho por cima da decisão de linha
@@ -335,7 +343,7 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
   });
 
   const cancelada = await pedir(secretaria, "3010123", [["Luva", 2, "G"]], "Coleta de solo em campo experimental.");
-  await epi_requisicao.enviar(tx, secretaria, cancelada, { termo_aceito: true });
+  await epi_requisicao.enviar(tx, dono(secretaria, cancelada), cancelada, { termo_aceito: true });
   await epi_requisicao.cancelar(tx, secretaria, cancelada, "Pedido duplicado (teste).");
 
   ctx.resumo.epi_requisicoes = 9;

@@ -206,10 +206,10 @@ rotas.post(ESTOQUE, async (c) => {
 
   const recebida = _inteiro(d.quantidade_recebida);
   if (recebida === null || recebida <= 0) {
-    return recusar("Quantidade recebida inválida: informe um número maior que zero.", "quantidade_recebida");
+    return recusar("Quantidade recebida inválida: informe um número inteiro maior que zero (1, 2, 3…).", "quantidade_recebida");
   }
   const empenhada = _inteiro(d.quantidade_empenhada);
-  if (d.quantidade_empenhada!.trim() && empenhada === null) return recusar("Quantidade empenhada inválida.", "quantidade_empenhada");
+  if (d.quantidade_empenhada!.trim() && empenhada === null) return recusar("Quantidade empenhada inválida: informe um número inteiro maior que zero (1, 2, 3…).", "quantidade_empenhada");
 
   const quando = _data(d.data_entrada);
   if (d.data_entrada!.trim() && quando === null) return recusar("Data de entrada inválida.", "data_entrada");
@@ -350,7 +350,7 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}/descarte`, async (c) => {
   if (!entrada) return redirecionar(c, ESTOQUE);
   const f = await formulario(c);
   const quantas = _inteiro(f.texto("quantidade"));
-  if (quantas === null) return _erro(c, "Quantidade a descartar inválida.");
+  if (quantas === null) return _erro(c, "Quantidade a descartar inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   try {
     await servico.descartar(tx, usuario, { entrada, quantidade: quantas, motivo: f.texto("motivo") });
   } catch (falha) {

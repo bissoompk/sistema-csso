@@ -519,10 +519,14 @@
                        continua com saldo físico, fica indisponível e leva o
                        motivo escrito ao lado. Sumir deixaria quem opera
                        procurando defeito no sistema. #}
+                    {# o primeiro lote que pode sair vem escolhido, como no balcão
+                       (24/11/2026): "Sem lote" não baixa o estoque e deixa o saldo errado #}
+                    {% set primeiro_lote = (candidatos|selectattr('pode_sair')|first) %}
                     <select id="lote-{{ i.id }}" name="entrada_id">
-                      <option value="">Sem lote — entrega de balcão</option>
+                      <option value="">Sem lote — entrega de balcão (não baixa o estoque)</option>
                       {% for l in candidatos %}
-                      <option value="{{ l.entrada.id }}" {% if not l.pode_sair %}disabled{% endif %}>
+                      <option value="{{ l.entrada.id }}" {% if not l.pode_sair %}disabled{% endif %}
+                        {{- ' selected' if primeiro_lote and primeiro_lote.entrada.id == l.entrada.id }}>
                         {{ l.rotulo }}{% if l.impedimento %} — INDISPONÍVEL: {{ l.impedimento }}
                         {%- elif l.saldo <= 0 %} — sem saldo{% endif %}</option>
                       {% endfor %}

@@ -161,7 +161,7 @@ export function _campos_do_item(f: Record<string, string>): [CamposItem | null, 
   if (!/^\d+$/.test((f.categoria_id || "").trim())) return [null, "Escolha a categoria da NR-6.", "categoria_id"];
 
   const padrao = _inteiro(f.quantidade_padrao);
-  if (padrao === null) return [null, "Quantidade padrão inválida: informe um número maior que zero.", "quantidade_padrao"];
+  if (padrao === null) return [null, "Quantidade padrão inválida: informe um número inteiro maior que zero (1, 2, 3…).", "quantidade_padrao"];
 
   // O par (máxima, janela) anda junto: "2 por ano" é regra, "2" não é nada (RN-26)
   const maxima = _inteiro(f.quantidade_maxima);

@@ -510,6 +510,7 @@ describe("as transições da reserva", () => {
       const linha = await pedido_analisado(tx, cen, u, { quantidade: 2 });
       await servico.marcar_sem_estoque(tx, u, linha);
       const entrada = await epi_estoque.registrar_entrada(tx, u, {
+        confirmo_diferenca_catalogo: true, // dado de exemplo: lote e catálogo podem diferir
         item: cen.item,
         quantidade_recebida: 6,
         tamanho: "M",

@@ -108,7 +108,7 @@ describe("o fluxo na tela", () => {
     const sem = novoCliente();
     const solto = await sem.get("/login/segundo-fator", { seguir: false });
     expect(solto.status).toBe(303);
-    expect(solto.headers.get("location")).toBe("/login");
+    expect(solto.location).toBe("/login");
 
     // 5. desligar pede a senha atual
     const errada = await dono.post("/minha-conta/segundo-fator/desligar", { senha_atual: "senha-errada-123" });

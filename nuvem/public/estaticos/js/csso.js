@@ -938,7 +938,12 @@
       if (saindo) return;
       saindo = true;
       try {
-        fetch('/sair', { method: 'POST', credentials: 'same-origin', redirect: 'manual', keepalive: true })
+        // o token CSRF da sessão vem da <meta> que o servidor põe em toda tela
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        fetch('/sair', {
+          method: 'POST', credentials: 'same-origin', redirect: 'manual', keepalive: true,
+          headers: meta ? { 'x-csrf-token': meta.getAttribute('content') } : {}
+        })
           .then(irAoLogin, irAoLogin);
       } catch (e) { irAoLogin(); }
     }

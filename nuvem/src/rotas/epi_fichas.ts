@@ -405,7 +405,7 @@ rotas.post("/epis/entregas", async (c) => {
   if (!servidor) return recusar("Escolha o servidor que vai receber o EPI.");
   if (!item) return recusar("Escolha o item do catálogo.");
   const quantidade = inteiro(digitado.quantidade!.trim());
-  if (quantidade === null || quantidade <= 0) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (quantidade === null || quantidade <= 0) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const id_entrada = inteiro(digitado.entrada_id!.trim());
   const entrada =
     id_entrada !== null
@@ -649,7 +649,7 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/devolucao`, async (c) => {
   const destino = `${FICHAS}/${registro.servidor_id}`;
   const f = await formulario(c);
   const quantas = inteiro(f.texto("quantidade").trim());
-  if (quantas === null || quantas <= 0) return erro(c, destino, "Quantidade devolvida inválida.");
+  if (quantas === null || quantas <= 0) return erro(c, destino, "Quantidade devolvida inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   let quando: string | null = null;
   const bruto = f.texto("data_evento").trim().slice(0, 10);
   if (bruto) {

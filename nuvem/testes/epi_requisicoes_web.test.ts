@@ -680,6 +680,19 @@ describe("RN-25 na tela", () => {
     expect(corpo).toContain("CA vencido");
   });
 
+  it("na entrega, o primeiro lote que pode sair vem escolhido, e nunca o vencido (24/11/2026)", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const vencido = await lote_vencido(amb, cen);
+    const { cliente, requisicao_id, linha } = await aprovado(amb, cen);
+    const corpo = (await cliente.get(`${FILA}/${requisicao_id}`)).text;
+    const seletor = corpo.slice(corpo.indexOf(`id="lote-${linha.id}"`));
+    const select = seletor.slice(0, seletor.indexOf("</select>"));
+    expect(select).toMatch(new RegExp(`<option value="${cen.entrada}"[^>]*\\bselected\\b`));
+    expect(select).not.toMatch(new RegExp(`<option value="${vencido}"[^>]*\\bselected\\b`));
+    expect(select).toContain("não baixa o estoque");
+  });
+
   it("o lote candidato aparece ao lado do item para quem só lê", async () => {
     const amb = await novo();
     const cen = await cenario(amb);

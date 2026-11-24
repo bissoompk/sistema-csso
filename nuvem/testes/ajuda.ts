@@ -21,6 +21,9 @@
  * banco — quem precisa de banco virgem por teste chama `bancoLimpo()` de novo
  * dentro do teste (é barato) ou usa `contas()` com logins únicos.
  */
+import { COOKIE_RECADO, abrir as abrir_recado } from "../src/nucleo/recado.js";
+import { CABECALHO_CSRF, token_da_sessao } from "../src/nucleo/csrf.js";
+import { COOKIE_SESSAO } from "../src/servicos/autenticacao.js";
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
 import { afterAll } from "vitest";
@@ -172,6 +175,8 @@ export interface Opcoes {
   cabecalhos?: Record<string, string>;
   /** força multipart/form-data (padrão: só quando algum campo é arquivo) */
   multipart?: boolean;
+  /** não manda o token CSRF (o teste da recusa); por padrão o cliente o manda, como a tela */
+  sem_csrf?: boolean;
 }
 
 export class Resposta {
@@ -184,13 +189,39 @@ export class Resposta {
     /** os status dos redirecionamentos seguidos, na ordem */
     readonly historico: number[],
   ) {}
+  /**
+   * O destino como a pessoa o vê: o `Location` mais o recado que veio no cookie assinado
+   * (`nucleo/recado.ts`), de volta como `mensagem=`/`erro=`. Os testes continuam lendo "o
+   * redirecionamento leva este recado"; o `Location` cru está em `location_cru`, e
+   * `recado.test.ts` prova que ele sai limpo.
+   */
   get location(): string | null {
+    const cru = this.location_cru;
+    if (cru === null) return null;
+    let valor: string | null = null;
+    for (const linha of this.headers.getSetCookie()) {
+      const par = linha.split(";")[0]!;
+      const i = par.indexOf("=");
+      if (par.slice(0, i).trim() === COOKIE_RECADO) valor = par.slice(i + 1).trim();
+    }
+    const r = abrir_recado(valor);
+    if (!r) return cru;
+    const alvo = new URL(cru, ORIGEM);
+    if (alvo.pathname !== r.para) return cru;
+    // como `comMensagem` monta: no fim da query, com `encodeURIComponent` (espaço é %20, não +)
+    let busca = alvo.search;
+    for (const [k, v] of Object.entries(r.textos)) if (v) busca += `${busca ? "&" : "?"}${k}=${encodeURIComponent(v)}`;
+    const caminho = alvo.pathname + busca + alvo.hash;
+    return /^[a-z]+:\/\//i.test(cru) ? alvo.origin + caminho : caminho;
+  }
+  get location_cru(): string | null {
     return this.headers.get("location");
   }
   json<T = any>(): T {
     return JSON.parse(this.text) as T;
   }
   cabecalho(nome: string): string | null {
+    if (nome.toLowerCase() === "location") return this.location;
     return this.headers.get(nome);
   }
 }
@@ -245,6 +276,11 @@ export class Cliente {
       if (tipo) cabecalhos.set("content-type", tipo);
       const cookie = this.cabecalhoCookie();
       if (cookie) cabecalhos.set("cookie", cookie);
+      // o navegador manda o token que a tela pôs no formulário e no htmx (`nucleo/csrf.ts`)
+      const sessao = this.cookies.get(COOKIE_SESSAO);
+      if (sessao && met !== "GET" && met !== "HEAD" && !opcoes.sem_csrf && !cabecalhos.has(CABECALHO_CSRF)) {
+        cabecalhos.set(CABECALHO_CSRF, token_da_sessao(sessao));
+      }
       const req = new Request(new URL(url, this.origem), { method: met, headers: cabecalhos, body });
       const res = await this.app.fetch(req);
       this.guardarCookies(res);

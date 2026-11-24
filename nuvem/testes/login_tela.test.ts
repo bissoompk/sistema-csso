@@ -17,11 +17,11 @@ describe("login", () => {
     await entrar(cliente, "coordenador_csso");
     const a = await cliente.get("/login", { seguir: false });
     expect(a.status).toBe(303);
-    expect(a.headers.get("location")).toBe("/inicio");
+    expect(a.location).toBe("/inicio");
     const b = await cliente.get("/login?proximo=/turmas", { seguir: false });
-    expect(b.headers.get("location")).toBe("/turmas");
+    expect(b.location).toBe("/turmas");
     const c = await cliente.get("/login?proximo=https://outro.site", { seguir: false });
-    expect(c.headers.get("location")).toBe("/inicio");
+    expect(c.location).toBe("/inicio");
   });
 
   it("sem sessão o formulário aparece, e a tela HTML não fica no cache do navegador", async () => {

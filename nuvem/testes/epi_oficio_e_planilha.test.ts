@@ -22,6 +22,7 @@ describe("nº do ofício no lote do estoque", () => {
       const cen = await cenario(tx);
       const u = await usuario(tx, { login: "estoquista", permissoes: [...ANALISTA, "epi.estoque"] });
       const entrada = await epi_estoque.registrar_entrada(tx, u, {
+        confirmo_diferenca_catalogo: true, // dado de exemplo: lote e catálogo podem diferir
         item: cen.item,
         quantidade_recebida: 4,
         tamanho: "M",
@@ -51,6 +52,7 @@ describe("nº do ofício no lote do estoque", () => {
       const cen = await cenario(tx);
       const u = await usuario(tx, { login: "estoquista", permissoes: [...ANALISTA, "epi.estoque"] });
       const entrada = await epi_estoque.registrar_entrada(tx, u, {
+        confirmo_diferenca_catalogo: true, // dado de exemplo: lote e catálogo podem diferir
         item: cen.item,
         quantidade_recebida: 4,
         tamanho: "M",

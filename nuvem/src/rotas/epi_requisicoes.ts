@@ -919,7 +919,7 @@ rotas.post(FILA, async (c) => {
   const item = await _item_do_catalogo(tx, _id(digitado.item_id));
   if (acao === "enviar" && !item) return recusar("Escolha o equipamento antes de enviar: pedido sem item não é enviado.");
   const quantas = item ? _inteiro(digitado.quantidade) : null;
-  if (item && quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (item && quantas === null) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
 
   const comunicacao_id = _id(digitado.comunicacao_id);
   let sem_vinculo = false;
@@ -1248,7 +1248,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens`, async (c) => {
     _tela_ficha(c, usuario, requisicao.id, { erro: mensagem, digitado, item_escolhido: item });
   if (!item) return recusar("Escolha o equipamento no catálogo.");
   const quantas = _inteiro(digitado.quantidade);
-  if (quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (quantas === null) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const r = await tentar(c, (sp) =>
     servico.adicionar_item(sp, usuario, requisicao, {
       item,
@@ -1281,7 +1281,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}`, async (c) =
   };
   const recusar = (mensagem: string) => _tela_ficha(c, usuario, requisicao_id, { erro: mensagem, digitado });
   const quantas = _inteiro(digitado.quantidade);
-  if (quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (quantas === null) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const r = await tentar(c, (sp) =>
     servico.editar_item(sp, usuario, linha, {
       quantidade: quantas,
@@ -1496,7 +1496,7 @@ acao_de_item({
   preparar: async (_c, f) => {
     const bruto = f.texto("quantidade_aprovada");
     const quantas = _inteiro(bruto);
-    if (bruto.trim() && quantas === null) return { recusa: "Quantidade aprovada inválida." };
+    if (bruto.trim() && quantas === null) return { recusa: "Quantidade aprovada inválida: informe um número inteiro maior que zero (1, 2, 3…)." };
     return { dados: { quantas } };
   },
   executar: (sp, usuario, linha, f, d) =>
@@ -1559,7 +1559,7 @@ acao_de_item({
     }
     const bruto = f.texto("quantidade");
     const quantas = _inteiro(bruto);
-    if (bruto.trim() && quantas === null) return { recusa: "Quantidade a reservar inválida." };
+    if (bruto.trim() && quantas === null) return { recusa: "Quantidade a reservar inválida: informe um número inteiro maior que zero (1, 2, 3…)." };
     return { dados: { entrada, quantas } };
   },
   executar: (sp, usuario, linha, _f, d) =>
@@ -1655,7 +1655,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/entregar`, as
   const entrada = await _entrada(c.get("tx"), _id(f.texto("entrada_id")));
   const bruto = f.texto("quantidade");
   const quantas = _inteiro(bruto);
-  if (bruto.trim() && quantas === null) return _erro(c, destino, "Quantidade a entregar inválida.");
+  if (bruto.trim() && quantas === null) return _erro(c, destino, "Quantidade a entregar inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const r = await tentar(
     c,
     (sp) =>

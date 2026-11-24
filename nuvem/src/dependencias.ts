@@ -150,6 +150,8 @@ export async function formulario(c: Ctx) {
       ? await c.req.formData()
       : new FormData();
   const dados = semCpf(bruto);
+  // o token CSRF já foi conferido no middleware (`nucleo/csrf.ts`): não é dado da tela
+  dados.delete("_csrf");
   return {
     dados,
     /** valor de texto (o primeiro), ou `padrao` */

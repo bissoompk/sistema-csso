@@ -203,9 +203,17 @@ export class LinhaDaFicha {
     return String(congelado["entregue_por"] || `usuário ${this.registro.entregue_por}`);
   }
 
-  /** A janela da decisão 8. Estorno não pede comprovante. */
+  /**
+   * A janela da decisão 8. Estorno não pede comprovante; a entrega devolvida por inteiro também
+   * não (24/11/2026): o EPI voltou, e a cobrança do papel deixou de ter objeto.
+   */
   get sem_comprovante(): boolean {
-    return this.registro.tipo === "ENTREGA" && !this.estornado && this.comprovante === null;
+    return (
+      this.registro.tipo === "ENTREGA" &&
+      !this.estornado &&
+      this.devolvido < this.registro.quantidade &&
+      this.comprovante === null
+    );
   }
 
   ca_vencido_em(quando: string): boolean {
@@ -1125,12 +1133,11 @@ export async function estornar(
   }
   const devolvido = (await devolucoes_de(tx, registro)).reduce((s, d) => s + d.quantidade, 0);
   if (devolvido) {
-    // estorno depois de devolução inflaria o razão: a devolução já devolveu
-    // saldo de uma entrega que o estorno declara que não valia
+    // estorno depois de devolução: a ficha diria que o EPI nunca saiu e, ao mesmo tempo, que voltou
     throw new EntregaBloqueada([
       `o registro ${registro.id} já teve ${devolvido} devolvido(s): ` +
-        "devolução é fato do mundo e devolveu saldo ao lote. Corrigir a " +
-        "quantidade agora é ajuste de inventário, com contagem e motivo",
+        "a devolução é fato do mundo e prova que a entrega aconteceu. Se a quantidade " +
+        "do lote está errada, corrija pelo ajuste de inventário, com contagem e motivo",
     ]);
   }
 
@@ -1251,6 +1258,10 @@ export async function registrar_devolucao(
     // a devolução aponta para a entrega de onde veio — no congelado, e não em
     // `registro_estornado_id`, que quer dizer "esta linha anula aquela"
     congelado["registro_devolvido"] = registro.id;
+  } else {
+    // sem congelado na entrega, o vínculo com ela ainda tem de ficar: é por ele que a ficha
+    // sabe que a entrega foi devolvida (troca, comprovante)
+    congelado["registro_devolvido"] = registro.id;
   }
   const [devolucao] = await tx
     .insert(epi_ficha_registro)
@@ -1288,6 +1299,11 @@ export async function registrar_devolucao(
   await _amarrar_evento(tx, devolucao!, evento.id);
   // RN-32: devolução integral tira a entrega da cobrança de troca
   await sincronizar_trocas_do_servidor(tx, registro.servidor_id, usuario);
+  // e da cobrança do comprovante (24/11/2026)
+  if (registro.tipo === "ENTREGA") {
+    const total = (await devolucoes_de(tx, registro)).reduce((soma, dv) => soma + dv.quantidade, 0);
+    if (total >= registro.quantidade) await fechar_pendencia_de_comprovante(tx, registro, usuario);
+  }
   // a devolução trata a comunicação aberta do titular sobre esta entrega
   // (import tardio: `epi_comunicacao` importa este módulo)
   const { tratar_pela_devolucao } = await import("./epi_comunicacao.js");
