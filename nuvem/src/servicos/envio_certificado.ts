@@ -13,7 +13,7 @@
  */
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { certificado as tabela_certificado, email_saida as tabela_email } from "../db/esquema/index.js";
+import { certificado as tabela_certificado, email_saida as tabela_email, servidor as tabela_servidor } from "../db/esquema/index.js";
 import { Certificado as C, Participante } from "../dominio/treinamento.js";
 import * as auditoria from "./auditoria.js";
 import { TIPO_PDF } from "./certificado_pdf.js";
@@ -65,7 +65,14 @@ function _corpo(certificado: CertificadoRegistro): { assunto: string; corpo: str
 export async function destinatario(tx: Executor, certificado: { participante_id: number }): Promise<string> {
   const pessoa = await servico_participante.carregar(tx, certificado.participante_id);
   const endereco = pessoa ? Participante.email_exibicao(pessoa) : "";
-  return email.email_valido(endereco) ? endereco.trim() : "";
+  if (email.email_valido(endereco)) return endereco.trim();
+  // servidor sem e-mail no cadastro do participante: o e-mail do cadastro funcional
+  if (pessoa?.servidor_id != null) {
+    const [servidor] = await tx.select({ email: tabela_servidor.email }).from(tabela_servidor).where(eq(tabela_servidor.id, pessoa.servidor_id));
+    const do_servidor = servidor?.email ?? "";
+    if (email.email_valido(do_servidor)) return do_servidor.trim();
+  }
+  return "";
 }
 
 /**
@@ -167,14 +174,18 @@ email.registrar_anexador(TIPO, async (tx, mensagem) => {
   if (certificado.situacao !== "EMITIDO") throw new Error("certificado anulado depois do pedido de envio");
   if (mensagem.criado_por === null) throw new Error("envio sem autor");
   const usuario = await carregar_usuario_atual(tx, mensagem.criado_por);
-  if (servico.do_modelo_enviado(certificado)) {
-    if (conversor_pdf.configurado()) {
+  if (servico.do_modelo_enviado(certificado) && conversor_pdf.configurado()) {
+    try {
       const fiel = await servico.pdf_do_modelo_enviado(tx, usuario, certificado);
       return [{ nome: fiel.nome, tipo: TIPO_PDF, bytes: fiel.bytes }];
+    } catch (erro) {
+      // conversor fora do ar: não derruba o e-mail; sai o PDF da casa (o QR valida o mesmo certificado)
+      if (!(erro instanceof conversor_pdf.ConversorIndisponivel)) throw erro;
+      console.error(`[certificado ${certificado.id}] ${erro.message}`);
     }
-    const via = await servico.segunda_via(tx, usuario, certificado);
-    return [{ nome: via.docx.split("/").pop()!, tipo: servico.TIPO_DOCX, bytes: via.bytes }];
   }
+  // O participante recebe PDF, nunca o Word editável do modelo: sem conversor (ou com ele fora do
+  // ar), vai o PDF da casa
   const pdf = await servico.pdf_do_certificado(tx, usuario, certificado);
   return [{ nome: pdf.nome, tipo: TIPO_PDF, bytes: pdf.bytes }];
 });

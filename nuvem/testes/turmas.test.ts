@@ -461,8 +461,13 @@ describe("máquina E", () => {
     const operador = await _usuario_com(["turma.criar", "turma.inscrever"]);
     const turma = (await servico_turma.carregar_turma(db, turma_id))!;
     await servico_turma.mudar_situacao(db, operador, turma, "INSCRICOES_ABERTAS");
-    await servico_turma.mudar_situacao(db, operador, turma, "EM_ANDAMENTO");
-    const erro = await servico_turma.mudar_situacao(db, operador, turma, "CONCLUIDA").catch((x) => x);
+    // turma futura não se inicia (iniciar por engano fecha o link e não tem volta)
+    const recusa = await servico_turma.mudar_situacao(db, operador, turma, "EM_ANDAMENTO").catch((x) => x);
+    expect(String(recusa.message)).toContain("só se inicia turma na data de começo");
+    await db.update(e.turma).set({ data_inicio: hoje_iso() }).where(eq(e.turma.id, turma_id));
+    const comecou = (await servico_turma.carregar_turma(db, turma_id))!;
+    await servico_turma.mudar_situacao(db, operador, comecou, "EM_ANDAMENTO");
+    const erro = await servico_turma.mudar_situacao(db, operador, comecou, "CONCLUIDA").catch((x) => x);
     expect(erro).toBeInstanceOf(PermissaoNegada);
     expect((erro as PermissaoNegada).codigo).toBe("turma.concluir");
     await expect(

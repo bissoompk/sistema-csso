@@ -34,6 +34,7 @@ import {
   reler,
   reler_linha,
   usuario,
+  rascunho,
 } from "./ajuda_epi_requisicao";
 
 const { url } = await bancoLimpo();
@@ -163,7 +164,7 @@ describe("RN-29", () => {
     desfeito(async (tx) => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
-      const requisicao = await servico.criar_rascunho(tx, u, { servidor: cen.servidor });
+      const requisicao = await rascunho(tx, u, { servidor: cen.servidor });
       const erro = await recusa(servico.enviar(tx, u, requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("nenhum item");
     }));
@@ -178,7 +179,7 @@ describe("RN-30", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       await recusa(
-        servico.criar_rascunho(tx, u, {
+        rascunho(tx, u, {
           servidor: cen.servidor,
           descricao_atividade: "Estou grávida e não posso pegar peso no setor",
         }),
@@ -190,7 +191,7 @@ describe("RN-30", () => {
     desfeito(async (tx) => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
-      const requisicao = await servico.criar_rascunho(tx, u, { servidor: cen.servidor });
+      const requisicao = await rascunho(tx, u, { servidor: cen.servidor });
       await recusa(
         servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL",
           item: cen.item,
@@ -825,6 +826,6 @@ describe("permissões", () => {
     desfeito(async (tx) => {
       const cen = await cenario(tx);
       const ninguem = await usuario(tx, { permissoes: ["epi.ver"], login: "curioso" });
-      await recusa(servico.criar_rascunho(tx, ninguem, { servidor: cen.servidor }), PermissaoNegada);
+      await recusa(rascunho(tx, ninguem, { servidor: cen.servidor }), PermissaoNegada);
     }));
 });

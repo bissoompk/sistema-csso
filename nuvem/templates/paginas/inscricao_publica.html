@@ -85,6 +85,7 @@
 
 {% elif not recebido %}
 <div class="cartao">
+  {% set pre_requisito = turma.pre_requisito %}
   {% include "partes/inscricao_formulario.html" %}
 </div>
 {% endif %}

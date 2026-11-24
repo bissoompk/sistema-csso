@@ -33,8 +33,12 @@ async function novo(): Promise<Amb> {
   const amb = await bancoLimpo();
   return { ...amb, contas: await contas(amb.db) };
 }
+/** De quem é o cliente, para `abrir` ligar a conta ao servidor do pedido (o pedido é individual). */
+const dono_do_cliente = new WeakMap<object, { amb: Amb; login: string }>();
 async function como(amb: Amb, perfil: string): Promise<Cliente> {
-  return entrar(amb.novoCliente(), amb.contas[perfil]![0]);
+  const cliente = await entrar(amb.novoCliente(), amb.contas[perfil]![0]);
+  dono_do_cliente.set(cliente, { amb, login: amb.contas[perfil]![0] });
+  return cliente;
 }
 
 // =====================================================================
@@ -124,7 +128,27 @@ async function amarrar_conta_ao_servidor(amb: Amb, login: string, servidor_id: n
   await amb.db.update(e.usuario).set({ servidor_id }).where(eq(e.usuario.login, login));
 }
 
-function abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
+/**
+ * O pedido de EPI é individual: só o beneficiário abre. A conta do cliente é ligada ao servidor
+ * do cenário só durante a abertura e desligada depois — no resto do teste ela continua sendo
+ * outra pessoa (a RN-28 depende disso).
+ */
+async function abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
+  const dono = dono_do_cliente.get(cliente);
+  let antes: number | null = null;
+  if (dono) {
+    const [u] = await dono.amb.db.select({ servidor_id: e.usuario.servidor_id }).from(e.usuario).where(eq(e.usuario.login, dono.login));
+    antes = u?.servidor_id ?? null;
+    await amarrar_conta_ao_servidor(dono.amb, dono.login, cen.servidor);
+  }
+  try {
+    return await _abrir(cliente, cen, troca);
+  } finally {
+    if (dono) await dono.amb.db.update(e.usuario).set({ servidor_id: antes }).where(eq(e.usuario.login, dono.login));
+  }
+}
+
+function _abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
   return cliente.post(
     FILA,
     {
@@ -217,8 +241,9 @@ describe("permissões", () => {
   });
 
   it.each([
-    ["coordenador_csso", 303, 303],
-    ["secretaria_csso", 303, 403],
+    // o pedido é individual (24/11/2026): sem ser o beneficiário, nem a equipe abre por outra pessoa
+    ["coordenador_csso", 200, 303],
+    ["secretaria_csso", 200, 403],
     // escopo próprio sem servidor ligado: a conta não tem por quem pedir, e a
     // tela volta dizendo isso (200) — antes ela abria rascunho para qualquer
     // servidor do cadastro (D18, `correcoes_epi.test.ts`)
@@ -230,7 +255,7 @@ describe("permissões", () => {
     const cen = await cenario(amb);
     const requisicao_id = await pedido_enviado(amb, await como(amb, "coordenador_csso"), cen);
     const cliente = await como(amb, perfil);
-    expect((await abrir(cliente, cen)).status).toBe(pode_abrir);
+    expect((await _abrir(cliente, cen)).status).toBe(pode_abrir);
     expect((await cliente.post(`${FILA}/${requisicao_id}/analise`, {}, { seguir: false })).status).toBe(decidir);
   });
 

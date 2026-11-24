@@ -670,11 +670,10 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/devolucao`, async (c) => {
     if (!recusavel(falha)) throw falha;
     return erro(c, destino, motivos_de(falha));
   }
-  const saldo = registro.entrada_id ? "e o saldo voltou ao lote" : "sem lote a repor";
   return volta(
     c,
     destino,
-    `Devolução registrada (registro ${devolucao.id}) ${saldo}. ` +
+    `Devolução registrada (registro ${devolucao.id}). O saldo do lote não muda: EPI é individual e já foi usado. ` +
       "A entrega continua na ficha: devolver não desfaz o que aconteceu.",
   );
 });

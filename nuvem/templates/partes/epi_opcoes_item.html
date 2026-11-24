@@ -69,11 +69,14 @@
    opera procurando defeito no sistema. #}
 <div class="campo">
   <label for="entrada_id">Lote de estoque</label>
+  {# padrão: o primeiro lote que pode sair (a lista já vem na ordem de uso), para a
+     entrega baixar o estoque; "sem lote" fica como escolha consciente #}
+  {% set primeiro = (lotes|selectattr('pode_sair')|first) %}
   <select id="entrada_id" name="entrada_id" aria-describedby="dica-lote">
-    <option value="">Sem lote — entrega de balcão</option>
+    <option value="">Sem lote — entrega de balcão (não baixa o estoque)</option>
     {% for l in lotes %}
     <option value="{{ l.entrada.id }}" {% if not l.pode_sair %}disabled{% endif %}
-      {{- ' selected' if d.entrada_id and d.entrada_id|string == l.entrada.id|string }}>
+      {{- ' selected' if (d.entrada_id and d.entrada_id|string == l.entrada.id|string) or (not d.entrada_id and primeiro and primeiro.entrada.id|string == l.entrada.id|string) }}>
       {{ l.rotulo }}{% if l.impedimento %} — INDISPONÍVEL: {{ l.impedimento }}
       {%- elif l.saldo <= 0 %} — sem saldo{% endif %}</option>
     {% endfor %}

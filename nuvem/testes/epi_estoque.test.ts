@@ -278,7 +278,7 @@ describe("o saldo em cada passo", () => {
       { seguir: false },
     );
     expect(devolucao.status).toBe(303);
-    expect(await _saldo(entrada.id)).toBe(9);
+    expect(await _saldo(entrada.id)).toBe(7); // devolução não repõe saldo: EPI é individual e já foi usado
 
     const descarte = await cliente.post(
       `${ESTOQUE}/${entrada.id}/descarte`,
@@ -286,26 +286,26 @@ describe("o saldo em cada passo", () => {
       { seguir: false },
     );
     expect(descarte.status).toBe(303);
-    expect(await _saldo(entrada.id)).toBe(8);
+    expect(await _saldo(entrada.id)).toBe(6);
 
     const ajuste = await cliente.post(
       `${ESTOQUE}/${entrada.id}/ajuste`,
-      { contagem: "6", motivo: "contagem do inventário anual" },
+      { contagem: "5", motivo: "contagem do inventário anual" },
       { seguir: false },
     );
     expect(ajuste.status).toBe(303);
-    expect(await _saldo(entrada.id)).toBe(6);
+    expect(await _saldo(entrada.id)).toBe(5);
 
+    // a devolução não aparece no razão: não repõe saldo (EPI é individual e já foi usado)
     expect((await _movimentos(entrada.id)).map((m) => [m.tipo, m.quantidade])).toEqual([
       ["ENTRADA", 10],
       ["SAIDA", -3],
-      ["DEVOLUCAO", 2],
       ["DESCARTE", -1],
-      ["AJUSTE", -2],
+      ["AJUSTE", -1],
     ]);
     const corpo = (await cliente.get(`${ESTOQUE}/${entrada.id}/movimentos`)).text;
-    for (const esperado of ["entrada", "saída", "devolução", "descarte", "ajuste"]) expect(corpo).toContain(esperado);
-    expect(corpo).toContain("contagem física 6");
+    for (const esperado of ["entrada", "saída", "descarte", "ajuste"]) expect(corpo).toContain(esperado);
+    expect(corpo).toContain("contagem física 5");
   });
 
   it("o extrato acumula o saldo na ordem em que os fatos foram gravados", async () => {
@@ -324,7 +324,7 @@ describe("o saldo em cada passo", () => {
 // 4. Devolução × estorno
 // =====================================================================
 describe("devolução não é estorno", () => {
-  it("devolução repõe saldo e estorno não", async () => {
+  it("nem a devolução nem o estorno repõem saldo", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
     await _lote(cliente, cenario, { quantidade_recebida: "10", quantidade_empenhada: "10" });
@@ -342,9 +342,9 @@ describe("devolução não é estorno", () => {
     const regs = await _registros();
     const segunda = regs[regs.length - 1]!;
     await cliente.post(`${FICHAS}/registros/${segunda.id}/devolucao`, { quantidade: "2", motivo: "desligamento do servidor" });
-    expect(await _saldo(entrada.id)).toBe(6);
+    expect(await _saldo(entrada.id)).toBe(4);
 
-    expect((await _movimentos(entrada.id)).map((m) => m.tipo)).toEqual(["ENTRADA", "SAIDA", "SAIDA", "DEVOLUCAO"]);
+    expect((await _movimentos(entrada.id)).map((m) => m.tipo)).toEqual(["ENTRADA", "SAIDA", "SAIDA"]);
   });
 
   it("a devolução vira linha na ficha sem desfazer a entrega", async () => {
@@ -410,7 +410,7 @@ describe("devolução não é estorno", () => {
     await cliente.post(`${FICHAS}/registros/${entrega.id}/devolucao`, { quantidade: "3", motivo: "trocou de posto" });
     const r = await cliente.post(`${FICHAS}/registros/${entrega.id}/estorno`, { motivo: "quantidade errada" }, { seguir: false });
     expect(_recado(r)).toContain("já teve 3 devolvido");
-    expect(await _saldo(entrada.id)).toBe(10);
+    expect(await _saldo(entrada.id)).toBe(7); // a devolução não repõe saldo (EPI usado)
   });
 
   it("devolução de entrega estornada é recusada", async () => {

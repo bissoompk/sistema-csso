@@ -524,7 +524,7 @@ describe("formulário público", () => {
     // "outra pessoa" volta ao formulário limpo, com o vínculo sem padrão
     const outra = texto((await publico.get(`/inscricao/${token}?novo=1`)).text);
     expect(outra).toContain("Pedir a vaga</button>");
-    expect(outra).toMatch(/<option value="" selected>Selecione<\/option>/);
+    expect(outra).not.toMatch(/name="vinculo"[^>]*checked/);
     expect(outra).toContain('data-mostra-quando="vinculo=SERVIDOR"');
   });
 

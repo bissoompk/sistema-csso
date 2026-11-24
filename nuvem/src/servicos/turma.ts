@@ -712,6 +712,13 @@ export async function mudar_situacao(
           : " Lance a presença de cada dia e conclua a partir dessa data."),
     );
   }
+  // iniciar uma turma futura por engano fecha o link de inscrição e não tem volta
+  if (destino === "EM_ANDAMENTO" && turma.data_inicio > datas_br.hoje()) {
+    throw new RegraDaTurma(
+      `${turma.codigo} começa em ${datas_br.numerica(turma.data_inicio)}: só se inicia turma na data de começo. ` +
+        "Se a data está errada, corrija-a na ficha da turma antes.",
+    );
+  }
   if (destino === "INSCRICOES_ABERTAS" && turma.data_fim < datas_br.hoje()) {
     throw new RegraDaTurma(
       `A turma terminou em ${datas_br.numerica(turma.data_fim)} — não há como abrir inscrição para ela.`,

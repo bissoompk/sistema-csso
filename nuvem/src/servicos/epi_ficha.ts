@@ -175,6 +175,8 @@ export class LinhaDaFicha {
     public estorna: EpiFichaRegistro | null,
     /** quanto desta entrega já voltou por devolução (0 nas outras linhas) */
     public devolvido: number = 0,
+    /** a entrega posterior do mesmo item à mesma pessoa (a troca já feita), se houver */
+    public substituida_por: EpiFichaRegistro | null = null,
   ) {}
 
   /**
@@ -211,9 +213,18 @@ export class LinhaDaFicha {
     return validade !== null && validade < quando;
   }
 
+  /**
+   * A mesma regra de `troca_devida_em` (RN-32), que alimenta o painel e a rotina
+   * noturna: a troca vence, mas não se a entrega foi estornada, devolvida por
+   * inteiro ou substituída por entrega posterior. Antes a ficha ignorava as duas
+   * últimas e mostrava "troca vencida" depois de a pessoa já ter trocado.
+   */
   troca_vencida_em(quando: string): boolean {
     const troca = this.registro.previsao_troca;
-    return troca !== null && troca < quando && this.registro.tipo === "ENTREGA" && !this.estornado;
+    if (troca === null || troca >= quando) return false;
+    if (this.registro.tipo !== "ENTREGA" || this.estornado) return false;
+    if (this.devolvido >= this.registro.quantidade) return false;
+    return this.substituida_por === null || this.substituida_por.data_evento > quando;
   }
 }
 
@@ -247,6 +258,16 @@ export async function linha_do_tempo(tx: Executor, servidor_id: number): Promise
     tx,
     registros.map((r) => r.id),
   );
+  // a entrega posterior do mesmo item (a troca já feita), sem contar as estornadas — como `_substituida_ate`
+  const entregas = registros.filter((r) => r.tipo === "ENTREGA" && !estorno_de.has(r.id));
+  const substituta_de = (r: EpiFichaRegistro): EpiFichaRegistro | null => {
+    let melhor: EpiFichaRegistro | null = null;
+    for (const c of entregas) {
+      if (c.id === r.id || c.epi_item_id !== r.epi_item_id || !_antes(r, c)) continue;
+      if (melhor === null || _antes(c, melhor)) melhor = c;
+    }
+    return melhor;
+  };
   return registros.map(
     (r) =>
       new LinhaDaFicha(
@@ -255,6 +276,7 @@ export async function linha_do_tempo(tx: Executor, servidor_id: number): Promise
         estorno_de.get(r.id) ?? null,
         por_id.get(r.registro_estornado_id ?? -1) ?? null,
         devolvido.get(r.id) ?? 0,
+        r.tipo === "ENTREGA" ? substituta_de(r) : null,
       ),
   );
 }
@@ -1160,7 +1182,8 @@ export async function estornar(
 // Devolução — o outro fato, que NÃO é estorno
 // =====================================================================
 /**
- * O equipamento voltou: linha nova na ficha e saldo de volta no razão.
+ * O equipamento voltou: linha nova na ficha, SEM mexer no saldo do lote (EPI é
+ * individual: depois de usado, não volta à prateleira).
  * Devolução diz que o registro estava certo e que o EPI voltou; estorno diz
  * que o registro estava errado. Um clique que fizesse as duas coisas faria o
  * físico deixar de bater com a prateleira.
@@ -1243,21 +1266,9 @@ export async function registrar_devolucao(
     })
     .returning();
 
-  // o saldo só volta quando havia lote: entrega de balcão não baixou nada
-  if (registro.entrada_id !== null) {
-    const [entrada] = await tx.select().from(epi_entrada_estoque).where(eq(epi_entrada_estoque.id, registro.entrada_id));
-    if (entrada) {
-      await epi_estoque.devolver(tx, {
-        entrada,
-        quantidade,
-        usuario,
-        ficha_registro_id: devolucao!.id,
-        // `servidor #{id}`, e não o SIAPE, pela mesma razão da baixa da entrega
-        motivo: `devolução do servidor #${registro.servidor_id}: ${limpo}`,
-      });
-    }
-  }
-
+  // O saldo NÃO volta ao lote, qualquer que seja o motivo: o EPI é individual e, mesmo em
+  // bom estado, já foi usado (decisão do dono, 24/11/2026). A devolução só registra o fato na
+  // ficha; o estoque se acerta, se for o caso, pelo ajuste ou pelo descarte do lote.
   const evento = await auditoria.registrar(tx, {
     entidade: ENTIDADE,
     entidade_id: devolucao!.id,

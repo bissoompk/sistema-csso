@@ -27,6 +27,7 @@ import {
   anexo as tabela_anexo,
   certificado as tabela_certificado,
   certificado_modelo as tabela_modelo,
+  email_saida as tabela_email,
   inscricao as tabela_inscricao,
   parametro as tabela_parametro,
 } from "../db/esquema/index.js";
@@ -937,6 +938,17 @@ export async function anular(
   if (opcoes.substituido_por) campos.substituido_por_id = opcoes.substituido_por.id;
   await tx.update(tabela_certificado).set(campos).where(eq(tabela_certificado.id, certificado.id));
   Object.assign(certificado, campos);
+  // o e-mail que já estava na fila não deve sair (nem falhar 5 vezes): o papel não vale mais
+  await tx
+    .update(tabela_email)
+    .set({ situacao: "CANCELADO", ultimo_erro: "Certificado anulado antes do envio." })
+    .where(
+      and(
+        eq(tabela_email.certificado_id, certificado.id),
+        eq(tabela_email.tipo, "CERTIFICADO"),
+        eq(tabela_email.situacao, "PENDENTE"),
+      ),
+    );
 
   await auditoria.registrar(tx, {
     entidade: "certificado",

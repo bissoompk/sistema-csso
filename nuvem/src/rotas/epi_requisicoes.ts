@@ -689,7 +689,7 @@ async function _tela_nova(
   const q = opcoes.q ?? "";
   // pelo escopo de `epi.requisitar`, e não da conta (D16): o almoxarife pede
   // só para si, pela concessão do titular
-  const proprio = usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO;
+  const proprio = true;
   const [eu] =
     proprio && usuario.servidor_id !== null
       ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id))
@@ -875,7 +875,7 @@ rotas.post(FILA, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const q = f.texto("q");
-  const proprio = usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO;
+  const proprio = true;
   // tudo o que foi digitado, guardado antes da primeira recusa
   const digitado = {
     // escopo próprio: o campo travado manda o próprio id; vazio vale o mesmo.
@@ -1099,7 +1099,7 @@ async function _tela_ficha(
       EPI_REQUISICAO_CANCELAVEL.has(requisicao.estado) && !requisicao.itens.some((l) => l.quantidade_entregue > 0),
     pode_requisitar: usuario.pode("epi.requisitar"),
     pode_analisar: usuario.pode("epi.analisar"),
-    proprio: usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO,
+    proprio: true,
     // requerente, quem abriu ou quem analisa — a mesma pergunta que o serviço faz
     pode_cancelar: servico.pode_cancelar(usuario, requisicao),
     // o botão de indeferir só aparece quando ele funciona

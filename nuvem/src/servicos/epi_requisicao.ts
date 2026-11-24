@@ -649,36 +649,21 @@ export interface CamposCabecalho {
  * que a recebe pela concessão do titular pede só para si.
  */
 export async function exigir_requerente_permitido(
-  tx: Executor,
+  _tx: Executor,
   usuario: UsuarioAtual,
   servidor: Pick<Servidor, "id">,
 ): Promise<void> {
-  const alcance = usuario.alcance("epi.requisitar");
-  if (alcance.total || alcance.unidade) return;
-  if (alcance.proprio && usuario.servidor_id !== null && servidor.id === usuario.servidor_id) return;
-  if (!alcance.campi.length) {
-    if (usuario.servidor_id === null) {
-      throw new RequisicaoBloqueada([
-        "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
-          "se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora",
-      ]);
-    }
-    if (servidor.id !== usuario.servidor_id) {
-      throw new PermissaoNegada("epi.requisitar", "Pelo seu perfil, você pede EPI só para você mesmo.");
-    }
-    return;
+  // O pedido é INDIVIDUAL (decisão do dono, 24/11/2026): a ficha de EPI é pessoal e o registro dela
+  // importa, então só quem vai usar o equipamento abre o pedido — nem chefia, secretaria ou
+  // almoxarife pedem por outra pessoa, qualquer que seja o escopo.
+  if (usuario.servidor_id === null) {
+    throw new RequisicaoBloqueada([
+      "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
+        "se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora",
+    ]);
   }
-  const [linha] = await tx
-    .select({ campus_id: unidade_uorg.campus_id })
-    .from(tabela_servidor)
-    .leftJoin(unidade_uorg, eq(unidade_uorg.id, tabela_servidor.unidade_uorg_id))
-    .where(eq(tabela_servidor.id, servidor.id));
-  const campus = linha?.campus_id ?? null;
-  if (campus !== null && !alcance.campi.includes(campus)) {
-    throw new PermissaoNegada(
-      "epi.requisitar",
-      "Este servidor está lotado em outro campus: o pedido dele é aberto por quem atende aquele campus.",
-    );
+  if (servidor.id !== usuario.servidor_id) {
+    throw new PermissaoNegada("epi.requisitar", "O pedido de EPI é individual: você pede só para você mesmo.");
   }
 }
 

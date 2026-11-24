@@ -20,7 +20,7 @@ import * as epi_ficha from "../src/servicos/epi_ficha.js";
 import * as servico from "../src/servicos/epi_requisicao.js";
 import { PermissaoNegada, UsuarioAtual } from "../src/servicos/rbac.js";
 import { bancoLimpo, contas, entrar, naTransacao } from "./ajuda";
-import { DAQUI_A_UM_ANO, HOJE, desfeito, itens, recusa, reler, reler_linha, usuario } from "./ajuda_epi_requisicao";
+import { DAQUI_A_UM_ANO, HOJE, desfeito, itens, recusa, reler, reler_linha, rascunho, usuario } from "./ajuda_epi_requisicao";
 
 const { db, url, cliente } = await bancoLimpo();
 const CONTAS = await contas(db);
@@ -122,7 +122,7 @@ async function pedido_analisado(
   u: UsuarioAtual,
   o: { quantidade?: number; servidor?: Servidor } = {},
 ) {
-  const requisicao = await servico.criar_rascunho(tx, u, {
+  const requisicao = await rascunho(tx, u, {
     servidor: o.servidor ?? cen.servidor,
     descricao_atividade: "Manipulação de reagentes no laboratório de análises",
   });
@@ -531,7 +531,7 @@ describe("as transições da reserva", () => {
     desfeito(async (tx) => {
       const u = await operador(tx);
       const cen = await cenario(tx, { recebido: 5 });
-      const requisicao = await servico.criar_rascunho(tx, u, {
+      const requisicao = await rascunho(tx, u, {
         servidor: cen.servidor,
         descricao_atividade: "Manipulação de reagentes",
       });

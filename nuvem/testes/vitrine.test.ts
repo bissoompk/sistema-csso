@@ -159,6 +159,24 @@ describe("a vitrine pública", () => {
     expect((await visitante.get("/cursos?aba=realizados")).text).toContain("Trabalho em Altura");
   });
 
+  it("a inscrição abre em popup, com os três passos, vínculo em botões e a declaração do pré-requisito", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    expect((await _publicar(id, { pre_requisito: "Ter feito a NR-35 básica" })).status).toBe(303);
+    const ficha = (await novoCliente().get(`/cursos/${codigo}`)).text;
+    expect(ficha).toContain('href="#popup-inscricao"');
+    expect(ficha).toMatch(/<dialog class="popup" id="popup-inscricao"/);
+    expect(ficha).toContain("Você envia");
+    expect(ficha).toContain("confere");
+    expect(ficha).toContain("Confirmação por e-mail");
+    expect(ficha).toMatch(/<input type="radio" name="vinculo" value="SERVIDOR"/);
+    expect(ficha).not.toContain('<select id="p-vinculo"');
+    expect(ficha).toContain('name="declaro_pre_requisito"');
+    // sem pré-requisito, sem a caixa
+    await _publicar(id, { pre_requisito: "" });
+    expect((await novoCliente().get(`/cursos/${codigo}`)).text).not.toContain("declaro_pre_requisito");
+  });
+
   it("turma lotada fica em Abertas com o selo e sem formulário", async () => {
     const id = await _turma({}, 1);
     const codigo = await _codigo(id);

@@ -353,7 +353,7 @@ export function cartoes(usuario: UsuarioAtual, r: ResumoHub): CartaoHub[] {
     // vermelho só com o que alarmar: sem vencido, o cartão é neutro como os outros
     cor: r.reciclagem.VENCIDO ? "vermelho" : "escuro",
     titulo: "Reciclagem",
-    descricao: "Quem venceu e quem vence em 30 dias.",
+    descricao: "Quem venceu e quem vence em 60 dias.",
     contagem: {
       texto: `${r.reciclagem.VENCIDO ?? 0} vencido(s) · ${r.reciclagem.A_VENCER ?? 0} a vencer`,
       classe: r.reciclagem.VENCIDO ? "urgente" : "",

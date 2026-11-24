@@ -54,7 +54,7 @@
       {% if curso.publico|length %}<dt>Público</dt><dd>{{ curso.publico|join(', ') }}</dd>{% endif %}
       {% if curso.pre_requisito %}<dt>Pré-requisito</dt><dd>{{ curso.pre_requisito }}</dd>{% endif %}
     </dl>
-    {% if curso.aberta and not curso.cheia %}<p><a class="botao largo" href="#inscricao">Inscrever-se</a></p>{% endif %}
+    {% if curso.aberta and not curso.cheia %}<p><a class="botao largo" href="#popup-inscricao">Inscrever-se</a></p>{% endif %}
   </div>
 </div>
 
@@ -106,7 +106,28 @@
   </div>
   <p class="sem-margem"><a href="/cursos/{{ curso.codigo }}?novo=1#inscricao">Pedir a vaga para outra pessoa</a></p>
   {% elif curso.aberta and not curso.cheia %}
-  {% include "partes/inscricao_formulario.html" %}
+  {# a inscrição abre em popup (:target, sem JavaScript); com erro no envio ele já volta aberto #}
+  <h2>Inscrição</h2>
+  <p>{{ curso.titulo }} · {{ curso.data_inicio|data }}{% if curso.data_fim != curso.data_inicio %} a {{ curso.data_fim|data }}{% endif %}
+    {%- if curso.hora_inicio %} · {{ curso.hora_inicio }}{% if curso.hora_fim %}–{{ curso.hora_fim }}{% endif %}{% endif %}</p>
+  <p><a class="botao largo" href="#popup-inscricao">Inscrever-se</a></p>
+  {% set pre_requisito = curso.pre_requisito %}
+  {% set em_popup = true %}
+  <dialog class="popup" id="popup-inscricao" aria-labelledby="popup-inscricao-titulo"{{ ' open' if erro_formulario }}>
+    <div class="popup-caixa larga">
+      <div class="popup-topo">
+        <div class="popup-titulo">
+          <h2 id="popup-inscricao-titulo">Pedir a vaga</h2>
+          <span class="nota">{{ curso.titulo }} · {{ curso.data_inicio|data }}
+            {%- if curso.hora_inicio %} · {{ curso.hora_inicio }}{% endif %}</span>
+        </div>
+        <a class="popup-fechar" href="#sem-popup" data-fecha-popup aria-label="Fechar sem enviar"><span aria-hidden="true">×</span></a>
+      </div>
+      <div class="popup-corpo">
+        {% include "partes/inscricao_formulario.html" %}
+      </div>
+    </div>
+  </dialog>
   {% else %}
   <h2>Inscrições</h2>
   <p>{% if curso.cheia and curso.aberta %}As vagas desta turma se esgotaram.

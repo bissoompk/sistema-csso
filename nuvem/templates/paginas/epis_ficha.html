@@ -370,16 +370,16 @@
               {% endif %}
 
               {# Devolução e estorno lado a lado, e cada uma diz o que faz:
-                 devolução repõe saldo porque o equipamento voltou; estorno não
-                 repõe nada porque nada voltou — o que estava errado era o
-                 registro. #}
+                 devolução registra que o equipamento voltou, mas não repõe saldo
+                 (EPI é individual e já foi usado); estorno não repõe nada porque
+                 nada voltou — o que estava errado era o registro. #}
               {% if r.tipo == 'ENTREGA' %}
               <form method="post" action="/epis/fichas/registros/{{ r.id }}/devolucao">
                 <h3>Registrar devolução</h3>
                 <p class="discreto">O equipamento <strong>voltou</strong>. A
                   entrega continua valendo — devolver não desfaz o que
-                  aconteceu —, nasce uma linha nova na ficha e o saldo volta ao
-                  lote.</p>
+                  aconteceu —, nasce uma linha nova na ficha. O saldo do lote
+                  <strong>não</strong> volta: EPI é individual e já foi usado.</p>
                 <div class="linha-campos">
                   <div class="campo">
                     <label for="qtd-dev-{{ r.id }}">Quantidade</label>

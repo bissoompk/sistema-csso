@@ -226,8 +226,14 @@ export async function povoar_epi(tx: Executor, ctx: ContextoPovoar): Promise<voi
   const analista = await ctx.atual("tecnico");
 
   const pedir = async (usuario: UsuarioAtual, siape: string, itens: [string, number, string][], atividade: string) => {
-    const requisicao = await epi_requisicao.criar_rascunho(tx, usuario, {
-      servidor: await pessoa(siape),
+    // o pedido é individual: só o beneficiário abre. A demonstração mostra pedidos de vários
+    // servidores, então o operador age "como" o dono do pedido só neste passo
+    const servidor = await pessoa(siape);
+    const como_dono: UsuarioAtual = Object.assign(Object.create(Object.getPrototypeOf(usuario)), usuario, {
+      servidor_id: servidor.id,
+    });
+    const requisicao = await epi_requisicao.criar_rascunho(tx, como_dono, {
+      servidor,
       descricao_atividade: atividade,
       riscos_declarados: "Agente químico e agente biológico no posto.",
     });

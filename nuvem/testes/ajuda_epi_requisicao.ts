@@ -189,13 +189,39 @@ export async function motivo(tx: Executor, codigo = "SEM_EXPOSICAO") {
 }
 
 /** Rascunho com uma linha, pronto para enviar. */
+/**
+ * O pedido de EPI é individual: quem o abre é o próprio beneficiário. Os testes montam o
+ * operador antes do servidor, então ligam a conta ao servidor aqui, antes de pedir.
+ */
+export async function ligar_ao_servidor(tx: Executor, u: UsuarioAtual, servidor: { id: number }): Promise<void> {
+  await tx.update(e.usuario).set({ servidor_id: servidor.id }).where(eq(e.usuario.id, u.id));
+  Object.assign(u, { servidor_id: servidor.id });
+}
+
+let _seq_requerente = 0;
+/**
+ * `criar_rascunho` como o próprio beneficiário: uma conta nova, ligada ao servidor, abre o
+ * pedido (o pedido é individual). O operador `u` dos testes segue sendo quem analisa e entrega —
+ * ligá-lo ao servidor o faria "analisar o próprio pedido" (RN-28).
+ */
+export async function rascunho(tx: Executor, u: UsuarioAtual, opcoes: Parameters<typeof servico.criar_rascunho>[2]) {
+  if (!u.pode("epi.requisitar")) return servico.criar_rascunho(tx, u, opcoes); // o teste da recusa por permissão
+  const dono = await usuario(tx, {
+    permissoes: REQUERENTE,
+    login: `requerente${++_seq_requerente}`,
+    servidor_id: opcoes.servidor.id,
+    perfis: ["servidor_consulta"],
+  });
+  return servico.criar_rascunho(tx, dono, opcoes);
+}
+
 export async function pedido_pronto(
   tx: Executor,
   cen: Cenario,
   u: UsuarioAtual,
   o: { quantidade?: number; justificativa?: string } = {},
 ) {
-  const requisicao = await servico.criar_rascunho(tx, u, {
+  const requisicao = await rascunho(tx, u, {
     servidor: cen.servidor,
     descricao_atividade: "Manipulação de reagentes no laboratório de análises",
   });

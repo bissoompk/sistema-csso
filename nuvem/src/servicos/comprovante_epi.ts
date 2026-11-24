@@ -25,7 +25,9 @@ import * as textos from "./textos.js";
 // modelo — só o contexto e o hash do TEXTO —, e a marca é imagem, não texto: a
 // segunda via de uma entrega impressa no v1 sai no v2 com o mesmo hash, sem o
 // aviso de divergência
-export const MODELO = "comprovante_epi_v2.docx";
+// v3: troca "Sistema CSSO" por "Sistema SISA" no rodapé e na assinatura (o hash do texto
+// normaliza essa marca — ver `documento.ts` — para a segunda via do v2 não acusar divergência)
+export const MODELO = "comprovante_epi_v3.docx";
 export const SUBPASTA = "epi";
 export const TIPO_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 

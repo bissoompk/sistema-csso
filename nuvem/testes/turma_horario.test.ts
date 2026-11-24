@@ -443,7 +443,7 @@ describe("público: comunidade externa", () => {
     expect((await ler_turma(turma_id)).aceita_comunidade_externa).toBe(true);
     expect(tela_link).toContain("e a comunidade externa");
     const cartaz = texto((await novoCliente().get(`/inscricao/${token}`)).text);
-    expect(cartaz).toContain('<optgroup label="Comunidade externa">');
+    expect(cartaz).toContain('<span class="opcoes-grupo">Comunidade externa:</span>');
     expect(cartaz).toContain('value="VISITANTE"');
     expect(cartaz).toContain("Para: Servidores, terceirizados e discentes da UFVJM, e a comunidade externa");
     const r = await novoCliente().post(`/inscricao/${token}`, { ...PEDIDO, vinculo: "VISITANTE" }, { seguir: false });

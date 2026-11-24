@@ -108,7 +108,7 @@ describe("congelamento", () => {
     expect(corpo).not.toContain("7654321");
   });
 
-  it("a devolução também não publica a matrícula no razão", async () => {
+  it("a devolução não mexe no razão do lote (EPI usado não volta) e não publica a matrícula", async () => {
     const c = await montar(db);
     const cli = await como("coordenador_csso");
     expect((await entregar(cli, c)).status).toBe(303);
@@ -120,7 +120,7 @@ describe("congelamento", () => {
     );
     expect(devolucao.status, devolucao.text).toBe(303);
     const razao = (await movimentos_do_lote(db, c)).map((m) => [m.tipo, m.motivo ?? ""] as const);
-    expect(razao.some(([tipo]) => tipo === "DEVOLUCAO")).toBe(true);
+    expect(razao.some(([tipo]) => tipo === "DEVOLUCAO")).toBe(false);
     for (const [, motivo] of razao) expect(motivo).not.toContain("7654321");
     expect((await cli.get(`/epis/estoque/${c.entrada}/movimentos`)).text).not.toContain("7654321");
   });

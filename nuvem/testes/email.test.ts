@@ -153,14 +153,16 @@ describe("envio", () => {
     expect((await _caixa())[0]!.situacao).toBe("ENVIADO");
   });
 
-  it("certificado anulado depois do pedido não sai", async () => {
+  it("certificado anulado depois do pedido: o e-mail na fila é cancelado e não sai", async () => {
     const h = await cenario();
     await pedir(h.do_marco.id);
     await db.transaction((tx) => servico.anular(tx, h.montador, h.do_marco, "emitido com erro de digitação"));
     _guardar();
-    expect((await email.processar_fila(db)).falhas).toBe(1);
+    expect((await email.processar_fila(db)).falhas).toBe(0);
     expect(enviadas).toHaveLength(0);
-    expect((await _caixa())[0]!.ultimo_erro).toContain("anulado");
+    const [linha] = await _caixa();
+    expect(linha!.situacao).toBe("CANCELADO");
+    expect(linha!.ultimo_erro).toContain("anulado");
   });
 
   it("cancelar tira da fila; o texto sai depois de 90 dias e a linha fica", async () => {
