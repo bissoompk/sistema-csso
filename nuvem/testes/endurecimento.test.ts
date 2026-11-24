@@ -71,7 +71,8 @@ describe("senha antiga, curta, vira troca obrigatória no login", () => {
   it("senha que passa na política não força nada", async () => {
     const cliente = novoCliente();
     const r = await cliente.post("/login", { login: "secretaria_csso", senha: SENHA_TESTE }, { seguir: false });
-    expect(r.location).not.toBe("/trocar-senha");
+    // o destino cru: com o recado somado, "/trocar-senha?mensagem=…" passaria por engano
+    expect(r.location_cru).not.toMatch(/^\/trocar-senha/);
   });
 });
 
