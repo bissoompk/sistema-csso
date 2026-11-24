@@ -777,11 +777,12 @@ function _campos_do_cabecalho(c: {
 
   return {
     finalidade: c.finalidade,
-    // RN-21 no EPI fala da pessoa: termo de saúde é recusado, sem caixa de confirmação (24/11/2026)
+    // RN-21 (24/11/2026): rotina e riscos descrevem o POSTO — só a lista de sempre; a justificativa
+    // fala da pessoa — a lista ampliada. Recusa, sem caixa de confirmação
     descricao_atividade:
-      textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_EPI_PESSOA) || null,
+      textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_EPI_POSTO) || null,
     riscos_declarados:
-      textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados", textos.CONTEXTO_EPI_PESSOA) || null,
+      textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados", textos.CONTEXTO_EPI_POSTO) || null,
     urgencia: c.urgencia,
     justificativa_urgencia:
       textos.exigir_texto_limpo(justificativa, "justificativa da urgência", textos.CONTEXTO_EPI_PESSOA) || null,

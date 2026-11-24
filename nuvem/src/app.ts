@@ -131,6 +131,22 @@ export function criarApp(): Hono<Ambiente> {
     return next();
   });
 
+  // A API escreve só com JSON (24/11/2026): formulário e `text/plain` são o que outro site
+  // consegue disparar sem pré-checagem, e o leitor de JSON não olha o Content-Type. A recusa vem
+  // antes do token CSRF, de que a API não precisa (o JSON passa pelo CORS, que não é liberado).
+  app.use("/api/*", async (c, next) => {
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method)) {
+      const tipo = (c.req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+      if (tipo !== "application/json") {
+        return c.json(
+          { erro: "A API só aceita envio em JSON.", motivos: ["Content-Type: application/json obrigatório"] },
+          415,
+        );
+      }
+    }
+    return next();
+  });
+
   // CSRF, segunda camada (`nucleo/csrf.ts`): com sessão, o formulário traz o token da sessão; e
   // todo HTML de quem tem sessão sai com o token posto nos formulários e no htmx.
   app.use("*", async (c, next) => {

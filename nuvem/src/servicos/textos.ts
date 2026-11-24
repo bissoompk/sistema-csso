@@ -231,6 +231,13 @@ export const CONTEXTO_EPI_PESSOA = "epi_pessoa";
 export const CONTEXTO_EPI_MATERIAL = "epi_material";
 
 /**
+ * EPI, nos campos que descrevem a EXPOSIÇÃO DO POSTO (pedido: rotina de trabalho e riscos
+ * declarados): só a lista de sempre, recusada, com a mensagem do EPI (24/11/2026). "Risco de
+ * dermatite de contato" e "risco de lesão por corte" descrevem o agente, não a pessoa.
+ */
+export const CONTEXTO_EPI_POSTO = "epi_posto";
+
+/**
  * Termos clínicos a mais no EPI-pessoa. Palavra inteira, sem acento e em minúsculas na comparação.
  * Ficam DE FORA de propósito: "lesão"/"ferimento" (o risco que o EPI evita), "laudo" (laudo de
  * ensaio, LTCAT), "afastamento" sozinho, "ler" (é verbo) e "deficiência" (pode justificar EPI
@@ -261,6 +268,7 @@ const DISPENSAS_POR_CONTEXTO: Record<string, readonly string[]> = {
   [CONTEXTO_AVISO_SAUDE]: [],
   [CONTEXTO_EPI_PESSOA]: [],
   [CONTEXTO_EPI_MATERIAL]: [],
+  [CONTEXTO_EPI_POSTO]: [],
 };
 
 /** Termo de saúde/dado sensível encontrado em campo de texto livre. */
@@ -309,7 +317,12 @@ export function termos_proibidos_em(texto: string | null | undefined, contexto: 
   if (!texto) return [];
   const alvo = chave_busca(texto);
   const achados = new Set<string>();
-  const lista = contexto === CONTEXTO_EPI_PESSOA ? [...TERMOS_PROIBIDOS, ...TERMOS_SAUDE_EPI] : TERMOS_PROIBIDOS;
+  const lista =
+    contexto === CONTEXTO_EPI_PESSOA
+      ? [...TERMOS_PROIBIDOS, ...TERMOS_SAUDE_EPI]
+      : contexto === CONTEXTO_EPI_POSTO
+        ? [...TERMOS_PROIBIDOS, "cid"] // "CID J45" sem o "-10" também é código de doença
+        : TERMOS_PROIBIDOS;
   for (const termo of lista) {
     const chave = chave_busca(termo);
     if (dispensadas.has(chave)) continue;
@@ -345,7 +358,7 @@ export function exigir_texto_limpo<T extends string | null | undefined>(
     }
     achados = duros;
   }
-  if (achados.length && (contexto === CONTEXTO_EPI_PESSOA || contexto === CONTEXTO_EPI_MATERIAL)) {
+  if (achados.length && (contexto === CONTEXTO_EPI_PESSOA || contexto === CONTEXTO_EPI_MATERIAL || contexto === CONTEXTO_EPI_POSTO)) {
     throw new TextoProibido(
       `O campo ${campo} contém dado de saúde ou identificação (${achados.join(", ")}). ` +
         "Estado de saúde, diagnóstico, CID e CPF não podem ser registrados no EPI (LGPD art. 11). " +

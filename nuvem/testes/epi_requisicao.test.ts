@@ -577,6 +577,30 @@ describe("as duas máquinas de estado", () => {
       expect(requisicao.estado).toBe("ANALISADA");
     }));
 
+  it("rotina e riscos descrevem o posto: risco de dermatite e de lesão passam; a lista antiga e a justificativa clínica, não (24/11/2026)", () =>
+    desfeito(async (tx) => {
+      const u = await usuario(tx);
+      const cen = await cenario(tx);
+      const posto = { descricao_atividade: "Corte de vidraria no laboratório; risco de lesão por corte.", riscos_declarados: "Risco de dermatite de contato com solventes." };
+      const r = await rascunho(tx, u, { servidor: cen.servidor, ...posto });
+      expect(r.descricao_atividade).toBe(posto.descricao_atividade);
+      expect(r.riscos_declarados).toBe(posto.riscos_declarados);
+      const dono = await titular(tx, u, r);
+      // trocados de campo, também passam, na edição
+      await servico.atualizar_rascunho(tx, dono, r, {
+        descricao_atividade: "Risco de dermatite de contato com solventes.",
+        riscos_declarados: "Risco de lesão por corte.",
+      });
+      // a lista antiga continua recusada nos dois
+      await recusa(rascunho(tx, u, { servidor: cen.servidor, descricao_atividade: "Servidora gestante no laboratório" }), TextoProibido);
+      await recusa(rascunho(tx, u, { servidor: cen.servidor, riscos_declarados: "ver diagnóstico anexo" }), TextoProibido);
+      // e a justificativa, que fala da pessoa, recusa a lista ampliada
+      await recusa(
+        servico.atualizar_rascunho(tx, dono, r, { urgencia: "URGENTE", justificativa_urgencia: "Servidor com dermatite alérgica nas mãos" }),
+        TextoProibido,
+      );
+    }));
+
   it("parecer com termo de saúde é recusado e não grava (alergia ao látex, 24/11/2026)", () =>
     desfeito(async (tx) => {
       const cen = await cenario(tx);

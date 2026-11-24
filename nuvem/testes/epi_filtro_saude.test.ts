@@ -9,6 +9,7 @@ import * as textos from "../src/servicos/textos.js";
 
 const PESSOA = textos.CONTEXTO_EPI_PESSOA;
 const MATERIAL = textos.CONTEXTO_EPI_MATERIAL;
+const POSTO = textos.CONTEXTO_EPI_POSTO;
 
 // descrições reais de catálogo e lote, como os fabricantes e o CA escrevem
 const DESCRICOES_DE_EPI = [
@@ -81,5 +82,20 @@ describe("EPI — pessoa: termo de saúde recusado sem confirmação", () => {
 
   it("os termos ampliados não valem fora do EPI", () => {
     expect(textos.exigir_texto_limpo("relata alergia ao látex", "assunto")).toBe("relata alergia ao látex");
+  });
+});
+
+describe("EPI — posto (rotina de trabalho e riscos declarados, 24/11/2026)", () => {
+  it("o risco do posto passa nos dois campos", () => {
+    for (const campo of ["rotina de trabalho", "riscos declarados"]) {
+      for (const t of ["risco de dermatite de contato", "risco de lesão por corte", "Risco de dermatite de contato com solventes e risco de lesão por corte."]) {
+        expect(textos.exigir_texto_limpo(t, campo, POSTO)).toBe(t);
+      }
+    }
+  });
+  it("a lista antiga continua recusada, com a mensagem do EPI", () => {
+    for (const t of ["servidora gestante", "diagnóstico de asma", "CID J45", "CPF 123"]) {
+      expect(() => textos.exigir_texto_limpo(t, "riscos declarados", POSTO)).toThrow(/no EPI/);
+    }
   });
 });

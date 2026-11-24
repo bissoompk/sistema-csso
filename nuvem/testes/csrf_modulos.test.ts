@@ -83,3 +83,54 @@ describe("token CSRF em cada módulo", () => {
     expect((await cli.post("/validar", { chave: "CSSO-X", _csrf: m![1]! }, { seguir: false, sem_csrf: true })).status).toBe(303);
   });
 });
+
+describe("API /api/v1 com o cookie da tela (24/11/2026)", () => {
+  const ROTAS_API = ["/api/v1/epis/entregas", "/api/v1/turmas/1/presencas"];
+  const METODOS = ["POST", "PUT", "PATCH", "DELETE"] as const;
+  const FORMAS: readonly [string, string | null, string][] = [
+    ["formulário", "application/x-www-form-urlencoded", "servidor_id=1&item_id=1"],
+    ["multipart", "multipart/form-data; boundary=x", "--x\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--x--\r\n"],
+    ["text/plain com JSON dentro", "text/plain;charset=UTF-8", '{"servidor_id":1,"item_id":1}'],
+    ["sem Content-Type", null, '{"servidor_id":1}'],
+  ];
+
+  for (const metodo of METODOS) {
+    for (const [forma, tipo, corpo] of FORMAS) {
+      it(`${metodo} em ${forma} é recusado com 415, mesmo com o token e o X-Requested-With certos`, async () => {
+        const cli = await entrar(novoCliente(), "coordenador_csso");
+        for (const rota of ROTAS_API) {
+          const cabecalhos: Record<string, string> = { "x-requested-with": "fetch", accept: "application/json" };
+          if (tipo) cabecalhos["content-type"] = tipo;
+          const r = await cli.requisitar(metodo, rota, corpo, { cabecalhos, seguir: false });
+          expect(r.status, `${metodo} ${rota}`).toBe(415);
+          expect(r.json().erro).toContain("JSON");
+        }
+      });
+    }
+  }
+
+  it("a conferência de origem vale na API: JSON vindo de outro site é recusado", async () => {
+    const cli = await entrar(novoCliente(), "coordenador_csso");
+    for (const cab of [{ origin: "https://site-malicioso.example" }, { referer: "https://site-malicioso.example/x" }, { "sec-fetch-site": "cross-site" }]) {
+      const r = await cli.postJson("/api/v1/epis/entregas", { servidor_id: 1 }, {
+        seguir: false,
+        cabecalhos: { "x-requested-with": "fetch", accept: "application/json", ...cab },
+      });
+      expect(r.status, JSON.stringify(cab)).toBe(403);
+      expect(r.text).toContain("outra origem");
+    }
+  });
+
+  it("JSON da própria origem sem X-Requested-With: fetch é recusado", async () => {
+    const cli = await entrar(novoCliente(), "coordenador_csso");
+    const r = await cli.postJson("/api/v1/epis/entregas", { servidor_id: 1 }, { seguir: false, cabecalhos: { accept: "application/json" } });
+    expect(r.status).toBe(403);
+    expect(r.text).toContain("X-Requested-With");
+  });
+
+  it("JSON da própria origem com X-Requested-With passa da porta (a recusa é do conteúdo, 422)", async () => {
+    const cli = await entrar(novoCliente(), "coordenador_csso");
+    const r = await cli.postJson("/api/v1/epis/entregas", {}, { seguir: false, cabecalhos: { "x-requested-with": "fetch", accept: "application/json" } });
+    expect(r.status).toBe(422);
+  });
+});
