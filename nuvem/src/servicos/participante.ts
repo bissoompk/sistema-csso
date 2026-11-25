@@ -276,7 +276,7 @@ export async function criar_externo(
   }
   if (d.vinculo === "SERVIDOR") {
     throw new DadosDoParticipante(
-      "Servidor da UFVJM entra pelo cadastro de servidor, pelo SIAPE — " +
+      "Servidor(a) da UFVJM entra pelo cadastro de servidor, pelo SIAPE — " +
         "não como participante externo.",
     );
   }

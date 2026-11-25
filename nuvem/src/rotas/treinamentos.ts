@@ -96,7 +96,7 @@ export const SETORES = setor_promotor.TELA;
 export const VIGENCIA_DESDE_SEMPRE = "2000-01-01";
 
 export const VINCULOS_INSTRUTOR: [string, string][] = [
-  ["0", "Servidor da UFVJM"],
+  ["0", "Servidor(a) da UFVJM"],
   ["1", "Externo"],
 ];
 
@@ -350,7 +350,19 @@ rotas.post(CATALOGO, async (c) => {
     norma_referencia: f.texto("norma_referencia"),
     conteudo_programatico: f.texto("conteudo_programatico"),
     obrigatorio: f.texto("obrigatorio"),
-  };
+    // B4 (lote 5): o modelo, a origem da validade e as disciplinas já no cadastrar
+    modelo_vigente_id: f.texto("modelo_vigente_id", ""),
+    validade_origem: f.texto("validade_origem", ""),
+    validade_citacao: f.texto("validade_citacao", ""),
+    disc_presente: f.texto("disc_presente", ""),
+    ...Object.fromEntries(
+      Array.from({ length: servico_disciplinas.MAXIMO }, (_, i) => i + 1).flatMap((n) => [
+        [`disc_nome_${n}`, f.texto(`disc_nome_${n}`, "")],
+        [`disc_teorica_${n}`, f.texto(`disc_teorica_${n}`, "")],
+        [`disc_pratica_${n}`, f.texto(`disc_pratica_${n}`, "")],
+      ]),
+    ),
+  } as Record<string, string> & { carga_unidade: string; validade_meses: string };
   const recusar = (mensagem: string) => _tela_catalogo(c, usuario, { erro: mensagem, digitado });
 
   const nome_limpo = digitado.nome.trim();
@@ -385,23 +397,65 @@ rotas.post(CATALOGO, async (c) => {
     const dono = await _dono_do_codigo_curto(tx, codigo_curto, null);
     if (dono) return recusar(await _mensagem_duplicado(tx, codigo_curto, dono, null));
   }
+  // B4 (lote 5): no cadastro só cabe modelo genérico e vigente (o do próprio treinamento ainda não existe)
+  const modelo_escolhido = id_opcional(digitado.modelo_vigente_id ?? "");
+  if (modelo_escolhido !== null) {
+    const modelo = await _modelo(tx, modelo_escolhido);
+    if (!modelo || modelo.treinamento_id !== null || !modelo.vigente) {
+      return recusar("Escolha um modelo genérico vigente, ou deixe o genérico vigente.");
+    }
+  }
+  const origem = (digitado.validade_origem ?? "").trim();
+  if (origem && origem !== "NORMA" && origem !== "INSTITUCIONAL") return recusar("Escolha de onde vem a validade: norma ou política interna.");
+  const citacao = texto_ou_nulo(digitado.validade_citacao ?? "");
+  if (origem && meses > 0 && !citacao) {
+    return recusar(
+      origem === "NORMA"
+        ? "Diga a norma que fixa a validade (por exemplo, “Portaria CBMMG nº 54/2020, art. 43”)."
+        : "Diga o documento da política interna que fixa a validade.",
+    );
+  }
+  let disciplinas: ReturnType<typeof servico_disciplinas.ler_formulario> = [];
+  if (digitado.disc_presente === "1") {
+    try {
+      disciplinas = servico_disciplinas.ler_formulario((n) => digitado[n] ?? "");
+    } catch (erro) {
+      if (erro instanceof servico_disciplinas.RegraDasDisciplinas) return recusar(erro.message);
+      throw erro;
+    }
+  }
 
-  const [treinamento] = await tx
-    .insert(tabela_treinamento)
-    .values({
-      codigo: codigo_limpo,
-      codigo_curto,
-      nome: nome_limpo,
-      carga_horaria_horas: horas,
-      carga_unidade: unidade,
-      validade_meses: meses,
-      norma_referencia: texto_ou_nulo(digitado.norma_referencia),
-      conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
-      obrigatorio: marcado(digitado.obrigatorio),
-      // NUVEM: o dono do treinamento (`dono_turma.ts`)
-      criado_por: usuario.id,
-    })
-    .returning();
+  let treinamento: typeof tabela_treinamento.$inferSelect | undefined;
+  try {
+    // a linha e as disciplinas juntas: a recusa das disciplinas desfaz a linha (ponto de salvamento)
+    treinamento = await tx.transaction(async (sp) => {
+      const [novo] = await sp
+        .insert(tabela_treinamento)
+        .values({
+          codigo: codigo_limpo,
+          codigo_curto,
+          nome: nome_limpo,
+          carga_horaria_horas: horas,
+          carga_unidade: unidade,
+          validade_meses: meses,
+          norma_referencia: texto_ou_nulo(digitado.norma_referencia),
+          conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
+          obrigatorio: marcado(digitado.obrigatorio),
+          modelo_vigente_id: modelo_escolhido,
+          validade_origem: origem || null,
+          validade_citacao: citacao,
+          // NUVEM: o dono do treinamento (`dono_turma.ts`)
+          criado_por: usuario.id,
+        })
+        .returning();
+      // sem JavaScript o quadro vem sempre: vazio não conta; preenchido em HORAS, o serviço recusa
+      if (disciplinas.length) await servico_disciplinas.salvar(sp, usuario, novo!, disciplinas);
+      return novo!;
+    });
+  } catch (erro) {
+    if (erro instanceof servico_disciplinas.RegraDasDisciplinas) return recusar(erro.message);
+    throw erro;
+  }
   await auditoria.registrar(tx, {
     entidade: "treinamento",
     entidade_id: treinamento!.id,

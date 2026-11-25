@@ -354,6 +354,9 @@
           {% if falta_papel %}
           <a class="botao secundario compacto"
              href="/epis/fichas/registros/{{ r.id }}/comprovante">Imprimir</a>
+          {# EPI 9 (lote 5): o mesmo comprovante em PDF, só com o conversor configurado #}
+          {% if pdf_fiel() %}<a class="botao secundario compacto"
+             href="/epis/fichas/registros/{{ r.id }}/comprovante.pdf">PDF</a>{% endif %}
           {{ ui.botao_cadastro('anexar-' ~ r.id, 'Anexar', 'compacto') }}
           {% endif %}
           {# Devolução e estorno continuam na gaveta: são as duas que se
@@ -369,6 +372,8 @@
                   linha — nunca do catálogo de hoje.</p>
                 <a class="botao secundario compacto"
                    href="/epis/fichas/registros/{{ r.id }}/comprovante">Imprimir de novo o comprovante</a>
+                {% if pdf_fiel() %}<a class="botao secundario compacto"
+                   href="/epis/fichas/registros/{{ r.id }}/comprovante.pdf">em PDF</a>{% endif %}
               </div>
               {% endif %}
 

@@ -246,6 +246,44 @@
         {{- ' checked' if dn['obrigatorio'] == '1' }}>
         exigido por norma</label></div>
   </div>
+  {# B4 (lote 5): a origem da validade e o modelo do certificado já no cadastro, como no Editar #}
+  <div class="linha-campos">
+    <div class="campo"><label for="novo-validade-origem">A validade vem de</label>
+      <select id="novo-validade-origem" name="validade_origem">
+        <option value="">— não informado</option>
+        <option value="NORMA"{{ ' selected' if dn['validade_origem'] == 'NORMA' }}>norma</option>
+        <option value="INSTITUCIONAL"{{ ' selected' if dn['validade_origem'] == 'INSTITUCIONAL' }}>política interna</option>
+      </select></div>
+    <div class="campo"><label for="novo-validade-citacao">Citação da validade</label>
+      <input id="novo-validade-citacao" name="validade_citacao" value="{{ dn['validade_citacao'] or '' }}"
+             placeholder="Portaria CBMMG nº 54/2020, art. 43"></div>
+    <div class="campo"><label for="novo-modelo">Modelo do certificado</label>
+      <select id="novo-modelo" name="modelo_vigente_id"><option value="">— o genérico vigente</option>
+        {% for m in modelos %}{% if m.treinamento_id is none and m.vigente %}
+        <option value="{{ m.id }}"{{ ui.sel(dn['modelo_vigente_id'], m.id) }}>{{ m.rotulo }}</option>
+        {% endif %}{% endfor %}</select></div>
+  </div>
+  {# O quadro de disciplinas só faz sentido em TEMPOS. Com JavaScript, aparece só quando a unidade
+     é tempos (`csso.js`, bloco 7, `data-mostra-quando`). Sem JavaScript aparece sempre, e o
+     servidor recusa disciplina preenchida em treinamento em horas. #}
+  <fieldset class="campo disciplinas" data-mostra-quando="carga_unidade=TEMPOS">
+    <legend>Disciplinas — só em tempos (nota de 0 a 100; mínimo de 70 em cada uma)</legend>
+    <input type="hidden" name="disc_presente" value="1">
+    <span class="dica">Deixe em branco se o treinamento não tem disciplinas. A soma dos tempos tem de
+      ser a carga do treinamento.</span>
+    <table class="tabela compacta">
+      <thead><tr><th scope="col">Disciplina</th><th scope="col">Teórica (t)</th><th scope="col">Prática (t)</th></tr></thead>
+      <tbody>
+      {% for n in range(1, maximo_disciplinas + 1) %}
+      <tr>
+        <td><input name="disc_nome_{{ n }}" value="{{ dn['disc_nome_' ~ n] or '' }}" aria-label="nome da disciplina {{ n }}"></td>
+        <td><input class="campo-curto" name="disc_teorica_{{ n }}" value="{{ dn['disc_teorica_' ~ n] or '' }}" inputmode="numeric" aria-label="tempos teóricos da disciplina {{ n }}"></td>
+        <td><input class="campo-curto" name="disc_pratica_{{ n }}" value="{{ dn['disc_pratica_' ~ n] or '' }}" inputmode="numeric" aria-label="tempos práticos da disciplina {{ n }}"></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
   <div class="campo"><label for="novo-conteudo">Conteúdo programático (um tópico por linha)</label>
     <textarea id="novo-conteudo" name="conteudo_programatico" rows="4"
 placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de proteção individual">{{ dn['conteudo_programatico'] or '' }}</textarea></div>

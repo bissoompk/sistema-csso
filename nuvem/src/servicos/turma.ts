@@ -798,6 +798,45 @@ function eh_numero(v: string): boolean {
 }
 
 /** Máquina E. Transição não declarada é recusada aqui, não no template. */
+/**
+ * Lote 5 (T9, 25/11/2026): a turma "Planejada" que já começou aceita lançamento, e o PRIMEIRO
+ * lançamento de presença ou nota a passa para "Em andamento". A mudança vai à trilha como
+ * qualquer outra mudança de situação (quem lançou e a hora). Não pede a permissão de iniciar
+ * turma: quem lança presença já está autorizado a lançar, e o curso começou de fato.
+ * Devolve se mudou. Relê a situação no banco (com trava): a mesma turma chega em vários objetos.
+ */
+export async function iniciar_pelo_lancamento(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada | TurmaRegistro,
+): Promise<boolean> {
+  if (turma.situacao !== "PLANEJADA") return false;
+  const [atual] = await tx
+    .select({ situacao: tabela_turma.situacao })
+    .from(tabela_turma)
+    .where(eq(tabela_turma.id, turma.id))
+    .for("update");
+  if (!atual || atual.situacao !== "PLANEJADA") {
+    if (atual) turma.situacao = atual.situacao;
+    return false;
+  }
+  if (turma.data_inicio > datas_br.hoje()) return false;
+  await gravar_turma(tx, turma, { situacao: "EM_ANDAMENTO" });
+  const motivo = "primeiro lançamento de presença ou nota";
+  await auditoria.registrar(tx, {
+    entidade: "turma",
+    entidade_id: turma.id,
+    tipo_evento: auditoria.ESTADO_ALTERADO,
+    descricao: `${turma.codigo}: ${ROTULO_TURMA["PLANEJADA"]} -> ${ROTULO_TURMA["EM_ANDAMENTO"]} — ${motivo}`,
+    campo: "situacao",
+    valor_anterior: "PLANEJADA",
+    valor_novo: "EM_ANDAMENTO",
+    comentario: motivo,
+    usuario,
+  });
+  return true;
+}
+
 export async function mudar_situacao(
   tx: Executor,
   usuario: UsuarioAtual,
@@ -1516,7 +1555,7 @@ function _exigir_titular(usuario: UsuarioAtual): void {
   throw new RegraDaTurma(
     "Sua conta não está ligada a um cadastro de servidor, e sem essa " +
       "ligação o sistema não tem em nome de quem inscrever. " +
-      "Se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora.",
+      "Se você é servidor(a) da UFVJM, informe os seus dados em Meu perfil (Sou servidor(a) da UFVJM): a conta é ligada na hora.",
   );
 }
 

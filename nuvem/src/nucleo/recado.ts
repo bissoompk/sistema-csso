@@ -17,7 +17,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { obterConfig } from "../config.js";
 
 export const COOKIE_RECADO = "csso_recado";
-export const CHAVES_RECADO = ["mensagem", "erro"] as const;
+// "alerta" (lote 5, EPI 3): o aviso que não bloqueia, ao lado do "gravado" — sai em amarelo
+export const CHAVES_RECADO = ["mensagem", "erro", "alerta"] as const;
 /** o recado espera a próxima tela, não a próxima semana */
 const VIDA_SEGUNDOS = 120;
 /** o cookie inteiro cabe nos ~4 KB do navegador com folga */

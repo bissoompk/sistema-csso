@@ -163,7 +163,7 @@
 {% set dn = d if do_cadastro else {} %}
 {% call ui.popup_cadastro('nova-assinatura', CADASTRAR, '/treinamentos/assinaturas',
                           CADASTRAR, aberto=do_cadastro, erro=(erro_popup if do_cadastro else none),
-                          nota='servidor da UFVJM ou instrutor externo') %}
+                          nota='servidor(a) da UFVJM ou instrutor externo') %}
   {# O vínculo é o que esta rota recusa — "instrutor da UFVJM precisa estar
      vinculado a um servidor" —, e é aqui que ele se escolhe. #}
   <div class="campo {{ 'com-erro' if do_cadastro }}">
@@ -246,7 +246,7 @@
             'vigencia_fim': a.vigencia_fim, 'ativo': '1' if a.ativo else '', 'apagar_cpf': ''} %}
 {% call ui.popup_cadastro('editar-assin-' ~ a.id, 'Editar · ' ~ a.nome_exibicao, '/treinamentos/assinaturas/' ~ a.id, 'Salvar',
                           aberto=deste, erro=(erro_popup if deste else none),
-                          nota=('instrutor externo' if a.externo else 'servidor da UFVJM')) %}
+                          nota=('instrutor externo' if a.externo else 'servidor(a) da UFVJM')) %}
   {% if a.servidor %}
   {# o nome do servidor é lido do cadastro, não copiado: não se edita aqui #}
   <div class="campo"><span class="rotulo">Nome</span>

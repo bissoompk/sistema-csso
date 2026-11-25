@@ -362,7 +362,8 @@
     </div>
   </section>
   {% endif %}
-  <section class="cartao">
+  {# T14 (lote 5): a busca e o "inscrever" da lista voltam ancorados aqui #}
+  <section class="cartao" id="inscrever-participante">
     <div class="titulo-cartao"><h2>Inscrever participante</h2>
       <span class="nota">procure primeiro; cadastre só quem não estiver aqui</span>
       {% call ui.info('participante-ponteiro', 'como o participante se liga ao cadastro') %}
@@ -382,7 +383,7 @@
           SIAPE e outra sem.</p>
       {% endcall %}
     </div>
-    <form method="get" action="/turmas/{{ turma.id }}">
+    <form method="get" action="/turmas/{{ turma.id }}#inscrever-participante">
       <input type="hidden" name="aba" value="inscricoes">
       {# O rótulo diz o que a busca faz DE VERDADE. Sem permissão nominal ela
          não casa por nome — casar devolveria uma linha e diria de quem é o

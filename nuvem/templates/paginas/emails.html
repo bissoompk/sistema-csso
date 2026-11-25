@@ -33,8 +33,9 @@
   {% if not email_configurado() %}
   <div class="aviso aviso-alerta">
     <strong>O envio de e-mail não está configurado.</strong> Os pedidos ficam na fila e
-    saem quando o SMTP for ligado (variáveis <code>CSSO_SMTP_URL</code> e
-    <code>CSSO_EMAIL_REMETENTE</code> no Netlify; ver <code>PRODUCAO.md</code>).
+    saem quando o SMTP for ligado, pelas variáveis <code>CSSO_SMTP_URL</code> e
+    <code>CSSO_EMAIL_REMETENTE</code>: na produção, no painel do Netlify (ver
+    <code>PRODUCAO.md</code>); no servidor de teste, no ambiente do processo que o roda.
   </div>
   {% endif %}
 
@@ -58,7 +59,8 @@
     {% for e in itens %}
     <tr>
       <td class="mono curta" data-coluna="Pedido em">{{ e.criado_em|momento }}</td>
-      <td class="mono" data-coluna="Para">{{ e.destinatario }}</td>
+      <td class="mono" data-coluna="Para">{{ e.destinatario }}
+        {% if origens[e.id] %}<span class="quebra discreto">{{ origens[e.id] }}</span>{% endif %}</td>
       <td>{{ e.assunto }}
         {% if e.certificado_id %}<span class="quebra"><a class="discreto" href="/certificados/{{ e.certificado_id }}">ver o certificado</a></span>{% endif %}</td>
       <td data-coluna="Situação"><span class="pilula {{ 'ok' if e.situacao == 'ENVIADO' else ('erro' if e.situacao == 'FALHOU' else 'sem-ponto') }}">

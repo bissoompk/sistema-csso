@@ -122,9 +122,11 @@ export async function salvar(
   const total_carga = carga.para_base(treinamento.carga_horaria_horas, "TEMPOS");
   const soma = brigada.total_de_tempos(nova);
   if (nova.length && soma !== total_carga) {
+    // lote 5: a conta por inteiro, parcela a parcela (teórica e prática de cada disciplina)
+    const parcelas = nova.flatMap((d) => [d.teorica, d.pratica]).filter((t) => t > 0);
     throw new RegraDasDisciplinas(
-      `A soma das disciplinas (${carga.exibir_base(soma, "TEMPOS")}) tem de ser igual à carga do treinamento ` +
-        `(${carga.exibir_base(total_carga, "TEMPOS")}).`,
+      `A soma das disciplinas não fecha com a carga: ${parcelas.join(" + ") || "0"} = ` +
+        `${carga.exibir_base(soma, "TEMPOS")}, mas a carga do treinamento é ${carga.exibir_base(total_carga, "TEMPOS")}.`,
     );
   }
   const atuais = await carregar(tx, treinamento.id);

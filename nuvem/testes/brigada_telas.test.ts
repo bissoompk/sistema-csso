@@ -82,7 +82,8 @@ describe("catálogo: disciplinas e a origem da validade", () => {
     const t = await treinamento_em_tempos();
     const r = await editar(t, { ...DISCIPLINAS, disc_pratica_2: "3" });
     expect(r.status).toBe(200);
-    expect(r.text).toContain("tem de ser igual à carga do treinamento");
+    // lote 5: a mensagem mostra a conta
+    expect(r.text).toContain("3 + 3 + 2 + 3 = 11 tempos, mas a carga do treinamento é 10 tempos");
     expect(r.text).toContain('value="Primeiros Socorros"');
     expect(await db.select().from(e.treinamento_disciplina)).toHaveLength(0);
   });

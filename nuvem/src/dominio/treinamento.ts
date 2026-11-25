@@ -79,7 +79,7 @@ export const VINCULOS_PARTICIPANTE = [
 ] as const;
 
 export const ROTULO_VINCULO: Readonly<Record<string, string>> = {
-  SERVIDOR: 'Servidor da UFVJM',
+  SERVIDOR: 'Servidor(a) da UFVJM',
   TERCEIRIZADO: 'Terceirizado',
   DISCENTE: 'Discente',
   VISITANTE: 'Visitante',

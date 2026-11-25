@@ -45,6 +45,7 @@ import {
 import * as anexo_acesso from "../servicos/anexo_acesso.js";
 import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
+import * as conversor_pdf from "../servicos/conversor_pdf.js";
 import * as comprovante_epi from "../servicos/comprovante_epi.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as epi_catalogo_anexos from "../servicos/epi_catalogo_anexos.js";
@@ -559,6 +560,37 @@ rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/comprovante`, async (c) => {
     headers: {
       "content-type": comprovante_epi.TIPO_DOCX,
       "content-disposition": disposicao(impressao.nome),
+    },
+  });
+});
+
+/**
+ * EPI 9 (lote 5): o mesmo comprovante em PDF, pelo conversor (Gotenberg) que já converte o
+ * certificado de modelo enviado. Sem conversor, ou com ele fora do ar, volta à ficha dizendo
+ * que o .docx continua disponível — nada quebra.
+ */
+rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/comprovante.pdf`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  const registro = await registro_e_permissao(tx, usuario, c.req.param("registro_id"));
+  if (!registro) return redirecionar(c, FICHAS);
+  const impressao = await servico.imprimir(tx, usuario, registro);
+  let pdf: Uint8Array;
+  try {
+    pdf = await conversor_pdf.converter_docx(impressao.bytes);
+  } catch (falha) {
+    if (!(falha instanceof conversor_pdf.ConversorIndisponivel)) throw falha;
+    return erro(
+      c,
+      `${FICHAS}/${registro.servidor_id}`,
+      `O comprovante em PDF não saiu agora (${falha.message}) Use o .docx, em “Imprimir”.`,
+    );
+  }
+  return new Response(pdf as Uint8Array<ArrayBuffer>, {
+    status: 200,
+    headers: {
+      "content-type": "application/pdf",
+      "content-disposition": disposicao(impressao.nome.replace(/\.docx$/i, "") + ".pdf"),
     },
   });
 });

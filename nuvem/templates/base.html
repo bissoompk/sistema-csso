@@ -533,6 +533,7 @@
     {% endif %}
     {% if mensagem %}<div class="aviso aviso-ok" role="status">{{ mensagem }}</div>{% endif %}
     {% if erro %}<div class="aviso aviso-erro" role="alert">{{ erro }}</div>{% endif %}
+    {% if alerta %}<div class="aviso aviso-alerta" role="status">{{ alerta }}</div>{% endif %}
     {% block conteudo %}{% endblock %}
   </main>
   {# A PORTA PARA A TELA DE BOLSO (`/celular`): só abaixo de 900px e só na tela

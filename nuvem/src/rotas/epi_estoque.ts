@@ -20,6 +20,7 @@ import { epi_entrada_estoque, epi_item, usuario as tabela_usuario } from "../db/
 import * as servico from "../servicos/epi_estoque.js";
 import * as epi_requisicao from "../servicos/epi_requisicao.js";
 import * as datas_br from "../servicos/datas_br.js";
+import * as textos from "../servicos/textos.js";
 import { TextoProibido } from "../servicos/textos.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { comMensagem, fragmento, pagina, redirecionar } from "../web.js";
@@ -33,6 +34,13 @@ export const NOVA_ENTRADA = ESTOQUE + "/nova-entrada";
 /** Codificado: um `&` no nome do fornecedor cortava o recado no `Location`. */
 function _volta(c: Ctx, mensagem: string, destino = ESTOQUE): Response {
   return redirecionar(c, comMensagem(destino, mensagem, "mensagem"));
+}
+
+/** EPI 3 (lote 5): o "gravado" com o aviso de saúde ao lado, quando a observação cita um. */
+function _volta_com_aviso(c: Ctx, mensagem: string, campos: Record<string, string | null | undefined>): Response {
+  const aviso = textos.aviso_de_saude_epi(campos);
+  const volta = comMensagem(ESTOQUE, mensagem, "mensagem");
+  return redirecionar(c, aviso ? comMensagem(volta, aviso, "alerta") : volta);
 }
 
 function _erro(c: Ctx, mensagem: string, destino = ESTOQUE): Response {
@@ -280,7 +288,7 @@ rotas.post(ESTOQUE, async (c) => {
         "reserve o lote, para que fique registrado quem decidiu.";
     }
   }
-  return _volta(c, recado);
+  return _volta_com_aviso(c, recado, { "a observação do lote": d.observacao });
 });
 
 // A permissão vem ANTES da busca nas três rotas de escrita: quem não pode
@@ -311,7 +319,10 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}`, async (c) => {
     desfazer(c);
     return _erro(c, texto);
   }
-  return _volta(c, `Lote ${entrada.lote || entrada.id} atualizado.`);
+  return _volta_com_aviso(c, `Lote ${entrada.lote || entrada.id} atualizado.`, {
+    "a observação do lote": f.texto("observacao"),
+    "o motivo da inativação": f.texto("motivo_inativacao"),
+  });
 });
 
 /** A única forma legítima de o saldo do sistema encontrar a prateleira. */

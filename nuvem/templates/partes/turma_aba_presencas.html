@@ -26,7 +26,7 @@
      continua sendo falta — é explicação, e vai para o (i). #}
   <div class="nota">A frequência é <strong>calculada</strong>, nunca digitada.
     {% call ui.info('como-a-frequencia-e-apurada', 'como a frequência é apurada') %}
-      <p>A frequência é a soma {{ 'dos <strong>tempos presentes</strong>' if turma.carga_unidade == 'TEMPOS' else 'das <strong>horas presentes</strong>' }} sobre a carga da
+      <p>A frequência é a soma {% if turma.carga_unidade == 'TEMPOS' %}dos <strong>tempos presentes</strong>{% else %}das <strong>horas presentes</strong>{% endif %} sobre a carga da
         turma — nunca um número digitado. É por isso que a carga da turma importa: é
         ela o denominador, e mudá-la muda o resultado de todo mundo.</p>
       <p><strong>Falta justificada continua sendo falta.</strong> A justificativa
@@ -36,6 +36,17 @@
     {% endcall %}
   </div>
 </div>
+
+{# Lote 5 (T9): planejada que já começou aceita lançamento — e o primeiro lançamento muda a
+   situação. A tela diz isso ANTES de gravar. #}
+{% if turma.situacao == 'PLANEJADA' and lancamento_aberto %}
+<div class="aviso aviso-alerta" role="status" id="aviso-planejada">
+  <p><strong><span class="mono">{{ turma.codigo }}</span> ainda está Planejada, mas começou em
+    {{ turma.data_inicio|data }}.</strong> Os lançamentos valem: o primeiro que você gravar aqui
+    passa a turma para <em>Em andamento</em>, e a mudança fica na trilha da turma com o seu nome
+    e a hora.</p>
+</div>
+{% endif %}
 
 {% if retificando %}
 <div class="aviso aviso-erro">

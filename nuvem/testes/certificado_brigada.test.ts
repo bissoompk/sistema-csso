@@ -162,10 +162,12 @@ async function emitido(d: Parameters<typeof cenario>[0] = {}) {
 
 // ---------------------------------------------------------------------
 describe("nota da brigada (art. 40 e 42, § 3º)", () => {
-  it("média simples com duas casas, meio para cima, e a exibição em percentual ('85%', '77,5%')", () => {
+  it("média simples cortada na segunda casa (sem arredondar para cima) e a exibição em percentual ('85%', '77,5%')", () => {
     expect(brigada.media(["85.00", "70.00"])).toBe("77.50");
     expect(brigada.media(["80", "75", "71"])).toBe("75.33");
-    expect(brigada.media(["70.01", "70.00"])).toBe("70.01"); // 70,005 → 70,01
+    // lote 5: corta na segunda casa, sem arredondar para cima
+    expect(brigada.media(["70.01", "70.00"])).toBe("70.00"); // 70,005 → 70,00
+    expect(brigada.media(["90", "69.99"])).toBe("79.99"); // 79,995 → 79,99, nunca 80
     expect(brigada.exibir_nota("85.00")).toBe("85%");
     expect(brigada.exibir_nota("77.50")).toBe("77,5%");
     expect(brigada.exibir_nota("75.33")).toBe("75,33%");
@@ -179,6 +181,20 @@ describe("nota da brigada (art. 40 e 42, § 3º)", () => {
     expect(inscricao.situacao).toBe("APROVADO");
     expect(inscricao.nota_escala).toBe(100);
     expect(inscricao.nota_final).toBe("77.50");
+  });
+
+  it("90 e 69,99: reprovado, com a nota final exibida 79,99% (e não 80%)", async () => {
+    const { inscricao, turma } = await cenario({ notas: ["90", "69.99"] });
+    expect(inscricao.situacao).toBe("REPROVADO");
+    expect(inscricao.nota_final).toBe("79.99");
+    expect(brigada.exibir_nota(inscricao.nota_final)).toBe("79,99%");
+    expect(servico_presenca.avaliar(turma, inscricao).motivos.join("; ")).toContain("Primeiros Socorros");
+  });
+
+  it("70 e 70: aprovado, com a nota final exibida 70% — a aprovação compara cada disciplina exata com 70", async () => {
+    const { inscricao } = await cenario({ notas: ["70", "70"] });
+    expect(inscricao.situacao).toBe("APROVADO");
+    expect(brigada.exibir_nota(inscricao.nota_final)).toBe("70%");
   });
 
   it("69,99 numa disciplina reprova, mesmo com a média acima de 70", async () => {
@@ -206,7 +222,9 @@ describe("disciplinas do treinamento", () => {
       .insert(e.treinamento)
       .values({ codigo: "BRIG-X", codigo_curto: "BRIGX", nome: "Brigada X", carga_horaria_horas: "10", carga_unidade: "TEMPOS", validade_meses: 0 })
       .returning();
-    await expect(disciplinas.salvar(db, usuario, t!, [{ nome: "Incêndio", teorica: 3, pratica: 3 }])).rejects.toThrow(/igual à carga/);
+    await expect(disciplinas.salvar(db, usuario, t!, [{ nome: "Incêndio", teorica: 3, pratica: 3 }])).rejects.toThrow(
+      "A soma das disciplinas não fecha com a carga: 3 + 3 = 6 tempos, mas a carga do treinamento é 10 tempos.",
+    );
   });
 
   it("só existem em treinamento em tempos", async () => {
@@ -413,5 +431,28 @@ describe("CPF da brigada: por inteiro só no .docx/PDF", () => {
     expect(tudo).not.toContain(CPF_ALUNO);
     expect(tudo).not.toContain(CPF_INSTRUTOR);
     expect(cert.id).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------
+describe("lote 5 (T8): a brigada também leva a unidade promotora no contexto", () => {
+  it("o congelado traz a sigla e o nome da unidade promotora, e a segunda via confere depois de renomeada", async () => {
+    const b = await cenario();
+    const [u] = await db.select().from(e.unidade_uorg).limit(1);
+    await db
+      .update(e.unidade_uorg)
+      .set({ sigla: "UPB", nome_extenso: "Unidade Promotora da Brigada", promove_treinamento: true })
+      .where(eq(e.unidade_uorg.id, u!.id));
+    await db.update(e.turma).set({ unidade_promotora_id: u!.id }).where(eq(e.turma.id, b.turma.id));
+    const turma = (await servico_turma.carregar_turma(db, b.turma.id))!;
+    const inscricao = (await servico_turma.carregar_inscricao(db, b.inscricao.id, turma))!;
+    const r = await servico.emitir(db, b.usuario, inscricao, { gerar_pdf: false });
+    const [cert] = await db.select().from(e.certificado).where(eq(e.certificado.id, r.certificado.id));
+    const ctx = cert!.contexto_congelado as Record<string, unknown>;
+    expect([ctx.setor_sigla, ctx.setor_nome]).toEqual(["UPB", "Unidade Promotora da Brigada"]);
+    await db.update(e.unidade_uorg).set({ nome_extenso: "Renomeada Depois" }).where(eq(e.unidade_uorg.id, u!.id));
+    const via = await servico.segunda_via(db, b.usuario, cert!);
+    expect(via.confere).toBe(true);
+    expect(via.hash_conteudo).toBe(cert!.hash_conteudo);
   });
 });

@@ -1480,7 +1480,8 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes`, async (c) => {
   if (!turma) return redirecionar(c, TURMAS);
   // inscrito um da lista, a mesma busca volta aberta para o próximo
   const busca = f.texto("busca").trim();
-  const volta = `${TURMAS}/${turma_id}?aba=inscricoes${busca ? `&busca=${encodeURIComponent(busca)}` : ""}`;
+  // T14 (lote 5): com a busca aberta, volta ancorada no cartão de inscrever
+  const volta = `${TURMAS}/${turma_id}?aba=inscricoes${busca ? `&busca=${encodeURIComponent(busca)}#inscrever-participante` : ""}`;
   const d = Object.fromEntries(
     ["participante_id", "servidor_id", "nome", "vinculo", "email", "organizacao", "matricula_externa", "observacao"].map(
       (k) => [k, f.texto(k)],

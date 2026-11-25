@@ -478,6 +478,33 @@
       hoje e grava aprovado ou reprovado. Quem não tiver presença lançada é
       apurado com o que há.</p>
   </div>
+  {# Lote 5 (T6, T9): o que concluir não bloqueia, mas a pessoa precisa saber ANTES —
+     a turma ainda "Planejada", ninguém marcado para assinar, inscrito sem nota. #}
+  {% if turma.situacao == 'PLANEJADA' %}
+  <div class="aviso aviso-alerta" role="status" id="concluir-planejada">
+    <p><strong>{{ turma.codigo }} ainda está Planejada</strong> (começou em {{ turma.data_inicio|data }}).
+      Concluir agora a leva direto a <em>{{ ui.ROTULO_TURMA_TELA['CONCLUIDA'] }}</em>, apurando com os
+      lançamentos que existem hoje; a mudança fica na trilha da turma com o seu nome e a hora.</p>
+  </div>
+  {% endif %}
+  {% set assinam = [] %}
+  {% for v in turma.instrutores %}{% if v.assina_certificado %}{% set _ = assinam.push(v) %}{% endif %}{% endfor %}
+  {% if not assinam|length %}
+  <div class="aviso aviso-alerta" role="status" id="concluir-sem-assinatura">
+    <p><strong>Nenhum instrutor está marcado para assinar o certificado.</strong> A turma conclui,
+      mas nenhum certificado sai enquanto não houver um — vincule ou marque na aba
+      <a href="/turmas/{{ turma.id }}?aba=turma">Turma</a>.</p>
+  </div>
+  {% endif %}
+  {% set sem_nota = [] %}
+  {% for linha in grade %}{% if 'não lançada' in (linha.avaliacao.motivos | join(' ')) %}{% set _ = sem_nota.push(linha) %}{% endif %}{% endfor %}
+  {% if sem_nota|length %}
+  <div class="aviso aviso-alerta" role="status" id="concluir-sem-nota">
+    <p><strong>{{ sem_nota|length }} inscrito(s) sem nota</strong>
+      {{- ' — sairá reprovado' if sem_nota|length == 1 else ' — sairão reprovados' }}.
+      Lance as notas antes na aba <a href="/turmas/{{ turma.id }}?aba=presencas">Presença e notas</a>.</p>
+  </div>
+  {% endif %}
   {# A prévia da apuração (25/10/2026): a mesma conta da grade
      (`presenca.avaliar`), com os lançamentos de agora. Concluir sem presença
      lançada reprovava a turma inteira, e a janela só dizia isso em geral. #}
@@ -646,6 +673,23 @@
       mesmo jeito — aviso não é bloqueio. Quem tiver bloqueio não está nesta
       lista.</p>
   </div>
+  {# Lote 5 (T7): o instrutor que ASSINA sem a qualificação que a norma cobra (NR-10/33/35)
+     — o mesmo aviso da aba Turma, repetido aqui, onde o papel vai sair com o nome dele. #}
+  {% set sem_qualificacao = [] %}
+  {% for v in turma.instrutores %}{% if v.assina_certificado and avisos_qualificacao[v.assinatura_instrutor_id] %}{% set _ = sem_qualificacao.push(v) %}{% endif %}{% endfor %}
+  {% if sem_qualificacao|length %}
+  <div class="aviso aviso-alerta" role="status" id="emitir-sem-qualificacao">
+    <p><strong>Assina{{ 'm' if sem_qualificacao|length > 1 }} o certificado sem qualificação para este treinamento:</strong></p>
+    <ul class="motivos">
+      {% for v in sem_qualificacao %}
+      <li>{{ v.instrutor.nome_exibicao }} — {{ avisos_qualificacao[v.assinatura_instrutor_id] }}</li>
+      {% endfor %}
+    </ul>
+    <p class="discreto">É aviso, não bloqueio: os certificados saem com o nome de quem assina.
+      Para corrigir antes, ajuste a qualificação na ficha do instrutor ou quem assina, na aba
+      <a href="/turmas/{{ turma.id }}?aba=turma">Turma</a>.</p>
+  </div>
+  {% endif %}
 {% endcall %}
 {% endif %}
 

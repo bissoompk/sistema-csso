@@ -307,6 +307,41 @@ export class MencaoDeSaude extends TextoProibido {
   }
 }
 
+/**
+ * EPI 3 (lote 5): no catálogo e no lote, os termos de saúde do EPI (dermatite, alergia, lesão…)
+ * NÃO bloqueiam — "protege contra lesões" descreve o equipamento —, mas a tela avisa. A lista
+ * proibida de sempre continua bloqueando ali (`CONTEXTO_EPI_MATERIAL`). Devolve a frase do aviso,
+ * ou `null` quando nenhum campo cita termo de saúde.
+ */
+export function aviso_de_saude_epi(campos: Record<string, string | null | undefined>): string | null {
+  const citados: string[] = [];
+  const onde: string[] = [];
+  for (const [rotulo, texto] of Object.entries(campos)) {
+    const sempre = new Set(termos_proibidos_em(texto, CONTEXTO_EPI_MATERIAL));
+    const achados = termos_proibidos_em(texto, CONTEXTO_EPI_PESSOA).filter((t) => !sempre.has(t));
+    if (!achados.length) continue;
+    onde.push(rotulo);
+    for (const t of achados) {
+      const como_escrito = _como_escrito(texto ?? "", t);
+      if (!citados.includes(como_escrito)) citados.push(como_escrito);
+    }
+  }
+  if (!citados.length) return null;
+  return (
+    `Aviso: ${onde.join(" e ")} cita ${citados.map((t) => `“${t}”`).join(", ")}. Aqui se descreve o ` +
+    "equipamento; dado de saúde de uma pessoa (diagnóstico, alergia, lesão de alguém) não entra no " +
+    "catálogo nem no lote. Foi gravado como está — confira o texto."
+  );
+}
+
+/** O termo (normalizado, "lesao") como a pessoa o escreveu no texto ("lesão"). */
+function _como_escrito(texto: string, termo: string): string {
+  // letra a letra: a letra acentuada do português vira UMA letra sem acento, e a posição se mantém
+  const plano = [...texto].map((ch) => sem_acento(ch).toLowerCase() || ch).join("");
+  const i = plano.indexOf(termo);
+  return i < 0 ? termo : [...texto].slice(i, i + [...termo].length).join("");
+}
+
 /** Os termos de saúde (os confirmáveis) que o texto traz. */
 export function termos_de_saude_em(texto: string | null | undefined): string[] {
   const duros = new Set(TERMOS_SEMPRE_PROIBIDOS);

@@ -781,8 +781,10 @@ export async function montar_contexto_para_emitir(
     chave_validacao: d.chave,
     data_vencimento: vencimento,
     url_validacao: `${await url_base_validacao(tx)}/validar/${d.chave}`,
-    setor_sigla: setor ? setor.sigla_composta : "",
-    setor_nome: setor ? setor.nome_extenso : "",
+    // lote 5 (T8): o cabeçalho é de quem PROMOVE a turma; sem unidade promotora, o setor
+    // emissor, como antes. Congela no certificado: os já emitidos e as segundas vias não mudam
+    setor_sigla: turma.unidade_promotora ? (turma.unidade_promotora.sigla ?? "") : setor ? setor.sigla_composta : "",
+    setor_nome: turma.unidade_promotora ? turma.unidade_promotora.nome_extenso : setor ? setor.nome_extenso : "",
     setor_endereco: setor ? setor.endereco || "" : "",
     cidade: setor ? setor.cidade : "Diamantina",
     modelo_id: d.modelo.id,

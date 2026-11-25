@@ -697,7 +697,7 @@ export async function exigir_requerente_permitido(
   if (usuario.servidor_id === null) {
     throw new RequisicaoBloqueada([
       "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
-        "se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora",
+        "se você é servidor(a) da UFVJM, informe os seus dados em Meu perfil (Sou servidor(a) da UFVJM): a conta é ligada na hora",
     ]);
   }
   if (servidor.id !== usuario.servidor_id) {
@@ -749,6 +749,14 @@ export async function criar_rascunho(
  * tira itens, envia e aceita o termo NR-06. A equipe analisa e entrega, mas não escreve o pedido
  * de outra pessoa nem declara por ela.
  */
+/**
+ * Lote 5 (B1): a mesma conferência, para a ROTA fazer antes de ler e validar o formulário —
+ * quem não é o titular recebe o 403, e não "Quantidade inválida".
+ */
+export function exigir_titular(usuario: UsuarioAtual, requisicao: Pick<EpiRequisicao, "servidor_id">, ato: string): void {
+  _exigir_titular(usuario, requisicao, ato);
+}
+
 function _exigir_titular(usuario: UsuarioAtual, requisicao: Pick<EpiRequisicao, "servidor_id">, ato: string): void {
   if (usuario.servidor_id !== null && usuario.servidor_id === requisicao.servidor_id) return;
   throw new PermissaoNegada(

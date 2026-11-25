@@ -51,7 +51,7 @@ let tA: { turma: servico_turma.TurmaCarregada; inscricao_id: number; certificado
 let tT: { turma: servico_turma.TurmaCarregada; inscricao_id: number };
 
 const HOJE = datas_br.hoje();
-const AVISO_A = "Esta turma é de Coordenador de Teste; só ele ou a coordenação acima pode alterar.";
+const AVISO_A = "Esta turma é de Coordenador de Teste; só Coordenador de Teste ou a coordenação acima altera.";
 
 async function _cliente(login: string): Promise<Cliente> {
   return entrar(novoCliente(), login);
@@ -381,7 +381,7 @@ describe("ajudantes", () => {
     expect(ficha).not.toContain('id="f-folha"');
     const r = await c.post(`/turmas/${tT.turma.id}/presencas/dia`, { data: HOJE }, { seguir: false });
     expect(r.status).toBe(403);
-    expect(r.text).toContain("Esta turma é de Técnica de Teste; só ele ou a coordenação acima pode alterar.");
+    expect(r.text).toContain("Esta turma é de Técnica de Teste; só Técnica de Teste ou a coordenação acima altera.");
   });
 
   it("o dono designa (auditado), o ajudante opera só nos papéis dados e não designa", async () => {

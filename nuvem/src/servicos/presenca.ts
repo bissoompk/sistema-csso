@@ -51,6 +51,7 @@ import * as carga_turma from "./carga_turma.js";
 import {
   RegraDaTurma,
   gravar_inscricao,
+  iniciar_pelo_lancamento,
   inscricoes_da_turma,
   mudar_situacao,
   type InscricaoCarregada,
@@ -408,6 +409,8 @@ async function _exigir_lancamento(
         "turma para em andamento antes de lançar presença ou nota.",
     );
   }
+  // T9 (lote 5): planejada que já começou passa a em andamento no primeiro lançamento
+  await iniciar_pelo_lancamento(tx, usuario, turma);
   return null;
 }
 
@@ -914,8 +917,10 @@ export async function registrar_turma_realizada(
       `${turma.codigo} já tem presença lançada: confira a aba Presença e notas e conclua a turma por lá.`,
     );
   }
-  // inscrição aberta não recebe lançamento; planejada que já começou, sim
+  // inscrição aberta não recebe lançamento; planejada que já começou, sim — e o primeiro
+  // lançamento a passa para em andamento (T9), aqui uma vez, com a turma desta função
   if (turma.situacao === "INSCRICOES_ABERTAS") await mudar_situacao(tx, usuario, turma, "EM_ANDAMENTO");
+  await iniciar_pelo_lancamento(tx, usuario, turma);
 
   const dias = carga_por_dia(turma);
   if (turma.data_inicio === turma.data_fim) {

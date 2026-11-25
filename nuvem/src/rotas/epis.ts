@@ -445,7 +445,9 @@ rotas.post(CATALOGO, async (c) => {
     descricao: `${item!.nome} · ${categoria.nome} · ` + `CA ${item!.numero_ca || "—"} · ${EpiItem.regra_de_quantidade(item!)}`,
     usuario,
   });
-  return _volta(c, CATALOGO, `'${item!.nome}' cadastrado.`);
+  const aviso = textos.aviso_de_saude_epi({ nome: item!.nome, "a descrição": item!.descricao, "as normas": item!.normas });
+  const volta = comMensagem(CATALOGO, `'${item!.nome}' cadastrado.`, "mensagem");
+  return redirecionar(c, aviso ? comMensagem(volta, aviso, "alerta") : volta);
 });
 
 // =====================================================================
@@ -839,9 +841,17 @@ rotas.post(`${CATALOGO}/:item_id{[0-9]+}`, async (c) => {
         "e envie a foto ou o PDF pelo botão “Foto e orientação” da linha do item.",
     );
   }
-  return salvar_com_diff(c, usuario, epi_item, item_id, campos, {
+  const resposta = await salvar_com_diff(c, usuario, epi_item, item_id, campos, {
     permissao: "epi.catalogo",
     rotulo: "Item de EPI",
     volta: CATALOGO,
   });
+  // EPI 3 (lote 5): o aviso de saúde, sem bloquear, junto do "alteração gravada"
+  const aviso = textos.aviso_de_saude_epi({
+    nome: campos.nome as string | null,
+    "a descrição": campos.descricao as string | null,
+    "as normas": campos.normas as string | null,
+  });
+  const local = resposta.headers.get("location");
+  return aviso && local ? redirecionar(c, comMensagem(local, aviso, "alerta")) : resposta;
 });

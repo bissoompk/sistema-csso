@@ -188,7 +188,7 @@ const NENHUM: ReadonlySet<Papel> = Object.freeze(new Set<Papel>());
 /** A frase da recusa, também a que a ficha mostra a quem só consulta. */
 export function aviso_de(dono: { nome: string } | null, coisa: "turma" | "treinamento" = "turma"): string {
   const artigo = coisa === "turma" ? "Esta turma" : "Este treinamento";
-  if (dono) return `${artigo} é de ${dono.nome}; só ele ou a coordenação acima pode alterar.`;
+  if (dono) return `${artigo} é de ${dono.nome}; só ${dono.nome} ou a coordenação acima altera.`;
   return (
     `${artigo} não tem dono registrado (é de antes da regra de dono); ` +
     "só a coordenação do setor ou a superintendência pode alterar."

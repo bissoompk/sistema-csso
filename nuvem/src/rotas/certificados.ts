@@ -611,9 +611,12 @@ rotas.get(EMAILS, async (c) => {
   const tx = c.get("tx");
   const situacao = c.req.query("situacao") ?? "";
   const filtro = Object.hasOwn(email.ROTULO_SITUACAO, situacao) ? situacao : "";
+  // NUVEM: a caixa do setor de quem lê (`envio_certificado.caixa_do_setor`)
+  const itens = await envio_certificado.caixa_do_setor(tx, usuario, { situacao: filtro || undefined });
   return pagina(c, "paginas/emails.html", usuario, {
-    // NUVEM: a caixa do setor de quem lê (`envio_certificado.caixa_do_setor`)
-    itens: await envio_certificado.caixa_do_setor(tx, usuario, { situacao: filtro || undefined }),
+    itens,
+    // T11 (lote 5): de onde saiu cada endereço de certificado
+    origens: await envio_certificado.origens_dos_envios(tx, itens),
     contagem: await envio_certificado.contagem_do_setor(tx, usuario),
     filtro,
     sem_setor_promotor: setor_equipe.sem_setor(usuario),

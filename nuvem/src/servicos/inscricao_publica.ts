@@ -433,13 +433,13 @@ function _ler(d: Pedido, turma: { aceita_comunidade_externa: boolean }): Pedido 
   if (!vinculos_aceitos(turma).includes(p.vinculo)) {
     if ((VINCULOS_COMUNIDADE_EXTERNA as readonly string[]).includes(p.vinculo)) {
       throw new PedidoInvalido(
-        "Esta turma é para a comunidade da UFVJM: escolha Servidor da UFVJM, Terceirizado ou Discente.",
+        "Esta turma é para a comunidade da UFVJM: escolha Servidor(a) da UFVJM, Terceirizado ou Discente.",
       );
     }
     throw new PedidoInvalido("Escolha o vínculo.");
   }
   if (p.vinculo === "SERVIDOR" && !RE_SIAPE.test(p.siape)) {
-    throw new PedidoInvalido("Servidor da UFVJM: informe o SIAPE (6 ou 7 dígitos).");
+    throw new PedidoInvalido("Servidor(a) da UFVJM: informe o SIAPE (6 ou 7 dígitos).");
   }
   if (p.vinculo !== "SERVIDOR") p.siape = "";
   if (p.email && !RE_EMAIL.test(p.email)) throw new PedidoInvalido("O e-mail não parece completo.");

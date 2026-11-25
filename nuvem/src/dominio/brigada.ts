@@ -108,9 +108,10 @@ export class NotaInvalida extends Error {}
 export function media(notas: readonly string[]): string | null {
   if (!notas.length) return null;
   const soma = notas.reduce((s, n) => s + centesimos(n), 0);
-  // arredondamento meio para cima em inteiros: (2·soma + n) div (2·n)
-  const n = notas.length;
-  return de_centesimos(Math.floor((2 * soma + n) / (2 * n)));
+  // lote 5 (25/11/2026, decisão do coordenador): CORTA na segunda casa, sem arredondar para
+  // cima — 90 e 69,99 dão 79,995, que fica 79,99, e nunca 80. A nota exibida nunca passa da
+  // obtida. A aprovação não olha a média: compara cada disciplina, exata, com o mínimo.
+  return de_centesimos(Math.floor(soma / notas.length));
 }
 
 /** "85%", "77,5%", "77,25%": percentual sem casas quando inteira, sem zero à direita. */

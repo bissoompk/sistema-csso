@@ -127,8 +127,12 @@ export function vista_certificado<T extends Obj | null | undefined>(c: T): T {
  * A ÂNCORA VAI POR ÚLTIMO: o fragmento encerra a URL.
  */
 export function aviso(c: Ctx, destino: string, campo: string, mensagem: string, ancora = ""): Response {
-  const separador = destino.includes("?") ? "&" : "?";
-  return redirecionar(c, `${destino}${separador}${campo}=${encodeURIComponent(mensagem)}${ancora}`);
+  // T14 (lote 5): destino que já traz âncora (#…) — a consulta vai antes dela, a âncora no fim
+  const i = destino.indexOf("#");
+  const base = i < 0 ? destino : destino.slice(0, i);
+  const fim = ancora || (i < 0 ? "" : destino.slice(i));
+  const separador = base.includes("?") ? "&" : "?";
+  return redirecionar(c, `${base}${separador}${campo}=${encodeURIComponent(mensagem)}${fim}`);
 }
 
 /** Deu certo. Banner verde. */

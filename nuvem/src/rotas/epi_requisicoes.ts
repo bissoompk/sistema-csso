@@ -926,7 +926,7 @@ rotas.post(FILA, async (c) => {
   if (proprio && usuario.servidor_id === null) {
     return recusar(
       "Sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
-        "Se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora.",
+        "Se você é servidor(a) da UFVJM, informe os seus dados em Meu perfil (Sou servidor(a) da UFVJM): a conta é ligada na hora.",
     );
   }
   const servidor_id = _id(digitado.servidor_id);
@@ -934,6 +934,8 @@ rotas.post(FILA, async (c) => {
     ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, servidor_id))
     : [];
   if (!servidor) return recusar("Escolha o servidor que vai usar o equipamento.");
+  // B1 (lote 5): pedido para outra pessoa é 403 antes de qualquer validação de campo
+  await servico.exigir_requerente_permitido(tx, usuario, servidor);
   const chefia_id = _id(digitado.chefia_servidor_id);
   const [chefia] = chefia_id ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, chefia_id)) : [];
 
@@ -1221,6 +1223,8 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}`, async (c) => {
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
+  // B1 (lote 5): quem pode editar, ANTES de ler e validar o formulário
+  if (requisicao.estado === "RASCUNHO") servico.exigir_titular(usuario, requisicao, "editar o pedido");
   const f = await formulario(c);
   const digitado = {
     forma: "cabecalho",
@@ -1252,6 +1256,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/excluir`, async (c) => {
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
+  servico.exigir_titular(usuario, requisicao, "excluir o rascunho");
   const r = await tentar(c, (sp) => servico.excluir_rascunho(sp, usuario, requisicao));
   if (!r.ok) return _erro(c, _ficha(requisicao.id), _motivos(r.falha));
   return _volta(
@@ -1268,6 +1273,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens`, async (c) => {
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
+  servico.exigir_titular(usuario, requisicao, "acrescentar item");
   const f = await formulario(c);
   const item = await _item_do_catalogo(c.get("tx"), _id(f.texto("item_id")));
   const digitado = {
@@ -1304,6 +1310,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}`, async (c) =
   const destino = _ficha(requisicao_id);
   const linha = await _linha(c, usuario, requisicao_id, linha_id, "epi.requisitar");
   if (!linha) return redirecionar(c, destino);
+  servico.exigir_titular(usuario, (await _requisicao(c, usuario, requisicao_id, "epi.requisitar"))!, "editar item");
   const f = await formulario(c);
   // a forma leva o id da linha: o formulário de editar se repete por item
   const digitado = {
@@ -1337,6 +1344,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/remover`, asy
   const destino = _ficha(requisicao_id);
   const linha = await _linha(c, usuario, requisicao_id, _param_id(c, "linha_id"), "epi.requisitar");
   if (!linha) return redirecionar(c, destino);
+  servico.exigir_titular(usuario, (await _requisicao(c, usuario, requisicao_id, "epi.requisitar"))!, "remover item");
   const nome = (await _item_do_catalogo(c.get("tx"), linha.epi_item_id))!.nome;
   const r = await tentar(c, (sp) => servico.remover_item(sp, usuario, linha));
   if (!r.ok) return _erro(c, destino, _motivos(r.falha));
@@ -1350,6 +1358,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/enviar`, async (c) => {
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
+  if (requisicao.estado === "RASCUNHO") servico.exigir_titular(usuario, requisicao, "enviar o pedido e aceitar o termo NR-06");
   const f = await formulario(c);
   // o termo NR-06 vem DESMARCADO da tela; sem a marca o serviço recusa
   const termo_aceito = _marcado(f.texto("termo_aceito"));
