@@ -26,6 +26,7 @@ import { acesso_dado_sensivel, agora_utc, conferencia_cadeia, historico_evento }
 import { RegraViolada } from "../nucleo/erros.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { termos_de_saude_em } from "./textos.js";
+import * as mencao from "../nucleo/mencao_saude.js";
 
 export type HistoricoEvento = typeof historico_evento.$inferSelect;
 export type ConferenciaCadeia = typeof conferencia_cadeia.$inferSelect;
@@ -716,6 +717,23 @@ export async function registrar(tx: Executor, d: DadosRegistro): Promise<Histori
   };
   evento.hash_atual = _instrumentos.digerir(evento, anterior);
   const [gravado] = await tx.insert(historico_evento).values(evento).returning();
+  // EPI, filtro em dois níveis (24/11/2026): a caixa "confirmo que a menção é necessária" marcada
+  // neste pedido entra na trilha logo depois do primeiro evento da operação — mesma entidade, mesma
+  // conta, mesma transação (`nucleo/mencao_saude.ts`). `retirar` esvazia antes: sem recursão.
+  for (const m of mencao.retirar()) {
+    await registrar(tx, {
+      entidade: d.entidade,
+      entidade_id: d.entidade_id,
+      processo_id: d.processo_id ?? null,
+      tipo_evento: MENCAO_SAUDE_CONFIRMADA,
+      descricao:
+        `Menção confirmada como necessária no campo ${m.campo} (${m.termos.join(", ")}), ` +
+        `por ${evento.usuario_nome}.`,
+      campo: m.campo,
+      usuario: d.usuario,
+      usuario_nome: d.usuario_nome,
+    });
+  }
   return gravado!;
 }
 

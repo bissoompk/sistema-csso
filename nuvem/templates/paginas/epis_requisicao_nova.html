@@ -32,6 +32,7 @@
    Vazio na abertura da tela. Sem isto, uma urgência sem justificativa apagava a
    rotina de trabalho e os riscos declarados — os dois textos longos daqui. #}
 {% set d = digitado or sem_digitado %}
+{% set aviso_saude = erro and ('confirmo que a menção é necessária' in erro) %}
 {%- macro sel(escolhido, valor) -%}
 {{- ' selected' if escolhido not in [none, ''] and escolhido|string == valor|string -}}
 {%- endmacro %}
@@ -192,6 +193,7 @@
           <span class="dica" id="dica-urgencia">Só para pedido urgente — e aí é
             obrigatório.</span>
         </div>
+        {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-nova') }}
       </div>
 
       <div class="campo">

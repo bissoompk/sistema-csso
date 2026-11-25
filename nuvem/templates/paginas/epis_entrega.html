@@ -18,6 +18,9 @@
    campo `item_id`: um só apagaria a escolha do outro. Vazios na abertura. #}
 {% set d = digitado or {} %}
 {% set r = digitado_recusa or {} %}
+{# filtro de saúde em dois níveis (24/11/2026): a caixa só aparece depois do aviso, no formulário
+   que o recebeu — o texto digitado volta junto (`digitado` / `digitado_recusa`) #}
+{% set aviso_saude = erro and ('confirmo que a menção é necessária' in erro) %}
 {%- macro sel(escolhido, valor) -%}
 {{- ' selected' if escolhido is not none and escolhido != '' and escolhido|string == valor|string -}}
 {%- endmacro %}
@@ -148,6 +151,7 @@
         <span class="dica" id="dica-observacao">Sai impressa no comprovante.
           Não escreva nada sobre a saúde de quem recebe: o sistema recusa.</span>
       </div>
+      {{ ui.confirmar_mencao_saude(aviso_saude and not foco_na_recusa, 'cms-entrega') }}
 
       <div class="acoes">
         <button type="submit">Registrar entrega</button>
@@ -250,6 +254,7 @@
         <span class="dica" id="dica-complemento">Obrigatório quando o motivo do
           catálogo exige.</span>
       </div>
+      {{ ui.confirmar_mencao_saude(aviso_saude and foco_na_recusa, 'cms-recusa') }}
       <div class="acoes"><button type="submit" class="secundario">Registrar recusa</button></div>
     </form>
     {# O rodapé "O que cada motivo diz" foi INTEIRO para o (i) do título deste

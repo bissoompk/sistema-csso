@@ -6,6 +6,7 @@
  * arquivos estáticos (`/estaticos/...`) não passam por aqui em produção: o
  * Netlify os serve direto do CDN, a partir de `public/`.
  */
+import * as mencao_saude from "./nucleo/mencao_saude.js";
 import { Hono } from "hono";
 import type { Ambiente, Ctx } from "./nucleo/contexto.js";
 import { cabecalhos, novoNonce, origemCruzada, resumoDoErro } from "./nucleo/seguranca.js";
@@ -181,6 +182,20 @@ export function criarApp(): Hono<Ambiente> {
       c.res = undefined as never;
       c.res = nova;
     }
+  });
+
+  // A caixa "confirmo que a menção é necessária" vale para o pedido inteiro (EPI, filtro de saúde
+  // em dois níveis, 24/11/2026): o serviço que filtra o texto a consulta, sem parâmetro a mais.
+  app.use("*", async (c, next) => {
+    const tipo = c.req.header("content-type") ?? "";
+    if (c.req.method !== "POST" || !(tipo.includes("form-urlencoded") || tipo.includes("multipart/form-data"))) return next();
+    let marcada = false;
+    try {
+      marcada = (await c.req.formData()).get(mencao_saude.CAMPO_CONFIRMACAO) === "1";
+    } catch {
+      marcada = false;
+    }
+    return mencao_saude.com_confirmacao(marcada, () => next());
   });
 
   // A transação da requisição: COMMIT no retorno normal, ROLLBACK quando a

@@ -42,7 +42,6 @@ describe("EPI — pessoa: termo de saúde recusado sem confirmação", () => {
     "servidor com dermatite alérgica",
     "Servidor asmático, precisa de outro respirador",
     "pós-operatório do joelho, pede botina mais leve",
-    "toma medicamento que dá sonolência",
     "afastamento médico em outubro",
     "laudo médico anexo ao pedido",
     "servidora gestante, afastada do setor",
@@ -57,7 +56,7 @@ describe("EPI — pessoa: termo de saúde recusado sem confirmação", () => {
     });
   }
 
-  it("não há caixa de confirmação: o erro não é MencaoDeSaude", () => {
+  it("lista antiga: a caixa não adianta, e o erro não é MencaoDeSaude", () => {
     let erro: unknown;
     try {
       textos.exigir_texto_limpo("servidora gestante", "rotina de trabalho", PESSOA, true);
@@ -118,5 +117,13 @@ describe("EPI — 'lesão' e variações (24/11/2026)", () => {
         expect(textos.exigir_texto_limpo(t, "campo", ctx)).toBe(t);
       }
     }
+  });
+});
+
+describe("EPI — pessoa: 'medicamento' é do grupo de aviso (dois níveis, 24/11/2026)", () => {
+  it("'toma medicamento que dá sonolência' é recusado sem a caixa, com a mensagem que a oferece", () => {
+    expect(() => textos.exigir_texto_limpo("toma medicamento que dá sonolência", "parecer da análise", textos.CONTEXTO_EPI_PESSOA)).toThrow(
+      textos.MencaoDeSaude,
+    );
   });
 });

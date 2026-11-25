@@ -383,7 +383,7 @@ async function _secao_dos_itens(
   c: Ctx,
   usuario: UsuarioAtual,
   requisicao_id: number,
-  opcoes: { recusa?: string | null; linha_id?: number | null; sucesso?: string | null } = {},
+  opcoes: { recusa?: string | null; linha_id?: number | null; sucesso?: string | null; campos?: Record<string, string> | null } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const requisicao = (await carregar(tx, requisicao_id))!;
@@ -410,7 +410,7 @@ async function _secao_dos_itens(
     pode_cancelar: servico.pode_cancelar(usuario, requisicao),
     // a gaveta da linha recusada reabre
     digitado: dic(
-      opcoes.linha_id !== undefined && opcoes.linha_id !== null ? { forma: `item-${opcoes.linha_id}` } : {},
+      opcoes.linha_id !== undefined && opcoes.linha_id !== null ? { forma: `item-${opcoes.linha_id}`, ...(opcoes.campos ?? {}) } : {},
     ),
     recusa: opcoes.recusa ?? null,
     // o recado de sucesso da troca parcial: sem ele aprovar, recusar e
@@ -428,9 +428,31 @@ async function _parcial_ou_erro(
   mensagem: string,
   parcial: boolean,
   linha_id: number | null = null,
+  campos: Record<string, string> | null = null,
 ): Promise<Response> {
-  if (parcial) return _secao_dos_itens(c, usuario, requisicao_id, { recusa: mensagem, linha_id });
+  if (parcial) return _secao_dos_itens(c, usuario, requisicao_id, { recusa: mensagem, linha_id, campos });
+  // aviso de saúde (dois níveis): a gaveta reabre com o texto e a caixa, em vez de perder o digitado
+  if (campos) return _tela_ficha(c, usuario, requisicao_id, { erro: mensagem, digitado: { forma: `item-${linha_id}`, ...campos } });
   return _erro(c, _ficha(requisicao_id), mensagem, ANCORA_ITENS);
+}
+
+/**
+ * Filtro de saúde em dois níveis (24/11/2026): o texto recusado só por termo de AVISO volta à tela
+ * no formulário em que foi escrito, com a caixa "confirmo que a menção é necessária". `acao` diz
+ * qual dos formulários da gaveta (ou qual janela) reabrir.
+ */
+const _CAMPOS_DA_MENCAO = [
+  "justificativa", "complemento", "motivo", "motivo_id", "parecer", "quantidade_aprovada", "autorizar_excesso",
+  "observacao", "quantidade", "entrada_id",
+];
+function _digitado_da_mencao(falha: Error, f: Form, acao: string): Record<string, string> | null {
+  if (!(falha instanceof textos.MencaoDeSaude)) return null;
+  const d: Record<string, string> = { acao };
+  for (const k of _CAMPOS_DA_MENCAO) {
+    const v = f.texto(k);
+    if (v) d[k] = v;
+  }
+  return d;
 }
 
 // =====================================================================
@@ -1061,6 +1083,8 @@ async function _tela_ficha(
     digitado?: Record<string, unknown>;
     item_escolhido?: ItemBruto | null;
     corrigir_item_id?: number | null;
+    /** a janela que reabre com o aviso de saúde, o texto digitado e a caixa */
+    popup?: Record<string, string> | null;
   } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
@@ -1134,6 +1158,7 @@ async function _tela_ficha(
     digitado: dic(opcoes.digitado ?? {}),
     item_escolhido: opcoes.item_escolhido ? vestir_item(opcoes.item_escolhido) : null,
     corrigir_item_id: opcoes.corrigir_item_id ?? null,
+    popup: opcoes.popup ? dic(opcoes.popup) : null,
     // fatia B: o motivo sugerido para o item novo, e quem declarou o termo
     motivo_sugerido: motivo_sugerido(requisicao.finalidade),
     termo_por: requisicao.termo_aceito_por
@@ -1354,6 +1379,16 @@ function _exigir_ato(usuario: UsuarioAtual, ato: string | readonly string[]): vo
   if (!lista.some((p) => usuario.pode(p))) throw new PermissaoNegada(lista[0]!);
 }
 
+/** A janela (popup) de cada ação do envelope, para reabrir com o aviso de saúde. */
+const _JANELA: Record<string, string> = {
+  concluir: "concluir-analise",
+  devolver: "devolver",
+  cancelar: "cancelar-pedido",
+  reconsiderar: "reconsiderar",
+  assumir: "assumir-analise",
+  indeferir: "indeferir",
+};
+
 function acao_de_envelope(
   sufixo: string,
   executar: (sp: Tx, usuario: UsuarioAtual, requisicao: servico.EpiRequisicao, f: Form) => Promise<unknown>,
@@ -1368,7 +1403,11 @@ function acao_de_envelope(
     const destino = _ficha(requisicao.id);
     const f = await formulario(c);
     const r = await tentar(c, (sp) => executar(sp, usuario, requisicao, f));
-    if (!r.ok) return _erro(c, destino, _motivos(r.falha));
+    if (!r.ok) {
+      const campos = _digitado_da_mencao(r.falha, f, sufixo);
+      if (campos) return _tela_ficha(c, usuario, requisicao.id, { popup: { alvo: _JANELA[sufixo] ?? sufixo, erro: _motivos(r.falha), ...campos } });
+      return _erro(c, destino, _motivos(r.falha));
+    }
     return _volta(c, destino, recado(requisicao));
   });
 }
@@ -1430,7 +1469,11 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/indeferir`, async (c) => {
       parecer: f.texto("parecer"),
     }),
   );
-  if (!r.ok) return _erro(c, destino, _motivos(r.falha));
+  if (!r.ok) {
+    const campos = _digitado_da_mencao(r.falha, f, "indeferir");
+    if (campos) return _tela_ficha(c, usuario, requisicao.id, { popup: { alvo: "indeferir", erro: _motivos(r.falha), ...campos } });
+    return _erro(c, destino, _motivos(r.falha));
+  }
   return _volta(
     c,
     destino,
@@ -1499,7 +1542,10 @@ function acao_de_item(a: AcaoDeItem) {
       dados = p.dados;
     }
     const r = await tentar(c, (sp) => a.executar(sp, usuario, linha, f, dados));
-    if (!r.ok) return _parcial_ou_erro(c, usuario, requisicao_id, _motivos(r.falha), parcial, linha_id);
+    if (!r.ok) {
+      const campos = _digitado_da_mencao(r.falha, f, a.sufixo);
+      return _parcial_ou_erro(c, usuario, requisicao_id, _motivos(r.falha), parcial, linha_id, campos);
+    }
     if (parcial) return _secao_dos_itens(c, usuario, requisicao_id, { sucesso: a.recado(linha, nome, dados) });
     return _volta(c, destino, a.recado(linha, nome, dados), ANCORA_ITENS);
   });
@@ -1686,6 +1732,8 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/entregar`, as
     epi_estoque.EstoqueBloqueado,
   );
   if (!r.ok) {
+    const campos = _digitado_da_mencao(r.falha, f, "entregar");
+    if (campos) return _tela_ficha(c, usuario, requisicao_id, { erro: _motivos(r.falha), digitado: { forma: `item-${linha.id}`, ...campos } });
     // CA do catálogo faltando: a volta leva o item, e a tela o link para corrigi-lo
     const corrigir = r.falha instanceof epi_ficha.EntregaBloqueada ? r.falha.item_a_corrigir : null;
     return _erro(c, corrigir ? `${destino}?corrigir_item=${corrigir}` : destino, _motivos(r.falha));

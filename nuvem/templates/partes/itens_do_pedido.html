@@ -257,6 +257,7 @@
                   <textarea id="j-{{ i.id }}" name="justificativa" rows="2"
                             {% if i.item.exige_justificativa %}required{% endif %}>{{ dl.get('justificativa', i.justificativa or '') }}</textarea>
                 </div>
+                {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-editar-' ~ i.id) }}
                 <div class="acoes"><button type="submit" class="compacto">Salvar linha</button></div>
               </form>
 
@@ -299,10 +300,12 @@
                 </div>
                 <div class="campo">
                   <label for="ja-{{ i.id }}">Justificativa da decisão</label>
-                  <textarea id="ja-{{ i.id }}" name="justificativa" rows="2"></textarea>
+                  <textarea id="ja-{{ i.id }}" name="justificativa" rows="2">{{ dl.get('justificativa', '') if dl.get('acao') == 'aprovar' else '' }}</textarea>
                 </div>
+                {{ ui.confirmar_mencao_saude(dl.get('acao') == 'aprovar', 'cms-aprovar-' ~ i.id) }}
                 <label class="discreto" for="ex-{{ i.id }}">
-                  <input id="ex-{{ i.id }}" type="checkbox" name="autorizar_excesso" value="1">
+                  <input id="ex-{{ i.id }}" type="checkbox" name="autorizar_excesso" value="1"
+                         {{- ' checked' if dl.get('acao') == 'aprovar' and dl.get('autorizar_excesso') }}>
                   Autorizar a exceção ao máximo
                 </label>
                 <p class="discreto">O máximo deste item é
@@ -328,7 +331,10 @@
                   item: aprovar continua possível (a entrega pede a confirmação),
                   e recusar sai pelo motivo “Treinamento não comprovado”.</p>
                 {% endif %}
-                {{ ui.seletor_de_motivo('rec-' ~ i.id, 'motivo_id', motivos) }}
+                {{ ui.seletor_de_motivo('rec-' ~ i.id, 'motivo_id', motivos,
+                                        dl.get('motivo_id', '') if dl.get('acao') == 'recusar' else '',
+                                        dl.get('complemento', '') if dl.get('acao') == 'recusar' else '') }}
+                {{ ui.confirmar_mencao_saude(dl.get('acao') == 'recusar', 'cms-recusar-' ~ i.id) }}
                 <div class="acoes">
                   <button type="submit" class="perigo-discreto compacto">Recusar item</button>
                 </div>
@@ -353,8 +359,10 @@
                 <div class="campo">
                   <label for="mc-{{ i.id }}">Motivo</label>
                   <input id="mc-{{ i.id }}" name="motivo" required
+                         value="{{ dl.get('motivo', '') if dl.get('acao') == 'cancelar' else '' }}"
                          placeholder="item pedido em duplicidade">
                 </div>
+                {{ ui.confirmar_mencao_saude(dl.get('acao') == 'cancelar', 'cms-cancelar-' ~ i.id) }}
                 <div class="acoes">
                   <button type="submit" class="perigo-discreto compacto">Cancelar linha</button>
                 </div>
@@ -441,8 +449,10 @@
                 <div class="campo">
                   <label for="se-{{ i.id }}">Complemento</label>
                   <input id="se-{{ i.id }}" name="complemento"
+                         value="{{ dl.get('complemento', '') if dl.get('acao') == 'sem-estoque' else '' }}"
                          placeholder="empenho 2026NE000456 em entrega para novembro">
                 </div>
+                {{ ui.confirmar_mencao_saude(dl.get('acao') == 'sem-estoque', 'cms-sem-estoque-' ~ i.id) }}
                 <div class="acoes">
                   <button type="submit" class="secundario compacto">Sem estoque</button>
                 </div>
@@ -463,8 +473,10 @@
                 <div class="campo">
                   <label for="sr-{{ i.id }}">Motivo</label>
                   <input id="sr-{{ i.id }}" name="motivo" required
+                         value="{{ dl.get('motivo', '') if dl.get('acao') == 'soltar-reserva' else '' }}"
                          placeholder="lote descartado por CA vencido sem renovação">
                 </div>
+                {{ ui.confirmar_mencao_saude(dl.get('acao') == 'soltar-reserva', 'cms-soltar-' ~ i.id) }}
                 <div class="acoes">
                   <button type="submit" class="perigo-discreto compacto">Soltar reserva</button>
                 </div>
@@ -544,10 +556,12 @@
                 <div class="campo">
                   <label for="obs-{{ i.id }}">Observação</label>
                   <input id="obs-{{ i.id }}" name="observacao"
+                         value="{{ dl.get('observacao', '') if dl.get('acao') == 'entregar' else '' }}"
                          aria-describedby="dica-obs-{{ i.id }}">
                   <span class="dica" id="dica-obs-{{ i.id }}">Sai impressa no
                     comprovante. Nada sobre a saúde de quem recebe.</span>
                 </div>
+                {{ ui.confirmar_mencao_saude(dl.get('acao') == 'entregar', 'cms-entregar-' ~ i.id) }}
                 {# FATIA E (Decisão 2): avisa e não bloqueia — negar o EPI
                    deixaria a pessoa exposta. Sem a caixa marcada a entrega
                    volta com o aviso; marcada, a confirmação vai para a trilha

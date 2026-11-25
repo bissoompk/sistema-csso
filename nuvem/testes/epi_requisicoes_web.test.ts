@@ -1206,3 +1206,77 @@ describe("pedido em análise com outra pessoa: a tela mostra só 'assumir' (24/1
     expect(depois).toContain("redistribuição da fila");
   });
 });
+
+describe("filtro em dois níveis pela tela (24/11/2026)", () => {
+  const CAIXA = 'name="confirmo_mencao_saude"';
+  it("parecer técnico: volta na janela aberta, com o texto e a caixa; marcada, conclui e a trilha registra o nome", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cli = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, cli, cen);
+    expect((await cli.post(`${FILA}/${id}/analise`, {}, { seguir: false })).status).toBe(303);
+    const [linha] = await linhas(amb, id);
+    expect((await cli.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1" }, { seguir: false })).status).toBe(303);
+
+    const parecer = "Fornecer máscara cirúrgica ao técnico do centro cirúrgico.";
+    const sem = await cli.post(`${FILA}/${id}/concluir`, { parecer }, { seguir: false });
+    expect(sem.status).toBe(200);
+    expect(sem.text).toContain("confirmo que a menção é necessária");
+    expect(sem.text).toMatch(/<dialog class="popup" id="concluir-analise"[^>]* open>/);
+    expect(sem.text).toContain(`>${parecer}</textarea>`);
+    expect(sem.text).toContain(CAIXA);
+    expect((await ultima(amb)).estado).toBe("EM_ANALISE");
+
+    const com = await cli.post(`${FILA}/${id}/concluir`, { parecer, confirmo_mencao_saude: "1" }, { seguir: false });
+    expect(com.status, recado(com)).toBe(303);
+    expect((await ultima(amb)).estado).toBe("ANALISADA");
+    const tela = (await cli.get(`${FILA}/${id}`)).text;
+    expect(tela).toContain("Menção a saúde confirmada");
+    expect(tela).toContain("parecer da análise");
+  });
+
+  it("justificativa da aprovação técnica: a gaveta do item reabre com o texto e a caixa; marcada, aprova", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cli = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, cli, cen);
+    await cli.post(`${FILA}/${id}/analise`, {}, { seguir: false });
+    const [linha] = await linhas(amb, id);
+    const justificativa = "Atividade de manipulação de medicamentos no laboratório.";
+    const sem = await cli.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1", justificativa }, { seguir: false });
+    expect(sem.status).toBe(200);
+    expect(sem.text).toContain(`id="cms-aprovar-${linha!.id}"`);
+    expect(sem.text).toContain(`>${justificativa}</textarea>`);
+    expect((await linhas(amb, id))[0]!.estado).toBe("SOLICITADO");
+    // pela troca parcial (htmx), a mesma coisa
+    const htmx = await cli.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1", justificativa }, { seguir: false, cabecalhos: { "hx-request": "true" } });
+    expect(htmx.text).toContain(`id="cms-aprovar-${linha!.id}"`);
+
+    const com = await cli.post(
+      `${FILA}/${id}/itens/${linha!.id}/aprovar`,
+      { quantidade_aprovada: "1", justificativa, confirmo_mencao_saude: "1" },
+      { seguir: false },
+    );
+    expect(com.status, recado(com)).toBe(303);
+    expect((await linhas(amb, id))[0]!.estado).toBe("APROVADO");
+  });
+
+  it("termo do grupo de bloqueio: recusa sem oferecer a caixa, e a caixa marcada não adianta", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cli = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, cli, cen);
+    await cli.post(`${FILA}/${id}/analise`, {}, { seguir: false });
+    const [linha] = await linhas(amb, id);
+    for (const marcar of [{}, { confirmo_mencao_saude: "1" }]) {
+      const r = await cli.post(
+        `${FILA}/${id}/itens/${linha!.id}/aprovar`,
+        { quantidade_aprovada: "1", justificativa: "Servidora relata alergia ao látex.", ...marcar },
+        { seguir: false },
+      );
+      expect(recado(r)).toContain("dado de saúde");
+      expect(recado(r)).not.toContain("confirmo que a menção é necessária");
+    }
+    expect((await linhas(amb, id))[0]!.estado).toBe("SOLICITADO");
+  });
+});

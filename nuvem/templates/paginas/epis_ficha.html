@@ -57,6 +57,9 @@
 
 {% block conteudo %}
 {% set quem = identificar(servidor) %}
+{# filtro de saúde em dois níveis (24/11/2026): devolução e estorno voltam por redirecionamento,
+   e a caixa aparece nos formulários depois do aviso #}
+{% set aviso_saude = erro and ('confirmo que a menção é necessária' in erro) %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
@@ -413,6 +416,7 @@
                     troca de posto ou desligamento mudam o que o setor faz com o
                     equipamento depois.</span>
                 </div>
+                {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-dev-' ~ r.id) }}
                 <div class="acoes"><button type="submit" class="compacto">Devolver</button></div>
               </form>
               {% endif %}
@@ -428,6 +432,7 @@
                   <input id="mot-{{ r.id }}" name="motivo" required
                          placeholder="quantidade digitada errada">
                 </div>
+                {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-est-' ~ r.id) }}
                 <div class="acoes">
                   <button type="submit" class="perigo-discreto compacto">Estornar</button>
                 </div>

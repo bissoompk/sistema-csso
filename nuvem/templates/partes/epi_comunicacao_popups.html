@@ -29,6 +29,7 @@
     <span class="dica" id="dica-com-{{ r.id }}">Só o necessário para o almoxarifado
       entender. Não escreva diagnóstico nem dado de saúde.</span>
   </div>
+  {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-com-' ~ r.id) }}
   <p class="discreto">A comunicação avisa o almoxarifado. Ela <strong>não</strong>
     muda a sua ficha nem gera cobrança: o setor combina com você a devolução ou a
     reposição. Você pode retirá-la nas próximas {{ janela_horas }} horas.</p>
