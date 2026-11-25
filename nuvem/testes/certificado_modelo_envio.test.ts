@@ -23,7 +23,11 @@ import * as documento from "../src/servicos/documento.js";
 import * as servico from "../src/servicos/emissao_certificado.js";
 import * as envio from "../src/servicos/modelo_certificado_envio.js";
 import * as servico_turma from "../src/servicos/turma.js";
-import { _cenario, _usuario } from "./ajuda_certificado.js";
+import * as email from "../src/servicos/email.js";
+import * as envio_certificado from "../src/servicos/envio_certificado.js";
+import * as servico_participante from "../src/servicos/participante.js";
+import { carregar_usuario_atual } from "../src/servicos/rbac.js";
+import { TODAS, _cenario, _usuario } from "./ajuda_certificado.js";
 import { bancoLimpo, contas, entrar, type AmbienteDeTeste, type Cliente } from "./ajuda";
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
@@ -637,5 +641,122 @@ describe("emissão com o modelo enviado", () => {
     const feito = await backup.fazer_backup(db, { senha: "senha-do-teste" });
     const aberto = backup.restaurar(await obterArmazenamento().ler(feito.chave), "senha-do-teste");
     expect(aberto.arquivos.has(certificado.chave_do_modelo(modelo!)!)).toBe(true);
+  });
+});
+
+// =====================================================================
+// O e-mail do certificado de modelo enviado (25/11/2026, commit 5d5538b):
+// o participante recebe sempre PDF, nunca o Word editável
+// =====================================================================
+describe("e-mail do certificado de modelo enviado", () => {
+  /** Emite com o modelo enviado, dá e-mail ao participante e põe o envio na fila. */
+  async function emitido_na_fila() {
+    const usuario = await _usuario(db, TODAS, "montador");
+    const cen = await _cenario(db, usuario);
+    const preparado = envio.preparar_envio(BRIGADISTA);
+    await obterArmazenamento().gravar(envio.chave_no_armazenamento(preparado.enviado.sha256_convertido), preparado.convertido);
+    const [modelo] = await db
+      .insert(e.certificado_modelo)
+      .values({
+        treinamento_id: cen.treinamento.id,
+        nome: "Brigadista enviado",
+        arquivo: "brigadista.docx",
+        arquivo_sha256: preparado.sha256_origem,
+        arquivo_enviado: preparado.enviado,
+      })
+      .returning();
+    let ordem = 0;
+    for (const m of preparado.enviado.marcadores) {
+      const campo = certificado.sugerir_campo(m) ?? "em_branco";
+      await db.insert(e.certificado_modelo_tag).values({ modelo_id: modelo!.id, marcador: m.marcador, campo, ordem: ++ordem, obrigatorio: campo === "participante_nome" });
+    }
+    await db.update(e.treinamento).set({ modelo_vigente_id: modelo!.id }).where(eq(e.treinamento.id, cen.treinamento.id));
+    const turma = (await servico_turma.carregar_turma(db, cen.turma.id))!;
+    const inscricao = (await servico_turma.carregar_inscricao(db, cen.inscricao.id, turma))!;
+    const emitido = await servico.emitir(db, usuario, inscricao, { gerar_pdf: false });
+    expect(servico.do_modelo_enviado(emitido.certificado)).toBe(true);
+    const participante = (await servico_participante.carregar(db, emitido.certificado.participante_id!))!;
+    await servico_participante.registrar_email(db, participante, "marco@ufvjm.edu.br");
+    // quem pede o envio é uma conta de verdade (o envio a relê do banco), como na ficha
+    const [conta] = await db.select().from(e.usuario).where(eq(e.usuario.login, "coordenador_csso"));
+    const coordenador = (await carregar_usuario_atual(db, conta!.id))!;
+    const pedido = await envio_certificado.pedir_envio(db, coordenador, [emitido.certificado.id]);
+    expect(pedido.enfileirados).toBe(1);
+    return { cert: emitido.certificado, coordenador };
+  }
+
+  /** Processa a fila com um transporte que guarda o que sairia. */
+  async function enviar(): Promise<email.Mensagem[]> {
+    const enviadas: email.Mensagem[] = [];
+    email.definir_transporte(async (m) => {
+      enviadas.push(m);
+    });
+    try {
+      expect(await email.processar_fila(db)).toEqual({ enviados: 1, falhas: 0, desligado: false });
+    } finally {
+      email.definir_transporte(null);
+    }
+    return enviadas;
+  }
+
+  const como_texto = (b: Uint8Array) => new TextDecoder().decode(b);
+
+  /** O PDF convertido fica guardado no armazenamento: apagar, para não vazar entre testes nem entre rodadas. */
+  async function esquecer_pdf_guardado(cert: { id: number; hash_conteudo: string | null; contexto_congelado: unknown }) {
+    const congelado = cert.contexto_congelado as Record<string, unknown>;
+    await obterArmazenamento().remover(
+      (await import("../src/servicos/conversor_pdf.js")).chave_do_pdf(cert.id, cert.hash_conteudo ?? "", String(congelado.modelo_sha256 ?? "")),
+    );
+  }
+
+  it("sem conversor: sai o PDF da casa, e não o Word do modelo", async () => {
+    vi.stubEnv("CSSO_CONVERSOR_PDF_URL", "");
+    try {
+      await emitido_na_fila();
+      const [m] = await enviar();
+      expect(m!.anexos).toHaveLength(1);
+      const [anexo] = m!.anexos;
+      expect(anexo!.tipo).toBe("application/pdf");
+      expect(anexo!.nome).toMatch(/\.pdf$/);
+      expect(como_texto(anexo!.bytes.slice(0, 5))).toBe("%PDF-");
+      // não é um .docx (zip começa com "PK")
+      expect(como_texto(anexo!.bytes.slice(0, 2))).not.toBe("PK");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("conversor fora do ar: o e-mail não falha e sai o PDF da casa; no ar, sai o PDF convertido", async () => {
+    const fetch_original = globalThis.fetch;
+    vi.stubEnv("CSSO_CONVERSOR_PDF_URL", "https://conversor.exemplo.invalid/");
+    let no_ar = false;
+    vi.stubGlobal("fetch", async (url: unknown, init?: RequestInit) => {
+      if (!String(url).startsWith("https://conversor.exemplo.invalid")) return fetch_original(url as string, init);
+      return no_ar ? new Response("%PDF-1.7 convertido", { status: 200 }) : new Response("fora", { status: 502 });
+    });
+    const erros = vi.spyOn(console, "error").mockImplementation(() => {});
+    let guardado: Parameters<typeof esquecer_pdf_guardado>[0] | null = null;
+    try {
+      const { cert, coordenador } = await emitido_na_fila();
+      guardado = cert;
+      await esquecer_pdf_guardado(cert);
+      const [fora] = await enviar();
+      const [anexo] = fora!.anexos;
+      expect(anexo!.tipo).toBe("application/pdf");
+      expect(como_texto(anexo!.bytes.slice(0, 5))).toBe("%PDF-");
+      expect(como_texto(anexo!.bytes)).not.toContain("convertido");
+      expect(erros.mock.calls.some((c) => String(c[0]).startsWith(`[certificado ${cert.id}]`))).toBe(true);
+
+      // controle: com o conversor no ar, o anexo é o PDF fiel do modelo
+      no_ar = true;
+      expect((await envio_certificado.pedir_envio(db, coordenador, [cert.id], { reenviar: true })).enfileirados).toBe(1);
+      const [dentro] = await enviar();
+      expect(como_texto(dentro!.anexos[0]!.bytes)).toBe("%PDF-1.7 convertido");
+    } finally {
+      if (guardado) await esquecer_pdf_guardado(guardado);
+      erros.mockRestore();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
   });
 });
