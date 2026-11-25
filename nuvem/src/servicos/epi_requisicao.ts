@@ -715,7 +715,11 @@ function _exigir_titular(usuario: UsuarioAtual, requisicao: Pick<EpiRequisicao, 
   if (usuario.servidor_id !== null && usuario.servidor_id === requisicao.servidor_id) return;
   throw new PermissaoNegada(
     "epi.requisitar",
-    `O pedido de EPI é individual: só o servidor que vai usar o equipamento pode ${ato}.`,
+    `O pedido de EPI é individual: só o servidor que vai usar o equipamento pode ${ato}. ` +
+      "Nenhuma permissão muda isso. O caminho é o próprio servidor entrar no sistema e fazer isso " +
+      "em “Meus pedidos de EPI”; se o equipamento precisa sair agora, a equipe registra a entrega " +
+      "de balcão em “Entregar EPI”.",
+    false,
   );
 }
 

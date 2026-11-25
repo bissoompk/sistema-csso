@@ -111,7 +111,8 @@ describe("API /api/v1 com o cookie da tela (24/11/2026)", () => {
 
   it("a conferência de origem vale na API: JSON vindo de outro site é recusado", async () => {
     const cli = await entrar(novoCliente(), "coordenador_csso");
-    for (const cab of [{ origin: "https://site-malicioso.example" }, { referer: "https://site-malicioso.example/x" }, { "sec-fetch-site": "cross-site" }]) {
+    const de_fora: Record<string, string>[] = [{ origin: "https://site-malicioso.example" }, { referer: "https://site-malicioso.example/x" }, { "sec-fetch-site": "cross-site" }];
+    for (const cab of de_fora) {
       const r = await cli.postJson("/api/v1/epis/entregas", { servidor_id: 1 }, {
         seguir: false,
         cabecalhos: { "x-requested-with": "fetch", accept: "application/json", ...cab },

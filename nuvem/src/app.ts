@@ -235,9 +235,10 @@ export function criarApp(): Hono<Ambiente> {
     }
     if (erro instanceof PermissaoNegada) {
       if (pedeJson(c)) {
-        return c.json({ erro: erro.message, motivos: [`permissão exigida: ${erro.codigo}`] }, 403);
+        const motivos = erro.concedivel ? [`permissão exigida: ${erro.codigo}`] : ["regra do sistema: nenhuma permissão muda isso"];
+        return c.json({ erro: erro.message, motivos }, 403);
       }
-      return telaDeErro(c, "403 — acesso negado", erro.message, erro.codigo, 403);
+      return telaDeErro(c, "403 — acesso negado", erro.message, erro.concedivel ? erro.codigo : null, 403);
     }
     if (erro instanceof ErroHttp) {
       if (querHtml(c) && (erro.status === 401 || erro.status === 403)) {

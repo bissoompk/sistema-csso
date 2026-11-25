@@ -1136,3 +1136,36 @@ describe("o sino do requerente", () => {
     }
   });
 });
+
+describe("pedido individual: o 403 diz o motivo e o caminho, sem mandar pedir permissão (24/11/2026)", () => {
+  it("outra pessoa da equipe acrescentando item no rascunho alheio recebe 403 sem a orientação de Usuários", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cliente = await como(amb, "coordenador_csso");
+    await abrir(cliente, cen);
+    const requisicao = await ultima(amb);
+    await desligar(cliente); // a conta volta a ser de outra pessoa: o rascunho agora é alheio
+    const r = await cliente.post(
+      `${FILA}/${requisicao.id}/itens`,
+      { item_id: String(cen.item), quantidade: "1", tamanho: "M", justificativa: "", motivo: "USO_INICIAL" },
+      { seguir: false, cabecalhos: { accept: "text/html" } },
+    );
+    expect(r.status).toBe(403);
+    expect(r.text).toContain("O pedido de EPI é individual");
+    expect(r.text).toContain("Nenhuma permissão muda isso");
+    expect(r.text).toContain("Meus pedidos de EPI");
+    expect(r.text).toContain("Entregar EPI");
+    // a orientação genérica do 403 de perfil não aparece
+    expect(r.text).not.toContain("A saída é a concessão do perfil");
+    expect(r.text).not.toContain("perfil.conceder");
+    expect(r.text).not.toContain("<code>epi.requisitar</code>");
+    expect(await linhas(amb, requisicao.id)).toEqual([]);
+  });
+
+  it("o 403 de perfil continua com a orientação de Usuários", async () => {
+    const amb = await novo();
+    const r = await (await como(amb, "admin_ti")).get(FILA, { cabecalhos: { accept: "text/html" } });
+    expect(r.status).toBe(403);
+    expect(r.text).toContain("A saída é a concessão do perfil");
+  });
+});

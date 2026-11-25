@@ -73,11 +73,16 @@ describe("EPI — pessoa: termo de saúde recusado sem confirmação", () => {
       "Aprovado. Trocar a luva por nitrílica, tamanho M.",
       "Manipula solvente orgânico no LEAC; risco de respingo nos olhos.",
       "Recusado: o CA do item pedido venceu; pedir o modelo novo.",
-      "Trabalho em altura acima de 2 m, com risco de queda e de lesão.",
       "Devolveu por desgaste natural após o uso.",
     ]) {
       expect(textos.exigir_texto_limpo(t, "parecer da análise", PESSOA)).toBe(t);
     }
+  });
+
+  it("'risco de lesão': passa no posto e é recusado nos campos da pessoa (regra de 24/11/2026)", () => {
+    const t = "Trabalho em altura acima de 2 m, com risco de queda e de lesão.";
+    expect(textos.exigir_texto_limpo(t, "riscos declarados", textos.CONTEXTO_EPI_POSTO)).toBe(t);
+    expect(() => textos.exigir_texto_limpo(t, "parecer da análise", PESSOA)).toThrow(/lesao/);
   });
 
   it("os termos ampliados não valem fora do EPI", () => {
@@ -96,6 +101,22 @@ describe("EPI — posto (rotina de trabalho e riscos declarados, 24/11/2026)", (
   it("a lista antiga continua recusada, com a mensagem do EPI", () => {
     for (const t of ["servidora gestante", "diagnóstico de asma", "CID J45", "CPF 123"]) {
       expect(() => textos.exigir_texto_limpo(t, "riscos declarados", POSTO)).toThrow(/no EPI/);
+    }
+  });
+});
+
+describe("EPI — 'lesão' e variações (24/11/2026)", () => {
+  const PESSOA = textos.CONTEXTO_EPI_PESSOA;
+  it("na pessoa, lesão, lesao, lesões, lesoes, lesionado/a e lesionou são recusados", () => {
+    for (const t of ["servidor com lesão no ombro", "lesao no joelho", "lesões nas mãos", "lesoes", "braço lesionado", "mão lesionada", "lesionou o punho"]) {
+      expect(() => textos.exigir_texto_limpo(t, "observação da entrega", PESSOA), t).toThrow(/no EPI/);
+    }
+  });
+  it("no material e no posto, 'lesão' continua livre", () => {
+    for (const ctx of [textos.CONTEXTO_EPI_MATERIAL, textos.CONTEXTO_EPI_POSTO]) {
+      for (const t of ["protege contra lesões por corte", "risco de lesão por corte"]) {
+        expect(textos.exigir_texto_limpo(t, "campo", ctx)).toBe(t);
+      }
     }
   });
 });

@@ -239,9 +239,10 @@ export const CONTEXTO_EPI_POSTO = "epi_posto";
 
 /**
  * Termos clínicos a mais no EPI-pessoa. Palavra inteira, sem acento e em minúsculas na comparação.
- * Ficam DE FORA de propósito: "lesão"/"ferimento" (o risco que o EPI evita), "laudo" (laudo de
- * ensaio, LTCAT), "afastamento" sozinho, "ler" (é verbo) e "deficiência" (pode justificar EPI
- * adaptado).
+ * "Lesão" entra (24/11/2026: "servidor com lesão no ombro" é estado de saúde da pessoa); no
+ * material, na rotina e nos riscos ela continua livre ("risco de lesão por corte").
+ * Ficam DE FORA de propósito: "ferimento", "laudo" (laudo de ensaio, LTCAT), "afastamento"
+ * sozinho, "ler" (é verbo) e "deficiência" (pode justificar EPI adaptado).
  */
 export const TERMOS_SAUDE_EPI: readonly string[] = [
   "cid",
@@ -252,6 +253,7 @@ export const TERMOS_SAUDE_EPI: readonly string[] = [
   "epilepsia", "epileptico", "epileptica", "convulsao", "convulsoes",
   "depressao", "ansiedade", "transtorno", "psiquiatrico", "psiquiatrica",
   "cancer", "tumor", "hiv", "hepatite",
+  "lesao", "lesoes", "lesionado", "lesionada", "lesionados", "lesionadas", "lesionou",
   "tendinite", "bursite", "hernia", "lombalgia", "dort",
   "cirurgia", "cirurgico", "cirurgica", "pos-operatorio", "operado", "operada",
   "laudo medico", "licenca medica", "licenca para tratamento de saude", "afastamento medico",
