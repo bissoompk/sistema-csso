@@ -404,7 +404,7 @@ async function _secao_dos_itens(
     ], { c, usuario }),
     editavel: servico.EDITAVEL.has(requisicao.estado),
     pode_requisitar: usuario.pode("epi.requisitar"),
-    pode_analisar: usuario.pode("epi.analisar"),
+    pode_analisar: usuario.pode("epi.analisar") && !servico.analise_com_outra_pessoa(usuario, requisicao),
     pode_entregar: usuario.pode("epi.entregar"),
     pode_estocar: usuario.pode("epi.estoque"),
     pode_cancelar: servico.pode_cancelar(usuario, requisicao),
@@ -1098,7 +1098,15 @@ async function _tela_ficha(
     cancelavel:
       EPI_REQUISICAO_CANCELAVEL.has(requisicao.estado) && !requisicao.itens.some((l) => l.quantidade_entregue > 0),
     pode_requisitar: usuario.pode("epi.requisitar"),
-    pode_analisar: usuario.pode("epi.analisar"),
+    // em análise com outra pessoa, os botões de decidir somem e fica só "assumir" (24/11/2026)
+    pode_analisar: usuario.pode("epi.analisar") && !servico.analise_com_outra_pessoa(usuario, requisicao),
+    pode_assumir:
+      usuario.pode("epi.analisar") &&
+      servico.analise_com_outra_pessoa(usuario, requisicao) &&
+      (usuario.servidor_id === null || usuario.servidor_id !== requisicao.servidor_id),
+    com_quem: servico.analise_com_outra_pessoa(usuario, requisicao)
+      ? (await _nomes_de(tx, [requisicao.analisado_por], { c, usuario })).get(requisicao.analisado_por, "outra pessoa")
+      : null,
     proprio: true,
     // requerente, quem abriu ou quem analisa — a mesma pergunta que o serviço faz
     pode_cancelar: servico.pode_cancelar(usuario, requisicao),
@@ -1112,6 +1120,7 @@ async function _tela_ficha(
     // (RN-28) e ainda há item sem decisão
     aprova_tudo:
       usuario.pode("epi.analisar") &&
+      !servico.analise_com_outra_pessoa(usuario, requisicao) &&
       ["ENVIADA", "EM_ANALISE"].includes(requisicao.estado) &&
       (usuario.servidor_id === null || usuario.servidor_id !== requisicao.servidor_id) &&
       requisicao.itens.some((l) => l.estado === "SOLICITADO"),
@@ -1368,6 +1377,13 @@ acao_de_envelope(
   "analise",
   (sp, usuario, requisicao) => servico.iniciar_analise(sp, usuario, requisicao),
   (requisicao) => `${servico.identificacao(requisicao)} está em análise com você.`,
+);
+
+/** Assumir a análise que está com outra pessoa: com motivo, registrado na trilha (24/11/2026). */
+acao_de_envelope(
+  "assumir",
+  (sp, usuario, requisicao, f) => servico.assumir_analise(sp, usuario, requisicao, f.texto("motivo")),
+  (requisicao) => `Você assumiu a análise de ${servico.identificacao(requisicao)}. Agora as decisões são suas.`,
 );
 
 /** EM_ANALISE → ENVIADA. Decidir sem base é pior do que devolver. */

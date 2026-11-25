@@ -90,6 +90,7 @@ export const EPI_REQUISICAO_CRIADA = "EPI_REQUISICAO_CRIADA";
 export const EPI_REQUISICAO_ENVIADA = "EPI_REQUISICAO_ENVIADA";
 export const EPI_REQUISICAO_EM_ANALISE = "EPI_REQUISICAO_EM_ANALISE";
 export const EPI_REQUISICAO_DEVOLVIDA = "EPI_REQUISICAO_DEVOLVIDA";
+export const EPI_REQUISICAO_ANALISE_ASSUMIDA = "EPI_REQUISICAO_ANALISE_ASSUMIDA";
 export const EPI_REQUISICAO_ANALISADA = "EPI_REQUISICAO_ANALISADA";
 export const EPI_REQUISICAO_INDEFERIDA = "EPI_REQUISICAO_INDEFERIDA";
 export const EPI_REQUISICAO_RECONSIDERADA = "EPI_REQUISICAO_RECONSIDERADA";
@@ -239,6 +240,43 @@ async function _exigir_analista_diferente(tx: Executor, usuario: UsuarioAtual, r
   if (requisicao.servidor_id !== usuario.servidor_id) return;
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, requisicao.servidor_id));
   throw new AutoanaliseProibida(requisicao, servidor ? servidor.nome : "você mesmo");
+}
+
+/**
+ * Só quem pegou o pedido decide (24/11/2026): aprovar e recusar item, concluir, indeferir,
+ * devolver à fila e "aprovar tudo". Outra pessoa da equipe precisa antes ASSUMIR a análise,
+ * ação explícita, com motivo, que fica na trilha com os dois nomes.
+ */
+export class AnaliseComOutraPessoa extends RequisicaoBloqueada {
+  constructor(
+    requisicao: EpiRequisicao,
+    public responsavel: string,
+  ) {
+    super([
+      `${identificacao(requisicao)} está em análise com ${responsavel}: só quem pegou o pedido ` +
+        "decide os itens, conclui, indefere ou devolve à fila. Para decidir você, use “Assumir a " +
+        "análise”, com o motivo — fica registrado na trilha com o seu nome e o de quem estava",
+    ]);
+  }
+}
+
+/** O pedido está em análise com OUTRA pessoa (a tela troca os botões de decidir por "assumir"). */
+export function analise_com_outra_pessoa(
+  usuario: Pick<UsuarioAtual, "id">,
+  requisicao: Pick<EpiRequisicao, "estado" | "analisado_por">,
+): boolean {
+  return requisicao.estado === "EM_ANALISE" && requisicao.analisado_por !== null && requisicao.analisado_por !== usuario.id;
+}
+
+async function _nome_do_usuario(tx: Executor, id: number | null): Promise<string> {
+  if (id === null) return "—";
+  const [u] = await tx.select({ nome: tabela_usuario.nome }).from(tabela_usuario).where(eq(tabela_usuario.id, id));
+  return u?.nome ?? `conta ${id}`;
+}
+
+async function _exigir_responsavel_da_analise(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<void> {
+  if (!analise_com_outra_pessoa(usuario, requisicao)) return;
+  throw new AnaliseComOutraPessoa(requisicao, await _nome_do_usuario(tx, requisicao.analisado_por));
 }
 
 // =====================================================================
@@ -1115,6 +1153,45 @@ export async function iniciar_analise(tx: Executor, usuario: UsuarioAtual, requi
   });
 }
 
+/**
+ * Assumir a análise que está com outra pessoa (24/11/2026). Não muda o estado (continua em
+ * análise): muda quem responde por ela. Motivo obrigatório, pelo filtro de saúde da pessoa; a
+ * trilha guarda quem assumiu, quem estava e o motivo. Ninguém assume o próprio pedido (RN-28).
+ */
+export async function assumir_analise(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  requisicao: EpiRequisicao,
+  motivo: string,
+): Promise<EpiRequisicao> {
+  await _exigir_analista_diferente(tx, usuario, requisicao);
+  if (requisicao.estado !== "EM_ANALISE") {
+    throw new RequisicaoBloqueada([
+      `só se assume pedido em análise, e ${identificacao(requisicao)} está em ` +
+        `${rotulo_req(requisicao.estado).toLowerCase()}` +
+        (requisicao.estado === "ENVIADA" ? ": na fila, o caminho é “Iniciar análise”" : ""),
+    ]);
+  }
+  if (requisicao.analisado_por === usuario.id) {
+    throw new RequisicaoBloqueada([`${identificacao(requisicao)} já está em análise com você`]);
+  }
+  const limpo = _motivo_obrigatorio(motivo, "motivo para assumir a análise");
+  const anterior = await _nome_do_usuario(tx, requisicao.analisado_por);
+  await _gravar(tx, requisicao, { analisado_por: usuario.id, analisado_em: agora_utc(), versao: requisicao.versao + 1 });
+  await auditoria.registrar(tx, {
+    entidade: ENTIDADE,
+    entidade_id: requisicao.id,
+    tipo_evento: EPI_REQUISICAO_ANALISE_ASSUMIDA,
+    descricao: `${identificacao(requisicao)}: análise assumida por ${usuario.nome} (estava com ${anterior}) — ${limpo}`,
+    campo: "analisado_por",
+    valor_anterior: anterior,
+    valor_novo: usuario.nome,
+    comentario: limpo,
+    usuario,
+  });
+  return requisicao;
+}
+
 /** EM_ANALISE → ENVIADA. Decidir sem base é pior do que devolver. */
 export async function devolver_para_fila(
   tx: Executor,
@@ -1123,6 +1200,7 @@ export async function devolver_para_fila(
   motivo: string,
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const limpo = _motivo_obrigatorio(motivo, "motivo da devolução à fila");
   await _gravar(tx, requisicao, { analisado_por: null, analisado_em: null });
   return _mover(tx, requisicao, "ENVIADA", usuario, { tipo_evento: EPI_REQUISICAO_DEVOLVIDA, comentario: limpo });
@@ -1136,6 +1214,7 @@ export async function concluir_analise(
   opcoes: { parecer?: string } = {},
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const itens = await itens_de(tx, requisicao.id);
   const pendentes = itens.filter((i) => !EPI_ITEM_DECIDIDO.has(i.estado));
   const problemas: string[] = [];
@@ -1173,6 +1252,7 @@ export async function concluir_analise(
  */
 export async function aprovar_tudo(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   if (requisicao.estado === "ENVIADA") await iniciar_analise(tx, usuario, requisicao);
   if (requisicao.estado !== "EM_ANALISE") {
     throw new RequisicaoBloqueada([
@@ -1220,6 +1300,7 @@ export async function indeferir(
   opcoes: { motivo: EpiMotivoRecusa; complemento?: string; parecer?: string },
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const { motivo } = opcoes;
   const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento do indeferimento", textos.CONTEXTO_EPI_PESSOA);
   const itens = await itens_de(tx, requisicao.id);
@@ -1394,6 +1475,7 @@ export async function aprovar_item(
 ): Promise<EpiRequisicaoItem> {
   const requisicao = await _requisicao_da_linha(tx, linha);
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const quando = opcoes.quando || datas_br.hoje();
   const limpa = textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item", textos.CONTEXTO_EPI_PESSOA);
   const quantidade =
@@ -1494,6 +1576,7 @@ export async function recusar_item(
 ): Promise<EpiRequisicaoItem> {
   const requisicao = await _requisicao_da_linha(tx, linha);
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const { motivo } = opcoes;
   const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da recusa", textos.CONTEXTO_EPI_PESSOA);
   const problemas: string[] = [];

@@ -1169,3 +1169,40 @@ describe("pedido individual: o 403 diz o motivo e o caminho, sem mandar pedir pe
     expect(r.text).toContain("A saída é a concessão do perfil");
   });
 });
+
+describe("pedido em análise com outra pessoa: a tela mostra só 'assumir' (24/11/2026)", () => {
+  it("os botões de decidir somem, aparece 'Assumir a análise' com o nome; depois de assumir, eles voltam", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const coordenador = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, coordenador, cen);
+    const tecnico = await como(amb, "tecnico_seguranca");
+    const pegou = await tecnico.post(`${FILA}/${id}/analise`, {}, { seguir: false });
+    expect(pegou.status, recado(pegou)).toBe(303);
+    const [conta_tecnico] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, amb.contas["tecnico_seguranca"]![0]));
+
+    const tela = (await coordenador.get(`${FILA}/${id}`)).text;
+    expect(tela).toContain(`Em análise com ${conta_tecnico!.nome}`);
+    expect(tela).toContain("Assumir a análise");
+    expect(tela).toContain(`action="${FILA}/${id}/assumir"`);
+    for (const acao of ["concluir", "indeferir", "devolver", "aprovar-tudo"]) expect(tela).not.toContain(`${FILA}/${id}/${acao}"`);
+    expect(tela).not.toMatch(new RegExp(`${FILA}/${id}/itens/\\d+/(aprovar|recusar)"`));
+
+    // a rota também recusa: decidir sem assumir não grava
+    const [linha] = await linhas(amb, id);
+    const forçado = await coordenador.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1" }, { seguir: false });
+    expect(recado(forçado)).toContain("só quem pegou o pedido");
+    expect((await linhas(amb, id))[0]!.estado).toBe("SOLICITADO");
+
+    // assume, com motivo
+    const sem_motivo = await coordenador.post(`${FILA}/${id}/assumir`, { motivo: "" }, { seguir: false });
+    expect(recado(sem_motivo)).toContain("motivo para assumir a análise");
+    const assumiu = await coordenador.post(`${FILA}/${id}/assumir`, { motivo: "redistribuição da fila" }, { seguir: false });
+    expect(assumiu.status, recado(assumiu)).toBe(303);
+    const depois = (await coordenador.get(`${FILA}/${id}`)).text;
+    expect(depois).not.toContain("Assumir a análise");
+    expect(depois).toContain(`${FILA}/${id}/concluir"`);
+    expect(depois).toContain("Análise assumida por outra pessoa");
+    expect(depois).toContain("redistribuição da fila");
+  });
+});

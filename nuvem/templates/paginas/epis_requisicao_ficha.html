@@ -365,13 +365,14 @@
          fazer. #}
       {# (Nunjucks não encadeia `a if x else b if y else c` sem parênteses.) #}
       {% set passo =
-           'enviar'       if requisicao.estado == 'RASCUNHO' and pode_requisitar
+           'assumir'      if pode_assumir
+      else ('enviar'      if requisicao.estado == 'RASCUNHO' and pode_requisitar
       else ('pegar'        if requisicao.estado == 'ENVIADA' and pode_analisar
       else ('concluir'     if requisicao.estado == 'EM_ANALISE' and pode_analisar
       else ('reconsiderar' if requisicao.estado == 'INDEFERIDA' and pode_analisar
       else ('itens'        if requisicao.estado in ['ANALISADA', 'EM_ATENDIMENTO']
                              and (pode_estocar or pode_entregar)
-      else '')))) %}
+      else ''))))) %}
 
       {# O CASO COMUM EM UM CLIQUE: aprovar cada item pendente na quantidade
          pedida e concluir. Roda os mesmos passos (iniciar, aprovar item a item,
@@ -382,7 +383,8 @@
       <section class="cartao destaque" id="proximo-passo">
         <div class="titulo-cartao">
           <h2>
-            {%- if passo == 'enviar' %}Enviar para o SESMT
+            {%- if passo == 'assumir' %}Em análise com {{ com_quem }}
+            {%- elif passo == 'enviar' %}Enviar para o SESMT
             {%- elif passo == 'pegar' %}Pegar para análise
             {%- elif passo == 'concluir' %}Concluir a análise
             {%- elif passo == 'reconsiderar' %}Reconsiderar
@@ -391,7 +393,15 @@
           <span class="nota">o próximo passo deste pedido</span>
         </div>
 
-        {% if passo == 'enviar' %}
+        {% if passo == 'assumir' %}
+        {# Só quem pegou o pedido decide (24/11/2026). Os botões de decidir item, concluir,
+           indeferir e devolver não aparecem aqui: para decidir, assume-se antes, com motivo. #}
+        <p class="discreto sem-margem"><strong>{{ com_quem }}</strong> pegou este pedido, e só
+          quem pegou decide os itens, conclui, indefere ou devolve à fila. Para decidir você,
+          assuma a análise: o motivo fica na trilha, com o seu nome e o de {{ com_quem }}.</p>
+        <div class="acoes">{{ ui.botao_cadastro('assumir-analise', 'Assumir a análise') }}</div>
+
+        {% elif passo == 'enviar' %}
         {# Botão direto, e não popup: é o caminho normal do rascunho, e o que ele
            consome está escrito ao lado. Sem item ele fica desabilitado com o
            motivo — o serviço recusaria do mesmo jeito. #}
@@ -520,7 +530,7 @@
         </div>
         {% endif %}
 
-        {% if not (pode_cancelar or pode_analisar or pode_entregar or pode_estocar) %}
+        {% if not (pode_cancelar or pode_analisar or pode_assumir or pode_entregar or pode_estocar) %}
         <div class="vazio">
           <strong>Você acompanha este pedido por aqui.</strong>
           <span>Quem decide é o SESMT; quem separa e entrega é o
@@ -771,6 +781,22 @@
     <label for="motivo-devolucao">Motivo</label>
     <input id="motivo-devolucao" name="motivo" required
            placeholder="falta a descrição do posto; caso é da engenharia">
+  </div>
+{% endcall %}
+{% endif %}
+
+{% if pode_assumir %}
+{% call ui.popup_cadastro('assumir-analise', 'Assumir a análise',
+                          '/epis/requisicoes/' ~ requisicao.id ~ '/assumir',
+                          'Assumir') %}
+  <p>O pedido sai das mãos de <strong>{{ com_quem }}</strong> e passa às suas: daqui em diante
+    só você decide os itens, conclui, indefere ou devolve à fila. A trilha guarda quem assumiu,
+    quem estava e o motivo.</p>
+  <div class="campo">
+    <label for="motivo-assumir">Motivo</label>
+    <input id="motivo-assumir" name="motivo" required
+           placeholder="{{ com_quem }} está de férias; pedido urgente parado há 5 dias">
+    <span class="dica">Sem dado de saúde: o motivo é do trâmite, não da pessoa.</span>
   </div>
 {% endcall %}
 {% endif %}

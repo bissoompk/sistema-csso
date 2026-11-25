@@ -379,6 +379,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   EPI_REQUISICAO_ENVIADA: "Requisição enviada",
   EPI_REQUISICAO_EM_ANALISE: "Requisição em análise",
   EPI_REQUISICAO_DEVOLVIDA: "Requisição devolvida à fila",
+  EPI_REQUISICAO_ANALISE_ASSUMIDA: "Análise assumida por outra pessoa",
   EPI_REQUISICAO_ANALISADA: "Requisição analisada",
   EPI_REQUISICAO_INDEFERIDA: "Requisição indeferida",
   EPI_REQUISICAO_RECONSIDERADA: "Requisição reconsiderada",
