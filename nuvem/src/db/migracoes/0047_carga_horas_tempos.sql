@@ -8,7 +8,6 @@ CREATE TABLE "turma_carga_dia" (
 	CONSTRAINT "ck_turma_carga_dia_quantidade" CHECK (quantidade >= 0)
 );
 --> statement-breakpoint
-ALTER TABLE "turma_presenca" DROP CONSTRAINT "ck_turma_presenca_horas";--> statement-breakpoint
 ALTER TABLE "turma_presenca" DROP CONSTRAINT "ck_turma_presenca_coerente";--> statement-breakpoint
 ALTER TABLE "treinamento" ADD COLUMN "carga_unidade" varchar(6) DEFAULT 'HORAS' NOT NULL;--> statement-breakpoint
 ALTER TABLE "turma" ADD COLUMN "carga_unidade" varchar(6) DEFAULT 'HORAS' NOT NULL;--> statement-breakpoint
@@ -35,7 +34,10 @@ FROM (
 ) x
 CROSS JOIN LATERAL generate_series(x."data_inicio", x."data_fim", interval '1 day') WITH ORDINALITY AS g("dia", "i")
 WHERE x."n" > 1 AND x."decimos" % x."n" <> 0;--> statement-breakpoint
-ALTER TABLE "turma_presenca" DROP COLUMN "horas";--> statement-breakpoint
+-- publicação (26/11/2026): a coluna antiga FICA, para que voltar só o código no Netlify baste.
+-- Sem uso para decidir nada no código novo; ele a mantém preenchida nas turmas em HORAS (horas
+-- com uma casa) e a deixa nula nas em TEMPOS. A remoção vai numa migração futura, aprovada à parte.
+ALTER TABLE "turma_presenca" ALTER COLUMN "horas" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "treinamento" ADD CONSTRAINT "ck_treinamento_carga_unidade" CHECK (carga_unidade IN ('HORAS','TEMPOS'));--> statement-breakpoint
 ALTER TABLE "treinamento" ADD CONSTRAINT "ck_treinamento_carga_tempos" CHECK (carga_unidade <> 'TEMPOS' OR carga_horaria_horas = trunc(carga_horaria_horas));--> statement-breakpoint
 ALTER TABLE "turma" ADD CONSTRAINT "ck_turma_carga_unidade" CHECK (carga_unidade IN ('HORAS','TEMPOS'));--> statement-breakpoint

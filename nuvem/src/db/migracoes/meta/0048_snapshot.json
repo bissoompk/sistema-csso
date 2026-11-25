@@ -18261,6 +18261,13 @@
           "notNull": true,
           "default": 0
         },
+        "horas": {
+          "name": "horas",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'0'"
+        },
         "presente": {
           "name": "presente",
           "type": "boolean",
@@ -18343,6 +18350,10 @@
         "ck_turma_presenca_coerente": {
           "name": "ck_turma_presenca_coerente",
           "value": "presente OR quantidade = 0"
+        },
+        "ck_turma_presenca_horas": {
+          "name": "ck_turma_presenca_horas",
+          "value": "horas >= 0"
         }
       },
       "isRLSEnabled": false

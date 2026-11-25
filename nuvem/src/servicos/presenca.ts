@@ -48,6 +48,19 @@ import type { UsuarioAtual } from "./rbac.js";
 import { filtro } from "../web.js";
 import * as carga from "../dominio/carga.js";
 import * as carga_turma from "./carga_turma.js";
+
+/**
+ * A coluna antiga `turma_presenca.horas` (publicação de 26/11/2026). O código novo não decide nada
+ * por ela; ela existe para que voltar só o código no Netlify baste — o código anterior lê a
+ * presença dali, e com ela nula a frequência dele dá erro. Em HORAS: os minutos em horas com uma
+ * casa, arredondando o meio para cima (135 min → 2,3), como o código anterior gravaria. Em TEMPOS:
+ * nula (tempo não é hora; o código anterior não conhece tempos).
+ */
+export function horas_legado(unidade: string, minutos_ou_tempos: number): string | null {
+  if (unidade !== "HORAS") return null;
+  const decimos = Math.round(minutos_ou_tempos / 6);
+  return `${Math.trunc(decimos / 10)}.${decimos % 10}`;
+}
 import {
   RegraDaTurma,
   gravar_inscricao,
@@ -617,6 +630,7 @@ export async function lancar_presenca(
   const campos = {
     presente,
     quantidade: lancadas,
+    horas: horas_legado(unidade, lancadas),
     justificativa: limpa,
     registrado_por: usuario.id,
     registrado_em: agora_utc(),

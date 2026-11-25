@@ -775,3 +775,30 @@ describe("a folha de um dia", () => {
     expect(await algumaPresenca()).toBeNull();
   });
 });
+
+// =====================================================================
+// Publicação (26/11/2026): a coluna antiga `horas` continua preenchida
+// =====================================================================
+describe("coluna legado turma_presenca.horas (voltar só o código basta)", () => {
+  it("em HORAS, a presença grava também as horas com uma casa; a falta grava zero", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const turma_id = await montar(cliente, { turma: { data_fim: dia(1) }, treinamento: { carga_horaria_horas: "4.5" } });
+    const a = await inscrever(cliente, turma_id, "1110654", "Marco Antônio");
+    const b = await inscrever(cliente, turma_id, "1110655", "Beatriz Lima");
+    // 4,5 h em dois dias: 2h15 por dia (135 min) — a coluna antiga recebe 2,3 h
+    expect((await lancar(cliente, turma_id, a, { horas: "2h15" })).status).toBe(303);
+    expect((await lancar(cliente, turma_id, b, { presente: "", justificativa: "atestado entregue ao setor" })).status).toBe(303);
+    const [pa] = await presencasDe(a);
+    const [pb] = await presencasDe(b);
+    expect([pa!.quantidade, pa!.horas]).toEqual([135, "2.3"]);
+    expect([pb!.presente, pb!.quantidade, pb!.horas]).toEqual([false, 0, "0.0"]);
+  });
+
+  it("horas_legado: minutos em horas com uma casa; TEMPOS fica nula", () => {
+    expect(servico_presenca.horas_legado("HORAS", 480)).toBe("8.0");
+    expect(servico_presenca.horas_legado("HORAS", 270)).toBe("4.5");
+    expect(servico_presenca.horas_legado("HORAS", 135)).toBe("2.3");
+    expect(servico_presenca.horas_legado("HORAS", 0)).toBe("0.0");
+    expect(servico_presenca.horas_legado("TEMPOS", 3)).toBeNull();
+  });
+});

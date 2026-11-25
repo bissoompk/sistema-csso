@@ -1037,6 +1037,10 @@ export const turma_presenca = pgTable(
     // em TEMPOS (`dominio/carga.ts`). Era `horas numeric(4,1)`: o decimo de
     // hora perdia minuto (4,5 h em dois dias davam 2,3 + 2,2).
     quantidade: integer('quantidade').notNull().default(0),
+    // LEGADO (publicação de 26/11/2026): a coluna antiga fica para que voltar só o código baste.
+    // Nada no código novo decide por ela; `presenca.ts` a mantém em horas com uma casa nas turmas
+    // em HORAS e nula nas em TEMPOS. Remoção numa migração futura, aprovada à parte.
+    horas: numeric('horas', { precision: 4, scale: 1 }).default('0'),
     presente: boolean('presente').notNull().default(true),
     // por que faltou. Nao abate a falta — so explica o que aconteceu.
     justificativa: text('justificativa'),
@@ -1055,6 +1059,7 @@ export const turma_presenca = pgTable(
       foreignColumns: [usuario.id],
     }),
     check('ck_turma_presenca_quantidade', sql.raw(`quantidade >= 0`)),
+    check('ck_turma_presenca_horas', sql.raw(`horas >= 0`)),
     // quem faltou nao acumula carga
     check('ck_turma_presenca_coerente', sql.raw(`presente OR quantidade = 0`)),
     primaryKey({ name: 'pk_turma_presenca', columns: [t.id] }),
