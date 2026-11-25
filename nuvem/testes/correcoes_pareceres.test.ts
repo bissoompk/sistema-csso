@@ -136,8 +136,9 @@ describe("D74 — concluídas recentemente", () => {
       .set({ concluida: true, concluida_em: new Date(Date.now() - 86_400_000) })
       .where(eq(e.pendencia.id, nova.id));
     const tela = (await (await cliente("coordenador_csso")).get("/pendencias", HTML)).text;
-    expect(tela.indexOf("ZZ-conclusao-antiga")).toBeGreaterThan(-1);
-    expect(tela.indexOf("ZZ-conclusao-antiga")).toBeLessThan(tela.indexOf("ZZ-conclusao-nova"));
+    // lote 5, ajuste 3: a linha concluída não repete a descrição da abertura — a ordem pelo id da linha
+    expect(tela.indexOf(`id="concluida-${antiga.id}"`)).toBeGreaterThan(-1);
+    expect(tela.indexOf(`id="concluida-${antiga.id}"`)).toBeLessThan(tela.indexOf(`id="concluida-${nova.id}"`));
   });
 });
 

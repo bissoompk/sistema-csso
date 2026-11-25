@@ -33,6 +33,7 @@ import { UsuarioAtual } from "../src/servicos/rbac.js";
 import * as rota from "../src/rotas/epi_indicadores.js";
 import { MARCA_SUPRIMIDO, suprimir_aninhado } from "../src/rotas/epi_indicadores.js";
 import { bancoLimpo, contas, entrar, naTransacao, ORIGEM, SENHA_TESTE } from "./ajuda";
+import { rascunho, titular } from "./ajuda_epi_requisicao";
 
 const HOJE = hoje();
 const DAQUI_A_UM_ANO = somar_dias(HOJE, 365);
@@ -298,6 +299,30 @@ describe("RN-32 — troca devida", () => {
       expect(await epi_ficha.trocas_devidas(tx)).toEqual([]);
     }));
 
+  it("a ficha do servidor concorda com a regra oficial da troca (substituição, devolução integral, estorno)", () =>
+    emSessao(async (tx) => {
+      const usuario = await _usuario(tx);
+      const servidor = await _servidor(tx, "7654321", "Joana Ribeiro de Almeida");
+      const luva = await _item(tx, { vida_util: 6 });
+      const bota = await _item(tx, { nome: "Bota de segurança com biqueira", vida_util: 6 });
+      const dia = hoje();
+      const vencida_na_ficha = async (id: number) =>
+        (await epi_ficha.linha_do_tempo(tx, servidor.id)).find((l) => l.registro.id === id)!.troca_vencida_em(dia);
+
+      const antiga = await _entregar(tx, usuario, servidor, luva, { dias_atras: 400 });
+      expect(await vencida_na_ficha(antiga.id)).toBe(true);
+      // trocou: a ficha para de cobrar, como o painel e a rotina noturna
+      await _entregar(tx, usuario, servidor, luva, { dias_atras: 0 });
+      expect(await vencida_na_ficha(antiga.id)).toBe(false);
+      expect(await epi_ficha.troca_devida_em(tx, antiga)).toBe(false);
+
+      const devolvida = await _entregar(tx, usuario, servidor, bota, { dias_atras: 400 });
+      expect(await vencida_na_ficha(devolvida.id)).toBe(true);
+      await epi_ficha.registrar_devolucao(tx, usuario, devolvida, { quantidade: 1, motivo: "devolvida por inteiro" });
+      expect(await vencida_na_ficha(devolvida.id)).toBe(false);
+      expect(await epi_ficha.troca_devida_em(tx, devolvida)).toBe(false);
+    }));
+
   it("substituição de OUTRO item não encerra nada", () =>
     emSessao(async (tx) => {
       const usuario = await _usuario(tx);
@@ -316,13 +341,13 @@ describe("RN-32 — troca devida", () => {
 // 3. O item parado em SEM_ESTOQUE
 // =====================================================================
 async function _pedido_aprovado(tx: Executor, usuario: UsuarioAtual, servidor: Servidor, item: Item, quantidade = 2) {
-  let requisicao = await servico.criar_rascunho(tx, usuario, {
+  let requisicao = await rascunho(tx, usuario, {
     servidor,
     descricao_atividade: "Manipulação de reagentes no laboratório",
   });
-  await servico.adicionar_item(tx, usuario, requisicao, { motivo: "USO_INICIAL", item, quantidade, tamanho: "M" });
+  await servico.adicionar_item(tx, await titular(tx, usuario, requisicao), requisicao, { motivo: "USO_INICIAL", item, quantidade, tamanho: "M" });
   requisicao = await _requisicao(tx, requisicao.id);
-  await servico.enviar(tx, usuario, requisicao, { termo_aceito: true });
+  await servico.enviar(tx, await titular(tx, usuario, requisicao), requisicao, { termo_aceito: true });
   await servico.iniciar_analise(tx, usuario, await _requisicao(tx, requisicao.id));
   const [linha] = await _itens_de(tx, requisicao.id);
   await servico.aprovar_item(tx, usuario, linha!);
@@ -596,12 +621,12 @@ describe("indicadores", () => {
       });
 
       await _pedido_aprovado(tx, usuario, servidor, item);
-      const outro = await servico.criar_rascunho(tx, usuario, {
+      const outro = await rascunho(tx, usuario, {
         servidor,
         descricao_atividade: "Atividade administrativa sem exposição",
       });
-      await servico.adicionar_item(tx, usuario, await _requisicao(tx, outro.id), { motivo: "USO_INICIAL", item, quantidade: 1, tamanho: "M" });
-      await servico.enviar(tx, usuario, await _requisicao(tx, outro.id), { termo_aceito: true });
+      await servico.adicionar_item(tx, await titular(tx, usuario, outro), await _requisicao(tx, outro.id), { motivo: "USO_INICIAL", item, quantidade: 1, tamanho: "M" });
+      await servico.enviar(tx, await titular(tx, usuario, outro), await _requisicao(tx, outro.id), { termo_aceito: true });
       await servico.iniciar_analise(tx, usuario, await _requisicao(tx, outro.id));
       const [linha] = await _itens_de(tx, outro.id);
       await servico.recusar_item(tx, usuario, linha!, { motivo: motivo!, complemento: "idem" });

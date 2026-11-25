@@ -30,7 +30,7 @@ Os exemplos (nomes, SIAPE, lotes, protocolos) são fictícios.
 | Coordenador, Superintendente, Técnico de Segurança | Tudo |
 | Engenheiro de Segurança | Analisa, mexe no catálogo, vê fichas, requisita. **Não** entrega e **não** mexe em estoque |
 | Médico do Trabalho | Analisa, vê fichas, requisita. Sem catálogo, entrega ou estoque |
-| Secretaria da CSSO | Requisita e vê. Vê o requerente como "SRV-xxxx" (sem nome) e não abre fichas |
+| Secretaria da CSSO | Requisita só para si e vê. Vê o requerente como "SRV-xxxx" (sem nome) e não abre fichas |
 | Almoxarife do SESMT | Entrega, estoque, fichas. **Não** requisita, **não** analisa e não vê Relatórios |
 | Servidor | Pede EPI e vê só os próprios pedidos e a própria ficha |
 | Auditor interno e Consulta PROGEP | Somente leitura (fichas, pedidos, indicadores) |
@@ -288,7 +288,7 @@ A entrega do pedido é a mesma do balcão: grava a ficha, baixa o lote e abre a 
 
 **Recusa fundamentada:** na mesma tela, seção "Recusa fundamentada" (A quem, Item, Unidade, Motivo, Complemento). Serve para negar fornecimento a quem não é servidor (terceirizado, estudante, bolsista). Fica na trilha e conta em Relatórios > "Recusas por motivo". Não gera documento impresso.
 
-**Cadastro rápido de servidor:** o bloco "Cadastrar servidor agora" (SIAPE de 7 dígitos e Nome, botão "Cadastrar e escolher") só aparece quando a busca não acha ninguém; no balcão vale para quem pode entregar, no pedido para quem pode requisitar. O sistema só confere o formato do SIAPE, não se ele existe. Cargo e lotação se completam depois na ficha.
+**Cadastro rápido de servidor:** o bloco "Cadastrar servidor agora" (SIAPE de 7 dígitos e Nome, botão "Cadastrar e escolher") só aparece quando a busca não acha ninguém; no balcão vale para quem pode entregar, no pedido não há cadastro rápido: o pedido é individual e abre só para quem vai usar o EPI. O sistema só confere o formato do SIAPE, não se ele existe. Cargo e lotação se completam depois na ficha.
 
 **Pendências abertas por cada entrega:** comprovante assinado (prazo de 10 dias, dono: almoxarife) e, se o servidor tem adicional ocupacional vigente, "reavaliar adicional por EPI".
 
@@ -309,7 +309,7 @@ A linha da ficha é **congelada no ato** (nome, categoria, CA, validade, fabrica
 4. O comprovante **não se troca**. Arquivo errado só se desfaz estornando a entrega (ver abaixo). Confira o arquivo antes de enviar.
 
 ### 9.2 Devolução
-Em **mais**, escolha devolução. Informe "Quantidade", "Data", "Motivo" e "Por que voltou". Cria uma linha nova de devolução e **o saldo volta ao lote**, sempre que a entrega teve lote e seja qual for o motivo (inclusive "Extraviado" e "Desgaste físico": a unidade é somada ao saldo como se estivesse utilizável). Se não está, use **Descartar** ou **Ajustar** em seguida; oriente o almoxarifado. Data não pode ser futura nem anterior à entrega. A entrega original continua na ficha. A devolução também trata sozinha a comunicação do titular aberta para aquela linha. Confira a quantidade: o sistema limita ao total que a pessoa tem consigo, não à quantidade daquela linha.
+Em **mais**, escolha devolução. Informe "Quantidade", "Data", "Motivo" e "Por que voltou". Cria uma linha nova de devolução e **o saldo do lote não muda**, seja qual for o motivo: EPI é individual e, mesmo em bom estado, já foi usado. Se for preciso acertar o estoque, use **Descartar** ou **Ajustar**. Data não pode ser futura nem anterior à entrega. A entrega original continua na ficha. A devolução também trata sozinha a comunicação do titular aberta para aquela linha. Confira a quantidade: o sistema limita ao total que a pessoa tem consigo, não à quantidade daquela linha.
 
 ### 9.3 Estorno
 Em **mais**, escolha **Estornar**, com "Motivo" obrigatório. Nasce uma linha nova apontando para a original; a original continua marcada. **O estorno não devolve saldo ao lote**, porque nada voltou da prateleira. Se a mercadoria não saiu de fato, acerte o saldo depois com **Ajustar**. Não dá para estornar registro que já teve devolução. Depois do estorno a ficha mostra o aviso "O saldo do lote … não foi reposto", com o link "Ajustar o inventário do lote".

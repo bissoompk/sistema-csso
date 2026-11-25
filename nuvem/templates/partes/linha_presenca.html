@@ -31,7 +31,7 @@
    60 envios no dia do curso. Agora a célula é UMA caixa por dia, dentro do
    formulário da grade (`turma_ficha.html`, `#f-folha`), e um único "Salvar
    folha" manda tudo para `presenca.salvar_folha`. A caixa marcada vale a carga
-   do dia (`horas_padrao`); as horas parciais de quem chegou atrasado continuam
+   do dia (`carga_dia_padrao`, na unidade-base da turma — lote 3); as horas parciais de quem chegou atrasado continuam
    existindo, num "ajustar" recolhido, porque a frequência é por hora e não por
    dia. Dia que ainda não chegou sai com a caixa desligada — o serviço recusa do
    mesmo jeito. Sem JavaScript é um `<form method="post">` comum.
@@ -68,7 +68,9 @@
 {% set recusa_onde = recusa_onde | default(none) %}
 {% set recusa = recusa | default(none) %}
 {% set hoje = hoje | default('9999-12-31') %}
-{% set horas_padrao = horas_padrao | default({}) %}
+{% set carga_dia_padrao = carga_dia_padrao | default({}) %}
+{% set un = turma.carga_unidade %}
+{% set em_tempos = un == 'TEMPOS' %}
 {# RN-19: a grade é a lista de chamada transcrita, e nomeia a mesma gente que a
    aba de inscrições. A decisão é a de `turma_ficha.html` e vem de lá pelo
    `include`; o `default` é o caminho da TROCA PARCIAL, onde `turmas._linha_trocada`
@@ -98,24 +100,24 @@
       <input type="checkbox" name="presente" value="{{ chave }}" data-grupo="dia-{{ dia }}"
              {{- ' checked' if marca and marca.presente }}{{ ' disabled' if futuro }}
              aria-label="{{ rotulo_pessoa }} presente em {{ dia|data }}">
-      {%- if marca and marca.presente %} <span class="mono">{{ marca.horas|num }} h</span>
+      {%- if marca and marca.presente %} <span class="mono">{{ marca.quantidade|carga_base(un) }}</span>
       {%- elif marca %} <span class="pilula erro sem-ponto" title="{{ marca.justificativa or 'sem justificativa' }}">falta</span>
       {%- elif not futuro %} presente{% endif %}</label>
     {% if not futuro %}
     {# na recusa da troca parcial o campo volta com o que foi digitado: quem
        escreveu "8" e recebeu "passaria da carga" precisa ver o 8 #}
     <details class="ajuste-horas">
-      <summary class="discreto">ajustar horas</summary>
-      <input class="campo-curto" name="h_{{ chave }}" inputmode="decimal"
-             placeholder="{{ horas_padrao[dia]|num if horas_padrao[dia] else 'h' }}"
-             aria-label="horas de {{ rotulo_pessoa }} em {{ dia|data }}"
+      <summary class="discreto">{{ 'ajustar tempos' if em_tempos else 'ajustar horas' }}</summary>
+      <input class="campo-curto" name="h_{{ chave }}" inputmode="{{ 'numeric' if em_tempos else 'decimal' }}"
+             placeholder="{{ carga_dia_padrao[dia]|carga_campo(un) if carga_dia_padrao[dia] else ('tempos' if em_tempos else '2h30') }}"
+             aria-label="{{ 'tempos' if em_tempos else 'horas' }} de {{ rotulo_pessoa }} em {{ dia|data }}"
              value="{{ digitado_horas if recusa_onde == dia
-                       else (marca.horas|num if marca and marca.presente else '') }}">
+                       else (marca.quantidade|carga_campo(un) if marca and marca.presente else '') }}">
     </details>
     {% endif %}
     {% else %}
     {% if marca and marca.presente %}
-    <span class="pilula ok sem-ponto">{{ marca.horas|num }} h</span>
+    <span class="pilula ok sem-ponto">{{ marca.quantidade|carga_base(un) }}</span>
     {% elif marca %}
     <span class="pilula erro sem-ponto"
           title="{{ marca.justificativa or 'sem justificativa' }}">falta</span>
@@ -128,7 +130,7 @@
     {% endif %}
   </td>
   {% endfor %}
-  <td class="mono">{{ linha.horas|num }} h</td>
+  <td class="mono">{{ linha.presente_texto }}</td>
   {# A barra é colorida pela FREQUÊNCIA contra o mínimo da turma, e não pelo
      resultado: quem vai reprovar só por nota tem frequência boa, e pintar a
      barra de âmbar ali diria que faltou. Quem decide o resultado continua
@@ -140,6 +142,29 @@
       <span class="trilho"><span style="--v:{{ [(linha.frequencia|float)|round|int, 100]|min }}"></span></span>
     </span>
   </td>
+  {% if disciplinas %}
+  {# lote 4 (brigada): uma nota por disciplina, de 0 a 100; a final é a média (art. 42, § 3º) #}
+  {% for d in disciplinas %}
+  {% set nd = linha.notas_por_disciplina[d.id] %}
+  <td>
+    {% if pode_lancar %}
+    <input class="campo-curto" name="nd_{{ linha.inscricao.id }}_{{ d.id }}" inputmode="decimal" placeholder="0 a 100"
+           aria-label="nota de {{ d.nome }} de {{ rotulo_pessoa }}"
+           value="{{ nd|nota_campo if nd is not none else '' }}">
+    {% if nd is not none %}
+    <label class="quebra discreto"><input type="checkbox" name="apagar_nota_disciplina" value="{{ linha.inscricao.id }}_{{ d.id }}"> apagar</label>
+    {% endif %}
+    {% else %}
+    <span class="mono">{{ nd|nota_brigada }}</span>
+    {% endif %}
+  </td>
+  {% endfor %}
+  <td class="mono">{{ linha.inscricao.nota_final|nota_brigada }}
+    {% if recusa and recusa_onde == 'nota' %}
+    <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
+    {% endif %}
+  </td>
+  {% else %}
   <td>
     {% if pode_lancar %}
     {# campo em branco não apaga a nota lançada: apagar é a caixa própria #}
@@ -157,6 +182,7 @@
     <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
     {% endif %}
   </td>
+  {% endif %}
   <td>
     {{ ui.pilula_inscricao(linha.inscricao.situacao) }}
     {# curta: o que falta, ou o motivo principal; a frase inteira no `title` #}

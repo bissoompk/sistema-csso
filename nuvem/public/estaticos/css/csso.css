@@ -4267,6 +4267,15 @@ fieldset.partes-corpo label { font-size: 13px; line-height: 1.35; }
 .divulgue-links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0 0; }
 .divulgue-endereco { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem; }
 
+/* Inscrição pública: os três passos e o vínculo em botões */
+.passos-pedido { display: grid; gap: .35rem; margin: 0 0 1rem; padding-left: 1.25rem; font-size: .9rem; }
+fieldset.opcoes-botoes { border: 0; padding: 0; margin: 0 0 1rem; min-width: 0; }
+fieldset.opcoes-botoes legend { padding: 0; font-weight: 600; margin-bottom: .4rem; }
+.opcoes-botoes-lista { display: flex; flex-wrap: wrap; gap: .5rem; }
+.opcao-botao { display: inline-flex; align-items: center; gap: .4rem; min-height: 44px; padding: 0 .9rem; border: 1px solid currentColor; border-radius: 999px; cursor: pointer; }
+.opcao-botao:has(input:checked) { background: #1d4f91; color: #fff; border-color: #1d4f91; }
+.opcao-botao:has(input:focus-visible) { outline: 3px solid #1d4f91; outline-offset: 2px; }
+
 /* ===== CELULAR (lote 0) =====
    O sistema medido a 390x844 e 360x740 (com toque e escala 2): 43 e 55 paginas
    com rolagem lateral, 85% dos alvos abaixo de 44x44, 2.197 campos que fazem o
@@ -4687,6 +4696,11 @@ background: transparent; color: var(--acento); font-size: 13px; font-weight: 600
   .cabecalho .volta-origem { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
+/* ajuste do lote 3 (25/11/2026): os tempos de cada dia na abertura da turma (`csso.js`);
+   o atributo duplo vence o `display` de `.campo` sem `!important` */
+[data-carga-dias][hidden] { display: none; }
+[data-carga-dias] [data-soma].erro { color: var(--erro); }
+
 /* ---------- impressao ----------
    A previa do parecer e impressa. Sem isto a lateral escura vira uma faixa de
    252px em branco na esquerda de toda folha.
@@ -4853,4 +4867,3 @@ background: transparent; color: var(--acento); font-size: 13px; font-weight: 600
   }
   .rodape-lateral .versao { color: var(--tinta-fraca); }
 }
-

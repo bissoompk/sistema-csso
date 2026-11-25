@@ -451,6 +451,110 @@
   });
 
   // -------------------------------------------------------------------
+  // Tempos de cada dia na abertura da turma (ajuste do lote 3, 25/11/2026)
+  //
+  // Contrato: `<fieldset data-carga-dias data-treinamento data-inicio data-fim data-carga>` com os
+  // ids do seletor de treinamento (opções com `data-unidade` e `data-carga`), das duas datas e da
+  // carga da turma; dentro, `[data-dias]` recebe um campo `carga_dia_AAAA-MM-DD` por dia e
+  // `[data-soma]` diz a soma. Só para treinamento em TEMPOS e turma de 2 a 60 dias. A divisão
+  // automática (o resto nos primeiros dias, como `carga.dividir`) é só o valor inicial: muda quando
+  // mudam as datas ou a carga, nunca por cima do que foi digitado com as mesmas datas e carga.
+  // -------------------------------------------------------------------
+  function diasEntre(inicio, fim) {
+    var re = /^\d{4}-\d{2}-\d{2}$/;
+    if (!re.test(inicio) || !re.test(fim) || fim <= inicio) return [];
+    var dias = [];
+    var d = new Date(inicio + 'T00:00:00Z');
+    var ate = new Date(fim + 'T00:00:00Z');
+    while (d <= ate && dias.length <= 60) {
+      dias.push(d.toISOString().slice(0, 10));
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return dias.length > 60 ? [] : dias;
+  }
+
+  function cargaDias(box) {
+    var el = function (nome) { return document.getElementById(box.getAttribute(nome)); };
+    var sel = el('data-treinamento');
+    var opcao = sel && sel.options[sel.selectedIndex];
+    var lista = box.querySelector('[data-dias]');
+    var dias = diasEntre((el('data-inicio') || {}).value || '', (el('data-fim') || {}).value || '');
+    if (!opcao || opcao.getAttribute('data-unidade') !== 'TEMPOS' || dias.length < 2) {
+      box.hidden = true;
+      lista.innerHTML = '';
+      box.removeAttribute('data-chave');
+      return;
+    }
+    var digitada = ((el('data-carga') || {}).value || '').trim();
+    var total = /^\d+$/.test(digitada) ? Number(digitada) : Number(opcao.getAttribute('data-carga') || 0);
+    var chave = dias.join(',') + '|' + total;
+    box.hidden = false;
+    if (box.getAttribute('data-chave') !== chave) {
+      // primeira montagem sobre os campos vindos do servidor (reabertura recusada): mantém
+      var vindos = lista.querySelectorAll('input');
+      var mesmos = !box.hasAttribute('data-chave') && vindos.length === dias.length &&
+        Array.prototype.every.call(vindos, function (c, i) { return c.name === 'carga_dia_' + dias[i]; });
+      if (!mesmos) {
+        lista.innerHTML = '';
+        var n = dias.length;
+        dias.forEach(function (dia, i) {
+          var valor = Math.floor(total / n) + (i < total % n ? 1 : 0);
+          var campo = document.createElement('div');
+          campo.className = 'campo';
+          var rotulo = document.createElement('label');
+          rotulo.htmlFor = 'nova-carga-dia-' + dia;
+          rotulo.textContent = dia.slice(8, 10) + '/' + dia.slice(5, 7) + '/' + dia.slice(0, 4);
+          var entrada = document.createElement('input');
+          entrada.id = 'nova-carga-dia-' + dia;
+          entrada.name = 'carga_dia_' + dia;
+          entrada.setAttribute('inputmode', 'numeric');
+          entrada.setAttribute('autocomplete', 'off');
+          entrada.size = 4;
+          entrada.value = String(valor);
+          entrada.setAttribute('aria-describedby', box.querySelector('[data-soma]').id);
+          campo.appendChild(rotulo);
+          campo.appendChild(entrada);
+          lista.appendChild(campo);
+        });
+      }
+      box.setAttribute('data-chave', chave);
+      box.setAttribute('data-total', String(total));
+    }
+    somaDias(box);
+  }
+
+  function somaDias(box) {
+    var total = Number(box.getAttribute('data-total') || 0);
+    var soma = 0;
+    var quebrado = false;
+    box.querySelectorAll('[data-dias] input').forEach(function (c) {
+      var v = c.value.trim();
+      if (!v) return;
+      if (!/^\d+$/.test(v)) { quebrado = true; return; }
+      soma += Number(v);
+    });
+    var aviso = box.querySelector('[data-soma]');
+    var tempos = function (q) { return q + (q === 1 ? ' tempo' : ' tempos'); };
+    if (quebrado) aviso.textContent = 'Cada dia leva um número inteiro de tempos.';
+    else if (soma === total) aviso.textContent = 'Soma dos dias: ' + tempos(soma) + ', igual à carga da turma.';
+    else aviso.textContent = 'Soma dos dias: ' + tempos(soma) + ' — tem de ser igual à carga da turma (' + tempos(total) + ').';
+    aviso.classList.toggle('erro', quebrado || soma !== total);
+  }
+
+  function aoMudarCargaDias(e) {
+    var alvo = e.target;
+    if (!alvo || !alvo.id) return;
+    document.querySelectorAll('[data-carga-dias]').forEach(function (box) {
+      if (box.contains(alvo)) { somaDias(box); return; }
+      var ids = ['data-treinamento', 'data-inicio', 'data-fim', 'data-carga'].map(function (a) { return box.getAttribute(a); });
+      if (ids.indexOf(alvo.id) >= 0) cargaDias(box);
+    });
+  }
+  document.addEventListener('input', aoMudarCargaDias);
+  document.addEventListener('change', aoMudarCargaDias);
+  document.querySelectorAll('[data-carga-dias]').forEach(cargaDias);
+
+  // -------------------------------------------------------------------
   // 5. Reaproveitar a descrição da turma anterior
   //
   // Contrato: `<button type="button" data-reusar-descricao="<id da caixa>">`,
@@ -938,7 +1042,12 @@
       if (saindo) return;
       saindo = true;
       try {
-        fetch('/sair', { method: 'POST', credentials: 'same-origin', redirect: 'manual', keepalive: true })
+        // o token CSRF da sessão vem da <meta> que o servidor põe em toda tela
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        fetch('/sair', {
+          method: 'POST', credentials: 'same-origin', redirect: 'manual', keepalive: true,
+          headers: meta ? { 'x-csrf-token': meta.getAttribute('content') } : {}
+        })
           .then(irAoLogin, irAoLogin);
       } catch (e) { irAoLogin(); }
     }

@@ -433,13 +433,13 @@ function _ler(d: Pedido, turma: { aceita_comunidade_externa: boolean }): Pedido 
   if (!vinculos_aceitos(turma).includes(p.vinculo)) {
     if ((VINCULOS_COMUNIDADE_EXTERNA as readonly string[]).includes(p.vinculo)) {
       throw new PedidoInvalido(
-        "Esta turma é para a comunidade da UFVJM: escolha Servidor da UFVJM, Terceirizado ou Discente.",
+        "Esta turma é para a comunidade da UFVJM: escolha Servidor(a) da UFVJM, Terceirizado ou Discente.",
       );
     }
     throw new PedidoInvalido("Escolha o vínculo.");
   }
   if (p.vinculo === "SERVIDOR" && !RE_SIAPE.test(p.siape)) {
-    throw new PedidoInvalido("Servidor da UFVJM: informe o SIAPE (6 ou 7 dígitos).");
+    throw new PedidoInvalido("Servidor(a) da UFVJM: informe o SIAPE (6 ou 7 dígitos).");
   }
   if (p.vinculo !== "SERVIDOR") p.siape = "";
   if (p.email && !RE_EMAIL.test(p.email)) throw new PedidoInvalido("O e-mail não parece completo.");
@@ -600,6 +600,8 @@ export async function pedir(
     .insert(tabela_inscricao)
     .values({
       turma_id: turma.id,
+      // lote 4: o local de atuação do brigadista nasce com o padrão da turma
+      local_atuacao: turma.local_atuacao_padrao,
       participante_id: pessoa.id,
       situacao: "AGUARDANDO_EMAIL",
       origem: "PUBLICA",
@@ -607,7 +609,7 @@ export async function pedir(
       observacao: nota || null,
     })
     .returning();
-  const inscricao = { ...linha!, turma, participante: pessoa, presencas: [] };
+  const inscricao = { ...linha!, turma, participante: pessoa, presencas: [], notas_disciplina: [] };
   await auditoria.registrar(tx, {
     entidade: "inscricao",
     entidade_id: inscricao.id,

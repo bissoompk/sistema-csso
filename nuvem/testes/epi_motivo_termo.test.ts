@@ -3,6 +3,7 @@
  * pedido e o termo NR-06 declarado no envio — mais o pedido de troca já
  * preenchido (`/epis/requisicoes/nova?item=…&comunicacao=…`).
  */
+import { PermissaoNegada } from "../src/servicos/rbac.js";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { asc, eq, sql } from "drizzle-orm";
@@ -25,6 +26,8 @@ import {
   recusa,
   reler,
   usuario,
+  rascunho,
+  titular,
 } from "./ajuda_epi_requisicao";
 import { cenario as cenario_web, entregar, recado, registros } from "./ajuda_epi_ficha";
 
@@ -43,9 +46,9 @@ describe("termo NR-06 no envio", () => {
       const cen = await cenario(tx);
       const u = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, u);
-      const erro = await recusa(servico.enviar(tx, u, requisicao), servico.RequisicaoBloqueada);
+      const erro = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("termo NR-06");
-      const erro2 = await recusa(servico.enviar(tx, u, requisicao, { termo_aceito: false }), servico.RequisicaoBloqueada);
+      const erro2 = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: false }), servico.RequisicaoBloqueada);
       expect(erro2.message).toContain("termo NR-06");
       const relida = (await reler(tx, requisicao))!;
       expect(relida.estado).toBe("RASCUNHO");
@@ -53,16 +56,18 @@ describe("termo NR-06 no envio", () => {
       expect(relida.termo_aceito_em).toBeNull();
     }));
 
-  it("grava a conta de QUEM ENVIA (a chefia, pelo servidor), o instante e a versão, com evento próprio", () =>
+  it("só o titular aceita o termo: a chefia é recusada, e grava-se a conta do titular, o instante e a versão", () =>
     desfeito(async (tx) => {
       const cen = await cenario(tx);
-      // a chefia pede pela equipe: não é o titular
+      // a chefia não é o titular: não envia nem declara pelo servidor (pedido individual, 24/11/2026)
       const chefia = await usuario(tx, { permissoes: REQUERENTE, login: "chefia" });
       const requisicao = await pedido_pronto(tx, cen, chefia);
-      await servico.enviar(tx, chefia, requisicao, { termo_aceito: true });
+      await recusa(servico.enviar(tx, chefia, requisicao, { termo_aceito: true }), PermissaoNegada);
+      const dono = await titular(tx, chefia, requisicao);
+      await servico.enviar(tx, dono, requisicao, { termo_aceito: true });
       const relida = (await reler(tx, requisicao))!;
       expect(relida.estado).toBe("ENVIADA");
-      expect(relida.termo_aceito_por).toBe(chefia.id);
+      expect(relida.termo_aceito_por).toBe(dono.id);
       expect(relida.termo_versao).toBe(TERMO_NR06_VIGENTE);
       expect(relida.termo_aceito_em).toBeTruthy();
       expect(relida.termo_exigido).toBe(true);
@@ -71,7 +76,7 @@ describe("termo NR-06 no envio", () => {
       );
       expect(termo).toBeTruthy();
       expect(termo!.valor_novo).toBe(TERMO_NR06_VIGENTE);
-      expect(termo!.usuario_id).toBe(chefia.id);
+      expect(termo!.usuario_id).toBe(dono.id);
       // RN-19 na escrita: o titular sai pelo id
       expect(termo!.descricao).toContain(`#${cen.servidor.id}`);
       expect(termo!.descricao).not.toContain(cen.servidor.nome);
@@ -111,20 +116,20 @@ describe("motivo por item", () => {
     desfeito(async (tx) => {
       const cen = await cenario(tx);
       const u = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
-      const requisicao = await servico.criar_rascunho(tx, u, { servidor: cen.servidor });
+      const requisicao = await rascunho(tx, u, { servidor: cen.servidor });
       const sem = await recusa(
-        servico.adicionar_item(tx, u, requisicao, { item: cen.item, quantidade: 1, tamanho: "M" }),
+        servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { item: cen.item, quantidade: 1, tamanho: "M" }),
         servico.RequisicaoBloqueada,
       );
       expect(sem.message).toContain("motivo do item");
       const fora = await recusa(
-        servico.adicionar_item(tx, u, requisicao, { item: cen.item, quantidade: 1, tamanho: "M", motivo: "QUALQUER" }),
+        servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { item: cen.item, quantidade: 1, tamanho: "M", motivo: "QUALQUER" }),
         servico.RequisicaoBloqueada,
       );
       expect(fora.message).toContain("motivo de item desconhecido");
       expect(await itens(tx, requisicao)).toHaveLength(0);
 
-      const linha = await servico.adicionar_item(tx, u, requisicao, {
+      const linha = await servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, {
         item: cen.item,
         quantidade: 1,
         tamanho: "M",
@@ -132,12 +137,12 @@ describe("motivo por item", () => {
       });
       expect(linha.motivo).toBe("DANO");
       // editar sem dizer o motivo mantém o da linha; dizendo, troca
-      await servico.editar_item(tx, u, linha, { quantidade: 2, tamanho: "M" });
+      await servico.editar_item(tx, await titular(tx, u, linha), linha, { quantidade: 2, tamanho: "M" });
       expect(linha.motivo).toBe("DANO");
-      await servico.editar_item(tx, u, linha, { quantidade: 2, tamanho: "M", motivo: "PERDA" });
+      await servico.editar_item(tx, await titular(tx, u, linha), linha, { quantidade: 2, tamanho: "M", motivo: "PERDA" });
       expect((await itens(tx, requisicao))[0]!.motivo).toBe("PERDA");
       await recusa(
-        servico.editar_item(tx, u, linha, { quantidade: 2, tamanho: "M", motivo: "" }),
+        servico.editar_item(tx, await titular(tx, u, linha), linha, { quantidade: 2, tamanho: "M", motivo: "" }),
         servico.RequisicaoBloqueada,
       );
     }));
@@ -146,11 +151,11 @@ describe("motivo por item", () => {
     desfeito(async (tx) => {
       const cen = await cenario(tx);
       const u = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
-      const requisicao = await servico.criar_rascunho(tx, u, { servidor: cen.servidor });
+      const requisicao = await rascunho(tx, u, { servidor: cen.servidor });
       await tx
         .insert(e.epi_requisicao_item)
         .values({ requisicao_id: requisicao.id, epi_item_id: cen.item.id, tamanho: "M", quantidade_solicitada: 1 });
-      const erro = await recusa(servico.enviar(tx, u, requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
+      const erro = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("sem o motivo do item");
     }));
 
@@ -168,7 +173,7 @@ describe("motivo por item", () => {
 
       const linhas: Record<string, number> = {};
       for (const finalidade of FINALIDADES_REQUISICAO) {
-        const requisicao = await servico.criar_rascunho(tx, u, { servidor: cen.servidor, finalidade });
+        const requisicao = await rascunho(tx, u, { servidor: cen.servidor, finalidade });
         const [linha] = await tx
           .insert(e.epi_requisicao_item)
           .values({ requisicao_id: requisicao.id, epi_item_id: cen.item.id, tamanho: "M", quantidade_solicitada: 1 })
@@ -194,6 +199,15 @@ async function novo(): Promise<AmbienteDeTeste> {
 }
 const como = (amb: AmbienteDeTeste, login: string): Promise<Cliente> => entrar(amb.novoCliente(), login);
 
+/**
+ * O pedido de EPI é individual: quem abre é o próprio beneficiário. O coordenador de teste
+ * é ligado ao servidor do cenário e entra já como ele.
+ */
+async function como_dono(amb: AmbienteDeTeste, cen: { servidor: number }, login = "coordenador_csso"): Promise<Cliente> {
+  await amb.db.update(e.usuario).set({ servidor_id: cen.servidor }).where(eq(e.usuario.login, login));
+  return entrar(amb.novoCliente(), login);
+}
+
 /** O `<option>` marcado de um `<select>` pelo id. */
 function escolhido(html: string, id: string): string | null {
   const inicio = html.indexOf(`id="${id}"`);
@@ -216,7 +230,7 @@ describe("telas do pedido", () => {
   it("o pedido de troca chega preenchido; valor fora da lista é ignorado", async () => {
     const amb = await novo();
     const cen = await cenario_web(amb.db);
-    const cliente = await como(amb, "coordenador_csso");
+    const cliente = await como_dono(amb, cen);
     const cheio = (await cliente.get(`${NOVA}?item=${cen.item}&tamanho=G&motivo=DANO&finalidade=DANO`)).text;
     expect(escolhido(cheio, "item_id")).toBe(String(cen.item));
     expect(escolhido(cheio, "tamanho")).toBe("G");
@@ -238,7 +252,7 @@ describe("telas do pedido", () => {
   it("o termo vem DESMARCADO; sem ele a tela recusa e nada é protocolado", async () => {
     const amb = await novo();
     const cen = await cenario_web(amb.db);
-    const cliente = await como(amb, "coordenador_csso");
+    const cliente = await como_dono(amb, cen);
     const tela = (await cliente.get(NOVA)).text;
     expect(tela).toContain(texto_termo_nr06());
     expect(tela).toMatch(/<input id="termo-aceito" type="checkbox" name="termo_aceito" value="1">/);
@@ -283,7 +297,7 @@ describe("telas do pedido", () => {
   it("o envio pela ficha do rascunho exige a marca do termo", async () => {
     const amb = await novo();
     const cen = await cenario_web(amb.db);
-    const cliente = await como(amb, "coordenador_csso");
+    const cliente = await como_dono(amb, cen);
     await cliente.post(
       FILA,
       {
@@ -329,21 +343,21 @@ describe("telas do pedido", () => {
         termo_exigido: false,
       })
       .returning();
-    const ficha = (await (await como(amb, "coordenador_csso")).get(`${FILA}/${req!.id}`)).text;
+    const ficha = (await (await como_dono(amb, cen)).get(`${FILA}/${req!.id}`)).text;
     expect(ficha).toContain("pedido anterior ao termo");
   });
 
   it("o link com a comunicação preenche o pedido e o liga a ela", async () => {
     const amb = await novo();
     const cen = await cenario_web(amb.db);
-    const cliente = await como(amb, "coordenador_csso");
+    const cliente = await como_dono(amb, cen);
     expect((await entregar(cliente, cen, { quantidade: 1, tamanho: "M" })).status).toBe(303);
     const [registro] = await registros(amb.db);
     const com = await comunicacao(amb, registro!.id, cen.servidor, "EXTRAVIADO");
 
     const tela = (await cliente.get(`${NOVA}?comunicacao=${com.id}`)).text;
     expect(tela).toContain("Pedido de troca da comunicação");
-    expect(escolhido(tela, "servidor_id")).toBe(String(cen.servidor));
+    expect(tela).toContain(`name="servidor_id" value="${cen.servidor}"`);
     expect(escolhido(tela, "item_id")).toBe(String(cen.item));
     expect(escolhido(tela, "tamanho")).toBe("M");
     expect(escolhido(tela, "motivo")).toBe("PERDA");
@@ -376,7 +390,7 @@ describe("telas do pedido", () => {
   it("comunicação que não vale: a tela avisa e o pedido segue sem o vínculo", async () => {
     const amb = await novo();
     const cen = await cenario_web(amb.db);
-    const cliente = await como(amb, "coordenador_csso");
+    const cliente = await como_dono(amb, cen);
     await entregar(cliente, cen, { quantidade: 1, tamanho: "M" });
     const [registro] = await registros(amb.db);
     const com = await comunicacao(amb, registro!.id, cen.servidor);

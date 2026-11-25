@@ -31,7 +31,7 @@ describe("ambiente de teste", () => {
       epi_requisicoes: 9,
       laudos: 3,
       pareceres: 3,
-      pendencias: 20,
+      pendencias: 19, // 24/11/2026: a devolução integral do óculos fecha a pendência do comprovante
       pendencias_atrasadas: 5,
       processos: 11,
       servidores: SERVIDORES.length,

@@ -107,12 +107,17 @@ export interface TurmaResumo {
   data_fim: string;
   dias: string[];
   carga_efetiva: string;
+  /** lote 3: HORAS ou TEMPOS; `carga_texto` é "8 horas", "4h30", "10 tempos" */
+  carga_unidade: string;
+  carga_texto: string;
   inscritos: number;
 }
 
 export interface PresencaDia {
   presente: boolean;
+  /** a quantidade na unidade da turma: horas decimais (HORAS) ou tempos (TEMPOS) */
   horas: string;
+  texto: string;
 }
 
 export interface LinhaPresenca {
@@ -121,6 +126,7 @@ export interface LinhaPresenca {
   nominal: boolean;
   por_dia: Record<string, PresencaDia>;
   horas: string;
+  presente_texto: string;
   frequencia: string;
   aprovado: boolean;
   situacao: string;
@@ -131,6 +137,8 @@ export interface GradePresenca {
   codigo: string;
   dias: string[];
   carga_efetiva: string;
+  carga_unidade: string;
+  carga_texto: string;
   retificando: boolean;
   linhas: LinhaPresenca[];
 }

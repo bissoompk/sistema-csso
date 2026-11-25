@@ -110,7 +110,7 @@
           {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
           {%- if turma|horario_turma %}, {{ turma|horario_turma }}{% endif %}</span>
         <span class="ponto">·</span>
-        <span class="mono">{{ turma.carga_efetiva|num }} h</span>
+        <span class="mono">{{ turma|carga_turma }}</span>
         {{ ui.pilula_turma(turma.situacao) }}
       </p>
     </div>
@@ -222,10 +222,10 @@
       <input id="r-data_inicio" type="date" name="data_inicio" value="{{ turma.data_inicio }}" required></div>
     <div class="campo"><label for="r-data_fim">Término</label>
       <input id="r-data_fim" type="date" name="data_fim" value="{{ turma.data_fim }}" required></div>
-    <div class="campo"><label for="r-carga">Carga horária da turma</label>
+    <div class="campo"><label for="r-carga">Carga da turma ({{ 'tempos' if turma.carga_unidade == 'TEMPOS' else 'horas' }})</label>
       <input id="r-carga" name="carga_horaria_horas" inputmode="decimal" autocomplete="off"
-             value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
-             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
+             value="{{ turma.carga_horaria_horas|carga_campo_coluna(turma.carga_unidade) if turma.carga_horaria_horas is not none else '' }}"
+             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|carga(turma.carga_unidade) }})"
              aria-describedby="r-dica-carga">
       <span class="dica" id="r-dica-carga">Mudá-la recalcula a frequência de cada inscrito.</span></div>
   </div>
@@ -278,13 +278,16 @@
     <div class="campo"><label for="data_fim">Término</label>
       <input id="data_fim" type="date" name="data_fim"
              value="{{ turma.data_fim }}" required></div>
-    <div class="campo"><label for="carga">Carga horária da turma</label>
-      <input id="carga" name="carga_horaria_horas" inputmode="decimal" autocomplete="off"
-             value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
-             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
+    <div class="campo"><label for="carga">Carga da turma ({{ 'tempos' if turma.carga_unidade == 'TEMPOS' else 'horas' }})</label>
+      <input id="carga" name="carga_horaria_horas" inputmode="{{ 'numeric' if turma.carga_unidade == 'TEMPOS' else 'decimal' }}" autocomplete="off"
+             value="{{ turma.carga_horaria_horas|carga_campo_coluna(turma.carga_unidade) if turma.carga_horaria_horas is not none else '' }}"
+             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|carga(turma.carga_unidade) }})"
              aria-describedby="dica-carga">
-      <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
+      <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.
+        {%- if turma.carga_unidade == 'TEMPOS' %} Tempos inteiros.{% else %} Em horas: 8, 4,5 ou 4h30.{% endif %}</span></div>
   </div>
+  <div class="campo"><label for="justificativa_carga">Justificativa da carga <span class="discreto">(só quando a carga passa do que o horário comporta)</span></label>
+    <textarea id="justificativa_carga" name="justificativa_carga" rows="2" maxlength="500">{{ turma.justificativa_carga or '' }}</textarea></div>
   <div class="linha-campos">
     <div class="campo"><label for="hora_inicio">Hora de início</label>
       <input id="hora_inicio" type="time" name="hora_inicio" step="300"
@@ -324,6 +327,25 @@
              value="{{ turma.nota_minima_aprovacao if turma.nota_minima_aprovacao is not none else '' }}"
              placeholder="sem prova"></div>
   </div>
+  {% if turma.carga_unidade == 'TEMPOS' %}
+  {# lote 4 (brigada, art. 43, II): o local de atuação dos brigadistas (padrão das inscrições
+     novas; cada uma se ajusta na aba Inscrições) e quem responde pela formação #}
+  <div class="linha-campos">
+    <div class="campo"><label for="local_atuacao_padrao">Local de atuação do brigadista (padrão)</label>
+      <input id="local_atuacao_padrao" name="local_atuacao_padrao" maxlength="200" autocomplete="off"
+             value="{{ turma.local_atuacao_padrao or '' }}" aria-describedby="dica-local-atuacao"
+             placeholder="Campus JK — Diamantina">
+      <span class="dica" id="dica-local-atuacao">Vale para as inscrições novas; as já feitas se ajustam uma a uma.</span></div>
+    <div class="campo"><label for="responsavel_formacao_id">Responsável pela formação</label>
+      <select id="responsavel_formacao_id" name="responsavel_formacao_id" aria-describedby="dica-responsavel">
+        <option value="">— o instrutor que assina</option>
+        {% for v in turma.instrutores %}
+        <option value="{{ v.assinatura_instrutor_id }}"{{ ' selected' if turma.responsavel_formacao_id == v.assinatura_instrutor_id }}>{{ v.instrutor.nome_exibicao or v.instrutor.nome }}</option>
+        {% endfor %}
+      </select>
+      <span class="dica" id="dica-responsavel">Sai no certificado de brigada com CPF e credenciamento ou registro.</span></div>
+  </div>
+  {% endif %}
   <div class="linha-campos">
     <div class="campo"><label for="frequencia_minima_percentual">Frequência mínima (%)</label>
       <input id="frequencia_minima_percentual" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"
@@ -456,6 +478,33 @@
       hoje e grava aprovado ou reprovado. Quem não tiver presença lançada é
       apurado com o que há.</p>
   </div>
+  {# Lote 5 (T6, T9): o que concluir não bloqueia, mas a pessoa precisa saber ANTES —
+     a turma ainda "Planejada", ninguém marcado para assinar, inscrito sem nota. #}
+  {% if turma.situacao == 'PLANEJADA' %}
+  <div class="aviso aviso-alerta" role="status" id="concluir-planejada">
+    <p><strong>{{ turma.codigo }} ainda está Planejada</strong> (começou em {{ turma.data_inicio|data }}).
+      Concluir agora a leva direto a <em>{{ ui.ROTULO_TURMA_TELA['CONCLUIDA'] }}</em>, apurando com os
+      lançamentos que existem hoje; a mudança fica na trilha da turma com o seu nome e a hora.</p>
+  </div>
+  {% endif %}
+  {% set assinam = [] %}
+  {% for v in turma.instrutores %}{% if v.assina_certificado %}{% set _ = assinam.push(v) %}{% endif %}{% endfor %}
+  {% if not assinam|length %}
+  <div class="aviso aviso-alerta" role="status" id="concluir-sem-assinatura">
+    <p><strong>Nenhum instrutor está marcado para assinar o certificado.</strong> A turma conclui,
+      mas nenhum certificado sai enquanto não houver um — vincule ou marque na aba
+      <a href="/turmas/{{ turma.id }}?aba=turma">Turma</a>.</p>
+  </div>
+  {% endif %}
+  {% set sem_nota = [] %}
+  {% for linha in grade %}{% if 'não lançada' in (linha.avaliacao.motivos | join(' ')) %}{% set _ = sem_nota.push(linha) %}{% endif %}{% endfor %}
+  {% if sem_nota|length %}
+  <div class="aviso aviso-alerta" role="status" id="concluir-sem-nota">
+    <p><strong>{{ sem_nota|length }} inscrito(s) sem nota</strong>
+      {{- ' — sairá reprovado' if sem_nota|length == 1 else ' — sairão reprovados' }}.
+      Lance as notas antes na aba <a href="/turmas/{{ turma.id }}?aba=presencas">Presença e notas</a>.</p>
+  </div>
+  {% endif %}
   {# A prévia da apuração (25/10/2026): a mesma conta da grade
      (`presenca.avaliar`), com os lançamentos de agora. Concluir sem presença
      lançada reprovava a turma inteira, e a janela só dizia isso em geral. #}
@@ -561,13 +610,32 @@
 {% endcall %}
 {% endif %}
 
+{% if editavel and dias_carga|length > 1 %}
+{# lote 3 (24/11/2026): a carga de cada dia. A soma tem de ser a carga da turma; a divisão
+   automática é só o valor inicial. O limite de presença de cada dia é este (T5). #}
+{% call ui.popup_cadastro('carga-por-dia', 'Carga por dia',
+                          '/turmas/' ~ turma.id ~ '/carga-por-dia', 'Salvar carga por dia',
+                          nota='a soma tem de ser ' ~ (turma|carga_turma)) %}
+  <div class="linha-campos">
+    {% for dia, q in dias_carga %}
+    <div class="campo"><label for="carga-dia-{{ dia }}">{{ dia|data }} ({{ 'tempos' if turma.carga_unidade == 'TEMPOS' else 'horas' }})</label>
+      <input id="carga-dia-{{ dia }}" name="carga_dia_{{ dia }}" required class="campo-curto"
+             inputmode="{{ 'numeric' if turma.carga_unidade == 'TEMPOS' else 'decimal' }}"
+             value="{{ digitado_carga_dia[dia] if digitado_carga_dia and digitado_carga_dia[dia] is defined else q|carga_campo(turma.carga_unidade) }}"></div>
+    {% endfor %}
+  </div>
+  <div class="campo"><label for="justificativa-carga-dia">Justificativa da carga <span class="discreto">(só quando passa do que o horário comporta)</span></label>
+    <textarea id="justificativa-carga-dia" name="justificativa_carga" rows="2" maxlength="500">{{ turma.justificativa_carga or '' }}</textarea></div>
+{% endcall %}
+{% endif %}
+
 {% if aba == 'presencas' and pode_lancar and dias|length == 1 %}
 {% call ui.popup_cadastro('marcar-todos-presentes', MARCAR_TODOS,
                           '/turmas/' ~ turma.id ~ '/presencas/todos',
-                          MARCAR_TODOS ~ ' (' ~ (carga_efetiva|num) ~ ' h)',
+                          MARCAR_TODOS ~ ' (' ~ (turma|carga_turma) ~ ')',
                           nota='curso de um dia: a folha e a turma têm o mesmo escopo') %}
   <div class="aviso aviso-alerta">
-    Marca <strong>todo mundo</strong> com {{ carga_efetiva|num }} h, inclusive quem já
+    Marca <strong>todo mundo</strong> com {{ turma|carga_turma }}, inclusive quem já
     estava lançado como falta. Cada sobrescrita entra na trilha com o valor de antes.
   </div>
   {% if retificando %}
@@ -605,6 +673,23 @@
       mesmo jeito — aviso não é bloqueio. Quem tiver bloqueio não está nesta
       lista.</p>
   </div>
+  {# Lote 5 (T7): o instrutor que ASSINA sem a qualificação que a norma cobra (NR-10/33/35)
+     — o mesmo aviso da aba Turma, repetido aqui, onde o papel vai sair com o nome dele. #}
+  {% set sem_qualificacao = [] %}
+  {% for v in turma.instrutores %}{% if v.assina_certificado and avisos_qualificacao[v.assinatura_instrutor_id] %}{% set _ = sem_qualificacao.push(v) %}{% endif %}{% endfor %}
+  {% if sem_qualificacao|length %}
+  <div class="aviso aviso-alerta" role="status" id="emitir-sem-qualificacao">
+    <p><strong>Assina{{ 'm' if sem_qualificacao|length > 1 }} o certificado sem qualificação para este treinamento:</strong></p>
+    <ul class="motivos">
+      {% for v in sem_qualificacao %}
+      <li>{{ v.instrutor.nome_exibicao }} — {{ avisos_qualificacao[v.assinatura_instrutor_id] }}</li>
+      {% endfor %}
+    </ul>
+    <p class="discreto">É aviso, não bloqueio: os certificados saem com o nome de quem assina.
+      Para corrigir antes, ajuste a qualificação na ficha do instrutor ou quem assina, na aba
+      <a href="/turmas/{{ turma.id }}?aba=turma">Turma</a>.</p>
+  </div>
+  {% endif %}
 {% endcall %}
 {% endif %}
 

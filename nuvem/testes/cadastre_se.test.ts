@@ -287,7 +287,7 @@ describe("Esqueci minha senha, para qualquer conta", () => {
     expect(m.destinatario).toBe("terc.ficticio@exemplo.org");
     const token = token_de(m.corpo!);
     const s = await cliente.post(`/ativar-acesso/${token}`, { nova: "Outra frase de senha 2026", confirmacao: "Outra frase de senha 2026" }, { seguir: false });
-    expect(s.headers.get("location")).toContain("motivo=redefinida");
+    expect(s.location).toContain("motivo=redefinida");
     await entrar(novoCliente(), c.login, "Outra frase de senha 2026");
   });
 
@@ -316,7 +316,7 @@ describe("Esqueci minha senha, para qualquer conta", () => {
       const [linha] = await db.select().from(e.ativacao_acesso).where(eq(e.ativacao_acesso.usuario_id, conta.id));
       expect(linha!.expira_em!.getTime() - linha!.criado_em.getTime()).toBe(ativar_acesso.VALIDADE_ADMINISTRACAO_MS);
       const s = await cliente.post(`/ativar-acesso/${token_de(m.corpo!)}`, { nova: NOVA, confirmacao: NOVA }, { seguir: false });
-      expect(s.headers.get("location")).toContain("motivo=redefinida");
+      expect(s.location).toContain("motivo=redefinida");
       await entrar(novoCliente(), "superintendente", NOVA);
       // a sessão que já estava aberta caiu
       expect((await aberta.get("/inicio", { seguir: false })).status).toBe(303);
@@ -388,7 +388,7 @@ describe("primeiro acesso do servidor com a senha escolhida na tela", () => {
     expect(await conta(MAIL)).toBeUndefined();
     const s = await cliente.post(`/ativar-acesso/${token}`, {}, { seguir: false });
     // entra logado (26/10/2026): a sessão abre no clique do e-mail, sem a tela de entrada
-    expect(s.headers.get("location")).toBe("/?ativado=1");
+    expect(s.location).toBe("/?ativado=1");
     expect(s.headers.get("set-cookie") ?? "").toMatch(/csso_sessao=[^;]+;.*HttpOnly/i);
     const inicio = await cliente.get("/?ativado=1");
     expect(inicio.status).toBe(200);

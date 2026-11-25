@@ -27,6 +27,7 @@ import {
   anexo as tabela_anexo,
   certificado as tabela_certificado,
   certificado_modelo as tabela_modelo,
+  email_saida as tabela_email,
   inscricao as tabela_inscricao,
   parametro as tabela_parametro,
 } from "../db/esquema/index.js";
@@ -61,6 +62,8 @@ import * as servico_servidores from "./servidores.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import * as setor_equipe from "./setor_equipe.js";
 import * as textos from "./textos.js";
+import * as brigada from "../dominio/brigada.js";
+import * as centro_formacao from "./centro_formacao.js";
 import * as titular_externo from "./titular_externo.js";
 import PizZip from "pizzip";
 import {
@@ -129,6 +132,16 @@ export async function url_base_validacao(tx: Executor): Promise<string> {
   if (doAmbiente) return doAmbiente.replace(/\/+$/, "");
   // a mesma porta do `ferramentas/servidor-local.ts` (que define PORTA quando falta)
   return `http://127.0.0.1:${(process.env.PORTA ?? "").trim() || "8766"}`;
+}
+
+/** O endereço é da própria máquina (loopback): não serve num papel que circula. */
+export function endereco_local(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\./.test(host) || host === "0.0.0.0";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -309,11 +322,15 @@ export async function modelo_da_turma(tx: Executor, turma: TurmaCarregada): Prom
     }
     return [modelo, ""];
   }
-  const genericos = (await tx.query.certificado_modelo.findMany({
-    where: and(isNull(tabela_modelo.treinamento_id), eq(tabela_modelo.vigente, true)),
-    with: COM_TAGS as never,
-    orderBy: [desc(tabela_modelo.criado_em), desc(tabela_modelo.id)],
-  })) as unknown as ModeloCarregado[];
+  const genericos = (
+    (await tx.query.certificado_modelo.findMany({
+      where: and(isNull(tabela_modelo.treinamento_id), eq(tabela_modelo.vigente, true)),
+      with: COM_TAGS as never,
+      orderBy: [desc(tabela_modelo.criado_em), desc(tabela_modelo.id)],
+    })) as unknown as ModeloCarregado[]
+  )
+    // lote 4: o modelo de brigada só sai quando o catálogo o aponta
+    .filter((m) => !m.tags.some((t) => t.campo === "brigada_quadro"));
   if (genericos.length) {
     // o mais recente cujo mapa cobre o arquivo; nenhum cobrindo, o mais recente (e a validação diz o que falta)
     const escolhido =
@@ -379,6 +396,15 @@ export async function validar(
         "ele fica congelado no QR do certificado; defina-o antes da primeira emissão (PRODUCAO.md)",
     );
   }
+  // endereço da própria máquina (127.0.0.1, localhost) no QR: ninguém fora dela valida o papel.
+  // Em produção bloqueia, mesmo declarado; fora dela avisa (24/11/2026).
+  if (endereco_local(await url_base_validacao(tx))) {
+    const texto =
+      "o endereço de validação do QR aponta para esta máquina (127.0.0.1/localhost) — quem ler o QR " +
+      "em outro aparelho não abre o certificado; defina o parâmetro certificado.url_publica";
+    if (ambienteDeProducao()) v.bloqueios.push(texto);
+    else v.avisos.push(texto);
+  }
 
   if (turma.situacao !== "CONCLUIDA") {
     v.bloqueios.push(`${turma.codigo} ainda não foi concluída — o certificado atesta um curso que terminou`);
@@ -404,7 +430,8 @@ export async function validar(
         `mínimo de ${servico_presenca.numero(turma.frequencia_minima_percentual)}%`,
     );
   }
-  if (!reprovado && turma.nota_minima_aprovacao !== null) {
+  const da_brigada = servico_presenca.por_disciplina(turma);
+  if (!reprovado && !da_brigada && turma.nota_minima_aprovacao !== null) {
     if (inscricao.nota_final === null) {
       v.bloqueios.push(
         `a turma exige nota mínima de ${servico_presenca.numero(turma.nota_minima_aprovacao)} e não há nota lançada`,
@@ -429,8 +456,17 @@ export async function validar(
     }
   }
 
+  // lote 4: a brigada (CBMMG) só sai com tudo o que o art. 43, II, pede
+  if (da_brigada) v.bloqueios.push(...(await dados_da_brigada(tx, inscricao)).faltam);
+
   const [modelo, aviso_modelo] = await modelo_da_turma(tx, turma);
   if (aviso_modelo) v.avisos.push(aviso_modelo);
+  if (modelo !== null && da_brigada && !Object.values(CertificadoModelo.mapa_de_tags(modelo)).includes("brigada_quadro")) {
+    v.bloqueios.push(
+      `'${turma.treinamento.nome}' tem disciplinas (brigada), e o modelo ${CertificadoModelo.rotulo(modelo)} não tem o ` +
+        `quadro de disciplinas — aponte o modelo “${servico_certificado.MODELO_BRIGADA_NOME}” em /treinamentos/catalogo`,
+    );
+  }
   if (modelo === null) {
     v.bloqueios.push(
       `'${turma.treinamento.nome}' não tem modelo de certificado — aponte ` +
@@ -525,6 +561,113 @@ async function _valores_livres(
 }
 
 // ---------------------------------------------------------------------
+// Brigada (lote 4)
+// ---------------------------------------------------------------------
+/** O responsável pela formação: o escolhido na turma, ou o primeiro instrutor que assina. */
+export function responsavel_da_formacao(turma: TurmaCarregada): VinculoInstrutor["instrutor"] | null {
+  if (turma.responsavel_formacao_id !== null) {
+    const v = turma.instrutores.find((i) => i.assinatura_instrutor_id === turma.responsavel_formacao_id);
+    if (v) return v.instrutor;
+    if (turma.responsavel_formacao) return turma.responsavel_formacao as VinculoInstrutor["instrutor"];
+  }
+  return instrutores_que_assinam(turma)[0]?.instrutor ?? null;
+}
+
+/** O endereço completo do local do curso: o do cadastro de Locais, com a cidade/UF do campus. */
+function _falta_endereco(turma: TurmaCarregada): string[] {
+  const local = turma.local_cadastrado;
+  const frases: string[] = [];
+  if (!local) {
+    frases.push(
+      `${turma.codigo} não usa um local do cadastro de Locais` +
+        (turma.local ? ` ("${turma.local}" foi digitado)` : "") +
+        ": escolha na ficha da turma um local cadastrado, com o endereço completo",
+    );
+  } else if (!(local.endereco ?? "").trim()) {
+    frases.push(`falta o endereço completo do local "${local.nome}" (de ${turma.codigo}): complete em Treinamentos › Locais`);
+  }
+  if (!turma.campus) frases.push(`${turma.codigo} não tem campus: a cidade e a UF do endereço vêm do campus da turma`);
+  return frases;
+}
+
+export function endereco_do_curso(turma: TurmaCarregada): string | null {
+  const endereco = (turma.local_cadastrado?.endereco ?? "").replace(/\s+/g, " ").trim();
+  if (!endereco || !turma.campus) return null;
+  return `${endereco.replace(/[.,;]+$/, "")}, ${turma.campus.cidade}/${turma.campus.uf}`;
+}
+
+/**
+ * O bloco congelado da brigada e o que falta para ele (frases da lista de bloqueios, com o nome
+ * de quem). Sem nada faltando, `bloco` vem preenchido.
+ */
+export async function dados_da_brigada(
+  tx: Executor,
+  inscricao: InscricaoCarregada,
+): Promise<{ bloco: servico_certificado.BrigadaCongelada | null; faltam: string[] }> {
+  const turma = inscricao.turma;
+  const quem = nome_exibicao(inscricao.participante);
+  const faltam: string[] = [];
+  const disciplinas = turma.treinamento.disciplinas.map((d) => ({
+    nome: d.nome,
+    teorica: d.linhas.find((l) => l.tipo === "TEORICA")?.tempos ?? 0,
+    pratica: d.linhas.find((l) => l.tipo === "PRATICA")?.tempos ?? 0,
+    nota: ((n) => (n === null ? null : brigada.ler_nota(String(n))))(servico_presenca.nota_da_disciplina(inscricao, d.id)),
+  }));
+  for (const d of disciplinas) if (d.nota === null) faltam.push(`falta a nota de ${d.nome} de ${quem}, na aba Presenças`);
+  if (!inscricao.participante.cpf) {
+    faltam.push(`falta o CPF de ${quem} — a equipe informa na aba Inscrições (CPF), ou o próprio servidor em Minha conta`);
+  }
+  const local_atuacao = (inscricao.local_atuacao ?? "").trim();
+  if (!local_atuacao) faltam.push(`falta o local de atuação de ${quem}, na aba Inscrições`);
+  const resp = responsavel_da_formacao(turma);
+  if (!resp) {
+    faltam.push(`${turma.codigo} não tem responsável pela formação (nenhum instrutor assina)`);
+  } else {
+    faltam.push(
+      ...brigada.pendencias_do_responsavel({
+        nome: AssinaturaInstrutor.nome_exibicao(resp),
+        profissao: resp.profissao,
+        credenciamento_cbmmg: resp.credenciamento_cbmmg,
+        conselho: resp.conselho,
+        registro_conselho: resp.registro_conselho,
+        tem_cpf: Boolean(resp.cpf),
+      }),
+    );
+  }
+  const centro = await centro_formacao.ler(tx);
+  if (!centro.nome) faltam.push("falta o nome do centro de formação, em Catálogo de treinamentos (Centro de formação da brigada)");
+  if (!centro.cnpj) faltam.push("falta o CNPJ do centro de formação, em Catálogo de treinamentos (Centro de formação da brigada)");
+  // o endereço sai do cadastro de Locais (+ cidade/UF do campus); a frase diz qual local completar
+  const endereco = endereco_do_curso(turma);
+  if (!endereco) faltam.push(..._falta_endereco(turma));
+  if (faltam.length) return { bloco: null, faltam };
+  let rubrica: string | null = null;
+  if (resp!.imagem_anexo_id !== null) {
+    const [anexo] = await tx.select().from(tabela_anexo).where(eq(tabela_anexo.id, resp!.imagem_anexo_id));
+    rubrica = anexo ? anexo.sha256 : null;
+  }
+  return {
+    faltam,
+    bloco: {
+      versao: 1,
+      centro_nome: centro.nome!,
+      centro_cnpj: centro_formacao.formatar_cnpj(centro.cnpj),
+      endereco: endereco!,
+      local_atuacao,
+      responsavel: {
+        nome: AssinaturaInstrutor.nome_exibicao(resp!),
+        cpf: resp!.cpf ?? null,
+        profissao: resp!.profissao ?? null,
+        credenciamento: resp!.credenciamento_cbmmg ?? null,
+        registro: AssinaturaInstrutor.registro_completo(resp!) || null,
+        rubrica_sha256: rubrica,
+      },
+      disciplinas,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------
 // Montagem do contexto
 // ---------------------------------------------------------------------
 async function _dados_do_instrutor(tx: Executor, vinculo: VinculoInstrutor, pede_cpf = false) {
@@ -598,6 +741,8 @@ export async function montar_contexto_para_emitir(
   // NUVEM: texto fixo e campos de turma/participante, resolvidos e congelados
   const [da_turma, do_participante] = await _valores_livres(tx, inscricao);
   const campos_livres = campos_certificado.resolver(d.modelo, da_turma, do_participante);
+  // lote 4: o bloco da brigada (a validação já barrou o que falta; na conferência, sai o que houver)
+  const da_brigada = servico_presenca.por_disciplina(turma) ? (await dados_da_brigada(tx, inscricao)).bloco : null;
 
   return new ContextoCertificado({
     participante_nome: nome_exibicao(participante),
@@ -616,6 +761,7 @@ export async function montar_contexto_para_emitir(
     turma_data_inicio: turma.data_inicio,
     turma_data_fim: turma.data_fim,
     carga_horaria: T.carga_efetiva(turma),
+    carga_unidade: T.unidade(turma),
     turma_local: turma.local || "",
     turma_descricao: turma.descricao || "",
     turma_tipo_capacitacao: turma.tipo_capacitacao ?? null,
@@ -635,8 +781,10 @@ export async function montar_contexto_para_emitir(
     chave_validacao: d.chave,
     data_vencimento: vencimento,
     url_validacao: `${await url_base_validacao(tx)}/validar/${d.chave}`,
-    setor_sigla: setor ? setor.sigla_composta : "",
-    setor_nome: setor ? setor.nome_extenso : "",
+    // lote 5 (T8): o cabeçalho é de quem PROMOVE a turma; sem unidade promotora, o setor
+    // emissor, como antes. Congela no certificado: os já emitidos e as segundas vias não mudam
+    setor_sigla: turma.unidade_promotora ? (turma.unidade_promotora.sigla ?? "") : setor ? setor.sigla_composta : "",
+    setor_nome: turma.unidade_promotora ? turma.unidade_promotora.nome_extenso : setor ? setor.nome_extenso : "",
     setor_endereco: setor ? setor.endereco || "" : "",
     cidade: setor ? setor.cidade : "Diamantina",
     modelo_id: d.modelo.id,
@@ -653,6 +801,10 @@ export async function montar_contexto_para_emitir(
     avisos: [...(d.avisos ?? [])],
     // o PDF da emissão nova sai com as frases inteiras; o de antes, como saiu
     redacao: servico_certificado.REDACAO_ATUAL,
+    nota_escala: inscricao.nota_escala ?? 10,
+    brigada: da_brigada,
+    // na brigada o CPF do aluno vai sempre (art. 43, II); fora dela, só quando o modelo o pede
+    ...(da_brigada ? { participante_cpf: participante.cpf || null } : {}),
   });
 }
 
@@ -937,6 +1089,17 @@ export async function anular(
   if (opcoes.substituido_por) campos.substituido_por_id = opcoes.substituido_por.id;
   await tx.update(tabela_certificado).set(campos).where(eq(tabela_certificado.id, certificado.id));
   Object.assign(certificado, campos);
+  // o e-mail que já estava na fila não deve sair (nem falhar 5 vezes): o papel não vale mais
+  await tx
+    .update(tabela_email)
+    .set({ situacao: "CANCELADO", ultimo_erro: "Certificado anulado antes do envio." })
+    .where(
+      and(
+        eq(tabela_email.certificado_id, certificado.id),
+        eq(tabela_email.tipo, "CERTIFICADO"),
+        eq(tabela_email.situacao, "PENDENTE"),
+      ),
+    );
 
   await auditoria.registrar(tx, {
     entidade: "certificado",

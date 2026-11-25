@@ -159,6 +159,24 @@ describe("a vitrine pública", () => {
     expect((await visitante.get("/cursos?aba=realizados")).text).toContain("Trabalho em Altura");
   });
 
+  it("a inscrição abre em popup, com os três passos, vínculo em botões e a declaração do pré-requisito", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    expect((await _publicar(id, { pre_requisito: "Ter feito a NR-35 básica" })).status).toBe(303);
+    const ficha = (await novoCliente().get(`/cursos/${codigo}`)).text;
+    expect(ficha).toContain('href="#popup-inscricao"');
+    expect(ficha).toMatch(/<dialog class="popup" id="popup-inscricao"/);
+    expect(ficha).toContain("Você envia");
+    expect(ficha).toContain("confere");
+    expect(ficha).toContain("Confirmação por e-mail");
+    expect(ficha).toMatch(/<input type="radio" name="vinculo" value="SERVIDOR"/);
+    expect(ficha).not.toContain('<select id="p-vinculo"');
+    expect(ficha).toContain('name="declaro_pre_requisito"');
+    // sem pré-requisito, sem a caixa
+    await _publicar(id, { pre_requisito: "" });
+    expect((await novoCliente().get(`/cursos/${codigo}`)).text).not.toContain("declaro_pre_requisito");
+  });
+
   it("turma lotada fica em Abertas com o selo e sem formulário", async () => {
     const id = await _turma({}, 1);
     const codigo = await _codigo(id);
@@ -188,6 +206,23 @@ describe("a vitrine pública", () => {
     await visitante.post(`/cursos/${codigo}/inscricao`, { ...pedido, nome: "Outra Pessoa", email: "outra@exemplo.com" }, { seguir: false });
     const [m] = await db.select({ n: count() }).from(e.inscricao).where(eq(e.inscricao.turma_id, id));
     expect(Number(m!.n)).toBe(1);
+  });
+
+  it("CSRF (24/11/2026): logado, o pedido de vaga passa com o token que a página pôs; sem ele, 403", async () => {
+    const id = await _turma();
+    const codigo = await _codigo(id);
+    await _publicar(id);
+    const logado = await entrar(novoCliente(), "servidor_consulta");
+    const pagina = (await logado.get(`/cursos/${codigo}`)).text;
+    const token = /<form[^>]*action="\/cursos\/[^"]+\/inscricao"[^>]*><input type="hidden" name="_csrf" value="([^"]+)">/.exec(pagina);
+    expect(token, "o formulário público leva o token de quem está logado").not.toBeNull();
+    const pedido = { nome: "Maria de Teste", vinculo: "DISCENTE", siape: "", email: "maria@exemplo.com", organizacao: "", consentimento: "sim", site: "" };
+    const sem = await logado.post(`/cursos/${codigo}/inscricao`, pedido, { seguir: false, sem_csrf: true });
+    expect(sem.status).toBe(403);
+    const com = await logado.post(`/cursos/${codigo}/inscricao`, { ...pedido, _csrf: token![1]! }, { seguir: false, sem_csrf: true });
+    expect(com.status).toBe(303);
+    const [n] = await db.select({ n: count() }).from(e.inscricao).where(eq(e.inscricao.turma_id, id));
+    expect(Number(n!.n)).toBe(1);
   });
 
   it("o HTML público não leva nome, e-mail nem SIAPE de inscrito, nem estilo ou script inline", async () => {

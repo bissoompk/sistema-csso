@@ -64,8 +64,8 @@ const SEM_BUNDLE =
   "<body style='font-family:system-ui;max-width:40em;margin:3em auto'>" +
   "<h1>O front compilado ainda não foi montado nesta máquina.</h1>" +
   "<p>Ele nasce de <code>frontend/</code>: <code>cd frontend &amp;&amp; " +
-  "npm install &amp;&amp; npm run build</code> escreve " +
-  "<code>app/estaticos/app/</code> (copiado para <code>nuvem/public/estaticos/app/</code>), " +
+  "npm ci &amp;&amp; npm run build</code> escreve " +
+  "<code>nuvem/public/estaticos/app/</code>, " +
   "e esta página passa a existir. " +
   "O sistema completo continua em <a href='/inicio'>/inicio</a> e a tela " +
   "de bolso em <a href='/celular'>/celular</a>.</p></body></html>";

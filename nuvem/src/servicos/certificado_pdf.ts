@@ -31,7 +31,13 @@ import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } 
 import { matriz_qr } from "./qr.js";
 import { obterArmazenamento } from "./armazenamento.js";
 import * as anexos from "./anexos.js";
-import { CAMPOS_CERTIFICADO, linha_do_instrutor, type ContextoCertificado } from "./certificado.js";
+import {
+  CAMPOS_CERTIFICADO,
+  MARCADOR_CITACAO_LEGAL,
+  linha_do_instrutor,
+  quadro_da_brigada,
+  type ContextoCertificado,
+} from "./certificado.js";
 
 export const TIPO_PDF = "application/pdf";
 
@@ -74,12 +80,25 @@ function desenhar_qr(pagina: PDFPage, texto: string, x: number, y: number, lado:
 // =====================================================================
 type Trecho = { texto: string; negrito?: boolean };
 
+/** O texto desenhado, página a página (o teste de paridade com o .docx lê daqui). */
+export interface TextoDesenhado {
+  pagina: number;
+  texto: string;
+}
+
 class Fontes {
   private readonly cabe = new Map<string, boolean>();
   constructor(
     readonly normal: PDFFont,
     readonly negrito: PDFFont,
+    readonly registro: TextoDesenhado[] | null = null,
   ) {}
+  /** Anota o que foi desenhado em `pagina` (índice da página no documento). */
+  anotar(pagina: PDFPage, texto: string): void {
+    if (!this.registro) return;
+    const indice = pagina.doc.getPages().indexOf(pagina);
+    this.registro.push({ pagina: indice, texto });
+  }
   /** O texto só com o que a Helvetica (WinAnsi) desenha; o resto vira "?". */
   limpo(texto: string): string {
     let saida = "";
@@ -170,6 +189,7 @@ function paragrafo(
       pagina.drawText(t.texto, { x, y, size: o.tamanho, font: fonte, color: o.cor ?? COR_TEXTO });
       x += fonte.widthOfTextAtSize(t.texto, o.tamanho);
     }
+    fontes.anotar(pagina, linha.map((t) => t.texto).join(""));
     y -= passo;
   }
   return y;
@@ -179,6 +199,13 @@ function paragrafo(
 function campo(contexto: ContextoCertificado, codigo: string): string {
   const valor = CAMPOS_CERTIFICADO[codigo]!.obter(contexto);
   return typeof valor === "string" ? valor.trim() : "";
+}
+
+/** O parágrafo de certificação em texto corrido (testes e conferência). */
+export function texto_de_certificacao(contexto: ContextoCertificado): string {
+  return trechos_de_certificacao(contexto)
+    .map((t) => t.texto)
+    .join("");
 }
 
 /** O parágrafo de certificação, com o texto do `certificado_padrao_v1.docx` (ou do v2). */
@@ -197,7 +224,14 @@ function trechos_de_certificacao(contexto: ContextoCertificado): Trecho[] {
     t.push({ texto: ", concluiu o treinamento " }, { texto: v("treinamento_nome"), negrito: true });
     if (v("treinamento_norma")) t.push({ texto: ` ${v("treinamento_norma")}` });
   }
-  t.push({ texto: `, com carga horária de ${v("treinamento_carga_horaria")}` });
+  // lote 3 escreveu "com carga de 10 tempos"; desde a redação 4 (lote 4) é "com carga horária de
+  // 10 tempos", como o .docx e o Anexo I. O já emitido reimprime como saiu (RN-15).
+  t.push({
+    texto:
+      contexto.carga_unidade === "TEMPOS" && contexto.redacao < 4
+        ? `, com carga de ${v("treinamento_carga_horaria")}`
+        : `, com carga horária de ${v("treinamento_carga_horaria")}`,
+  });
   if (v("turma_periodo_extenso")) t.push({ texto: `, realizado ${v("turma_periodo_extenso")}` });
   if (v("turma_local")) t.push({ texto: ` em ${v("turma_local")}` });
   if (v("turma_unidade_promotora")) t.push({ texto: `, promovido por ${v("turma_unidade_promotora")}` });
@@ -254,12 +288,146 @@ function desenhar_tarja(pagina: PDFPage, fontes: Fontes, tarja: string): void {
   });
 }
 
+// =====================================================================
+// Brigada (lote 4): o Anexo I da Portaria CBMMG nº 54/2020, frente e verso
+// =====================================================================
+/**
+ * O texto do certificado de brigada, na ordem do papel. É o MESMO texto fixo do
+ * `certificado_brigada_cbmmg_v1.docx` (`ferramentas/gerar-certificado-brigada.mjs`): o teste de
+ * paridade compara os dois, frente e verso.
+ */
+export function textos_da_brigada(contexto: ContextoCertificado): {
+  frente: Trecho[][];
+  instrutor: string;
+  rodape_frente: string;
+  titulo_verso: string;
+  cabecalho_quadro: [string, string, string];
+  quadro: ReturnType<typeof quadro_da_brigada>;
+  verso: string[];
+  rodape_verso: string;
+} {
+  const v = (codigo: string) => campo(contexto, codigo);
+  const citacao = (contexto.campos_livres[MARCADOR_CITACAO_LEGAL]?.valor ?? "").trim();
+  return {
+    frente: [
+      [{ texto: "CERTIFICADO", negrito: true }],
+      [
+        { texto: "Certificamos que " },
+        { texto: v("participante_nome"), negrito: true },
+        { texto: `, portador(a) do CPF ${v("participante_cpf")}${CAMPOS_CERTIFICADO.participante_identidade_trecho!.obter(contexto)}, concluiu com êxito a Formação do Curso de ` },
+        { texto: v("treinamento_nome"), negrito: true },
+        {
+          texto:
+            `, com carga horária de ${v("treinamento_carga_horaria")}, ${citacao}, promovido pelo Centro de Formação ` +
+            `${v("brigada_centro_nome")}, CNPJ ${v("brigada_centro_cnpj")}, realizado no endereço situado à ${v("brigada_endereco")}.`,
+        },
+      ],
+      [{ texto: `Local de atuação do brigadista: ${v("brigada_local_atuacao")}.` }],
+      [{ texto: `Curso realizado no período de ${v("turma_data_inicio")} a ${v("turma_data_fim")}.` }],
+      [{ texto: `${v("cidade")}, ${v("certificado_data_extenso")}.` }],
+    ],
+    instrutor: v("brigada_instrutor_linha"),
+    rodape_frente:
+      `Código do Certificado: ${v("certificado_rotulo")} · ${v("certificado_frase_validade")} · ` +
+      `Verifique autenticidade em: ${v("certificado_url_validacao")}`,
+    titulo_verso: "DISCIPLINAS E NOTAS",
+    cabecalho_quadro: ["Disciplina", "Carga", "Nota"],
+    quadro: quadro_da_brigada(contexto.brigada),
+    verso: [`NOTA FINAL ${v("brigada_nota_final")}`, "Cada tempo (t) equivale a 50 minutos."],
+    rodape_verso: `Código do Certificado: ${v("certificado_rotulo")} · Verifique autenticidade em: ${v("certificado_url_validacao")}`,
+  };
+}
+
+function texto_em(pagina: PDFPage, fontes: Fontes, texto: string, o: { x: number; y: number; tamanho: number; negrito?: boolean; cor?: ReturnType<typeof rgb>; largura: number }) {
+  const fonte = o.negrito ? fontes.negrito : fontes.normal;
+  const limpo = fontes.limpo(texto);
+  let tamanho = o.tamanho;
+  while (tamanho > 6 && fonte.widthOfTextAtSize(limpo, tamanho) > o.largura) tamanho -= 0.5;
+  pagina.drawText(limpo, { x: o.x, y: o.y, size: tamanho, font: fonte, color: o.cor ?? COR_TEXTO });
+  fontes.anotar(pagina, limpo);
+}
+
+async function desenhar_brigada(documento: PDFDocument, fontes: Fontes, contexto: ContextoCertificado, tarja: Tarja): Promise<void> {
+  const t = textos_da_brigada(contexto);
+  const util = LARGURA - 2 * MARGEM;
+  const moldura = (p: PDFPage) =>
+    p.drawRectangle({ x: MARGEM / 2, y: MARGEM / 2, width: LARGURA - MARGEM, height: ALTURA - MARGEM, borderColor: COR_TITULO, borderWidth: 1.2 });
+
+  // ---- frente ----
+  const pagina = documento.addPage([LARGURA, ALTURA]);
+  moldura(pagina);
+  let y = ALTURA - MARGEM - 30;
+  y = paragrafo(pagina, fontes, t.frente[0]!, { y, tamanho: 30, largura: util, cor: COR_TITULO });
+  y -= 14;
+  y = paragrafo(pagina, fontes, t.frente[1]!, { y, tamanho: 12.5, largura: util - 40, entrelinha: 1.45 });
+  y -= 4;
+  for (const p of t.frente.slice(2)) y = paragrafo(pagina, fontes, p, { y, tamanho: 12, largura: util - 40 }) - 2;
+  y -= 6;
+  const rubrica = await _rubrica(documento, contexto.brigada?.responsavel.rubrica_sha256);
+  if (rubrica) {
+    const larg = 99;
+    const alt = Math.min(40, (rubrica.height / rubrica.width) * larg);
+    pagina.drawImage(rubrica, { x: LARGURA / 2 - larg / 2, y: y - alt + 8, width: larg, height: alt });
+    y -= alt - 4;
+  } else {
+    y -= 22;
+  }
+  pagina.drawLine({ start: { x: LARGURA / 2 - 200, y }, end: { x: LARGURA / 2 + 200, y }, thickness: 0.7, color: COR_SUAVE });
+  y -= 13;
+  paragrafo(pagina, fontes, [{ texto: t.instrutor }], { y, tamanho: 10, largura: util });
+  const lado_qr = 66;
+  const base = MARGEM / 2 + 8;
+  if (contexto.url_validacao) desenhar_qr(pagina, contexto.url_validacao, MARGEM, base, lado_qr);
+  texto_em(pagina, fontes, t.rodape_frente, { x: MARGEM + lado_qr + 10, y: base + 8, tamanho: 8.5, cor: COR_SUAVE, largura: LARGURA - MARGEM - (MARGEM + lado_qr + 10) });
+
+  // ---- verso ----
+  const verso = documento.addPage([LARGURA, ALTURA]);
+  moldura(verso);
+  let yv = ALTURA - MARGEM - 20;
+  yv = paragrafo(verso, fontes, [{ texto: t.titulo_verso, negrito: true }], { y: yv, tamanho: 16, largura: util, cor: COR_TITULO });
+  yv -= 8;
+  const colunas = [util * 0.6, util * 0.2, util * 0.2];
+  const x0 = MARGEM;
+  const altura_linha = 18;
+  const linha_tabela = (celulas: [string, string, string], o: { negrito?: boolean; fundo?: boolean; recuo?: boolean }) => {
+    if (o.fundo) verso.drawRectangle({ x: x0, y: yv - 5, width: util, height: altura_linha, color: rgb(0.91, 0.93, 0.96) });
+    verso.drawRectangle({ x: x0, y: yv - 5, width: util, height: altura_linha, borderColor: COR_SUAVE, borderWidth: 0.5 });
+    let x = x0;
+    for (const [i, texto] of celulas.entries()) {
+      const largura = colunas[i]!;
+      const fonte = o.negrito ? fontes.negrito : fontes.normal;
+      const limpo = fontes.limpo(texto);
+      const xt = i === 0 ? x + (o.recuo ? 22 : 6) : x + largura / 2 - fonte.widthOfTextAtSize(limpo, 10) / 2;
+      if (limpo) {
+        verso.drawText(limpo, { x: xt, y: yv, size: 10, font: fonte, color: COR_TEXTO });
+        fontes.anotar(verso, limpo);
+      }
+      x += largura;
+    }
+    yv -= altura_linha;
+  };
+  linha_tabela(t.cabecalho_quadro, { negrito: true, fundo: true });
+  for (const l of t.quadro) linha_tabela([l.rotulo, l.tempos, l.nota], { negrito: l.agrupador, recuo: !l.agrupador });
+  yv -= 14;
+  yv = paragrafo(verso, fontes, [{ texto: t.verso[0]!, negrito: true }], { y: yv, tamanho: 13, largura: util });
+  yv -= 2;
+  paragrafo(verso, fontes, [{ texto: t.verso[1]! }], { y: yv, tamanho: 10, largura: util });
+  texto_em(verso, fontes, t.rodape_verso, { x: MARGEM, y: MARGEM / 2 + 10, tamanho: 8, cor: COR_SUAVE, largura: util });
+
+  if (tarja) {
+    desenhar_tarja(verso, fontes, tarja);
+    desenhar_tarja(pagina, fontes, tarja);
+  }
+}
+
 async function desenhar_certificado(
   documento: PDFDocument,
   fontes: Fontes,
   contexto: ContextoCertificado,
   tarja: Tarja = null,
 ): Promise<void> {
+  // lote 4: o certificado de brigada tem o seu papel (Anexo I), frente e verso
+  if (contexto.brigada) return desenhar_brigada(documento, fontes, contexto, tarja);
   const v = (codigo: string) => campo(contexto, codigo);
   const pagina = documento.addPage([LARGURA, ALTURA]);
   const util = LARGURA - 2 * MARGEM;
@@ -384,7 +552,11 @@ async function desenhar_certificado(
  * Um ou vários certificados num só PDF (o lote da turma sai num arquivo).
  * `tarjas[i]` é a frase do anulado para `contextos[i]` (`null`: em vigor).
  */
-export async function gerar_pdf(contextos: ContextoCertificado[], tarjas: Tarja[] = []): Promise<Uint8Array> {
+export async function gerar_pdf(
+  contextos: ContextoCertificado[],
+  tarjas: Tarja[] = [],
+  opcoes: { registro?: TextoDesenhado[] } = {},
+): Promise<Uint8Array> {
   const documento = await PDFDocument.create();
   documento.setTitle(contextos.length === 1 ? `Certificado ${contextos[0]!.rotulo}` : "Certificados");
   documento.setCreator("Sistema SISA");
@@ -392,6 +564,7 @@ export async function gerar_pdf(contextos: ContextoCertificado[], tarjas: Tarja[
   const fontes = new Fontes(
     await documento.embedFont(StandardFonts.Helvetica),
     await documento.embedFont(StandardFonts.HelveticaBold),
+    opcoes.registro ?? null,
   );
   for (const [i, contexto] of contextos.entries()) await desenhar_certificado(documento, fontes, contexto, tarjas[i] ?? null);
   return documento.save();

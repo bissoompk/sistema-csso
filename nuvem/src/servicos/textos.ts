@@ -6,6 +6,7 @@
  * caixa nesses campos. As funções abaixo são de *apresentação* e de
  * *comparação*, nunca de gravação.
  */
+import * as mencao from "../nucleo/mencao_saude.js";
 import { createHash } from "node:crypto";
 import { RegraViolada } from "../nucleo/erros.js";
 
@@ -216,6 +217,70 @@ export const CONTEXTO_NEXO_OCUPACIONAL = "nexo_ocupacional";
 // em todo contexto (`TERMOS_SEMPRE_PROIBIDOS`).
 export const CONTEXTO_AVISO_SAUDE = "aviso_saude";
 
+/**
+ * EPI, nos campos que falam da PESSOA (observação da entrega, parecer, justificativas, motivos e
+ * complementos, campos do pedido, comunicação do titular): bloqueia a lista de sempre e mais os
+ * termos clínicos abaixo, e a mensagem fala de EPI, não de adicional (24/11/2026).
+ */
+export const CONTEXTO_EPI_PESSOA = "epi_pessoa";
+
+/**
+ * EPI, nos campos que descrevem o MATERIAL (lote, estoque): só a lista de sempre, com a mensagem do
+ * EPI. "Lesão", "laudo", "dermatite" aparecem na descrição normal de um equipamento ("protege contra
+ * lesões", "laudo de ensaio") e não podem ser bloqueados ali.
+ */
+export const CONTEXTO_EPI_MATERIAL = "epi_material";
+
+/**
+ * EPI, nos campos que descrevem a EXPOSIÇÃO DO POSTO (pedido: rotina de trabalho e riscos
+ * declarados). A lista de sempre (e "CID") recusa. Os termos de saúde do EPI, dos dois grupos
+ * (alergia, dermatite, asma… e lesão, cirurgia…), exigem a caixa de confirmação, com a mensagem
+ * lembrando que o campo descreve o posto e não a saúde de quem pede (lote 5, ajuste 2:
+ * "tenho alergia ao látex" passava calado). "Risco de dermatite de contato" e "risco de lesão por
+ * corte" descrevem o agente: passam, com a caixa.
+ */
+export const CONTEXTO_EPI_POSTO = "epi_posto";
+
+/**
+ * Termos clínicos a mais no EPI-pessoa, em DOIS NÍVEIS (24/11/2026). Palavra inteira, sem acento e
+ * em minúsculas na comparação. Nada disso vale no material (catálogo, lote) nem no posto (rotina de
+ * trabalho, riscos declarados).
+ *
+ * BLOQUEIO — só fala da saúde de alguém: recusado sem confirmação possível.
+ */
+export const TERMOS_SAUDE_EPI_BLOQUEIO: readonly string[] = [
+  "cid",
+  "alergia", "alergias", "alergico", "alergica", "alergicos", "alergicas",
+  "dermatite", "dermatites", "eczema", "intolerancia", "sensibilidade cutanea",
+  "asma", "asmatico", "asmatica", "bronquite", "rinite",
+  "hipertensao", "hipertenso", "hipertensa", "diabetes", "diabetico", "diabetica",
+  "epilepsia", "epileptico", "epileptica", "convulsao", "convulsoes",
+  "depressao", "ansiedade", "transtorno", "psiquiatrico", "psiquiatrica",
+  "lesionado", "lesionada", "lesionados", "lesionadas", "lesionou",
+  "tendinite", "bursite", "hernia", "lombalgia", "dort",
+  "pos-operatorio",
+  "laudo medico", "licenca medica", "licenca para tratamento de saude", "afastamento medico", "tratamento medico",
+  "remedio", "sintoma", "sintomas",
+];
+
+/**
+ * AVISO — vocabulário de quem analisa EPI numa universidade com área de saúde ("máscara cirúrgica",
+ * "manipulação de medicamentos", "exposição a hepatite B", "risco de lesão por corte"): grava só com
+ * a caixa "confirmo que a menção é necessária", e a confirmação vai para a trilha com o nome de quem
+ * marcou (`nucleo/mencao_saude.ts`).
+ */
+export const TERMOS_SAUDE_EPI_AVISO: readonly string[] = [
+  "lesao", "lesoes",
+  "cirurgia", "cirurgico", "cirurgica", "operado", "operada",
+  "medicamento", "medicamentos", "medicacao",
+  "cancer", "tumor", "hiv", "hepatite",
+];
+
+/** Os dois níveis juntos: é o que o EPI-pessoa procura. */
+export const TERMOS_SAUDE_EPI: readonly string[] = [...TERMOS_SAUDE_EPI_BLOQUEIO, ...TERMOS_SAUDE_EPI_AVISO];
+
+const _CHAVES_AVISO_EPI = new Set(TERMOS_SAUDE_EPI_AVISO);
+
 /** Identificador e código de doença: nem com confirmação. */
 export const TERMOS_SEMPRE_PROIBIDOS: readonly string[] = ["cid-10", "cid 10", "cpf"];
 
@@ -223,6 +288,9 @@ const DISPENSAS_POR_CONTEXTO: Record<string, readonly string[]> = {
   [CONTEXTO_PADRAO]: [],
   [CONTEXTO_NEXO_OCUPACIONAL]: ["doenca", "doença"],
   [CONTEXTO_AVISO_SAUDE]: [],
+  [CONTEXTO_EPI_PESSOA]: [],
+  [CONTEXTO_EPI_MATERIAL]: [],
+  [CONTEXTO_EPI_POSTO]: [],
 };
 
 /** Termo de saúde/dado sensível encontrado em campo de texto livre. */
@@ -240,6 +308,41 @@ export class MencaoDeSaude extends TextoProibido {
   ) {
     super(mensagem);
   }
+}
+
+/**
+ * EPI 3 (lote 5): no catálogo e no lote, os termos de saúde do EPI (dermatite, alergia, lesão…)
+ * NÃO bloqueiam — "protege contra lesões" descreve o equipamento —, mas a tela avisa. A lista
+ * proibida de sempre continua bloqueando ali (`CONTEXTO_EPI_MATERIAL`). Devolve a frase do aviso,
+ * ou `null` quando nenhum campo cita termo de saúde.
+ */
+export function aviso_de_saude_epi(campos: Record<string, string | null | undefined>): string | null {
+  const citados: string[] = [];
+  const onde: string[] = [];
+  for (const [rotulo, texto] of Object.entries(campos)) {
+    const sempre = new Set(termos_proibidos_em(texto, CONTEXTO_EPI_MATERIAL));
+    const achados = termos_proibidos_em(texto, CONTEXTO_EPI_PESSOA).filter((t) => !sempre.has(t));
+    if (!achados.length) continue;
+    onde.push(rotulo);
+    for (const t of achados) {
+      const como_escrito = _como_escrito(texto ?? "", t);
+      if (!citados.includes(como_escrito)) citados.push(como_escrito);
+    }
+  }
+  if (!citados.length) return null;
+  return (
+    `Aviso: ${onde.join(" e ")} cita ${citados.map((t) => `“${t}”`).join(", ")}. Aqui se descreve o ` +
+    "equipamento; dado de saúde de uma pessoa (diagnóstico, alergia, lesão de alguém) não entra no " +
+    "catálogo nem no lote. Foi gravado como está — confira o texto."
+  );
+}
+
+/** O termo (normalizado, "lesao") como a pessoa o escreveu no texto ("lesão"). */
+function _como_escrito(texto: string, termo: string): string {
+  // letra a letra: a letra acentuada do português vira UMA letra sem acento, e a posição se mantém
+  const plano = [...texto].map((ch) => sem_acento(ch).toLowerCase() || ch).join("");
+  const i = plano.indexOf(termo);
+  return i < 0 ? termo : [...texto].slice(i, i + [...termo].length).join("");
 }
 
 /** Os termos de saúde (os confirmáveis) que o texto traz. */
@@ -271,7 +374,13 @@ export function termos_proibidos_em(texto: string | null | undefined, contexto: 
   if (!texto) return [];
   const alvo = chave_busca(texto);
   const achados = new Set<string>();
-  for (const termo of TERMOS_PROIBIDOS) {
+  const lista =
+    contexto === CONTEXTO_EPI_PESSOA
+      ? [...TERMOS_PROIBIDOS, ...TERMOS_SAUDE_EPI]
+      : contexto === CONTEXTO_EPI_POSTO
+        ? [...TERMOS_PROIBIDOS, ...TERMOS_SAUDE_EPI] // inclui "cid": "CID J45" sem o "-10" também é código de doença
+        : TERMOS_PROIBIDOS;
+  for (const termo of lista) {
     const chave = chave_busca(termo);
     if (dispensadas.has(chave)) continue;
     // `\b` do Python em str é Unicode; o do JS é só ASCII — daí os lookarounds
@@ -305,6 +414,56 @@ export function exigir_texto_limpo<T extends string | null | undefined>(
       );
     }
     achados = duros;
+  }
+  if (achados.length && contexto === CONTEXTO_EPI_PESSOA) {
+    // dois níveis (24/11/2026): o bloqueio recusa sempre; o aviso grava com a caixa marcada
+    const aviso = achados.filter((t) => _CHAVES_AVISO_EPI.has(chave_busca(t)));
+    const duros = achados.filter((t) => !_CHAVES_AVISO_EPI.has(chave_busca(t)));
+    if (!duros.length) {
+      if (mencao_confirmada || mencao.marcada()) {
+        mencao.anotar(campo, aviso);
+        return texto;
+      }
+      throw new MencaoDeSaude(
+        `O campo ${campo} menciona termo que pode ser dado de saúde (${aviso.join(", ")}). Se o texto descreve o risco ou o ` +
+          "equipamento — e não a saúde de uma pessoa —, marque “confirmo que a menção é " +
+          "necessária” e envie de novo: a confirmação fica no histórico com o seu nome. Estado de " +
+          "saúde de uma pessoa não se registra no EPI (LGPD art. 11).",
+        aviso,
+      );
+    }
+    achados = duros;
+  }
+  if (achados.length && contexto === CONTEXTO_EPI_POSTO) {
+    // lote 5, ajuste 2: a lista de sempre e o CID recusam; os termos de saúde do EPI pedem a caixa
+    const duros_posto = new Set([...TERMOS_PROIBIDOS.map(chave_busca), "cid"]);
+    const confirmaveis = achados.filter((t) => !duros_posto.has(chave_busca(t)));
+    const duros = achados.filter((t) => duros_posto.has(chave_busca(t)));
+    if (!duros.length) {
+      if (mencao_confirmada || mencao.marcada()) {
+        mencao.anotar(campo, confirmaveis);
+        return texto;
+      }
+      const citados = confirmaveis.map((t) => `“${_como_escrito(String(texto ?? ""), chave_busca(t))}”`).join(", ");
+      throw new MencaoDeSaude(
+        `O campo ${campo} cita ${citados}. Este campo descreve o posto e os riscos da atividade, ` +
+          "não a saúde de quem pede: escreva o agente e a exposição (por exemplo, “risco de dermatite " +
+          "de contato com solventes”), nunca uma condição sua ou de outra pessoa (LGPD art. 11). Se o " +
+          "texto descreve o risco do posto, marque “confirmo que a menção é necessária” e envie de novo: " +
+          "a confirmação fica no histórico com o seu nome. Se a sua saúde muda o EPI, quem orienta é o " +
+          "médico do trabalho, fora deste pedido.",
+        confirmaveis,
+      );
+    }
+    achados = duros;
+  }
+  if (achados.length && (contexto === CONTEXTO_EPI_PESSOA || contexto === CONTEXTO_EPI_MATERIAL || contexto === CONTEXTO_EPI_POSTO)) {
+    throw new TextoProibido(
+      `O campo ${campo} contém dado de saúde ou identificação (${achados.join(", ")}). ` +
+        "Estado de saúde, diagnóstico, CID e CPF não podem ser registrados no EPI (LGPD art. 11). " +
+        "Descreva a atividade, o risco e o equipamento, não a saúde da pessoa; se a condição " +
+        "de saúde muda o EPI, a orientação vem do médico do trabalho, fora deste campo.",
+    );
   }
   if (achados.length) {
     throw new TextoProibido(

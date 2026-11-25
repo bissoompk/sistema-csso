@@ -1,7 +1,8 @@
 // A configuração do front compilado — e as três decisões que ela carrega.
 //
-// 1. `base: '/estaticos/app/'` e `outDir: '../app/estaticos/app'`: o bundle
-//    sai DENTRO da pasta de estáticos que o FastAPI já serve. Nenhum servidor
+// 1. `base: '/estaticos/app/'` e `outDir: '../nuvem/public/estaticos/app'`: o bundle
+//    sai DENTRO da pasta de estáticos que o servidor (nuvem) já serve — até 25/11/2026 saía
+//    na pasta do sistema antigo (`../app`), e o compilado era copiado à mão. Nenhum servidor
 //    novo, nenhuma porta nova, nenhum CDN — é o `StaticFiles` de sempre, e a
 //    CSP (`script-src 'self'`) o autoriza como autoriza o `csso.js`. Só o
 //    `index.html` é servido por rota (`/app`), porque ele exige sessão.
@@ -19,7 +20,7 @@ export default defineConfig({
   plugins: [react()],
   base: '/estaticos/app/',
   build: {
-    outDir: '../app/estaticos/app',
+    outDir: '../nuvem/public/estaticos/app',
     emptyOutDir: true,
     modulePreload: { polyfill: false },
     sourcemap: false,

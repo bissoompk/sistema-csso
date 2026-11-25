@@ -158,7 +158,12 @@
                  value="{{ d.validade_ca or '' }}"
                  aria-describedby="dica-validade-lote">
           <span class="dica atencao" id="dica-validade-lote">Sem ela o lote não
-            sai: “não sei” não é “está válido”.</span></div>
+            sai: “não sei” não é “está válido”.</span>
+          {# CA ou validade diferentes do catálogo: a confirmação só aparece depois do aviso #}
+          {% if campo_com_erro == 'confirmo_diferenca_catalogo' %}
+          <label class="com-erro"><input type="checkbox" name="confirmo_diferenca_catalogo" value="1" autofocus>
+            confirmo a diferença com o catálogo, conferida no site do MTE</label>
+          {% endif %}</div>
         <div class="campo{{ erro_em('data_fabricacao') }}">
           <label for="data_fabricacao">Fabricação</label>
           <input id="data_fabricacao" type="date" name="data_fabricacao"

@@ -45,6 +45,7 @@ import {
 import * as anexo_acesso from "../servicos/anexo_acesso.js";
 import * as anexos from "../servicos/anexos.js";
 import * as auditoria from "../servicos/auditoria.js";
+import * as conversor_pdf from "../servicos/conversor_pdf.js";
 import * as comprovante_epi from "../servicos/comprovante_epi.js";
 import * as datas_br from "../servicos/datas_br.js";
 import * as epi_catalogo_anexos from "../servicos/epi_catalogo_anexos.js";
@@ -405,7 +406,7 @@ rotas.post("/epis/entregas", async (c) => {
   if (!servidor) return recusar("Escolha o servidor que vai receber o EPI.");
   if (!item) return recusar("Escolha o item do catálogo.");
   const quantidade = inteiro(digitado.quantidade!.trim());
-  if (quantidade === null || quantidade <= 0) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (quantidade === null || quantidade <= 0) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const id_entrada = inteiro(digitado.entrada_id!.trim());
   const entrada =
     id_entrada !== null
@@ -547,18 +548,65 @@ rotas.get(`${REGISTROS}/:registro_id{[0-9]+}`, async (c) => {
   return redirecionar(c, `${FICHAS}/${registro.servidor_id}`);
 });
 
+/**
+ * O papel do comprovante: para a equipe (`epi.entregar`), a impressão para assinar; para o titular
+ * sem ela, a cópia das próprias entregas, só leitura (lote 5, ajuste 5).
+ */
+async function _papel_do_comprovante(tx: Executor, usuario: UsuarioAtual, bruto: string) {
+  if (!usuario.pode("epi.entregar") && usuario.servidor_id !== null) {
+    const registro = await registro_por_id(tx, inteiro(bruto));
+    if (!registro || registro.servidor_id !== usuario.servidor_id) {
+      throw new PermissaoNegada("epi.ficha", NADA_A_COMUNICAR, false);
+    }
+    return { registro, ...(await servico.copia_do_titular(tx, usuario, registro)) };
+  }
+  const registro = await registro_e_permissao(tx, usuario, bruto);
+  if (!registro) return null;
+  return { registro, ...(await servico.imprimir(tx, usuario, registro)) };
+}
+
 /** O .docx impresso a partir dos snapshots — nunca do catálogo de hoje. */
 rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/comprovante`, async (c) => {
   const usuario = await usuarioLogado(c);
   const tx = c.get("tx");
-  const registro = await registro_e_permissao(tx, usuario, c.req.param("registro_id"));
-  if (!registro) return redirecionar(c, FICHAS);
-  const impressao = await servico.imprimir(tx, usuario, registro);
+  const impressao = await _papel_do_comprovante(tx, usuario, c.req.param("registro_id"));
+  if (!impressao) return redirecionar(c, FICHAS);
   return new Response(impressao.bytes, {
     status: 200,
     headers: {
       "content-type": comprovante_epi.TIPO_DOCX,
       "content-disposition": disposicao(impressao.nome),
+    },
+  });
+});
+
+/**
+ * EPI 9 (lote 5): o mesmo comprovante em PDF, pelo conversor (Gotenberg) que já converte o
+ * certificado de modelo enviado. Sem conversor, ou com ele fora do ar, volta à ficha dizendo
+ * que o .docx continua disponível — nada quebra.
+ */
+rotas.get(`${REGISTROS}/:registro_id{[0-9]+}/comprovante.pdf`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  const impressao = await _papel_do_comprovante(tx, usuario, c.req.param("registro_id"));
+  if (!impressao) return redirecionar(c, FICHAS);
+  const registro = impressao.registro;
+  let pdf: Uint8Array;
+  try {
+    pdf = await conversor_pdf.converter_docx(impressao.bytes);
+  } catch (falha) {
+    if (!(falha instanceof conversor_pdf.ConversorIndisponivel)) throw falha;
+    return erro(
+      c,
+      `${FICHAS}/${registro.servidor_id}`,
+      `O comprovante em PDF não saiu agora (${falha.message}) Use o .docx, em “Imprimir”.`,
+    );
+  }
+  return new Response(pdf as Uint8Array<ArrayBuffer>, {
+    status: 200,
+    headers: {
+      "content-type": "application/pdf",
+      "content-disposition": disposicao(impressao.nome.replace(/\.docx$/i, "") + ".pdf"),
     },
   });
 });
@@ -649,7 +697,7 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/devolucao`, async (c) => {
   const destino = `${FICHAS}/${registro.servidor_id}`;
   const f = await formulario(c);
   const quantas = inteiro(f.texto("quantidade").trim());
-  if (quantas === null || quantas <= 0) return erro(c, destino, "Quantidade devolvida inválida.");
+  if (quantas === null || quantas <= 0) return erro(c, destino, "Quantidade devolvida inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   let quando: string | null = null;
   const bruto = f.texto("data_evento").trim().slice(0, 10);
   if (bruto) {
@@ -670,11 +718,10 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/devolucao`, async (c) => {
     if (!recusavel(falha)) throw falha;
     return erro(c, destino, motivos_de(falha));
   }
-  const saldo = registro.entrada_id ? "e o saldo voltou ao lote" : "sem lote a repor";
   return volta(
     c,
     destino,
-    `Devolução registrada (registro ${devolucao.id}) ${saldo}. ` +
+    `Devolução registrada (registro ${devolucao.id}). O saldo do lote não muda: EPI é individual e já foi usado. ` +
       "A entrega continua na ficha: devolver não desfaz o que aconteceu.",
   );
 });
@@ -721,7 +768,7 @@ rotas.post(`${REGISTROS}/:registro_id{[0-9]+}/comunicar`, async (c) => {
   const tx = c.get("tx");
   const registro = await registro_por_id(tx, inteiro(c.req.param("registro_id")));
   if (!registro || usuario.servidor_id === null || usuario.servidor_id !== registro.servidor_id) {
-    throw new PermissaoNegada("epi.ver", NADA_A_COMUNICAR);
+    throw new PermissaoNegada("epi.ver", NADA_A_COMUNICAR, false);
   }
   const destino = `${FICHAS}/${registro.servidor_id}`;
   const f = await formulario(c);
@@ -757,7 +804,7 @@ async function comunicacao_da_rota(c: Ctx, usuario: UsuarioAtual) {
   const comunicacao = await epi_comunicacao.por_id(c.get("tx"), inteiro(c.req.param("id")));
   const propria = comunicacao !== null && usuario.servidor_id !== null && usuario.servidor_id === comunicacao.servidor_id;
   if (!comunicacao || (!propria && !usuario.pode("epi.entregar"))) {
-    throw new PermissaoNegada("epi.entregar", "Não há comunicação de EPI sua neste endereço.");
+    throw new PermissaoNegada("epi.entregar", "Não há comunicação de EPI sua neste endereço.", false);
   }
   return comunicacao;
 }
@@ -808,7 +855,7 @@ rotas.get(`${FICHAS}/:servidor_id{[0-9]+}`, async (c) => {
   });
   if (!servidor) {
     // 403 e não 404: a mesma resposta para id que existe e que não existe
-    throw new PermissaoNegada("epi.ficha", "Não há ficha de EPI para consultar neste endereço.");
+    throw new PermissaoNegada("epi.ficha", "Não há ficha de EPI para consultar neste endereço.", false);
   }
   await servico.exigir_leitura_da_ficha(tx, usuario, servidor_id);
   await auditoria.registrar_leitura_nominal(tx, usuario, "epi_ficha", {

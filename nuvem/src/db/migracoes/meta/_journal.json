@@ -330,6 +330,20 @@
       "when": 1793530953962,
       "tag": "0046_segundo_fator",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795570866624,
+      "tag": "0047_carga_horas_tempos",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795600466352,
+      "tag": "0048_brigada_disciplinas",
+      "breakpoints": true
     }
   ]
 }

@@ -90,6 +90,7 @@ export const EPI_REQUISICAO_CRIADA = "EPI_REQUISICAO_CRIADA";
 export const EPI_REQUISICAO_ENVIADA = "EPI_REQUISICAO_ENVIADA";
 export const EPI_REQUISICAO_EM_ANALISE = "EPI_REQUISICAO_EM_ANALISE";
 export const EPI_REQUISICAO_DEVOLVIDA = "EPI_REQUISICAO_DEVOLVIDA";
+export const EPI_REQUISICAO_ANALISE_ASSUMIDA = "EPI_REQUISICAO_ANALISE_ASSUMIDA";
 export const EPI_REQUISICAO_ANALISADA = "EPI_REQUISICAO_ANALISADA";
 export const EPI_REQUISICAO_INDEFERIDA = "EPI_REQUISICAO_INDEFERIDA";
 export const EPI_REQUISICAO_RECONSIDERADA = "EPI_REQUISICAO_RECONSIDERADA";
@@ -155,6 +156,8 @@ export class AutoanaliseProibida extends PermissaoNegada {
         "avulsa de balcão (/epis/entregas/nova), que registra a ficha, o " +
         "lote, o CA e o comprovante assinado do mesmo jeito — só não produz " +
         "um pedido decidido por quem o fez.",
+      // regra (RN-28), não perfil: nenhuma permissão muda isso (lote 5, ajuste 4)
+      false,
     );
     this.requisicao_id = requisicao.id;
   }
@@ -234,11 +237,59 @@ export type RequisicaoCompleta = NonNullable<Awaited<ReturnType<typeof carregar>
  * Compara `servidor_id` — quem VAI USAR o equipamento, e não quem digitou.
  */
 async function _exigir_analista_diferente(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<void> {
+  // a REGRA antes da permissão (lote 5, ajuste 4): o servidor que tenta analisar o próprio pedido
+  // lê a RN-28, e não "peça a concessão de epi.analisar" — com a permissão, continuaria proibido
+  await exigir_nao_e_o_proprio_pedido(tx, usuario, requisicao);
   usuario.exigir("epi.analisar");
+}
+
+/** RN-28 sozinha: o pedido é de quem está tentando decidi-lo? */
+export async function exigir_nao_e_o_proprio_pedido(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  requisicao: Pick<EpiRequisicao, "id" | "protocolo" | "servidor_id">,
+): Promise<void> {
   if (usuario.servidor_id === null) return;
   if (requisicao.servidor_id !== usuario.servidor_id) return;
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, requisicao.servidor_id));
-  throw new AutoanaliseProibida(requisicao, servidor ? servidor.nome : "você mesmo");
+  throw new AutoanaliseProibida(requisicao as EpiRequisicao, servidor ? servidor.nome : "você mesmo");
+}
+
+/**
+ * Só quem pegou o pedido decide (24/11/2026): aprovar e recusar item, concluir, indeferir,
+ * devolver à fila e "aprovar tudo". Outra pessoa da equipe precisa antes ASSUMIR a análise,
+ * ação explícita, com motivo, que fica na trilha com os dois nomes.
+ */
+export class AnaliseComOutraPessoa extends RequisicaoBloqueada {
+  constructor(
+    requisicao: EpiRequisicao,
+    public responsavel: string,
+  ) {
+    super([
+      `${identificacao(requisicao)} está em análise com ${responsavel}: só quem pegou o pedido ` +
+        "decide os itens, conclui, indefere ou devolve à fila. Para decidir você, use “Assumir a " +
+        "análise”, com o motivo — fica registrado na trilha com o seu nome e o de quem estava",
+    ]);
+  }
+}
+
+/** O pedido está em análise com OUTRA pessoa (a tela troca os botões de decidir por "assumir"). */
+export function analise_com_outra_pessoa(
+  usuario: Pick<UsuarioAtual, "id">,
+  requisicao: Pick<EpiRequisicao, "estado" | "analisado_por">,
+): boolean {
+  return requisicao.estado === "EM_ANALISE" && requisicao.analisado_por !== null && requisicao.analisado_por !== usuario.id;
+}
+
+async function _nome_do_usuario(tx: Executor, id: number | null): Promise<string> {
+  if (id === null) return "—";
+  const [u] = await tx.select({ nome: tabela_usuario.nome }).from(tabela_usuario).where(eq(tabela_usuario.id, id));
+  return u?.nome ?? `conta ${id}`;
+}
+
+async function _exigir_responsavel_da_analise(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<void> {
+  if (!analise_com_outra_pessoa(usuario, requisicao)) return;
+  throw new AnaliseComOutraPessoa(requisicao, await _nome_do_usuario(tx, requisicao.analisado_por));
 }
 
 // =====================================================================
@@ -649,35 +700,27 @@ export interface CamposCabecalho {
  * que a recebe pela concessão do titular pede só para si.
  */
 export async function exigir_requerente_permitido(
-  tx: Executor,
+  _tx: Executor,
   usuario: UsuarioAtual,
   servidor: Pick<Servidor, "id">,
 ): Promise<void> {
-  const alcance = usuario.alcance("epi.requisitar");
-  if (alcance.total || alcance.unidade) return;
-  if (alcance.proprio && usuario.servidor_id !== null && servidor.id === usuario.servidor_id) return;
-  if (!alcance.campi.length) {
-    if (usuario.servidor_id === null) {
-      throw new RequisicaoBloqueada([
-        "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
-          "se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora",
-      ]);
-    }
-    if (servidor.id !== usuario.servidor_id) {
-      throw new PermissaoNegada("epi.requisitar", "Pelo seu perfil, você pede EPI só para você mesmo.");
-    }
-    return;
+  // O pedido é INDIVIDUAL (decisão do dono, 24/11/2026): a ficha de EPI é pessoal e o registro dela
+  // importa, então só quem vai usar o equipamento abre o pedido — nem chefia, secretaria ou
+  // almoxarife pedem por outra pessoa, qualquer que seja o escopo.
+  if (usuario.servidor_id === null) {
+    throw new RequisicaoBloqueada([
+      "sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
+        "se você é servidor(a) da UFVJM, informe os seus dados em Meu perfil (Sou servidor(a) da UFVJM): a conta é ligada na hora",
+    ]);
   }
-  const [linha] = await tx
-    .select({ campus_id: unidade_uorg.campus_id })
-    .from(tabela_servidor)
-    .leftJoin(unidade_uorg, eq(unidade_uorg.id, tabela_servidor.unidade_uorg_id))
-    .where(eq(tabela_servidor.id, servidor.id));
-  const campus = linha?.campus_id ?? null;
-  if (campus !== null && !alcance.campi.includes(campus)) {
+  if (servidor.id !== usuario.servidor_id) {
+    // regra, não perfil (lote 5, ajuste 4): a tela diz o motivo e o caminho, sem "peça a concessão"
     throw new PermissaoNegada(
       "epi.requisitar",
-      "Este servidor está lotado em outro campus: o pedido dele é aberto por quem atende aquele campus.",
+      "O pedido de EPI é individual: você pede só para você mesmo. Nenhuma permissão muda isso. " +
+        "Quem precisa do equipamento entra no sistema e pede em “Pedir EPI”; se o equipamento precisa " +
+        "sair agora, a equipe registra a entrega de balcão.",
+      false,
     );
   }
 }
@@ -721,6 +764,31 @@ export async function criar_rascunho(
 }
 
 /** Edita o cabeçalho enquanto ele é rascunho, e só enquanto. */
+/**
+ * O pedido de EPI é individual (24/11/2026): só o beneficiário edita o rascunho, acrescenta ou
+ * tira itens, envia e aceita o termo NR-06. A equipe analisa e entrega, mas não escreve o pedido
+ * de outra pessoa nem declara por ela.
+ */
+/**
+ * Lote 5 (B1): a mesma conferência, para a ROTA fazer antes de ler e validar o formulário —
+ * quem não é o titular recebe o 403, e não "Quantidade inválida".
+ */
+export function exigir_titular(usuario: UsuarioAtual, requisicao: Pick<EpiRequisicao, "servidor_id">, ato: string): void {
+  _exigir_titular(usuario, requisicao, ato);
+}
+
+function _exigir_titular(usuario: UsuarioAtual, requisicao: Pick<EpiRequisicao, "servidor_id">, ato: string): void {
+  if (usuario.servidor_id !== null && usuario.servidor_id === requisicao.servidor_id) return;
+  throw new PermissaoNegada(
+    "epi.requisitar",
+    `O pedido de EPI é individual: só o servidor que vai usar o equipamento pode ${ato}. ` +
+      "Nenhuma permissão muda isso. O caminho é o próprio servidor entrar no sistema e fazer isso " +
+      "em “Meus pedidos de EPI”; se o equipamento precisa sair agora, a equipe registra a entrega " +
+      "de balcão em “Entregar EPI”.",
+    false,
+  );
+}
+
 export async function atualizar_rascunho(
   tx: Executor,
   usuario: UsuarioAtual,
@@ -729,6 +797,7 @@ export async function atualizar_rascunho(
 ): Promise<EpiRequisicao> {
   usuario.exigir("epi.requisitar");
   _exigir_editavel(requisicao, "editar o pedido");
+  _exigir_titular(usuario, requisicao, "editar o pedido");
   const campos = _campos_do_cabecalho({
     finalidade: opcoes.finalidade ?? "ROTINA",
     descricao_atividade: opcoes.descricao_atividade ?? "",
@@ -759,7 +828,6 @@ function _campos_do_cabecalho(c: {
   riscos_declarados: string;
   urgencia: string;
   justificativa_urgencia: string;
-  confirmo_mencao_saude?: boolean;
 }) {
   const problemas: string[] = [];
   if (!(FINALIDADES_REQUISICAO as readonly string[]).includes(c.finalidade)) {
@@ -779,14 +847,15 @@ function _campos_do_cabecalho(c: {
 
   return {
     finalidade: c.finalidade,
-    // RN-21 em aviso (gestante, lactante...): `MencaoDeSaude` até a confirmação
+    // RN-21: rotina e riscos descrevem o POSTO — a lista de sempre recusa e os termos de saúde pedem
+    // a caixa (lote 5, ajuste 2); a justificativa fala da pessoa — a lista ampliada, em dois níveis
     descricao_atividade:
-      textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
+      textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_EPI_POSTO) || null,
     riscos_declarados:
-      textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
+      textos.exigir_texto_limpo((c.riscos_declarados || "").trim(), "riscos declarados", textos.CONTEXTO_EPI_POSTO) || null,
     urgencia: c.urgencia,
     justificativa_urgencia:
-      textos.exigir_texto_limpo(justificativa, "justificativa da urgência", textos.CONTEXTO_AVISO_SAUDE, c.confirmo_mencao_saude) || null,
+      textos.exigir_texto_limpo(justificativa, "justificativa da urgência", textos.CONTEXTO_EPI_PESSOA) || null,
   };
 }
 
@@ -807,6 +876,7 @@ function _exigir_editavel(requisicao: EpiRequisicao, acao: string): void {
  */
 export async function excluir_rascunho(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<void> {
   usuario.exigir("epi.requisitar");
+  _exigir_titular(usuario, requisicao, "excluir o rascunho");
   if (requisicao.estado !== "RASCUNHO") {
     throw new RequisicaoBloqueada([
       `${identificacao(requisicao)} está em ` +
@@ -873,6 +943,7 @@ export async function adicionar_item(
 ): Promise<EpiRequisicaoItem> {
   usuario.exigir("epi.requisitar");
   _exigir_editavel(requisicao, "acrescentar item");
+  _exigir_titular(usuario, requisicao, "acrescentar item");
   const { item, quantidade } = opcoes;
   const problemas: string[] = [];
   if (quantidade <= 0) problemas.push("a quantidade pedida tem de ser maior que zero");
@@ -903,7 +974,7 @@ export async function adicionar_item(
       epi_item_id: item.id,
       tamanho: limpo || null,
       quantidade_solicitada: quantidade,
-      justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item") || null,
+      justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item", textos.CONTEXTO_EPI_PESSOA) || null,
       motivo,
       estado: "SOLICITADO",
     })
@@ -921,6 +992,7 @@ export async function editar_item(
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao_da_linha(tx, linha);
   _exigir_editavel(requisicao, "editar item");
+  _exigir_titular(usuario, requisicao, "editar item");
   const item = await _item(tx, linha.epi_item_id);
   const problemas: string[] = [];
   if (opcoes.quantidade <= 0) problemas.push("a quantidade pedida tem de ser maior que zero");
@@ -939,7 +1011,7 @@ export async function editar_item(
   await _gravar_linha(tx, linha, {
     quantidade_solicitada: opcoes.quantidade,
     tamanho: limpo || null,
-    justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item") || null,
+    justificativa: textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item", textos.CONTEXTO_EPI_PESSOA) || null,
     motivo,
   });
   return linha;
@@ -950,6 +1022,7 @@ export async function remover_item(tx: Executor, usuario: UsuarioAtual, linha: E
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao_da_linha(tx, linha);
   _exigir_editavel(requisicao, "remover item");
+  _exigir_titular(usuario, requisicao, "remover item");
   await tx.delete(epi_requisicao_item).where(eq(epi_requisicao_item.id, linha.id));
 }
 
@@ -992,6 +1065,7 @@ export async function enviar(
 ): Promise<EpiRequisicao> {
   usuario.exigir("epi.requisitar");
   const quando = opcoes.quando || datas_br.hoje();
+  if (requisicao.estado === "RASCUNHO") _exigir_titular(usuario, requisicao, "enviar o pedido e aceitar o termo NR-06");
   if (requisicao.estado !== "RASCUNHO") {
     throw new RequisicaoBloqueada([`${identificacao(requisicao)} já foi enviada — o protocolo é ` + "consumido uma vez só"]);
   }
@@ -1107,6 +1181,45 @@ export async function iniciar_analise(tx: Executor, usuario: UsuarioAtual, requi
   });
 }
 
+/**
+ * Assumir a análise que está com outra pessoa (24/11/2026). Não muda o estado (continua em
+ * análise): muda quem responde por ela. Motivo obrigatório, pelo filtro de saúde da pessoa; a
+ * trilha guarda quem assumiu, quem estava e o motivo. Ninguém assume o próprio pedido (RN-28).
+ */
+export async function assumir_analise(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  requisicao: EpiRequisicao,
+  motivo: string,
+): Promise<EpiRequisicao> {
+  await _exigir_analista_diferente(tx, usuario, requisicao);
+  if (requisicao.estado !== "EM_ANALISE") {
+    throw new RequisicaoBloqueada([
+      `só se assume pedido em análise, e ${identificacao(requisicao)} está em ` +
+        `${rotulo_req(requisicao.estado).toLowerCase()}` +
+        (requisicao.estado === "ENVIADA" ? ": na fila, o caminho é “Iniciar análise”" : ""),
+    ]);
+  }
+  if (requisicao.analisado_por === usuario.id) {
+    throw new RequisicaoBloqueada([`${identificacao(requisicao)} já está em análise com você`]);
+  }
+  const limpo = _motivo_obrigatorio(motivo, "motivo para assumir a análise");
+  const anterior = await _nome_do_usuario(tx, requisicao.analisado_por);
+  await _gravar(tx, requisicao, { analisado_por: usuario.id, analisado_em: agora_utc(), versao: requisicao.versao + 1 });
+  await auditoria.registrar(tx, {
+    entidade: ENTIDADE,
+    entidade_id: requisicao.id,
+    tipo_evento: EPI_REQUISICAO_ANALISE_ASSUMIDA,
+    descricao: `${identificacao(requisicao)}: análise assumida por ${usuario.nome} (estava com ${anterior}) — ${limpo}`,
+    campo: "analisado_por",
+    valor_anterior: anterior,
+    valor_novo: usuario.nome,
+    comentario: limpo,
+    usuario,
+  });
+  return requisicao;
+}
+
 /** EM_ANALISE → ENVIADA. Decidir sem base é pior do que devolver. */
 export async function devolver_para_fila(
   tx: Executor,
@@ -1115,6 +1228,7 @@ export async function devolver_para_fila(
   motivo: string,
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const limpo = _motivo_obrigatorio(motivo, "motivo da devolução à fila");
   await _gravar(tx, requisicao, { analisado_por: null, analisado_em: null });
   return _mover(tx, requisicao, "ENVIADA", usuario, { tipo_evento: EPI_REQUISICAO_DEVOLVIDA, comentario: limpo });
@@ -1128,6 +1242,7 @@ export async function concluir_analise(
   opcoes: { parecer?: string } = {},
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const itens = await itens_de(tx, requisicao.id);
   const pendentes = itens.filter((i) => !EPI_ITEM_DECIDIDO.has(i.estado));
   const problemas: string[] = [];
@@ -1147,7 +1262,7 @@ export async function concluir_analise(
   if (problemas.length) throw new RequisicaoBloqueada(problemas);
 
   await _gravar(tx, requisicao, {
-    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise") || null,
+    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise", textos.CONTEXTO_EPI_PESSOA) || null,
     analisado_por: usuario.id,
     analisado_em: agora_utc(),
   });
@@ -1165,6 +1280,7 @@ export async function concluir_analise(
  */
 export async function aprovar_tudo(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   if (requisicao.estado === "ENVIADA") await iniciar_analise(tx, usuario, requisicao);
   if (requisicao.estado !== "EM_ANALISE") {
     throw new RequisicaoBloqueada([
@@ -1212,8 +1328,9 @@ export async function indeferir(
   opcoes: { motivo: EpiMotivoRecusa; complemento?: string; parecer?: string },
 ): Promise<EpiRequisicao> {
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const { motivo } = opcoes;
-  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento do indeferimento");
+  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento do indeferimento", textos.CONTEXTO_EPI_PESSOA);
   const itens = await itens_de(tx, requisicao.id);
   const problemas: string[] = [];
   if (!itens.some((i) => i.estado !== "CANCELADO")) problemas.push("não há item para indeferir");
@@ -1239,7 +1356,7 @@ export async function indeferir(
   await _gravar(tx, requisicao, {
     motivo_recusa_id: motivo.id,
     complemento_recusa: limpo || null,
-    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise") || null,
+    parecer_analise: textos.exigir_texto_limpo((opcoes.parecer || "").trim(), "parecer da análise", textos.CONTEXTO_EPI_PESSOA) || null,
     analisado_por: usuario.id,
     analisado_em: agora_utc(),
   });
@@ -1386,8 +1503,9 @@ export async function aprovar_item(
 ): Promise<EpiRequisicaoItem> {
   const requisicao = await _requisicao_da_linha(tx, linha);
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const quando = opcoes.quando || datas_br.hoje();
-  const limpa = textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item");
+  const limpa = textos.exigir_texto_limpo((opcoes.justificativa || "").trim(), "justificativa do item", textos.CONTEXTO_EPI_PESSOA);
   const quantidade =
     opcoes.quantidade_aprovada === undefined || opcoes.quantidade_aprovada === null
       ? linha.quantidade_solicitada
@@ -1486,8 +1604,9 @@ export async function recusar_item(
 ): Promise<EpiRequisicaoItem> {
   const requisicao = await _requisicao_da_linha(tx, linha);
   await _exigir_analista_diferente(tx, usuario, requisicao);
+  await _exigir_responsavel_da_analise(tx, usuario, requisicao);
   const { motivo } = opcoes;
-  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da recusa");
+  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da recusa", textos.CONTEXTO_EPI_PESSOA);
   const problemas: string[] = [];
   if (requisicao.estado !== "EM_ANALISE") {
     problemas.push(
@@ -1834,7 +1953,7 @@ export async function marcar_sem_estoque(
   usuario.exigir("epi.estoque");
   const requisicao = await _requisicao_da_linha(tx, linha);
   const quando = opcoes.quando || datas_br.hoje();
-  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da falta de estoque");
+  const limpo = textos.exigir_texto_limpo((opcoes.complemento || "").trim(), "complemento da falta de estoque", textos.CONTEXTO_EPI_PESSOA);
   const item = await _item(tx, linha.epi_item_id);
 
   const problemas: string[] = [];
@@ -2196,7 +2315,7 @@ export async function sincronizar_atendimento(
 
 // =====================================================================
 function _motivo_obrigatorio(motivo: string, campo: string): string {
-  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), campo);
+  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), campo, textos.CONTEXTO_EPI_PESSOA);
   if (!limpo) {
     throw new RequisicaoBloqueada([
       `${campo} é obrigatório: é o único registro que sobra para quem ` +

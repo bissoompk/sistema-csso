@@ -163,9 +163,14 @@
       <span class="nota">a conclusão fica na auditoria, com quem fechou</span>
     </div>
     <table>
+      {# lote 5, ajuste 3: a frase gravada é a do momento em que a pendência ABRIU ("…espera você
+         retirar") e, repetida aqui, se lia como pendência ainda aberta. Concluída, a linha diz o
+         que FOI feito: o tipo, no passado, e onde. #}
       {% for p in concluidas %}
-      <tr>
-        <td>{{ p.leitura.texto }}</td>
+      <tr id="concluida-{{ p.id }}">
+        <td><span class="pilula ok">concluída</span>
+          {{ tipos[p.tipo][0] if tipos[p.tipo] else 'Pendência' }}
+          {%- for a in p.leitura.onde %} · {% if a.href %}<a href="{{ a.href }}{{ '&' if '?' in a.href else '?' }}de=pendencias">{{ a.rotulo }}</a>{% else %}<span class="discreto">{{ a.rotulo }}</span>{% endif %}{% endfor %}</td>
         <td class="mono discreto">{{ p.concluida_em|momento }}</td>
       </tr>
       {% endfor %}

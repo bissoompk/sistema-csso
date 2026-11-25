@@ -92,7 +92,11 @@ export interface CursoPublico {
   data_fim: string;
   hora_inicio: string | null;
   hora_fim: string | null;
+  /** a quantidade na unidade da turma (o nome do campo ficou do tempo em que só havia horas) */
   carga_horas: string | null;
+  /** lote 3: HORAS ou TEMPOS, e o texto pronto ("8 horas", "4h30", "10 tempos") */
+  carga_unidade: string;
+  carga_texto: string;
   inscricao_ate: string | null;
   vagas_total: number | null;
   vagas_restantes: number | null;
@@ -156,6 +160,8 @@ async function _dto(tx: Executor, turma: TurmaCarregada, hoje: string): Promise<
     hora_inicio: _hhmm(turma.hora_inicio),
     hora_fim: _hhmm(turma.hora_fim),
     carga_horas: Turma.carga_efetiva(turma),
+    carga_unidade: Turma.unidade(turma),
+    carga_texto: Turma.carga_texto(turma),
     inscricao_ate: turma.inscricao_aberta_ate,
     vagas_total: turma.vagas,
     vagas_restantes: restantes,
@@ -276,6 +282,8 @@ export async function feed(tx: Executor, url_base: string, hoje: string = datas_
       hora_inicio: c.hora_inicio,
       hora_fim: c.hora_fim,
       carga_horas: c.carga_horas,
+      carga_unidade: c.carga_unidade,
+      carga_texto: c.carga_texto,
       inscricao_ate: c.inscricao_ate,
       vagas_restantes: c.vagas_restantes,
       url: `${base}/cursos/${c.codigo}`,

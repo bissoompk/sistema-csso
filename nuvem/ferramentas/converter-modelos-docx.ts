@@ -46,7 +46,16 @@ export const MODELOS = [
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
 export function converterTudo(origem = ORIGEM, destino = DESTINO): Record<string, unknown> {
+  // as entradas geradas por outra ferramenta (o certificado de brigada, lote 4) ficam
+  const anterior = path.join(destino, "manifesto.json");
   const manifesto: Record<string, unknown> = {};
+  try {
+    for (const [k, v] of Object.entries(JSON.parse(readFileSync(anterior, "utf8")) as Record<string, unknown>)) {
+      if (!MODELOS.includes(k)) manifesto[k] = v;
+    }
+  } catch {
+    // sem manifesto anterior: começa vazio
+  }
   for (const relativo of MODELOS) {
     const bytes = new Uint8Array(readFileSync(path.join(origem, relativo)));
     const convertido = converter_modelo_docxtpl(bytes);

@@ -156,13 +156,13 @@ describe("pedido de EPI", () => {
     expect(sv).toMatchObject({ cargo_id: cg!.id, unidade_uorg_id: u!.id });
   });
 
-  it("a equipe pedindo por um servidor sem cargo ou lotação: recusa dizendo de quem", async () => {
+  it("a equipe não pede por servidor sem cargo ou lotação: o pedido é individual e a conta precisa estar ligada", async () => {
     const amb = await novo();
     const cen = await cenario(amb.db);
     await sem_funcionais(amb, cen);
     const r = await pedir(await como(amb, "coordenador_csso"), cen.servidor, cen);
     expect(r.status).toBe(200);
-    expect(r.text).toContain("está sem o cargo e a lotação");
+    expect(r.text).toContain("não está ligada a um cadastro de servidor");
   });
 });
 

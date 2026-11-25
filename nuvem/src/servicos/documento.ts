@@ -467,7 +467,11 @@ export async function renderizar_modelo(
     arquivo: opcoes.destino ?? null,
     modelo_arquivo: origem.arquivo,
     modelo_sha256: origem.sha256,
-    hash_conteudo: sha256_texto(extrair_texto(bytes)),
+    // a marca "Sistema SISA" (comprovante v3) vale como a antiga "Sistema CSSO" no hash,
+    // para a segunda via de uma entrega impressa no v1/v2 não acusar divergência (RN-15)
+    hash_conteudo: sha256_texto(
+      extrair_texto(bytes).replace("Documento gerado pelo Sistema SISA", "Documento gerado pelo Sistema CSSO").replace("Sistema SISA — UFVJM", "CSSO / Sisa — UFVJM"),
+    ),
   };
 }
 

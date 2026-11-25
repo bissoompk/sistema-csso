@@ -320,10 +320,13 @@ describe("avisos do local (não bloqueiam)", () => {
 
   it("choque de sala com horário: manhã e tarde convivem, horários que se cruzam avisam, sem hora avisa", async () => {
     const l = await local({ capacidade: null });
-    const manha = await turma_servico({ local_id: l.id, hora_inicio: "08:00", hora_fim: "12:00" });
-    const tarde = await turma_servico({ local_id: l.id, hora_inicio: "12:00", hora_fim: "17:00" });
+    // a carga real do curso (8 h) e os dias que cada horário pede (T2, lote 3): das 8h às 12h e das
+    // 10h às 14h, 2 dias; das 12h às 17h, 2 dias também (5 h por dia)
+    const DOIS_DIAS = somar_dias(FUTURO, 1);
+    const manha = await turma_servico({ local_id: l.id, data_fim: DOIS_DIAS, hora_inicio: "08:00", hora_fim: "12:00" });
+    const tarde = await turma_servico({ local_id: l.id, data_fim: DOIS_DIAS, hora_inicio: "12:00", hora_fim: "17:00" });
     expect(await local_treinamento.avisos_da_turma(db, tarde)).toEqual([]);
-    const meio = await turma_servico({ local_id: l.id, hora_inicio: "10:00", hora_fim: "14:00" });
+    const meio = await turma_servico({ local_id: l.id, data_fim: DOIS_DIAS, hora_inicio: "10:00", hora_fim: "14:00" });
     const avisos = await local_treinamento.avisos_da_turma(db, meio);
     expect(avisos).toHaveLength(2);
     expect(avisos.join(" ")).toContain(manha.codigo);
@@ -391,7 +394,7 @@ describe("Turmas encerrando, no Início de Treinamentos", () => {
     const i_ana = await servico_turma.inscrever(db, coord, atrasada, ana);
     await servico_turma.inscrever(db, coord, atrasada, bia);
     for (const dia of [somar_dias(HOJE, -2), ontem]) {
-      await servico_presenca.lancar_presenca(db, coord, i_ana, { data: dia, presente: true, horas: "4" });
+      await servico_presenca.lancar_presenca(db, coord, i_ana, { data: dia, presente: true, quantidade: 240 });
     }
     await servico_presenca.lancar_nota(db, coord, (await servico_turma.carregar_inscricao(db, i_ana.id))!, "8");
     // encerrando: termina em 10 dias, sem nota mínima, um inscrito

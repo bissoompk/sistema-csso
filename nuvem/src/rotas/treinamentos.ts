@@ -5,6 +5,10 @@
  * As três telas seguem o padrão de `/catalogos`: lista com edição em linha,
  * formulário de cadastro embaixo e diff campo a campo na auditoria.
  */
+import * as carga from "../dominio/carga.js";
+import * as servico_disciplinas from "../servicos/disciplinas.js";
+import * as brigada from "../dominio/brigada.js";
+import * as centro_formacao from "../servicos/centro_formacao.js";
 import { Hono } from "hono";
 import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { and, asc, count, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
@@ -92,15 +96,30 @@ export const SETORES = setor_promotor.TELA;
 export const VIGENCIA_DESDE_SEMPRE = "2000-01-01";
 
 export const VINCULOS_INSTRUTOR: [string, string][] = [
-  ["0", "Servidor da UFVJM"],
+  ["0", "Servidor(a) da UFVJM"],
   ["1", "Externo"],
 ];
 
 /** Aceita 8, 8,5 e 8.5 — a vírgula é o separador que o setor digita. */
-function _horas(valor: string): string | null {
-  const horas = normalizar_decimal((valor ?? "").trim().replace(",", "."));
-  if (horas === null) return null;
-  return Number(horas) > 0 ? horas : null;
+/**
+ * Lote 3: a carga na unidade escolhida ("8", "4,5", "4h30"; tempos inteiros), no texto da
+ * coluna. Devolve a frase da recusa quando não serve.
+ */
+function _carga_na_unidade(valor: string, unidade: carga.Unidade): { valor: string } | { erro: string } {
+  try {
+    const v = carga.ler_carga(valor, unidade);
+    if (v !== null) return { valor: v };
+  } catch (e) {
+    if (!(e instanceof carga.CargaInvalida)) throw e;
+    // a regra dos 6 minutos tem frase própria; o resto é a mesma recusa de sempre
+    if (/minuto/.test(e.message)) return { erro: e.message };
+  }
+  return {
+    erro:
+      unidade === "TEMPOS"
+        ? "Carga em tempos inválida: informe um número inteiro de tempos maior que zero."
+        : "Carga horária inválida: informe um número maior que zero (8, 4,5 ou 4h30).",
+  };
 }
 
 function _inteiro(valor: string, minimo = 0): number | null {
@@ -189,15 +208,28 @@ type Recado = {
 async function _tela_catalogo(c: Ctx, usuario: UsuarioAtual, d: Recado = {}): Promise<Response> {
   const tx = c.get("tx");
   const itens = await tx.query.treinamento.findMany({
-    with: { modelo_vigente: { with: COM_TAGS }, instrutor_padrao: { with: { servidor: true } } } as never,
+    with: {
+      modelo_vigente: { with: COM_TAGS },
+      instrutor_padrao: { with: { servidor: true } },
+      disciplinas: servico_disciplinas.COM_DISCIPLINAS,
+    } as never,
     orderBy: [asc(tabela_treinamento.nome)],
   });
   const instrutores = await tx.query.assinatura_instrutor.findMany({
     with: { servidor: true },
     orderBy: [asc(tabela_assinatura.nome)],
   });
+  const centro = await centro_formacao.ler(tx);
   return pagina(c, "paginas/treinamentos_catalogo.html", usuario, {
-    itens: (itens as any[]).map(vista_treinamento),
+    // lote 4: as disciplinas em dados simples, para o popup. `Object.assign` e não `...`: a vista
+    // tem campos calculados (`expira`, `topicos`) que o espalhamento perderia
+    itens: (itens as any[]).map((t) =>
+      Object.assign(vista_treinamento(t), { disciplinas_dados: servico_disciplinas.como_dados(t.disciplinas ?? []) }),
+    ),
+    maximo_disciplinas: servico_disciplinas.MAXIMO,
+    // lote 4: o centro de formação que promove a brigada (certificado CBMMG)
+    centro,
+    centro_cnpj_exibicao: centro_formacao.formatar_cnpj(centro.cnpj),
     // NUVEM: quem altera cada treinamento (`dono_turma.ts`); os outros só consultam
     direitos: await dono_turma.direitos_nos_treinamentos(tx, usuario, itens as { id: number; criado_por: number | null }[]),
     modelos: await _modelos_ordenados(tx),
@@ -312,12 +344,25 @@ rotas.post(CATALOGO, async (c) => {
     codigo_curto: f.texto("codigo_curto"),
     nome: f.texto("nome"),
     carga_horaria_horas: f.texto("carga_horaria_horas"),
+    carga_unidade: f.texto("carga_unidade") || "HORAS",
     // NUVEM: vazio no cadastro é 0 (não expira), o default do formulário
     validade_meses: f.texto("validade_meses").trim() || "0",
     norma_referencia: f.texto("norma_referencia"),
     conteudo_programatico: f.texto("conteudo_programatico"),
     obrigatorio: f.texto("obrigatorio"),
-  };
+    // B4 (lote 5): o modelo, a origem da validade e as disciplinas já no cadastrar
+    modelo_vigente_id: f.texto("modelo_vigente_id", ""),
+    validade_origem: f.texto("validade_origem", ""),
+    validade_citacao: f.texto("validade_citacao", ""),
+    disc_presente: f.texto("disc_presente", ""),
+    ...Object.fromEntries(
+      Array.from({ length: servico_disciplinas.MAXIMO }, (_, i) => i + 1).flatMap((n) => [
+        [`disc_nome_${n}`, f.texto(`disc_nome_${n}`, "")],
+        [`disc_teorica_${n}`, f.texto(`disc_teorica_${n}`, "")],
+        [`disc_pratica_${n}`, f.texto(`disc_pratica_${n}`, "")],
+      ]),
+    ),
+  } as Record<string, string> & { carga_unidade: string; validade_meses: string };
   const recusar = (mensagem: string) => _tela_catalogo(c, usuario, { erro: mensagem, digitado });
 
   const nome_limpo = digitado.nome.trim();
@@ -329,8 +374,11 @@ rotas.post(CATALOGO, async (c) => {
       "Código inválido: use letras maiúsculas, números, ponto, hífen ou sublinhado (NR-35, PRIM_SOCORROS).",
     );
   }
-  const horas = _horas(digitado.carga_horaria_horas);
-  if (horas === null) return recusar("Carga horária inválida: informe um número maior que zero.");
+  if (!(carga.UNIDADES as readonly string[]).includes(digitado.carga_unidade)) return recusar("Escolha a unidade da carga: horas ou tempos.");
+  const unidade = carga.unidade_de(digitado.carga_unidade);
+  const lida = _carga_na_unidade(digitado.carga_horaria_horas, unidade);
+  if ("erro" in lida) return recusar(lida.erro);
+  const horas = lida.valor;
   const meses = _inteiro(digitado.validade_meses);
   if (meses === null) return recusar("Validade inválida: informe meses inteiros, ou 0 para não expira.");
   const [ja] = await tx
@@ -349,29 +397,72 @@ rotas.post(CATALOGO, async (c) => {
     const dono = await _dono_do_codigo_curto(tx, codigo_curto, null);
     if (dono) return recusar(await _mensagem_duplicado(tx, codigo_curto, dono, null));
   }
+  // B4 (lote 5): no cadastro só cabe modelo genérico e vigente (o do próprio treinamento ainda não existe)
+  const modelo_escolhido = id_opcional(digitado.modelo_vigente_id ?? "");
+  if (modelo_escolhido !== null) {
+    const modelo = await _modelo(tx, modelo_escolhido);
+    if (!modelo || modelo.treinamento_id !== null || !modelo.vigente) {
+      return recusar("Escolha um modelo genérico vigente, ou deixe o genérico vigente.");
+    }
+  }
+  const origem = (digitado.validade_origem ?? "").trim();
+  if (origem && origem !== "NORMA" && origem !== "INSTITUCIONAL") return recusar("Escolha de onde vem a validade: norma ou política interna.");
+  const citacao = texto_ou_nulo(digitado.validade_citacao ?? "");
+  if (origem && meses > 0 && !citacao) {
+    return recusar(
+      origem === "NORMA"
+        ? "Diga a norma que fixa a validade (por exemplo, “Portaria CBMMG nº 54/2020, art. 43”)."
+        : "Diga o documento da política interna que fixa a validade.",
+    );
+  }
+  let disciplinas: ReturnType<typeof servico_disciplinas.ler_formulario> = [];
+  if (digitado.disc_presente === "1") {
+    try {
+      disciplinas = servico_disciplinas.ler_formulario((n) => digitado[n] ?? "");
+    } catch (erro) {
+      if (erro instanceof servico_disciplinas.RegraDasDisciplinas) return recusar(erro.message);
+      throw erro;
+    }
+  }
 
-  const [treinamento] = await tx
-    .insert(tabela_treinamento)
-    .values({
-      codigo: codigo_limpo,
-      codigo_curto,
-      nome: nome_limpo,
-      carga_horaria_horas: horas,
-      validade_meses: meses,
-      norma_referencia: texto_ou_nulo(digitado.norma_referencia),
-      conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
-      obrigatorio: marcado(digitado.obrigatorio),
-      // NUVEM: o dono do treinamento (`dono_turma.ts`)
-      criado_por: usuario.id,
-    })
-    .returning();
+  let treinamento: typeof tabela_treinamento.$inferSelect | undefined;
+  try {
+    // a linha e as disciplinas juntas: a recusa das disciplinas desfaz a linha (ponto de salvamento)
+    treinamento = await tx.transaction(async (sp) => {
+      const [novo] = await sp
+        .insert(tabela_treinamento)
+        .values({
+          codigo: codigo_limpo,
+          codigo_curto,
+          nome: nome_limpo,
+          carga_horaria_horas: horas,
+          carga_unidade: unidade,
+          validade_meses: meses,
+          norma_referencia: texto_ou_nulo(digitado.norma_referencia),
+          conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
+          obrigatorio: marcado(digitado.obrigatorio),
+          modelo_vigente_id: modelo_escolhido,
+          validade_origem: origem || null,
+          validade_citacao: citacao,
+          // NUVEM: o dono do treinamento (`dono_turma.ts`)
+          criado_por: usuario.id,
+        })
+        .returning();
+      // sem JavaScript o quadro vem sempre: vazio não conta; preenchido em HORAS, o serviço recusa
+      if (disciplinas.length) await servico_disciplinas.salvar(sp, usuario, novo!, disciplinas);
+      return novo!;
+    });
+  } catch (erro) {
+    if (erro instanceof servico_disciplinas.RegraDasDisciplinas) return recusar(erro.message);
+    throw erro;
+  }
   await auditoria.registrar(tx, {
     entidade: "treinamento",
     entidade_id: treinamento!.id,
     tipo_evento: "TREINAMENTO_CRIADO",
     descricao:
       `${treinamento!.codigo} · ${treinamento!.nome} · ` +
-      `${horas}h · validade ${Treinamento.validade_rotulo(treinamento!)} · código curto ${treinamento!.codigo_curto}`,
+      `${carga.exibir(horas, unidade)} · validade ${Treinamento.validade_rotulo(treinamento!)} · código curto ${treinamento!.codigo_curto}`,
     usuario,
   });
   // o nome, que é o que a pessoa digitou; o código gerado sozinho não dizia nada
@@ -390,6 +481,7 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
     nome: f.texto("nome"),
     codigo_curto: f.texto("codigo_curto"),
     carga_horaria_horas: f.texto("carga_horaria_horas"),
+    carga_unidade: f.texto("carga_unidade"),
     validade_meses: f.texto("validade_meses"),
     norma_referencia: f.texto("norma_referencia"),
     conteudo_programatico: f.texto("conteudo_programatico"),
@@ -397,11 +489,43 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
     instrutor_padrao_id: f.texto("instrutor_padrao_id"),
     obrigatorio: f.texto("obrigatorio", ""),
     ativo: f.texto("ativo", ""),
-  };
+    // lote 4: de onde vem a validade (norma ou política interna) e a citação dela
+    validade_origem: f.texto("validade_origem", ""),
+    validade_citacao: f.texto("validade_citacao", ""),
+    // lote 4: as disciplinas (brigada), só quando o popup as mostrou
+    disc_presente: f.texto("disc_presente", ""),
+    ...Object.fromEntries(
+      Array.from({ length: servico_disciplinas.MAXIMO }, (_, i) => i + 1).flatMap((n) => [
+        [`disc_nome_${n}`, f.texto(`disc_nome_${n}`, "")],
+        [`disc_teorica_${n}`, f.texto(`disc_teorica_${n}`, "")],
+        [`disc_pratica_${n}`, f.texto(`disc_pratica_${n}`, "")],
+      ]),
+    ),
+  } as Record<string, string>;
   const recusar = (mensagem: string) =>
     _tela_catalogo(c, usuario, { erro: mensagem, digitado, editando_id: treinamento_id });
-  const horas = _horas(digitado.carga_horaria_horas);
-  if (horas === null) return recusar("Carga horária inválida: informe um número maior que zero.");
+  const [atual] = await tx.select().from(tabela_treinamento).where(eq(tabela_treinamento.id, treinamento_id));
+  if (!atual) return redirecionar(c, CATALOGO);
+  // lote 3: a unidade não muda depois que o treinamento tem turma — a presença e os
+  // certificados dessas turmas estão contados nela. Sem o campo, fica a de hoje.
+  const unidade_pedida = digitado.carga_unidade || atual.carga_unidade;
+  if (!(carga.UNIDADES as readonly string[]).includes(unidade_pedida)) return recusar("Escolha a unidade da carga: horas ou tempos.");
+  const unidade = carga.unidade_de(unidade_pedida);
+  if (unidade !== atual.carga_unidade) {
+    const [{ n } = { n: 0 }] = await tx
+      .select({ n: count() })
+      .from(tabela_turma)
+      .where(eq(tabela_turma.treinamento_id, treinamento_id));
+    if (Number(n) > 0) {
+      return recusar(
+        `A unidade da carga não muda depois que o treinamento tem turma (${n}): a presença e os certificados ` +
+          "dessas turmas estão contados nela. Para outra unidade, cadastre outro treinamento.",
+      );
+    }
+  }
+  const lida = _carga_na_unidade(digitado.carga_horaria_horas, unidade);
+  if ("erro" in lida) return recusar(lida.erro);
+  const horas = lida.valor;
   const meses = _inteiro(digitado.validade_meses);
   if (meses === null) return recusar("Validade inválida: informe meses inteiros, ou 0 para não expira.");
   const nome_limpo = digitado.nome.trim();
@@ -426,6 +550,28 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
   const instrutor_escolhido = id_opcional(digitado.instrutor_padrao_id);
   const problema = await _confere_vinculos(tx, alvo, modelo_escolhido, instrutor_escolhido);
   if (problema) return recusar(problema);
+  const origem = digitado.validade_origem!.trim();
+  if (origem && origem !== "NORMA" && origem !== "INSTITUCIONAL") return recusar("Escolha de onde vem a validade: norma ou política interna.");
+  const citacao = texto_ou_nulo(digitado.validade_citacao ?? "");
+  if (origem && meses > 0 && !citacao) {
+    return recusar(
+      origem === "NORMA"
+        ? "Diga a norma que fixa a validade (por exemplo, “Portaria CBMMG nº 54/2020, art. 43”)."
+        : "Diga o documento da política interna que fixa a validade.",
+    );
+  }
+  // lote 4: as disciplinas, contra a carga NOVA (mesma transação: a recusa desfaz tudo)
+  if (digitado.disc_presente === "1") {
+    try {
+      const lista = servico_disciplinas.ler_formulario((n) => digitado[n] ?? "");
+      if (lista.length || unidade === "TEMPOS") {
+        await servico_disciplinas.salvar(tx, usuario, { ...alvo, carga_horaria_horas: horas, carga_unidade: unidade }, lista);
+      }
+    } catch (erro) {
+      if (erro instanceof servico_disciplinas.RegraDasDisciplinas) return recusar(erro.message);
+      throw erro;
+    }
+  }
   return salvar_com_diff(
     c,
     usuario,
@@ -436,16 +582,33 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
       // a mudança vai para a trilha (CAMPO_ALTERADO, por `salvar_com_diff`)
       codigo_curto,
       carga_horaria_horas: horas,
+      carga_unidade: unidade,
       validade_meses: meses,
       norma_referencia: texto_ou_nulo(digitado.norma_referencia),
       conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
       modelo_vigente_id: modelo_escolhido,
       instrutor_padrao_id: instrutor_escolhido,
-      obrigatorio: marcado(digitado.obrigatorio),
-      ativo: marcado(digitado.ativo),
+      obrigatorio: marcado(digitado.obrigatorio!),
+      ativo: marcado(digitado.ativo!),
+      validade_origem: origem || null,
+      validade_citacao: citacao,
     },
     { permissao: "treinamento.gerenciar", rotulo: "Treinamento", volta: CATALOGO },
   );
+});
+
+/** Lote 4: o centro de formação da brigada (nome e CNPJ), que o certificado CBMMG imprime. */
+rotas.post(`${CATALOGO}/centro-formacao`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("treinamento.gerenciar");
+  const f = await formulario(c);
+  try {
+    const mudou = await centro_formacao.definir(c.get("tx"), usuario, { nome: f.texto("nome"), cnpj: f.texto("cnpj") });
+    return _volta(c, CATALOGO, mudou ? "Centro de formação da brigada gravado." : "Centro de formação sem alteração.");
+  } catch (erro) {
+    if (erro instanceof centro_formacao.CentroInvalido) return _erro(c, CATALOGO, erro.message);
+    throw erro;
+  }
 });
 
 // =====================================================================
@@ -1276,6 +1439,7 @@ async function _tela_assinaturas(c: Ctx, usuario: UsuarioAtual, d: Recado = {}) 
     hoje: datas_br.hoje(),
     // o início gravado quando o campo veio em branco: a tela o escreve "desde sempre"
     desde_sempre: VIGENCIA_DESDE_SEMPRE,
+    profissoes: brigada.PROFISSOES.map((p) => ({ valor: p, rotulo: brigada.ROTULO_PROFISSAO[p] })),
     mensagem: d.mensagem ?? null,
     erro: d.erro ?? null,
     digitado: d.digitado ?? {},
@@ -1346,7 +1510,26 @@ function _campos_do_formulario(f: Formulario) {
     externo: f.texto("externo"),
     vigencia_inicio: f.texto("vigencia_inicio"),
     vigencia_fim: f.texto("vigencia_fim"),
+    // lote 4 (brigada): a profissão (arts. 59 e 63) e o credenciamento no CBMMG
+    profissao: f.texto("profissao"),
+    credenciamento_cbmmg: f.texto("credenciamento_cbmmg"),
   };
+}
+
+/**
+ * Lote 4: profissão e credenciamento. Formulário sem os campos (antigo, integração) mantém
+ * o que está gravado: devolve `{}`.
+ */
+function _profissao_do_formulario(
+  f: Formulario,
+  d: { profissao: string; credenciamento_cbmmg: string },
+): [Record<string, string | null>, string] {
+  if (!f.tem("profissao") && !f.tem("credenciamento_cbmmg")) return [{}, ""];
+  const p = d.profissao.trim();
+  if (p && !brigada.profissao_de(p)) return [{}, "Escolha a profissão na lista, ou deixe em branco."];
+  const cred = d.credenciamento_cbmmg.replace(/\s+/g, " ").trim();
+  if (cred.length > 30) return [{}, "O número de credenciamento no CBMMG tem no máximo 30 caracteres."];
+  return [{ profissao: p || null, credenciamento_cbmmg: cred || null }, ""];
 }
 
 rotas.post(ASSINATURAS, async (c) => {
@@ -1366,6 +1549,8 @@ rotas.post(ASSINATURAS, async (c) => {
   // tudo o que foi digitado volta: eram nove campos perdidos por esquecer o servidor
   // (menos o CPF, que não volta à tela nem na recusa)
   if (campos === null) return _tela_assinaturas(c, usuario, { erro: problema, digitado });
+  const [profissao, problema_prof] = _profissao_do_formulario(f, digitado);
+  if (problema_prof) return _tela_assinaturas(c, usuario, { erro: problema_prof, digitado });
   let cpf: string | null | undefined;
   try {
     cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO));
@@ -1381,6 +1566,7 @@ rotas.post(ASSINATURAS, async (c) => {
       conselho: (texto_ou_nulo(digitado.conselho) ?? "").toUpperCase() || null,
       registro_conselho: texto_ou_nulo(digitado.registro_conselho),
       organizacao: texto_ou_nulo(digitado.organizacao),
+      ...profissao,
     })
     .returning();
   await auditoria.registrar(tx, {
@@ -1417,6 +1603,8 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
     vigencia_fim: digitado.vigencia_fim,
   });
   if (campos === null) return recusar(problema);
+  const [profissao, problema_prof] = _profissao_do_formulario(f, digitado);
+  if (problema_prof) return recusar(problema_prof);
   // O CPF fica FORA do `salvar_com_diff`: o diff grava antes → depois na
   // trilha, e do CPF a trilha guarda só o fato (`cpf_certificado.ts`).
   try {
@@ -1440,6 +1628,7 @@ rotas.post(`${ASSINATURAS}/:assinatura_id{[0-9]+}`, async (c) => {
       registro_conselho: texto_ou_nulo(digitado.registro_conselho),
       organizacao: texto_ou_nulo(digitado.organizacao),
       ativo: marcado(digitado.ativo),
+      ...profissao,
     },
     { permissao: "assinatura.gerenciar", rotulo: "Instrutor", volta: ASSINATURAS },
   );

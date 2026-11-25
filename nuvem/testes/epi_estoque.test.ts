@@ -229,7 +229,7 @@ describe("RN-25: o lote vencido", () => {
   it("entra no estoque e avisa", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    const r = await _lote(cliente, cenario, { validade_ca: ONTEM });
+    const r = await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     expect(r.status).toBe(303);
     expect(_recado(r)).toContain("não pode ser entregue");
     expect((await _entradas()).length).toBe(1);
@@ -238,7 +238,7 @@ describe("RN-25: o lote vencido", () => {
   it("fica visível e marcado no estoque", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: ONTEM });
+    await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     const corpo = (await cliente.get(ESTOQUE)).text;
     expect(corpo).toContain(`/epis/estoque/${(await _entradas())[0]!.id}/movimentos`);
     expect(corpo).toContain("venceu em");
@@ -249,7 +249,7 @@ describe("RN-25: o lote vencido", () => {
   it("não sai, e o saldo não se move", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: ONTEM });
+    await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     const r = await _entregar(cliente, cenario, entrada.id);
     expect(_recado(r)).toContain("CA vencido");
@@ -278,7 +278,7 @@ describe("o saldo em cada passo", () => {
       { seguir: false },
     );
     expect(devolucao.status).toBe(303);
-    expect(await _saldo(entrada.id)).toBe(9);
+    expect(await _saldo(entrada.id)).toBe(7); // devolução não repõe saldo: EPI é individual e já foi usado
 
     const descarte = await cliente.post(
       `${ESTOQUE}/${entrada.id}/descarte`,
@@ -286,26 +286,26 @@ describe("o saldo em cada passo", () => {
       { seguir: false },
     );
     expect(descarte.status).toBe(303);
-    expect(await _saldo(entrada.id)).toBe(8);
+    expect(await _saldo(entrada.id)).toBe(6);
 
     const ajuste = await cliente.post(
       `${ESTOQUE}/${entrada.id}/ajuste`,
-      { contagem: "6", motivo: "contagem do inventário anual" },
+      { contagem: "5", motivo: "contagem do inventário anual" },
       { seguir: false },
     );
     expect(ajuste.status).toBe(303);
-    expect(await _saldo(entrada.id)).toBe(6);
+    expect(await _saldo(entrada.id)).toBe(5);
 
+    // a devolução não aparece no razão: não repõe saldo (EPI é individual e já foi usado)
     expect((await _movimentos(entrada.id)).map((m) => [m.tipo, m.quantidade])).toEqual([
       ["ENTRADA", 10],
       ["SAIDA", -3],
-      ["DEVOLUCAO", 2],
       ["DESCARTE", -1],
-      ["AJUSTE", -2],
+      ["AJUSTE", -1],
     ]);
     const corpo = (await cliente.get(`${ESTOQUE}/${entrada.id}/movimentos`)).text;
-    for (const esperado of ["entrada", "saída", "devolução", "descarte", "ajuste"]) expect(corpo).toContain(esperado);
-    expect(corpo).toContain("contagem física 6");
+    for (const esperado of ["entrada", "saída", "descarte", "ajuste"]) expect(corpo).toContain(esperado);
+    expect(corpo).toContain("contagem física 5");
   });
 
   it("o extrato acumula o saldo na ordem em que os fatos foram gravados", async () => {
@@ -324,7 +324,7 @@ describe("o saldo em cada passo", () => {
 // 4. Devolução × estorno
 // =====================================================================
 describe("devolução não é estorno", () => {
-  it("devolução repõe saldo e estorno não", async () => {
+  it("nem a devolução nem o estorno repõem saldo", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
     await _lote(cliente, cenario, { quantidade_recebida: "10", quantidade_empenhada: "10" });
@@ -342,9 +342,9 @@ describe("devolução não é estorno", () => {
     const regs = await _registros();
     const segunda = regs[regs.length - 1]!;
     await cliente.post(`${FICHAS}/registros/${segunda.id}/devolucao`, { quantidade: "2", motivo: "desligamento do servidor" });
-    expect(await _saldo(entrada.id)).toBe(6);
+    expect(await _saldo(entrada.id)).toBe(4);
 
-    expect((await _movimentos(entrada.id)).map((m) => m.tipo)).toEqual(["ENTRADA", "SAIDA", "SAIDA", "DEVOLUCAO"]);
+    expect((await _movimentos(entrada.id)).map((m) => m.tipo)).toEqual(["ENTRADA", "SAIDA", "SAIDA"]);
   });
 
   it("a devolução vira linha na ficha sem desfazer a entrega", async () => {
@@ -410,7 +410,7 @@ describe("devolução não é estorno", () => {
     await cliente.post(`${FICHAS}/registros/${entrega.id}/devolucao`, { quantidade: "3", motivo: "trocou de posto" });
     const r = await cliente.post(`${FICHAS}/registros/${entrega.id}/estorno`, { motivo: "quantidade errada" }, { seguir: false });
     expect(_recado(r)).toContain("já teve 3 devolvido");
-    expect(await _saldo(entrada.id)).toBe(10);
+    expect(await _saldo(entrada.id)).toBe(7); // a devolução não repõe saldo (EPI usado)
   });
 
   it("devolução de entrega estornada é recusada", async () => {
@@ -512,7 +512,7 @@ describe("descarte", () => {
   it("descartar o lote vencido é como ele sai do estoque", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: ONTEM });
+    await _lote(cliente, cenario, { validade_ca: ONTEM, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     await cliente.post(`${ESTOQUE}/${entrada.id}/descarte`, {
       quantidade: "10",
@@ -606,7 +606,7 @@ describe("a pendência do CA a vencer", () => {
   it("lote a vencer abre pendência com prazo na validade", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES });
+    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     const pendencias = await _pendencias_de_ca();
     expect(pendencias.length).toBe(1);
@@ -629,7 +629,7 @@ describe("a pendência do CA a vencer", () => {
   it("descartar o saldo fecha a pendência do CA", async () => {
     const cenario = await _cenario();
     await entrar(cliente, "coordenador_csso");
-    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES });
+    await _lote(cliente, cenario, { validade_ca: DAQUI_A_UM_MES, confirmo_diferenca_catalogo: "1" });
     const entrada = (await _entradas())[0]!;
     await cliente.post(`${ESTOQUE}/${entrada.id}/descarte`, { quantidade: "10", motivo: "CA a vencer sem previsão de renovação" });
     const pendencias = await _pendencias_de_ca();
@@ -814,5 +814,21 @@ describe("o CNPJ do fornecedor", () => {
     expect(epi_estoque.formatar_cnpj("12345678000195")).toBe("12.345.678/0001-95");
     expect(epi_estoque.formatar_cnpj("123")).toBe("123");
     expect(epi_estoque.formatar_cnpj(null)).toBe("");
+  });
+});
+
+describe("lote × catálogo (24/11/2026)", () => {
+  it("CA ou validade diferentes do catálogo pedem confirmação, e com ela o lote entra", async () => {
+    const cenario = await _cenario();
+    await entrar(cliente, "coordenador_csso");
+    const sem = await _lote(cliente, cenario, { numero_ca: "99999", validade_ca: DAQUI_A_UM_MES });
+    expect(sem.status).toBe(200);
+    expect(sem.text).toContain("o CA do lote é 99999");
+    expect(sem.text).toContain("a validade do CA no lote");
+    expect(sem.text).toContain('name="confirmo_diferenca_catalogo"');
+    expect(await _entradas()).toEqual([]);
+    const com = await _lote(cliente, cenario, { numero_ca: "99999", validade_ca: DAQUI_A_UM_MES, confirmo_diferenca_catalogo: "1" });
+    expect(com.status).toBe(303);
+    expect(await _entradas()).toHaveLength(1);
   });
 });

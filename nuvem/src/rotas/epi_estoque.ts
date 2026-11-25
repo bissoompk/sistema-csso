@@ -20,6 +20,7 @@ import { epi_entrada_estoque, epi_item, usuario as tabela_usuario } from "../db/
 import * as servico from "../servicos/epi_estoque.js";
 import * as epi_requisicao from "../servicos/epi_requisicao.js";
 import * as datas_br from "../servicos/datas_br.js";
+import * as textos from "../servicos/textos.js";
 import { TextoProibido } from "../servicos/textos.js";
 import type { UsuarioAtual } from "../servicos/rbac.js";
 import { comMensagem, fragmento, pagina, redirecionar } from "../web.js";
@@ -33,6 +34,13 @@ export const NOVA_ENTRADA = ESTOQUE + "/nova-entrada";
 /** Codificado: um `&` no nome do fornecedor cortava o recado no `Location`. */
 function _volta(c: Ctx, mensagem: string, destino = ESTOQUE): Response {
   return redirecionar(c, comMensagem(destino, mensagem, "mensagem"));
+}
+
+/** EPI 3 (lote 5): o "gravado" com o aviso de saúde ao lado, quando a observação cita um. */
+function _volta_com_aviso(c: Ctx, mensagem: string, campos: Record<string, string | null | undefined>): Response {
+  const aviso = textos.aviso_de_saude_epi(campos);
+  const volta = comMensagem(ESTOQUE, mensagem, "mensagem");
+  return redirecionar(c, aviso ? comMensagem(volta, aviso, "alerta") : volta);
 }
 
 function _erro(c: Ctx, mensagem: string, destino = ESTOQUE): Response {
@@ -183,6 +191,7 @@ const CAMPOS_ENTRADA = [
   "validade_ca",
   "data_fabricacao",
   "observacao",
+  "confirmo_diferenca_catalogo",
 ] as const;
 
 /** A entrada do lote: a compra pública e o primeiro movimento do razão. */
@@ -205,10 +214,10 @@ rotas.post(ESTOQUE, async (c) => {
 
   const recebida = _inteiro(d.quantidade_recebida);
   if (recebida === null || recebida <= 0) {
-    return recusar("Quantidade recebida inválida: informe um número maior que zero.", "quantidade_recebida");
+    return recusar("Quantidade recebida inválida: informe um número inteiro maior que zero (1, 2, 3…).", "quantidade_recebida");
   }
   const empenhada = _inteiro(d.quantidade_empenhada);
-  if (d.quantidade_empenhada!.trim() && empenhada === null) return recusar("Quantidade empenhada inválida.", "quantidade_empenhada");
+  if (d.quantidade_empenhada!.trim() && empenhada === null) return recusar("Quantidade empenhada inválida: informe um número inteiro maior que zero (1, 2, 3…).", "quantidade_empenhada");
 
   const quando = _data(d.data_entrada);
   if (d.data_entrada!.trim() && quando === null) return recusar("Data de entrada inválida.", "data_entrada");
@@ -255,6 +264,7 @@ rotas.post(ESTOQUE, async (c) => {
       validade_ca: validade,
       data_fabricacao: fabricacao,
       observacao: d.observacao,
+      confirmo_diferenca_catalogo: d.confirmo_diferenca_catalogo === "1",
     });
   } catch (falha) {
     const texto = _texto_da_falha(falha);
@@ -278,7 +288,7 @@ rotas.post(ESTOQUE, async (c) => {
         "reserve o lote, para que fique registrado quem decidiu.";
     }
   }
-  return _volta(c, recado);
+  return _volta_com_aviso(c, recado, { "a observação do lote": d.observacao });
 });
 
 // A permissão vem ANTES da busca nas três rotas de escrita: quem não pode
@@ -309,7 +319,10 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}`, async (c) => {
     desfazer(c);
     return _erro(c, texto);
   }
-  return _volta(c, `Lote ${entrada.lote || entrada.id} atualizado.`);
+  return _volta_com_aviso(c, `Lote ${entrada.lote || entrada.id} atualizado.`, {
+    "a observação do lote": f.texto("observacao"),
+    "o motivo da inativação": f.texto("motivo_inativacao"),
+  });
 });
 
 /** A única forma legítima de o saldo do sistema encontrar a prateleira. */
@@ -348,7 +361,7 @@ rotas.post(`${ESTOQUE}/:entrada_id{[0-9]+}/descarte`, async (c) => {
   if (!entrada) return redirecionar(c, ESTOQUE);
   const f = await formulario(c);
   const quantas = _inteiro(f.texto("quantidade"));
-  if (quantas === null) return _erro(c, "Quantidade a descartar inválida.");
+  if (quantas === null) return _erro(c, "Quantidade a descartar inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   try {
     await servico.descartar(tx, usuario, { entrada, quantidade: quantas, motivo: f.texto("motivo") });
   } catch (falha) {

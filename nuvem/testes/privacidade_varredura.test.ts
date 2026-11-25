@@ -19,6 +19,8 @@
  *  - `sem_nominal`: um perfil sintético com TODA permissão do sistema menos as
  *    duas nominais — o pior caso que a matriz permitiria montar.
  */
+import { CABECALHO_CSRF, token_da_sessao } from "../src/nucleo/csrf.js";
+import { COOKIE_SESSAO } from "../src/servicos/autenticacao.js";
 import { appendFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
@@ -68,6 +70,9 @@ async function ler(cliente: Cliente, caminho: string, metodo = "GET", corpo?: st
   if (corpo !== undefined) {
     cab.set("content-type", "application/x-www-form-urlencoded");
     cab.set("origin", cliente.origem);
+    // o token CSRF que a tela põe no formulário (`nucleo/csrf.ts`)
+    const sessao = cliente.cookies.get(COOKIE_SESSAO);
+    if (sessao) cab.set(CABECALHO_CSRF, token_da_sessao(sessao));
   }
   const res = await amb.app.fetch(
     new Request(new URL(caminho, cliente.origem), { method: metodo, headers: cab, body: corpo ?? null }),

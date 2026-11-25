@@ -40,13 +40,15 @@ async function treinamento(codigo: string) {
 /** Uma turma divulgada (ou não), com inscrição aberta e começo em `dias` dias. */
 async function turma(t: { id: number }, dias: number, extra: Partial<typeof e.turma.$inferInsert> = {}) {
   seq += 1;
+  // o ano da turma é o do começo dela (a restrição ck_turma_ano): perto da virada do ano, HOJE+dias cai no ano seguinte
+  const ano = Number(somar_dias(HOJE, dias).slice(0, 4));
   const [r] = await db
     .insert(e.turma)
     .values({
       treinamento_id: t.id,
       numero: 800 + seq,
-      ano: ANO,
-      codigo: `VPV-${ANO}-${String(seq).padStart(4, "0")}`,
+      ano,
+      codigo: `VPV-${ano}-${String(seq).padStart(4, "0")}`,
       data_inicio: somar_dias(HOJE, dias),
       data_fim: somar_dias(HOJE, dias),
       situacao: "INSCRICOES_ABERTAS",

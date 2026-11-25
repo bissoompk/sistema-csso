@@ -13,9 +13,15 @@ export class RedirecionaParaLogin extends Error {
 
 /** Falta permissão de RBAC. Na API vira 403 em JSON; na tela, a tela de erro. */
 export class PermissaoNegada extends Error {
+  /**
+   * `concedivel = false`: a recusa é de REGRA, não de perfil — nenhuma permissão a resolve (o
+   * pedido de EPI é individual, 24/11/2026). A tela de erro mostra só o motivo, que já traz o
+   * caminho certo, sem a orientação de pedir permissão em Usuários.
+   */
   constructor(
     public codigo: string,
     mensagem?: string,
+    public concedivel = true,
   ) {
     super(mensagem ?? `Permissão necessária: ${codigo}`);
   }

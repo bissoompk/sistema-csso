@@ -62,7 +62,10 @@ const linhas_de = (amb: Amb, id: number) =>
 
 /** O pedido da Joana, aberto e enviado pelo coordenador, numa tela só. */
 async function enviado(amb: Amb, cen: Cenario): Promise<number> {
+  // o pedido é individual: o coordenador é ligado ao servidor só enquanto abre e envia
+  await ligar(amb, "coordenador_csso", cen.servidor);
   const r = await pedir(await como(amb, "coordenador_csso"), cen.servidor, cen, "enviar");
+  await ligar(amb, "coordenador_csso", null);
   expect(r.status, recado(r)).toBe(303);
   return (await pedidos(amb)).at(-1)!.id;
 }
@@ -169,6 +172,7 @@ describe("D18 / M21 / M52 — o servidor pede só para si, numa tela só", () =>
   it("enviar da própria tela protocola com o item; sem item é recusado e nada fica", async () => {
     const amb = await novo();
     const cen = await cenario(amb.db);
+    await ligar(amb, "coordenador_csso", cen.servidor); // o pedido é individual
     const coord = await como(amb, "coordenador_csso");
     const sem_item = await pedir(coord, cen.servidor, null, "enviar");
     expect(sem_item.status).toBe(200);
@@ -185,6 +189,7 @@ describe("D18 / M21 / M52 — o servidor pede só para si, numa tela só", () =>
   it("recusa do item desfaz o rascunho também, e a tela volta com o digitado", async () => {
     const amb = await novo();
     const cen = await cenario(amb.db);
+    await ligar(amb, "coordenador_csso", cen.servidor); // o pedido é individual
     const coord = await como(amb, "coordenador_csso");
     const r = await pedir(coord, cen.servidor, cen, "enviar", { tamanho: "XGG" });
     expect(r.status).toBe(200);
@@ -196,27 +201,28 @@ describe("D18 / M21 / M52 — o servidor pede só para si, numa tela só", () =>
   it("“Pedir troca” chega com o item já escolhido", async () => {
     const amb = await novo();
     const cen = await cenario(amb.db);
+    await ligar(amb, "coordenador_csso", cen.servidor); // o pedido é individual
     const tela = (await (await como(amb, "coordenador_csso")).get(`${NOVA}?item=${cen.item}`)).text;
     expect(tela).toMatch(new RegExp(`<option value="${cen.item}" selected`));
     expect(tela).toContain('id="opcoes-do-item"');
     expect(tela).toContain('name="quantidade"');
   });
 
-  it("chefia de unidade não abre pedido para servidor de outro campus", async () => {
+  it("o pedido é individual: nem chefia, nem unidade, nem campus abrem pedido para outra pessoa", async () => {
     const amb = await novo();
     const cen = await cenario(amb.db);
+    const outro = await outro_servidor(amb);
     const [u1] = await amb.db.select().from(e.unidade_uorg).orderBy(asc(e.unidade_uorg.id)).limit(1);
-    const outro_campus = u1!.campus_id + 1000;
-    const da_unidade = new UsuarioAtual({
-      id: 1, login: "x", nome: "X", permissoes: ["epi.requisitar"], perfis: ["secretaria_csso"], campi: [outro_campus],
-    });
-    await expect(servico.exigir_requerente_permitido(amb.db, da_unidade, { id: cen.servidor })).rejects.toThrow(
-      /outro campus/,
-    );
-    const do_campus = new UsuarioAtual({
+    const chefia = new UsuarioAtual({
       id: 1, login: "x", nome: "X", permissoes: ["epi.requisitar"], perfis: ["secretaria_csso"], campi: [u1!.campus_id],
+      servidor_id: outro,
     });
-    await expect(servico.exigir_requerente_permitido(amb.db, do_campus, { id: cen.servidor })).resolves.toBeUndefined();
+    await expect(servico.exigir_requerente_permitido(amb.db, chefia, { id: cen.servidor })).rejects.toThrow(/individual/);
+    // o próprio beneficiário pede
+    await expect(servico.exigir_requerente_permitido(amb.db, chefia, { id: outro })).resolves.toBeUndefined();
+    // conta sem servidor ligado não pede por ninguém
+    const sem_vinculo = new UsuarioAtual({ id: 2, login: "y", nome: "Y", permissoes: ["epi.requisitar"], perfis: ["secretaria_csso"] });
+    await expect(servico.exigir_requerente_permitido(amb.db, sem_vinculo, { id: cen.servidor })).rejects.toThrow(/não está ligada/);
   });
 });
 

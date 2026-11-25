@@ -15,6 +15,8 @@
  * sai daqui — nem o do titular, nem o de instrutor (`instrutores[].cpf` fica
  * no congelado).
  */
+import * as carga from "../dominio/carga.js";
+import { carga_base_do_congelado, carga_do_congelado } from "./certificado.js";
 import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -74,10 +76,11 @@ export interface CartaoCertificado {
   fim: string | null;
   /** "17, 18 e 19/08/2026" — `datas_br.periodo_curto` */
   periodo: string;
-  /** "16" (horas, decimal em vírgula) */
+  /** "16 horas", "4h30", "10 tempos" — como o certificado escreve (`carga_do_congelado`) */
   carga_horaria: string;
-  /** número para somar (a "X h de capacitação") */
-  horas: number;
+  /** para somar, na unidade-base (minutos em HORAS, tempos em TEMPOS): horas e tempos nunca se somam */
+  carga_base: number;
+  carga_unidade: carga.Unidade;
   data_emissao: string;
   data_vencimento: string | null;
   situacao: SituacaoCartao;
@@ -114,8 +117,10 @@ export interface CartaoEmEmissao {
 export interface ResumoDoTitular {
   /** emitidos e não anulados */
   emitidos: number;
-  /** soma da carga dos emitidos não anulados */
-  horas: number;
+  /** soma da carga dos emitidos não anulados, por unidade (lote 3: somas separadas) */
+  somas: Record<carga.Unidade, number>;
+  /** "32 horas · 10 tempos" */
+  carga_texto: string;
   validos: number;
   a_vencer: number;
   vencidos: number;
@@ -211,8 +216,10 @@ export function cartao_de(
     inicio,
     fim,
     periodo: inicio ? datas_br.periodo_curto(inicio, fim) : "",
-    carga_horaria: numero_br(_texto(k.carga_horaria) || null),
-    horas: _horas(k.carga_horaria),
+    carga_horaria: carga_do_congelado({ carga_horaria: _texto(k.carga_horaria), carga_unidade: _texto(k.carga_unidade) || null }),
+    ...((b) => ({ carga_base: b.base, carga_unidade: b.unidade }))(
+      carga_base_do_congelado({ carga_horaria: _texto(k.carga_horaria), carga_unidade: _texto(k.carga_unidade) || null }),
+    ),
     data_emissao: c.data_emissao,
     data_vencimento: c.data_vencimento,
     situacao,
@@ -239,7 +246,7 @@ export async function do_titular(tx: Executor, titular: ChaveDoTitular, hoje: st
     cartoes: [],
     anulados: [],
     em_emissao: [],
-    resumo: { emitidos: 0, horas: 0, validos: 0, a_vencer: 0, vencidos: 0, indeterminados: 0, substituidos: 0, proximo_a_vencer: null },
+    resumo: { emitidos: 0, somas: { HORAS: 0, TEMPOS: 0 }, carga_texto: carga.exibir_somas({ HORAS: 0, TEMPOS: 0 }), validos: 0, a_vencer: 0, vencidos: 0, indeterminados: 0, substituidos: 0, proximo_a_vencer: null },
   };
   if (titular === null) return vazio;
   // o certificado e o participante da inscrição presos ao MESMO titular
@@ -275,6 +282,7 @@ export async function do_titular(tx: Executor, titular: ChaveDoTitular, hoje: st
         inicio: tabela_turma.data_inicio,
         fim: tabela_turma.data_fim,
         carga_turma: tabela_turma.carga_horaria_horas,
+        carga_unidade: tabela_turma.carga_unidade,
         carga_treinamento: tabela_treinamento.carga_horaria_horas,
         treinamento: tabela_treinamento.nome,
         norma: tabela_treinamento.norma_referencia,
@@ -319,10 +327,10 @@ export async function do_titular(tx: Executor, titular: ChaveDoTitular, hoje: st
   ordenar(cartoes);
   ordenar(anulados);
 
-  const resumo: ResumoDoTitular = { ...vazio.resumo };
+  const resumo: ResumoDoTitular = { ...vazio.resumo, somas: { HORAS: 0, TEMPOS: 0 } };
   for (const x of cartoes) {
     resumo.emitidos += 1;
-    resumo.horas += x.horas;
+    resumo.somas[x.carga_unidade] += x.carga_base;
     // o superado pela reciclagem não é vencimento de ninguém: a pessoa tem o novo
     if (x.superado_por) resumo.substituidos += 1;
     else if (x.situacao.tipo === "valido") resumo.validos += 1;
@@ -341,7 +349,7 @@ export async function do_titular(tx: Executor, titular: ChaveDoTitular, hoje: st
       }
     }
   }
-  resumo.horas = Math.round(resumo.horas * 10) / 10;
+  resumo.carga_texto = carga.exibir_somas(resumo.somas);
 
   const em_emissao: CartaoEmEmissao[] = aprovadas.map((a) => ({
     inscricao_id: a.inscricao_id,
@@ -352,7 +360,7 @@ export async function do_titular(tx: Executor, titular: ChaveDoTitular, hoje: st
     inicio: a.inicio,
     fim: a.fim,
     periodo: datas_br.periodo_curto(a.inicio, a.fim),
-    carga_horaria: numero_br(a.carga_turma || a.carga_treinamento),
+    carga_horaria: carga.exibir(a.carga_turma || a.carga_treinamento, a.carga_unidade),
     ano: Number(a.fim.slice(0, 4)),
   }));
   return { cartoes, anulados, em_emissao, resumo };

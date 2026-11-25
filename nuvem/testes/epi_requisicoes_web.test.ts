@@ -33,8 +33,12 @@ async function novo(): Promise<Amb> {
   const amb = await bancoLimpo();
   return { ...amb, contas: await contas(amb.db) };
 }
+/** De quem é o cliente, para `abrir` ligar a conta ao servidor do pedido (o pedido é individual). */
+const dono_do_cliente = new WeakMap<object, { amb: Amb; login: string }>();
 async function como(amb: Amb, perfil: string): Promise<Cliente> {
-  return entrar(amb.novoCliente(), amb.contas[perfil]![0]);
+  const cliente = await entrar(amb.novoCliente(), amb.contas[perfil]![0]);
+  dono_do_cliente.set(cliente, { amb, login: amb.contas[perfil]![0] });
+  return cliente;
 }
 
 // =====================================================================
@@ -124,7 +128,32 @@ async function amarrar_conta_ao_servidor(amb: Amb, login: string, servidor_id: n
   await amb.db.update(e.usuario).set({ servidor_id }).where(eq(e.usuario.login, login));
 }
 
-function abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
+/**
+ * O pedido de EPI é individual: só o beneficiário abre. A conta do cliente é ligada ao servidor
+ * do cenário só durante a abertura e desligada depois — no resto do teste ela continua sendo
+ * outra pessoa (a RN-28 depende disso).
+ */
+async function abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
+  // o pedido é individual: a conta do cliente passa a ser a do titular enquanto escreve o pedido
+  // (abrir, acrescentar, enviar); `desligar` a devolve a quem era, para decidir (RN-28)
+  const dono = dono_do_cliente.get(cliente);
+  if (dono && !vinculo_anterior.has(cliente)) {
+    const [u] = await dono.amb.db.select({ servidor_id: e.usuario.servidor_id }).from(e.usuario).where(eq(e.usuario.login, dono.login));
+    vinculo_anterior.set(cliente, u?.servidor_id ?? null);
+    await amarrar_conta_ao_servidor(dono.amb, dono.login, cen.servidor);
+  }
+  return _abrir(cliente, cen, troca);
+}
+
+const vinculo_anterior = new WeakMap<object, number | null>();
+async function desligar(cliente: Cliente) {
+  const dono = dono_do_cliente.get(cliente);
+  if (!dono || !vinculo_anterior.has(cliente)) return;
+  await dono.amb.db.update(e.usuario).set({ servidor_id: vinculo_anterior.get(cliente)! }).where(eq(e.usuario.login, dono.login));
+  vinculo_anterior.delete(cliente);
+}
+
+function _abrir(cliente: Cliente, cen: Cenario, troca: Campos = {}) {
   return cliente.post(
     FILA,
     {
@@ -174,6 +203,7 @@ async function pedido_enviado(amb: Amb, cliente: Cliente, cen: Cenario, troca: C
   await acrescentar(cliente, requisicao.id, cen, troca);
   const r = await cliente.post(`${FILA}/${requisicao.id}/enviar`, { termo_aceito: "1" }, { seguir: false });
   expect(r.status, recado(r)).toBe(303);
+  await desligar(cliente);
   return requisicao.id;
 }
 
@@ -217,8 +247,9 @@ describe("permissões", () => {
   });
 
   it.each([
-    ["coordenador_csso", 303, 303],
-    ["secretaria_csso", 303, 403],
+    // o pedido é individual (24/11/2026): sem ser o beneficiário, nem a equipe abre por outra pessoa
+    ["coordenador_csso", 200, 303],
+    ["secretaria_csso", 200, 403],
     // escopo próprio sem servidor ligado: a conta não tem por quem pedir, e a
     // tela volta dizendo isso (200) — antes ela abria rascunho para qualquer
     // servidor do cadastro (D18, `correcoes_epi.test.ts`)
@@ -230,7 +261,7 @@ describe("permissões", () => {
     const cen = await cenario(amb);
     const requisicao_id = await pedido_enviado(amb, await como(amb, "coordenador_csso"), cen);
     const cliente = await como(amb, perfil);
-    expect((await abrir(cliente, cen)).status).toBe(pode_abrir);
+    expect((await _abrir(cliente, cen)).status).toBe(pode_abrir);
     expect((await cliente.post(`${FILA}/${requisicao_id}/analise`, {}, { seguir: false })).status).toBe(decidir);
   });
 
@@ -266,6 +297,7 @@ describe("o caminho inteiro", () => {
     expect(requisicao.unidade_uorg_id).toBe(cen.unidade);
     expect(requisicao.cargo_snapshot).toBeTruthy();
 
+    await desligar(cliente); // quem pediu não analisa (RN-28)
     expect((await cliente.post(`${FILA}/${requisicao.id}/analise`, {}, { seguir: false })).status).toBe(303);
     const linha = (await linhas(amb, requisicao.id))[0]!;
     const aprovada = await cliente.post(
@@ -304,6 +336,7 @@ describe("o caminho inteiro", () => {
     const requisicao_id = (await ultima(amb)).id;
     await acrescentar(cliente, requisicao_id, cen, { quantidade: "2" });
     await cliente.post(`${FILA}/${requisicao_id}/enviar`, { termo_aceito: "1" }, { seguir: false });
+    await desligar(cliente); // quem pediu não analisa (RN-28): a conta volta a ser da equipe
     await cliente.post(`${FILA}/${requisicao_id}/analise`, {}, { seguir: false });
     const linha = (await linhas(amb, requisicao_id))[0]!;
     await cliente.post(`${FILA}/${requisicao_id}/itens/${linha.id}/aprovar`, { quantidade_aprovada: "2" }, { seguir: false });
@@ -336,7 +369,8 @@ describe("RN-28 na tela", () => {
     const negado = await cliente.post(`${FILA}/${requisicao_id}/analise`, {}, { seguir: false, cabecalhos: { accept: "text/html" } });
     expect(negado.status).toBe(403);
     expect(negado.text).toContain("Quem analisa não é quem requisita");
-    expect(negado.text).toContain("epi.analisar");
+    // lote 5, ajuste 4: recusa de regra — sem a orientação de pedir a concessão de `epi.analisar`
+    expect(negado.text).not.toContain("A saída é a concessão do perfil");
     expect(negado.text).toContain("/epis/entregas/nova");
     expect(negado.text).toContain("outra pessoa com a permissão de analisar EPI");
     expect((await ultima(amb)).estado).toBe("ENVIADA");
@@ -647,6 +681,19 @@ describe("RN-25 na tela", () => {
     expect(corpo).toContain("CA vencido");
   });
 
+  it("na entrega, o primeiro lote que pode sair vem escolhido, e nunca o vencido (24/11/2026)", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const vencido = await lote_vencido(amb, cen);
+    const { cliente, requisicao_id, linha } = await aprovado(amb, cen);
+    const corpo = (await cliente.get(`${FILA}/${requisicao_id}`)).text;
+    const seletor = corpo.slice(corpo.indexOf(`id="lote-${linha.id}"`));
+    const select = seletor.slice(0, seletor.indexOf("</select>"));
+    expect(select).toMatch(new RegExp(`<option value="${cen.entrada}"[^>]*\\bselected\\b`));
+    expect(select).not.toMatch(new RegExp(`<option value="${vencido}"[^>]*\\bselected\\b`));
+    expect(select).toContain("não baixa o estoque");
+  });
+
   it("o lote candidato aparece ao lado do item para quem só lê", async () => {
     const amb = await novo();
     const cen = await cenario(amb);
@@ -808,7 +855,7 @@ describe("a recusa no rascunho devolve o digitado", () => {
       justificativa: "uso exigido pelo atestado médico da chefia",
     });
     expect(r.status).toBe(200);
-    expect(r.text).toContain("termo proibido");
+    expect(r.text).toContain("dado de saúde");
     expect(r.text).toMatch(new RegExp(`<option value="${cen.item}"[^>]*\\bselected\\b`));
     expect(valor(r.text, "quantidade")).toBe("3");
     expect(r.text).toContain(html("uso exigido pelo atestado médico da chefia"));
@@ -1088,5 +1135,149 @@ describe("o sino do requerente", () => {
       delete process.env.CSSO_EPI_LOCAL_RETIRADA;
       redefinirConfig();
     }
+  });
+});
+
+describe("pedido individual: o 403 diz o motivo e o caminho, sem mandar pedir permissão (24/11/2026)", () => {
+  it("outra pessoa da equipe acrescentando item no rascunho alheio recebe 403 sem a orientação de Usuários", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cliente = await como(amb, "coordenador_csso");
+    await abrir(cliente, cen);
+    const requisicao = await ultima(amb);
+    await desligar(cliente); // a conta volta a ser de outra pessoa: o rascunho agora é alheio
+    const r = await cliente.post(
+      `${FILA}/${requisicao.id}/itens`,
+      { item_id: String(cen.item), quantidade: "1", tamanho: "M", justificativa: "", motivo: "USO_INICIAL" },
+      { seguir: false, cabecalhos: { accept: "text/html" } },
+    );
+    expect(r.status).toBe(403);
+    expect(r.text).toContain("O pedido de EPI é individual");
+    expect(r.text).toContain("Nenhuma permissão muda isso");
+    expect(r.text).toContain("Meus pedidos de EPI");
+    expect(r.text).toContain("Entregar EPI");
+    // a orientação genérica do 403 de perfil não aparece
+    expect(r.text).not.toContain("A saída é a concessão do perfil");
+    expect(r.text).not.toContain("perfil.conceder");
+    expect(r.text).not.toContain("<code>epi.requisitar</code>");
+    expect(await linhas(amb, requisicao.id)).toEqual([]);
+  });
+
+  it("o 403 de perfil continua com a orientação de Usuários", async () => {
+    const amb = await novo();
+    const r = await (await como(amb, "admin_ti")).get(FILA, { cabecalhos: { accept: "text/html" } });
+    expect(r.status).toBe(403);
+    expect(r.text).toContain("A saída é a concessão do perfil");
+  });
+});
+
+describe("pedido em análise com outra pessoa: a tela mostra só 'assumir' (24/11/2026)", () => {
+  it("os botões de decidir somem, aparece 'Assumir a análise' com o nome; depois de assumir, eles voltam", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const coordenador = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, coordenador, cen);
+    const tecnico = await como(amb, "tecnico_seguranca");
+    const pegou = await tecnico.post(`${FILA}/${id}/analise`, {}, { seguir: false });
+    expect(pegou.status, recado(pegou)).toBe(303);
+    const [conta_tecnico] = await amb.db.select().from(e.usuario).where(eq(e.usuario.login, amb.contas["tecnico_seguranca"]![0]));
+
+    const tela = (await coordenador.get(`${FILA}/${id}`)).text;
+    expect(tela).toContain(`Em análise com ${conta_tecnico!.nome}`);
+    expect(tela).toContain("Assumir a análise");
+    expect(tela).toContain(`action="${FILA}/${id}/assumir"`);
+    for (const acao of ["concluir", "indeferir", "devolver", "aprovar-tudo"]) expect(tela).not.toContain(`${FILA}/${id}/${acao}"`);
+    expect(tela).not.toMatch(new RegExp(`${FILA}/${id}/itens/\\d+/(aprovar|recusar)"`));
+
+    // a rota também recusa: decidir sem assumir não grava
+    const [linha] = await linhas(amb, id);
+    const forçado = await coordenador.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1" }, { seguir: false });
+    expect(recado(forçado)).toContain("só quem pegou o pedido");
+    expect((await linhas(amb, id))[0]!.estado).toBe("SOLICITADO");
+
+    // assume, com motivo
+    const sem_motivo = await coordenador.post(`${FILA}/${id}/assumir`, { motivo: "" }, { seguir: false });
+    expect(recado(sem_motivo)).toContain("motivo para assumir a análise");
+    const assumiu = await coordenador.post(`${FILA}/${id}/assumir`, { motivo: "redistribuição da fila" }, { seguir: false });
+    expect(assumiu.status, recado(assumiu)).toBe(303);
+    const depois = (await coordenador.get(`${FILA}/${id}`)).text;
+    expect(depois).not.toContain("Assumir a análise");
+    expect(depois).toContain(`${FILA}/${id}/concluir"`);
+    expect(depois).toContain("Análise assumida por outra pessoa");
+    expect(depois).toContain("redistribuição da fila");
+  });
+});
+
+describe("filtro em dois níveis pela tela (24/11/2026)", () => {
+  const CAIXA = 'name="confirmo_mencao_saude"';
+  it("parecer técnico: volta na janela aberta, com o texto e a caixa; marcada, conclui e a trilha registra o nome", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cli = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, cli, cen);
+    expect((await cli.post(`${FILA}/${id}/analise`, {}, { seguir: false })).status).toBe(303);
+    const [linha] = await linhas(amb, id);
+    expect((await cli.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1" }, { seguir: false })).status).toBe(303);
+
+    const parecer = "Fornecer máscara cirúrgica ao técnico do centro cirúrgico.";
+    const sem = await cli.post(`${FILA}/${id}/concluir`, { parecer }, { seguir: false });
+    expect(sem.status).toBe(200);
+    expect(sem.text).toContain("confirmo que a menção é necessária");
+    expect(sem.text).toMatch(/<dialog class="popup" id="concluir-analise"[^>]* open>/);
+    expect(sem.text).toContain(`>${parecer}</textarea>`);
+    expect(sem.text).toContain(CAIXA);
+    expect((await ultima(amb)).estado).toBe("EM_ANALISE");
+
+    const com = await cli.post(`${FILA}/${id}/concluir`, { parecer, confirmo_mencao_saude: "1" }, { seguir: false });
+    expect(com.status, recado(com)).toBe(303);
+    expect((await ultima(amb)).estado).toBe("ANALISADA");
+    const tela = (await cli.get(`${FILA}/${id}`)).text;
+    expect(tela).toContain("Menção a saúde confirmada");
+    expect(tela).toContain("parecer da análise");
+  });
+
+  it("justificativa da aprovação técnica: a gaveta do item reabre com o texto e a caixa; marcada, aprova", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cli = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, cli, cen);
+    await cli.post(`${FILA}/${id}/analise`, {}, { seguir: false });
+    const [linha] = await linhas(amb, id);
+    const justificativa = "Atividade de manipulação de medicamentos no laboratório.";
+    const sem = await cli.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1", justificativa }, { seguir: false });
+    expect(sem.status).toBe(200);
+    expect(sem.text).toContain(`id="cms-aprovar-${linha!.id}"`);
+    expect(sem.text).toContain(`>${justificativa}</textarea>`);
+    expect((await linhas(amb, id))[0]!.estado).toBe("SOLICITADO");
+    // pela troca parcial (htmx), a mesma coisa
+    const htmx = await cli.post(`${FILA}/${id}/itens/${linha!.id}/aprovar`, { quantidade_aprovada: "1", justificativa }, { seguir: false, cabecalhos: { "hx-request": "true" } });
+    expect(htmx.text).toContain(`id="cms-aprovar-${linha!.id}"`);
+
+    const com = await cli.post(
+      `${FILA}/${id}/itens/${linha!.id}/aprovar`,
+      { quantidade_aprovada: "1", justificativa, confirmo_mencao_saude: "1" },
+      { seguir: false },
+    );
+    expect(com.status, recado(com)).toBe(303);
+    expect((await linhas(amb, id))[0]!.estado).toBe("APROVADO");
+  });
+
+  it("termo do grupo de bloqueio: recusa sem oferecer a caixa, e a caixa marcada não adianta", async () => {
+    const amb = await novo();
+    const cen = await cenario(amb);
+    const cli = await como(amb, "coordenador_csso");
+    const id = await pedido_enviado(amb, cli, cen);
+    await cli.post(`${FILA}/${id}/analise`, {}, { seguir: false });
+    const [linha] = await linhas(amb, id);
+    for (const marcar of [{}, { confirmo_mencao_saude: "1" }]) {
+      const r = await cli.post(
+        `${FILA}/${id}/itens/${linha!.id}/aprovar`,
+        { quantidade_aprovada: "1", justificativa: "Servidora relata alergia ao látex.", ...marcar },
+        { seguir: false },
+      );
+      expect(recado(r)).toContain("dado de saúde");
+      expect(recado(r)).not.toContain("confirmo que a menção é necessária");
+    }
+    expect((await linhas(amb, id))[0]!.estado).toBe("SOLICITADO");
   });
 });

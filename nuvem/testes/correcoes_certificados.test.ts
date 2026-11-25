@@ -234,7 +234,8 @@ describe("D28/D29/D30/M45: o certificado novo escreve as frases inteiras", () =>
     expect(mapa.frase_validade).toBe("certificado_frase_validade");
     expect(mapa).not.toHaveProperty("norma");
     await naTransacao((tx) => semear_modelo_certificado(tx));
-    expect(await db.select().from(e.certificado_modelo)).toHaveLength(2);
+    // + o "Brigada CBMMG v1" da semente (lote 4), que a promoção não toca
+    expect(await db.select().from(e.certificado_modelo)).toHaveLength(3);
   });
 });
 
@@ -276,6 +277,25 @@ describe("D31: segunda via do anulado carimbada", () => {
 // =====================================================================
 // D35, D44, M44 — indicadores
 // =====================================================================
+describe("anular cancela o e-mail do certificado que ainda estava na fila", () => {
+  it("o PENDENTE vira CANCELADO (não falha 5 vezes depois) e o de outro certificado fica", async () => {
+    const cen = await _no_padrao_da_casa({ validade_meses: 24 });
+    const emitido = await servico.emitir(db, cen.usuario, cen.inscricao);
+    const base = { tipo: "CERTIFICADO", destinatario: "alguem@exemplo.test", assunto: "Seu certificado" };
+    const [na_fila] = await db.insert(e.email_saida).values({ ...base, certificado_id: emitido.certificado.id }).returning();
+    const [aviso] = await db
+      .insert(e.email_saida)
+      .values({ ...base, tipo: "RECICLAGEM", certificado_id: emitido.certificado.id })
+      .returning();
+    await db.transaction((tx) => servico.anular(tx, cen.usuario, emitido.certificado, "emitido com o nome errado"));
+    const [depois] = await db.select().from(e.email_saida).where(eq(e.email_saida.id, na_fila!.id));
+    expect(depois!.situacao).toBe("CANCELADO");
+    // só o envio do certificado: o aviso de reciclagem segue o seu próprio caminho
+    const [outro] = await db.select().from(e.email_saida).where(eq(e.email_saida.id, aviso!.id));
+    expect(outro!.situacao).toBe("PENDENTE");
+  });
+});
+
 describe("D35/D44/M44: indicadores", () => {
   it("D35: sem exposicao.ver, a taxa some quando um dos lados está suprimido, e '—' não acende o alerta", async () => {
     await contas(db);
@@ -566,7 +586,8 @@ describe("M37: catálogo", () => {
     });
     await entrar(cliente, "coordenador_csso");
     const tela = (await cliente.get("/treinamentos/catalogo")).text;
-    expect(tela).toContain("16,5 h");
+    // lote 3 (T13): a carga sai pela função única, em horas e minutos
+    expect(tela).toContain("16h30");
     expect(tela).not.toContain("16.5");
     expect(tela).toContain("(meses, 0 = não vence)");
     expect(tela).toContain("Segurança em Instalações e Serviços em Eletricidade — NR-10");

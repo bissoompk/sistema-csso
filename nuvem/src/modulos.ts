@@ -525,7 +525,7 @@ export const MODULOS: readonly Modulo[] = [
             "Reciclagem",
             "/certificados/vencimentos",
             "certificado.ver",
-            "Quem tem certificado vencido ou a vencer em 30 dias.",
+            "Quem tem certificado vencido ou a vencer em 60 dias.",
           ),
           new Item(
             "Indicadores",

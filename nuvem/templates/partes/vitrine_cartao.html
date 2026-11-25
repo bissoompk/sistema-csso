@@ -32,7 +32,7 @@
       {%- elif c.hora_inicio %} · {{ c.hora_inicio }}{% if c.hora_fim %}–{{ c.hora_fim }}{% endif %}{% endif %}</p>
     <p class="curso-dado">{{ ui.icone('geo-alt') }}
       {% if c.modalidade == 'EAD' %}Online{% else %}{{ c.local or 'Local a confirmar' }}{% if c.campus %} · {{ c.campus }}{% endif %}{% endif %}</p>
-    {% if c.carga_horas %}<p class="curso-dado">{{ ui.icone('clock') }} {{ c.carga_horas|num }} h</p>{% endif %}
+    {% if c.carga_horas %}<p class="curso-dado">{{ ui.icone('clock') }} {{ c.carga_texto }}</p>{% endif %}
     <p class="curso-dado">{{ ui.icone('people') }}
       {% if minha and minha.vagas %}{{ minha.vagas }}
       {%- elif c.vagas_restantes is none %}Vagas abertas

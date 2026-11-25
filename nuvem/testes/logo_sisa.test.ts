@@ -56,12 +56,12 @@ describe("marca da Sisa nos .docx", () => {
 
   it("a lista de presença e o comprovante saem no v2", () => {
     expect(lista_presenca.MODELO).toBe("lista_presenca_v2.docx");
-    expect(comprovante_epi.MODELO).toBe("comprovante_epi_v2.docx");
+    expect(comprovante_epi.MODELO).toBe("comprovante_epi_v3.docx");
   });
 
   it.each([
     ["lista_presenca_v1.docx", "lista_presenca_v2.docx"],
-    ["comprovante_epi_v1.docx", "comprovante_epi_v2.docx"],
+    ["comprovante_epi_v1.docx", "comprovante_epi_v3.docx"],
   ])("%s → %s: a marca no cabeçalho e o texto idêntico", async (v1, v2) => {
     const dados = dados_quaisquer(v1);
     const antigo = await documento.renderizar_modelo(v1, dados);

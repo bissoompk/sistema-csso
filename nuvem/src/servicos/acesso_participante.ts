@@ -23,6 +23,7 @@
  * lista os dele; com mais de um, não lista nenhum — a caixa de e-mail não diz
  * qual das pessoas a abriu — e a página orienta a procurar a equipe responsável.
  */
+import { carga_do_congelado } from "./certificado.js";
 import { createHash, randomBytes } from "node:crypto";
 import { and, asc, count, eq, gt, inArray, isNull, lt } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
@@ -152,7 +153,7 @@ export interface ItemDoTitular {
   emissao: string;
   vencimento: string | null;
   so_word: boolean;
-  /** "16" (horas, vírgula decimal) */
+  /** "16 horas", "4h30", "10 tempos" — como o certificado escreve */
   carga_horaria: string;
   /** o nome do setor promotor como está no papel */
   setor_promotor: string;
@@ -251,7 +252,7 @@ export function itens(certificados: CertificadoRegistro[]): ItemDoTitular[] {
       emissao: x.data_emissao,
       vencimento: x.data_vencimento || null,
       so_word: servico.do_modelo_enviado(c),
-      carga_horaria: numero_br(x.carga_horaria || null),
+      carga_horaria: carga_do_congelado(x),
       setor_promotor: x.turma_unidade_promotora ?? "",
       chave_validacao: c.chave_validacao,
       conteudo: Treinamento.topicos({ conteudo_programatico: x.treinamento_conteudo || null }),

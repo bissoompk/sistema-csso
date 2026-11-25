@@ -383,7 +383,7 @@ async function _secao_dos_itens(
   c: Ctx,
   usuario: UsuarioAtual,
   requisicao_id: number,
-  opcoes: { recusa?: string | null; linha_id?: number | null; sucesso?: string | null } = {},
+  opcoes: { recusa?: string | null; linha_id?: number | null; sucesso?: string | null; campos?: Record<string, string> | null } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const requisicao = (await carregar(tx, requisicao_id))!;
@@ -404,13 +404,13 @@ async function _secao_dos_itens(
     ], { c, usuario }),
     editavel: servico.EDITAVEL.has(requisicao.estado),
     pode_requisitar: usuario.pode("epi.requisitar"),
-    pode_analisar: usuario.pode("epi.analisar"),
+    pode_analisar: usuario.pode("epi.analisar") && !servico.analise_com_outra_pessoa(usuario, requisicao),
     pode_entregar: usuario.pode("epi.entregar"),
     pode_estocar: usuario.pode("epi.estoque"),
     pode_cancelar: servico.pode_cancelar(usuario, requisicao),
     // a gaveta da linha recusada reabre
     digitado: dic(
-      opcoes.linha_id !== undefined && opcoes.linha_id !== null ? { forma: `item-${opcoes.linha_id}` } : {},
+      opcoes.linha_id !== undefined && opcoes.linha_id !== null ? { forma: `item-${opcoes.linha_id}`, ...(opcoes.campos ?? {}) } : {},
     ),
     recusa: opcoes.recusa ?? null,
     // o recado de sucesso da troca parcial: sem ele aprovar, recusar e
@@ -428,9 +428,31 @@ async function _parcial_ou_erro(
   mensagem: string,
   parcial: boolean,
   linha_id: number | null = null,
+  campos: Record<string, string> | null = null,
 ): Promise<Response> {
-  if (parcial) return _secao_dos_itens(c, usuario, requisicao_id, { recusa: mensagem, linha_id });
+  if (parcial) return _secao_dos_itens(c, usuario, requisicao_id, { recusa: mensagem, linha_id, campos });
+  // aviso de saúde (dois níveis): a gaveta reabre com o texto e a caixa, em vez de perder o digitado
+  if (campos) return _tela_ficha(c, usuario, requisicao_id, { erro: mensagem, digitado: { forma: `item-${linha_id}`, ...campos } });
   return _erro(c, _ficha(requisicao_id), mensagem, ANCORA_ITENS);
+}
+
+/**
+ * Filtro de saúde em dois níveis (24/11/2026): o texto recusado só por termo de AVISO volta à tela
+ * no formulário em que foi escrito, com a caixa "confirmo que a menção é necessária". `acao` diz
+ * qual dos formulários da gaveta (ou qual janela) reabrir.
+ */
+const _CAMPOS_DA_MENCAO = [
+  "justificativa", "complemento", "motivo", "motivo_id", "parecer", "quantidade_aprovada", "autorizar_excesso",
+  "observacao", "quantidade", "entrada_id",
+];
+function _digitado_da_mencao(falha: Error, f: Form, acao: string): Record<string, string> | null {
+  if (!(falha instanceof textos.MencaoDeSaude)) return null;
+  const d: Record<string, string> = { acao };
+  for (const k of _CAMPOS_DA_MENCAO) {
+    const v = f.texto(k);
+    if (v) d[k] = v;
+  }
+  return d;
 }
 
 // =====================================================================
@@ -689,7 +711,7 @@ async function _tela_nova(
   const q = opcoes.q ?? "";
   // pelo escopo de `epi.requisitar`, e não da conta (D16): o almoxarife pede
   // só para si, pela concessão do titular
-  const proprio = usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO;
+  const proprio = true;
   const [eu] =
     proprio && usuario.servidor_id !== null
       ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, usuario.servidor_id))
@@ -875,7 +897,7 @@ rotas.post(FILA, async (c) => {
   const tx = c.get("tx");
   const f = await formulario(c);
   const q = f.texto("q");
-  const proprio = usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO;
+  const proprio = true;
   // tudo o que foi digitado, guardado antes da primeira recusa
   const digitado = {
     // escopo próprio: o campo travado manda o próprio id; vazio vale o mesmo.
@@ -904,7 +926,7 @@ rotas.post(FILA, async (c) => {
   if (proprio && usuario.servidor_id === null) {
     return recusar(
       "Sua conta não está ligada a um cadastro de servidor, e o pedido de EPI é sempre de um servidor. " +
-        "Se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora.",
+        "Se você é servidor(a) da UFVJM, informe os seus dados em Meu perfil (Sou servidor(a) da UFVJM): a conta é ligada na hora.",
     );
   }
   const servidor_id = _id(digitado.servidor_id);
@@ -912,6 +934,8 @@ rotas.post(FILA, async (c) => {
     ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, servidor_id))
     : [];
   if (!servidor) return recusar("Escolha o servidor que vai usar o equipamento.");
+  // B1 (lote 5): pedido para outra pessoa é 403 antes de qualquer validação de campo
+  await servico.exigir_requerente_permitido(tx, usuario, servidor);
   const chefia_id = _id(digitado.chefia_servidor_id);
   const [chefia] = chefia_id ? await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, chefia_id)) : [];
 
@@ -919,7 +943,7 @@ rotas.post(FILA, async (c) => {
   const item = await _item_do_catalogo(tx, _id(digitado.item_id));
   if (acao === "enviar" && !item) return recusar("Escolha o equipamento antes de enviar: pedido sem item não é enviado.");
   const quantas = item ? _inteiro(digitado.quantidade) : null;
-  if (item && quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (item && quantas === null) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
 
   const comunicacao_id = _id(digitado.comunicacao_id);
   let sem_vinculo = false;
@@ -1061,6 +1085,8 @@ async function _tela_ficha(
     digitado?: Record<string, unknown>;
     item_escolhido?: ItemBruto | null;
     corrigir_item_id?: number | null;
+    /** a janela que reabre com o aviso de saúde, o texto digitado e a caixa */
+    popup?: Record<string, string> | null;
   } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
@@ -1098,8 +1124,16 @@ async function _tela_ficha(
     cancelavel:
       EPI_REQUISICAO_CANCELAVEL.has(requisicao.estado) && !requisicao.itens.some((l) => l.quantidade_entregue > 0),
     pode_requisitar: usuario.pode("epi.requisitar"),
-    pode_analisar: usuario.pode("epi.analisar"),
-    proprio: usuario.escopo_de("epi.requisitar") === ESCOPO_PROPRIO,
+    // em análise com outra pessoa, os botões de decidir somem e fica só "assumir" (24/11/2026)
+    pode_analisar: usuario.pode("epi.analisar") && !servico.analise_com_outra_pessoa(usuario, requisicao),
+    pode_assumir:
+      usuario.pode("epi.analisar") &&
+      servico.analise_com_outra_pessoa(usuario, requisicao) &&
+      (usuario.servidor_id === null || usuario.servidor_id !== requisicao.servidor_id),
+    com_quem: servico.analise_com_outra_pessoa(usuario, requisicao)
+      ? (await _nomes_de(tx, [requisicao.analisado_por], { c, usuario })).get(requisicao.analisado_por, "outra pessoa")
+      : null,
+    proprio: true,
     // requerente, quem abriu ou quem analisa — a mesma pergunta que o serviço faz
     pode_cancelar: servico.pode_cancelar(usuario, requisicao),
     // o botão de indeferir só aparece quando ele funciona
@@ -1112,6 +1146,7 @@ async function _tela_ficha(
     // (RN-28) e ainda há item sem decisão
     aprova_tudo:
       usuario.pode("epi.analisar") &&
+      !servico.analise_com_outra_pessoa(usuario, requisicao) &&
       ["ENVIADA", "EM_ANALISE"].includes(requisicao.estado) &&
       (usuario.servidor_id === null || usuario.servidor_id !== requisicao.servidor_id) &&
       requisicao.itens.some((l) => l.estado === "SOLICITADO"),
@@ -1125,6 +1160,7 @@ async function _tela_ficha(
     digitado: dic(opcoes.digitado ?? {}),
     item_escolhido: opcoes.item_escolhido ? vestir_item(opcoes.item_escolhido) : null,
     corrigir_item_id: opcoes.corrigir_item_id ?? null,
+    popup: opcoes.popup ? dic(opcoes.popup) : null,
     // fatia B: o motivo sugerido para o item novo, e quem declarou o termo
     motivo_sugerido: motivo_sugerido(requisicao.finalidade),
     termo_por: requisicao.termo_aceito_por
@@ -1187,6 +1223,8 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}`, async (c) => {
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
+  // B1 (lote 5): quem pode editar, ANTES de ler e validar o formulário
+  if (requisicao.estado === "RASCUNHO") servico.exigir_titular(usuario, requisicao, "editar o pedido");
   const f = await formulario(c);
   const digitado = {
     forma: "cabecalho",
@@ -1218,6 +1256,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/excluir`, async (c) => {
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
+  servico.exigir_titular(usuario, requisicao, "excluir o rascunho");
   const r = await tentar(c, (sp) => servico.excluir_rascunho(sp, usuario, requisicao));
   if (!r.ok) return _erro(c, _ficha(requisicao.id), _motivos(r.falha));
   return _volta(
@@ -1234,6 +1273,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens`, async (c) => {
   usuario.exigir("epi.requisitar");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
+  servico.exigir_titular(usuario, requisicao, "acrescentar item");
   const f = await formulario(c);
   const item = await _item_do_catalogo(c.get("tx"), _id(f.texto("item_id")));
   const digitado = {
@@ -1248,7 +1288,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens`, async (c) => {
     _tela_ficha(c, usuario, requisicao.id, { erro: mensagem, digitado, item_escolhido: item });
   if (!item) return recusar("Escolha o equipamento no catálogo.");
   const quantas = _inteiro(digitado.quantidade);
-  if (quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (quantas === null) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const r = await tentar(c, (sp) =>
     servico.adicionar_item(sp, usuario, requisicao, {
       item,
@@ -1270,6 +1310,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}`, async (c) =
   const destino = _ficha(requisicao_id);
   const linha = await _linha(c, usuario, requisicao_id, linha_id, "epi.requisitar");
   if (!linha) return redirecionar(c, destino);
+  servico.exigir_titular(usuario, (await _requisicao(c, usuario, requisicao_id, "epi.requisitar"))!, "editar item");
   const f = await formulario(c);
   // a forma leva o id da linha: o formulário de editar se repete por item
   const digitado = {
@@ -1281,7 +1322,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}`, async (c) =
   };
   const recusar = (mensagem: string) => _tela_ficha(c, usuario, requisicao_id, { erro: mensagem, digitado });
   const quantas = _inteiro(digitado.quantidade);
-  if (quantas === null) return recusar("Quantidade inválida: informe um número maior que zero.");
+  if (quantas === null) return recusar("Quantidade inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const r = await tentar(c, (sp) =>
     servico.editar_item(sp, usuario, linha, {
       quantidade: quantas,
@@ -1303,6 +1344,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/remover`, asy
   const destino = _ficha(requisicao_id);
   const linha = await _linha(c, usuario, requisicao_id, _param_id(c, "linha_id"), "epi.requisitar");
   if (!linha) return redirecionar(c, destino);
+  servico.exigir_titular(usuario, (await _requisicao(c, usuario, requisicao_id, "epi.requisitar"))!, "remover item");
   const nome = (await _item_do_catalogo(c.get("tx"), linha.epi_item_id))!.nome;
   const r = await tentar(c, (sp) => servico.remover_item(sp, usuario, linha));
   if (!r.ok) return _erro(c, destino, _motivos(r.falha));
@@ -1316,6 +1358,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/enviar`, async (c) => {
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.requisitar");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
+  if (requisicao.estado === "RASCUNHO") servico.exigir_titular(usuario, requisicao, "enviar o pedido e aceitar o termo NR-06");
   const f = await formulario(c);
   // o termo NR-06 vem DESMARCADO da tela; sem a marca o serviço recusa
   const termo_aceito = _marcado(f.texto("termo_aceito"));
@@ -1340,10 +1383,27 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/enviar`, async (c) => {
  * (sem campus) analisava e entregava pedido de todos os campi — e, com a
  * concessão do titular (D16), o próprio pedido feito em outro campus.
  */
-function _exigir_ato(usuario: UsuarioAtual, ato: string | readonly string[]): void {
+async function _exigir_ato(c: Ctx, usuario: UsuarioAtual, ato: string | readonly string[], requisicao_id: number | null = null): Promise<void> {
   const lista = typeof ato === "string" ? [ato] : ato;
-  if (!lista.some((p) => usuario.pode(p))) throw new PermissaoNegada(lista[0]!);
+  if (lista.some((p) => usuario.pode(p))) return;
+  // lote 5, ajuste 4: ato só de quem analisa, tentado no PRÓPRIO pedido — a recusa é a RN-28 (regra,
+  // sem "peça a concessão"), e não a falta de `epi.analisar`
+  if (requisicao_id !== null && !lista.includes("epi.requisitar") && lista.includes("epi.analisar")) {
+    const [pedido] = await c.get("tx").select().from(epi_requisicao).where(eq(epi_requisicao.id, requisicao_id));
+    if (pedido) await servico.exigir_nao_e_o_proprio_pedido(c.get("tx"), usuario, pedido);
+  }
+  throw new PermissaoNegada(lista[0]!);
 }
+
+/** A janela (popup) de cada ação do envelope, para reabrir com o aviso de saúde. */
+const _JANELA: Record<string, string> = {
+  concluir: "concluir-analise",
+  devolver: "devolver",
+  cancelar: "cancelar-pedido",
+  reconsiderar: "reconsiderar",
+  assumir: "assumir-analise",
+  indeferir: "indeferir",
+};
 
 function acao_de_envelope(
   sufixo: string,
@@ -1353,13 +1413,17 @@ function acao_de_envelope(
 ) {
   rotas.post(`${FILA}/:requisicao_id{[0-9]+}/${sufixo}`, async (c) => {
     const usuario = await usuarioLogado(c);
-    _exigir_ato(usuario, ato);
+    await _exigir_ato(c, usuario, ato, _param_id(c, "requisicao_id"));
     const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), ato);
     if (!requisicao) return redirecionar(c, FILA);
     const destino = _ficha(requisicao.id);
     const f = await formulario(c);
     const r = await tentar(c, (sp) => executar(sp, usuario, requisicao, f));
-    if (!r.ok) return _erro(c, destino, _motivos(r.falha));
+    if (!r.ok) {
+      const campos = _digitado_da_mencao(r.falha, f, sufixo);
+      if (campos) return _tela_ficha(c, usuario, requisicao.id, { popup: { alvo: _JANELA[sufixo] ?? sufixo, erro: _motivos(r.falha), ...campos } });
+      return _erro(c, destino, _motivos(r.falha));
+    }
     return _volta(c, destino, recado(requisicao));
   });
 }
@@ -1368,6 +1432,13 @@ acao_de_envelope(
   "analise",
   (sp, usuario, requisicao) => servico.iniciar_analise(sp, usuario, requisicao),
   (requisicao) => `${servico.identificacao(requisicao)} está em análise com você.`,
+);
+
+/** Assumir a análise que está com outra pessoa: com motivo, registrado na trilha (24/11/2026). */
+acao_de_envelope(
+  "assumir",
+  (sp, usuario, requisicao, f) => servico.assumir_analise(sp, usuario, requisicao, f.texto("motivo")),
+  (requisicao) => `Você assumiu a análise de ${servico.identificacao(requisicao)}. Agora as decisões são suas.`,
 );
 
 /** EM_ANALISE → ENVIADA. Decidir sem base é pior do que devolver. */
@@ -1398,7 +1469,7 @@ acao_de_envelope(
 /** EM_ANALISE → INDEFERIDA, com o motivo do catálogo (RN-27). */
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/indeferir`, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("epi.analisar");
+  await _exigir_ato(c, usuario, "epi.analisar", _param_id(c, "requisicao_id"));
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.analisar");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
@@ -1414,7 +1485,11 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/indeferir`, async (c) => {
       parecer: f.texto("parecer"),
     }),
   );
-  if (!r.ok) return _erro(c, destino, _motivos(r.falha));
+  if (!r.ok) {
+    const campos = _digitado_da_mencao(r.falha, f, "indeferir");
+    if (campos) return _tela_ficha(c, usuario, requisicao.id, { popup: { alvo: "indeferir", erro: _motivos(r.falha), ...campos } });
+    return _erro(c, destino, _motivos(r.falha));
+  }
   return _volta(
     c,
     destino,
@@ -1467,7 +1542,7 @@ interface AcaoDeItem {
 function acao_de_item(a: AcaoDeItem) {
   rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/${a.sufixo}`, async (c) => {
     const usuario = await usuarioLogado(c);
-    _exigir_ato(usuario, a.permissao);
+    await _exigir_ato(c, usuario, a.permissao, _param_id(c, "requisicao_id"));
     const requisicao_id = _param_id(c, "requisicao_id")!;
     const linha_id = _param_id(c, "linha_id")!;
     const destino = _ficha(requisicao_id);
@@ -1483,7 +1558,10 @@ function acao_de_item(a: AcaoDeItem) {
       dados = p.dados;
     }
     const r = await tentar(c, (sp) => a.executar(sp, usuario, linha, f, dados));
-    if (!r.ok) return _parcial_ou_erro(c, usuario, requisicao_id, _motivos(r.falha), parcial, linha_id);
+    if (!r.ok) {
+      const campos = _digitado_da_mencao(r.falha, f, a.sufixo);
+      return _parcial_ou_erro(c, usuario, requisicao_id, _motivos(r.falha), parcial, linha_id, campos);
+    }
     if (parcial) return _secao_dos_itens(c, usuario, requisicao_id, { sucesso: a.recado(linha, nome, dados) });
     return _volta(c, destino, a.recado(linha, nome, dados), ANCORA_ITENS);
   });
@@ -1496,7 +1574,7 @@ acao_de_item({
   preparar: async (_c, f) => {
     const bruto = f.texto("quantidade_aprovada");
     const quantas = _inteiro(bruto);
-    if (bruto.trim() && quantas === null) return { recusa: "Quantidade aprovada inválida." };
+    if (bruto.trim() && quantas === null) return { recusa: "Quantidade aprovada inválida: informe um número inteiro maior que zero (1, 2, 3…)." };
     return { dados: { quantas } };
   },
   executar: (sp, usuario, linha, f, d) =>
@@ -1559,7 +1637,7 @@ acao_de_item({
     }
     const bruto = f.texto("quantidade");
     const quantas = _inteiro(bruto);
-    if (bruto.trim() && quantas === null) return { recusa: "Quantidade a reservar inválida." };
+    if (bruto.trim() && quantas === null) return { recusa: "Quantidade a reservar inválida: informe um número inteiro maior que zero (1, 2, 3…)." };
     return { dados: { entrada, quantas } };
   },
   executar: (sp, usuario, linha, _f, d) =>
@@ -1607,7 +1685,7 @@ export function recado_da_separacao(r: servico.ResultadoSeparacao): string {
  */
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/separar-todos`, async (c) => {
   const usuario = await usuarioLogado(c);
-  _exigir_ato(usuario, "epi.estoque");
+  await _exigir_ato(c, usuario, "epi.estoque");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.estoque");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
@@ -1655,7 +1733,7 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/entregar`, as
   const entrada = await _entrada(c.get("tx"), _id(f.texto("entrada_id")));
   const bruto = f.texto("quantidade");
   const quantas = _inteiro(bruto);
-  if (bruto.trim() && quantas === null) return _erro(c, destino, "Quantidade a entregar inválida.");
+  if (bruto.trim() && quantas === null) return _erro(c, destino, "Quantidade a entregar inválida: informe um número inteiro maior que zero (1, 2, 3…).");
   const r = await tentar(
     c,
     (sp) =>
@@ -1670,6 +1748,8 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/entregar`, as
     epi_estoque.EstoqueBloqueado,
   );
   if (!r.ok) {
+    const campos = _digitado_da_mencao(r.falha, f, "entregar");
+    if (campos) return _tela_ficha(c, usuario, requisicao_id, { erro: _motivos(r.falha), digitado: { forma: `item-${linha.id}`, ...campos } });
     // CA do catálogo faltando: a volta leva o item, e a tela o link para corrigi-lo
     const corrigir = r.falha instanceof epi_ficha.EntregaBloqueada ? r.falha.item_a_corrigir : null;
     return _erro(c, corrigir ? `${destino}?corrigir_item=${corrigir}` : destino, _motivos(r.falha));

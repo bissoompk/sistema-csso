@@ -6,13 +6,16 @@
    são o que explica cada "reprovado" da última coluna. #}
 <div class="cartao tira-medidas">
   <span class="medida"><span class="rotulo">Carga da turma</span>
-    <span class="valor">{{ carga_efetiva|num }} h</span></span>
+    <span class="valor">{{ turma|carga_turma }}</span></span>
   <span class="traco" aria-hidden="true"></span>
   <span class="medida"><span class="rotulo">Frequência mínima</span>
     <span class="valor">{{ turma.frequencia_minima_percentual|num }}%</span></span>
   <span class="traco" aria-hidden="true"></span>
   <span class="medida"><span class="rotulo">Nota mínima</span>
-    {% if turma.nota_minima_aprovacao is not none %}
+    {% if disciplinas %}
+    {# lote 4 (brigada, art. 40): o mínimo vale em cada disciplina, de 0 a 100 #}
+    <span class="valor">{{ disciplinas[0].nota_minima|nota_brigada }} em cada disciplina</span>
+    {% elif turma.nota_minima_aprovacao is not none %}
     <span class="valor">{{ turma.nota_minima_aprovacao|num }}</span>
     {% else %}<span class="valor ausente">não avalia por nota</span>{% endif %}</span>
   <span class="traco" aria-hidden="true"></span>
@@ -23,7 +26,7 @@
      continua sendo falta — é explicação, e vai para o (i). #}
   <div class="nota">A frequência é <strong>calculada</strong>, nunca digitada.
     {% call ui.info('como-a-frequencia-e-apurada', 'como a frequência é apurada') %}
-      <p>A frequência é a soma das <strong>horas presentes</strong> sobre a carga da
+      <p>A frequência é a soma {% if turma.carga_unidade == 'TEMPOS' %}dos <strong>tempos presentes</strong>{% else %}das <strong>horas presentes</strong>{% endif %} sobre a carga da
         turma — nunca um número digitado. É por isso que a carga da turma importa: é
         ela o denominador, e mudá-la muda o resultado de todo mundo.</p>
       <p><strong>Falta justificada continua sendo falta.</strong> A justificativa
@@ -33,6 +36,17 @@
     {% endcall %}
   </div>
 </div>
+
+{# Lote 5 (T9): planejada que já começou aceita lançamento — e o primeiro lançamento muda a
+   situação. A tela diz isso ANTES de gravar. #}
+{% if turma.situacao == 'PLANEJADA' and lancamento_aberto %}
+<div class="aviso aviso-alerta" role="status" id="aviso-planejada">
+  <p><strong><span class="mono">{{ turma.codigo }}</span> ainda está Planejada, mas começou em
+    {{ turma.data_inicio|data }}.</strong> Os lançamentos valem: o primeiro que você gravar aqui
+    passa a turma para <em>Em andamento</em>, e a mudança fica na trilha da turma com o seu nome
+    e a hora.</p>
+</div>
+{% endif %}
 
 {% if retificando %}
 <div class="aviso aviso-erro">
@@ -75,8 +89,12 @@
           {%- if pode_lancar and dia <= hoje %}<label><input type="checkbox" data-marca-grupo="dia-{{ dia }}"
             aria-label="Presença de todos em {{ dia|data }} (a coluna inteira)" title="Marcar ou desmarcar a coluna inteira"> {{ dia|data }}</label>
           {%- else %}{{ dia|data }}{% endif %}</th>{% endfor %}
-        <th scope="col">Horas</th><th scope="col">Frequência</th>
-        <th scope="col">Nota</th><th scope="col">Situação</th>
+        <th scope="col">{{ 'Tempos presentes' if turma.carga_unidade == 'TEMPOS' else 'Horas' }}</th><th scope="col">Frequência</th>
+        {% if disciplinas %}
+        {% for d in disciplinas %}<th scope="col">Nota · {{ d.nome }}</th>{% endfor %}
+        <th scope="col">Nota final</th>
+        {% else %}<th scope="col">Nota</th>{% endif %}
+        <th scope="col">Situação</th>
       </tr>
     </thead>
     {# A LINHA MORA EM `partes/linha_presenca.html`, e não aqui, porque ela é o
@@ -109,8 +127,8 @@
     <div class="acoes">
       <button type="submit">Salvar folha</button>
       <p class="discreto sem-margem">Caixa marcada é presença com a carga do dia
-        {%- if dias|length > 1 %} ({% for dia in dias %}{{ dia|data }}: {{ horas_padrao[dia]|num if horas_padrao[dia] else '—' }} h{% if not loop.last %}; {% endif %}{% endfor %}){% endif %};
-        desmarcada num dia já lançado é falta. Quem chegou atrasado: “ajustar horas”.</p>
+        {%- if dias|length > 1 %} ({% for dia in dias %}{{ dia|data }}: {{ carga_dia_padrao[dia]|carga_base(turma.carga_unidade) if carga_dia_padrao[dia] else '—' }}{% if not loop.last %}; {% endif %}{% endfor %}){% endif %};
+        desmarcada num dia já lançado é falta. Quem chegou atrasado: “{{ 'ajustar tempos' if turma.carga_unidade == 'TEMPOS' else 'ajustar horas' }}”.</p>
     </div>
   </div>
   </form>
@@ -158,7 +176,7 @@
       {# FICA escrito, e fica AQUI: é a única surpresa possível deste controle, e
          quem clica precisa saber dela antes — não depois. #}
       <div class="aviso aviso-alerta">
-        Marca <strong>todo mundo</strong> presente naquele dia, com as horas informadas
+        Marca <strong>todo mundo</strong> presente naquele dia, com {{ 'os tempos informados' if turma.carga_unidade == 'TEMPOS' else 'as horas informadas' }}
         ao lado — <strong>inclusive quem já estava lançado como falta</strong>. Cada
         sobrescrita entra na trilha com o valor de antes. Quem faltou se desmarca
         depois na grade, e “Salvar folha” grava a falta.
@@ -167,9 +185,9 @@
       <form method="post" action="/turmas/{{ turma.id }}/presencas/dia">
         <h3>{{ dia|data }}</h3>
         <div class="linha-campos">
-          <div class="campo"><label for="horas-{{ dia }}">Horas</label>
-            <input id="horas-{{ dia }}" name="horas" inputmode="decimal"
-                   required placeholder="h"></div>
+          <div class="campo"><label for="horas-{{ dia }}">{{ 'Tempos presentes' if turma.carga_unidade == 'TEMPOS' else 'Horas' }}</label>
+            <input id="horas-{{ dia }}" name="horas" inputmode="{{ 'numeric' if turma.carga_unidade == 'TEMPOS' else 'decimal' }}"
+                   required value="{{ carga_dia_padrao[dia]|carga_campo(turma.carga_unidade) if carga_dia_padrao[dia] else '' }}"></div>
           {% if retificando %}
           <div class="campo"><label for="motivo-dia-{{ dia }}">Motivo da retificação</label>
             <input id="motivo-dia-{{ dia }}" name="motivo" required
@@ -189,7 +207,7 @@
   <div class="corpo">
     <div class="acoes">
       {{ ui.botao_cadastro('marcar-todos-presentes',
-                           MARCAR_TODOS ~ ' (' ~ (carga_efetiva|num) ~ ' h)', 'secundario') }}
+                           MARCAR_TODOS ~ ' (' ~ (turma|carga_turma) ~ ')', 'secundario') }}
       {% call ui.info('lote-de-um-dia', 'por que o lote só existe em curso de um dia') %}
         <p>Numa turma de mais de um dia este botão não aparece — e a rota recusa
           mesmo que alguém a chame direto: num clique só, quem faltou um dia sairia

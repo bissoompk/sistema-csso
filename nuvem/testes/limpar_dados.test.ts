@@ -164,7 +164,7 @@ async function montar(): Promise<Montado> {
   const analista = await req.usuario(db, { login: "analista_limpeza" });
   const cen_epi = await req.cenario(db, { siape: "7111111", nome: "Joana Limpeza" });
   const pedido = await req.pedido_pronto(db, cen_epi, analista);
-  await naTransacao((tx) => epi_requisicao.enviar(tx, analista, pedido, { termo_aceito: true }));
+  await naTransacao(async (tx) => epi_requisicao.enviar(tx, await req.titular(tx, analista, pedido), pedido, { termo_aceito: true }));
   const cliente = await entrar(amb.novoCliente(), "coordenador_csso");
   const r = await entregar(cliente, { servidor: cen_epi.servidor.id, item: cen_epi.item.id, entrada: cen_epi.entrada.id });
   expect(r.status, r.text.slice(0, 300)).toBeLessThan(400);

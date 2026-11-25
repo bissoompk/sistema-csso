@@ -143,7 +143,7 @@ export async function cartaz_pdf(curso: CursoPublico, url: string): Promise<Uint
   // os dados
   const dados: [string, string][] = [["Quando", [periodo(curso), _horario(curso)].filter(Boolean).join(" · ")]];
   dados.push(["Onde", curso.modalidade === "EAD" ? "Online" : [curso.local, curso.campus].filter(Boolean).join(", ") || curso.modalidade_rotulo]);
-  if (curso.carga_horas) dados.push(["Carga horária", `${curso.carga_horas} h`]);
+  if (curso.carga_horas) dados.push(["Carga", curso.carga_texto]);
   if (curso.inscricao_ate) dados.push(["Inscrições até", _data(curso.inscricao_ate)]);
   if (curso.vagas_total !== null) dados.push(["Vagas", String(curso.vagas_total)]);
   if (curso.publico.length) dados.push(["Público", curso.publico.join(", ")]);

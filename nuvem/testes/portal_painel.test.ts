@@ -263,7 +263,8 @@ describe("painel do titular", () => {
     // válidos = em vigor e não vencidos (o a vencer ainda vale)
     expect(dados.cartoes.validos).toBe(2);
     expect(dados.cartoes.a_vencer).toBe(1);
-    expect(dados.cartoes.proximo?.nome).toBe("NR-10");
+    // lote 5, ajuste 6: o cartão mostra o nome do treinamento, e não a norma
+    expect(dados.cartoes.proximo?.nome).toBe("Treinamento NR-10");
     expect(dados.cartoes.turmas_abertas).toBe(1);
     expect(dados.cartoes.inscrito_em).toBe(1);
     expect(dados.cartoes.epi_abertos).toBe(1);

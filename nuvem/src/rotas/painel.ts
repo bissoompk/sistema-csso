@@ -585,9 +585,10 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
     cartoes: {
       validos: validos.length,
       emitidos: certificados.resumo.emitidos,
-      horas: String(certificados.resumo.horas).replace(".", ","),
+      carga_texto: certificados.resumo.carga_texto,
       a_vencer: a_vencer.length,
-      proximo: proximo ? { nome: proximo.norma || proximo.treinamento, data: proximo.data_vencimento } : null,
+      // lote 5, ajuste 6: o nome do treinamento, não a norma ("IT 12 CBMMG")
+      proximo: proximo ? { nome: proximo.treinamento || proximo.norma, data: proximo.data_vencimento } : null,
       turmas_abertas: abertas.length,
       inscrito_em: inscricoes_em_curso.length,
       epi_abertos: Number(pedidos_abertos[0]?.n ?? 0),

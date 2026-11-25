@@ -85,6 +85,7 @@ export function vista_turma<T extends Obj | null | undefined>(t: T): T {
   for (const v of obj.instrutores ?? []) vista_assinatura(v.instrutor);
   return com(obj, {
     carga_efetiva: (o) => (o.treinamento ? Turma.carga_efetiva(o as never) : o.carga_horaria_horas),
+    carga_texto: (o) => (o.treinamento ? Turma.carga_texto(o as never) : ""),
     data_base: (o) => Turma.data_base(o as never),
     rotulo: (o) => (o.treinamento ? Turma.rotulo(o as never) : o.codigo),
     aceita_inscricao: (o) => Turma.aceita_inscricao(o as never),
@@ -99,7 +100,7 @@ export function vista_inscricao<T extends Obj | null | undefined>(i: T): T {
   if (obj.turma) vista_turma(obj.turma);
   return com(obj, {
     ocupa_vaga: (o) => Inscricao.ocupa_vaga(o as never),
-    horas_presentes: (o) => (o.presencas ? Inscricao.horas_presentes(o as never) : "0"),
+    quantidade_presente: (o) => (o.presencas ? Inscricao.quantidade_presente(o as never) : 0),
     compareceu: (o) => (o.presencas ? Inscricao.compareceu(o as never) : false),
   }) as T;
 }
@@ -126,8 +127,12 @@ export function vista_certificado<T extends Obj | null | undefined>(c: T): T {
  * A ÂNCORA VAI POR ÚLTIMO: o fragmento encerra a URL.
  */
 export function aviso(c: Ctx, destino: string, campo: string, mensagem: string, ancora = ""): Response {
-  const separador = destino.includes("?") ? "&" : "?";
-  return redirecionar(c, `${destino}${separador}${campo}=${encodeURIComponent(mensagem)}${ancora}`);
+  // T14 (lote 5): destino que já traz âncora (#…) — a consulta vai antes dela, a âncora no fim
+  const i = destino.indexOf("#");
+  const base = i < 0 ? destino : destino.slice(0, i);
+  const fim = ancora || (i < 0 ? "" : destino.slice(i));
+  const separador = base.includes("?") ? "&" : "?";
+  return redirecionar(c, `${base}${separador}${campo}=${encodeURIComponent(mensagem)}${fim}`);
 }
 
 /** Deu certo. Banner verde. */

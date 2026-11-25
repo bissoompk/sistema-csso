@@ -123,6 +123,14 @@ function lancar(c: Cliente, turma_id: number, inscricao_id: number, campos: Reco
   );
 }
 
+/** Lote 3: a carga de cada dia da turma (horas como se digita: "6", "4h30"). */
+async function carga_por_dia(c: Cliente, turma_id: number, por_dia: Record<string, string>) {
+  const campos = Object.fromEntries(Object.entries(por_dia).map(([d, v]) => [`carga_dia_${d}`, v]));
+  const r = await c.post(`/turmas/${turma_id}/carga-por-dia`, campos, { seguir: false });
+  expect(r.status).toBe(303);
+  expect(await mensagem(c, r)).toContain("carga por dia salva");
+}
+
 function concluir(c: Cliente, turma_id: number) {
   return c.post(`/turmas/${turma_id}/situacao`, { destino: "CONCLUIDA" }, { seguir: false });
 }
@@ -160,7 +168,7 @@ describe("frequência", () => {
     const i = await inscricao(inscricao_id);
     expect(i.frequencia_percentual).toBe("100.00");
     expect(i.situacao).toBe("PRESENTE");
-    expect((await presencasDe(inscricao_id)).map((p) => [p.data, p.presente, p.horas])).toEqual([[INICIO, true, "8.0"]]);
+    expect((await presencasDe(inscricao_id)).map((p) => [p.data, p.presente, p.quantidade])).toEqual([[INICIO, true, 480]]);
   });
 
   it("o denominador é a carga da turma e não a do catálogo", async () => {
@@ -178,6 +186,8 @@ describe("frequência", () => {
   it("frequência na fronteira exata do mínimo aprova", async () => {
     await entrar(cliente, "coordenador_csso");
     const turma_id = await montar(cliente, { turma: { data_fim: dia(1) } });
+    // lote 3 (T5): o dia 1 tem 6 das 8 horas (a divisão automática dava 4 + 4)
+    await carga_por_dia(cliente, turma_id, { [INICIO]: "6", [dia(1)]: "2" });
     const inscricao_id = await inscrever(cliente, turma_id, "1110654", "Marco Antônio");
     await lancar(cliente, turma_id, inscricao_id, { horas: "6" });
     await concluir(cliente, turma_id);
@@ -189,6 +199,7 @@ describe("frequência", () => {
   it("um centésimo abaixo do mínimo reprova", async () => {
     await entrar(cliente, "coordenador_csso");
     const turma_id = await montar(cliente, { turma: { data_fim: dia(1) } });
+    await carga_por_dia(cliente, turma_id, { [INICIO]: "6", [dia(1)]: "2" });
     const inscricao_id = await inscrever(cliente, turma_id, "1110654", "Marco Antônio");
     await lancar(cliente, turma_id, inscricao_id, { horas: "5,9" });
     await concluir(cliente, turma_id);
@@ -198,13 +209,15 @@ describe("frequência", () => {
     expect((await eventoReprovado()).descricao).toContain("abaixo do mínimo de 75%");
   });
 
-  it("total acima da carga da turma é recusado", async () => {
+  it("total acima da carga da turma é recusado (lote 3: pelo limite do dia)", async () => {
     await entrar(cliente, "coordenador_csso");
     const turma_id = await montar(cliente, { turma: { data_fim: dia(1) } });
+    await carga_por_dia(cliente, turma_id, { [INICIO]: "6", [dia(1)]: "2" });
     const inscricao_id = await inscrever(cliente, turma_id, "1110654", "Marco Antônio");
     await lancar(cliente, turma_id, inscricao_id, { horas: "6" });
     const texto = await mensagem(cliente, await lancar(cliente, turma_id, inscricao_id, { data: dia(1), horas: "4" }));
-    expect(texto).toContain("acima da carga da turma");
+    // 6 + 4 passaria das 8 horas da turma; com o limite do dia (T5), a recusa chega antes
+    expect(texto).toContain("passa da carga daquele dia (2 horas)");
     expect((await inscricao(inscricao_id)).frequencia_percentual).toBe("75.00");
   });
 
@@ -227,7 +240,7 @@ describe("frequência", () => {
     const { turma_id, inscricao_id } = await turmaRodando();
     await lancar(cliente, turma_id, inscricao_id, { presente: "", horas: "8", justificativa: "atestado médico" });
     const [p] = await presencasDe(inscricao_id);
-    expect(p!.horas).toBe("0.0");
+    expect(p!.quantidade).toBe(0);
     expect(p!.justificativa).toBe("atestado médico");
     const i = await inscricao(inscricao_id);
     expect(i.frequencia_percentual).toBe("0.00");
@@ -257,7 +270,7 @@ describe("marcar todos presentes", () => {
     for (const i of inscricoes) {
       expect(i.situacao).toBe("PRESENTE");
       expect(i.frequencia_percentual).toBe("100.00");
-      expect((await presencasDe(i.id)).map((p) => p.horas)).toEqual(["8.0"]);
+      expect((await presencasDe(i.id)).map((p) => p.quantidade)).toEqual([480]);
     }
   });
 
@@ -467,7 +480,7 @@ describe("retificação", () => {
     const avaliador = await usuarioCom(["turma.avaliar"]);
     const i = (await servico_turma.carregar_inscricao(db, inscricao_id))!;
     const erro = await db
-      .transaction((tx) => servico_presenca.lancar_presenca(tx, avaliador, i, { data: INICIO, horas: "8", motivo: "qualquer" }))
+      .transaction((tx) => servico_presenca.lancar_presenca(tx, avaliador, i, { data: INICIO, quantidade: 480, motivo: "qualquer" }))
       .catch((x) => x);
     expect(erro).toBeInstanceOf(PermissaoNegada);
     expect((erro as PermissaoNegada).codigo).toBe("turma.concluir");
@@ -503,7 +516,7 @@ describe("retificação", () => {
 // =====================================================================
 describe("recusa não grava", () => {
   it.each([
-    ["horas-acima-da-carga", { horas: "99" }, "passa da carga da turma"],
+    ["horas-acima-da-carga", { horas: "99" }, "passa da carga daquele dia"],
     ["dia-fora-do-periodo", { horas: "8", data: dia(90) }, "não é dia de"],
   ] as const)("presença: %s", async (_id, campos, trecho) => {
     const { turma_id, inscricao_id } = await turmaRodando();
@@ -562,7 +575,7 @@ describe("permissão", () => {
     const sem_permissao = await usuarioCom(["turma.inscrever"], "so_inscreve");
     const i = (await servico_turma.carregar_inscricao(db, inscricao_id))!;
     const erro = await db
-      .transaction((tx) => servico_presenca.lancar_presenca(tx, sem_permissao, i, { data: INICIO, horas: "8" }))
+      .transaction((tx) => servico_presenca.lancar_presenca(tx, sem_permissao, i, { data: INICIO, quantidade: 480 }))
       .catch((x) => x);
     expect(erro).toBeInstanceOf(PermissaoNegada);
     expect((erro as PermissaoNegada).codigo).toBe("turma.avaliar");
@@ -661,7 +674,7 @@ describe("aba 3 e lista de presença", () => {
     expect(eventos).toHaveLength(2);
     expect(eventos[0]!.descricao).toContain("frequência 50%");
     expect(eventos[1]!.descricao).toContain("frequência 100%");
-    expect(eventos[1]!.descricao).toContain("antes: presente, 4h");
+    expect(eventos[1]!.descricao).toContain("antes: presente, 4 horas");
     expect([eventos[1]!.valor_anterior, eventos[1]!.valor_novo]).toEqual(["50.00", "100.00"]);
   });
 
@@ -691,7 +704,7 @@ describe("troca parcial (HTMX)", () => {
     expect(corpo).not.toContain("<html");
     expect(corpo).toContain("100%");
     // a tela escreve o decimal em português, sem casa à toa (filtro `num`)
-    expect(corpo).toContain('<td class="mono">8 h</td>');
+    expect(corpo).toContain('<td class="mono">8 horas</td>');
     expect(corpo).toContain("Presente");
     // a célula é a caixa do dia, marcada, dentro do formulário da folha (M33)
     expect(corpo).toMatch(new RegExp(`name="presente" value="${inscricao_id}_${INICIO}"[^>]* checked`));
@@ -747,7 +760,7 @@ describe("a folha de um dia", () => {
     expect(r.location!.endsWith("#grade-presenca")).toBe(true);
     const marcas = await db.select().from(e.turma_presenca);
     expect(marcas).toHaveLength(2);
-    expect(new Set(marcas.map((m) => `${m.data}|${m.presente}|${m.horas}`))).toEqual(new Set([`${INICIO}|true|4.0`]));
+    expect(new Set(marcas.map((m) => `${m.data}|${m.presente}|${m.quantidade}`))).toEqual(new Set([`${INICIO}|true|240`]));
   });
 
   it("a coluna recusa dia que não é da turma", async () => {
@@ -760,5 +773,32 @@ describe("a folha de um dia", () => {
     );
     expect(texto).toContain("não é dia de");
     expect(await algumaPresenca()).toBeNull();
+  });
+});
+
+// =====================================================================
+// Publicação (26/11/2026): a coluna antiga `horas` continua preenchida
+// =====================================================================
+describe("coluna legado turma_presenca.horas (voltar só o código basta)", () => {
+  it("em HORAS, a presença grava também as horas com uma casa; a falta grava zero", async () => {
+    await entrar(cliente, "coordenador_csso");
+    const turma_id = await montar(cliente, { turma: { data_fim: dia(1) }, treinamento: { carga_horaria_horas: "4.5" } });
+    const a = await inscrever(cliente, turma_id, "1110654", "Marco Antônio");
+    const b = await inscrever(cliente, turma_id, "1110655", "Beatriz Lima");
+    // 4,5 h em dois dias: 2h15 por dia (135 min) — a coluna antiga recebe 2,3 h
+    expect((await lancar(cliente, turma_id, a, { horas: "2h15" })).status).toBe(303);
+    expect((await lancar(cliente, turma_id, b, { presente: "", justificativa: "atestado entregue ao setor" })).status).toBe(303);
+    const [pa] = await presencasDe(a);
+    const [pb] = await presencasDe(b);
+    expect([pa!.quantidade, pa!.horas]).toEqual([135, "2.3"]);
+    expect([pb!.presente, pb!.quantidade, pb!.horas]).toEqual([false, 0, "0.0"]);
+  });
+
+  it("horas_legado: minutos em horas com uma casa; TEMPOS fica nula", () => {
+    expect(servico_presenca.horas_legado("HORAS", 480)).toBe("8.0");
+    expect(servico_presenca.horas_legado("HORAS", 270)).toBe("4.5");
+    expect(servico_presenca.horas_legado("HORAS", 135)).toBe("2.3");
+    expect(servico_presenca.horas_legado("HORAS", 0)).toBe("0.0");
+    expect(servico_presenca.horas_legado("TEMPOS", 3)).toBeNull();
   });
 });

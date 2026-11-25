@@ -62,6 +62,7 @@ export const EPI_DEVOLVIDO = "EPI_DEVOLVIDO";
 export const EPI_COMPROVANTE_ANEXADO = "EPI_COMPROVANTE_ANEXADO";
 export const EPI_COMPROVANTE_IMPRESSO = "EPI_COMPROVANTE_IMPRESSO";
 export const EPI_COMPROVANTE_DIVERGENTE = "EPI_COMPROVANTE_DIVERGENTE";
+export const EPI_COMPROVANTE_COPIA_TITULAR = "EPI_COMPROVANTE_COPIA_TITULAR";
 export const EPI_MAXIMO_EXCEDIDO = "EPI_MAXIMO_EXCEDIDO";
 export const EPI_ENTREGA_RECUSADA = "EPI_ENTREGA_RECUSADA";
 
@@ -175,6 +176,8 @@ export class LinhaDaFicha {
     public estorna: EpiFichaRegistro | null,
     /** quanto desta entrega já voltou por devolução (0 nas outras linhas) */
     public devolvido: number = 0,
+    /** a entrega posterior do mesmo item à mesma pessoa (a troca já feita), se houver */
+    public substituida_por: EpiFichaRegistro | null = null,
   ) {}
 
   /**
@@ -201,9 +204,17 @@ export class LinhaDaFicha {
     return String(congelado["entregue_por"] || `usuário ${this.registro.entregue_por}`);
   }
 
-  /** A janela da decisão 8. Estorno não pede comprovante. */
+  /**
+   * A janela da decisão 8. Estorno não pede comprovante; a entrega devolvida por inteiro também
+   * não (24/11/2026): o EPI voltou, e a cobrança do papel deixou de ter objeto.
+   */
   get sem_comprovante(): boolean {
-    return this.registro.tipo === "ENTREGA" && !this.estornado && this.comprovante === null;
+    return (
+      this.registro.tipo === "ENTREGA" &&
+      !this.estornado &&
+      this.devolvido < this.registro.quantidade &&
+      this.comprovante === null
+    );
   }
 
   ca_vencido_em(quando: string): boolean {
@@ -211,9 +222,18 @@ export class LinhaDaFicha {
     return validade !== null && validade < quando;
   }
 
+  /**
+   * A mesma regra de `troca_devida_em` (RN-32), que alimenta o painel e a rotina
+   * noturna: a troca vence, mas não se a entrega foi estornada, devolvida por
+   * inteiro ou substituída por entrega posterior. Antes a ficha ignorava as duas
+   * últimas e mostrava "troca vencida" depois de a pessoa já ter trocado.
+   */
   troca_vencida_em(quando: string): boolean {
     const troca = this.registro.previsao_troca;
-    return troca !== null && troca < quando && this.registro.tipo === "ENTREGA" && !this.estornado;
+    if (troca === null || troca >= quando) return false;
+    if (this.registro.tipo !== "ENTREGA" || this.estornado) return false;
+    if (this.devolvido >= this.registro.quantidade) return false;
+    return this.substituida_por === null || this.substituida_por.data_evento > quando;
   }
 }
 
@@ -247,6 +267,16 @@ export async function linha_do_tempo(tx: Executor, servidor_id: number): Promise
     tx,
     registros.map((r) => r.id),
   );
+  // a entrega posterior do mesmo item (a troca já feita), sem contar as estornadas — como `_substituida_ate`
+  const entregas = registros.filter((r) => r.tipo === "ENTREGA" && !estorno_de.has(r.id));
+  const substituta_de = (r: EpiFichaRegistro): EpiFichaRegistro | null => {
+    let melhor: EpiFichaRegistro | null = null;
+    for (const c of entregas) {
+      if (c.id === r.id || c.epi_item_id !== r.epi_item_id || !_antes(r, c)) continue;
+      if (melhor === null || _antes(c, melhor)) melhor = c;
+    }
+    return melhor;
+  };
   return registros.map(
     (r) =>
       new LinhaDaFicha(
@@ -255,6 +285,7 @@ export async function linha_do_tempo(tx: Executor, servidor_id: number): Promise
         estorno_de.get(r.id) ?? null,
         por_id.get(r.registro_estornado_id ?? -1) ?? null,
         devolvido.get(r.id) ?? 0,
+        r.tipo === "ENTREGA" ? substituta_de(r) : null,
       ),
   );
 }
@@ -696,9 +727,12 @@ export async function validar(tx: Executor, d: DadosValidacao): Promise<Validaca
       );
     }
   } else if (v.treinamento.codigo === "SEM_VINCULO") {
-    v.avisos.push(
-      `'${item.nome}' exige treinamento, mas o catálogo não diz qual: o sistema não tem o que conferir. ` +
-        "Confira antes de entregar e vincule o treinamento no catálogo de EPI",
+    // bloqueia (24/11/2026): a exigência sem vínculo é erro de cadastro, e entregar assim
+    // registra na ficha uma conferência que não houve
+    v.bloqueios.push(
+      `'${item.nome}' está marcado como “exige treinamento”, mas o catálogo não diz qual: ` +
+        "o sistema não tem o que conferir. Peça a quem cuida do catálogo de EPI para vincular o " +
+        "treinamento (botão “Treinamentos” da linha do item) ou desmarcar a exigência",
     );
   }
   return v;
@@ -893,8 +927,8 @@ export async function registrar_entrega(tx: Executor, usuario: UsuarioAtual, d: 
   const requisicao_item_id = d.requisicao_item_id ?? null;
 
   // RN-30: texto livre passa pelo filtro da RN-21 antes de qualquer gravação
-  textos.exigir_texto_limpo(observacao, "observação da entrega");
-  textos.exigir_texto_limpo(justificativa_excecao, "justificativa da exceção");
+  textos.exigir_texto_limpo(observacao, "observação da entrega", textos.CONTEXTO_EPI_PESSOA);
+  textos.exigir_texto_limpo(justificativa_excecao, "justificativa da exceção", textos.CONTEXTO_EPI_PESSOA);
 
   // Data futura seria prova de um fato que ainda não aconteceu. A rota do
   // balcão já recusava; a entrega pela requisição chegava aqui sem a conferência.
@@ -1087,7 +1121,7 @@ export async function estornar(
   motivo: string,
 ): Promise<EpiFichaRegistro> {
   usuario.exigir("epi.entregar");
-  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), "motivo do estorno") as string;
+  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), "motivo do estorno", textos.CONTEXTO_EPI_PESSOA) as string;
   if (!limpo) {
     throw new EntregaBloqueada([
       "estornar exige o motivo: é o único registro que sobra para quem " +
@@ -1100,12 +1134,11 @@ export async function estornar(
   }
   const devolvido = (await devolucoes_de(tx, registro)).reduce((s, d) => s + d.quantidade, 0);
   if (devolvido) {
-    // estorno depois de devolução inflaria o razão: a devolução já devolveu
-    // saldo de uma entrega que o estorno declara que não valia
+    // estorno depois de devolução: a ficha diria que o EPI nunca saiu e, ao mesmo tempo, que voltou
     throw new EntregaBloqueada([
       `o registro ${registro.id} já teve ${devolvido} devolvido(s): ` +
-        "devolução é fato do mundo e devolveu saldo ao lote. Corrigir a " +
-        "quantidade agora é ajuste de inventário, com contagem e motivo",
+        "a devolução é fato do mundo e prova que a entrega aconteceu. Se a quantidade " +
+        "do lote está errada, corrija pelo ajuste de inventário, com contagem e motivo",
     ]);
   }
 
@@ -1160,7 +1193,8 @@ export async function estornar(
 // Devolução — o outro fato, que NÃO é estorno
 // =====================================================================
 /**
- * O equipamento voltou: linha nova na ficha e saldo de volta no razão.
+ * O equipamento voltou: linha nova na ficha, SEM mexer no saldo do lote (EPI é
+ * individual: depois de usado, não volta à prateleira).
  * Devolução diz que o registro estava certo e que o EPI voltou; estorno diz
  * que o registro estava errado. Um clique que fizesse as duas coisas faria o
  * físico deixar de bater com a prateleira.
@@ -1174,7 +1208,7 @@ export async function registrar_devolucao(
   usuario.exigir("epi.entregar");
   const quantidade = d.quantidade;
   const motivo_codigo = (d.motivo_codigo ?? "").trim() || null;
-  const limpo = textos.exigir_texto_limpo((d.motivo || "").trim(), "motivo da devolução") as string;
+  const limpo = textos.exigir_texto_limpo((d.motivo || "").trim(), "motivo da devolução", textos.CONTEXTO_EPI_PESSOA) as string;
   const hoje = datas_br.hoje();
   const quando = d.data_evento || hoje;
   const bloqueios: string[] = [];
@@ -1225,6 +1259,10 @@ export async function registrar_devolucao(
     // a devolução aponta para a entrega de onde veio — no congelado, e não em
     // `registro_estornado_id`, que quer dizer "esta linha anula aquela"
     congelado["registro_devolvido"] = registro.id;
+  } else {
+    // sem congelado na entrega, o vínculo com ela ainda tem de ficar: é por ele que a ficha
+    // sabe que a entrega foi devolvida (troca, comprovante)
+    congelado["registro_devolvido"] = registro.id;
   }
   const [devolucao] = await tx
     .insert(epi_ficha_registro)
@@ -1243,21 +1281,9 @@ export async function registrar_devolucao(
     })
     .returning();
 
-  // o saldo só volta quando havia lote: entrega de balcão não baixou nada
-  if (registro.entrada_id !== null) {
-    const [entrada] = await tx.select().from(epi_entrada_estoque).where(eq(epi_entrada_estoque.id, registro.entrada_id));
-    if (entrada) {
-      await epi_estoque.devolver(tx, {
-        entrada,
-        quantidade,
-        usuario,
-        ficha_registro_id: devolucao!.id,
-        // `servidor #{id}`, e não o SIAPE, pela mesma razão da baixa da entrega
-        motivo: `devolução do servidor #${registro.servidor_id}: ${limpo}`,
-      });
-    }
-  }
-
+  // O saldo NÃO volta ao lote, qualquer que seja o motivo: o EPI é individual e, mesmo em
+  // bom estado, já foi usado (decisão do dono, 24/11/2026). A devolução só registra o fato na
+  // ficha; o estoque se acerta, se for o caso, pelo ajuste ou pelo descarte do lote.
   const evento = await auditoria.registrar(tx, {
     entidade: ENTIDADE,
     entidade_id: devolucao!.id,
@@ -1274,6 +1300,11 @@ export async function registrar_devolucao(
   await _amarrar_evento(tx, devolucao!, evento.id);
   // RN-32: devolução integral tira a entrega da cobrança de troca
   await sincronizar_trocas_do_servidor(tx, registro.servidor_id, usuario);
+  // e da cobrança do comprovante (24/11/2026)
+  if (registro.tipo === "ENTREGA") {
+    const total = (await devolucoes_de(tx, registro)).reduce((soma, dv) => soma + dv.quantidade, 0);
+    if (total >= registro.quantidade) await fechar_pendencia_de_comprovante(tx, registro, usuario);
+  }
   // a devolução trata a comunicação aberta do titular sobre esta entrega
   // (import tardio: `epi_comunicacao` importa este módulo)
   const { tratar_pela_devolucao } = await import("./epi_comunicacao.js");
@@ -1345,6 +1376,32 @@ export async function imprimir(tx: Executor, usuario: UsuarioAtual, registro: Ep
     finalidade: "impressão do comprovante de entrega de EPI para assinatura",
   });
   return { destino, aviso, bytes: info.bytes, nome: comprovante_epi.nome_para_download(contexto) };
+}
+
+/**
+ * Lote 5, ajuste 5: o TITULAR vê e baixa o comprovante das PRÓPRIAS entregas, só para leitura. É o
+ * mesmo papel, dos dados congelados; não conta como impressão para assinatura (não entra na
+ * conferência de hash da primeira impressão nem abre nada) — imprimir para assinar continua com a
+ * equipe (`imprimir`, `epi.entregar`). A trilha guarda a cópia, com o nome de quem baixou.
+ */
+export async function copia_do_titular(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  registro: EpiFichaRegistro,
+): Promise<{ bytes: Uint8Array; nome: string }> {
+  if (usuario.servidor_id === null || usuario.servidor_id !== registro.servidor_id) {
+    throw new PermissaoNegada("epi.ficha", "Não há entrega da sua ficha de EPI neste endereço.", false);
+  }
+  const contexto = montar_contexto(registro);
+  const info = await comprovante_epi.renderizar(contexto, null);
+  await auditoria.registrar(tx, {
+    entidade: ENTIDADE,
+    entidade_id: registro.id,
+    tipo_evento: EPI_COMPROVANTE_COPIA_TITULAR,
+    descricao: `Cópia do comprovante do registro ${registro.id} baixada pelo titular (só leitura)`,
+    usuario,
+  });
+  return { bytes: info.bytes, nome: comprovante_epi.nome_para_download(contexto) };
 }
 
 /** O hash que a trilha guardou na primeira vez (a ficha é append-only). */
@@ -1692,8 +1749,8 @@ export async function recusar(
   usuario.exigir("epi.entregar");
   const { motivo } = d;
   const item = d.item ?? null;
-  const limpo = textos.exigir_texto_limpo((d.complemento || "").trim(), "complemento da recusa") as string;
-  const quem = textos.exigir_texto_limpo((d.a_quem || "").trim(), "a quem a recusa se dirige") as string;
+  const limpo = textos.exigir_texto_limpo((d.complemento || "").trim(), "complemento da recusa", textos.CONTEXTO_EPI_PESSOA) as string;
+  const quem = textos.exigir_texto_limpo((d.a_quem || "").trim(), "a quem a recusa se dirige", textos.CONTEXTO_EPI_PESSOA) as string;
   if (!quem) {
     throw new EntregaBloqueada([
       "diga a quem a recusa se dirige: sem isso o registro não serve " +

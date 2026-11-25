@@ -445,6 +445,20 @@ describe("meus treinamentos", () => {
 // Pedidos pelo link (D34, M38) e link da turma (D36)
 // =====================================================================
 describe("pedidos pelo link", () => {
+  it("CSRF (24/11/2026): sem sessão o link aceita o pedido; logado, passa com o token da página", async () => {
+    const { turma_id, token } = await com_link({ vagas: 5 });
+    expect((await novoCliente().post(`/inscricao/${token}`, PEDIDO, { seguir: false })).status).toBe(303);
+    const { c } = await servidor_logado();
+    const pagina = (await c.get(`/inscricao/${token}`)).text;
+    const m = /<input type="hidden" name="_csrf" value="([^"]+)">/.exec(pagina);
+    expect(m).not.toBeNull();
+    const outro = { ...PEDIDO, nome: "Pedro Alvares Cabral", email: "pedro@x.com" };
+    expect((await c.post(`/inscricao/${token}`, outro, { seguir: false, sem_csrf: true })).status).toBe(403);
+    const r = await c.post(`/inscricao/${token}`, { ...outro, _csrf: m![1]! }, { seguir: false, sem_csrf: true });
+    expect(r.status).toBe(303);
+    expect((await inscricoes()).filter((i) => i.turma_id === turma_id)).toHaveLength(2);
+  });
+
   it("D34: as caixas nascem desmarcadas, com “marcar todos desta turma”", async () => {
     const { turma_id, token } = await com_link({ vagas: 1 });
     await novoCliente().post(`/inscricao/${token}`, PEDIDO);
@@ -524,7 +538,7 @@ describe("formulário público", () => {
     // "outra pessoa" volta ao formulário limpo, com o vínculo sem padrão
     const outra = texto((await publico.get(`/inscricao/${token}?novo=1`)).text);
     expect(outra).toContain("Pedir a vaga</button>");
-    expect(outra).toMatch(/<option value="" selected>Selecione<\/option>/);
+    expect(outra).not.toMatch(/name="vinculo"[^>]*checked/);
     expect(outra).toContain('data-mostra-quando="vinculo=SERVIDOR"');
   });
 
@@ -628,7 +642,7 @@ describe("a folha de presença (M33)", () => {
     expect(await msg(cliente, r)).toContain("Folha salva: 4 presença(s)");
     const presencas = await db.select().from(e.turma_presenca).orderBy(asc(e.turma_presenca.inscricao_id), asc(e.turma_presenca.data));
     // 12 h em 3 dias: 4 h por dia; b chegou atrasado hoje (2 h) e faltou ontem
-    expect(presencas.map((p) => [p.inscricao_id, p.data, p.presente, Number(p.horas)])).toEqual([
+    expect(presencas.map((p) => [p.inscricao_id, p.data, p.presente, p.quantidade / 60])).toEqual([
       [a, ONTEM, true, 4],
       [a, HOJE, true, 4],
       [b, ONTEM, false, 0],

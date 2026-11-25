@@ -108,7 +108,7 @@ describe("congelamento", () => {
     expect(corpo).not.toContain("7654321");
   });
 
-  it("a devolução também não publica a matrícula no razão", async () => {
+  it("a devolução não mexe no razão do lote (EPI usado não volta) e não publica a matrícula", async () => {
     const c = await montar(db);
     const cli = await como("coordenador_csso");
     expect((await entregar(cli, c)).status).toBe(303);
@@ -120,7 +120,7 @@ describe("congelamento", () => {
     );
     expect(devolucao.status, devolucao.text).toBe(303);
     const razao = (await movimentos_do_lote(db, c)).map((m) => [m.tipo, m.motivo ?? ""] as const);
-    expect(razao.some(([tipo]) => tipo === "DEVOLUCAO")).toBe(true);
+    expect(razao.some(([tipo]) => tipo === "DEVOLUCAO")).toBe(false);
     for (const [, motivo] of razao) expect(motivo).not.toContain("7654321");
     expect((await cli.get(`/epis/estoque/${c.entrada}/movimentos`)).text).not.toContain("7654321");
   });
@@ -247,6 +247,32 @@ describe("RN-24", () => {
 // 4. A janela da decisão 8 — registro sem prova é pendência
 // =====================================================================
 describe("decisão 8", () => {
+  it("quantidade quebrada pede número inteiro (24/11/2026)", async () => {
+    const c = await montar(db);
+    const cli = await como("coordenador_csso");
+    const r = await entregar(cli, c, { quantidade: "1,5" });
+    expect(recado(r)).toContain("número inteiro maior que zero");
+    expect(await registros(db)).toEqual([]);
+  });
+
+  it("devolução integral fecha a pendência do comprovante e tira a etiqueta (24/11/2026)", async () => {
+    const c = await montar(db);
+    const cli = await como("coordenador_csso");
+    await entregar(cli, c);
+    const [entrega] = await registros(db);
+    const r = await cli.post(
+      `${FICHAS}/registros/${entrega!.id}/devolucao`,
+      { quantidade: String(entrega!.quantidade), motivo: "desgaste no uso", data_evento: "" },
+      { seguir: false },
+    );
+    expect(r.status, r.text).toBe(303);
+    const ps = await pendencias_de("COMPROVANTE_EPI_PENDENTE");
+    expect(ps).toHaveLength(1);
+    expect(ps[0]!.concluida).toBe(true);
+    const corpo = (await cli.get(`${FICHAS}/${c.servidor}`)).text;
+    expect(corpo).not.toContain("registrada(s) sem o comprovante");
+  });
+
   it("entrega sem comprovante abre pendência e aparece na tela", async () => {
     const c = await montar(db);
     const cli = await como("coordenador_csso");
@@ -612,7 +638,7 @@ describe("texto livre", () => {
     const c = await montar(db);
     const cli = await como("coordenador_csso");
     const r = await entregar(cli, c, { observacao: "Servidora gestante, afastada do setor." });
-    expect(recado(r)).toContain("termo proibido");
+    expect(recado(r)).toContain("dado de saúde");
     expect(await registros(db)).toEqual([]);
   });
 

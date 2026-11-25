@@ -124,6 +124,10 @@ import {
   turma,
   turma_instrutor,
   turma_presenca,
+  turma_carga_dia,
+  treinamento_disciplina,
+  treinamento_disciplina_linha,
+  inscricao_nota_disciplina,
 } from './treinamento';
 
 // ---------------------------------------------------------------------
@@ -542,7 +546,9 @@ export const epi_item_treinamento_relacoes = relations(epi_item_treinamento, ({ 
 // ---------------------------------------------------------------------
 // treinamento.py
 // ---------------------------------------------------------------------
-export const treinamento_relacoes = relations(treinamento, ({ one }) => ({
+export const treinamento_relacoes = relations(treinamento, ({ one, many }) => ({
+  // NUVEM (lote 4): as disciplinas da brigada, na ordem do quadro
+  disciplinas: many(treinamento_disciplina, { relationName: 'treinamento_disciplinas' }),
   modelo_vigente: one(certificado_modelo, {
     fields: [treinamento.modelo_vigente_id],
     references: [certificado_modelo.id],
@@ -570,8 +576,9 @@ export const certificado_modelo_tag_relacoes = relations(certificado_modelo_tag,
   }),
 }));
 
-export const assinatura_instrutor_relacoes = relations(assinatura_instrutor, ({ one }) => ({
+export const assinatura_instrutor_relacoes = relations(assinatura_instrutor, ({ one, many }) => ({
   servidor: one(servidor, { fields: [assinatura_instrutor.servidor_id], references: [servidor.id] }),
+  responsavel_em: many(turma, { relationName: 'turma_responsavel_formacao' }),
 }));
 
 export const participante_relacoes = relations(participante, ({ one, many }) => ({
@@ -608,6 +615,47 @@ export const turma_relacoes = relations(turma, ({ one, many }) => ({
   // ordem do Python: turma_instrutor.ordem
   instrutores: many(turma_instrutor, { relationName: 'turma_instrutores' }),
   inscricoes: many(inscricao, { relationName: 'turma_inscricoes' }),
+  // NUVEM (lote 3): a carga de cada dia, quando informada
+  carga_dias: many(turma_carga_dia, { relationName: 'turma_carga_dias' }),
+  // NUVEM (lote 4): o responsável pela formação da brigada (vazio = o instrutor que assina)
+  responsavel_formacao: one(assinatura_instrutor, {
+    fields: [turma.responsavel_formacao_id],
+    references: [assinatura_instrutor.id],
+    relationName: 'turma_responsavel_formacao',
+  }),
+}));
+
+export const treinamento_disciplina_relacoes = relations(treinamento_disciplina, ({ one, many }) => ({
+  treinamento: one(treinamento, {
+    fields: [treinamento_disciplina.treinamento_id],
+    references: [treinamento.id],
+    relationName: 'treinamento_disciplinas',
+  }),
+  linhas: many(treinamento_disciplina_linha, { relationName: 'disciplina_linhas' }),
+}));
+
+export const treinamento_disciplina_linha_relacoes = relations(treinamento_disciplina_linha, ({ one }) => ({
+  disciplina: one(treinamento_disciplina, {
+    fields: [treinamento_disciplina_linha.disciplina_id],
+    references: [treinamento_disciplina.id],
+    relationName: 'disciplina_linhas',
+  }),
+}));
+
+export const inscricao_nota_disciplina_relacoes = relations(inscricao_nota_disciplina, ({ one }) => ({
+  inscricao: one(inscricao, {
+    fields: [inscricao_nota_disciplina.inscricao_id],
+    references: [inscricao.id],
+    relationName: 'inscricao_notas_disciplina',
+  }),
+  disciplina: one(treinamento_disciplina, {
+    fields: [inscricao_nota_disciplina.disciplina_id],
+    references: [treinamento_disciplina.id],
+  }),
+}));
+
+export const turma_carga_dia_relacoes = relations(turma_carga_dia, ({ one }) => ({
+  turma: one(turma, { fields: [turma_carga_dia.turma_id], references: [turma.id], relationName: 'turma_carga_dias' }),
 }));
 
 export const turma_instrutor_relacoes = relations(turma_instrutor, ({ one }) => ({
@@ -634,6 +682,8 @@ export const inscricao_relacoes = relations(inscricao, ({ one, many }) => ({
   }),
   // ordem do Python: turma_presenca.data
   presencas: many(turma_presenca, { relationName: 'inscricao_presencas' }),
+  // NUVEM (lote 4): as notas por disciplina (brigada)
+  notas_disciplina: many(inscricao_nota_disciplina, { relationName: 'inscricao_notas_disciplina' }),
 }));
 
 export const turma_presenca_relacoes = relations(turma_presenca, ({ one }) => ({

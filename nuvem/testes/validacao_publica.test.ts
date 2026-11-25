@@ -83,7 +83,9 @@ describe("o endereço impresso", () => {
   it("a página abre sem sessão", async () => {
     for (const caminho of ["/validar", `/validar/${INEXISTENTE}`]) {
       const resposta = await cliente.get(caminho, { seguir: false });
-      expect(resposta.status, caminho).toBe(200);
+      // chave inexistente: a mesma tela, com 404 (24/11/2026)
+      expect(resposta.status, caminho).toBe(caminho === "/validar" ? 200 : 404);
+      expect(resposta.text).toContain('name="chave"');
       expect(resposta.location ?? "").not.toContain("/login");
     }
   });
@@ -173,7 +175,7 @@ describe("conferência do nome", () => {
 describe("antienumeração", () => {
   it("a rajada bate no limite por IP", async () => {
     for (let i = 0; i < servico.LIMITE_CURTO; i++) {
-      expect((await cliente.get(`/validar/${INEXISTENTE}`)).status).toBe(200);
+      expect((await cliente.get(`/validar/${INEXISTENTE}`)).status).toBe(404);
     }
     const excedeu = await cliente.get(`/validar/${INEXISTENTE}`);
     expect(excedeu.status).toBe(429);
@@ -264,7 +266,9 @@ describe("negado por padrão", () => {
       // `{param}` vira `1`: o que se mede é a porta, não o conteúdo
       const concreto = caminho.replace(/\{[^}]*\}/g, "1");
       const resposta = await cliente.get(concreto, { seguir: false });
-      if (resposta.status === 200) abertas.push(caminho);
+      // a validação de chave inexistente abre a tela com 404: conta como aberta
+      const tela_404 = resposta.status === 404 && resposta.text.includes('name="chave"');
+      if (resposta.status === 200 || tela_404) abertas.push(caminho);
     }
     const esperadas = new Set(Object.keys(ABERTAS_SEM_SESSAO));
     const sobrando = abertas.filter((c) => !esperadas.has(c));

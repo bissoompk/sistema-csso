@@ -111,7 +111,7 @@ export function chave_da_pendencia(comunicacao_id: number): string {
 }
 
 function _texto_curto(bruto: string | null | undefined, campo: string): string {
-  const limpo = (textos.exigir_texto_limpo((bruto ?? "").trim(), campo) as string) ?? "";
+  const limpo = (textos.exigir_texto_limpo((bruto ?? "").trim(), campo, textos.CONTEXTO_EPI_PESSOA) as string) ?? "";
   if (limpo.length > TAMANHO_MAXIMO_TEXTO) {
     throw new RegraViolada(`O campo ${campo} passa de ${TAMANHO_MAXIMO_TEXTO} caracteres: resuma.`);
   }
@@ -189,7 +189,12 @@ export async function comunicar(
   // a comunicação é do TITULAR: nem a equipe comunica em nome dele (ela tem a
   // devolução e o estorno, que são atos dela)
   if (usuario.servidor_id === null || usuario.servidor_id !== registro.servidor_id) {
-    throw new PermissaoNegada("epi.ver", "Só o titular da ficha comunica sobre o EPI que está com ele.");
+    throw new PermissaoNegada(
+      "epi.ver",
+      "Só o titular da ficha comunica sobre o EPI que está com ele. Nenhuma permissão muda isso: " +
+        "o próprio servidor comunica pela ficha de EPI dele.",
+      false,
+    );
   }
   if (!eh_tipo(d.tipo)) throw new RegraViolada("Escolha a situação do equipamento.");
   const observacao = _texto_curto(d.observacao, "observação");

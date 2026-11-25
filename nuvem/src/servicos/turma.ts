@@ -35,8 +35,11 @@ import {
   turma as tabela_turma,
   turma_instrutor as tabela_turma_instrutor,
   turma_presenca as tabela_presenca,
+  turma_carga_dia as tabela_carga_dia,
+  inscricao_nota_disciplina as tabela_nota_disciplina,
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
+import { COM_DISCIPLINAS, type DisciplinaCarregada } from "./disciplinas.js";
 import {
   ESTADOS_INSCRICAO,
   INSCRICAO_OCUPA_VAGA,
@@ -61,6 +64,8 @@ import * as titular_externo from "./titular_externo.js";
 import { COM_PARTICIPANTE, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import { comparar } from "./presenca.js";
+import * as carga from "../dominio/carga.js";
+import * as carga_turma from "./carga_turma.js";
 import { filtro } from "../web.js";
 
 // Abrir inscrição e começar a turma são edição; concluir e cancelar são decisão
@@ -104,6 +109,8 @@ export type ModeloCarregado = ModeloRegistro & { tags: TagRegistro[] };
 export type TreinamentoCarregado = TreinamentoRegistro & {
   modelo_vigente: ModeloCarregado | null;
   instrutor_padrao: AssinaturaRegistro | null;
+  // NUVEM (lote 4): as disciplinas da brigada (vazio = treinamento de nota única, 0 a 10)
+  disciplinas: DisciplinaCarregada[];
 };
 export type VinculoInstrutor = typeof tabela_turma_instrutor.$inferSelect & { instrutor: AssinaturaCarregada };
 export type TurmaCarregada = TurmaRegistro & {
@@ -113,12 +120,20 @@ export type TurmaCarregada = TurmaRegistro & {
   local_cadastrado: typeof tabela_local.$inferSelect | null;
   unidade_promotora: typeof tabela_unidade.$inferSelect | null;
   instrutores: VinculoInstrutor[];
+  // NUVEM (lote 3): a carga de cada dia, quando informada (vazio = divisão automática)
+  carga_dias: CargaDiaRegistro[];
+  // NUVEM (lote 4): o responsável pela formação escolhido (vazio = o instrutor que assina)
+  responsavel_formacao: AssinaturaCarregada | null;
 };
+export type CargaDiaRegistro = typeof tabela_carga_dia.$inferSelect;
 export type InscricaoCarregada = InscricaoRegistro & {
   turma: TurmaCarregada;
   participante: ParticipanteCarregado;
   presencas: PresencaRegistro[];
+  // NUVEM (lote 4): as notas por disciplina (brigada)
+  notas_disciplina: NotaDisciplinaRegistro[];
 };
+export type NotaDisciplinaRegistro = typeof tabela_nota_disciplina.$inferSelect;
 
 /** O `mapa_de_tags` exige as tags na ordem (ordem, id) — o `order_by` do Python. */
 export const COM_TAGS = {
@@ -126,7 +141,8 @@ export const COM_TAGS = {
 } as const;
 
 export const COM_TURMA = {
-  treinamento: { with: { modelo_vigente: { with: COM_TAGS }, instrutor_padrao: true } },
+  treinamento: { with: { modelo_vigente: { with: COM_TAGS }, instrutor_padrao: true, disciplinas: COM_DISCIPLINAS } },
+  responsavel_formacao: { with: { servidor: true } },
   campus: true,
   local_cadastrado: true,
   unidade_promotora: true,
@@ -134,11 +150,13 @@ export const COM_TURMA = {
     orderBy: (v: typeof tabela_turma_instrutor, { asc: a }: { asc: typeof asc }) => [a(v.ordem)],
     with: { instrutor: { with: { servidor: true } } },
   },
+  carga_dias: { orderBy: (c: typeof tabela_carga_dia, { asc: a }: { asc: typeof asc }) => [a(c.data)] },
 } as const;
 
 const COM_INSCRICAO = {
   participante: { with: COM_PARTICIPANTE },
   presencas: { orderBy: (p: typeof tabela_presenca, { asc: a }: { asc: typeof asc }) => [a(p.data)] },
+  notas_disciplina: true,
 } as const;
 
 export async function carregar_turma(tx: Executor, turma_id: number): Promise<TurmaCarregada | null> {
@@ -170,6 +188,8 @@ export async function recarregar_turma(tx: Executor, turma: TurmaCarregada): Pro
 }
 
 async function gravar_turma(tx: Executor, turma: TurmaCarregada | TurmaRegistro, campos: Partial<TurmaRegistro>) {
+  // a carga por dia (lote 3) edita sem mudar coluna nenhuma da turma
+  if (!Object.keys(campos).length) return;
   await tx.update(tabela_turma).set(campos).where(eq(tabela_turma.id, turma.id));
   Object.assign(turma, campos);
 }
@@ -370,11 +390,16 @@ function _conferir_prazo_de_inscricao(
   }
 }
 
+/** Lote 6: o piso da frequência na turma em TEMPOS (brigada). */
+export const FREQUENCIA_MINIMA_TEMPOS = "75";
+
 function _conferir_numeros(d: {
   carga_horaria_horas: string | null;
   vagas: number | null;
   nota_minima_aprovacao: string | null;
   frequencia_minima_percentual: string;
+  /** a unidade da carga do treinamento: em TEMPOS a frequência não fica abaixo de 75% */
+  carga_unidade?: string | null;
 }): void {
   if (d.carga_horaria_horas !== null && comparar(d.carga_horaria_horas, "0") <= 0) {
     throw new RegraDaTurma("Carga horária da turma: informe um número maior que zero.");
@@ -390,6 +415,13 @@ function _conferir_numeros(d: {
   }
   if (!(comparar(d.frequencia_minima_percentual, "0") >= 0 && comparar(d.frequencia_minima_percentual, "100") <= 0)) {
     throw new RegraDaTurma("Frequência mínima: use um percentual entre 0 e 100.");
+  }
+  // lote 6: a turma em TEMPOS (brigada CBMMG) exige ao menos 75% de frequência; acima, à escolha
+  if (d.carga_unidade === "TEMPOS" && comparar(d.frequencia_minima_percentual, FREQUENCIA_MINIMA_TEMPOS) < 0) {
+    throw new RegraDaTurma(
+      "Frequência mínima: na turma em tempos (brigada) ela não fica abaixo de 75% " +
+        "(Portaria CBMMG nº 54/2020, art. 40). Use 75% ou mais.",
+    );
   }
 }
 
@@ -472,6 +504,18 @@ export interface DadosTurma {
   hora_inicio?: string | null;
   hora_fim?: string | null;
   aceita_comunidade_externa?: boolean;
+  /** NUVEM (lote 3): a carga de cada dia, na unidade-base; vazio = divisão automática */
+  carga_por_dia?: ReadonlyMap<string, number> | null;
+  /** por que a carga passa do que o horário comporta (T2) */
+  justificativa_carga?: string | null;
+}
+
+/** Em TEMPOS a carga é inteira: não existe meio tempo de aula. */
+function _conferir_carga_na_unidade(valor: string | null, unidade: carga.Unidade): void {
+  if (valor === null || unidade !== "TEMPOS") return;
+  if (!/^\d+(\.0*)?$/.test(valor.trim())) {
+    throw new RegraDaTurma("Este treinamento conta a carga em tempos: informe um número inteiro de tempos.");
+  }
 }
 
 /**
@@ -495,10 +539,22 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
     vagas: d.vagas ?? null,
     nota_minima_aprovacao: d.nota_minima_aprovacao ?? null,
     frequencia_minima_percentual: frequencia,
+    carga_unidade: treinamento.carga_unidade,
   });
   if (d.data_base_vencimento && d.data_base_vencimento < d.data_inicio) {
     throw new RegraDaTurma("A data base do vencimento não pode ser anterior ao início da turma.");
   }
+  // NUVEM (lote 3): a unidade vem do treinamento; a carga por dia e o horário (T2)
+  const unidade = carga.unidade_de(treinamento.carga_unidade);
+  _conferir_carga_na_unidade(d.carga_horaria_horas ?? null, unidade);
+  const total = carga.para_base(d.carga_horaria_horas || treinamento.carga_horaria_horas, unidade);
+  const por_dia = d.carga_por_dia
+    ? carga_turma.conferir_por_dia(d, unidade, total, d.carga_por_dia)
+    : carga_turma.automatica(d, total);
+  const justificativa_carga = carga_turma.exigir_justificativa_do_excesso(
+    carga_turma.excesso_sobre_horario({ unidade, total, por_dia, hora_inicio, hora_fim }),
+    d.justificativa_carga,
+  );
   const unidade_promotora_id = setor_da_turma_nova(usuario, d.unidade_promotora_id ?? null);
   await _conferir_unidade_promotora(tx, unidade_promotora_id, null);
   const local = await _local_escolhido(tx, d.local_id ?? null, d.campus_id ?? null, null);
@@ -519,6 +575,8 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
       data_fim: d.data_fim,
       data_base_vencimento: d.data_base_vencimento ?? null,
       carga_horaria_horas: d.carga_horaria_horas ?? null,
+      carga_unidade: unidade,
+      justificativa_carga,
       local: local ? local.nome : (d.local ?? null),
       local_id: local ? local.id : null,
       descricao: d.descricao ?? null,
@@ -545,6 +603,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
     usuario,
   });
   const turma = (await carregar_turma(tx, linha!.id))!;
+  await carga_turma.gravar_por_dia(tx, usuario, turma, por_dia);
   // NUVEM: o instrutor padrão do catálogo já entra na turma, quando serve
   // (ativo e vigente no início); se não serve, a turma nasce sem e se vincula à mão
   if (treinamento.instrutor_padrao_id !== null) {
@@ -571,7 +630,7 @@ export async function editar_turma(
   campos: Partial<TurmaRegistro>,
   // NUVEM: a correção da turma CONCLUÍDA passa por aqui com as mesmas regras de
   // período e de ano; quem a chama (`retificacao.retificar_turma`) exige o motivo
-  opcoes: { concluida?: boolean } = {},
+  opcoes: { concluida?: boolean; carga_por_dia?: ReadonlyMap<string, number> | null } = {},
 ): Promise<TurmaCarregada> {
   usuario.exigir("turma.criar");
   if (T.encerrada(turma) && !(opcoes.concluida && turma.situacao === "CONCLUIDA")) {
@@ -632,6 +691,15 @@ export async function editar_turma(
     const local = (await _local_escolhido(tx, local_final, valor("campus_id"), turma.local_id))!;
     campos = { ...campos, local: local.nome };
   }
+  // lote 4 (brigada): o responsável pela formação é um dos instrutores da turma
+  const responsavel = valor("responsavel_formacao_id");
+  if (responsavel !== null && responsavel !== turma.responsavel_formacao_id
+      && !turma.instrutores.some((v) => v.assinatura_instrutor_id === responsavel)) {
+    throw new RegraDaTurma("O responsável pela formação tem de ser um dos instrutores da turma (aba Turma, Instrutores).");
+  }
+  if ("local_atuacao_padrao" in campos && (campos.local_atuacao_padrao ?? "").length > 200) {
+    throw new RegraDaTurma("O local de atuação tem no máximo 200 caracteres.");
+  }
   _conferir_setor_na_edicao(usuario, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   await _conferir_unidade_promotora(tx, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   const base = valor("data_base_vencimento");
@@ -643,7 +711,40 @@ export async function editar_turma(
     vagas: valor("vagas"),
     nota_minima_aprovacao: valor("nota_minima_aprovacao"),
     frequencia_minima_percentual: valor("frequencia_minima_percentual"),
+    carga_unidade: turma.treinamento.carga_unidade,
   });
+  // NUVEM (lote 3): carga na unidade, carga por dia e conferência com o horário (T2)
+  const unidade = T.unidade(turma);
+  _conferir_carga_na_unidade(valor("carga_horaria_horas"), unidade);
+  const total = carga.para_base(valor("carga_horaria_horas") || turma.treinamento.carga_horaria_horas, unidade);
+  const periodo = { data_inicio: novo_inicio, data_fim: novo_fim };
+  const datas_mudaram = novo_inicio !== turma.data_inicio || novo_fim !== turma.data_fim;
+  const carga_mudou = total !== T.carga_base(turma);
+  const antes_por_dia = carga_turma.carga_por_dia(turma);
+  let por_dia: [string, number][] | null = null;
+  if (opcoes.carga_por_dia) {
+    por_dia = carga_turma.conferir_por_dia(periodo, unidade, total, opcoes.carga_por_dia);
+  } else if (datas_mudaram || carga_mudou) {
+    // a carga por dia de antes não serve mais: volta à divisão automática (a trilha registra)
+    por_dia = carga_turma.automatica(periodo, total);
+  }
+  const horario_mudou = valor("hora_inicio") !== turma.hora_inicio || valor("hora_fim") !== turma.hora_fim;
+  if ("justificativa_carga" in campos || por_dia !== null || horario_mudou) {
+    const excesso =
+      por_dia !== null || horario_mudou
+        ? carga_turma.excesso_sobre_horario({
+            unidade,
+            total,
+            por_dia: por_dia ?? antes_por_dia,
+            hora_inicio: valor("hora_inicio"),
+            hora_fim: valor("hora_fim"),
+          })
+        : null;
+    const justificativa = carga_turma.exigir_justificativa_do_excesso(excesso, valor("justificativa_carga"));
+    if (justificativa !== turma.justificativa_carga || "justificativa_carga" in campos) {
+      campos = { ...campos, justificativa_carga: justificativa };
+    }
+  }
   const vagas_novas = valor("vagas");
   if (vagas_novas !== null) {
     const ocupadas = await inscricoes_que_ocupam_vaga(tx, turma);
@@ -672,7 +773,38 @@ export async function editar_turma(
     depois,
     usuario,
   });
+  if (por_dia !== null) {
+    const presencas_por_dia = opcoes.carga_por_dia
+      ? carga_turma.maior_lancamento_por_dia(await inscricoes_da_turma(tx, turma))
+      : undefined;
+    await carga_turma.gravar_por_dia(tx, usuario, turma, por_dia, { presencas_por_dia, antes: antes_por_dia });
+  }
   return turma;
+}
+
+/**
+ * Lote 4 (brigada, art. 43, II): o local de atuação do brigadista, por inscrição. Nasce com o
+ * padrão da turma; o certificado já emitido guarda o que valia no dia.
+ */
+export async function definir_local_atuacao(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  inscricao: InscricaoCarregada,
+  bruto: string,
+): Promise<boolean> {
+  const novo = bruto.replace(/\s+/g, " ").trim() || null;
+  if (novo && novo.length > 200) throw new RegraDaTurma("O local de atuação tem no máximo 200 caracteres.");
+  if (novo === inscricao.local_atuacao) return false;
+  const antes = { local_atuacao: inscricao.local_atuacao };
+  await gravar_inscricao(tx, inscricao, { local_atuacao: novo });
+  await auditoria.registrar_diferencas(tx, {
+    entidade: "inscricao",
+    entidade_id: inscricao.id,
+    antes,
+    depois: { local_atuacao: novo },
+    usuario,
+  });
+  return true;
 }
 
 function eh_numero(v: string): boolean {
@@ -680,6 +812,45 @@ function eh_numero(v: string): boolean {
 }
 
 /** Máquina E. Transição não declarada é recusada aqui, não no template. */
+/**
+ * Lote 5 (T9, 25/11/2026): a turma "Planejada" que já começou aceita lançamento, e o PRIMEIRO
+ * lançamento de presença ou nota a passa para "Em andamento". A mudança vai à trilha como
+ * qualquer outra mudança de situação (quem lançou e a hora). Não pede a permissão de iniciar
+ * turma: quem lança presença já está autorizado a lançar, e o curso começou de fato.
+ * Devolve se mudou. Relê a situação no banco (com trava): a mesma turma chega em vários objetos.
+ */
+export async function iniciar_pelo_lancamento(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  turma: TurmaCarregada | TurmaRegistro,
+): Promise<boolean> {
+  if (turma.situacao !== "PLANEJADA") return false;
+  const [atual] = await tx
+    .select({ situacao: tabela_turma.situacao })
+    .from(tabela_turma)
+    .where(eq(tabela_turma.id, turma.id))
+    .for("update");
+  if (!atual || atual.situacao !== "PLANEJADA") {
+    if (atual) turma.situacao = atual.situacao;
+    return false;
+  }
+  if (turma.data_inicio > datas_br.hoje()) return false;
+  await gravar_turma(tx, turma, { situacao: "EM_ANDAMENTO" });
+  const motivo = "primeiro lançamento de presença ou nota";
+  await auditoria.registrar(tx, {
+    entidade: "turma",
+    entidade_id: turma.id,
+    tipo_evento: auditoria.ESTADO_ALTERADO,
+    descricao: `${turma.codigo}: ${ROTULO_TURMA["PLANEJADA"]} -> ${ROTULO_TURMA["EM_ANDAMENTO"]} — ${motivo}`,
+    campo: "situacao",
+    valor_anterior: "PLANEJADA",
+    valor_novo: "EM_ANDAMENTO",
+    comentario: motivo,
+    usuario,
+  });
+  return true;
+}
+
 export async function mudar_situacao(
   tx: Executor,
   usuario: UsuarioAtual,
@@ -710,6 +881,13 @@ export async function mudar_situacao(
         (origem === "PLANEJADA"
           ? " Passe-a para em andamento quando começar."
           : " Lance a presença de cada dia e conclua a partir dessa data."),
+    );
+  }
+  // iniciar uma turma futura por engano fecha o link de inscrição e não tem volta
+  if (destino === "EM_ANDAMENTO" && turma.data_inicio > datas_br.hoje()) {
+    throw new RegraDaTurma(
+      `${turma.codigo} começa em ${datas_br.numerica(turma.data_inicio)}: só se inicia turma na data de começo. ` +
+        "Se a data está errada, corrija-a na ficha da turma antes.",
     );
   }
   if (destino === "INSCRICOES_ABERTAS" && turma.data_fim < datas_br.hoje()) {
@@ -1113,6 +1291,8 @@ export async function inscrever(
     .insert(tabela_inscricao)
     .values({
       turma_id: turma.id,
+      // lote 4: o local de atuação do brigadista nasce com o padrão da turma
+      local_atuacao: turma.local_atuacao_padrao,
       participante_id: participante.id,
       situacao: "CONFIRMADA",
       origem: "INTERNA",
@@ -1130,7 +1310,7 @@ export async function inscrever(
     descricao: `${turma.codigo}: ${participante.identificador_publico}`,
     usuario,
   });
-  return { ...linha!, turma, participante, presencas: [] };
+  return { ...linha!, turma, participante, presencas: [], notas_disciplina: [] };
 }
 
 /**
@@ -1389,7 +1569,7 @@ function _exigir_titular(usuario: UsuarioAtual): void {
   throw new RegraDaTurma(
     "Sua conta não está ligada a um cadastro de servidor, e sem essa " +
       "ligação o sistema não tem em nome de quem inscrever. " +
-      "Se você é servidor da UFVJM, informe os seus dados em Meu perfil (Sou servidor da UFVJM): a conta é ligada na hora.",
+      "Se você é servidor(a) da UFVJM, informe os seus dados em Meu perfil (Sou servidor(a) da UFVJM): a conta é ligada na hora.",
   );
 }
 
@@ -1504,6 +1684,8 @@ export async function inscrever_se(
     .insert(tabela_inscricao)
     .values({
       turma_id: turma.id,
+      // lote 4: o local de atuação do brigadista nasce com o padrão da turma
+      local_atuacao: turma.local_atuacao_padrao,
       participante_id: pessoa.id,
       situacao: "CONFIRMADA",
       origem: "INTERNA",
@@ -1513,7 +1695,7 @@ export async function inscrever_se(
       confirmada_por: usuario.id,
     })
     .returning();
-  const inscricao: InscricaoCarregada = { ...linha!, turma, participante: pessoa, presencas: [] };
+  const inscricao: InscricaoCarregada = { ...linha!, turma, participante: pessoa, presencas: [], notas_disciplina: [] };
   await auditoria.registrar(tx, {
     entidade: "inscricao",
     entidade_id: inscricao.id,

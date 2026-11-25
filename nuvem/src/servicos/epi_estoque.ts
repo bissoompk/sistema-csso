@@ -560,7 +560,7 @@ export async function ajustar(
 
 /** Texto limpo e não vazio. RN-30: passa pelo filtro da RN-21 antes de gravar. */
 function _motivo_obrigatorio(motivo: string | null | undefined, campo: string): string {
-  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), campo);
+  const limpo = textos.exigir_texto_limpo((motivo || "").trim(), campo, textos.CONTEXTO_EPI_MATERIAL);
   if (!limpo) {
     throw new EstoqueBloqueado([
       `${campo} é obrigatório: é o único registro que sobra para quem ` +
@@ -594,6 +594,8 @@ export interface DadosEntrada {
   validade_ca?: string | null;
   data_fabricacao?: string | null;
   observacao?: string;
+  /** o CA ou a validade do lote diferem do catálogo, e quem registra conferiu (24/11/2026) */
+  confirmo_diferenca_catalogo?: boolean;
 }
 
 /**
@@ -605,7 +607,7 @@ export async function registrar_entrada(tx: Executor, usuario: UsuarioAtual, d: 
   usuario.exigir("epi.estoque");
   const hoje = datas_br.hoje();
   const quando = d.data_entrada || hoje;
-  const limpo = textos.exigir_texto_limpo((d.observacao || "").trim(), "observação do lote");
+  const limpo = textos.exigir_texto_limpo((d.observacao || "").trim(), "observação do lote", textos.CONTEXTO_EPI_MATERIAL);
   const quantidade_empenhada = d.quantidade_empenhada ?? null;
   const valor_unitario = d.valor_unitario ?? null;
   const validade_ca = d.validade_ca || null;
@@ -639,7 +641,7 @@ export async function registrar_entrada(tx: Executor, usuario: UsuarioAtual, d: 
   // P/M/G nunca casava com pedido nenhum — ficava na prateleira sem saída.
   const tamanho = _ou_nada(d.tamanho);
   const [catalogo] = await tx
-    .select({ tamanhos: epi_item.tamanhos })
+    .select({ tamanhos: epi_item.tamanhos, numero_ca: epi_item.numero_ca, validade_ca: epi_item.validade_ca })
     .from(epi_item)
     .where(eq(epi_item.id, d.item.id));
   const tamanhos = EpiItemDominio.lista_de_tamanhos({ tamanhos: catalogo?.tamanhos ?? null });
@@ -678,6 +680,30 @@ export async function registrar_entrada(tx: Executor, usuario: UsuarioAtual, d: 
         `o lote ${lote}${tamanho ? ` no tamanho ${tamanho}` : ""} já tem entrada para '${d.item.nome}'. ` +
           "Se chegou mais da mesma caixa, registre um ajuste de inventário nesse lote; " +
           "se é outra compra, informe a nota fiscal dela (diferente da primeira); se é outro lote, confira o número",
+      );
+    }
+  }
+  // CA ou validade do lote diferentes do catálogo (24/11/2026): pode ser lote de outro modelo,
+  // CA renovado ou erro de digitação. Avisa e pede a confirmação; não bloqueia, porque o CA
+  // renovado chega no lote antes de alguém atualizar o catálogo.
+  if (!problemas.length && !d.confirmo_diferenca_catalogo) {
+    const so_digitos = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+    const diferencas: string[] = [];
+    const ca_lote = so_digitos(d.numero_ca);
+    const ca_catalogo = so_digitos(catalogo?.numero_ca);
+    if (ca_lote && ca_catalogo && ca_lote !== ca_catalogo) {
+      diferencas.push(`o CA do lote é ${ca_lote} e o do catálogo é ${ca_catalogo}`);
+    }
+    if (validade_ca && catalogo?.validade_ca && validade_ca !== catalogo.validade_ca) {
+      diferencas.push(
+        `a validade do CA no lote é ${datas_br.numerica(validade_ca)} e no catálogo é ${datas_br.numerica(catalogo.validade_ca)}`,
+      );
+    }
+    if (diferencas.length) {
+      recusa(
+        "confirmo_diferenca_catalogo",
+        `${diferencas.join("; ")}. Confira no site do MTE: se o lote está certo, marque ` +
+          "“confirmo a diferença” e registre de novo (e atualize o catálogo, se o CA foi renovado)",
       );
     }
   }
@@ -870,8 +896,8 @@ export async function atualizar_lote(
 ): Promise<void> {
   usuario.exigir("epi.estoque");
   const { entrada, ativo } = d;
-  const limpa = textos.exigir_texto_limpo((d.observacao || "").trim(), "observação do lote");
-  const motivo = textos.exigir_texto_limpo((d.motivo_inativacao || "").trim(), "motivo da inativação");
+  const limpa = textos.exigir_texto_limpo((d.observacao || "").trim(), "observação do lote", textos.CONTEXTO_EPI_MATERIAL);
+  const motivo = textos.exigir_texto_limpo((d.motivo_inativacao || "").trim(), "motivo da inativação", textos.CONTEXTO_EPI_MATERIAL);
   if (!ativo && !motivo) {
     throw new EstoqueBloqueado([
       "inativar o lote exige o motivo: é ele que explica, para quem " +

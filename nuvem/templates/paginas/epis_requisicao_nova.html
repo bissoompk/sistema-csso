@@ -32,6 +32,7 @@
    Vazio na abertura da tela. Sem isto, uma urgência sem justificativa apagava a
    rotina de trabalho e os riscos declarados — os dois textos longos daqui. #}
 {% set d = digitado or sem_digitado %}
+{% set aviso_saude = erro and ('confirmo que a menção é necessária' in erro) %}
 {%- macro sel(escolhido, valor) -%}
 {{- ' selected' if escolhido not in [none, ''] and escolhido|string == valor|string -}}
 {%- endmacro %}
@@ -59,7 +60,7 @@
      formulário que o envio vai recusar. #}
   <div class="aviso aviso-alerta">
     <strong>Sua conta não está ligada a um cadastro de servidor.</strong> O pedido
-    de EPI é sempre de um servidor. Se você é servidor da UFVJM, informe os seus dados em <a href="/minha-conta#sou-servidor">Meu perfil → Sou servidor da UFVJM</a>: a conta é ligada na hora.
+    de EPI é sempre de um servidor. Se você é servidor(a) da UFVJM, informe os seus dados em <a href="/minha-conta#sou-servidor">Meu perfil → Sou servidor(a) da UFVJM</a>: a conta é ligada na hora.
   </div>
   {% else %}
 
@@ -192,6 +193,7 @@
           <span class="dica" id="dica-urgencia">Só para pedido urgente — e aí é
             obrigatório.</span>
         </div>
+        {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-nova') }}
       </div>
 
       <div class="campo">

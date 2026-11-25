@@ -57,6 +57,9 @@
 
 {% block conteudo %}
 {% set quem = identificar(servidor) %}
+{# filtro de saúde em dois níveis (24/11/2026): devolução e estorno voltam por redirecionamento,
+   e a caixa aparece nos formulários depois do aviso #}
+{% set aviso_saude = erro and ('confirmo que a menção é necessária' in erro) %}
 <div class="tela">
 
   <div class="cabecalho-pagina">
@@ -346,11 +349,17 @@
           {% if l.comprovante %}
           <a class="botao secundario compacto" href="/epis/fichas/registros/{{ r.id }}/anexo">Ver o assinado</a>
           {% endif %}
+          {# lote 5, ajuste 5: a cópia do comprovante, só para leitura (assinar é com a equipe) #}
+          <a class="botao secundario compacto" title="Cópia para consulta; a via para assinar é impressa pela equipe"
+             href="/epis/fichas/registros/{{ r.id }}/{{ 'comprovante.pdf' if pdf_fiel() else 'comprovante' }}">Comprovante (cópia)</a>
           {% endif %}
           {% if pode_entregar and not titular %}
           {% if falta_papel %}
           <a class="botao secundario compacto"
              href="/epis/fichas/registros/{{ r.id }}/comprovante">Imprimir</a>
+          {# EPI 9 (lote 5): o mesmo comprovante em PDF, só com o conversor configurado #}
+          {% if pdf_fiel() %}<a class="botao secundario compacto"
+             href="/epis/fichas/registros/{{ r.id }}/comprovante.pdf">PDF</a>{% endif %}
           {{ ui.botao_cadastro('anexar-' ~ r.id, 'Anexar', 'compacto') }}
           {% endif %}
           {# Devolução e estorno continuam na gaveta: são as duas que se
@@ -366,20 +375,22 @@
                   linha — nunca do catálogo de hoje.</p>
                 <a class="botao secundario compacto"
                    href="/epis/fichas/registros/{{ r.id }}/comprovante">Imprimir de novo o comprovante</a>
+                {% if pdf_fiel() %}<a class="botao secundario compacto"
+                   href="/epis/fichas/registros/{{ r.id }}/comprovante.pdf">em PDF</a>{% endif %}
               </div>
               {% endif %}
 
               {# Devolução e estorno lado a lado, e cada uma diz o que faz:
-                 devolução repõe saldo porque o equipamento voltou; estorno não
-                 repõe nada porque nada voltou — o que estava errado era o
-                 registro. #}
+                 devolução registra que o equipamento voltou, mas não repõe saldo
+                 (EPI é individual e já foi usado); estorno não repõe nada porque
+                 nada voltou — o que estava errado era o registro. #}
               {% if r.tipo == 'ENTREGA' %}
               <form method="post" action="/epis/fichas/registros/{{ r.id }}/devolucao">
                 <h3>Registrar devolução</h3>
                 <p class="discreto">O equipamento <strong>voltou</strong>. A
                   entrega continua valendo — devolver não desfaz o que
-                  aconteceu —, nasce uma linha nova na ficha e o saldo volta ao
-                  lote.</p>
+                  aconteceu —, nasce uma linha nova na ficha. O saldo do lote
+                  <strong>não</strong> volta: EPI é individual e já foi usado.</p>
                 <div class="linha-campos">
                   <div class="campo">
                     <label for="qtd-dev-{{ r.id }}">Quantidade</label>
@@ -413,6 +424,7 @@
                     troca de posto ou desligamento mudam o que o setor faz com o
                     equipamento depois.</span>
                 </div>
+                {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-dev-' ~ r.id) }}
                 <div class="acoes"><button type="submit" class="compacto">Devolver</button></div>
               </form>
               {% endif %}
@@ -428,6 +440,7 @@
                   <input id="mot-{{ r.id }}" name="motivo" required
                          placeholder="quantidade digitada errada">
                 </div>
+                {{ ui.confirmar_mencao_saude(aviso_saude, 'cms-est-' ~ r.id) }}
                 <div class="acoes">
                   <button type="submit" class="perigo-discreto compacto">Estornar</button>
                 </div>

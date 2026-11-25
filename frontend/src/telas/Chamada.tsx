@@ -74,8 +74,14 @@ export function Chamada() {
             </select>
           </div>
           <div className="campo">
-            <label htmlFor="horas">Horas do dia</label>
-            <input id="horas" inputMode="decimal" value={horas} onChange={(e) => setHoras(e.target.value)} placeholder="h" />
+            <label htmlFor="horas">{turma?.carga_unidade === 'TEMPOS' ? 'Tempos do dia' : 'Horas do dia'}</label>
+            <input
+              id="horas"
+              inputMode={turma?.carga_unidade === 'TEMPOS' ? 'numeric' : 'decimal'}
+              value={horas}
+              onChange={(e) => setHoras(e.target.value)}
+              placeholder={turma?.carga_unidade === 'TEMPOS' ? 'tempos' : 'h'}
+            />
             <span className="dica">Vale para cada nome marcado abaixo.</span>
           </div>
         </div>
@@ -103,7 +109,7 @@ export function Chamada() {
                 <div className="quem">
                   <strong>{linha.participante}</strong>
                   <span className="discreto">
-                    {linha.frequencia}% · {linha.horas}h · {linha.situacao}
+                    {linha.frequencia}% · {linha.presente_texto ?? `${linha.horas}h`} · {linha.situacao}
                   </span>
                 </div>
                 <div className="marcas">

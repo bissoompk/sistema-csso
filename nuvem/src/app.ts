@@ -6,12 +6,17 @@
  * arquivos estáticos (`/estaticos/...`) não passam por aqui em produção: o
  * Netlify os serve direto do CDN, a partir de `public/`.
  */
+import * as mencao_saude from "./nucleo/mencao_saude.js";
 import { Hono } from "hono";
 import type { Ambiente, Ctx } from "./nucleo/contexto.js";
 import { cabecalhos, novoNonce, origemCruzada, resumoDoErro } from "./nucleo/seguranca.js";
 import { ErroHttp, PermissaoNegada, RecusaDaApi, RedirecionaParaLogin } from "./nucleo/erros.js";
 import { obterBanco, type Tx } from "./db/cliente.js";
 import { instalarRegistroDeAcesso } from "./servicos/registro_acesso.js";
+import * as recado from "./nucleo/recado.js";
+import * as csrf from "./nucleo/csrf.js";
+import { getCookie } from "hono/cookie";
+import { COOKIE_SESSAO } from "./servicos/autenticacao.js";
 import { pagina } from "./web.js";
 import { usuarioOpcional } from "./dependencias.js";
 import { ROTAS } from "./rotas/index.js";
@@ -85,6 +90,21 @@ export function criarApp(): Hono<Ambiente> {
   // para medir a requisição inteira e ver o status que de fato saiu.
   instalarRegistroDeAcesso(app);
 
+  // O recado do redirecionamento vai em cookie assinado, e não na URL (`nucleo/recado.ts`):
+  // `?mensagem=`/`?erro=` digitados no endereço não aparecem na tela.
+  app.use("*", async (c, next) => {
+    const { req, consumido } = recado.na_chegada(c.req.raw);
+    if (req !== c.req.raw) c.req.raw = req;
+    await next();
+    const saida = recado.na_saida(req, c.res, consumido);
+    if (saida !== c.res) {
+      // o setter de `c.res` copia os cabeçalhos da resposta anterior por cima da nova
+      // (o Location antigo voltaria): zera antes de trocar
+      c.res = undefined as never;
+      c.res = saida;
+    }
+  });
+
   // Cabeçalhos de segurança + nonce da CSP, em TODA resposta.
   app.use("*", async (c, next) => {
     const nonce = novoNonce();
@@ -110,6 +130,72 @@ export function criarApp(): Hono<Ambiente> {
       return c.text(recusa, 403);
     }
     return next();
+  });
+
+  // A API escreve só com JSON (24/11/2026): formulário e `text/plain` são o que outro site
+  // consegue disparar sem pré-checagem, e o leitor de JSON não olha o Content-Type. A recusa vem
+  // antes do token CSRF, de que a API não precisa (o JSON passa pelo CORS, que não é liberado).
+  app.use("/api/*", async (c, next) => {
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method)) {
+      const tipo = (c.req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+      if (tipo !== "application/json") {
+        return c.json(
+          { erro: "A API só aceita envio em JSON.", motivos: ["Content-Type: application/json obrigatório"] },
+          415,
+        );
+      }
+    }
+    return next();
+  });
+
+  // CSRF, segunda camada (`nucleo/csrf.ts`): com sessão, o formulário traz o token da sessão; e
+  // todo HTML de quem tem sessão sai com o token posto nos formulários e no htmx.
+  app.use("*", async (c, next) => {
+    const sessao = getCookie(c, COOKIE_SESSAO) ?? "";
+    if (sessao && csrf.exige_token(c.req.method, c.req.header("content-type"))) {
+      let enviado = c.req.header(csrf.CABECALHO_CSRF) ?? null;
+      const tipo = c.req.header("content-type") ?? "";
+      if (!enviado && (tipo.includes("form-urlencoded") || tipo.includes("multipart/form-data"))) {
+        try {
+          const v = (await c.req.formData()).get(csrf.CAMPO_CSRF);
+          enviado = typeof v === "string" ? v : null;
+        } catch {
+          enviado = null;
+        }
+      }
+      if (!csrf.confere(sessao, enviado)) {
+        const recusa =
+          "Pedido recusado: a página estava desatualizada (proteção contra CSRF). " +
+          "Recarregue a página e envie de novo — se você entrou de novo em outra aba, é isso.";
+        if (pedeJson(c as Ctx)) return c.json({ erro: recusa, motivos: ["token CSRF ausente ou inválido"] }, 403);
+        return c.text(recusa, 403);
+      }
+    }
+    await next();
+    const tipo_saida = c.res.headers.get("content-type") ?? "";
+    if (sessao && tipo_saida.startsWith("text/html") && c.res.body) {
+      const html = await c.res.text();
+      const headers = new Headers(c.res.headers);
+      headers.delete("content-length");
+      const nova = new Response(csrf.injetar(html, csrf.token_da_sessao(sessao)), { status: c.res.status, headers });
+      // o setter de `c.res` mistura os cabeçalhos da resposta anterior: zera antes
+      c.res = undefined as never;
+      c.res = nova;
+    }
+  });
+
+  // A caixa "confirmo que a menção é necessária" vale para o pedido inteiro (EPI, filtro de saúde
+  // em dois níveis, 24/11/2026): o serviço que filtra o texto a consulta, sem parâmetro a mais.
+  app.use("*", async (c, next) => {
+    const tipo = c.req.header("content-type") ?? "";
+    if (c.req.method !== "POST" || !(tipo.includes("form-urlencoded") || tipo.includes("multipart/form-data"))) return next();
+    let marcada = false;
+    try {
+      marcada = (await c.req.formData()).get(mencao_saude.CAMPO_CONFIRMACAO) === "1";
+    } catch {
+      marcada = false;
+    }
+    return mencao_saude.com_confirmacao(marcada, () => next());
   });
 
   // A transação da requisição: COMMIT no retorno normal, ROLLBACK quando a
@@ -164,9 +250,10 @@ export function criarApp(): Hono<Ambiente> {
     }
     if (erro instanceof PermissaoNegada) {
       if (pedeJson(c)) {
-        return c.json({ erro: erro.message, motivos: [`permissão exigida: ${erro.codigo}`] }, 403);
+        const motivos = erro.concedivel ? [`permissão exigida: ${erro.codigo}`] : ["regra do sistema: nenhuma permissão muda isso"];
+        return c.json({ erro: erro.message, motivos }, 403);
       }
-      return telaDeErro(c, "403 — acesso negado", erro.message, erro.codigo, 403);
+      return telaDeErro(c, "403 — acesso negado", erro.message, erro.concedivel ? erro.codigo : null, 403);
     }
     if (erro instanceof ErroHttp) {
       if (querHtml(c) && (erro.status === 401 || erro.status === 403)) {

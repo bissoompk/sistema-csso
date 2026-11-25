@@ -481,6 +481,8 @@ export async function pagina(
     // a casca só o escreve em página logada, e 0 (desligado) não escreve
     sessao_inatividade_minutos: cfg.sessaoInatividadeMinutos,
     nonce: () => c.get("nonce") ?? "",
+    // o recado "alerta" (lote 5): toda tela o mostra, sem cada rota o repassar
+    alerta: c.req.query("alerta") ?? null,
     ...navegacao,
     ...contexto,
   };
@@ -576,8 +578,12 @@ export function numeroDaPagina(c: Ctx): number {
 
 /** Monta `destino?mensagem=...` codificado, o `_aviso` das rotas Python. */
 export function comMensagem(destino: string, mensagem: string, chave = "mensagem"): string {
-  const sep = destino.includes("?") ? "&" : "?";
-  return `${destino}${sep}${chave}=${encodeURIComponent(mensagem)}`;
+  // a âncora (#…) fica no fim: depois dela o navegador não lê mais nada como consulta
+  const i = destino.indexOf("#");
+  const base = i < 0 ? destino : destino.slice(0, i);
+  const ancora = i < 0 ? "" : destino.slice(i);
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}${chave}=${encodeURIComponent(mensagem)}${ancora}`;
 }
 
 // =====================================================================

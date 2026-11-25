@@ -89,7 +89,8 @@ describe("dados pessoais", () => {
       ramal: "1234",
     });
     expect(r.status).toBe(200);
-    expect(r.url).toContain("/minha-conta?mensagem=");
+    // o recado vem no cookie, e o endereço fica limpo (24/11/2026)
+    expect(r.url).toBe("/minha-conta");
     expect(r.text).toContain("Dados atualizados.");
     const depois = await conta("tecnico_seguranca");
     expect(depois.nome).toBe("Técnica Renomeada");

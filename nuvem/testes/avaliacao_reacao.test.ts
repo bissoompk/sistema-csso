@@ -105,9 +105,9 @@ async function _turma(d: { presentes?: number; concluir?: boolean; usuario?: Usu
   await servico_turma.mudar_situacao(db, usuario, turma, "EM_ANDAMENTO");
   const ausente = inscritos.pop()!;
   for (const i of [...inscritos, do_servidor]) {
-    await servico_presenca.lancar_presenca(db, usuario, i, { data: INICIO, presente: true, horas: "4" });
+    await servico_presenca.lancar_presenca(db, usuario, i, { data: INICIO, presente: true, quantidade: 240 });
   }
-  await servico_presenca.lancar_presenca(db, usuario, ausente, { data: INICIO, presente: false, horas: "0" });
+  await servico_presenca.lancar_presenca(db, usuario, ausente, { data: INICIO, presente: false, quantidade: 0 });
   if (d.concluir ?? true) await servico_turma.mudar_situacao(db, usuario, turma, "CONCLUIDA");
   const fresca = (await servico_turma.carregar_turma(db, turma.id))!;
   const reler = async (i: { id: number }) => (await servico_turma.carregar_inscricao(db, i.id, fresca))!;

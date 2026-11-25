@@ -22,7 +22,7 @@
       <div>
         <h1>Meus certificados</h1>
         <p class="sub">{{ resumo.emitidos }} {{ 'certificado emitido' if resumo.emitidos == 1 else 'certificados emitidos' }}
-          · {{ horas|num }} h de capacitação</p>
+          · {{ carga_texto }} de capacitação</p>
           {% call ui.info('o-que-e-meu', 'por que esta tela mostra só o que é seu') %}
             <p>A lista do setor é outra tela, e pede a permissão de ler o certificado
               <strong>de outra pessoa</strong>. Esta aqui prende a consulta ao cadastro
@@ -34,8 +34,8 @@
               nunca congelados: um certificado que vence continua existindo, e é a data
               que muda de lado, não o papel. A segunda via sai reimpressa do documento
               congelado; a do anulado sai com a tarja de ANULADO.</p>
-            <p>As horas de capacitação somam a carga horária dos certificados emitidos
-              (sem os anulados).</p>
+            <p>A capacitação soma a carga dos certificados emitidos (sem os anulados).
+              Horas e tempos (curso do CBMMG) somam em separado: não se convertem um no outro.</p>
           {% endcall %}
       </div>
     </div>
@@ -51,7 +51,7 @@
     <p><strong>Sua conta não está ligada a um cadastro de servidor.</strong>
       Sem essa ligação o sistema não tem como saber de quem são os certificados —
       a lista abaixo fica vazia mesmo que existam certificados em seu nome.</p>
-    <p>Se você é servidor da UFVJM, informe os seus dados em <a href="/minha-conta#sou-servidor">Meu perfil → Sou servidor da UFVJM</a>: a conta é ligada na hora.</p>
+    <p>Se você é servidor(a) da UFVJM, informe os seus dados em <a href="/minha-conta#sou-servidor">Meu perfil → Sou servidor(a) da UFVJM</a>: a conta é ligada na hora.</p>
   </div>
   {% endif %}
 

@@ -26,6 +26,7 @@ import { acesso_dado_sensivel, agora_utc, conferencia_cadeia, historico_evento }
 import { RegraViolada } from "../nucleo/erros.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { termos_de_saude_em } from "./textos.js";
+import * as mencao from "../nucleo/mencao_saude.js";
 
 export type HistoricoEvento = typeof historico_evento.$inferSelect;
 export type ConferenciaCadeia = typeof conferencia_cadeia.$inferSelect;
@@ -273,6 +274,12 @@ export const ROTULO_EVENTO: Record<string, string> = {
   LOCAL_TREINAMENTO_INATIVADO: "Local de treinamento inativado",
   LOCAL_TREINAMENTO_REATIVADO: "Local de treinamento reativado",
   TURMA_CRIADA: "Turma criada",
+  // lote 3 (24/11/2026): a carga de cada dia da turma (`carga_turma.ts`)
+  TURMA_CARGA_POR_DIA: "Carga por dia da turma ajustada",
+  // lote 4 (25/11/2026): brigada — disciplinas do treinamento e a nota de cada uma
+  TREINAMENTO_DISCIPLINAS: "Disciplinas do treinamento alteradas",
+  NOTA_DISCIPLINA_LANCADA: "Nota de disciplina lançada",
+  BRIGADA_CENTRO_FORMACAO: "Centro de formação da brigada alterado",
   TURMA_EXCLUIDA: "Turma excluída",
   TURMA_RETIFICADA: "Turma concluída corrigida",
   TURMA_APURADA: "Turma apurada",
@@ -372,6 +379,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   EPI_ENTREGA_RECUSADA: "Entrega de EPI recusada",
   EPI_MAXIMO_EXCEDIDO: "Máximo de EPI excedido",
   EPI_COMPROVANTE_IMPRESSO: "Comprovante de EPI impresso",
+  EPI_COMPROVANTE_COPIA_TITULAR: "Cópia do comprovante de EPI baixada pelo titular",
   EPI_COMPROVANTE_ANEXADO: "Comprovante de EPI anexado",
   EPI_COMPROVANTE_DIVERGENTE: "Comprovante de EPI divergente",
   // --- EPI: requisição (o envelope) ---
@@ -379,6 +387,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   EPI_REQUISICAO_ENVIADA: "Requisição enviada",
   EPI_REQUISICAO_EM_ANALISE: "Requisição em análise",
   EPI_REQUISICAO_DEVOLVIDA: "Requisição devolvida à fila",
+  EPI_REQUISICAO_ANALISE_ASSUMIDA: "Análise assumida por outra pessoa",
   EPI_REQUISICAO_ANALISADA: "Requisição analisada",
   EPI_REQUISICAO_INDEFERIDA: "Requisição indeferida",
   EPI_REQUISICAO_RECONSIDERADA: "Requisição reconsiderada",
@@ -715,6 +724,23 @@ export async function registrar(tx: Executor, d: DadosRegistro): Promise<Histori
   };
   evento.hash_atual = _instrumentos.digerir(evento, anterior);
   const [gravado] = await tx.insert(historico_evento).values(evento).returning();
+  // EPI, filtro em dois níveis (24/11/2026): a caixa "confirmo que a menção é necessária" marcada
+  // neste pedido entra na trilha logo depois do primeiro evento da operação — mesma entidade, mesma
+  // conta, mesma transação (`nucleo/mencao_saude.ts`). `retirar` esvazia antes: sem recursão.
+  for (const m of mencao.retirar()) {
+    await registrar(tx, {
+      entidade: d.entidade,
+      entidade_id: d.entidade_id,
+      processo_id: d.processo_id ?? null,
+      tipo_evento: MENCAO_SAUDE_CONFIRMADA,
+      descricao:
+        `Menção confirmada como necessária no campo ${m.campo} (${m.termos.join(", ")}), ` +
+        `por ${evento.usuario_nome}.`,
+      campo: m.campo,
+      usuario: d.usuario,
+      usuario_nome: d.usuario_nome,
+    });
+  }
   return gravado!;
 }
 

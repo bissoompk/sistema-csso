@@ -13,7 +13,12 @@
  */
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
-import { certificado as tabela_certificado, email_saida as tabela_email } from "../db/esquema/index.js";
+import {
+  certificado as tabela_certificado,
+  email_saida as tabela_email,
+  servidor as tabela_servidor,
+  usuario as tabela_usuario,
+} from "../db/esquema/index.js";
 import { Certificado as C, Participante } from "../dominio/treinamento.js";
 import * as auditoria from "./auditoria.js";
 import { TIPO_PDF } from "./certificado_pdf.js";
@@ -61,11 +66,76 @@ function _corpo(certificado: CertificadoRegistro): { assunto: string; corpo: str
   };
 }
 
+/** De onde saiu o endereço do certificado (T11, lote 5): a tela "E-mails" diz qual. */
+export type OrigemDoEndereco = "PARTICIPANTE" | "CONTA" | "SERVIDOR";
+export const ROTULO_ORIGEM: Record<OrigemDoEndereco, string> = {
+  PARTICIPANTE: "e-mail do participante",
+  CONTA: "e-mail da conta do servidor (Minha conta)",
+  SERVIDOR: "e-mail do cadastro funcional do servidor",
+};
+
+/**
+ * Os endereços possíveis, na ordem em que valem (T11, 25/11/2026): (1) o do participante; (2) o
+ * da conta do próprio servidor, o de Minha conta; (3) o do cadastro funcional do servidor.
+ */
+async function _candidatos(tx: Executor, participante_id: number): Promise<[OrigemDoEndereco, string][]> {
+  const pessoa = await servico_participante.carregar(tx, participante_id);
+  if (!pessoa) return [];
+  const lista: [OrigemDoEndereco, string][] = [["PARTICIPANTE", Participante.email_exibicao(pessoa)]];
+  if (pessoa.servidor_id != null) {
+    const contas = await tx
+      .select({ email: tabela_usuario.email })
+      .from(tabela_usuario)
+      .where(and(eq(tabela_usuario.servidor_id, pessoa.servidor_id), eq(tabela_usuario.ativo, true)))
+      .orderBy(tabela_usuario.id);
+    for (const conta of contas) lista.push(["CONTA", conta.email ?? ""]);
+    const [servidor] = await tx.select({ email: tabela_servidor.email }).from(tabela_servidor).where(eq(tabela_servidor.id, pessoa.servidor_id));
+    lista.push(["SERVIDOR", servidor?.email ?? ""]);
+  }
+  return lista.map(([o, e]) => [o, (e ?? "").trim()] as [OrigemDoEndereco, string]);
+}
+
+/** O endereço do participante do certificado e de onde ele saiu; `null` sem e-mail conhecido. */
+export async function destinatario_com_origem(
+  tx: Executor,
+  certificado: { participante_id: number },
+): Promise<{ endereco: string; origem: OrigemDoEndereco } | null> {
+  for (const [origem, endereco] of await _candidatos(tx, certificado.participante_id)) {
+    if (email.email_valido(endereco)) return { endereco, origem };
+  }
+  return null;
+}
+
 /** O endereço do participante do certificado, ou "" sem e-mail conhecido. */
 export async function destinatario(tx: Executor, certificado: { participante_id: number }): Promise<string> {
-  const pessoa = await servico_participante.carregar(tx, certificado.participante_id);
-  const endereco = pessoa ? Participante.email_exibicao(pessoa) : "";
-  return email.email_valido(endereco) ? endereco.trim() : "";
+  return (await destinatario_com_origem(tx, certificado))?.endereco ?? "";
+}
+
+/**
+ * Para a tela "E-mails": de qual cadastro o endereço de cada envio de certificado saiu, conferido
+ * com os cadastros de hoje (o primeiro, na ordem, que tem esse endereço). Sem nenhum que o tenha
+ * hoje, a tela diz que o cadastro mudou depois do envio.
+ */
+export async function origens_dos_envios(
+  tx: Executor,
+  itens: readonly { id: number; certificado_id: number | null; destinatario: string }[],
+): Promise<Record<number, string>> {
+  const saida: Record<number, string> = {};
+  const ids = [...new Set(itens.map((i) => i.certificado_id).filter((x): x is number => x !== null))];
+  if (!ids.length) return saida;
+  const certs = await tx
+    .select({ id: tabela_certificado.id, participante_id: tabela_certificado.participante_id })
+    .from(tabela_certificado)
+    .where(inArray(tabela_certificado.id, ids));
+  const por_cert = new Map<number, [OrigemDoEndereco, string][]>();
+  for (const c of certs) por_cert.set(c.id, await _candidatos(tx, c.participante_id));
+  for (const i of itens) {
+    if (i.certificado_id === null) continue;
+    const alvo = i.destinatario.trim().toLowerCase();
+    const achou = (por_cert.get(i.certificado_id) ?? []).find(([, e]) => e.toLowerCase() === alvo);
+    saida[i.id] = achou ? ROTULO_ORIGEM[achou[0]] : "o cadastro mudou depois deste envio";
+  }
+  return saida;
 }
 
 /**
@@ -167,14 +237,18 @@ email.registrar_anexador(TIPO, async (tx, mensagem) => {
   if (certificado.situacao !== "EMITIDO") throw new Error("certificado anulado depois do pedido de envio");
   if (mensagem.criado_por === null) throw new Error("envio sem autor");
   const usuario = await carregar_usuario_atual(tx, mensagem.criado_por);
-  if (servico.do_modelo_enviado(certificado)) {
-    if (conversor_pdf.configurado()) {
+  if (servico.do_modelo_enviado(certificado) && conversor_pdf.configurado()) {
+    try {
       const fiel = await servico.pdf_do_modelo_enviado(tx, usuario, certificado);
       return [{ nome: fiel.nome, tipo: TIPO_PDF, bytes: fiel.bytes }];
+    } catch (erro) {
+      // conversor fora do ar: não derruba o e-mail; sai o PDF da casa (o QR valida o mesmo certificado)
+      if (!(erro instanceof conversor_pdf.ConversorIndisponivel)) throw erro;
+      console.error(`[certificado ${certificado.id}] ${erro.message}`);
     }
-    const via = await servico.segunda_via(tx, usuario, certificado);
-    return [{ nome: via.docx.split("/").pop()!, tipo: servico.TIPO_DOCX, bytes: via.bytes }];
   }
+  // O participante recebe PDF, nunca o Word editável do modelo: sem conversor (ou com ele fora do
+  // ar), vai o PDF da casa
   const pdf = await servico.pdf_do_certificado(tx, usuario, certificado);
   return [{ nome: pdf.nome, tipo: TIPO_PDF, bytes: pdf.bytes }];
 });

@@ -91,14 +91,12 @@ Abra **Painel**. O título é "Gestão de EPI". Os números são calculados na h
 
 ## 3. Pedir EPI (Nova requisição)
 
-Vale para quem tem permissão de requisitar. O servidor pede por si. A equipe pode pedir por outro servidor.
+Vale para quem tem permissão de requisitar. **O pedido é individual: cada pessoa pede só para si**, porque a ficha de EPI é pessoal. Nem a chefia, nem a secretaria, nem a equipe abrem pedido por outro servidor. Quem entrega EPI sem pedido usa a entrega avulsa de balcão.
 
 ### 3.1 Como fazer o pedido
 
 1. No menu, clique em **Nova requisição** (o servidor também pode usar **Pedir EPI**).
-2. Em "Quem vai usar o equipamento":
-   - **Servidor**: o campo já vem preenchido e travado ("O pedido é seu. Para pedir por outra pessoa, fale com a sua chefia ou com a secretaria."). Abaixo aparece o seu cargo e a sua lotação; se estiverem errados, corrija em **Meu perfil**. Se o seu cadastro estiver sem cargo ou sem lotação, a tela pede os dois ("Seu cargo e sua lotação"), e o que você informar fica no seu cadastro.
-   - **Equipe**: em **Buscar servidor**, digite o SIAPE e escolha a pessoa na lista. A busca por nome só funciona para quem pode ver identificação nominal; a secretaria deve usar o SIAPE (e vê os servidores como "SRV-xxxx"). Se a busca não achar ninguém, aparece o bloco **Cadastrar servidor agora** (SIAPE de 7 dígitos e Nome, botão **Cadastrar e escolher**); ele não aparece enquanto a busca encontra alguém. Se o SIAPE já existe, o sistema avisa e não duplica. Opcional: **Chefia responsável**. Se o cadastro do servidor escolhido estiver sem cargo ou lotação, a tela pede os dois ("Cargo e lotação de quem vai usar").
+2. Em "Quem vai usar o equipamento": o campo já vem preenchido e travado com o seu nome ("O pedido é seu."). Abaixo aparece o seu cargo e a sua lotação; se estiverem errados, corrija em **Meu perfil**. Se o seu cadastro estiver sem cargo ou sem lotação, a tela pede os dois ("Seu cargo e sua lotação"), e o que você informar fica no seu cadastro. Se a sua conta não estiver ligada a um cadastro de servidor, informe os seus dados em **Meu perfil** ("Sou servidor da UFVJM"): a conta é ligada na hora.
 3. Escolha a **Finalidade**: Primeira entrega, Reposição de rotina, Substituição por desgaste, Dano ou Perda.
 4. Escolha a **Urgência**: Normal ou Urgente. Se for Urgente, preencha **Por que é urgente** (obrigatório).
 5. Preencha **O que você faz no trabalho** e **A que riscos você fica exposto**. Escreva só o necessário, sem diagnóstico, CID ou detalhe clínico.
@@ -264,7 +262,7 @@ Quando a vida útil do EPI vence sem substituição, a ficha avisa "N item(ns) c
 2. Informe **Quantidade**, **Data**, **Motivo** (Extraviado, Desgaste físico, Tempo de uso, Perda de eficácia, Alterações no trabalho, Desligamento ou mudança de lotação, Outro) e **Por que voltou** (obrigatório).
 3. Confirme.
 
-Resultado: "Devolução registrada (registro N) e o saldo voltou ao lote. A entrega continua na ficha: devolver não desfaz o que aconteceu." A entrega original continua na ficha. A devolução vira uma linha nova. A data não pode ser futura nem anterior à entrega. Só se devolve linha de entrega que não foi estornada. Se havia comunicação do servidor aberta para aquela linha, a devolução já a trata sozinha (não precisa usar **Tratar**).
+Resultado: "Devolução registrada (registro N). O saldo do lote não muda: EPI é individual e já foi usado. A entrega continua na ficha: devolver não desfaz o que aconteceu." A entrega original continua na ficha. A devolução vira uma linha nova. A data não pode ser futura nem anterior à entrega. Só se devolve linha de entrega que não foi estornada. Se havia comunicação do servidor aberta para aquela linha, a devolução já a trata sozinha (não precisa usar **Tratar**).
 
 **O saldo volta ao lote sempre que a entrega teve lote, seja qual for o motivo.** Isso vale também para "Extraviado" e "Desgaste físico": o sistema soma a unidade ao saldo do lote como se estivesse novamente na prateleira. Se o equipamento não voltou ao estoque utilizável (perdido, danificado, gasto), corrija o saldo logo depois em **Estoque > Descartar** (equipamento que voltou imprestável) ou **Ajustar** (contagem). Devolução de entrega feita "Sem lote" não mexe no estoque.
 
@@ -335,7 +333,7 @@ Clique em **Corrigir nota, contato ou situação**. Dá para alterar **Nota fisc
 
 ### 10.5 Extrato
 
-Clique em **Extrato** para ver cada movimento do lote (entrada, saída, devolução, ajuste, descarte), com saldo depois, motivo, vínculo e quem registrou. Nenhuma linha do extrato se altera ou apaga.
+Clique em **Extrato** para ver cada movimento do lote (entrada, saída, ajuste, descarte; a devolução não mexe no saldo), com saldo depois, motivo, vínculo e quem registrou. Nenhuma linha do extrato se altera ou apaga.
 
 ---
 

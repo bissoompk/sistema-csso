@@ -96,7 +96,7 @@ async function _turma_concluida(
   const pessoa = await servico_participante.de_servidor(db, cen.servidor, usuario);
   const inscricao = await servico_turma.inscrever(db, usuario, turma, pessoa);
   await servico_turma.mudar_situacao(db, usuario, turma, "EM_ANDAMENTO");
-  await servico_presenca.lancar_presenca(db, usuario, inscricao, { data: inicio, presente: true, horas: treinamento.carga_horaria_horas });
+  await servico_presenca.lancar_presenca(db, usuario, inscricao, { data: inicio, presente: true, quantidade: Math.round(Number(treinamento.carga_horaria_horas) * 60) });
   await servico_turma.mudar_situacao(db, usuario, turma, "CONCLUIDA");
   const fresca = (await servico_turma.carregar_turma(db, turma.id))!;
   const relida = (await servico_turma.carregar_inscricao(db, inscricao.id, fresca))!;
@@ -134,7 +134,7 @@ describe("Meus certificados em cartões", () => {
     await _entrar_como(cen.servidor.id);
     const tela = (await cliente.get("/certificados/meus")).text;
     expect(tela).toContain("1 certificado emitido");
-    expect(tela).toContain("8 h de capacitação");
+    expect(tela).toContain("8 horas de capacitação");
     expect(tela).toContain('<ul class="grade-cert" role="list">');
     const cartao = _cartao(tela, certificado.id);
     expect(cartao).toContain("Válido");
@@ -438,7 +438,7 @@ describe("acesso sem conta", () => {
 
     const aberto = (await acesso.abrir(db, token))!;
     const [item] = acesso.itens(aberto.certificados);
-    expect(item!.carga_horaria).toBe("8");
+    expect(item!.carga_horaria).toBe("8 horas");
     expect(item!.chave_validacao).toBe(certificado.chave_validacao);
     expect(item!.conteudo.length).toBe(3);
     expect(JSON.stringify(item)).not.toMatch(/cpf/i);

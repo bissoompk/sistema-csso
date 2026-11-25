@@ -112,7 +112,7 @@ export async function montar_contexto(tx: Executor, turma: TurmaCarregada): Prom
     turma_codigo: turma.codigo,
     treinamento: turma.treinamento.nome,
     periodo: _periodo(turma),
-    carga_horaria: `${numero(T.carga_efetiva(turma))} horas`,
+    carga_horaria: T.carga_texto(turma),
     local: turma.local || "—",
     campus: turma.campus ? turma.campus.nome : "—",
     unidade_promotora: turma.unidade_promotora ? turma.unidade_promotora.nome_extenso : "—",

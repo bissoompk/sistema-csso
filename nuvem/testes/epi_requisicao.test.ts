@@ -18,7 +18,8 @@ import * as epi_ficha from "../src/servicos/epi_ficha.js";
 import * as numeracao from "../src/servicos/numeracao.js";
 import * as servico from "../src/servicos/epi_requisicao.js";
 import { PERMISSOES, PermissaoNegada, modulo_da_permissao } from "../src/servicos/rbac.js";
-import { TextoProibido } from "../src/servicos/textos.js";
+import { MencaoDeSaude, TextoProibido } from "../src/servicos/textos.js";
+import * as mencao from "../src/nucleo/mencao_saude.js";
 import { bancoLimpo } from "./ajuda";
 import {
   HOJE,
@@ -34,6 +35,8 @@ import {
   reler,
   reler_linha,
   usuario,
+  rascunho,
+  titular,
 } from "./ajuda_epi_requisicao";
 
 const { url } = await bancoLimpo();
@@ -51,7 +54,7 @@ describe("RN-03 — o protocolo", () => {
       expect(requisicao.numero).toBeNull();
       expect(requisicao.ano).toBeNull();
 
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true, quando: "2026-03-04" });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true, quando: "2026-03-04" });
       expect(requisicao.protocolo).toBe("EPI-2026-0001");
       expect([requisicao.numero, requisicao.ano]).toEqual([1, 2026]);
       expect(requisicao.enviada_em).not.toBeNull();
@@ -62,9 +65,9 @@ describe("RN-03 — o protocolo", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const descartado = await pedido_pronto(tx, cen, u);
-      await servico.excluir_rascunho(tx, u, descartado);
+      await servico.excluir_rascunho(tx, await titular(tx, u, descartado), descartado);
       const outro = await pedido_pronto(tx, cen, u);
-      await servico.enviar(tx, u, outro, { termo_aceito: true, quando: "2026-03-04" });
+      await servico.enviar(tx, await titular(tx, u, outro), outro, { termo_aceito: true, quando: "2026-03-04" });
       expect(outro.protocolo).toBe("EPI-2026-0001");
     }));
 
@@ -106,7 +109,7 @@ describe("o snapshot congelado no envio", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       const congelados = [
         requisicao.unidade_uorg_id,
         requisicao.posto_trabalho_id,
@@ -144,18 +147,18 @@ describe("RN-29", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx, { exige_justificativa: true });
       const requisicao = await pedido_pronto(tx, cen, u);
-      const erro = await recusa(servico.enviar(tx, u, requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
+      const erro = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("exige justificativa");
       // e o pedido continua rascunho, sem número gasto
       expect(requisicao.estado).toBe("RASCUNHO");
       expect(requisicao.protocolo).toBeNull();
 
-      await servico.editar_item(tx, u, (await itens(tx, requisicao))[0]!, {
+      await servico.editar_item(tx, await titular(tx, u, requisicao), (await itens(tx, requisicao))[0]!, {
         quantidade: 2,
         tamanho: "M",
         justificativa: "Manipulação diária de solvente orgânico no LEAC",
       });
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       expect(requisicao.estado).toBe("ENVIADA");
     }));
 
@@ -163,8 +166,8 @@ describe("RN-29", () => {
     desfeito(async (tx) => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
-      const requisicao = await servico.criar_rascunho(tx, u, { servidor: cen.servidor });
-      const erro = await recusa(servico.enviar(tx, u, requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
+      const requisicao = await rascunho(tx, u, { servidor: cen.servidor });
+      const erro = await recusa(servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true }), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("nenhum item");
     }));
 });
@@ -178,7 +181,7 @@ describe("RN-30", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       await recusa(
-        servico.criar_rascunho(tx, u, {
+        rascunho(tx, u, {
           servidor: cen.servidor,
           descricao_atividade: "Estou grávida e não posso pegar peso no setor",
         }),
@@ -190,9 +193,9 @@ describe("RN-30", () => {
     desfeito(async (tx) => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
-      const requisicao = await servico.criar_rascunho(tx, u, { servidor: cen.servidor });
+      const requisicao = await rascunho(tx, u, { servidor: cen.servidor });
       await recusa(
-        servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL",
+        servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { motivo: "USO_INICIAL",
           item: cen.item,
           quantidade: 1,
           tamanho: "M",
@@ -200,8 +203,8 @@ describe("RN-30", () => {
         }),
         TextoProibido,
       );
-      await servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "M" });
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "M" });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       await recusa(servico.cancelar(tx, u, requisicao, "Servidora afastada por atestado médico"), TextoProibido);
     }));
 });
@@ -215,7 +218,7 @@ describe("RN-28", () => {
       const cen = await cenario(tx);
       const dono = await usuario(tx, { login: "tecnico", servidor_id: cen.servidor.id });
       const requisicao = await pedido_pronto(tx, cen, dono);
-      await servico.enviar(tx, dono, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, dono, requisicao), requisicao, { termo_aceito: true });
       await recusa(servico.iniciar_analise(tx, dono, requisicao), servico.AutoanaliseProibida);
       expect(requisicao.estado).toBe("ENVIADA");
       expect(requisicao.analisado_por).toBeNull();
@@ -226,7 +229,7 @@ describe("RN-28", () => {
       const cen = await cenario(tx);
       const dono = await usuario(tx, { login: "tecnico", servidor_id: cen.servidor.id });
       const requisicao = await pedido_pronto(tx, cen, dono);
-      await servico.enviar(tx, dono, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, dono, requisicao), requisicao, { termo_aceito: true });
       const erro = await recusa(servico.iniciar_analise(tx, dono, requisicao), servico.AutoanaliseProibida);
       expect(erro.message).toContain("outra pessoa");
       expect(erro.message).toContain("balcão");
@@ -244,7 +247,7 @@ describe("RN-28", () => {
       const dono = await usuario(tx, { login: "tecnico", servidor_id: cen.servidor.id });
       const outro = await usuario(tx, { login: "colega" });
       const requisicao = await pedido_pronto(tx, cen, dono);
-      await servico.enviar(tx, dono, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, dono, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, outro, requisicao);
       const linha = (await itens(tx, requisicao))[0]!;
       const m = await motivo(tx);
@@ -275,7 +278,7 @@ describe("RN-28", () => {
       const cen = await cenario(tx);
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "secretaria" });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       const erro = await recusa(servico.iniciar_analise(tx, requerente, requisicao), PermissaoNegada);
       expect(erro).not.toBeInstanceOf(servico.AutoanaliseProibida);
     }));
@@ -302,7 +305,7 @@ describe("RN-26", () => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       await balcao(tx, cen, analista);
       const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: 1 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const linha = (await itens(tx, requisicao))[0]!;
       const erro = await recusa(servico.aprovar_item(tx, analista, linha), servico.RequisicaoBloqueada);
@@ -317,7 +320,7 @@ describe("RN-26", () => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       await balcao(tx, cen, analista);
       const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: 1 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const linha = (await itens(tx, requisicao))[0]!;
 
@@ -344,7 +347,7 @@ describe("RN-26", () => {
       const analista = await usuario(tx, { login: "analista" });
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: 2 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const erro = await recusa(
         servico.aprovar_item(tx, analista, (await itens(tx, requisicao))[0]!, { quantidade_aprovada: 5 }),
@@ -359,7 +362,7 @@ describe("RN-26", () => {
       const analista = await usuario(tx, { login: "analista" });
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const erro = await recusa(
         servico.aprovar_item(tx, analista, (await itens(tx, requisicao))[0]!, { quantidade_aprovada: 0 }),
@@ -378,7 +381,7 @@ describe("RN-27", () => {
     const analista = await usuario(tx, { login: "analista" });
     const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
     const requisicao = await pedido_pronto(tx, cen, requerente);
-    await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+    await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
     await servico.iniciar_analise(tx, analista, requisicao);
     return { cen, analista, requerente, requisicao };
   }
@@ -434,7 +437,7 @@ describe("RN-31", () => {
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
       const identificador = requisicao.id;
-      await servico.excluir_rascunho(tx, u, requisicao);
+      await servico.excluir_rascunho(tx, await titular(tx, u, requisicao), requisicao);
       expect(await reler(tx, { id: identificador })).toBeNull();
       expect(await itens(tx, { id: identificador })).toEqual([]);
       const tipos = (await eventos(tx, "epi_requisicao", identificador)).map((ev) => ev.tipo_evento);
@@ -446,8 +449,8 @@ describe("RN-31", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
-      const erro = await recusa(servico.excluir_rascunho(tx, u, requisicao), servico.RequisicaoBloqueada);
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
+      const erro = await recusa(servico.excluir_rascunho(tx, await titular(tx, u, requisicao), requisicao), servico.RequisicaoBloqueada);
       expect(erro.message).toContain("cancela com motivo");
       await servico.cancelar(tx, u, requisicao, "A compra saiu por outro caminho");
       expect(requisicao.estado).toBe("CANCELADA");
@@ -461,7 +464,7 @@ describe("RN-31", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       await recusa(servico.cancelar(tx, u, requisicao, "   "), servico.RequisicaoBloqueada);
     }));
 
@@ -470,7 +473,7 @@ describe("RN-31", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       await servico.cancelar(tx, u, requisicao, "Servidora mudou de posto");
       expect((await itens(tx, requisicao)).map((i) => i.estado)).toEqual(["CANCELADO"]);
     }));
@@ -480,12 +483,13 @@ describe("RN-31", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       const linha = (await itens(tx, requisicao))[0]!;
+      const dono = await titular(tx, u, requisicao);
       for (const chamada of [
-        () => servico.atualizar_rascunho(tx, u, requisicao),
-        () => servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "P" }),
-        () => servico.remover_item(tx, u, linha),
+        () => servico.atualizar_rascunho(tx, dono, requisicao),
+        () => servico.adicionar_item(tx, dono, requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "P" }),
+        () => servico.remover_item(tx, dono, linha),
       ]) {
         await recusa(chamada(), servico.RequisicaoBloqueada);
       }
@@ -497,7 +501,7 @@ describe("RN-31", () => {
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
       const erro = await recusa(
-        servico.adicionar_item(tx, u, requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "M" }),
+        servico.adicionar_item(tx, await titular(tx, u, requisicao), requisicao, { motivo: "USO_INICIAL", item: cen.item, quantidade: 1, tamanho: "M" }),
         servico.RequisicaoBloqueada,
       );
       expect(erro.message).toContain("some as quantidades");
@@ -517,7 +521,7 @@ describe("as duas máquinas de estado", () => {
         servico._mover(tx, requisicao, "EM_ANALISE", u, { tipo_evento: servico.EPI_REQUISICAO_EM_ANALISE }),
         TransicaoInvalida,
       );
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       for (const destino of ["ANALISADA", "ATENDIDA", "EM_ATENDIMENTO", "INDEFERIDA"]) {
         await recusa(
           servico._mover(tx, requisicao, destino, u, { tipo_evento: servico.EPI_REQUISICAO_ANALISADA }),
@@ -531,7 +535,7 @@ describe("as duas máquinas de estado", () => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const requisicao = await pedido_pronto(tx, cen, u);
-      await servico.enviar(tx, u, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, u, requisicao), requisicao, { termo_aceito: true });
       const linha = (await itens(tx, requisicao))[0]!;
       for (const destino of ["ENTREGUE", "RESERVADO", "SEM_ESTOQUE"]) {
         await recusa(servico._mover_item(tx, linha, destino, u, { tipo_evento: servico.EPI_ITEM_ENTREGUE }), TransicaoInvalida);
@@ -544,7 +548,7 @@ describe("as duas máquinas de estado", () => {
       const analista = await usuario(tx, { login: "analista" });
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const linha = await servico.recusar_item(tx, analista, (await itens(tx, requisicao))[0]!, {
         motivo: await motivo(tx),
@@ -562,8 +566,8 @@ describe("as duas máquinas de estado", () => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const oculos = await outro_item(tx, cen, "Óculos de proteção", "55555");
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.adicionar_item(tx, requerente, requisicao, { motivo: "USO_INICIAL", item: oculos, quantidade: 1 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.adicionar_item(tx, await titular(tx, requerente, requisicao), requisicao, { motivo: "USO_INICIAL", item: oculos, quantidade: 1 });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const [primeira, segunda] = await itens(tx, requisicao);
       await servico.aprovar_item(tx, analista, primeira!);
@@ -574,13 +578,63 @@ describe("as duas máquinas de estado", () => {
       expect(requisicao.estado).toBe("ANALISADA");
     }));
 
+  it("rotina e riscos descrevem o posto: risco de dermatite e de lesão passam com a caixa (lote 5, ajuste 2); a lista antiga e a justificativa clínica, não", () =>
+    desfeito(async (tx) => {
+      const u = await usuario(tx);
+      const cen = await cenario(tx);
+      const posto = { descricao_atividade: "Corte de vidraria no laboratório; risco de lesão por corte.", riscos_declarados: "Risco de dermatite de contato com solventes." };
+      // sem a caixa, pede a confirmação
+      await recusa(rascunho(tx, u, { servidor: cen.servidor, ...posto }), MencaoDeSaude);
+      // com a caixa marcada, o resto do teste como era
+      await mencao.com_confirmacao(true, async () => {
+      const r = await rascunho(tx, u, { servidor: cen.servidor, ...posto });
+      expect(r.descricao_atividade).toBe(posto.descricao_atividade);
+      expect(r.riscos_declarados).toBe(posto.riscos_declarados);
+      const dono = await titular(tx, u, r);
+      // trocados de campo, também passam, na edição
+      await servico.atualizar_rascunho(tx, dono, r, {
+        descricao_atividade: "Risco de dermatite de contato com solventes.",
+        riscos_declarados: "Risco de lesão por corte.",
+      });
+      // a lista antiga continua recusada nos dois
+      await recusa(rascunho(tx, u, { servidor: cen.servidor, descricao_atividade: "Servidora gestante no laboratório" }), TextoProibido);
+      await recusa(rascunho(tx, u, { servidor: cen.servidor, riscos_declarados: "ver diagnóstico anexo" }), TextoProibido);
+      // e a justificativa, que fala da pessoa, recusa a lista ampliada
+      await recusa(
+        servico.atualizar_rascunho(tx, dono, r, { urgencia: "URGENTE", justificativa_urgencia: "Servidor com dermatite alérgica nas mãos" }),
+        TextoProibido,
+      );
+      });
+    }));
+
+  it("parecer com termo de saúde é recusado e não grava (alergia ao látex, 24/11/2026)", () =>
+    desfeito(async (tx) => {
+      const cen = await cenario(tx);
+      const analista = await usuario(tx, { login: "analista" });
+      const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
+      const requisicao = await pedido_pronto(tx, cen, requerente);
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
+      await servico.iniciar_analise(tx, analista, requisicao);
+      const [linha] = await itens(tx, requisicao);
+      await servico.aprovar_item(tx, analista, linha!);
+      const erro = await recusa(
+        servico.concluir_analise(tx, analista, requisicao, { parecer: "Aprovado. Servidora relata alergia ao látex." }),
+        TextoProibido,
+      );
+      expect(erro.message).toContain("alergia");
+      expect(erro.message).toContain("EPI");
+      expect(requisicao.estado).toBe("EM_ANALISE");
+      await servico.concluir_analise(tx, analista, requisicao, { parecer: "Aprovado. Trocar a luva por nitrílica." });
+      expect(requisicao.estado).toBe("ANALISADA");
+    }));
+
   it("indeferir exige todo item recusado e motivo do catálogo", () =>
     desfeito(async (tx) => {
       const cen = await cenario(tx);
       const analista = await usuario(tx, { login: "analista" });
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       await servico.aprovar_item(tx, analista, (await itens(tx, requisicao))[0]!);
       const erro = await recusa(
@@ -596,7 +650,7 @@ describe("as duas máquinas de estado", () => {
       const analista = await usuario(tx, { login: "analista" });
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       await servico.recusar_item(tx, analista, (await itens(tx, requisicao))[0]!, { motivo: await motivo(tx) });
       await servico.indeferir(tx, analista, requisicao, { motivo: await motivo(tx) });
@@ -620,7 +674,7 @@ describe("as duas máquinas de estado", () => {
       const analista = await usuario(tx, { login: "analista" });
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       expect(requisicao.analisado_por).toBe(analista.id);
       await servico.devolver_para_fila(tx, analista, requisicao, "Falta a descrição do posto");
@@ -634,7 +688,7 @@ describe("as duas máquinas de estado", () => {
       const analista = await usuario(tx, { login: "analista" });
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const requisicao = await pedido_pronto(tx, cen, requerente);
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const evs = await eventos(tx, "epi_requisicao", requisicao.id);
       expect(evs.map((ev) => ev.tipo_evento)).toEqual([
@@ -661,7 +715,7 @@ describe("a entrega", () => {
     const analista = await usuario(tx, { login: "analista" });
     const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
     const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: o.quantidade ?? 2 });
-    await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+    await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
     await servico.iniciar_analise(tx, analista, requisicao);
     const linha = (await itens(tx, requisicao))[0]!;
     await servico.aprovar_item(tx, analista, linha, { quantidade_aprovada: o.aprovada ?? null });
@@ -706,8 +760,8 @@ describe("a entrega", () => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const protetor = await outro_item(tx, cen, "Protetor auricular", "33333");
       const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: 1 });
-      await servico.adicionar_item(tx, requerente, requisicao, { motivo: "USO_INICIAL", item: protetor, quantidade: 1 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.adicionar_item(tx, await titular(tx, requerente, requisicao), requisicao, { motivo: "USO_INICIAL", item: protetor, quantidade: 1 });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const [a, b] = await itens(tx, requisicao);
       await servico.aprovar_item(tx, analista, a!);
@@ -724,8 +778,8 @@ describe("a entrega", () => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const avental = await outro_item(tx, cen, "Avental de raspa", "22222");
       const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: 1 });
-      await servico.adicionar_item(tx, requerente, requisicao, { motivo: "USO_INICIAL", item: avental, quantidade: 1 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.adicionar_item(tx, await titular(tx, requerente, requisicao), requisicao, { motivo: "USO_INICIAL", item: avental, quantidade: 1 });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const [a, b] = await itens(tx, requisicao);
       await servico.aprovar_item(tx, analista, a!);
@@ -772,7 +826,7 @@ describe("a entrega", () => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       await balcao(tx, cen, analista);
       const requisicao = await pedido_pronto(tx, cen, requerente, { quantidade: 1 });
-      await servico.enviar(tx, requerente, requisicao, { termo_aceito: true });
+      await servico.enviar(tx, await titular(tx, requerente, requisicao), requisicao, { termo_aceito: true });
       await servico.iniciar_analise(tx, analista, requisicao);
       const linha = (await itens(tx, requisicao))[0]!;
       await servico.aprovar_item(tx, analista, linha, {
@@ -825,6 +879,6 @@ describe("permissões", () => {
     desfeito(async (tx) => {
       const cen = await cenario(tx);
       const ninguem = await usuario(tx, { permissoes: ["epi.ver"], login: "curioso" });
-      await recusa(servico.criar_rascunho(tx, ninguem, { servidor: cen.servidor }), PermissaoNegada);
+      await recusa(rascunho(tx, ninguem, { servidor: cen.servidor }), PermissaoNegada);
     }));
 });

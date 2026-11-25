@@ -106,7 +106,12 @@ describe("catálogo de EPI", () => {
 
   it("a tela mostra a validade do CA", async () => {
     await entrar(cliente, "coordenador_csso");
-    await _cadastrar(cliente, { validade_ca: somar_dias(hoje(), -1) });
+    // CA vencido: a primeira tentativa pede a confirmação; com ela, grava (24/11/2026)
+    const sem = await _cadastrar(cliente, { validade_ca: somar_dias(hoje(), -1) });
+    expect(_recado(sem)).toContain("venceu");
+    expect(sem.text).toContain('name="confirmo_ca_vencido"');
+    expect(await _itens()).toEqual([]);
+    await _cadastrar(cliente, { validade_ca: somar_dias(hoje(), -1), confirmo_ca_vencido: "1" });
     const corpo = (await cliente.get(CATALOGO)).text;
     expect(corpo).toContain("CA vencido");
     expect(corpo).toContain("41234");
@@ -143,8 +148,32 @@ describe("catálogo de EPI", () => {
     const repetido = await _cadastrar(cliente, { modelo: "" });
     expect(_recado(repetido)).toContain("Já existe");
     expect((await _itens()).length).toBe(1);
-    expect((await _cadastrar(cliente, { modelo: "NX-300" })).status).toBe(303);
+    expect((await _cadastrar(cliente, { modelo: "NX-300", numero_ca: "41235" })).status).toBe(303);
     expect((await _itens()).length).toBe(2);
+  });
+
+  it("CA: só dígitos, normaliza o digitado e não se repete em outro item (24/11/2026)", async () => {
+    await entrar(cliente, "coordenador_csso");
+    expect(_recado(await _cadastrar(cliente, { numero_ca: "ABC-12" }))).toContain("só dígitos");
+    expect(await _itens()).toEqual([]);
+    expect((await _cadastrar(cliente, { numero_ca: "CA 41.234" })).status).toBe(303);
+    expect((await _itens())[0]!.numero_ca).toBe("41234");
+    const repetido = await _cadastrar(cliente, { modelo: "NX-300", numero_ca: "41234" });
+    expect(_recado(repetido)).toContain("já está no item");
+    expect((await _itens()).length).toBe(1);
+  });
+
+  it("“exige treinamento” sem treinamento vinculado é recusado (24/11/2026)", async () => {
+    await entrar(cliente, "coordenador_csso");
+    expect((await _cadastrar(cliente)).status).toBe(303);
+    const item = (await _itens())[0]!;
+    const r = await cliente.post(`${CATALOGO}/${item.id}`, await _dados({ ativo: "1", exige_treinamento: "1" }), { seguir: false });
+    expect(r.status).toBe(200);
+    expect(_recado(r)).toContain("Treinamentos");
+    expect((await _itens())[0]!.exige_treinamento).toBe(false);
+    // no cadastro a marca nem aparece; enviada à mão, também é recusada
+    expect((await cliente.get(CATALOGO)).text).toContain("ao vincular o treinamento, o item passa a exigir");
+    expect(_recado(await _cadastrar(cliente, { modelo: "Z", numero_ca: "999", exige_treinamento: "1" }))).toContain("Treinamentos");
   });
 
   it("a edição registra o diff na auditoria", async () => {

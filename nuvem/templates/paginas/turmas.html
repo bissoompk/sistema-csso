@@ -228,7 +228,8 @@
       <option value="">escolha o treinamento</option>
       {% for t in treinamentos %}
       <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}
-              {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|num }} h
+              data-unidade="{{ t.carga_unidade }}" data-carga="{{ t.carga_horaria_horas|carga_campo_coluna(t.carga_unidade) }}"
+              {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|carga(t.carga_unidade) }}
               {%- if t.validade_meses %}; reciclagem a cada {{ t.validade_meses }} meses{% endif %})</option>
       {% endfor %}
     </select></div>
@@ -239,7 +240,7 @@
     <div class="campo"><label for="nova-fim">Término</label>
       <input id="nova-fim" type="date" name="data_fim" required
              value="{{ d['data_fim'] or '' }}"></div>
-    <div class="campo"><label for="nova-carga">Carga horária da turma</label>
+    <div class="campo"><label for="nova-carga">Carga da turma</label>
       <input id="nova-carga" name="carga_horaria_horas" placeholder="usa a do catálogo"
              inputmode="decimal" autocomplete="off"
              value="{{ d['carga_horaria_horas'] or '' }}"
@@ -265,6 +266,27 @@
              value="{{ d['hora_fim'] or '' }}" aria-describedby="dica-nova-hora">
       <span class="dica" id="dica-nova-hora">Opcional. Vazio é dia inteiro; vale para todos os dias.</span></div>
   </div>
+  {# ajuste do lote 3 (25/11/2026): treinamento em TEMPOS e turma de mais de um dia — os tempos de
+     cada dia já na abertura, com a divisão automática como valor inicial; a soma tem de ser a carga.
+     Quem monta os campos ao escolher treinamento e datas é o `csso.js` (contrato `data-carga-dias`);
+     na reabertura recusada, voltam do servidor como foram digitados. Sem JavaScript, a turma nasce
+     com a divisão automática e o "ajustar" da ficha continua valendo. #}
+  <fieldset class="campo" id="nova-carga-dias" data-carga-dias
+            data-treinamento="nova-treinamento" data-inicio="nova-inicio" data-fim="nova-fim" data-carga="nova-carga"
+            {{- ' hidden' if not dias_carga_nova }}>
+    <legend>Tempos de cada dia</legend>
+    <div class="linha-campos" data-dias>
+      {% for dia, valor in dias_carga_nova %}
+      <div class="campo"><label for="nova-carga-dia-{{ dia }}">{{ dia|data }}</label>
+        <input id="nova-carga-dia-{{ dia }}" name="carga_dia_{{ dia }}" inputmode="numeric" autocomplete="off" size="4"
+               value="{{ valor }}" aria-describedby="nova-carga-dias-soma"></div>
+      {% endfor %}
+    </div>
+    <span class="dica" id="nova-carga-dias-soma" data-soma aria-live="polite">A soma dos dias tem de ser igual à carga da turma.</span>
+  </fieldset>
+  {# lote 3 (T2): só preenchida quando a carga passa do que o horário comporta #}
+  <div class="campo"><label for="nova-justificativa-carga">Justificativa da carga <span class="discreto">(só quando a carga passa do que o horário comporta)</span></label>
+    <textarea id="nova-justificativa-carga" name="justificativa_carga" rows="2" maxlength="500">{{ d['justificativa_carga'] or '' }}</textarea></div>
   <div class="linha-campos">
     {{ lt.campo_local('nova-local-id', 'nova-local', 'nova-campus', locais, d['local_id'], d['local']) }}
     <div class="campo"><label for="nova-campus">Campus</label>
@@ -297,7 +319,10 @@
              value="{{ d['nota_minima_aprovacao'] or '' }}"></div>
     <div class="campo"><label for="nova-freq">Frequência mínima (%)</label>
       <input id="nova-freq" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"
-             value="{{ d['frequencia_minima_percentual'] or 75 }}"></div>
+             aria-describedby="dica-nova-freq"
+             value="{{ d['frequencia_minima_percentual'] or 75 }}">
+      <span class="dica" id="dica-nova-freq">Em treinamento em tempos (brigada), no mínimo 75%
+        (Portaria CBMMG nº 54/2020, art. 40).</span></div>
   </div>
   {# Visitante e Outro no link público só com esta marca (`inscricao_publica.vinculos_aceitos`) #}
   <div class="campo"><label class="turma-marcar" for="nova-comunidade"><input id="nova-comunidade" type="checkbox" name="aceita_comunidade_externa" value="1"
