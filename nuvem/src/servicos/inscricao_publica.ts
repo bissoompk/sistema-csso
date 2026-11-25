@@ -600,6 +600,8 @@ export async function pedir(
     .insert(tabela_inscricao)
     .values({
       turma_id: turma.id,
+      // lote 4: o local de atuação do brigadista nasce com o padrão da turma
+      local_atuacao: turma.local_atuacao_padrao,
       participante_id: pessoa.id,
       situacao: "AGUARDANDO_EMAIL",
       origem: "PUBLICA",
@@ -607,7 +609,7 @@ export async function pedir(
       observacao: nota || null,
     })
     .returning();
-  const inscricao = { ...linha!, turma, participante: pessoa, presencas: [] };
+  const inscricao = { ...linha!, turma, participante: pessoa, presencas: [], notas_disciplina: [] };
   await auditoria.registrar(tx, {
     entidade: "inscricao",
     entidade_id: inscricao.id,

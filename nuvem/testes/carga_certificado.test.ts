@@ -58,8 +58,9 @@ describe("o certificado novo congela a unidade", () => {
     expect(docx).not.toMatch(/10 horas|10 h\b/);
     const ctx = servico.montar_contexto(db, cert);
     const pdf = texto_de_certificacao(ctx);
-    expect(pdf).toContain(", com carga de 10 tempos");
-    expect(pdf).not.toContain("carga horária");
+    // lote 4 (redação 4): "com carga horária de 10 tempos", como o .docx e o Anexo I do CBMMG
+    expect(pdf).toContain(", com carga horária de 10 tempos");
+    expect(pdf).not.toContain("com carga de");
     const validacao = (await cliente.get(`/validar/${cert.chave_validacao}`)).text;
     expect(validacao).toContain("10 tempos");
   });

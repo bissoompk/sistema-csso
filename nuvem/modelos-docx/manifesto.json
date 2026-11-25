@@ -321,5 +321,33 @@
       "unidade",
       "validade_ca"
     ]
+  },
+  "certificados/certificado_brigada_cbmmg_v1.docx": {
+    "sha256_origem": "f48cb562f3ff9ae42e98fd9ca749358376079c26771f5e13cffc83fd3c9f2f5a",
+    "sha256_convertido": "f48cb562f3ff9ae42e98fd9ca749358376079c26771f5e13cffc83fd3c9f2f5a",
+    "marcadores": [
+      "brigada_centro_cnpj",
+      "brigada_centro_nome",
+      "brigada_endereco",
+      "brigada_instrutor_linha",
+      "brigada_instrutor_rubrica",
+      "brigada_local_atuacao",
+      "brigada_nota_final",
+      "brigada_quadro",
+      "certificado_data_extenso",
+      "certificado_frase_validade",
+      "certificado_qrcode",
+      "certificado_rotulo",
+      "certificado_url_validacao",
+      "citacao_legal",
+      "cidade",
+      "participante_cpf",
+      "participante_identidade_trecho",
+      "participante_nome",
+      "treinamento_carga_horaria",
+      "treinamento_nome",
+      "turma_data_fim",
+      "turma_data_inicio"
+    ]
   }
 }

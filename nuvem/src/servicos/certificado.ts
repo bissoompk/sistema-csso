@@ -37,6 +37,7 @@ import { carimbar_qr } from "./docx_baixo_nivel.js";
 import { qr_png } from "./qr.js";
 import * as textos from "./textos.js";
 import { numero as numero_br } from "./presenca.js";
+import * as brigada from "../dominio/brigada.js";
 
 /** Subpasta de `modelos-docx/` — o `app/templates/certificados/` do Python. */
 export const DIR_MODELOS_CERTIFICADO = "certificados";
@@ -197,6 +198,63 @@ export function linha_do_instrutor(instrutor: InstrutorCongelado): string {
   return partes.filter((p) => p).join(" — ");
 }
 
+/**
+ * Lote 4 (25/11/2026): o que o certificado de brigada (Portaria CBMMG nº 54/2020, art. 43, II, e
+ * Anexo I) imprime além do certificado comum, congelado na emissão. Ausente (null) em todo
+ * certificado que não é de brigada — e em todo emitido antes.
+ */
+export interface BrigadaCongelada {
+  versao: number;
+  centro_nome: string;
+  /** já formatado: 12.345.678/0001-90 */
+  centro_cnpj: string;
+  /** o endereço completo do local do curso, com cidade/UF */
+  endereco: string;
+  local_atuacao: string;
+  responsavel: {
+    nome: string;
+    /** só dígitos: sai por inteiro só no .docx/PDF da brigada */
+    cpf: string | null;
+    profissao: string | null;
+    credenciamento: string | null;
+    registro: string | null;
+    rubrica_sha256: string | null;
+  };
+  disciplinas: { nome: string; teorica: number; pratica: number; nota: string | null }[];
+}
+
+/** Uma linha do quadro do verso: o agrupador (a disciplina) e as linhas teórica e prática. */
+export interface LinhaDoQuadro {
+  agrupador: boolean;
+  rotulo: string;
+  tempos: string;
+  nota: string;
+}
+
+/** O quadro do verso, na ordem: a disciplina e, logo abaixo, as linhas dela com a nota repetida. */
+export function quadro_da_brigada(b: BrigadaCongelada | null | undefined): LinhaDoQuadro[] {
+  if (!b) return [];
+  const linhas: LinhaDoQuadro[] = [];
+  for (const d of b.disciplinas) {
+    const nota = brigada.exibir_nota(d.nota);
+    linhas.push({ agrupador: true, rotulo: d.nome, tempos: `${d.teorica + d.pratica} t`, nota: "" });
+    if (d.teorica) linhas.push({ agrupador: false, rotulo: "Teórica", tempos: `${d.teorica} t`, nota });
+    if (d.pratica) linhas.push({ agrupador: false, rotulo: "Prática", tempos: `${d.pratica} t`, nota });
+  }
+  return linhas;
+}
+
+/** "Instrutor: Fulano, CPF 000.000.000-00, Credenciamento CBMMG nº 123" (Anexo I). */
+export function linha_do_instrutor_brigada(b: BrigadaCongelada | null | undefined): string {
+  if (!b) return "";
+  const r = b.responsavel;
+  const partes = [r.nome];
+  if (r.cpf) partes.push(`CPF ${textos.formatar_cpf(r.cpf)}`);
+  const cred = brigada.linha_de_credenciamento({ profissao: r.profissao, credenciamento_cbmmg: r.credenciamento, registro: r.registro });
+  if (cred) partes.push(cred);
+  return `Instrutor: ${partes.filter((p) => p).join(", ")}`;
+}
+
 /** Os campos de `ContextoCertificado`. Datas 'AAAA-MM-DD'; decimais como texto. */
 export interface DadosContextoCertificado {
   participante_nome: string;
@@ -252,6 +310,11 @@ export interface DadosContextoCertificado {
   campos_livres?: Record<string, CampoLivreCongelado>;
   tags_obrigatorias?: readonly string[];
   avisos?: string[];
+  // lote 4: a escala da nota final (10, ou 100 na brigada). Ausente = 10.
+  nota_escala?: number | null;
+  // lote 4: o bloco da brigada (null fora dela); a identidade fica pronta para entrar depois
+  brigada?: BrigadaCongelada | null;
+  participante_identidade?: string | null;
   // NUVEM: a redação do PDF da casa. 1 (ou ausente: o congelado de antes) é a
   // do v1, reimpressa igual; 2 escreve as frases inteiras (norma sem repetir,
   // "Validade: indeterminada"); 3 (25/10/2026) acerta o período de um dia só
@@ -260,7 +323,8 @@ export interface DadosContextoCertificado {
   redacao?: number | null;
 }
 
-export const REDACAO_ATUAL = 3;
+// 4 (lote 4, 25/11/2026): em TEMPOS a frase diz "com carga horária de 10 tempos", como o .docx
+export const REDACAO_ATUAL = 4;
 
 /**
  * A carga como o certificado a escreve. O congelado sem `carga_unidade` (emitido antes do lote 3)
@@ -297,6 +361,7 @@ const CAMPOS_CONGELADOS = [
   "setor_sigla", "setor_nome", "setor_endereco", "cidade", "modelo_id",
   "modelo_arquivo", "modelo_sha256", "modelo_versao", "mapa_tags",
   "campos_livres", "tags_obrigatorias", "modelo_chave", "redacao",
+  "nota_escala", "brigada", "participante_identidade",
 ] as const;
 
 const _DATAS = ["turma_data_inicio", "turma_data_fim", "data_base_vencimento", "data_emissao", "data_vencimento"] as const;
@@ -357,6 +422,9 @@ export class ContextoCertificado implements DadosContextoCertificado {
   tags_obrigatorias: readonly string[] = [];
   avisos: string[] = [];
   redacao = 1;
+  nota_escala = 10;
+  brigada: BrigadaCongelada | null = null;
+  participante_identidade: string | null = null;
 
   static readonly CAMPOS_CONGELADOS = CAMPOS_CONGELADOS;
 
@@ -370,6 +438,9 @@ export class ContextoCertificado implements DadosContextoCertificado {
     this.turma_tipo_capacitacao = d.turma_tipo_capacitacao ?? null;
     this.carga_unidade = d.carga_unidade ?? null;
     this.redacao = Number(d.redacao ?? 1) || 1;
+    this.nota_escala = Number(d.nota_escala ?? 10) || 10;
+    this.brigada = d.brigada ? structuredClone(d.brigada) : null;
+    this.participante_identidade = d.participante_identidade ?? null;
     this.campos_livres = Object.fromEntries(
       Object.entries(d.campos_livres ?? {}).map(([k, v]) => [k, { ...v }]),
     );
@@ -395,6 +466,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
     dados.mapa_tags = { ...this.mapa_tags };
     dados.campos_livres = Object.fromEntries(Object.entries(this.campos_livres).map(([k, v]) => [k, { ...v }]));
     dados.tags_obrigatorias = [...this.tags_obrigatorias];
+    dados.brigada = this.brigada ? structuredClone(this.brigada) : null;
     return dados;
   }
 
@@ -640,11 +712,15 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   nota_final: _c("Resultado", "Nota final", "9,5", (c) => (c.nota_final !== null ? numero_br(c.nota_final) : "")),
   // a nota é de 0 a 10; o modelo que pede «___ %» quer o aproveitamento (9,5 -> 95%)
   nota_final_percentual: _c("Resultado", "Nota final em %", "95%", (c) =>
-    c.nota_final !== null ? `${numero_br(Number(c.nota_final) * 10)}%` : "",
+    c.nota_final === null ? "" : c.nota_escala === 100 ? brigada.exibir_nota(c.nota_final) : `${numero_br(Number(c.nota_final) * 10)}%`,
   ),
   // para o modelo que já imprime o «%» depois do marcador («{{NOTA_FINAL}}%»): 9,5 -> 95
   nota_final_percentual_numero: _c("Resultado", "Nota final em % (sem o símbolo)", "95", (c) =>
-    c.nota_final !== null ? numero_br(Number(c.nota_final) * 10) : "",
+    c.nota_final === null
+      ? ""
+      : c.nota_escala === 100
+        ? brigada.exibir_nota(c.nota_final).replace(/%$/, "")
+        : numero_br(Number(c.nota_final) * 10),
   ),
   frequencia_percentual: _c("Resultado", "Frequência", "100%", (c) =>
     c.frequencia_percentual !== null ? `${numero_br(c.frequencia_percentual)}%` : "",
@@ -669,6 +745,29 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   ),
   instrutor_cpf: _c("Responsável pela formação", "CPF do instrutor principal (só se a norma exigir)", "000.000.000-00", (c) =>
     textos.formatar_cpf(c.assinante.cpf),
+  ),
+  // ---- lote 4: brigada (Portaria CBMMG nº 54/2020, art. 43, II, e Anexo I) ----
+  // a identidade (RG) não entra hoje; o marcador fica pronto: vazio, ou ", e identidade …"
+  participante_identidade_trecho: _c("Participante", "“, e identidade …” (vazio sem identidade)", "", (c) =>
+    c.participante_identidade ? ` e identidade ${c.participante_identidade}` : "",
+  ),
+  brigada_centro_nome: _c("Brigada (CBMMG)", "Centro de formação", "Centro de Formação da UFVJM", (c) => c.brigada?.centro_nome ?? ""),
+  brigada_centro_cnpj: _c("Brigada (CBMMG)", "CNPJ do centro de formação", "16.888.315/0001-57", (c) => c.brigada?.centro_cnpj ?? ""),
+  brigada_endereco: _c("Brigada (CBMMG)", "Endereço completo do local do curso", "Rodovia MGT 367, km 583, nº 5000, Alto da Jacuba, Diamantina/MG", (c) => c.brigada?.endereco ?? ""),
+  brigada_local_atuacao: _c("Brigada (CBMMG)", "Local de atuação do brigadista", "Campus JK — Diamantina", (c) => c.brigada?.local_atuacao ?? ""),
+  brigada_instrutor_linha: _c(
+    "Brigada (CBMMG)",
+    "“Instrutor: nome, CPF, credenciamento / registro”",
+    "Instrutor: Maria Souza, CPF 000.000.000-00, Credenciamento CBMMG nº 123",
+    (c) => linha_do_instrutor_brigada(c.brigada),
+  ),
+  brigada_instrutor_rubrica: _c("Brigada (CBMMG)", "Rubrica do responsável pela formação", "imagem do anexo", (c) =>
+    _caminho_rubrica(c.brigada?.responsavel.rubrica_sha256),
+  ),
+  // a lista do quadro do verso (laço no .docx: {#brigada_quadro}…{/brigada_quadro})
+  brigada_quadro: _c("Brigada (CBMMG)", "Quadro de disciplinas (laço)", "disciplina, teórica e prática", (c) => quadro_da_brigada(c.brigada)),
+  brigada_nota_final: _c("Brigada (CBMMG)", "Nota final em % (média das disciplinas)", "85%", (c) =>
+    c.brigada ? brigada.exibir_nota(c.nota_final) : "",
   ),
   setor_emissor_nome: _c(
     "Emissor",
@@ -737,6 +836,52 @@ export function arquivos_de_modelo(): string[] {
 export const MODELO_PADRAO_ARQUIVO = "certificado_padrao_v2.docx";
 export const MODELO_PADRAO_V1 = "certificado_padrao_v1.docx";
 export const MODELO_PADRAO_NOME = "Padrão da casa";
+
+/**
+ * Lote 4 (25/11/2026): o certificado de brigada orgânica (Portaria CBMMG nº 54/2020, art. 43, II, e
+ * Anexo I), frente e verso. Gerado por `ferramentas/gerar-certificado-brigada.mjs`.
+ */
+export const MODELO_BRIGADA_ARQUIVO = "certificado_brigada_cbmmg_v1.docx";
+export const MODELO_BRIGADA_NOME = "Brigada CBMMG v1";
+/** O marcador de texto fixo da citação legal da carga: editável na ficha do modelo, não no código. */
+export const MARCADOR_CITACAO_LEGAL = "citacao_legal";
+export const CITACAO_LEGAL_PADRAO = "conforme Lei Estadual nº 22.839/2018 e Portaria 54/2020 do CBMMG";
+/** Os marcadores do sistema no modelo de brigada (marcador → campo: o mesmo nome). */
+export const MAPA_BRIGADA: readonly string[] = [
+  "participante_nome",
+  "participante_cpf",
+  "participante_identidade_trecho",
+  "treinamento_nome",
+  "treinamento_carga_horaria",
+  "brigada_centro_nome",
+  "brigada_centro_cnpj",
+  "brigada_endereco",
+  "brigada_local_atuacao",
+  "turma_data_inicio",
+  "turma_data_fim",
+  "cidade",
+  "certificado_data_extenso",
+  "brigada_instrutor_rubrica",
+  "brigada_instrutor_linha",
+  "certificado_rotulo",
+  "certificado_frase_validade",
+  "certificado_url_validacao",
+  "certificado_qrcode",
+  "brigada_quadro",
+  "brigada_nota_final",
+];
+/** Os que não podem sair vazios no papel da brigada. */
+export const OBRIGATORIOS_BRIGADA: readonly string[] = [
+  "participante_nome",
+  "participante_cpf",
+  "brigada_centro_nome",
+  "brigada_centro_cnpj",
+  "brigada_endereco",
+  "brigada_local_atuacao",
+  "brigada_instrutor_linha",
+  "brigada_nota_final",
+  MARCADOR_CITACAO_LEGAL,
+];
 
 // {marcador no .docx: código do campo} — o `MAPA_SUGERIDO` de
 // `ferramentas/gerar_modelo_certificado.py`, que casa com certificado_padrao_v1.docx,

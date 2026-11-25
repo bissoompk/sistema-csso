@@ -142,6 +142,29 @@
       <span class="trilho"><span style="--v:{{ [(linha.frequencia|float)|round|int, 100]|min }}"></span></span>
     </span>
   </td>
+  {% if disciplinas %}
+  {# lote 4 (brigada): uma nota por disciplina, de 0 a 100; a final é a média (art. 42, § 3º) #}
+  {% for d in disciplinas %}
+  {% set nd = linha.notas_por_disciplina[d.id] %}
+  <td>
+    {% if pode_lancar %}
+    <input class="campo-curto" name="nd_{{ linha.inscricao.id }}_{{ d.id }}" inputmode="decimal" placeholder="0 a 100"
+           aria-label="nota de {{ d.nome }} de {{ rotulo_pessoa }}"
+           value="{{ nd|nota_campo if nd is not none else '' }}">
+    {% if nd is not none %}
+    <label class="quebra discreto"><input type="checkbox" name="apagar_nota_disciplina" value="{{ linha.inscricao.id }}_{{ d.id }}"> apagar</label>
+    {% endif %}
+    {% else %}
+    <span class="mono">{{ nd|nota_brigada }}</span>
+    {% endif %}
+  </td>
+  {% endfor %}
+  <td class="mono">{{ linha.inscricao.nota_final|nota_brigada }}
+    {% if recusa and recusa_onde == 'nota' %}
+    <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
+    {% endif %}
+  </td>
+  {% else %}
   <td>
     {% if pode_lancar %}
     {# campo em branco não apaga a nota lançada: apagar é a caixa própria #}
@@ -159,6 +182,7 @@
     <div class="aviso aviso-erro recusa-na-celula" role="alert">{{ recusa }}</div>
     {% endif %}
   </td>
+  {% endif %}
   <td>
     {{ ui.pilula_inscricao(linha.inscricao.situacao) }}
     {# curta: o que falta, ou o motivo principal; a frase inteira no `title` #}

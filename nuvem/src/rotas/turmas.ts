@@ -41,6 +41,7 @@ import {
 } from "../dominio/estados.js";
 import { AssinaturaInstrutor, Certificado as C, ROTULO_VINCULO, Turma, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
 import * as carga from "../dominio/carga.js";
+import * as brigada from "../dominio/brigada.js";
 import * as carga_turma from "../servicos/carga_turma.js";
 import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencias.js";
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
@@ -1010,6 +1011,8 @@ async function _tela_ficha(
     dica_setor_promotor: setor_equipe.ve_todos(usuario) ? setor_promotor.DICA : setor_promotor.DICA_DOS_MEUS,
     // --- aba 3 ---
     dias: servico_presenca.dias_da_turma(turma),
+    // lote 4 (brigada): as colunas de nota por disciplina (vazio = nota única, 0 a 10)
+    disciplinas: turma.treinamento.disciplinas,
     // a caixa marcada vale a carga do dia; quem chegou atrasado se ajusta à parte
     carga_dia_padrao: Object.fromEntries(servico_presenca.carga_por_dia(turma)),
     // aba Turma: a carga de cada dia (lote 3), incluindo dia de carga zero
@@ -1090,6 +1093,9 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
       // "outro local"); sem ele, vale o texto (`servico_turma.editar_turma`)
       if (f.tem("local_id")) campos.local_id = id_opcional(f.texto("local_id"));
       if (f.tem("justificativa_carga")) campos.justificativa_carga = texto_ou_nulo(f.texto("justificativa_carga"));
+      // lote 4 (brigada): só quando o formulário os traz
+      if (f.tem("local_atuacao_padrao")) campos.local_atuacao_padrao = texto_ou_nulo(f.texto("local_atuacao_padrao"));
+      if (f.tem("responsavel_formacao_id")) campos.responsavel_formacao_id = id_opcional(f.texto("responsavel_formacao_id"));
       await servico_turma.editar_turma(sp, usuario, turma, campos);
     });
   } catch (erro) {
@@ -1931,6 +1937,29 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/cpf`, a
   return _volta(c, volta, cpf === null ? `${quem}: CPF apagado.` : `${quem}: CPF gravado para o certificado.`);
 });
 
+/** Lote 4 (brigada): o local de atuação do brigadista desta inscrição. */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/inscricoes/:inscricao_id{[0-9]+}/local-atuacao`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.inscrever");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.inscrever", dono_turma.INSCRICOES);
+  if (!turma) return redirecionar(c, TURMAS);
+  const volta = `${TURMAS}/${turma_id}?aba=inscricoes`;
+  const inscricao = await servico_turma.carregar_inscricao(tx, Number(c.req.param("inscricao_id")), turma);
+  if (!inscricao || inscricao.turma_id !== turma.id) return redirecionar(c, volta);
+  let mudou: boolean;
+  try {
+    mudou = await servico_turma.definir_local_atuacao(tx, usuario, inscricao, f.texto("local_atuacao"));
+  } catch (erro) {
+    if (erro instanceof RegraDaTurma) return _erro(c, volta, erro.message);
+    throw erro;
+  }
+  const quem = inscricao.participante.identificador_publico;
+  return _volta(c, volta, mudou ? `${quem}: local de atuação gravado.` : `${quem}: local de atuação sem alteração.`);
+});
+
 /**
  * Corrigir o cadastro do participante externo (nome, vínculo, organização) pela
  * linha da inscrição. Vale para o que ainda vai sair; certificado já emitido
@@ -2020,6 +2049,7 @@ function _linha_trocada(
     turma,
     linha: servico_presenca.linha_da_grade(turma, inscricao),
     dias: servico_presenca.dias_da_turma(turma),
+    disciplinas: turma.treinamento.disciplinas,
     hoje: datas_br.hoje(),
     carga_dia_padrao: Object.fromEntries(servico_presenca.carga_por_dia(turma)),
     // a guarda que decide é a do serviço (`_exigir_lancamento`), que já correu
@@ -2125,6 +2155,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
   const volta = `${TURMAS}/${turma.id}${PRESENCAS}`;
   const horas = new Map<string, string>();
   const notas = new Map<number, string | null>();
+  const notas_disciplina = new Map<string, string | null>();
   try {
     for (const [campo, valor] of f.dados) {
       if (typeof valor !== "string" || !valor.trim()) continue;
@@ -2132,14 +2163,20 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
       if (celula) horas.set(celula[1]!, valor);
       const nota = /^n_(\d+)$/.exec(campo);
       if (nota) notas.set(Number(nota[1]), _decimal(valor, "a nota"));
+      // lote 4 (brigada): a nota de cada disciplina, de 0 a 100
+      const nd = /^nd_(\d+_\d+)$/.exec(campo);
+      if (nd) notas_disciplina.set(nd[1]!, brigada.ler_nota(valor));
     }
   } catch (erro) {
-    if (erro instanceof CampoInvalido) return _erro(c, volta, erro.message, ANCORA_GRADE);
+    if (erro instanceof CampoInvalido || erro instanceof brigada.NotaInvalida) return _erro(c, volta, erro.message, ANCORA_GRADE);
     throw erro;
   }
   for (const valor of f.todos("apagar_nota")) {
     const id = id_opcional(valor);
     if (id !== null) notas.set(id, null);
+  }
+  for (const valor of f.todos("apagar_nota_disciplina")) {
+    if (/^\d+_\d+$/.test(valor)) notas_disciplina.set(valor, null);
   }
   // RN-19: a recusa nomeia a pessoa só para quem pode ler o nome dela
   const quem = (i: InscricaoCarregada) =>
@@ -2148,7 +2185,13 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
     tx,
     usuario,
     turma,
-    { marcadas: new Set(f.todos("presente")), quantidades: horas, notas, motivo: texto_ou_nulo(f.texto("motivo")) },
+    {
+      marcadas: new Set(f.todos("presente")),
+      quantidades: horas,
+      notas,
+      notas_disciplina,
+      motivo: texto_ou_nulo(f.texto("motivo")),
+    },
     quem,
   );
   const feito = [

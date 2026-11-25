@@ -92,7 +92,8 @@
         {% endif %}
       </td>
       <td data-coluna="Título e organização">{{ a.titulo or '—' }}
-        {% if a.organizacao %}<span class="quebra discreto">{{ a.organizacao }}</span>{% endif %}</td>
+        {% if a.organizacao %}<span class="quebra discreto">{{ a.organizacao }}</span>{% endif %}
+        {% if a.credenciamento_cbmmg %}<span class="quebra discreto">CBMMG nº {{ a.credenciamento_cbmmg }}</span>{% endif %}</td>
       {# CPF só para o certificado que a norma exige (ver `cpf_certificado.ts`):
          a tela nunca recebe o número, só a máscara sem dígito. #}
       <td data-coluna="Registro e CPF"><span class="mono">{{ a.registro_completo or a.conselho or '—' }}</span>
@@ -202,6 +203,17 @@
              aria-describedby="dica-cpf">
       <span class="dica" id="dica-cpf">Opcional. Só sai no certificado cuja norma o pede (ex.: brigadista); a tela nunca o mostra.</span></div>
   </div>
+  {# lote 4 (brigada): quem pode formar brigadista (arts. 59 e 63) e o credenciamento #}
+  <div class="linha-campos">
+    <div class="campo"><label for="assin-profissao">Profissão (certificado de brigada)</label>
+      <select id="assin-profissao" name="profissao">
+        <option value="">— não informada</option>
+        {% for pr in profissoes %}<option value="{{ pr.valor }}"{{ ' selected' if dn['profissao'] == pr.valor }}>{{ pr.rotulo }}</option>{% endfor %}
+      </select>
+      <span class="dica">Engenheiro: valem conselho e registro. Técnico e militar: o credenciamento no CBMMG é obrigatório.</span></div>
+    <div class="campo codigo"><label for="assin-credenciamento">Credenciamento CBMMG</label>
+      <input id="assin-credenciamento" name="credenciamento_cbmmg" maxlength="30" value="{{ dn['credenciamento_cbmmg'] or '' }}"></div>
+  </div>
   <div class="linha-campos">
     <div class="campo"><label for="assin-de">Vigência — início</label>
       <input id="assin-de" type="date" name="vigencia_inicio"
@@ -229,6 +241,7 @@
 {% set p = 'ed-assin-' ~ a.id %}
 {% set v = d if deste else {'nome': a.nome, 'titulo': a.titulo, 'conselho': a.conselho,
             'registro_conselho': a.registro_conselho, 'organizacao': a.organizacao,
+            'profissao': a.profissao or '', 'credenciamento_cbmmg': a.credenciamento_cbmmg or '',
             'vigencia_inicio': (a.vigencia_inicio if a.vigencia_inicio != desde_sempre else ''),
             'vigencia_fim': a.vigencia_fim, 'ativo': '1' if a.ativo else '', 'apagar_cpf': ''} %}
 {% call ui.popup_cadastro('editar-assin-' ~ a.id, 'Editar · ' ~ a.nome_exibicao, '/treinamentos/assinaturas/' ~ a.id, 'Salvar',
@@ -265,6 +278,17 @@
       <label class="discreto"><input type="checkbox" name="apagar_cpf" value="1"
         {{- ' checked' if v.apagar_cpf == '1' }}> apagar o CPF</label>
       {% endif %}</div>
+  </div>
+  {# lote 4 (brigada): quem pode formar brigadista (arts. 59 e 63) e o credenciamento #}
+  <div class="linha-campos">
+    <div class="campo"><label for="{{ p }}-profissao">Profissão (certificado de brigada)</label>
+      <select id="{{ p }}-profissao" name="profissao">
+        <option value="">— não informada</option>
+        {% for pr in profissoes %}<option value="{{ pr.valor }}"{{ ' selected' if v.profissao == pr.valor }}>{{ pr.rotulo }}</option>{% endfor %}
+      </select>
+      <span class="dica">Engenheiro: valem conselho e registro. Técnico e militar: o credenciamento no CBMMG é obrigatório.</span></div>
+    <div class="campo codigo"><label for="{{ p }}-credenciamento">Credenciamento CBMMG</label>
+      <input id="{{ p }}-credenciamento" name="credenciamento_cbmmg" maxlength="30" value="{{ v.credenciamento_cbmmg or '' }}"></div>
   </div>
   <div class="linha-campos">
     <div class="campo"><label for="{{ p }}-de">Vigência — início</label>

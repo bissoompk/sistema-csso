@@ -234,7 +234,8 @@ describe("D28/D29/D30/M45: o certificado novo escreve as frases inteiras", () =>
     expect(mapa.frase_validade).toBe("certificado_frase_validade");
     expect(mapa).not.toHaveProperty("norma");
     await naTransacao((tx) => semear_modelo_certificado(tx));
-    expect(await db.select().from(e.certificado_modelo)).toHaveLength(2);
+    // + o "Brigada CBMMG v1" da semente (lote 4), que a promoção não toca
+    expect(await db.select().from(e.certificado_modelo)).toHaveLength(3);
   });
 });
 

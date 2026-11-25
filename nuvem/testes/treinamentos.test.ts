@@ -370,8 +370,8 @@ describe("modelo e dicionário de tags", () => {
     });
     expect(recusa.text.toLowerCase()).toContain("já existe");
     const nomes = (await db.select().from(e.certificado_modelo)).map((m) => m.nome).sort();
-    // o "Padrão da casa" da semente são duas linhas: a v1 superada e a v2
-    expect(nomes).toEqual(["Alfa", "Beta", "Padrão da casa", "Padrão da casa"]);
+    // o "Padrão da casa" da semente são duas linhas: a v1 superada e a v2; o de brigada é do lote 4
+    expect(nomes).toEqual(["Alfa", "Beta", "Brigada CBMMG v1", "Padrão da casa", "Padrão da casa"]);
   });
 
   it("editar modelo também exige .docx", async () => {

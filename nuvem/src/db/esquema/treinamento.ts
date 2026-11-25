@@ -118,6 +118,10 @@ export const treinamento = pgTable(
     // 0 = NAO EXPIRA. Data magica de vencimento (31/12/9999) mente para todo
     // relatorio depois.
     validade_meses: integer('validade_meses').notNull().default(0),
+    // NUVEM (lote 4, 25/11/2026): de onde vem a validade — 'NORMA' (a norma fixa o prazo, como os
+    // 24 meses da brigada) ou 'INSTITUCIONAL' ("política interna", na tela) — e a citação editável
+    validade_origem: varchar('validade_origem', { length: 14 }),
+    validade_citacao: text('validade_citacao'),
     norma_referencia: varchar('norma_referencia', { length: 120 }),
     // entra no monitor de "nunca fez" quando houver exigencia cadastrada (fatia 7)
     obrigatorio: boolean('obrigatorio').notNull().default(false),
@@ -149,6 +153,7 @@ export const treinamento = pgTable(
     }),
     foreignKey({ name: 'fk_treinamento_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
     check('ck_treinamento_validade', sql.raw(`validade_meses >= 0`)),
+    check('ck_treinamento_validade_origem', sql.raw(`validade_origem IS NULL OR validade_origem IN ('NORMA','INSTITUCIONAL')`)),
     check('ck_treinamento_carga', sql.raw(`carga_horaria_horas > 0`)),
     check('ck_treinamento_carga_unidade', sql.raw(`carga_unidade IN ('HORAS','TEMPOS')`)),
     // tempo e inteiro: nao existe meio tempo de aula
@@ -266,6 +271,11 @@ export const assinatura_instrutor = pgTable(
     // CPF do responsavel pela formacao, so para o certificado que o exige; so
     // digitos, nunca exibido (ver `servicos/cpf_certificado.ts`)
     cpf: varchar('cpf', { length: 11 }),
+    // NUVEM (lote 4, 25/11/2026): quem pode dar o nivel basico da brigada organica (Portaria CBMMG
+    // n. 54/2020, arts. 59 e 63) e o credenciamento no CBMMG. Na emissao em TEMPOS: engenheiros
+    // valem pelo conselho e registro; tecnico e militar precisam do credenciamento; vazio bloqueia.
+    profissao: varchar('profissao', { length: 20 }),
+    credenciamento_cbmmg: varchar('credenciamento_cbmmg', { length: 30 }),
     externo: boolean('externo').notNull().default(false),
     imagem_anexo_id: integer('imagem_anexo_id'),
     vigencia_inicio: DataPura('vigencia_inicio').notNull(),
@@ -285,6 +295,10 @@ export const assinatura_instrutor = pgTable(
       foreignColumns: [anexo.id],
     }),
     check_regex('ck_assinatura_cpf', 'cpf', '[0-9]{11}'),
+    check(
+      'ck_assinatura_profissao',
+      sql.raw(`profissao IS NULL OR profissao IN ('TECNICO_SEG','ENGENHEIRO_SEG','ENG_ARQ_ESPEC_SEG','MILITAR')`),
+    ),
     // `externo = 1` no SQLite; booleano usado como booleano aqui
     check('ck_assinatura_vinculo', sql.raw(`externo OR servidor_id IS NOT NULL`)),
     check(
@@ -706,6 +720,10 @@ export const turma = pgTable(
     arte_alt: varchar('arte_alt', { length: 160 }),
 
     nota_minima_aprovacao: numeric('nota_minima_aprovacao', { precision: 5, scale: 2, mode: 'string' }),
+    // NUVEM (lote 4, 25/11/2026): brigada. O local de atuacao que a inscricao recebe por padrao
+    // (alinea i do art. 43, II) e o responsavel pela formacao — vazio = o instrutor que assina.
+    local_atuacao_padrao: varchar('local_atuacao_padrao', { length: 200 }),
+    responsavel_formacao_id: integer('responsavel_formacao_id'),
     // 75% e a praxe; a NR nao fixa numero geral
     frequencia_minima_percentual: numeric('frequencia_minima_percentual', {
       precision: 5,
@@ -730,6 +748,11 @@ export const turma = pgTable(
     }),
     foreignKey({ name: 'fk_turma_campus', columns: [t.campus_id], foreignColumns: [campus.id] }),
     foreignKey({ name: 'fk_turma_local', columns: [t.local_id], foreignColumns: [local_treinamento.id] }),
+    foreignKey({
+      name: 'fk_turma_responsavel_formacao',
+      columns: [t.responsavel_formacao_id],
+      foreignColumns: [assinatura_instrutor.id],
+    }),
     foreignKey({
       name: 'fk_turma_unidade',
       columns: [t.unidade_promotora_id],
@@ -878,6 +901,11 @@ export const inscricao = pgTable(
     // digitada — mesmo espirito da RN-07
     frequencia_percentual: numeric('frequencia_percentual', { precision: 5, scale: 2, mode: 'string' }),
     nota_final: numeric('nota_final', { precision: 5, scale: 2, mode: 'string' }),
+    // NUVEM (lote 4, 25/11/2026): a escala da nota. 10 nos treinamentos de sempre; 100 na brigada,
+    // em que `nota_final` e a media simples das disciplinas (art. 42, par. 3o)
+    nota_escala: smallint('nota_escala').notNull().default(10),
+    // a edificacao em que o brigadista atua (art. 43, II, i); padrao vindo da turma
+    local_atuacao: varchar('local_atuacao', { length: 200 }),
     observacao: text('observacao'),
     motivo_cancelamento: text('motivo_cancelamento'),
     // NUVEM (24/10/2026): a pessoa já respondeu a avaliação de reação desta
@@ -921,7 +949,8 @@ export const inscricao = pgTable(
       ),
     ),
     check('ck_inscricao_origem', sql.raw(`origem IN ('INTERNA','PUBLICA')`)),
-    check('ck_inscricao_nota', sql.raw(`nota_final IS NULL OR (nota_final >= 0 AND nota_final <= 10)`)),
+    check('ck_inscricao_nota', sql.raw(`nota_final IS NULL OR (nota_final >= 0 AND nota_final <= nota_escala)`)),
+    check('ck_inscricao_nota_escala', sql.raw(`nota_escala IN (10, 100)`)),
     check(
       'ck_inscricao_frequencia',
       sql.raw(
@@ -1053,6 +1082,89 @@ export const turma_carga_dia = pgTable(
     foreignKey({ name: 'fk_turma_carga_dia_turma', columns: [t.turma_id], foreignColumns: [turma.id] }).onDelete('cascade'),
     unique('uq_turma_carga_dia').on(t.turma_id, t.data),
     check('ck_turma_carga_dia_quantidade', sql.raw(`quantidade >= 0`)),
+  ],
+);
+
+// =====================================================================
+// NUVEM (lote 4, 25/11/2026) — disciplinas do treinamento em TEMPOS (brigada)
+// =====================================================================
+/**
+ * O agrupador do quadro do verso (Portaria CBMMG n. 54/2020, Anexo G): "Prevencao e Combate a
+ * Incendio", "Primeiros Socorros". Cada disciplina tem uma nota (0 a 100) e as linhas abaixo
+ * (`treinamento_disciplina_linha`). Travadas depois da primeira turma; o nome se corrige enquanto
+ * nenhum certificado do treinamento foi emitido (`servicos/disciplinas.ts`).
+ */
+export const treinamento_disciplina = pgTable(
+  'treinamento_disciplina',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    treinamento_id: integer('treinamento_id').notNull(),
+    ordem: smallint('ordem').notNull(),
+    nome: varchar('nome', { length: 120 }).notNull(),
+    // art. 40: aproveitamento minimo de 70% em cada disciplina
+    nota_minima: numeric('nota_minima', { precision: 5, scale: 2, mode: 'string' }).notNull().default('70'),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_treinamento_disciplina', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_treinamento_disciplina_treinamento',
+      columns: [t.treinamento_id],
+      foreignColumns: [treinamento.id],
+    }).onDelete('cascade'),
+    unique('uq_treinamento_disciplina_nome').on(t.treinamento_id, t.nome),
+    unique('uq_treinamento_disciplina_ordem').on(t.treinamento_id, t.ordem),
+    check('ck_treinamento_disciplina_nota', sql.raw(`nota_minima >= 0 AND nota_minima <= 100`)),
+  ],
+);
+
+/** As linhas abaixo da disciplina: a parte teorica e a pratica, cada uma com os seus tempos. */
+export const treinamento_disciplina_linha = pgTable(
+  'treinamento_disciplina_linha',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    disciplina_id: integer('disciplina_id').notNull(),
+    tipo: varchar('tipo', { length: 8 }).notNull(),
+    tempos: integer('tempos').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_treinamento_disciplina_linha', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_disciplina_linha_disciplina',
+      columns: [t.disciplina_id],
+      foreignColumns: [treinamento_disciplina.id],
+    }).onDelete('cascade'),
+    unique('uq_disciplina_linha_tipo').on(t.disciplina_id, t.tipo),
+    check('ck_disciplina_linha_tipo', sql.raw(`tipo IN ('TEORICA','PRATICA')`)),
+    check('ck_disciplina_linha_tempos', sql.raw(`tempos > 0`)),
+  ],
+);
+
+/** A nota de cada disciplina, de 0 a 100. A media simples vai para `inscricao.nota_final`. */
+export const inscricao_nota_disciplina = pgTable(
+  'inscricao_nota_disciplina',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    inscricao_id: integer('inscricao_id').notNull(),
+    disciplina_id: integer('disciplina_id').notNull(),
+    nota: numeric('nota', { precision: 5, scale: 2, mode: 'string' }).notNull(),
+    lancada_por: integer('lancada_por'),
+    lancada_em: MomentoUTC('lancada_em').notNull().$defaultFn(agora_utc),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_inscricao_nota_disciplina', columns: [t.id] }),
+    foreignKey({
+      name: 'fk_nota_disciplina_inscricao',
+      columns: [t.inscricao_id],
+      foreignColumns: [inscricao.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'fk_nota_disciplina_disciplina',
+      columns: [t.disciplina_id],
+      foreignColumns: [treinamento_disciplina.id],
+    }),
+    foreignKey({ name: 'fk_nota_disciplina_lancada_por', columns: [t.lancada_por], foreignColumns: [usuario.id] }),
+    unique('uq_inscricao_nota_disciplina').on(t.inscricao_id, t.disciplina_id),
+    check('ck_nota_disciplina', sql.raw(`nota >= 0 AND nota <= 100`)),
   ],
 );
 

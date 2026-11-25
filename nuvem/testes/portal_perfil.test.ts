@@ -115,7 +115,10 @@ describe("Meu perfil: cabeçalho e seções", () => {
   it("sem CPF, RG ou data de nascimento", () => {
     expect(tela.text).not.toContain(CPF);
     expect(tela.text).not.toContain("529.982.247-25");
-    expect(tela.text).not.toMatch(/\bCPF\b/);
+    // lote 4: a única menção ao CPF é a seção em que o servidor o informa para o certificado de
+    // brigada — sem o número, só a máscara. Fora dela, nenhuma
+    const fora_da_secao = tela.text.replace(/<section aria-labelledby="t-cpf">[\s\S]*?<\/section>/, "");
+    expect(fora_da_secao).not.toMatch(/\bCPF\b/);
     expect(tela.text).not.toMatch(/\bRG\b/);
     expect(tela.text).not.toMatch(/nascimento/i);
   });

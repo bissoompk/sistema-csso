@@ -327,6 +327,25 @@
              value="{{ turma.nota_minima_aprovacao if turma.nota_minima_aprovacao is not none else '' }}"
              placeholder="sem prova"></div>
   </div>
+  {% if turma.carga_unidade == 'TEMPOS' %}
+  {# lote 4 (brigada, art. 43, II): o local de atuação dos brigadistas (padrão das inscrições
+     novas; cada uma se ajusta na aba Inscrições) e quem responde pela formação #}
+  <div class="linha-campos">
+    <div class="campo"><label for="local_atuacao_padrao">Local de atuação do brigadista (padrão)</label>
+      <input id="local_atuacao_padrao" name="local_atuacao_padrao" maxlength="200" autocomplete="off"
+             value="{{ turma.local_atuacao_padrao or '' }}" aria-describedby="dica-local-atuacao"
+             placeholder="Campus JK — Diamantina">
+      <span class="dica" id="dica-local-atuacao">Vale para as inscrições novas; as já feitas se ajustam uma a uma.</span></div>
+    <div class="campo"><label for="responsavel_formacao_id">Responsável pela formação</label>
+      <select id="responsavel_formacao_id" name="responsavel_formacao_id" aria-describedby="dica-responsavel">
+        <option value="">— o instrutor que assina</option>
+        {% for v in turma.instrutores %}
+        <option value="{{ v.assinatura_instrutor_id }}"{{ ' selected' if turma.responsavel_formacao_id == v.assinatura_instrutor_id }}>{{ v.instrutor.nome_exibicao or v.instrutor.nome }}</option>
+        {% endfor %}
+      </select>
+      <span class="dica" id="dica-responsavel">Sai no certificado de brigada com CPF e credenciamento ou registro.</span></div>
+  </div>
+  {% endif %}
   <div class="linha-campos">
     <div class="campo"><label for="frequencia_minima_percentual">Frequência mínima (%)</label>
       <input id="frequencia_minima_percentual" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"

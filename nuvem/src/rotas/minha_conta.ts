@@ -33,7 +33,10 @@ import { deleteCookie } from "hono/cookie";
 import { asc, eq, inArray } from "drizzle-orm";
 import type { Ambiente, Ctx } from "../nucleo/contexto.js";
 import { obterConfig } from "../config.js";
-import { formulario, usuarioLogado } from "../dependencias.js";
+import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencias.js";
+import * as cpf_certificado from "../servicos/cpf_certificado.js";
+import * as servico_participante from "../servicos/participante.js";
+import { participante as tabela_participante } from "../db/esquema/index.js";
 import {
   atribuicao,
   campus as tabela_campus,
@@ -135,7 +138,7 @@ type Digitado = {
 async function _tela(
   c: Ctx,
   usuario: UsuarioAtual,
-  extra: { erro_dados?: string; erro_email?: string; erro_funcionais?: string; erro_servidor?: string; digitado?: Digitado } = {},
+  extra: { erro_dados?: string; erro_email?: string; erro_funcionais?: string; erro_servidor?: string; erro_cpf?: string; digitado?: Digitado } = {},
 ): Promise<Response> {
   const tx = c.get("tx");
   const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id));
@@ -192,8 +195,21 @@ async function _tela(
       }
     : null;
 
+  // lote 4 (brigada): o servidor informa o próprio CPF para o certificado que a norma exige.
+  // A tela recebe só o fato e a máscara sem dígito (`cpf_certificado.ts`).
+  const [cpf_gravado] = servidor
+    ? await tx
+        .select({ cpf: tabela_participante.cpf })
+        .from(tabela_participante)
+        .where(eq(tabela_participante.servidor_id, servidor.id))
+    : [];
+  const cpf_certificado_tela = servidor
+    ? { tem: Boolean(cpf_gravado?.cpf), exibicao: cpf_certificado.exibir(cpf_gravado?.cpf ?? null) }
+    : null;
+
   return pagina(c, "paginas/minha_conta.html", usuario, {
     conta,
+    cpf_certificado_tela,
     perfis,
     servidor,
     postos,
@@ -214,6 +230,34 @@ async function _tela(
 rotas.get(CAMINHO, async (c) => {
   const usuario = await usuarioLogado(c);
   return _tela(c, usuario);
+});
+
+/**
+ * Lote 4 (brigada): o CPF do próprio servidor, para o certificado que a norma exige. Nunca volta
+ * à tela, nem na recusa; a trilha guarda só o fato.
+ */
+rotas.post(`${CAMINHO}/cpf`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const [conta] = await tx.select().from(tabela_usuario).where(eq(tabela_usuario.id, usuario.id));
+  const servidor =
+    conta?.servidor_id != null
+      ? ((await tx.query.servidor.findFirst({ where: eq(tabela_servidor.id, conta.servidor_id) })) ?? null)
+      : null;
+  if (!servidor) return _tela(c, usuario, { erro_cpf: "Só a conta ligada a um servidor informa o CPF aqui." });
+  let cpf: string | null | undefined;
+  try {
+    cpf = cpf_certificado.ler_campo(f.texto(CAMPO_CPF_CERTIFICADO), f.texto("apagar_cpf") === "1");
+  } catch (erro) {
+    if (erro instanceof cpf_certificado.CpfInvalido) return _tela(c, usuario, { erro_cpf: erro.message });
+    throw erro;
+  }
+  if (cpf === undefined) return _tela(c, usuario, { erro_cpf: "Digite o CPF, ou marque “apagar”." });
+  const participante = await servico_participante.de_servidor(tx, servidor, usuario);
+  const mudou = await cpf_certificado.definir_do_participante(tx, usuario, participante, cpf);
+  const frase = !mudou ? "CPF sem alteração." : cpf === null ? "CPF apagado." : "CPF gravado para o certificado.";
+  return redirecionar(c, comMensagem(CAMINHO, frase));
 });
 
 /** Nome, telefone e ramal. O e-mail é outro formulário: ele pede a senha. */

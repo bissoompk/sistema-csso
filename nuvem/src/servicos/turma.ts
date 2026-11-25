@@ -36,8 +36,10 @@ import {
   turma_instrutor as tabela_turma_instrutor,
   turma_presenca as tabela_presenca,
   turma_carga_dia as tabela_carga_dia,
+  inscricao_nota_disciplina as tabela_nota_disciplina,
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
+import { COM_DISCIPLINAS, type DisciplinaCarregada } from "./disciplinas.js";
 import {
   ESTADOS_INSCRICAO,
   INSCRICAO_OCUPA_VAGA,
@@ -107,6 +109,8 @@ export type ModeloCarregado = ModeloRegistro & { tags: TagRegistro[] };
 export type TreinamentoCarregado = TreinamentoRegistro & {
   modelo_vigente: ModeloCarregado | null;
   instrutor_padrao: AssinaturaRegistro | null;
+  // NUVEM (lote 4): as disciplinas da brigada (vazio = treinamento de nota única, 0 a 10)
+  disciplinas: DisciplinaCarregada[];
 };
 export type VinculoInstrutor = typeof tabela_turma_instrutor.$inferSelect & { instrutor: AssinaturaCarregada };
 export type TurmaCarregada = TurmaRegistro & {
@@ -118,13 +122,18 @@ export type TurmaCarregada = TurmaRegistro & {
   instrutores: VinculoInstrutor[];
   // NUVEM (lote 3): a carga de cada dia, quando informada (vazio = divisão automática)
   carga_dias: CargaDiaRegistro[];
+  // NUVEM (lote 4): o responsável pela formação escolhido (vazio = o instrutor que assina)
+  responsavel_formacao: AssinaturaCarregada | null;
 };
 export type CargaDiaRegistro = typeof tabela_carga_dia.$inferSelect;
 export type InscricaoCarregada = InscricaoRegistro & {
   turma: TurmaCarregada;
   participante: ParticipanteCarregado;
   presencas: PresencaRegistro[];
+  // NUVEM (lote 4): as notas por disciplina (brigada)
+  notas_disciplina: NotaDisciplinaRegistro[];
 };
+export type NotaDisciplinaRegistro = typeof tabela_nota_disciplina.$inferSelect;
 
 /** O `mapa_de_tags` exige as tags na ordem (ordem, id) — o `order_by` do Python. */
 export const COM_TAGS = {
@@ -132,7 +141,8 @@ export const COM_TAGS = {
 } as const;
 
 export const COM_TURMA = {
-  treinamento: { with: { modelo_vigente: { with: COM_TAGS }, instrutor_padrao: true } },
+  treinamento: { with: { modelo_vigente: { with: COM_TAGS }, instrutor_padrao: true, disciplinas: COM_DISCIPLINAS } },
+  responsavel_formacao: { with: { servidor: true } },
   campus: true,
   local_cadastrado: true,
   unidade_promotora: true,
@@ -146,6 +156,7 @@ export const COM_TURMA = {
 const COM_INSCRICAO = {
   participante: { with: COM_PARTICIPANTE },
   presencas: { orderBy: (p: typeof tabela_presenca, { asc: a }: { asc: typeof asc }) => [a(p.data)] },
+  notas_disciplina: true,
 } as const;
 
 export async function carregar_turma(tx: Executor, turma_id: number): Promise<TurmaCarregada | null> {
@@ -667,6 +678,15 @@ export async function editar_turma(
     const local = (await _local_escolhido(tx, local_final, valor("campus_id"), turma.local_id))!;
     campos = { ...campos, local: local.nome };
   }
+  // lote 4 (brigada): o responsável pela formação é um dos instrutores da turma
+  const responsavel = valor("responsavel_formacao_id");
+  if (responsavel !== null && responsavel !== turma.responsavel_formacao_id
+      && !turma.instrutores.some((v) => v.assinatura_instrutor_id === responsavel)) {
+    throw new RegraDaTurma("O responsável pela formação tem de ser um dos instrutores da turma (aba Turma, Instrutores).");
+  }
+  if ("local_atuacao_padrao" in campos && (campos.local_atuacao_padrao ?? "").length > 200) {
+    throw new RegraDaTurma("O local de atuação tem no máximo 200 caracteres.");
+  }
   _conferir_setor_na_edicao(usuario, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   await _conferir_unidade_promotora(tx, valor("unidade_promotora_id"), turma.unidade_promotora_id);
   const base = valor("data_base_vencimento");
@@ -746,6 +766,31 @@ export async function editar_turma(
     await carga_turma.gravar_por_dia(tx, usuario, turma, por_dia, { presencas_por_dia, antes: antes_por_dia });
   }
   return turma;
+}
+
+/**
+ * Lote 4 (brigada, art. 43, II): o local de atuação do brigadista, por inscrição. Nasce com o
+ * padrão da turma; o certificado já emitido guarda o que valia no dia.
+ */
+export async function definir_local_atuacao(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  inscricao: InscricaoCarregada,
+  bruto: string,
+): Promise<boolean> {
+  const novo = bruto.replace(/\s+/g, " ").trim() || null;
+  if (novo && novo.length > 200) throw new RegraDaTurma("O local de atuação tem no máximo 200 caracteres.");
+  if (novo === inscricao.local_atuacao) return false;
+  const antes = { local_atuacao: inscricao.local_atuacao };
+  await gravar_inscricao(tx, inscricao, { local_atuacao: novo });
+  await auditoria.registrar_diferencas(tx, {
+    entidade: "inscricao",
+    entidade_id: inscricao.id,
+    antes,
+    depois: { local_atuacao: novo },
+    usuario,
+  });
+  return true;
 }
 
 function eh_numero(v: string): boolean {
@@ -1193,6 +1238,8 @@ export async function inscrever(
     .insert(tabela_inscricao)
     .values({
       turma_id: turma.id,
+      // lote 4: o local de atuação do brigadista nasce com o padrão da turma
+      local_atuacao: turma.local_atuacao_padrao,
       participante_id: participante.id,
       situacao: "CONFIRMADA",
       origem: "INTERNA",
@@ -1210,7 +1257,7 @@ export async function inscrever(
     descricao: `${turma.codigo}: ${participante.identificador_publico}`,
     usuario,
   });
-  return { ...linha!, turma, participante, presencas: [] };
+  return { ...linha!, turma, participante, presencas: [], notas_disciplina: [] };
 }
 
 /**
@@ -1584,6 +1631,8 @@ export async function inscrever_se(
     .insert(tabela_inscricao)
     .values({
       turma_id: turma.id,
+      // lote 4: o local de atuação do brigadista nasce com o padrão da turma
+      local_atuacao: turma.local_atuacao_padrao,
       participante_id: pessoa.id,
       situacao: "CONFIRMADA",
       origem: "INTERNA",
@@ -1593,7 +1642,7 @@ export async function inscrever_se(
       confirmada_por: usuario.id,
     })
     .returning();
-  const inscricao: InscricaoCarregada = { ...linha!, turma, participante: pessoa, presencas: [] };
+  const inscricao: InscricaoCarregada = { ...linha!, turma, participante: pessoa, presencas: [], notas_disciplina: [] };
   await auditoria.registrar(tx, {
     entidade: "inscricao",
     entidade_id: inscricao.id,

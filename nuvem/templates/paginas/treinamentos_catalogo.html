@@ -128,9 +128,11 @@
           <p class="discreto">{{ t.topicos|join(' · ') }}</p>
         </details>
         {% endif %}</td>
-      <td data-coluna="Carga" class="mono curta">{{ t.carga_horaria_horas|carga(t.carga_unidade) }}</td>
+      <td data-coluna="Carga" class="mono curta">{{ t.carga_horaria_horas|carga(t.carga_unidade) }}
+        {% if t.disciplinas_dados|length %}<span class="quebra discreto">{{ t.disciplinas_dados|length }} disciplina(s)</span>{% endif %}</td>
       <td class="curta" data-coluna="Reciclagem">{% if t.expira %}<span class="mono">{{ t.validade_meses }}</span>
           <span class="discreto">({{ t.validade_rotulo }})</span>
+          {% if t.validade_origem %}<span class="quebra discreto">{{ 'norma' if t.validade_origem == 'NORMA' else 'política interna' }}{% if t.validade_citacao %}: {{ t.validade_citacao }}{% endif %}</span>{% endif %}
           {% else %}<span class="mono">0</span> <span class="selo">não vence</span>{% endif %}</td>
       <td data-coluna="Certificado">{{ t.modelo_vigente.rotulo if t.modelo_vigente else 'o genérico vigente' }}
         {% if t.modelo_vigente and not t.modelo_vigente.vigente %}
@@ -171,6 +173,27 @@
     {% endfor %}
   </table>
   </div>
+
+  {# lote 4: o Centro de Formação que promove a brigada (Portaria CBMMG nº 54/2020, Anexo I).
+     O certificado emitido guarda o que valia no dia. #}
+  <section class="cartao" id="centro-formacao" aria-labelledby="titulo-centro-formacao">
+    <h2 id="titulo-centro-formacao">Centro de formação da brigada</h2>
+    <p class="discreto">Sai no certificado de brigada: “promovido pelo Centro de Formação …, CNPJ …”.
+      Sem os dois, o certificado de brigada não é emitido.</p>
+    {% if editavel %}
+    <form method="post" action="/treinamentos/catalogo/centro-formacao" class="linha-campos">
+      <div class="campo"><label for="centro-nome">Nome do centro de formação</label>
+        <input id="centro-nome" name="nome" maxlength="200" value="{{ centro.nome or '' }}" aria-describedby="dica-centro-nome">
+        <span class="dica" id="dica-centro-nome">Só o nome: o certificado já escreve “promovido pelo Centro de Formação”.</span></div>
+      <div class="campo codigo"><label for="centro-cnpj">CNPJ</label>
+        <input id="centro-cnpj" name="cnpj" value="{{ centro_cnpj_exibicao }}" data-cnpj autocomplete="off"></div>
+      <div class="campo"><span class="rotulo-vago" aria-hidden="true">&nbsp;</span>
+        <button type="submit" class="secundario compacto">Gravar</button></div>
+    </form>
+    {% else %}
+    <p>{{ centro.nome or 'não informado' }} · CNPJ <span class="mono">{{ centro_cnpj_exibicao or 'não informado' }}</span></p>
+    {% endif %}
+  </section>
 
 </div>
 
@@ -240,6 +263,7 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
             'validade_meses': t.validade_meses, 'norma_referencia': t.norma_referencia,
             'conteudo_programatico': t.conteudo_programatico,
             'modelo_vigente_id': t.modelo_vigente_id, 'instrutor_padrao_id': t.instrutor_padrao_id,
+            'validade_origem': t.validade_origem or '', 'validade_citacao': t.validade_citacao or '',
             'obrigatorio': '1' if t.obrigatorio else '', 'ativo': '1' if t.ativo else ''} %}
 {% call ui.popup_cadastro('editar-trein-' ~ t.id, 'Editar · ' ~ t.codigo, '/treinamentos/catalogo/' ~ t.id, 'Salvar',
                           aberto=deste, erro=(erro_popup if deste else none), largo=true,
@@ -263,6 +287,43 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
     <div class="campo"><label for="{{ p }}-norma">Norma de referência</label>
       <input id="{{ p }}-norma" name="norma_referencia" value="{{ v.norma_referencia or '' }}"></div>
   </div>
+  {# lote 4: de onde vem o prazo da reciclagem — a norma (citada) ou a política interna #}
+  <div class="linha-campos">
+    <div class="campo"><label for="{{ p }}-validade-origem">A validade vem de</label>
+      <select id="{{ p }}-validade-origem" name="validade_origem">
+        <option value="">— não informado</option>
+        <option value="NORMA"{{ ' selected' if v.validade_origem == 'NORMA' }}>norma</option>
+        <option value="INSTITUCIONAL"{{ ' selected' if v.validade_origem == 'INSTITUCIONAL' }}>política interna</option>
+      </select></div>
+    <div class="campo"><label for="{{ p }}-validade-citacao">Citação da validade</label>
+      <input id="{{ p }}-validade-citacao" name="validade_citacao" value="{{ v.validade_citacao or '' }}"
+             placeholder="Portaria CBMMG nº 54/2020, art. 43"></div>
+  </div>
+  {% if t.carga_unidade == 'TEMPOS' %}
+  {# lote 4 (brigada): as disciplinas do verso do certificado; a soma tem de ser a carga #}
+  <fieldset class="campo disciplinas">
+    <legend>Disciplinas (nota de 0 a 100; mínimo de 70 em cada uma)</legend>
+    <input type="hidden" name="disc_presente" value="1">
+    <span class="dica">A soma dos tempos tem de ser a carga do treinamento. Depois da primeira turma,
+      os tempos não mudam; o nome se corrige até o primeiro certificado emitido.</span>
+    <table class="tabela compacta">
+      <thead><tr><th scope="col">Disciplina</th><th scope="col">Teórica (t)</th><th scope="col">Prática (t)</th></tr></thead>
+      <tbody>
+      {% for n in range(1, maximo_disciplinas + 1) %}
+      {% set dd = t.disciplinas_dados[n - 1] if t.disciplinas_dados|length >= n else none %}
+      {% set nome_n = (d['disc_nome_' ~ n] if deste else (dd.nome if dd else '')) %}
+      {% set teo_n = (d['disc_teorica_' ~ n] if deste else (dd.teorica if dd and dd.teorica else '')) %}
+      {% set pra_n = (d['disc_pratica_' ~ n] if deste else (dd.pratica if dd and dd.pratica else '')) %}
+      <tr>
+        <td><input name="disc_nome_{{ n }}" value="{{ nome_n }}" aria-label="nome da disciplina {{ n }}"></td>
+        <td><input class="campo-curto" name="disc_teorica_{{ n }}" value="{{ teo_n }}" inputmode="numeric" aria-label="tempos teóricos da disciplina {{ n }}"></td>
+        <td><input class="campo-curto" name="disc_pratica_{{ n }}" value="{{ pra_n }}" inputmode="numeric" aria-label="tempos práticos da disciplina {{ n }}"></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+  {% endif %}
   <div class="linha-campos">
     {# o modelo cadastrado para outro treinamento não entra na lista: o
        treinamento_id do modelo diz a que curso o layout serve, e NULL serve a

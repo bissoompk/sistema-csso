@@ -8,7 +8,8 @@
    o cadastro funcional é do próprio servidor ou da equipe da Sisa — cargo,
    função e lotação se corrigem aqui, e a conta sem servidor se liga aqui
    («Sou servidor da UFVJM»). Os perfis de acesso são da coordenação. Sem CPF,
-   RG ou data de nascimento: o perfil não os mostra.
+   RG ou data de nascimento: o perfil não os mostra. O lote 4 (brigada) abriu só a seção
+   em que o servidor INFORMA o CPF para o certificado — a tela mostra a máscara, nunca o número.
 
    As seções são `<details>`, sem JS. A primeira vem aberta; com erro num
    formulário, abre a seção de contato, onde o erro está. #}
@@ -23,7 +24,7 @@
 {% endblock %}
 
 {% set d = digitado or {} %}
-{% set erro_contato = erro_dados or erro_email %}
+{% set erro_contato = erro_dados or erro_email or erro_cpf %}
 
 {% macro resumo_secao(icone, titulo, extra='') %}
 <summary>
@@ -199,6 +200,29 @@
           </div>
         </form>
       </section>
+
+      {% if cpf_certificado_tela %}
+      {# lote 4 (brigada): o CPF só sai no documento do certificado cuja norma o exige
+         (Portaria CBMMG nº 54/2020); a tela nunca o mostra, só a máscara #}
+      <section aria-labelledby="t-cpf">
+        <h2 id="t-cpf" class="perfil-subtitulo">CPF para o certificado</h2>
+        <p class="sub">Só para o certificado que a norma exige (por exemplo, o de brigadista do
+          CBMMG). Ele sai apenas no documento desse certificado; nenhuma tela o mostra.
+          Hoje: <span class="mono">{{ cpf_certificado_tela.exibicao }}</span>.</p>
+        {% if erro_cpf %}<div class="aviso aviso-erro" role="alert">{{ erro_cpf }}</div>{% endif %}
+        <form method="post" action="/minha-conta/cpf">
+          <div class="campo">
+            <label for="cpf-proprio">{{ 'Novo CPF' if cpf_certificado_tela.tem else 'CPF' }}</label>
+            <input id="cpf-proprio" name="cpf_certificado" value="" inputmode="numeric" autocomplete="off"
+                   placeholder="000.000.000-00">
+          </div>
+          {% if cpf_certificado_tela.tem %}
+          <label class="discreto"><input type="checkbox" name="apagar_cpf" value="1"> apagar o CPF</label>
+          {% endif %}
+          <div class="acoes"><button type="submit" class="secundario">Gravar CPF</button></div>
+        </form>
+      </section>
+      {% endif %}
 
       {% if not servidor and externo %}
       <p class="perfil-nota">Esta conta é de quem não é servidor da UFVJM (terceirizado ou

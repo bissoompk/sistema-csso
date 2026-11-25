@@ -82,8 +82,9 @@ describe("sementes", () => {
       epi_motivo_recusa: 8,
       // NUVEM: o genérico "Padrão da casa" — a v1 (23 marcadores, superada,
       // para as segundas vias) e a v2 vigente (22, as frases inteiras)
-      certificado_modelo: 2,
-      certificado_modelo_tag: 45,
+      // lote 4: + "Brigada CBMMG v1" (21 tags do sistema + o texto fixo da citação legal)
+      certificado_modelo: 3,
+      certificado_modelo_tag: 67,
       // Acidentes: os catálogos da CAT/SP (natureza da lesão: Tabela 17 do eSocial)
       acidente_parte_corpo: 44,
       acidente_agente_causador: 199,
@@ -247,7 +248,8 @@ describe("sementes", () => {
     // genérico existente (mesmo superado) não é recriado
     await db.update(e.certificado_modelo).set({ vigente: false }).where(eq(e.certificado_modelo.id, modelo!.id));
     await naTransacao((tx) => semear(tx));
-    expect(await db.select().from(e.certificado_modelo)).toHaveLength(2);
+    // os dois "Padrão da casa" e o "Brigada CBMMG v1" (lote 4): nenhum renasce
+    expect(await db.select().from(e.certificado_modelo)).toHaveLength(3);
     await db.update(e.certificado_modelo).set({ vigente: true }).where(eq(e.certificado_modelo.id, modelo!.id));
   });
 });

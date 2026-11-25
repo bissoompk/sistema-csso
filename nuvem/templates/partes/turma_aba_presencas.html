@@ -12,7 +12,10 @@
     <span class="valor">{{ turma.frequencia_minima_percentual|num }}%</span></span>
   <span class="traco" aria-hidden="true"></span>
   <span class="medida"><span class="rotulo">Nota mínima</span>
-    {% if turma.nota_minima_aprovacao is not none %}
+    {% if disciplinas %}
+    {# lote 4 (brigada, art. 40): o mínimo vale em cada disciplina, de 0 a 100 #}
+    <span class="valor">{{ disciplinas[0].nota_minima|nota_brigada }} em cada disciplina</span>
+    {% elif turma.nota_minima_aprovacao is not none %}
     <span class="valor">{{ turma.nota_minima_aprovacao|num }}</span>
     {% else %}<span class="valor ausente">não avalia por nota</span>{% endif %}</span>
   <span class="traco" aria-hidden="true"></span>
@@ -76,7 +79,11 @@
             aria-label="Presença de todos em {{ dia|data }} (a coluna inteira)" title="Marcar ou desmarcar a coluna inteira"> {{ dia|data }}</label>
           {%- else %}{{ dia|data }}{% endif %}</th>{% endfor %}
         <th scope="col">{{ 'Tempos presentes' if turma.carga_unidade == 'TEMPOS' else 'Horas' }}</th><th scope="col">Frequência</th>
-        <th scope="col">Nota</th><th scope="col">Situação</th>
+        {% if disciplinas %}
+        {% for d in disciplinas %}<th scope="col">Nota · {{ d.nome }}</th>{% endfor %}
+        <th scope="col">Nota final</th>
+        {% else %}<th scope="col">Nota</th>{% endif %}
+        <th scope="col">Situação</th>
       </tr>
     </thead>
     {# A LINHA MORA EM `partes/linha_presenca.html`, e não aqui, porque ela é o

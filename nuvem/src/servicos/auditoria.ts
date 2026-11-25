@@ -276,6 +276,10 @@ export const ROTULO_EVENTO: Record<string, string> = {
   TURMA_CRIADA: "Turma criada",
   // lote 3 (24/11/2026): a carga de cada dia da turma (`carga_turma.ts`)
   TURMA_CARGA_POR_DIA: "Carga por dia da turma ajustada",
+  // lote 4 (25/11/2026): brigada — disciplinas do treinamento e a nota de cada uma
+  TREINAMENTO_DISCIPLINAS: "Disciplinas do treinamento alteradas",
+  NOTA_DISCIPLINA_LANCADA: "Nota de disciplina lançada",
+  BRIGADA_CENTRO_FORMACAO: "Centro de formação da brigada alterado",
   TURMA_EXCLUIDA: "Turma excluída",
   TURMA_RETIFICADA: "Turma concluída corrigida",
   TURMA_APURADA: "Turma apurada",

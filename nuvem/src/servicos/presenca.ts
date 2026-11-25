@@ -26,8 +26,10 @@ import {
   agora_utc,
   certificado as tabela_certificado,
   inscricao as tabela_inscricao,
+  inscricao_nota_disciplina as tabela_nota_disciplina,
   turma_presenca as tabela_presenca,
 } from "../db/esquema/index.js";
+import * as brigada from "../dominio/brigada.js";
 import {
   INSCRICAO_COM_RESULTADO,
   INSCRICAO_FORA_DA_APURACAO,
@@ -57,9 +59,30 @@ import {
   type TurmaRegistro,
 } from "./turma.js";
 
+// lote 4 (brigada): "85%", "77,5%" na tela; "77,5" no campo
+filtro("nota_brigada", (v: string | null | undefined) => brigada.exibir_nota(v));
+filtro("nota_campo", (v: string | null | undefined) => (v === null || v === undefined ? "" : brigada.exibir_nota(v).replace(/%$/, "")));
+
 export const PRESENCA_LANCADA = "PRESENCA_LANCADA";
 export const PRESENCA_EM_LOTE = "PRESENCA_EM_LOTE";
 export const NOTA_LANCADA = "NOTA_LANCADA";
+// lote 4: a nota de cada disciplina (brigada, 0 a 100)
+export const NOTA_DISCIPLINA_LANCADA = "NOTA_DISCIPLINA_LANCADA";
+
+/** A turma se avalia por disciplina (brigada)? O treinamento tem disciplinas cadastradas. */
+export function por_disciplina(turma: TurmaCarregada): boolean {
+  return (turma.treinamento.disciplinas ?? []).length > 0;
+}
+
+/** A nota lançada da disciplina, ou null. */
+export function nota_da_disciplina(inscricao: InscricaoCarregada, disciplina_id: number): string | null {
+  return (inscricao.notas_disciplina ?? []).find((n) => n.disciplina_id === disciplina_id)?.nota ?? null;
+}
+
+/** As disciplinas da turma ainda sem nota para a inscrição. */
+export function disciplinas_sem_nota(turma: TurmaCarregada, inscricao: InscricaoCarregada) {
+  return turma.treinamento.disciplinas.filter((d) => nota_da_disciplina(inscricao, d.id) === null);
+}
 export const TURMA_APURADA = "TURMA_APURADA";
 export const RESULTADO_RETIFICADO = "RESULTADO_RETIFICADO";
 
@@ -225,7 +248,16 @@ export function avaliar(turma: TurmaCarregada, inscricao: InscricaoCarregada): A
       `frequência de ${numero(frequencia)}% abaixo do mínimo de ${numero(turma.frequencia_minima_percentual)}%`,
     );
   }
-  if (turma.nota_minima_aprovacao !== null) {
+  if (por_disciplina(turma)) {
+    // brigada (art. 40): o mínimo vale em CADA disciplina; a nota mínima da turma não se aplica
+    for (const d of turma.treinamento.disciplinas) {
+      const nota = nota_da_disciplina(inscricao, d.id);
+      if (nota === null) motivos.push(`nota de ${d.nome} não lançada`);
+      else if (brigada.comparar_nota(nota, d.nota_minima) < 0) {
+        motivos.push(`nota de ${d.nome} ${brigada.exibir_nota(nota)} abaixo do mínimo de ${brigada.exibir_nota(d.nota_minima)}`);
+      }
+    }
+  } else if (turma.nota_minima_aprovacao !== null) {
     if (inscricao.nota_final === null) {
       motivos.push(`nota não lançada, e a turma exige no mínimo ${numero(turma.nota_minima_aprovacao)}`);
     } else if (comparar(inscricao.nota_final, turma.nota_minima_aprovacao) < 0) {
@@ -250,6 +282,12 @@ export class LinhaDaGrade {
   get presente_texto(): string {
     return carga.exibir_base(this.presente_base, T.unidade(this.inscricao.turma));
   }
+  /** lote 4 (brigada): a nota lançada de cada disciplina, por id (`null` = sem nota) */
+  get notas_por_disciplina(): Record<number, string | null> {
+    return Object.fromEntries(
+      (this.inscricao.turma.treinamento.disciplinas ?? []).map((d) => [d.id, nota_da_disciplina(this.inscricao, d.id)]),
+    );
+  }
   get abaixo_do_minimo(): boolean {
     return !this.avaliacao.aprovado;
   }
@@ -261,13 +299,21 @@ export class LinhaDaGrade {
    */
   get resumo(): string {
     const turma = this.inscricao.turma;
-    const falta_nota = turma.nota_minima_aprovacao !== null && this.inscricao.nota_final === null;
+    const disciplinas = por_disciplina(turma);
+    const falta_nota = disciplinas
+      ? disciplinas_sem_nota(turma, this.inscricao).length > 0
+      : turma.nota_minima_aprovacao !== null && this.inscricao.nota_final === null;
     const sem_presenca = !I.compareceu(this.inscricao);
     if (sem_presenca && falta_nota) return "Faltam presença e nota";
     if (sem_presenca) return "Falta presença";
     if (this.frequencia_baixa) return `Frequência abaixo de ${numero(turma.frequencia_minima_percentual)}%`;
-    if (falta_nota) return "Falta a nota";
-    if (turma.nota_minima_aprovacao !== null && comparar(this.inscricao.nota_final!, turma.nota_minima_aprovacao) < 0) {
+    if (falta_nota) return disciplinas ? "Falta nota de disciplina" : "Falta a nota";
+    if (disciplinas) {
+      const abaixo = turma.treinamento.disciplinas.find(
+        (d) => brigada.comparar_nota(nota_da_disciplina(this.inscricao, d.id)!, d.nota_minima) < 0,
+      );
+      if (abaixo) return `Nota de ${abaixo.nome} abaixo de ${brigada.exibir_nota(abaixo.nota_minima)}`;
+    } else if (turma.nota_minima_aprovacao !== null && comparar(this.inscricao.nota_final!, turma.nota_minima_aprovacao) < 0) {
       return `Nota abaixo de ${numero(turma.nota_minima_aprovacao)}`;
     }
     return INSCRICAO_COM_RESULTADO.has(this.inscricao.situacao) ? "Critérios atendidos" : "Em dia";
@@ -701,6 +747,8 @@ export interface Folha {
   quantidades: ReadonlyMap<string, string>;
   /** nota digitada por inscrição; `null` é "apagar a nota" (pedido explícito) */
   notas: ReadonlyMap<number, string | null>;
+  /** lote 4 (brigada): a nota de cada disciplina, pela chave `"<inscricao_id>_<disciplina_id>"`; `null` apaga */
+  notas_disciplina?: ReadonlyMap<string, string | null>;
   motivo?: string | null;
 }
 
@@ -804,6 +852,19 @@ export async function salvar_folha(
     );
     if (feito) saida.notas += 1;
   }
+  for (const inscricao of inscricoes) {
+    for (const d of turma.treinamento.disciplinas ?? []) {
+      const chave = `${inscricao.id}_${d.id}`;
+      if (!folha.notas_disciplina?.has(chave)) continue;
+      const nota = folha.notas_disciplina.get(chave)!;
+      const anterior = nota_da_disciplina(inscricao, d.id);
+      if (nota === anterior || (nota !== null && anterior !== null && brigada.comparar_nota(nota, anterior) === 0)) continue;
+      const feito = await tentar(`${quem(inscricao)}, nota de ${d.nome}`, (sp) =>
+        lancar_nota_disciplina(sp, usuario, inscricao, d.id, nota, { motivo: folha.motivo }),
+      );
+      if (feito) saida.notas += 1;
+    }
+  }
   return saida;
 }
 
@@ -893,6 +954,9 @@ export async function lancar_nota(
 ): Promise<InscricaoCarregada> {
   const retificacao = await _exigir_lancamento(tx, usuario, inscricao, opcoes.motivo);
   _exigir_inscricao_lancavel(inscricao);
+  if (por_disciplina(inscricao.turma)) {
+    throw new RegraDaTurma("Esta turma tem nota por disciplina (0 a 100): lance a nota de cada disciplina.");
+  }
   if (nota !== null && !(comparar(nota, "0") >= 0 && comparar(nota, "10") <= 0)) {
     throw new RegraDaTurma("Nota: use um valor entre 0 e 10.");
   }
@@ -908,6 +972,72 @@ export async function lancar_nota(
       `${inscricao.turma.codigo} · ${inscricao.participante.identificador_publico}: ` +
       `nota ${numero(anterior)} -> ${numero(nota)}`,
     campo: "nota_final",
+    valor_anterior: anterior,
+    valor_novo: nota,
+    comentario: retificacao,
+    usuario,
+  });
+  if (INSCRICAO_COM_RESULTADO.has(inscricao.situacao)) {
+    await _reapurar(tx, usuario, inscricao, retificacao ?? "");
+  }
+  return inscricao;
+}
+
+/**
+ * A nota de UMA disciplina (brigada), de 0 a 100. `null` apaga a nota lançada. Com todas as
+ * disciplinas lançadas, `nota_final` passa a ser a média simples delas (art. 42, § 3º), na escala
+ * 100; faltando alguma, a nota final fica vazia.
+ */
+export async function lancar_nota_disciplina(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  inscricao: InscricaoCarregada,
+  disciplina_id: number,
+  nota: string | null,
+  opcoes: { motivo?: string | null } = {},
+): Promise<InscricaoCarregada> {
+  const retificacao = await _exigir_lancamento(tx, usuario, inscricao, opcoes.motivo);
+  _exigir_inscricao_lancavel(inscricao);
+  // "85" e "85,0" são 85.00: a nota se grava sempre com duas casas
+  try {
+    nota = nota === null ? null : brigada.ler_nota(nota);
+  } catch (erro) {
+    if (erro instanceof brigada.NotaInvalida) throw new RegraDaTurma(erro.message);
+    throw erro;
+  }
+  const disciplina = inscricao.turma.treinamento.disciplinas.find((d) => d.id === disciplina_id);
+  if (!disciplina) throw new RegraDaTurma("Esta disciplina não é do treinamento da turma.");
+  const anterior = nota_da_disciplina(inscricao, disciplina_id);
+  if (anterior === nota || (anterior !== null && nota !== null && brigada.comparar_nota(anterior, nota) === 0)) return inscricao;
+  const notas = (inscricao.notas_disciplina ?? []).filter((n) => n.disciplina_id !== disciplina_id);
+  if (nota === null) {
+    await tx
+      .delete(tabela_nota_disciplina)
+      .where(and(eq(tabela_nota_disciplina.inscricao_id, inscricao.id), eq(tabela_nota_disciplina.disciplina_id, disciplina_id)));
+  } else {
+    const [gravada] = await tx
+      .insert(tabela_nota_disciplina)
+      .values({ inscricao_id: inscricao.id, disciplina_id, nota, lancada_por: usuario.id })
+      .onConflictDoUpdate({
+        target: [tabela_nota_disciplina.inscricao_id, tabela_nota_disciplina.disciplina_id],
+        set: { nota, lancada_por: usuario.id, lancada_em: agora_utc() },
+      })
+      .returning();
+    notas.push(gravada!);
+  }
+  inscricao.notas_disciplina = notas;
+  const completas = inscricao.turma.treinamento.disciplinas.every((d) => notas.some((n) => n.disciplina_id === d.id));
+  const final = completas ? brigada.media(notas.map((n) => n.nota)) : null;
+  await gravar_inscricao(tx, inscricao, { nota_escala: 100, nota_final: final });
+  await auditoria.registrar(tx, {
+    entidade: "inscricao",
+    entidade_id: inscricao.id,
+    tipo_evento: NOTA_DISCIPLINA_LANCADA,
+    descricao:
+      `${inscricao.turma.codigo} · ${inscricao.participante.identificador_publico}: ` +
+      `${disciplina.nome} ${brigada.exibir_nota(anterior)} -> ${brigada.exibir_nota(nota)}` +
+      ` (nota final ${brigada.exibir_nota(final)})`,
+    campo: "nota_disciplina",
     valor_anterior: anterior,
     valor_novo: nota,
     comentario: retificacao,

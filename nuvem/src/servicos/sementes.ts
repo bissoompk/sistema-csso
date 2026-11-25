@@ -57,6 +57,12 @@ import {
 import { MATRIZ_PERFIS, PERMISSOES, PERMISSOES_RETIRADAS, modulo_da_permissao } from "./rbac.js";
 import * as auditoria from "./auditoria.js";
 import {
+  CITACAO_LEGAL_PADRAO,
+  MAPA_BRIGADA,
+  MARCADOR_CITACAO_LEGAL,
+  MODELO_BRIGADA_ARQUIVO,
+  MODELO_BRIGADA_NOME,
+  OBRIGATORIOS_BRIGADA,
   MAPA_SUGERIDO,
   MODELO_PADRAO_ARQUIVO,
   MODELO_PADRAO_NOME,
@@ -824,6 +830,59 @@ export async function semear_modelo_certificado(tx: Executor): Promise<void> {
   await promover_padrao_v2(tx);
 }
 
+/**
+ * Lote 4 (25/11/2026): o modelo "Brigada CBMMG v1" (Portaria CBMMG nº 54/2020, Anexo I), com o
+ * dicionário completo e a citação legal da carga como TEXTO FIXO — editável na ficha do modelo.
+ * Genérico (sem treinamento), mas nunca escolhido sozinho: o catálogo o aponta no treinamento de
+ * brigada (`modelo_da_turma` deixa de fora quem tem o quadro de disciplinas). Só nasce uma vez:
+ * o que o setor alterou ou aposentou não é recriado.
+ */
+export async function criar_modelo_brigada(tx: Executor, d: { criado_por?: number | null } = {}) {
+  const [modelo] = await tx
+    .insert(certificado_modelo)
+    .values({
+      treinamento_id: null,
+      nome: MODELO_BRIGADA_NOME,
+      arquivo: MODELO_BRIGADA_ARQUIVO,
+      arquivo_sha256: sha256_do_modelo(MODELO_BRIGADA_ARQUIVO),
+      versao: 1,
+      vigente: true,
+      observacao: "Certificado de brigada orgânica (Portaria CBMMG nº 54/2020, art. 43, II, e Anexo I): frente e verso.",
+      criado_por: d.criado_por ?? null,
+    })
+    .returning();
+  let ordem = 1;
+  for (const marcador of MAPA_BRIGADA) {
+    await tx.insert(certificado_modelo_tag).values({
+      modelo_id: modelo!.id,
+      marcador,
+      campo: marcador,
+      ordem: ordem++,
+      obrigatorio: OBRIGATORIOS_BRIGADA.includes(marcador),
+    });
+  }
+  await tx.insert(certificado_modelo_tag).values({
+    modelo_id: modelo!.id,
+    marcador: MARCADOR_CITACAO_LEGAL,
+    campo: "",
+    tipo: "TEXTO_FIXO",
+    texto_fixo: CITACAO_LEGAL_PADRAO,
+    rotulo: "Citação legal da carga",
+    ordem: ordem++,
+    obrigatorio: true,
+  });
+  return modelo!;
+}
+
+export async function semear_modelo_brigada(tx: Executor): Promise<void> {
+  const [ja] = await tx
+    .select({ id: certificado_modelo.id })
+    .from(certificado_modelo)
+    .where(eq(certificado_modelo.nome, MODELO_BRIGADA_NOME))
+    .limit(1);
+  if (!ja && marcadores_do_arquivo(MODELO_BRIGADA_ARQUIVO)) await criar_modelo_brigada(tx);
+}
+
 /** Tudo, na ordem do Python. Quem chama dá o COMMIT (ver o cabeçalho). */
 /**
  * Catálogos do módulo de acidentes (CAT/SP): partes do corpo, agentes
@@ -859,5 +918,6 @@ export async function semear(tx: Executor): Promise<void> {
   await semear_emissores(tx);
   await semear_epi(tx);
   await semear_modelo_certificado(tx);
+  await semear_modelo_brigada(tx);
   await semear_acidentes(tx);
 }

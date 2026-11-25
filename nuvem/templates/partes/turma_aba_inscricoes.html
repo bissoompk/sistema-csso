@@ -291,6 +291,19 @@
             <div class="acoes"><button type="submit" class="secundario compacto">Gravar</button></div>
           </form>
         {% endcall %}
+        {% if turma.carga_unidade == 'TEMPOS' %}
+        {#- lote 4 (brigada): o local de atuação, que sai no certificado -#}
+        {% call ui.popup_gaveta('local-atuacao-' ~ i.id, ('Local ✓' if i.local_atuacao else 'Local de atuação'),
+                                'Local de atuação · ' ~ (i.participante.nome_exibicao if nominal else quem.nome),
+                                nota=(i.local_atuacao or 'não informado'), largo=false) %}
+          <form method="post" action="/turmas/{{ turma.id }}/inscricoes/{{ i.id }}/local-atuacao">
+            <div class="campo"><label for="local-atuacao-campo-{{ i.id }}">Local de atuação do brigadista</label>
+              <input id="local-atuacao-campo-{{ i.id }}" name="local_atuacao" maxlength="200"
+                     value="{{ i.local_atuacao or '' }}" placeholder="{{ turma.local_atuacao_padrao or 'Campus JK — Diamantina' }}"></div>
+            <div class="acoes"><button type="submit" class="secundario compacto">Gravar</button></div>
+          </form>
+        {% endcall %}
+        {% endif %}
         {% endif -%}
       </td>
       {% endif %}

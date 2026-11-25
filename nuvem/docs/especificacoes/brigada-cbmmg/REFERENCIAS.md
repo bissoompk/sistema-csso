@@ -35,3 +35,19 @@ mudou: releia os dispositivos abaixo antes de mexer no modelo.
 - **"Cada tempo (t) equivale a 50 minutos":** sai só no verso do certificado de brigada. É o
   único lugar do sistema em que essa equivalência aparece escrita. Nada é convertido nem
   exibido em horas.
+
+## Onde está no sistema (lote 4)
+
+| O quê | Onde |
+|---|---|
+| Disciplinas do treinamento (agrupador + linhas teórica/prática, em tempos) | `treinamento_disciplina`, `treinamento_disciplina_linha`; tela: Catálogo, editar o treinamento em tempos. Travam (tipo e tempos) depois da primeira turma; o nome se corrige até o primeiro certificado |
+| Nota de cada disciplina (0 a 100) e nota final (média simples, duas casas) | `inscricao_nota_disciplina`; `inscricao.nota_final` com `nota_escala = 100`; tela: aba Presenças da turma |
+| Profissão e credenciamento CBMMG do instrutor | `assinatura_instrutor.profissao` e `credenciamento_cbmmg`; tela: Assinaturas |
+| Centro de Formação (nome e CNPJ) | parâmetros `brigada.centro_formacao_nome` e `brigada.centro_formacao_cnpj`; tela: Catálogo, "Centro de formação da brigada" |
+| Endereço completo do local do curso | cadastro de Locais (`local_treinamento.endereco`) + cidade/UF do campus da turma |
+| Local de atuação do brigadista | `inscricao.local_atuacao` (padrão: `turma.local_atuacao_padrao`) |
+| Responsável pela formação | `turma.responsavel_formacao_id` (vazio = o primeiro instrutor que assina) |
+| Origem e citação da validade | `treinamento.validade_origem` (NORMA / INSTITUCIONAL = "política interna") e `validade_citacao` |
+| Modelo "Brigada CBMMG v1" | `modelos-docx/certificados/certificado_brigada_cbmmg_v1.docx`, gerado por `ferramentas/gerar-certificado-brigada.mjs` a partir de `modelos-docx/origem/Modelo_Certificado_Brigadista_Organico_CSSO.docx`; a citação legal da carga é o texto fixo `citacao_legal`, editável na ficha do modelo |
+| PDF da brigada (frente e verso) | `src/servicos/certificado_pdf.ts`, `textos_da_brigada` e `desenhar_brigada` |
+| Paridade .docx × PDF | `testes/certificado_brigada.test.ts` |
