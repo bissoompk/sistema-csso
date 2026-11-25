@@ -178,7 +178,7 @@ export async function povoar_treinamentos(tx: Executor, ctx: ContextoPovoar): Pr
   const lista = await inscritos(andamento, ["3010044", "3010055", "3010066"]);
   await servico_turma.mudar_situacao(tx, coord, andamento, "EM_ANDAMENTO");
   for (const inscricao of lista.slice(0, 2)) {
-    await presenca.lancar_presenca(tx, coord, inscricao, { data: andamento.data_inicio, presente: true, horas: "16" });
+    await presenca.lancar_presenca(tx, coord, inscricao, { data: andamento.data_inicio, presente: true, quantidade: 16 * 60 });
   }
 
   // 4) CONCLUIDA com certificados emitidos — o caminho inteiro
@@ -199,7 +199,7 @@ export async function povoar_treinamentos(tx: Executor, ctx: ContextoPovoar): Pr
     [turma_lista[0]!, "9.5"],
     [turma_lista[1]!, "8.0"],
   ] as const) {
-    await presenca.lancar_presenca(tx, coord, inscricao, { data: concluida.data_inicio, presente: true, horas: "8" });
+    await presenca.lancar_presenca(tx, coord, inscricao, { data: concluida.data_inicio, presente: true, quantidade: 8 * 60 });
     await presenca.lancar_nota(tx, coord, inscricao, nota);
   }
   // o terceiro nunca compareceu: a apuração o fecha como ausente/reprovado

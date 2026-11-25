@@ -124,6 +124,7 @@ import {
   turma,
   turma_instrutor,
   turma_presenca,
+  turma_carga_dia,
 } from './treinamento';
 
 // ---------------------------------------------------------------------
@@ -608,6 +609,12 @@ export const turma_relacoes = relations(turma, ({ one, many }) => ({
   // ordem do Python: turma_instrutor.ordem
   instrutores: many(turma_instrutor, { relationName: 'turma_instrutores' }),
   inscricoes: many(inscricao, { relationName: 'turma_inscricoes' }),
+  // NUVEM (lote 3): a carga de cada dia, quando informada
+  carga_dias: many(turma_carga_dia, { relationName: 'turma_carga_dias' }),
+}));
+
+export const turma_carga_dia_relacoes = relations(turma_carga_dia, ({ one }) => ({
+  turma: one(turma, { fields: [turma_carga_dia.turma_id], references: [turma.id], relationName: 'turma_carga_dias' }),
 }));
 
 export const turma_instrutor_relacoes = relations(turma_instrutor, ({ one }) => ({

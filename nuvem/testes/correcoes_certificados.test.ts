@@ -585,7 +585,8 @@ describe("M37: catálogo", () => {
     });
     await entrar(cliente, "coordenador_csso");
     const tela = (await cliente.get("/treinamentos/catalogo")).text;
-    expect(tela).toContain("16,5 h");
+    // lote 3 (T13): a carga sai pela função única, em horas e minutos
+    expect(tela).toContain("16h30");
     expect(tela).not.toContain("16.5");
     expect(tela).toContain("(meses, 0 = não vence)");
     expect(tela).toContain("Segurança em Instalações e Serviços em Eletricidade — NR-10");

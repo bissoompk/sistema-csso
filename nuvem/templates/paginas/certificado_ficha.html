@@ -244,8 +244,8 @@
         <dd>{{ contexto.treinamento_norma }}</dd>
         {% endif %}
 
-        <dt>Carga horária</dt>
-        <dd class="mono">{{ contexto.carga_horaria|num }} h</dd>
+        <dt>Carga</dt>
+        <dd class="mono">{{ contexto|carga_congelada }}</dd>
 
         <dt>Período</dt>
         <dd>{{ contexto.turma_data_inicio|data }}

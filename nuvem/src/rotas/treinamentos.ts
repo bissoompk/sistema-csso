@@ -5,6 +5,7 @@
  * As três telas seguem o padrão de `/catalogos`: lista com edição em linha,
  * formulário de cadastro embaixo e diff campo a campo na auditoria.
  */
+import * as carga from "../dominio/carga.js";
 import { Hono } from "hono";
 import { exigir_acesso_ao_modulo } from "../servicos/acesso_modulo.js";
 import { and, asc, count, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
@@ -97,10 +98,25 @@ export const VINCULOS_INSTRUTOR: [string, string][] = [
 ];
 
 /** Aceita 8, 8,5 e 8.5 — a vírgula é o separador que o setor digita. */
-function _horas(valor: string): string | null {
-  const horas = normalizar_decimal((valor ?? "").trim().replace(",", "."));
-  if (horas === null) return null;
-  return Number(horas) > 0 ? horas : null;
+/**
+ * Lote 3: a carga na unidade escolhida ("8", "4,5", "4h30"; tempos inteiros), no texto da
+ * coluna. Devolve a frase da recusa quando não serve.
+ */
+function _carga_na_unidade(valor: string, unidade: carga.Unidade): { valor: string } | { erro: string } {
+  try {
+    const v = carga.ler_carga(valor, unidade);
+    if (v !== null) return { valor: v };
+  } catch (e) {
+    if (!(e instanceof carga.CargaInvalida)) throw e;
+    // a regra dos 6 minutos tem frase própria; o resto é a mesma recusa de sempre
+    if (/minuto/.test(e.message)) return { erro: e.message };
+  }
+  return {
+    erro:
+      unidade === "TEMPOS"
+        ? "Carga em tempos inválida: informe um número inteiro de tempos maior que zero."
+        : "Carga horária inválida: informe um número maior que zero (8, 4,5 ou 4h30).",
+  };
 }
 
 function _inteiro(valor: string, minimo = 0): number | null {
@@ -312,6 +328,7 @@ rotas.post(CATALOGO, async (c) => {
     codigo_curto: f.texto("codigo_curto"),
     nome: f.texto("nome"),
     carga_horaria_horas: f.texto("carga_horaria_horas"),
+    carga_unidade: f.texto("carga_unidade") || "HORAS",
     // NUVEM: vazio no cadastro é 0 (não expira), o default do formulário
     validade_meses: f.texto("validade_meses").trim() || "0",
     norma_referencia: f.texto("norma_referencia"),
@@ -329,8 +346,11 @@ rotas.post(CATALOGO, async (c) => {
       "Código inválido: use letras maiúsculas, números, ponto, hífen ou sublinhado (NR-35, PRIM_SOCORROS).",
     );
   }
-  const horas = _horas(digitado.carga_horaria_horas);
-  if (horas === null) return recusar("Carga horária inválida: informe um número maior que zero.");
+  if (!(carga.UNIDADES as readonly string[]).includes(digitado.carga_unidade)) return recusar("Escolha a unidade da carga: horas ou tempos.");
+  const unidade = carga.unidade_de(digitado.carga_unidade);
+  const lida = _carga_na_unidade(digitado.carga_horaria_horas, unidade);
+  if ("erro" in lida) return recusar(lida.erro);
+  const horas = lida.valor;
   const meses = _inteiro(digitado.validade_meses);
   if (meses === null) return recusar("Validade inválida: informe meses inteiros, ou 0 para não expira.");
   const [ja] = await tx
@@ -357,6 +377,7 @@ rotas.post(CATALOGO, async (c) => {
       codigo_curto,
       nome: nome_limpo,
       carga_horaria_horas: horas,
+      carga_unidade: unidade,
       validade_meses: meses,
       norma_referencia: texto_ou_nulo(digitado.norma_referencia),
       conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),
@@ -371,7 +392,7 @@ rotas.post(CATALOGO, async (c) => {
     tipo_evento: "TREINAMENTO_CRIADO",
     descricao:
       `${treinamento!.codigo} · ${treinamento!.nome} · ` +
-      `${horas}h · validade ${Treinamento.validade_rotulo(treinamento!)} · código curto ${treinamento!.codigo_curto}`,
+      `${carga.exibir(horas, unidade)} · validade ${Treinamento.validade_rotulo(treinamento!)} · código curto ${treinamento!.codigo_curto}`,
     usuario,
   });
   // o nome, que é o que a pessoa digitou; o código gerado sozinho não dizia nada
@@ -390,6 +411,7 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
     nome: f.texto("nome"),
     codigo_curto: f.texto("codigo_curto"),
     carga_horaria_horas: f.texto("carga_horaria_horas"),
+    carga_unidade: f.texto("carga_unidade"),
     validade_meses: f.texto("validade_meses"),
     norma_referencia: f.texto("norma_referencia"),
     conteudo_programatico: f.texto("conteudo_programatico"),
@@ -400,8 +422,28 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
   };
   const recusar = (mensagem: string) =>
     _tela_catalogo(c, usuario, { erro: mensagem, digitado, editando_id: treinamento_id });
-  const horas = _horas(digitado.carga_horaria_horas);
-  if (horas === null) return recusar("Carga horária inválida: informe um número maior que zero.");
+  const [atual] = await tx.select().from(tabela_treinamento).where(eq(tabela_treinamento.id, treinamento_id));
+  if (!atual) return redirecionar(c, CATALOGO);
+  // lote 3: a unidade não muda depois que o treinamento tem turma — a presença e os
+  // certificados dessas turmas estão contados nela. Sem o campo, fica a de hoje.
+  const unidade_pedida = digitado.carga_unidade || atual.carga_unidade;
+  if (!(carga.UNIDADES as readonly string[]).includes(unidade_pedida)) return recusar("Escolha a unidade da carga: horas ou tempos.");
+  const unidade = carga.unidade_de(unidade_pedida);
+  if (unidade !== atual.carga_unidade) {
+    const [{ n } = { n: 0 }] = await tx
+      .select({ n: count() })
+      .from(tabela_turma)
+      .where(eq(tabela_turma.treinamento_id, treinamento_id));
+    if (Number(n) > 0) {
+      return recusar(
+        `A unidade da carga não muda depois que o treinamento tem turma (${n}): a presença e os certificados ` +
+          "dessas turmas estão contados nela. Para outra unidade, cadastre outro treinamento.",
+      );
+    }
+  }
+  const lida = _carga_na_unidade(digitado.carga_horaria_horas, unidade);
+  if ("erro" in lida) return recusar(lida.erro);
+  const horas = lida.valor;
   const meses = _inteiro(digitado.validade_meses);
   if (meses === null) return recusar("Validade inválida: informe meses inteiros, ou 0 para não expira.");
   const nome_limpo = digitado.nome.trim();
@@ -436,6 +478,7 @@ rotas.post(`${CATALOGO}/:treinamento_id{[0-9]+}`, async (c) => {
       // a mudança vai para a trilha (CAMPO_ALTERADO, por `salvar_com_diff`)
       codigo_curto,
       carga_horaria_horas: horas,
+      carga_unidade: unidade,
       validade_meses: meses,
       norma_referencia: texto_ou_nulo(digitado.norma_referencia),
       conteudo_programatico: texto_ou_nulo(digitado.conteudo_programatico),

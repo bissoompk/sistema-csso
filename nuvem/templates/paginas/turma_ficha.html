@@ -110,7 +110,7 @@
           {%- if turma.data_fim != turma.data_inicio %} a {{ turma.data_fim|data }}{% endif %}
           {%- if turma|horario_turma %}, {{ turma|horario_turma }}{% endif %}</span>
         <span class="ponto">·</span>
-        <span class="mono">{{ turma.carga_efetiva|num }} h</span>
+        <span class="mono">{{ turma|carga_turma }}</span>
         {{ ui.pilula_turma(turma.situacao) }}
       </p>
     </div>
@@ -222,10 +222,10 @@
       <input id="r-data_inicio" type="date" name="data_inicio" value="{{ turma.data_inicio }}" required></div>
     <div class="campo"><label for="r-data_fim">Término</label>
       <input id="r-data_fim" type="date" name="data_fim" value="{{ turma.data_fim }}" required></div>
-    <div class="campo"><label for="r-carga">Carga horária da turma</label>
+    <div class="campo"><label for="r-carga">Carga da turma ({{ 'tempos' if turma.carga_unidade == 'TEMPOS' else 'horas' }})</label>
       <input id="r-carga" name="carga_horaria_horas" inputmode="decimal" autocomplete="off"
-             value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
-             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
+             value="{{ turma.carga_horaria_horas|carga_campo_coluna(turma.carga_unidade) if turma.carga_horaria_horas is not none else '' }}"
+             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|carga(turma.carga_unidade) }})"
              aria-describedby="r-dica-carga">
       <span class="dica" id="r-dica-carga">Mudá-la recalcula a frequência de cada inscrito.</span></div>
   </div>
@@ -278,13 +278,16 @@
     <div class="campo"><label for="data_fim">Término</label>
       <input id="data_fim" type="date" name="data_fim"
              value="{{ turma.data_fim }}" required></div>
-    <div class="campo"><label for="carga">Carga horária da turma</label>
-      <input id="carga" name="carga_horaria_horas" inputmode="decimal" autocomplete="off"
-             value="{{ turma.carga_horaria_horas if turma.carga_horaria_horas is not none else '' }}"
-             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|num }} h)"
+    <div class="campo"><label for="carga">Carga da turma ({{ 'tempos' if turma.carga_unidade == 'TEMPOS' else 'horas' }})</label>
+      <input id="carga" name="carga_horaria_horas" inputmode="{{ 'numeric' if turma.carga_unidade == 'TEMPOS' else 'decimal' }}" autocomplete="off"
+             value="{{ turma.carga_horaria_horas|carga_campo_coluna(turma.carga_unidade) if turma.carga_horaria_horas is not none else '' }}"
+             placeholder="usa a do catálogo ({{ turma.treinamento.carga_horaria_horas|carga(turma.carga_unidade) }})"
              aria-describedby="dica-carga">
-      <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.</span></div>
+      <span class="dica" id="dica-carga">É sobre ela que a frequência é calculada.
+        {%- if turma.carga_unidade == 'TEMPOS' %} Tempos inteiros.{% else %} Em horas: 8, 4,5 ou 4h30.{% endif %}</span></div>
   </div>
+  <div class="campo"><label for="justificativa_carga">Justificativa da carga <span class="discreto">(só quando a carga passa do que o horário comporta)</span></label>
+    <textarea id="justificativa_carga" name="justificativa_carga" rows="2" maxlength="500">{{ turma.justificativa_carga or '' }}</textarea></div>
   <div class="linha-campos">
     <div class="campo"><label for="hora_inicio">Hora de início</label>
       <input id="hora_inicio" type="time" name="hora_inicio" step="300"
@@ -561,13 +564,32 @@
 {% endcall %}
 {% endif %}
 
+{% if editavel and dias_carga|length > 1 %}
+{# lote 3 (24/11/2026): a carga de cada dia. A soma tem de ser a carga da turma; a divisão
+   automática é só o valor inicial. O limite de presença de cada dia é este (T5). #}
+{% call ui.popup_cadastro('carga-por-dia', 'Carga por dia',
+                          '/turmas/' ~ turma.id ~ '/carga-por-dia', 'Salvar carga por dia',
+                          nota='a soma tem de ser ' ~ (turma|carga_turma)) %}
+  <div class="linha-campos">
+    {% for dia, q in dias_carga %}
+    <div class="campo"><label for="carga-dia-{{ dia }}">{{ dia|data }} ({{ 'tempos' if turma.carga_unidade == 'TEMPOS' else 'horas' }})</label>
+      <input id="carga-dia-{{ dia }}" name="carga_dia_{{ dia }}" required class="campo-curto"
+             inputmode="{{ 'numeric' if turma.carga_unidade == 'TEMPOS' else 'decimal' }}"
+             value="{{ digitado_carga_dia[dia] if digitado_carga_dia and digitado_carga_dia[dia] is defined else q|carga_campo(turma.carga_unidade) }}"></div>
+    {% endfor %}
+  </div>
+  <div class="campo"><label for="justificativa-carga-dia">Justificativa da carga <span class="discreto">(só quando passa do que o horário comporta)</span></label>
+    <textarea id="justificativa-carga-dia" name="justificativa_carga" rows="2" maxlength="500">{{ turma.justificativa_carga or '' }}</textarea></div>
+{% endcall %}
+{% endif %}
+
 {% if aba == 'presencas' and pode_lancar and dias|length == 1 %}
 {% call ui.popup_cadastro('marcar-todos-presentes', MARCAR_TODOS,
                           '/turmas/' ~ turma.id ~ '/presencas/todos',
-                          MARCAR_TODOS ~ ' (' ~ (carga_efetiva|num) ~ ' h)',
+                          MARCAR_TODOS ~ ' (' ~ (turma|carga_turma) ~ ')',
                           nota='curso de um dia: a folha e a turma têm o mesmo escopo') %}
   <div class="aviso aviso-alerta">
-    Marca <strong>todo mundo</strong> com {{ carga_efetiva|num }} h, inclusive quem já
+    Marca <strong>todo mundo</strong> com {{ turma|carga_turma }}, inclusive quem já
     estava lançado como falta. Cada sobrescrita entra na trilha com o valor de antes.
   </div>
   {% if retificando %}

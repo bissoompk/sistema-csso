@@ -39,7 +39,9 @@ import {
   TransicaoInvalida,
   destinos_de_turma,
 } from "../dominio/estados.js";
-import { AssinaturaInstrutor, Certificado as C, ROTULO_VINCULO, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
+import { AssinaturaInstrutor, Certificado as C, ROTULO_VINCULO, Turma, VINCULOS_PARTICIPANTE } from "../dominio/treinamento.js";
+import * as carga from "../dominio/carga.js";
+import * as carga_turma from "../servicos/carga_turma.js";
 import { CAMPO_CPF_CERTIFICADO, formulario, usuarioLogado } from "../dependencias.js";
 import * as cpf_certificado from "../servicos/cpf_certificado.js";
 import * as servico_emissao from "../servicos/emissao_certificado.js";
@@ -151,6 +153,16 @@ function invalido(rotulo: string): string {
 }
 
 /** Aceita 8, 8,5 e 8.5 — a vírgula é o separador que o setor digita. */
+/** A carga digitada na unidade do treinamento ("8", "4h30", "10" tempos), no texto da coluna. */
+function _carga(valor: string, unidade: string | null | undefined): string | null {
+  try {
+    return carga.ler_carga(valor, carga.unidade_de(unidade));
+  } catch (e) {
+    if (e instanceof carga.CargaInvalida) throw new CampoInvalido(e.message);
+    throw e;
+  }
+}
+
 function _decimal(valor: string, rotulo: string, padrao: string | null = null): string | null {
   const bruto = (valor ?? "").trim().replace(",", ".");
   if (!bruto) return padrao;
@@ -635,6 +647,7 @@ rotas.post(TURMAS, async (c) => {
     "hora_inicio",
     "hora_fim",
     "aceita_comunidade_externa",
+    "justificativa_carga",
   ];
   const digitado: Record<string, string> = Object.fromEntries(campos.map((k) => [k, f.texto(k)]));
   const recusar = (mensagem: string) => _tela_lista(c, usuario, { erro: mensagem, digitado });
@@ -669,7 +682,8 @@ rotas.post(TURMAS, async (c) => {
         tipo_capacitacao: texto_ou_nulo(digitado.tipo_capacitacao),
         campus_id: id_opcional(digitado.campus_id),
         unidade_promotora_id: id_opcional(digitado.unidade_promotora_id),
-        carga_horaria_horas: _decimal(digitado.carga_horaria_horas!, "a carga horária"),
+        carga_horaria_horas: _carga(digitado.carga_horaria_horas!, treinamento.carga_unidade),
+        justificativa_carga: texto_ou_nulo(digitado.justificativa_carga),
         data_base_vencimento: _data(digitado.data_base_vencimento!, "a data base", false),
         vagas: _inteiro(digitado.vagas!, "o número de vagas"),
         inscricao_aberta_ate: _data(digitado.inscricao_aberta_ate!, "o fim das inscrições", false),
@@ -963,7 +977,9 @@ async function _tela_ficha(
     // --- aba 3 ---
     dias: servico_presenca.dias_da_turma(turma),
     // a caixa marcada vale a carga do dia; quem chegou atrasado se ajusta à parte
-    horas_padrao: Object.fromEntries(servico_presenca.horas_por_dia(turma)),
+    carga_dia_padrao: Object.fromEntries(servico_presenca.carga_por_dia(turma)),
+    // aba Turma: a carga de cada dia (lote 3), incluindo dia de carga zero
+    dias_carga: carga_turma.carga_por_dia(turma),
     grade,
     contagem: ve_nominal ? await servico_presenca.contagem_por_situacao(tx, turma) : {},
     carga_efetiva: turma.carga_horaria_horas || turma.treinamento.carga_horaria_horas,
@@ -1021,7 +1037,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
         tipo_capacitacao: texto_ou_nulo(f.texto("tipo_capacitacao")),
         campus_id: id_opcional(f.texto("campus_id")),
         unidade_promotora_id: id_opcional(f.texto("unidade_promotora_id")),
-        carga_horaria_horas: _decimal(f.texto("carga_horaria_horas"), "a carga horária"),
+        carga_horaria_horas: _carga(f.texto("carga_horaria_horas"), turma.carga_unidade),
         data_base_vencimento: _data(f.texto("data_base_vencimento"), "a data base", false),
         vagas: _inteiro(f.texto("vagas"), "o número de vagas"),
         inscricao_aberta_ate: _data(f.texto("inscricao_aberta_ate"), "o fim das inscrições", false),
@@ -1039,6 +1055,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}`, async (c) => {
       // o local cadastrado só muda quando o formulário traz o seletor (vazio =
       // "outro local"); sem ele, vale o texto (`servico_turma.editar_turma`)
       if (f.tem("local_id")) campos.local_id = id_opcional(f.texto("local_id"));
+      if (f.tem("justificativa_carga")) campos.justificativa_carga = texto_ou_nulo(f.texto("justificativa_carga"));
       await servico_turma.editar_turma(sp, usuario, turma, campos);
     });
   } catch (erro) {
@@ -1094,6 +1111,34 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/situacao`, async (c) => {
   return _volta(c, volta, `${turma.codigo}: ${rotulo}.`);
 });
 
+/**
+ * Lote 3 (24/11/2026): a carga de cada dia (`carga_dia_AAAA-MM-DD`). A soma tem de ser a carga
+ * da turma; nenhum dia fica abaixo da presença já lançada nele; e o horário é conferido (T2).
+ */
+rotas.post(`${TURMAS}/:turma_id{[0-9]+}/carga-por-dia`, async (c) => {
+  const usuario = await usuarioLogado(c);
+  usuario.exigir("turma.criar");
+  const tx = c.get("tx");
+  const f = await formulario(c);
+  const turma_id = Number(c.req.param("turma_id"));
+  const turma = await _turma_para_alterar(tx, usuario, turma_id, "turma.criar", dono_turma.GERAL);
+  if (!turma) return redirecionar(c, TURMAS);
+  const destino = `${TURMAS}/${turma_id}`;
+  try {
+    await _no_savepoint(c, async (sp) => {
+      const mapa = carga_turma.ler_do_formulario(turma, Turma.unidade(turma), (n) => f.texto(n));
+      if (mapa === null) throw new RegraDaTurma("Informe a carga de cada dia.");
+      const campos: Partial<servico_turma.TurmaRegistro> = {};
+      if (f.tem("justificativa_carga")) campos.justificativa_carga = texto_ou_nulo(f.texto("justificativa_carga"));
+      await servico_turma.editar_turma(sp, usuario, turma, campos, { carga_por_dia: mapa });
+    });
+  } catch (erro) {
+    if (erro instanceof CampoInvalido || erro instanceof RegraDaTurma) return _erro(c, destino, erro.message);
+    throw erro;
+  }
+  return _volta(c, destino, `${turma.codigo}: carga por dia salva.`);
+});
+
 /** A turma CONCLUÍDA com dado errado, corrigida com motivo (`retificacao.retificar_turma`). */
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/retificar`, async (c) => {
   const usuario = await usuarioLogado(c);
@@ -1123,7 +1168,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/retificar`, async (c) => {
           descricao: texto_ou_nulo(f.texto("descricao")),
           campus_id: id_opcional(f.texto("campus_id")),
           unidade_promotora_id: id_opcional(f.texto("unidade_promotora_id")),
-          carga_horaria_horas: _decimal(f.texto("carga_horaria_horas"), "a carga horária"),
+          carga_horaria_horas: _carga(f.texto("carga_horaria_horas"), turma.carga_unidade),
           data_base_vencimento: _data(f.texto("data_base_vencimento"), "a data base", false),
           tipo_capacitacao: texto_ou_nulo(f.texto("tipo_capacitacao")),
           observacoes: texto_ou_nulo(f.texto("observacoes")),
@@ -1942,7 +1987,7 @@ function _linha_trocada(
     linha: servico_presenca.linha_da_grade(turma, inscricao),
     dias: servico_presenca.dias_da_turma(turma),
     hoje: datas_br.hoje(),
-    horas_padrao: Object.fromEntries(servico_presenca.horas_por_dia(turma)),
+    carga_dia_padrao: Object.fromEntries(servico_presenca.carga_por_dia(turma)),
     // a guarda que decide é a do serviço (`_exigir_lancamento`), que já correu
     pode_lancar: true,
     retificando: turma.situacao === "CONCLUIDA",
@@ -1951,6 +1996,17 @@ function _linha_trocada(
     digitado_horas: d.digitado_horas ?? "",
     digitado_nota: d.digitado_nota ?? "",
   });
+}
+
+/** A carga digitada do dia, na unidade-base da turma (minutos ou tempos — `dominio/carga.ts`). */
+function _quantidade(turma: TurmaCarregada, texto: string, sufixo: string): number | null {
+  const unidade = Turma.unidade(turma);
+  try {
+    return carga.ler(texto, unidade, unidade === "TEMPOS" ? `os tempos ${sufixo}` : `as horas ${sufixo}`);
+  } catch (e) {
+    if (e instanceof carga.CargaInvalida) throw new RegraDaTurma(e.message);
+    throw e;
+  }
 }
 
 rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas`, async (c) => {
@@ -1971,7 +2027,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas`, async (c) => {
       await servico_presenca.lancar_presenca(sp, usuario, inscricao, {
         data: dia,
         presente: marcado(f.texto("presente")),
-        horas: _decimal(f.texto("horas"), "as horas do dia"),
+        quantidade: _quantidade(turma, f.texto("horas"), "do dia"),
         justificativa: texto_ou_nulo(f.texto("justificativa")),
         motivo: texto_ou_nulo(f.texto("motivo")),
       });
@@ -2039,7 +2095,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
     for (const [campo, valor] of f.dados) {
       if (typeof valor !== "string" || !valor.trim()) continue;
       const celula = /^h_(\d+_\d{4}-\d{2}-\d{2})$/.exec(campo);
-      if (celula) horas.set(celula[1]!, _decimal(valor, "as horas do dia")!);
+      if (celula) horas.set(celula[1]!, valor);
       const nota = /^n_(\d+)$/.exec(campo);
       if (nota) notas.set(Number(nota[1]), _decimal(valor, "a nota"));
     }
@@ -2058,7 +2114,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/folha`, async (c) => {
     tx,
     usuario,
     turma,
-    { marcadas: new Set(f.todos("presente")), horas, notas, motivo: texto_ou_nulo(f.texto("motivo")) },
+    { marcadas: new Set(f.todos("presente")), quantidades: horas, notas, motivo: texto_ou_nulo(f.texto("motivo")) },
     quem,
   );
   const feito = [
@@ -2089,7 +2145,7 @@ rotas.post(`${TURMAS}/:turma_id{[0-9]+}/presencas/dia`, async (c) => {
       dia = _data(f.texto("data"), "o dia da coluna")!;
       return servico_presenca.marcar_dia_presente(sp, usuario, turma, {
         data: dia,
-        horas: _decimal(f.texto("horas"), "as horas do dia"),
+        quantidade: _quantidade(turma, f.texto("horas"), "do dia"),
         motivo: texto_ou_nulo(f.texto("motivo")),
       });
     });

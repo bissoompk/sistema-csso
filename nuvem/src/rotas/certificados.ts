@@ -395,7 +395,7 @@ rotas.get(MEUS, async (c) => {
     }[lista.filtros.situacao] ?? "Nenhum certificado com esse filtro.";
   return pagina(c, "paginas/certificados_meus.html", usuario, {
     resumo: dados.resumo,
-    horas: dados.resumo.horas,
+    carga_texto: dados.resumo.carga_texto,
     lista,
     situacoes,
     frase_vazio,

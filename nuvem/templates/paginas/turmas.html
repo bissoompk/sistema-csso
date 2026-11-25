@@ -228,7 +228,7 @@
       <option value="">escolha o treinamento</option>
       {% for t in treinamentos %}
       <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}
-              {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|num }} h
+              {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|carga(t.carga_unidade) }}
               {%- if t.validade_meses %}; reciclagem a cada {{ t.validade_meses }} meses{% endif %})</option>
       {% endfor %}
     </select></div>
@@ -239,7 +239,7 @@
     <div class="campo"><label for="nova-fim">Término</label>
       <input id="nova-fim" type="date" name="data_fim" required
              value="{{ d['data_fim'] or '' }}"></div>
-    <div class="campo"><label for="nova-carga">Carga horária da turma</label>
+    <div class="campo"><label for="nova-carga">Carga da turma</label>
       <input id="nova-carga" name="carga_horaria_horas" placeholder="usa a do catálogo"
              inputmode="decimal" autocomplete="off"
              value="{{ d['carga_horaria_horas'] or '' }}"
@@ -265,6 +265,10 @@
              value="{{ d['hora_fim'] or '' }}" aria-describedby="dica-nova-hora">
       <span class="dica" id="dica-nova-hora">Opcional. Vazio é dia inteiro; vale para todos os dias.</span></div>
   </div>
+  {# lote 3 (T2): só preenchida quando a carga passa do que o horário comporta; a carga de cada
+     dia se ajusta na ficha da turma, depois de aberta (a divisão automática é o valor inicial) #}
+  <div class="campo"><label for="nova-justificativa-carga">Justificativa da carga <span class="discreto">(só quando a carga passa do que o horário comporta)</span></label>
+    <textarea id="nova-justificativa-carga" name="justificativa_carga" rows="2" maxlength="500">{{ d['justificativa_carga'] or '' }}</textarea></div>
   <div class="linha-campos">
     {{ lt.campo_local('nova-local-id', 'nova-local', 'nova-campus', locais, d['local_id'], d['local']) }}
     <div class="campo"><label for="nova-campus">Campus</label>

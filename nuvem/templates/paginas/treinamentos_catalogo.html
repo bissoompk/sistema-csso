@@ -128,7 +128,7 @@
           <p class="discreto">{{ t.topicos|join(' · ') }}</p>
         </details>
         {% endif %}</td>
-      <td data-coluna="Carga" class="mono curta">{{ t.carga_horaria_horas|num }} h</td>
+      <td data-coluna="Carga" class="mono curta">{{ t.carga_horaria_horas|carga(t.carga_unidade) }}</td>
       <td class="curta" data-coluna="Reciclagem">{% if t.expira %}<span class="mono">{{ t.validade_meses }}</span>
           <span class="discreto">({{ t.validade_rotulo }})</span>
           {% else %}<span class="mono">0</span> <span class="selo">não vence</span>{% endif %}</td>
@@ -192,9 +192,16 @@
     <span class="dica" id="dica-nome">Pode ser corrigido depois: o certificado guarda o
       nome do dia em que foi emitido.</span></div>
   <div class="linha-campos">
-    <div class="campo"><label for="novo-carga">Carga horária (horas)</label>
+    <div class="campo"><label for="novo-carga">Carga</label>
       <input id="novo-carga" name="carga_horaria_horas" required placeholder="8"
-             value="{{ dn['carga_horaria_horas'] or '' }}" inputmode="decimal"></div>
+             value="{{ dn['carga_horaria_horas'] or '' }}" inputmode="decimal" aria-describedby="dica-novo-carga"></div>
+    <div class="campo"><label for="novo-carga-unidade">Unidade da carga</label>
+      <select id="novo-carga-unidade" name="carga_unidade" aria-describedby="dica-novo-carga">
+        <option value="HORAS"{{ ' selected' if (dn['carga_unidade'] or 'HORAS') == 'HORAS' }}>horas</option>
+        <option value="TEMPOS"{{ ' selected' if dn['carga_unidade'] == 'TEMPOS' }}>tempos (aulas)</option>
+      </select>
+      <span class="dica" id="dica-novo-carga">Horas: 8, 4,5 ou 4h30. Tempos: inteiros (curso do CBMMG).
+        Não muda depois que o treinamento tiver turma.</span></div>
     <div class="campo"><label for="nova-validade">Validade da reciclagem (meses)</label>
       <input id="nova-validade" name="validade_meses"
              value="{{ dn['validade_meses'] or 0 }}" inputmode="numeric"
@@ -228,7 +235,8 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
 {% set deste = recusado and editando_id == t.id %}
 {% set p = 'ed-trein-' ~ t.id %}
 {# o treinamento em texto, como o digitado: as duas grafias se comparam igual #}
-{% set v = d if deste else {'nome': t.nome, 'codigo_curto': t.codigo_curto, 'carga_horaria_horas': t.carga_horaria_horas|num,
+{% set v = d if deste else {'nome': t.nome, 'codigo_curto': t.codigo_curto, 'carga_horaria_horas': t.carga_horaria_horas|carga_campo_coluna(t.carga_unidade),
+            'carga_unidade': t.carga_unidade,
             'validade_meses': t.validade_meses, 'norma_referencia': t.norma_referencia,
             'conteudo_programatico': t.conteudo_programatico,
             'modelo_vigente_id': t.modelo_vigente_id, 'instrutor_padrao_id': t.instrutor_padrao_id,
@@ -240,9 +248,15 @@ placeholder="Normas e regulamentos&#10;Análise de risco&#10;Equipamentos de pro
     <input id="{{ p }}-nome" name="nome" value="{{ v.nome or '' }}" required{{ ' autofocus' if deste }}></div>
   {{ campo_codigo_curto(p ~ '-codigo-curto', v.codigo_curto or '', p ~ '-nome', '', t.codigo) }}
   <div class="linha-campos">
-    <div class="campo"><label for="{{ p }}-carga">Carga horária (horas)</label>
+    <div class="campo"><label for="{{ p }}-carga">Carga</label>
       <input id="{{ p }}-carga" name="carga_horaria_horas" value="{{ v.carga_horaria_horas }}"
              required inputmode="decimal"></div>
+    <div class="campo"><label for="{{ p }}-carga-unidade">Unidade da carga</label>
+      <select id="{{ p }}-carga-unidade" name="carga_unidade" aria-describedby="{{ p }}-dica-unidade">
+        <option value="HORAS"{{ ' selected' if (v.carga_unidade or t.carga_unidade) == 'HORAS' }}>horas</option>
+        <option value="TEMPOS"{{ ' selected' if (v.carga_unidade or t.carga_unidade) == 'TEMPOS' }}>tempos (aulas)</option>
+      </select>
+      <span class="dica" id="{{ p }}-dica-unidade">Não muda depois que o treinamento tiver turma.</span></div>
     <div class="campo"><label for="{{ p }}-validade">Reciclagem (meses, 0 = não vence)</label>
       <input id="{{ p }}-validade" name="validade_meses" value="{{ v.validade_meses }}"
              required inputmode="numeric"></div>

@@ -456,7 +456,7 @@ describe("certificado válido trava a retificação", () => {
       await servico_presenca.lancar_presenca(db, usuario, inscricao, {
         data: INICIO,
         presente: true,
-        horas: "4",
+        quantidade: 240,
         motivo: "corrigindo a folha",
       });
     } catch (e_) {
@@ -484,7 +484,7 @@ describe("certificado válido trava a retificação", () => {
     await servico_presenca.lancar_presenca(db, usuario, inscricao, {
       data: INICIO,
       presente: true,
-      horas: "4",
+      quantidade: 240,
       motivo: "folha refeita depois da anulação",
     });
     expect(inscricao.frequencia_percentual).toBe("50.00");

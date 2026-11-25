@@ -293,7 +293,7 @@
       li.className = 'inscrito' + (lancado ? (lancado.presente ? ' presente' : ' falta') : '');
       li.innerHTML =
         '<div class="quem"><strong>' + escapar(linha.participante) + '</strong>' +
-        '<span class="discreto">' + escapar(linha.frequencia) + '% · ' + escapar(linha.horas) + 'h · ' + escapar(linha.situacao) + '</span></div>' +
+        '<span class="discreto">' + escapar(linha.frequencia) + '% · ' + escapar(linha.presente_texto || (linha.horas + 'h')) + ' · ' + escapar(linha.situacao) + '</span></div>' +
         '<div class="marcas">' +
         '<button type="button" class="marcador' + (lancado && lancado.presente ? ' ativo' : '') + '" data-presenca="1" data-inscricao="' + linha.inscricao_id + '">presente</button>' +
         '<button type="button" class="marcador' + (lancado && !lancado.presente ? ' ativo' : '') + '" data-presenca="0" data-inscricao="' + linha.inscricao_id + '">falta</button>' +
@@ -314,6 +314,9 @@
       }));
       // turma de um dia: o dia é o curso inteiro, e as horas são a carga
       campoHoras.value = chamada.turma.dias.length === 1 ? chamada.turma.carga_efetiva : '';
+      // lote 3: em tempos, o campo pede tempos inteiros (o servidor lê na unidade da turma)
+      var rotuloHoras = document.querySelector('label[for="c-horas"]');
+      if (rotuloHoras) rotuloHoras.textContent = chamada.turma.carga_unidade === 'TEMPOS' ? 'Tempos do dia' : 'Horas do dia';
       caixaDia.hidden = false;
       api('GET', '/turmas/' + id + '/presencas').then(function (grade) {
         chamada.grade = grade;

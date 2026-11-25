@@ -160,7 +160,7 @@ async function certificado_de(pessoa: servico_participante.ParticipanteCarregado
   await servico_turma.vincular_instrutor(db, operador, turma, { ...instrutor!, servidor: null } as never);
   const inscricao = await servico_turma.inscrever(db, operador, turma, pessoa);
   await servico_turma.mudar_situacao(db, operador, turma, "EM_ANDAMENTO");
-  await servico_presenca.lancar_presenca(db, operador, inscricao, { data: INICIO, presente: true, horas: "4" });
+  await servico_presenca.lancar_presenca(db, operador, inscricao, { data: INICIO, presente: true, quantidade: 240 });
   await servico_turma.mudar_situacao(db, operador, turma, "CONCLUIDA");
   const fresca = (await servico_turma.carregar_turma(db, turma.id))!;
   const relida = (await servico_turma.carregar_inscricao(db, inscricao.id, fresca))!;

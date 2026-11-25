@@ -256,7 +256,7 @@
     <div class="perfil-secao-corpo">
       <p class="perfil-resumo"><strong>{{ resumo_certificados.validos }}
         {{ 'certificado válido' if resumo_certificados.validos == 1 else 'certificados válidos' }}</strong>
-        · {{ resumo_certificados.horas }} h de capacitação</p>
+        · {{ resumo_certificados.carga_texto }} de capacitação</p>
       {% if resumo_certificados.em_emissao %}
       <p class="perfil-nota">{{ resumo_certificados.em_emissao }}
         {{ 'treinamento concluído aguarda' if resumo_certificados.em_emissao == 1 else 'treinamentos concluídos aguardam' }}

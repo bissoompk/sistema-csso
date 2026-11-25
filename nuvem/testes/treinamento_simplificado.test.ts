@@ -97,7 +97,7 @@ describe("treinamento simplificado: o curso já dado até o certificado", () => 
     // 16h em dois dias: 8h + 8h para cada um, lançadas e auditadas como de costume
     const presencas = await db.select().from(e.turma_presenca).orderBy(asc(e.turma_presenca.data));
     expect(presencas).toHaveLength(4);
-    expect(presencas.every((p) => p.presente && Number(p.horas) === 8)).toBe(true);
+    expect(presencas.every((p) => p.presente && p.quantidade === 480)).toBe(true);
     expect(await eventos("PRESENCA_LANCADA")).toHaveLength(4);
     expect(await eventos("TURMA_REALIZADA_REGISTRADA")).toHaveLength(1);
     expect(await eventos("TURMA_APURADA")).toHaveLength(1);

@@ -124,7 +124,7 @@
       <span class="cartao-status-icone">{{ ui.icone('award') }}</span>
       <h2 class="cartao-status-rotulo">Certificados válidos</h2>
       <span class="cartao-status-valor">{{ cartoes.validos }}</span>
-      <p>de {{ cartoes.emitidos }} {{ 'emitido' if cartoes.emitidos == 1 else 'emitidos' }} · {{ cartoes.horas }} h</p>
+      <p>de {{ cartoes.emitidos }} {{ 'emitido' if cartoes.emitidos == 1 else 'emitidos' }} · {{ cartoes.carga_texto }}</p>
       <a href="/certificados/meus">Ver certificados <span aria-hidden="true">→</span></a>
     </section>
     <section class="cartao-status cartao-status--alerta">

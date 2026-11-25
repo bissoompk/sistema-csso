@@ -23,6 +23,7 @@
  * **Sem Swagger, de propósito**: o contrato está em `src/esquemas/api.ts`, e o
  * único índice é `GET /api/v1`, que exige sessão.
  */
+import * as carga from "../dominio/carga.js";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
@@ -333,6 +334,15 @@ rotas.get(`${PREFIXO}/epis/fichas/:servidor_id{[0-9]+}`, async (c) => {
 // =====================================================================
 type TurmaComTreinamento = typeof tabela_turma.$inferSelect & { treinamento: { nome: string; carga_horaria_horas: string } };
 
+/**
+ * Lote 3: a quantidade na unidade da turma, no campo numérico de sempre (`horas`) — horas
+ * decimais em HORAS (o app compilado mostra "Xh"), tempos inteiros em TEMPOS. O texto pronto
+ * para mostrar vai em `*_texto`, pela função única de exibição.
+ */
+function _quantidade_api(base: number, unidade: carga.Unidade): string {
+  return unidade === "TEMPOS" ? String(base) : servico_presenca.numero(String(base / 60));
+}
+
 async function _turma_resumo(c: Ctx, turma: TurmaComTreinamento): Promise<contrato.TurmaResumo> {
   return {
     id: turma.id,
@@ -343,6 +353,8 @@ async function _turma_resumo(c: Ctx, turma: TurmaComTreinamento): Promise<contra
     data_fim: turma.data_fim,
     dias: servico_presenca.dias_da_turma(turma),
     carga_efetiva: servico_presenca.numero(Turma.carga_efetiva(turma)),
+    carga_unidade: Turma.unidade(turma),
+    carga_texto: Turma.carga_texto(turma),
     inscritos: await servico_turma.inscricoes_que_ocupam_vaga(c.get("tx"), turma),
   };
 }
@@ -371,15 +383,21 @@ rotas.get(`${PREFIXO}/turmas`, async (c) => {
 function _linha_presenca(linha: servico_presenca.LinhaDaGrade, pode_nominal: boolean): contrato.LinhaPresenca {
   const participante = linha.inscricao.participante;
   const por_dia: Record<string, contrato.PresencaDia> = {};
+  const unidade = Turma.unidade(linha.inscricao.turma);
   for (const [dia, p] of Object.entries(linha.por_dia)) {
-    por_dia[dia] = { presente: p.presente, horas: servico_presenca.numero(p.horas) };
+    por_dia[dia] = {
+      presente: p.presente,
+      horas: _quantidade_api(p.quantidade, unidade),
+      texto: carga.exibir_base(p.quantidade, unidade),
+    };
   }
   return {
     inscricao_id: linha.inscricao.id,
     participante: pode_nominal ? nome_exibicao(participante) : participante.identificador_publico,
     nominal: pode_nominal,
     por_dia,
-    horas: servico_presenca.numero(linha.horas),
+    horas: _quantidade_api(linha.presente_base, unidade),
+    presente_texto: linha.presente_texto,
     frequencia: servico_presenca.numero(linha.frequencia),
     aprovado: linha.avaliacao.aprovado,
     situacao: Object.hasOwn(ROTULO_INSCRICAO, linha.inscricao.situacao)
@@ -397,6 +415,8 @@ async function _grade(c: Ctx, turma: servico_turma.TurmaCarregada, usuario: Usua
     codigo: turma.codigo,
     dias: servico_presenca.dias_da_turma(turma),
     carga_efetiva: servico_presenca.numero(Turma.carga_efetiva(turma)),
+    carga_unidade: Turma.unidade(turma),
+    carga_texto: Turma.carga_texto(turma),
     retificando: turma.situacao !== "EM_ANDAMENTO",
     linhas: (await servico_presenca.grade_da_turma(c.get("tx"), turma)).map((l) => _linha_presenca(l, pode_nominal)),
   };
@@ -431,17 +451,20 @@ rotas.post(`${PREFIXO}/turmas/:turma_id{[0-9]+}/presencas`, async (c) => {
   }
   const inscricao = (await servico_turma.inscricoes_da_turma(tx, turma)).find((i) => i.id === corpo.inscricao_id);
   if (!inscricao) throw new RecusaDaApi(422, "Inscrição não encontrada nesta turma.");
-  let horas: string | null = null;
-  if (corpo.horas.trim()) {
-    horas = servico_presenca.para_decimal(corpo.horas.replace(",", "."));
-    // a frase é da rota, como na tela
-    if (horas === null) throw new RecusaDaApi(422, "Horas do dia inválidas: informe um número.");
+  // `horas` é a quantidade do dia na unidade da turma: horas (8, 4,5, 4h30) ou tempos inteiros
+  let quantidade: number | null = null;
+  const unidade = Turma.unidade(turma);
+  try {
+    quantidade = carga.ler(corpo.horas, unidade, unidade === "TEMPOS" ? "os tempos do dia" : "as horas do dia");
+  } catch (e) {
+    if (!(e instanceof carga.CargaInvalida)) throw e;
+    throw new RecusaDaApi(422, unidade === "TEMPOS" ? "Tempos do dia inválidos: informe um número inteiro." : "Horas do dia inválidas: informe um número.", [e.message]);
   }
   try {
     await servico_presenca.lancar_presenca(tx, usuario, inscricao, {
       data: corpo.data,
       presente: corpo.presente,
-      horas,
+      quantidade,
       justificativa: corpo.justificativa.trim() || null,
       motivo: corpo.motivo.trim() || null,
     });

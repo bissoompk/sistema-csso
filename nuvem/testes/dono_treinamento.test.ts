@@ -145,7 +145,7 @@ beforeAll(async () => {
     const pessoa = await servico_participante.de_servidor(db, servidor_a!, coord);
     const inscricao = await servico_turma.inscrever(db, coord, turma, pessoa);
     await servico_turma.mudar_situacao(db, coord, turma, "EM_ANDAMENTO");
-    await servico_presenca.lancar_presenca(db, coord, inscricao, { data: INICIO, presente: true, horas: "8" });
+    await servico_presenca.lancar_presenca(db, coord, inscricao, { data: INICIO, presente: true, quantidade: 480 });
     await servico_turma.mudar_situacao(db, coord, turma, "CONCLUIDA");
     const fresca = (await servico_turma.carregar_turma(db, turma.id))!;
     const relida = (await servico_turma.carregar_inscricao(db, inscricao.id, fresca))!;

@@ -27,7 +27,11 @@
       <dd>{{ {'INICIAL': 'Inicial', 'PERIODICO': 'Periódico', 'EVENTUAL': 'Eventual'}[turma.tipo_capacitacao] }}</dd>{% endif %}
       <dt>Horário</dt>
       <dd>{{ turma|horario_turma or 'dia inteiro (sem hora definida)' }}</dd>
-      <dt>Carga horária</dt><dd class="mono">{{ turma.carga_efetiva|num }} h</dd>
+      <dt>Carga</dt><dd class="mono">{{ turma|carga_turma }}</dd>
+      {% if dias_carga|length > 1 %}<dt>Carga por dia</dt>
+      <dd>{% for dia, q in dias_carga %}{{ dia|data }}: <span class="mono">{{ q|carga_base(turma.carga_unidade) }}</span>{% if not loop.last %}; {% endif %}{% endfor %}
+        {%- if editavel %} <button type="button" class="link" data-popup-abrir="carga-por-dia">ajustar</button>{% endif %}</dd>{% endif %}
+      {% if turma.justificativa_carga %}<dt>Justificativa da carga</dt><dd><span class="texto-literal">{{ turma.justificativa_carga }}</span></dd>{% endif %}
       <dt>Local</dt><dd>{{ turma.local or '—' }}
         {#- NUVEM (24/10/2026): do local cadastrado, o que leva até a porta #}
         {%- if turma.local_cadastrado %}

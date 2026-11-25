@@ -117,17 +117,28 @@ export interface Cenario {
 export async function _cenario(
   db: Executor,
   usuario: UsuarioAtual,
-  d: { nota_minima?: string | null; presente?: boolean; horas?: string; extras?: [string, string, string][] } = {},
+  d: {
+    nota_minima?: string | null;
+    presente?: boolean;
+    horas?: string;
+    extras?: [string, string, string][];
+    /** lote 3: a carga do catálogo e a unidade; `horas` é a presença NESTA unidade (tempos em TEMPOS) */
+    carga?: string;
+    unidade?: "HORAS" | "TEMPOS";
+  } = {},
 ): Promise<Cenario> {
   const presente = d.presente ?? true;
-  const horas = d.horas ?? "8";
+  const unidade = d.unidade ?? "HORAS";
+  const horas = d.horas ?? d.carga ?? "8";
+  const na_base = (v: string) => (unidade === "TEMPOS" ? Number(v) : Math.round(Number(v) * 60));
   const extras = d.extras ?? [];
   const [treinamento] = await db
     .insert(e.treinamento)
     .values({
       codigo: "NR-35",
       nome: "Trabalho em Altura — NR-35",
-      carga_horaria_horas: "8",
+      carga_horaria_horas: d.carga ?? "8",
+      carga_unidade: unidade,
       conteudo_programatico:
         "Normas e regulamentos aplicáveis\n" +
         "Análise de risco e condições impeditivas\n" +
@@ -173,10 +184,10 @@ export async function _cenario(
 
   await servico_turma.mudar_situacao(db, usuario, turma, "EM_ANDAMENTO");
   if (presente) {
-    await servico_presenca.lancar_presenca(db, usuario, inscricao, { data: INICIO, presente: true, horas });
+    await servico_presenca.lancar_presenca(db, usuario, inscricao, { data: INICIO, presente: true, quantidade: na_base(horas) });
   }
   for (let i = 0; i < outras.length; i++) {
-    await servico_presenca.lancar_presenca(db, usuario, outras[i]!, { data: INICIO, presente: true, horas: extras[i]![2] });
+    await servico_presenca.lancar_presenca(db, usuario, outras[i]!, { data: INICIO, presente: true, quantidade: na_base(extras[i]![2]) });
   }
   if (d.nota_minima !== undefined && d.nota_minima !== null) {
     await servico_presenca.lancar_nota(db, usuario, inscricao, "9.5");

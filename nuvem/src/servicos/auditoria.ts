@@ -274,6 +274,8 @@ export const ROTULO_EVENTO: Record<string, string> = {
   LOCAL_TREINAMENTO_INATIVADO: "Local de treinamento inativado",
   LOCAL_TREINAMENTO_REATIVADO: "Local de treinamento reativado",
   TURMA_CRIADA: "Turma criada",
+  // lote 3 (24/11/2026): a carga de cada dia da turma (`carga_turma.ts`)
+  TURMA_CARGA_POR_DIA: "Carga por dia da turma ajustada",
   TURMA_EXCLUIDA: "Turma excluída",
   TURMA_RETIFICADA: "Turma concluída corrigida",
   TURMA_APURADA: "Turma apurada",

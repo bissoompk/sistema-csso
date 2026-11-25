@@ -14,6 +14,8 @@
  *
  * O que este módulo NÃO faz: emitir, anular e validar (`emissao_certificado.ts`).
  */
+import { filtro } from "../web.js";
+import * as carga from "../dominio/carga.js";
 import { randomInt } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -213,6 +215,9 @@ export interface DadosContextoCertificado {
   turma_data_inicio: string;
   turma_data_fim: string;
   carga_horaria: string;
+  // NUVEM (lote 3, 24/11/2026): HORAS ou TEMPOS. Ausente = emitido antes, e
+  // reimpresso igual ("4,5 horas"); presente, sai pela função única ("4h30", "10 tempos")
+  carga_unidade?: string | null;
   turma_local: string;
   turma_descricao?: string;
   turma_tipo_capacitacao?: string | null;
@@ -257,12 +262,35 @@ export interface DadosContextoCertificado {
 
 export const REDACAO_ATUAL = 3;
 
+/**
+ * A carga como o certificado a escreve. O congelado sem `carga_unidade` (emitido antes do lote 3)
+ * sai como sempre saiu — "4,5 horas" —: certificado emitido não muda. O novo sai pela função
+ * única de exibição: "4h30", "8 horas", "10 tempos".
+ */
+export function carga_do_congelado(c: { carga_horaria: string | null | undefined; carga_unidade?: string | null }): string {
+  if (c.carga_horaria === null || c.carga_horaria === undefined || c.carga_horaria === "") return "";
+  if (!c.carga_unidade) return `${numero_br(c.carga_horaria)} horas`;
+  return carga.exibir(c.carga_horaria, c.carga_unidade);
+}
+
+// a ficha do certificado lê `contexto|carga_congelada` (a mesma frase do papel)
+filtro("carga_congelada", (c: { carga_horaria: string | null | undefined; carga_unidade?: string | null }) => carga_do_congelado(c));
+
+/** A carga do congelado na unidade-base, para somar (o antigo é sempre HORAS). */
+export function carga_base_do_congelado(c: { carga_horaria: string | null | undefined; carga_unidade?: string | null }): {
+  base: number;
+  unidade: carga.Unidade;
+} {
+  const unidade = carga.unidade_de(c.carga_unidade);
+  return { base: carga.para_base(c.carga_horaria ?? "", unidade), unidade };
+}
+
 const CAMPOS_CONGELADOS = [
   "participante_nome", "participante_identificador", "participante_vinculo",
   "participante_organizacao", "participante_siape", "participante_lotacao",
   "participante_cpf", "treinamento_nome", "treinamento_norma", "treinamento_conteudo",
   "validade_meses", "turma_codigo", "turma_data_inicio", "turma_data_fim",
-  "carga_horaria", "turma_local", "turma_descricao", "turma_tipo_capacitacao", "turma_unidade_promotora", "turma_campus",
+  "carga_horaria", "carga_unidade", "turma_local", "turma_descricao", "turma_tipo_capacitacao", "turma_unidade_promotora", "turma_campus",
   "turma_campus_cidade", "data_base_vencimento", "nota_final", "frequencia_percentual",
   "nota_minima", "frequencia_minima", "instrutores", "numero", "ano", "numero_impresso",
   "data_emissao", "chave_validacao", "data_vencimento", "url_validacao",
@@ -294,6 +322,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
   turma_data_inicio!: string;
   turma_data_fim!: string;
   carga_horaria!: string;
+  carga_unidade: string | null = null;
   turma_local!: string;
   // NUVEM: entrou depois; o congelado antigo não tem, e lê vazio
   turma_descricao = "";
@@ -339,6 +368,7 @@ export class ContextoCertificado implements DadosContextoCertificado {
     this.turma_campus_cidade = d.turma_campus_cidade ?? "";
     this.turma_descricao = d.turma_descricao ?? "";
     this.turma_tipo_capacitacao = d.turma_tipo_capacitacao ?? null;
+    this.carga_unidade = d.carga_unidade ?? null;
     this.redacao = Number(d.redacao ?? 1) || 1;
     this.campos_livres = Object.fromEntries(
       Object.entries(d.campos_livres ?? {}).map(([k, v]) => [k, { ...v }]),
@@ -495,7 +525,7 @@ export const CAMPOS_CERTIFICADO: Readonly<Record<string, CampoCertificado>> = Ob
   ),
   treinamento_nome: _c("Treinamento", "Nome do treinamento", "Trabalho em Altura (NR-35)", (c) => c.treinamento_nome),
   // a carga da TURMA, não a do catálogo: o certificado diz o que aconteceu
-  treinamento_carga_horaria: _c("Treinamento", "Carga horária", "8 horas", (c) => `${numero_br(c.carga_horaria)} horas`),
+  treinamento_carga_horaria: _c("Treinamento", "Carga horária", "8 horas", (c) => carga_do_congelado(c)),
   treinamento_conteudo: _c("Treinamento", "Conteúdo programático", "um tópico por linha", (c) =>
     _rich(c.treinamento_conteudo),
   ),

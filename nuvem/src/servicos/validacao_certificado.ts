@@ -15,6 +15,7 @@
  * malformada / com dígito errado, `noindex` e `no-store`, nenhuma listagem,
  * nenhuma busca por nome, nenhum link para baixar o documento.
  */
+import { carga_do_congelado } from "./certificado.js";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/cliente.js";
 import {
@@ -229,7 +230,8 @@ export async function consultar(tx: Executor, bruta: string | null | undefined, 
     // `|| ""` em todo campo de texto: congelado incompleto não escreve "None"
     treinamento: contexto.treinamento_nome || "",
     norma: contexto.treinamento_norma || "",
-    carga_horaria: numero_br(contexto.carga_horaria),
+    // como o certificado escreve: "16 horas" no antigo; "4h30", "10 tempos" no novo
+    carga_horaria: carga_do_congelado(contexto),
     termino: contexto.turma_data_fim,
     vencimento: certificado.data_vencimento,
     validade_meses: certificado.validade_meses_congelada,

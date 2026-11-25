@@ -181,6 +181,13 @@ function campo(contexto: ContextoCertificado, codigo: string): string {
   return typeof valor === "string" ? valor.trim() : "";
 }
 
+/** O parágrafo de certificação em texto corrido (testes e conferência). */
+export function texto_de_certificacao(contexto: ContextoCertificado): string {
+  return trechos_de_certificacao(contexto)
+    .map((t) => t.texto)
+    .join("");
+}
+
 /** O parágrafo de certificação, com o texto do `certificado_padrao_v1.docx` (ou do v2). */
 function trechos_de_certificacao(contexto: ContextoCertificado): Trecho[] {
   const v = (codigo: string) => campo(contexto, codigo);
@@ -197,7 +204,13 @@ function trechos_de_certificacao(contexto: ContextoCertificado): Trecho[] {
     t.push({ texto: ", concluiu o treinamento " }, { texto: v("treinamento_nome"), negrito: true });
     if (v("treinamento_norma")) t.push({ texto: ` ${v("treinamento_norma")}` });
   }
-  t.push({ texto: `, com carga horária de ${v("treinamento_carga_horaria")}` });
+  // lote 3: em tempos a frase não fala em "carga horária" (o congelado antigo não tem unidade)
+  t.push({
+    texto:
+      contexto.carga_unidade === "TEMPOS"
+        ? `, com carga de ${v("treinamento_carga_horaria")}`
+        : `, com carga horária de ${v("treinamento_carga_horaria")}`,
+  });
   if (v("turma_periodo_extenso")) t.push({ texto: `, realizado ${v("turma_periodo_extenso")}` });
   if (v("turma_local")) t.push({ texto: ` em ${v("turma_local")}` });
   if (v("turma_unidade_promotora")) t.push({ texto: `, promovido por ${v("turma_unidade_promotora")}` });

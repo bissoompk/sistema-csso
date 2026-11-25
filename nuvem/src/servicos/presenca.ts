@@ -44,6 +44,8 @@ import * as datas_br from "./datas_br.js";
 import { nome_exibicao } from "./participante.js";
 import type { UsuarioAtual } from "./rbac.js";
 import { filtro } from "../web.js";
+import * as carga from "../dominio/carga.js";
+import * as carga_turma from "./carga_turma.js";
 import {
   RegraDaTurma,
   gravar_inscricao,
@@ -136,6 +138,21 @@ export function numero(valor: string | number | bigint | null | undefined): stri
 
 // nas telas, o decimal sai como o setor lê: "8,3", "100", "7"
 filtro("num", (v: string | number | bigint | null | undefined) => numero(v));
+// lote 3: a carga só aparece por aqui — `t.carga_horaria_horas|carga(t.carga_unidade)`,
+// `turma|carga_turma`, `presenca.quantidade|carga_base(turma.carga_unidade)`
+filtro("carga", (v: string | number | null | undefined, unidade: string | null | undefined) => carga.exibir(v, unidade));
+filtro("carga_turma", (turma: Parameters<typeof T.carga_texto>[0]) => T.carga_texto(turma));
+filtro("carga_base", (v: number | string | null | undefined, unidade: string | null | undefined) =>
+  carga.exibir_base(Number(v) || 0, carga.unidade_de(unidade)),
+);
+filtro("carga_campo", (v: number | string | null | undefined, unidade: string | null | undefined) =>
+  carga.para_campo(Number(v) || 0, carga.unidade_de(unidade)),
+);
+// o valor da coluna (`4.5` horas, `10` tempos) no campo de digitação: "4h30", "10"
+filtro("carga_campo_coluna", (v: string | null | undefined, unidade: string | null | undefined) => {
+  const u = carga.unidade_de(unidade);
+  return v === null || v === undefined || v === "" ? "" : carga.para_campo(carga.para_base(v, u), u);
+});
 
 /** Aceita 8, 8,5 e 8.5 — a vírgula é o separador que o setor digita. */
 export function para_decimal(valor: string | number | null | undefined): string | null {
@@ -167,17 +184,13 @@ export async function contagem_por_situacao(tx: Executor, turma: { id: number })
 }
 
 /**
- * Horas presentes sobre a carga EFETIVA da turma, em percentual, com duas
+ * Presença sobre a carga EFETIVA da turma, em percentual, com duas
  * casas arredondadas meio para cima (o `quantize(ROUND_HALF_UP)`).
  */
 export function frequencia_de(inscricao: InscricaoCarregada): string {
-  const carga = escalado(T.carga_efetiva(inscricao.turma) || "0");
-  if (carga <= 0n) return "0.00";
-  const horas = escalado(I.horas_presentes(inscricao));
-  const numerador = horas * 10_000n; // percentual (x100) em centésimos (x100)
-  let q = numerador / carga;
-  if ((numerador % carga) * 2n >= carga) q += 1n;
-  return `${q / 100n}.${(q % 100n).toString().padStart(2, "0")}`;
+  // lote 3: minutos (ou tempos) presentes sobre a carga na mesma unidade-base — a razão é a
+  // mesma das horas de antes, e o arredondamento também: nenhuma frequência muda de valor
+  return carga.percentual(I.quantidade_presente(inscricao), T.carga_base(inscricao.turma));
 }
 
 /** Grava a frequência derivada. Chamada a cada lançamento e no fecho. */
@@ -228,10 +241,15 @@ export class LinhaDaGrade {
     readonly inscricao: InscricaoCarregada,
     /** `{'AAAA-MM-DD': presença}` */
     readonly por_dia: Record<string, PresencaRegistro>,
-    readonly horas: string,
+    /** o que conta para a frequência, na unidade-base da turma */
+    readonly presente_base: number,
     readonly frequencia: string,
     readonly avaliacao: Avaliacao,
   ) {}
+  /** "2h15", "3 tempos": o total presente pela função única de exibição */
+  get presente_texto(): string {
+    return carga.exibir_base(this.presente_base, T.unidade(this.inscricao.turma));
+  }
   get abaixo_do_minimo(): boolean {
     return !this.avaliacao.aprovado;
   }
@@ -286,7 +304,7 @@ export function linha_da_grade(turma: TurmaCarregada, inscricao: InscricaoCarreg
   return new LinhaDaGrade(
     inscricao,
     Object.fromEntries(inscricao.presencas.map((p) => [p.data, p])),
-    I.horas_presentes(inscricao),
+    I.quantidade_presente(inscricao),
     frequencia_de(inscricao),
     avaliar(turma, inscricao),
   );
@@ -485,7 +503,8 @@ export async function lancar_presenca(
   d: {
     data: string;
     presente?: boolean;
-    horas?: string | null;
+    /** na unidade-base da turma: minutos em HORAS, tempos em TEMPOS (`dominio/carga.ts`) */
+    quantidade?: number | null;
     justificativa?: string | null;
     motivo?: string | null;
   },
@@ -497,48 +516,58 @@ export async function lancar_presenca(
 
   _exigir_dia_da_turma(turma, d.data);
 
-  const carga = T.carga_efetiva(turma);
-  let lancadas: string;
+  const unidade = T.unidade(turma);
+  const total_turma = T.carga_base(turma);
+  const do_dia = carga_turma.carga_do_dia(turma, d.data);
+  const txt = (q: number) => carga.exibir_base(q, unidade);
+  let lancadas: number;
   if (!presente) {
-    // ausência não acumula hora — a regra do `ck_turma_presenca_coerente`
-    lancadas = "0";
-  } else if (d.horas !== null && d.horas !== undefined) {
-    lancadas = d.horas;
+    // ausência não acumula carga — a regra do `ck_turma_presenca_coerente`
+    lancadas = 0;
+  } else if (d.quantidade !== null && d.quantidade !== undefined) {
+    lancadas = d.quantidade;
   } else if (turma.data_inicio === turma.data_fim) {
     // curso de um dia: o dia É a carga inteira
-    lancadas = carga;
+    lancadas = total_turma;
   } else {
     throw new RegraDaTurma(
-      `${turma.codigo} tem mais de um dia: informe as horas deste dia. ` +
+      `${turma.codigo} tem mais de um dia: informe ${unidade === "TEMPOS" ? "os tempos" : "as horas"} deste dia. ` +
         "Assumir a carga inteira daria 100% a quem veio um dia só.",
     );
   }
-  if (comparar(lancadas, "0") < 0) throw new RegraDaTurma("As horas do dia não podem ser negativas.");
-  if (presente && comparar(lancadas, "0") <= 0) {
+  if (!Number.isInteger(lancadas) || lancadas < 0) {
+    throw new RegraDaTurma(unidade === "TEMPOS" ? "Os tempos do dia são um número inteiro, zero ou mais." : "As horas do dia não podem ser negativas.");
+  }
+  if (presente && lancadas <= 0) {
     throw new RegraDaTurma(
-      "Informe as horas do dia: presença de zero hora não é presença, e " + "deixaria a frequência mentindo para mais.",
+      `Informe ${unidade === "TEMPOS" ? "os tempos" : "as horas"} do dia: presença de zero não é presença, e ` +
+        "deixaria a frequência mentindo para mais.",
     );
   }
-  if (comparar(lancadas, carga) > 0) {
-    throw new RegraDaTurma(`${numero(lancadas)}h num dia só passa da carga da turma (${numero(carga)}h).`);
+  // T5: o limite do dia é a carga DAQUELE dia, e não a da turma inteira
+  if (lancadas > do_dia) {
+    throw new RegraDaTurma(
+      `${txt(lancadas)} em ${datas_br.numerica(d.data)} passa da carga daquele dia (${txt(do_dia)}). ` +
+        "Se o dia teve mais carga, ajuste a carga por dia da turma.",
+    );
   }
 
   const ja = inscricao.presencas.find((p) => p.data === d.data) ?? null;
-  const outras = escalado(I.horas_presentes(inscricao)) - (ja !== null && ja.presente ? escalado(ja.horas) : 0n);
-  const total = outras + escalado(lancadas);
-  if (total > escalado(carga)) {
+  const outras = I.quantidade_presente(inscricao) - (ja !== null && ja.presente ? ja.quantidade : 0);
+  const total = outras + lancadas;
+  if (total > total_turma) {
     throw new RegraDaTurma(
-      `O total lançado ficaria em ${numero(texto_decimal(total))}h, acima da ` +
-        `carga da turma (${numero(carga)}h). Confira os dias já lançados.`,
+      `O total lançado ficaria em ${txt(total)}, acima da ` +
+        `carga da turma (${txt(total_turma)}). Confira os dias já lançados.`,
     );
   }
 
-  const anterior = ja === null ? null : ([ja.presente, ja.horas] as const);
+  const anterior = ja === null ? null : ([ja.presente, ja.quantidade] as const);
   const frequencia_antes = inscricao.frequencia_percentual;
   const limpa = (d.justificativa ?? "").trim() || null;
   const campos = {
     presente,
-    horas: lancadas,
+    quantidade: lancadas,
     justificativa: limpa,
     registrado_por: usuario.id,
     registrado_em: agora_utc(),
@@ -550,12 +579,12 @@ export async function lancar_presenca(
       .values({ inscricao_id: inscricao.id, data: d.data, ...campos })
       .returning();
     // em memória fica o valor lançado, como no objeto do ORM depois do flush
-    linha = { ...nova!, horas: lancadas };
+    linha = nova!;
     inscricao.presencas.push(linha);
     inscricao.presencas.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
   } else {
     const [atual] = await tx.update(tabela_presenca).set(campos).where(eq(tabela_presenca.id, ja.id)).returning();
-    Object.assign(ja, atual!, { horas: lancadas });
+    Object.assign(ja, atual!);
     linha = ja;
   }
 
@@ -567,8 +596,8 @@ export async function lancar_presenca(
     descricao:
       `${turma.codigo} · ${inscricao.participante.identificador_publico} · ${datas_br.numerica(d.data)}: ` +
       (presente ? "presente" : "ausente") +
-      `, ${numero(lancadas)}h` +
-      (anterior !== null ? ` (antes: ${anterior[0] ? "presente" : "ausente"}, ${numero(anterior[1])}h)` : "") +
+      `, ${txt(lancadas)}` +
+      (anterior !== null ? ` (antes: ${anterior[0] ? "presente" : "ausente"}, ${txt(anterior[1])})` : "") +
       ` — frequência ${numero(calculada)}%` +
       (limpa ? ` · ${limpa}` : ""),
     campo: "frequencia_percentual",
@@ -608,7 +637,7 @@ export async function marcar_todos_presentes(
     await lancar_presenca(tx, usuario, inscricao, {
       data: turma.data_inicio,
       presente: true,
-      horas: T.carga_efetiva(turma),
+      quantidade: T.carga_base(turma),
       motivo: opcoes.motivo,
     });
   }
@@ -618,7 +647,7 @@ export async function marcar_todos_presentes(
     tipo_evento: PRESENCA_EM_LOTE,
     descricao:
       `${turma.codigo}: ${alcancadas.length} presença(s) de ` +
-      `${numero(T.carga_efetiva(turma))}h em ${datas_br.numerica(turma.data_inicio)}`,
+      `${T.carga_texto(turma)} em ${datas_br.numerica(turma.data_inicio)}`,
     comentario: (opcoes.motivo ?? "").trim() || null,
     usuario,
   });
@@ -634,7 +663,7 @@ export async function marcar_dia_presente(
   tx: Executor,
   usuario: UsuarioAtual,
   turma: TurmaCarregada,
-  d: { data: string; horas?: string | null; motivo?: string | null },
+  d: { data: string; quantidade?: number | null; motivo?: string | null },
 ): Promise<InscricaoCarregada[]> {
   usuario.exigir("turma.avaliar");
   _exigir_dia_da_turma(turma, d.data);
@@ -644,7 +673,7 @@ export async function marcar_dia_presente(
     await lancar_presenca(tx, usuario, inscricao, {
       data: d.data,
       presente: true,
-      horas: d.horas ?? null,
+      quantidade: d.quantidade ?? null,
       motivo: d.motivo,
     });
   }
@@ -654,7 +683,7 @@ export async function marcar_dia_presente(
     tipo_evento: PRESENCA_EM_LOTE,
     descricao:
       `${turma.codigo}: ${alcancadas.length} presença(s) em ${datas_br.numerica(d.data)}` +
-      (d.horas !== null && d.horas !== undefined ? `, ${numero(d.horas)}h` : ""),
+      (d.quantidade !== null && d.quantidade !== undefined ? `, ${carga.exibir_base(d.quantidade, T.unidade(turma))}` : ""),
     comentario: (d.motivo ?? "").trim() || null,
     usuario,
   });
@@ -668,8 +697,8 @@ export async function marcar_dia_presente(
 export interface Folha {
   /** `"<inscricao_id>_<AAAA-MM-DD>"` de cada caixa marcada (presente) */
   marcadas: ReadonlySet<string>;
-  /** horas digitadas no "ajustar", pela mesma chave; vazio usa a carga do dia */
-  horas: ReadonlyMap<string, string>;
+  /** o digitado no "ajustar" (horas como 2h15 ou 2,25; tempos inteiros), pela mesma chave; vazio usa a carga do dia */
+  quantidades: ReadonlyMap<string, string>;
   /** nota digitada por inscrição; `null` é "apagar a nota" (pedido explícito) */
   notas: ReadonlyMap<number, string | null>;
   motivo?: string | null;
@@ -714,7 +743,8 @@ export async function salvar_folha(
   const saida: FolhaSalva = { presencas: 0, notas: 0, recusas: [] };
   const hoje = datas_br.hoje();
   const inscricoes = (await inscricoes_da_turma(tx, turma)).filter((i) => !INSCRICAO_FORA_DA_APURACAO.has(i.situacao));
-  const padrao = new Map(horas_por_dia(turma));
+  const padrao = new Map(carga_turma.carga_por_dia(turma));
+  const unidade = T.unidade(turma);
   const dias = dias_da_turma(turma).filter((dia) => dia <= hoje);
   const na_folha = new Set(
     dias.filter((dia) =>
@@ -737,16 +767,29 @@ export async function salvar_folha(
       const chave = chave_da_celula(inscricao.id, dia);
       const presente = folha.marcadas.has(chave);
       const ja = inscricao.presencas.find((p) => p.data === dia) ?? null;
-      const digitadas = (folha.horas.get(chave) ?? "").trim();
-      const horas = presente ? digitadas || padrao.get(dia) || null : null;
+      const digitadas = (folha.quantidades.get(chave) ?? "").trim();
+      const rotulo = `${quem(inscricao)}, ${datas_br.numerica(dia)}`;
+      let lida: number | null = null;
+      if (presente && digitadas) {
+        try {
+          lida = carga.ler(digitadas, unidade, unidade === "TEMPOS" ? "os tempos do dia" : "as horas do dia");
+        } catch (e) {
+          if (!(e instanceof carga.CargaInvalida)) throw e;
+          saida.recusas.push(`${rotulo}: ${e.message.replace(/\.$/, "")}`);
+          continue;
+        }
+      }
       if (ja) {
-        const igual = ja.presente === presente && (!presente || (horas !== null && comparar(ja.horas, horas) === 0));
+        // caixa marcada sem nada digitado num dia já presente fica como está: a folha
+        // reenviada não reescreve o que foi lançado (nem a presença convertida das horas)
+        const igual = ja.presente === presente && (!presente || lida === null || ja.quantidade === lida);
         if (igual) continue;
       } else if (!presente && !na_folha.has(dia)) {
         continue;
       }
-      const feito = await tentar(`${quem(inscricao)}, ${datas_br.numerica(dia)}`, (sp) =>
-        lancar_presenca(sp, usuario, inscricao, { data: dia, presente, horas, motivo: folha.motivo }),
+      const quantidade = presente ? (lida ?? padrao.get(dia) ?? null) : null;
+      const feito = await tentar(rotulo, (sp) =>
+        lancar_presenca(sp, usuario, inscricao, { data: dia, presente, quantidade, motivo: folha.motivo }),
       );
       if (feito) saida.presencas += 1;
     }
@@ -775,20 +818,9 @@ export interface TurmaRealizada {
   concluida: boolean;
 }
 
-/**
- * Horas de cada dia somando a carga inteira, em décimos (a escala de
- * `turma_presenca.horas`): o resto da divisão vai para os primeiros dias.
- */
-export function horas_por_dia(turma: TurmaCarregada): [string, string][] {
-  const dias = dias_da_turma(turma);
-  const decimos = escalado(T.carga_efetiva(turma)) / 100_000n;
-  const n = BigInt(dias.length);
-  return dias
-    .map((dia, i): [string, string] => {
-      const h = decimos / n + (BigInt(i) < decimos % n ? 1n : 0n);
-      return [dia, texto_decimal(h * 100_000n)];
-    })
-    .filter(([, h]) => comparar(h, "0") > 0);
+/** A carga de cada dia, na unidade-base (`carga_turma.carga_por_dia`). */
+export function carga_por_dia(turma: TurmaCarregada): [string, number][] {
+  return carga_turma.carga_por_dia(turma).filter(([, q]) => q > 0);
 }
 
 /**
@@ -824,11 +856,11 @@ export async function registrar_turma_realizada(
   // inscrição aberta não recebe lançamento; planejada que já começou, sim
   if (turma.situacao === "INSCRICOES_ABERTAS") await mudar_situacao(tx, usuario, turma, "EM_ANDAMENTO");
 
-  const dias = horas_por_dia(turma);
-  if (dias.length === 1) {
+  const dias = carga_por_dia(turma);
+  if (turma.data_inicio === turma.data_fim) {
     await marcar_todos_presentes(tx, usuario, turma);
   } else {
-    for (const [data, horas] of dias) await marcar_dia_presente(tx, usuario, turma, { data, horas });
+    for (const [data, quantidade] of dias) await marcar_dia_presente(tx, usuario, turma, { data, quantidade });
   }
   const com_nota = turma.nota_minima_aprovacao !== null;
   await auditoria.registrar(tx, {
@@ -836,7 +868,7 @@ export async function registrar_turma_realizada(
     entidade_id: turma.id,
     tipo_evento: TURMA_REALIZADA,
     descricao:
-      `${turma.codigo}: ${alcancadas.length} presente(s) pela carga de ${numero(T.carga_efetiva(turma))}h` +
+      `${turma.codigo}: ${alcancadas.length} presente(s) pela carga de ${T.carga_texto(turma)}` +
       (com_nota ? " — aguarda as notas para concluir" : " e turma concluída"),
     usuario,
   });

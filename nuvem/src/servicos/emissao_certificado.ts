@@ -636,6 +636,7 @@ export async function montar_contexto_para_emitir(
     turma_data_inicio: turma.data_inicio,
     turma_data_fim: turma.data_fim,
     carga_horaria: T.carga_efetiva(turma),
+    carga_unidade: T.unidade(turma),
     turma_local: turma.local || "",
     turma_descricao: turma.descricao || "",
     turma_tipo_capacitacao: turma.tipo_capacitacao ?? null,

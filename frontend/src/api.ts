@@ -102,10 +102,13 @@ export type TurmaResumo = {
   data_fim: string
   dias: string[]
   carga_efetiva: string
+  /** lote 3: HORAS ou TEMPOS; `carga_texto` é "8 horas", "4h30", "10 tempos" */
+  carga_unidade?: string
+  carga_texto?: string
   inscritos: number
 }
 
-export type PresencaDia = { presente: boolean; horas: string }
+export type PresencaDia = { presente: boolean; horas: string; texto?: string }
 
 export type LinhaPresenca = {
   inscricao_id: number
@@ -113,6 +116,7 @@ export type LinhaPresenca = {
   nominal: boolean
   por_dia: Record<string, PresencaDia>
   horas: string
+  presente_texto?: string
   frequencia: string
   aprovado: boolean
   situacao: string

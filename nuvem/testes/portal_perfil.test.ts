@@ -102,7 +102,7 @@ describe("Meu perfil: cabeçalho e seções", () => {
   });
 
   it("Treinamentos e certificados: o resumo e os links", () => {
-    expect(tela.text).toMatch(/<strong>1\s+certificado válido<\/strong>\s+· 8 h de capacitação/);
+    expect(tela.text).toMatch(/<strong>1\s+certificado válido<\/strong>\s+· 8 horas de capacitação/);
     expect(tela.text).toContain('href="/certificados/meus"');
     expect(tela.text).toContain('href="/turmas/minhas"');
   });

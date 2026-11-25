@@ -4,6 +4,7 @@
  * Padroes SEM ancora, como no Python (ver `check_regex` em `db/esquema/base.ts`).
  */
 
+import { exibir, para_base, unidade_de, type Unidade } from './carga.js';
 import { randomInt } from 'node:crypto';
 
 import { INSCRICAO_OCUPA_VAGA, TURMA_ACEITA_INSCRICAO } from './estados';
@@ -242,6 +243,26 @@ export const Turma = {
   }): string {
     return turma.carga_horaria_horas || turma.treinamento.carga_horaria_horas;
   },
+  /** A unidade da carga da turma (copia da do treinamento, `dominio/carga.ts`). */
+  unidade(turma: { carga_unidade?: string | null }): Unidade {
+    return unidade_de(turma.carga_unidade);
+  },
+  /** A carga efetiva na unidade-base: minutos em HORAS, tempos em TEMPOS. */
+  carga_base(turma: {
+    carga_horaria_horas: string | null;
+    carga_unidade?: string | null;
+    treinamento: { carga_horaria_horas: string };
+  }): number {
+    return para_base(Turma.carga_efetiva(turma), unidade_de(turma.carga_unidade));
+  },
+  /** "8 horas", "4h30", "10 tempos" — a funcao unica de exibicao. */
+  carga_texto(turma: {
+    carga_horaria_horas: string | null;
+    carga_unidade?: string | null;
+    treinamento: { carga_horaria_horas: string };
+  }): string {
+    return exibir(Turma.carga_efetiva(turma), unidade_de(turma.carga_unidade));
+  },
   /** A data de que o vencimento e contado. */
   data_base(turma: { data_base_vencimento: string | null; data_fim: string }): string {
     return turma.data_base_vencimento || turma.data_fim;
@@ -276,30 +297,19 @@ export const Inscricao = {
     return INSCRICAO_OCUPA_VAGA.has(inscricao.situacao);
   },
   /**
-   * As horas que contam para a frequencia. Falta justificada tambem e falta.
-   *
-   * Soma em DECIMOS inteiros, e nao em `number`: `horas` e numeric(4,1), e
-   * 0.1 + 0.2 em ponto flutuante nao e 0.3 — a frequencia que decide se o
-   * certificado sai nao pode depender de arredondamento binario. A saida imita
-   * o `Decimal` do Python: '0' sem nenhuma presenca, uma casa decimal com.
+   * O que conta para a frequencia, na unidade-base da turma (minutos em HORAS,
+   * tempos em TEMPOS — `dominio/carga.ts`). Falta justificada tambem e falta.
+   * Inteiro: a frequencia que decide se o certificado sai nao depende de
+   * arredondamento binario.
    */
-  horas_presentes(inscricao: { presencas: ReadonlyArray<{ presente: boolean; horas: string }> }): string {
-    const presentes = inscricao.presencas.filter((p) => p.presente);
-    if (presentes.length === 0) return '0';
-    const decimos = presentes.reduce((soma, p) => soma + decimos_de(p.horas), 0);
-    return `${Math.trunc(decimos / 10)}.${decimos % 10}`;
+  quantidade_presente(inscricao: { presencas: ReadonlyArray<{ presente: boolean; quantidade: number }> }): number {
+    return inscricao.presencas.filter((p) => p.presente).reduce((soma, p) => soma + p.quantidade, 0);
   },
   /** Ao menos um dia com presenca registrada (criterio do fecho da turma). */
   compareceu(inscricao: { presencas: ReadonlyArray<{ presente: boolean }> }): boolean {
     return inscricao.presencas.some((p) => p.presente);
   },
 };
-
-/** '12.5' -> 125. `horas` nunca e negativa (`ck_turma_presenca_horas`). */
-function decimos_de(valor: string): number {
-  const [inteira = '0', fracao = ''] = valor.split('.');
-  return Number(inteira) * 10 + Number((fracao + '0').slice(0, 1));
-}
 
 export const Certificado = {
   /**

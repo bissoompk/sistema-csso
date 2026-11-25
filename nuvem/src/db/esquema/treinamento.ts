@@ -109,6 +109,10 @@ export const treinamento = pgTable(
       scale: 1,
       mode: 'string',
     }).notNull(),
+    // NUVEM (lote 3, 24/11/2026): a unidade da carga. A coluna acima passa a ser
+    // "quantidade nesta unidade" (8 horas, 10 tempos). Nao muda depois que o
+    // treinamento tem turma (`servicos/turma.ts`).
+    carga_unidade: varchar('carga_unidade', { length: 6 }).notNull().default('HORAS'),
     // um topico por linha, como checklist_modelo.itens
     conteudo_programatico: text('conteudo_programatico'),
     // 0 = NAO EXPIRA. Data magica de vencimento (31/12/9999) mente para todo
@@ -146,6 +150,12 @@ export const treinamento = pgTable(
     foreignKey({ name: 'fk_treinamento_criado_por', columns: [t.criado_por], foreignColumns: [usuario.id] }),
     check('ck_treinamento_validade', sql.raw(`validade_meses >= 0`)),
     check('ck_treinamento_carga', sql.raw(`carga_horaria_horas > 0`)),
+    check('ck_treinamento_carga_unidade', sql.raw(`carga_unidade IN ('HORAS','TEMPOS')`)),
+    // tempo e inteiro: nao existe meio tempo de aula
+    check(
+      'ck_treinamento_carga_tempos',
+      sql.raw(`carga_unidade <> 'TEMPOS' OR carga_horaria_horas = trunc(carga_horaria_horas)`),
+    ),
     check_regex('ck_treinamento_codigo', 'codigo', PADRAO_CODIGO_TREINAMENTO),
     check_regex('ck_treinamento_codigo_curto', 'codigo_curto', PADRAO_CODIGO_CURTO),
     index('ix_treinamento_ativo').on(t.ativo),
@@ -641,6 +651,12 @@ export const turma = pgTable(
     data_base_vencimento: DataPura('data_base_vencimento'),
     // sobrepoe a carga do treinamento quando a turma teve carga diferente
     carga_horaria_horas: numeric('carga_horaria_horas', { precision: 5, scale: 1, mode: 'string' }),
+    // NUVEM (lote 3): copia da unidade do treinamento ao nascer, para que toda
+    // leitura da turma (presenca, folha, certificado) tenha a unidade junto
+    carga_unidade: varchar('carga_unidade', { length: 6 }).notNull().default('HORAS'),
+    // por que a carga passa do que o horario comporta (dias x duracao do dia);
+    // sem ela, a turma acima do limite e recusada (T2)
+    justificativa_carga: text('justificativa_carga'),
 
     local: varchar('local', { length: 160 }),
     // NUVEM (24/10/2026): o local cadastrado (`local_treinamento`). Com ele,
@@ -735,6 +751,11 @@ export const turma = pgTable(
     check('ck_turma_tipo_capacitacao', sql.raw(`tipo_capacitacao IS NULL OR tipo_capacitacao IN ('INICIAL','PERIODICO','EVENTUAL')`)),
     index('ix_turma_vitrine').on(t.situacao, t.data_inicio).where(sql`divulgar_na_vitrine`),
     check('ck_turma_carga', sql.raw(`carga_horaria_horas IS NULL OR carga_horaria_horas > 0`)),
+    check('ck_turma_carga_unidade', sql.raw(`carga_unidade IN ('HORAS','TEMPOS')`)),
+    check(
+      'ck_turma_carga_tempos',
+      sql.raw(`carga_unidade <> 'TEMPOS' OR carga_horaria_horas IS NULL OR carga_horaria_horas = trunc(carga_horaria_horas)`),
+    ),
     // link publico sem data de fechamento fica aberto para sempre
     // (`inscricao_publica = 0` no SQLite; booleano usado como booleano aqui)
     check(
@@ -983,7 +1004,10 @@ export const turma_presenca = pgTable(
     id: integer('id').notNull().generatedByDefaultAsIdentity(),
     inscricao_id: integer('inscricao_id').notNull(),
     data: DataPura('data').notNull(),
-    horas: numeric('horas', { precision: 4, scale: 1, mode: 'string' }).notNull().default('0'),
+    // NUVEM (lote 3): inteiro na unidade-base da turma — MINUTOS em HORAS, TEMPOS
+    // em TEMPOS (`dominio/carga.ts`). Era `horas numeric(4,1)`: o decimo de
+    // hora perdia minuto (4,5 h em dois dias davam 2,3 + 2,2).
+    quantidade: integer('quantidade').notNull().default(0),
     presente: boolean('presente').notNull().default(true),
     // por que faltou. Nao abate a falta — so explica o que aconteceu.
     justificativa: text('justificativa'),
@@ -1001,12 +1025,34 @@ export const turma_presenca = pgTable(
       columns: [t.registrado_por],
       foreignColumns: [usuario.id],
     }),
-    check('ck_turma_presenca_horas', sql.raw(`horas >= 0`)),
-    // quem faltou nao acumula hora
-    check('ck_turma_presenca_coerente', sql.raw(`presente OR horas = 0`)),
+    check('ck_turma_presenca_quantidade', sql.raw(`quantidade >= 0`)),
+    // quem faltou nao acumula carga
+    check('ck_turma_presenca_coerente', sql.raw(`presente OR quantidade = 0`)),
     primaryKey({ name: 'pk_turma_presenca', columns: [t.id] }),
     // um dia, um lancamento por inscrito
     unique('uq_turma_presenca_dia').on(t.inscricao_id, t.data),
+  ],
+);
+
+/**
+ * NUVEM (lote 3, 24/11/2026): a carga de cada dia da turma, na unidade-base
+ * (minutos em HORAS, tempos em TEMPOS). A turma em TEMPOS sempre informa; a de
+ * HORAS so quando o dia nao e a divisao automatica. Sem linha, vale a divisao
+ * automatica. A soma tem de ser igual a carga da turma (`servicos/turma.ts`).
+ */
+export const turma_carga_dia = pgTable(
+  'turma_carga_dia',
+  {
+    id: integer('id').notNull().generatedByDefaultAsIdentity(),
+    turma_id: integer('turma_id').notNull(),
+    data: DataPura('data').notNull(),
+    quantidade: integer('quantidade').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_turma_carga_dia', columns: [t.id] }),
+    foreignKey({ name: 'fk_turma_carga_dia_turma', columns: [t.turma_id], foreignColumns: [turma.id] }).onDelete('cascade'),
+    unique('uq_turma_carga_dia').on(t.turma_id, t.data),
+    check('ck_turma_carga_dia_quantidade', sql.raw(`quantidade >= 0`)),
   ],
 );
 

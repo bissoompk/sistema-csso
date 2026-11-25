@@ -35,6 +35,7 @@ import {
   turma as tabela_turma,
   turma_instrutor as tabela_turma_instrutor,
   turma_presenca as tabela_presenca,
+  turma_carga_dia as tabela_carga_dia,
   unidade_uorg as tabela_unidade,
 } from "../db/esquema/index.js";
 import {
@@ -61,6 +62,8 @@ import * as titular_externo from "./titular_externo.js";
 import { COM_PARTICIPANTE, nome_exibicao, type ParticipanteCarregado } from "./participante.js";
 import { ESCOPO_PROPRIO, aplicar_escopo, type UsuarioAtual } from "./rbac.js";
 import { comparar } from "./presenca.js";
+import * as carga from "../dominio/carga.js";
+import * as carga_turma from "./carga_turma.js";
 import { filtro } from "../web.js";
 
 // Abrir inscrição e começar a turma são edição; concluir e cancelar são decisão
@@ -113,7 +116,10 @@ export type TurmaCarregada = TurmaRegistro & {
   local_cadastrado: typeof tabela_local.$inferSelect | null;
   unidade_promotora: typeof tabela_unidade.$inferSelect | null;
   instrutores: VinculoInstrutor[];
+  // NUVEM (lote 3): a carga de cada dia, quando informada (vazio = divisão automática)
+  carga_dias: CargaDiaRegistro[];
 };
+export type CargaDiaRegistro = typeof tabela_carga_dia.$inferSelect;
 export type InscricaoCarregada = InscricaoRegistro & {
   turma: TurmaCarregada;
   participante: ParticipanteCarregado;
@@ -134,6 +140,7 @@ export const COM_TURMA = {
     orderBy: (v: typeof tabela_turma_instrutor, { asc: a }: { asc: typeof asc }) => [a(v.ordem)],
     with: { instrutor: { with: { servidor: true } } },
   },
+  carga_dias: { orderBy: (c: typeof tabela_carga_dia, { asc: a }: { asc: typeof asc }) => [a(c.data)] },
 } as const;
 
 const COM_INSCRICAO = {
@@ -170,6 +177,8 @@ export async function recarregar_turma(tx: Executor, turma: TurmaCarregada): Pro
 }
 
 async function gravar_turma(tx: Executor, turma: TurmaCarregada | TurmaRegistro, campos: Partial<TurmaRegistro>) {
+  // a carga por dia (lote 3) edita sem mudar coluna nenhuma da turma
+  if (!Object.keys(campos).length) return;
   await tx.update(tabela_turma).set(campos).where(eq(tabela_turma.id, turma.id));
   Object.assign(turma, campos);
 }
@@ -472,6 +481,18 @@ export interface DadosTurma {
   hora_inicio?: string | null;
   hora_fim?: string | null;
   aceita_comunidade_externa?: boolean;
+  /** NUVEM (lote 3): a carga de cada dia, na unidade-base; vazio = divisão automática */
+  carga_por_dia?: ReadonlyMap<string, number> | null;
+  /** por que a carga passa do que o horário comporta (T2) */
+  justificativa_carga?: string | null;
+}
+
+/** Em TEMPOS a carga é inteira: não existe meio tempo de aula. */
+function _conferir_carga_na_unidade(valor: string | null, unidade: carga.Unidade): void {
+  if (valor === null || unidade !== "TEMPOS") return;
+  if (!/^\d+(\.0*)?$/.test(valor.trim())) {
+    throw new RegraDaTurma("Este treinamento conta a carga em tempos: informe um número inteiro de tempos.");
+  }
 }
 
 /**
@@ -499,6 +520,17 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
   if (d.data_base_vencimento && d.data_base_vencimento < d.data_inicio) {
     throw new RegraDaTurma("A data base do vencimento não pode ser anterior ao início da turma.");
   }
+  // NUVEM (lote 3): a unidade vem do treinamento; a carga por dia e o horário (T2)
+  const unidade = carga.unidade_de(treinamento.carga_unidade);
+  _conferir_carga_na_unidade(d.carga_horaria_horas ?? null, unidade);
+  const total = carga.para_base(d.carga_horaria_horas || treinamento.carga_horaria_horas, unidade);
+  const por_dia = d.carga_por_dia
+    ? carga_turma.conferir_por_dia(d, unidade, total, d.carga_por_dia)
+    : carga_turma.automatica(d, total);
+  const justificativa_carga = carga_turma.exigir_justificativa_do_excesso(
+    carga_turma.excesso_sobre_horario({ unidade, total, por_dia, hora_inicio, hora_fim }),
+    d.justificativa_carga,
+  );
   const unidade_promotora_id = setor_da_turma_nova(usuario, d.unidade_promotora_id ?? null);
   await _conferir_unidade_promotora(tx, unidade_promotora_id, null);
   const local = await _local_escolhido(tx, d.local_id ?? null, d.campus_id ?? null, null);
@@ -519,6 +551,8 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
       data_fim: d.data_fim,
       data_base_vencimento: d.data_base_vencimento ?? null,
       carga_horaria_horas: d.carga_horaria_horas ?? null,
+      carga_unidade: unidade,
+      justificativa_carga,
       local: local ? local.nome : (d.local ?? null),
       local_id: local ? local.id : null,
       descricao: d.descricao ?? null,
@@ -545,6 +579,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
     usuario,
   });
   const turma = (await carregar_turma(tx, linha!.id))!;
+  await carga_turma.gravar_por_dia(tx, usuario, turma, por_dia);
   // NUVEM: o instrutor padrão do catálogo já entra na turma, quando serve
   // (ativo e vigente no início); se não serve, a turma nasce sem e se vincula à mão
   if (treinamento.instrutor_padrao_id !== null) {
@@ -571,7 +606,7 @@ export async function editar_turma(
   campos: Partial<TurmaRegistro>,
   // NUVEM: a correção da turma CONCLUÍDA passa por aqui com as mesmas regras de
   // período e de ano; quem a chama (`retificacao.retificar_turma`) exige o motivo
-  opcoes: { concluida?: boolean } = {},
+  opcoes: { concluida?: boolean; carga_por_dia?: ReadonlyMap<string, number> | null } = {},
 ): Promise<TurmaCarregada> {
   usuario.exigir("turma.criar");
   if (T.encerrada(turma) && !(opcoes.concluida && turma.situacao === "CONCLUIDA")) {
@@ -644,6 +679,38 @@ export async function editar_turma(
     nota_minima_aprovacao: valor("nota_minima_aprovacao"),
     frequencia_minima_percentual: valor("frequencia_minima_percentual"),
   });
+  // NUVEM (lote 3): carga na unidade, carga por dia e conferência com o horário (T2)
+  const unidade = T.unidade(turma);
+  _conferir_carga_na_unidade(valor("carga_horaria_horas"), unidade);
+  const total = carga.para_base(valor("carga_horaria_horas") || turma.treinamento.carga_horaria_horas, unidade);
+  const periodo = { data_inicio: novo_inicio, data_fim: novo_fim };
+  const datas_mudaram = novo_inicio !== turma.data_inicio || novo_fim !== turma.data_fim;
+  const carga_mudou = total !== T.carga_base(turma);
+  const antes_por_dia = carga_turma.carga_por_dia(turma);
+  let por_dia: [string, number][] | null = null;
+  if (opcoes.carga_por_dia) {
+    por_dia = carga_turma.conferir_por_dia(periodo, unidade, total, opcoes.carga_por_dia);
+  } else if (datas_mudaram || carga_mudou) {
+    // a carga por dia de antes não serve mais: volta à divisão automática (a trilha registra)
+    por_dia = carga_turma.automatica(periodo, total);
+  }
+  const horario_mudou = valor("hora_inicio") !== turma.hora_inicio || valor("hora_fim") !== turma.hora_fim;
+  if ("justificativa_carga" in campos || por_dia !== null || horario_mudou) {
+    const excesso =
+      por_dia !== null || horario_mudou
+        ? carga_turma.excesso_sobre_horario({
+            unidade,
+            total,
+            por_dia: por_dia ?? antes_por_dia,
+            hora_inicio: valor("hora_inicio"),
+            hora_fim: valor("hora_fim"),
+          })
+        : null;
+    const justificativa = carga_turma.exigir_justificativa_do_excesso(excesso, valor("justificativa_carga"));
+    if (justificativa !== turma.justificativa_carga || "justificativa_carga" in campos) {
+      campos = { ...campos, justificativa_carga: justificativa };
+    }
+  }
   const vagas_novas = valor("vagas");
   if (vagas_novas !== null) {
     const ocupadas = await inscricoes_que_ocupam_vaga(tx, turma);
@@ -672,6 +739,12 @@ export async function editar_turma(
     depois,
     usuario,
   });
+  if (por_dia !== null) {
+    const presencas_por_dia = opcoes.carga_por_dia
+      ? carga_turma.maior_lancamento_por_dia(await inscricoes_da_turma(tx, turma))
+      : undefined;
+    await carga_turma.gravar_por_dia(tx, usuario, turma, por_dia, { presencas_por_dia, antes: antes_por_dia });
+  }
   return turma;
 }
 

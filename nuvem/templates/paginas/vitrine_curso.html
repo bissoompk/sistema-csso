@@ -48,7 +48,7 @@
       <dt>Quando</dt><dd>{{ curso.data_inicio|data }}{% if curso.data_fim != curso.data_inicio %} a {{ curso.data_fim|data }}{% endif %}
         {%- if curso.hora_inicio %} · {{ curso.hora_inicio }}{% if curso.hora_fim %}–{{ curso.hora_fim }}{% endif %}{% endif %}</dd>
       <dt>Onde</dt><dd>{{ curso.modalidade_rotulo }}{% if curso.modalidade != 'EAD' and (curso.local or curso.campus) %} · {{ curso.local or '' }}{% if curso.local and curso.campus %}, {% endif %}{{ curso.campus or '' }}{% endif %}</dd>
-      {% if curso.carga_horas %}<dt>Carga horária</dt><dd>{{ curso.carga_horas|num }} h</dd>{% endif %}
+      {% if curso.carga_horas %}<dt>Carga</dt><dd>{{ curso.carga_texto }}</dd>{% endif %}
       <dt>Vagas</dt><dd>{% if curso.vagas_restantes is none %}Vagas abertas{% elif curso.vagas_restantes == 0 %}Sem vagas{% else %}{{ curso.vagas_restantes }} de {{ curso.vagas_total }}{% endif %}</dd>
       {% if curso.inscricao_ate %}<dt>Inscrições até</dt><dd>{{ curso.inscricao_ate|data }}</dd>{% endif %}
       {% if curso.publico|length %}<dt>Público</dt><dd>{{ curso.publico|join(', ') }}</dd>{% endif %}

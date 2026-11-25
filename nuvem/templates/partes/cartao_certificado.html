@@ -52,7 +52,7 @@
     {% if c.periodo %}
     <li>{{ ui_c.icone('calendar-event') }}<span class="oculto">Período: </span><time datetime="{{ c.inicio }}">{{ c.periodo }}</time></li>
     {% endif %}
-    <li>{{ ui_c.icone('clock') }}{{ c.carga_horaria }} h<span class="oculto"> de carga horária</span></li>
+    <li>{{ ui_c.icone('clock') }}{{ c.carga_horaria }}<span class="oculto"> de carga</span></li>
     <li>{{ ui_c.icone('patch-check') }}Emitido em <time datetime="{{ c.data_emissao }}">{{ c.data_emissao|data }}</time></li>
     {% if c.data_vencimento %}
     <li class="cert-validade{% if destaque == 'vencido' %} cert-validade--vencido{% elif destaque == 'a_vencer' %} cert-validade--avencer{% endif %}">
@@ -131,7 +131,7 @@
   {% if x.setor.sigla or x.setor.nome %}<p class="cert-setor">{{ ui_c.selo_setor(x.setor) }}</p>{% endif %}
   <ul class="cert-meta" role="list">
     <li>{{ ui_c.icone('calendar-event') }}<span class="oculto">Período: </span><time datetime="{{ x.inicio }}">{{ x.periodo }}</time></li>
-    <li>{{ ui_c.icone('clock') }}{{ x.carga_horaria }} h<span class="oculto"> de carga horária</span></li>
+    <li>{{ ui_c.icone('clock') }}{{ x.carga_horaria }}<span class="oculto"> de carga</span></li>
   </ul>
   <p class="cert-nota">A equipe {{ ('do ' ~ (x.setor.sigla or x.setor.nome)) if (x.setor.sigla or x.setor.nome) else 'responsável' }} está emitindo o seu certificado.</p>
 </article>

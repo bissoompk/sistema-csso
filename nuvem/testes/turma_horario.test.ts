@@ -18,14 +18,16 @@ import { bancoLimpo, contas, entrar, usuarioAtual, type Campos, type Cliente, ty
 const HOJE = hoje_iso();
 const FUTURO = somar_dias(HOJE, 30);
 
+// lote 3 (T2): a carga tem de caber no horário da turma (um dia de 19h às 22h comporta 3 horas);
+// a carga era 8 e 40, e as turmas de meio período destes testes passaram a pedir justificativa
 const NR35 = {
   codigo: "NR-35",
   nome: "Trabalho em Altura — NR-35",
-  carga_horaria_horas: "8",
+  carga_horaria_horas: "3",
   validade_meses: "24",
   norma_referencia: "NR-35",
 };
-const NR10 = { codigo: "NR-10", nome: "Segurança em Eletricidade — NR-10", carga_horaria_horas: "40" };
+const NR10 = { codigo: "NR-10", nome: "Segurança em Eletricidade — NR-10", carga_horaria_horas: "3" };
 
 const PEDIDO = {
   nome: "Joana Prestes da Silva",

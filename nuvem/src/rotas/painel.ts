@@ -585,7 +585,7 @@ export async function inicio_do_servidor(tx: Executor, usuario: UsuarioAtual, ho
     cartoes: {
       validos: validos.length,
       emitidos: certificados.resumo.emitidos,
-      horas: String(certificados.resumo.horas).replace(".", ","),
+      carga_texto: certificados.resumo.carga_texto,
       a_vencer: a_vencer.length,
       proximo: proximo ? { nome: proximo.norma || proximo.treinamento, data: proximo.data_vencimento } : null,
       turmas_abertas: abertas.length,

@@ -187,7 +187,7 @@ async function _tela(
   const resumo_certificados = certificados
     ? {
         validos: certificados.resumo.validos + certificados.resumo.a_vencer + certificados.resumo.indeterminados,
-        horas: numero_br(String(certificados.resumo.horas)),
+        carga_texto: certificados.resumo.carga_texto,
         em_emissao: certificados.em_emissao.length,
       }
     : null;

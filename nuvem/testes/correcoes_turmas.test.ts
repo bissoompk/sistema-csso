@@ -642,7 +642,7 @@ describe("a folha de presença (M33)", () => {
     expect(await msg(cliente, r)).toContain("Folha salva: 4 presença(s)");
     const presencas = await db.select().from(e.turma_presenca).orderBy(asc(e.turma_presenca.inscricao_id), asc(e.turma_presenca.data));
     // 12 h em 3 dias: 4 h por dia; b chegou atrasado hoje (2 h) e faltou ontem
-    expect(presencas.map((p) => [p.inscricao_id, p.data, p.presente, Number(p.horas)])).toEqual([
+    expect(presencas.map((p) => [p.inscricao_id, p.data, p.presente, p.quantidade / 60])).toEqual([
       [a, ONTEM, true, 4],
       [a, HOJE, true, 4],
       [b, ONTEM, false, 0],
