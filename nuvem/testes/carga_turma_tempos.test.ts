@@ -10,6 +10,10 @@ import type { Banco } from "../src/db/cliente";
 import * as e from "../src/db/esquema/index";
 import { somar_dias } from "../src/dominio/datas";
 import { hoje } from "../src/servicos/datas_br";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import * as carga from "../src/dominio/carga";
+import * as carga_turma from "../src/servicos/carga_turma";
 import { TURMA_CARGA_POR_DIA } from "../src/servicos/carga_turma";
 
 const INICIO = somar_dias(hoje(), -3);
@@ -167,6 +171,62 @@ describe("turma em TEMPOS: carga por dia", () => {
     const [ev] = await db.select().from(e.historico_evento).where(eq(e.historico_evento.tipo_evento, TURMA_CARGA_POR_DIA));
     expect(ev!.descricao).toContain(`${INICIO.split("-").reverse().join("/")}: 1 tempo`);
     expect(ev!.descricao).toContain("(antes:");
+  });
+
+  it("abertura: o formulário traz a unidade e a carga de cada treinamento, para montar os dias", async () => {
+    await catalogo({ carga_horaria_horas: "10", carga_unidade: "TEMPOS" });
+    const tela = (await cliente.get("/turmas")).text;
+    expect(tela).toMatch(/data-unidade="TEMPOS" data-carga="10"/);
+    expect(tela).toContain('id="nova-carga-dias" data-carga-dias');
+    // sem treinamento nem datas, o quadro dos dias nasce escondido e vazio
+    expect(tela).toMatch(/data-carga="nova-carga"\s*hidden>/);
+    expect(tela).not.toContain('name="carga_dia_');
+  });
+
+  it("abertura: os tempos de cada dia digitados já gravam (4 + 6)", async () => {
+    const t = await catalogo({ carga_horaria_horas: "10", carga_unidade: "TEMPOS" });
+    const id = await turma(t, { [`carga_dia_${INICIO}`]: "4", [`carga_dia_${dia(1)}`]: "6" });
+    expect(await dias_gravados(id)).toEqual([[INICIO, 4], [dia(1), 6]]);
+  });
+
+  it("abertura: a soma diferente da carga é recusada, e o formulário volta com o que foi digitado", async () => {
+    const t = await catalogo({ carga_horaria_horas: "10", carga_unidade: "TEMPOS" });
+    const r = await abrir_turma(t, { [`carga_dia_${INICIO}`]: "4", [`carga_dia_${dia(1)}`]: "5" });
+    expect(r.text).toContain("A soma dos dias (4 + 5 = 9 tempos) tem de ser igual à carga da turma (10 tempos).");
+    expect(await db.select().from(e.turma)).toHaveLength(0);
+    expect(r.text).toMatch(new RegExp(`name="carga_dia_${INICIO}"[^>]*\\s+value="4"`));
+    expect(r.text).toMatch(new RegExp(`name="carga_dia_${dia(1)}"[^>]*\\s+value="5"`));
+    expect(r.text).not.toMatch(/data-carga="nova-carga"\s*hidden>/);
+  });
+
+  it("abertura: recusada por outro motivo, os dias voltam com a divisão automática da carga digitada", async () => {
+    const t = await catalogo({ carga_horaria_horas: "10", carga_unidade: "TEMPOS" });
+    const r = await abrir_turma(t, { carga_horaria_horas: "7", vagas: "x" });
+    expect(r.status).toBe(200);
+    expect(r.text).toMatch(new RegExp(`name="carga_dia_${INICIO}"[^>]*\\s+value="4"`));
+    expect(r.text).toMatch(new RegExp(`name="carga_dia_${dia(1)}"[^>]*\\s+value="3"`));
+  });
+
+  it("abertura: treinamento em horas ignora campos de dia que cheguem no formulário", async () => {
+    const t = await catalogo({ carga_horaria_horas: "8" });
+    const id = await turma(t, { [`carga_dia_${INICIO}`]: "1", [`carga_dia_${dia(1)}`]: "1" });
+    expect(await dias_gravados(id)).toEqual([]);
+  });
+
+  it("o navegador (csso.js) divide como o servidor e conta os dias do mesmo jeito", () => {
+    const fonte = readFileSync(path.resolve(__dirname, "../public/estaticos/js/csso.js"), "utf8");
+    const inicio = fonte.indexOf("function diasEntre");
+    const fim = fonte.indexOf("function cargaDias");
+    expect(inicio).toBeGreaterThan(0);
+    const dias_js = new Function(`${fonte.slice(inicio, fim)}; return diasEntre;`)() as (a: string, b: string) => string[];
+    expect(dias_js("2026-12-30", "2027-01-02")).toEqual(carga_turma.dias({ data_inicio: "2026-12-30", data_fim: "2027-01-02" }));
+    expect(dias_js("2026-12-01", "2026-12-01")).toEqual([]);
+    // a divisão do script é a de `carga.dividir`: o resto nos primeiros dias
+    expect(fonte).toContain("Math.floor(total / n) + (i < total % n ? 1 : 0)");
+    for (const [total, n] of [[10, 3], [3, 2], [10, 4]] as const) {
+      const js = Array.from({ length: n }, (_, i) => Math.floor(total / n) + (i < total % n ? 1 : 0));
+      expect(js).toEqual(carga.dividir(total, n));
+    }
   });
 
   it("carga de tempos quebrada na turma é recusada", async () => {

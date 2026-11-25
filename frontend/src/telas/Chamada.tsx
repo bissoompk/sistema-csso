@@ -75,7 +75,13 @@ export function Chamada() {
           </div>
           <div className="campo">
             <label htmlFor="horas">{turma?.carga_unidade === 'TEMPOS' ? 'Tempos do dia' : 'Horas do dia'}</label>
-            <input id="horas" inputMode="decimal" value={horas} onChange={(e) => setHoras(e.target.value)} placeholder="h" />
+            <input
+              id="horas"
+              inputMode={turma?.carga_unidade === 'TEMPOS' ? 'numeric' : 'decimal'}
+              value={horas}
+              onChange={(e) => setHoras(e.target.value)}
+              placeholder={turma?.carga_unidade === 'TEMPOS' ? 'tempos' : 'h'}
+            />
             <span className="dica">Vale para cada nome marcado abaixo.</span>
           </div>
         </div>

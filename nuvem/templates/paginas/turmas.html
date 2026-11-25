@@ -228,6 +228,7 @@
       <option value="">escolha o treinamento</option>
       {% for t in treinamentos %}
       <option value="{{ t.id }}"{{ ui.sel(d['treinamento_id'], t.id) }}
+              data-unidade="{{ t.carga_unidade }}" data-carga="{{ t.carga_horaria_horas|carga_campo_coluna(t.carga_unidade) }}"
               {%- if descricoes[t.id] %} data-descricao="{{ descricoes[t.id] }}"{% endif %}>{{ t.codigo }} — {{ t.nome }} ({{ t.carga_horaria_horas|carga(t.carga_unidade) }}
               {%- if t.validade_meses %}; reciclagem a cada {{ t.validade_meses }} meses{% endif %})</option>
       {% endfor %}
@@ -265,8 +266,25 @@
              value="{{ d['hora_fim'] or '' }}" aria-describedby="dica-nova-hora">
       <span class="dica" id="dica-nova-hora">Opcional. Vazio é dia inteiro; vale para todos os dias.</span></div>
   </div>
-  {# lote 3 (T2): só preenchida quando a carga passa do que o horário comporta; a carga de cada
-     dia se ajusta na ficha da turma, depois de aberta (a divisão automática é o valor inicial) #}
+  {# ajuste do lote 3 (25/11/2026): treinamento em TEMPOS e turma de mais de um dia — os tempos de
+     cada dia já na abertura, com a divisão automática como valor inicial; a soma tem de ser a carga.
+     Quem monta os campos ao escolher treinamento e datas é o `csso.js` (contrato `data-carga-dias`);
+     na reabertura recusada, voltam do servidor como foram digitados. Sem JavaScript, a turma nasce
+     com a divisão automática e o "ajustar" da ficha continua valendo. #}
+  <fieldset class="campo" id="nova-carga-dias" data-carga-dias
+            data-treinamento="nova-treinamento" data-inicio="nova-inicio" data-fim="nova-fim" data-carga="nova-carga"
+            {{- ' hidden' if not dias_carga_nova }}>
+    <legend>Tempos de cada dia</legend>
+    <div class="linha-campos" data-dias>
+      {% for dia, valor in dias_carga_nova %}
+      <div class="campo"><label for="nova-carga-dia-{{ dia }}">{{ dia|data }}</label>
+        <input id="nova-carga-dia-{{ dia }}" name="carga_dia_{{ dia }}" inputmode="numeric" autocomplete="off" size="4"
+               value="{{ valor }}" aria-describedby="nova-carga-dias-soma"></div>
+      {% endfor %}
+    </div>
+    <span class="dica" id="nova-carga-dias-soma" data-soma aria-live="polite">A soma dos dias tem de ser igual à carga da turma.</span>
+  </fieldset>
+  {# lote 3 (T2): só preenchida quando a carga passa do que o horário comporta #}
   <div class="campo"><label for="nova-justificativa-carga">Justificativa da carga <span class="discreto">(só quando a carga passa do que o horário comporta)</span></label>
     <textarea id="nova-justificativa-carga" name="justificativa_carga" rows="2" maxlength="500">{{ d['justificativa_carga'] or '' }}</textarea></div>
   <div class="linha-campos">

@@ -227,6 +227,30 @@ export function baixar(c: Ctx, bytes: Uint8Array, nome: string, tipo: string): R
 // =====================================================================
 // Lista
 // =====================================================================
+/**
+ * Os tempos de cada dia da turma nova, na reabertura do formulário recusado: o que foi digitado,
+ * ou a divisão automática. Só para treinamento em TEMPOS e turma de mais de um dia (até 60 dias).
+ * Na abertura sem recusa, quem monta os campos é o `csso.js`, a partir das datas escolhidas.
+ */
+function _dias_da_turma_nova(
+  treinamentos: readonly { id: number; carga_unidade: string; carga_horaria_horas: string }[],
+  digitado: Record<string, string> | null,
+): [string, string][] {
+  if (!digitado) return [];
+  const t = treinamentos.find((x) => String(x.id) === digitado.treinamento_id);
+  const inicio = digitado.data_inicio ?? "";
+  const fim = digitado.data_fim ?? "";
+  if (!t || t.carga_unidade !== "TEMPOS" || !/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim) || fim <= inicio) {
+    return [];
+  }
+  const dias = carga_turma.dias({ data_inicio: inicio, data_fim: fim });
+  if (dias.length > 60) return [];
+  const digitada = /^\d+$/.test((digitado.carga_horaria_horas ?? "").trim()) ? Number(digitado.carga_horaria_horas) : null;
+  const total = digitada ?? carga.para_base(t.carga_horaria_horas, "TEMPOS");
+  const automatica = carga.dividir(total, dias.length);
+  return dias.map((dia, i) => [dia, digitado[`carga_dia_${dia}`] ?? String(automatica[i])]);
+}
+
 async function _tela_lista(
   c: Ctx,
   usuario: UsuarioAtual,
@@ -353,6 +377,8 @@ async function _tela_lista(
     dica_setor_promotor: meus === null ? setor_promotor.DICA : setor_promotor.DICA_DOS_MEUS,
     sem_setor_promotor: setor_equipe.sem_setor(usuario),
     descricoes: await _ultimas_descricoes(tx),
+    // ajuste do lote 3 (25/11/2026): a turma em TEMPOS de mais de um dia já abre com os tempos de cada dia
+    dias_carga_nova: _dias_da_turma_nova(treinamentos, d.digitado ?? null),
     // NUVEM (24/10/2026): os locais cadastrados ativos, para o seletor "Local"
     locais: await local_treinamento.opcoes(tx),
     situacoes: ESTADOS_TURMA.map((codigo) => [codigo, ROTULO_TURMA_TELA[codigo]]),
@@ -650,6 +676,8 @@ rotas.post(TURMAS, async (c) => {
     "justificativa_carga",
   ];
   const digitado: Record<string, string> = Object.fromEntries(campos.map((k) => [k, f.texto(k)]));
+  // os tempos de cada dia (treinamento em TEMPOS): voltam na recusa como foram digitados
+  for (const k of f.dados.keys()) if (/^carga_dia_\d{4}-\d{2}-\d{2}$/.test(k)) digitado[k] = f.texto(k);
   const recusar = (mensagem: string) => _tela_lista(c, usuario, { erro: mensagem, digitado });
 
   const [treinamento] = await tx
@@ -672,8 +700,14 @@ rotas.post(TURMAS, async (c) => {
       if (com_link && inicio <= datas_br.hoje()) {
         throw new CampoInvalido("Turma com link público precisa começar depois de hoje: a partir do início, quem inscreve é a equipe responsável.");
       }
+      // ajuste do lote 3: em TEMPOS, os tempos de cada dia vêm do formulário (sem eles, a divisão automática)
+      const carga_por_dia =
+        treinamento.carga_unidade === "TEMPOS" && fim >= inicio
+          ? carga_turma.ler_do_formulario({ data_inicio: inicio, data_fim: fim }, "TEMPOS", (n) => f.texto(n))
+          : null;
       let criada = await servico_turma.criar_turma(sp, usuario, {
         treinamento,
+        carga_por_dia,
         data_inicio: inicio,
         data_fim: fim,
         local: texto_ou_nulo(digitado.local),

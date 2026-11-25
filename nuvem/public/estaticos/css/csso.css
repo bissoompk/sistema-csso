@@ -4696,6 +4696,11 @@ background: transparent; color: var(--acento); font-size: 13px; font-weight: 600
   .cabecalho .volta-origem { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
+/* ajuste do lote 3 (25/11/2026): os tempos de cada dia na abertura da turma (`csso.js`);
+   o atributo duplo vence o `display` de `.campo` sem `!important` */
+[data-carga-dias][hidden] { display: none; }
+[data-carga-dias] [data-soma].erro { color: var(--erro); }
+
 /* ---------- impressao ----------
    A previa do parecer e impressa. Sem isto a lateral escura vira uma faixa de
    252px em branco na esquerda de toda folha.

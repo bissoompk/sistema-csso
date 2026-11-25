@@ -18,16 +18,28 @@ import { bancoLimpo, contas, entrar, usuarioAtual, type Campos, type Cliente, ty
 const HOJE = hoje_iso();
 const FUTURO = somar_dias(HOJE, 30);
 
-// lote 3 (T2): a carga tem de caber no horário da turma (um dia de 19h às 22h comporta 3 horas);
-// a carga era 8 e 40, e as turmas de meio período destes testes passaram a pedir justificativa
+// a carga real dos cursos (NR-35: 8 h; NR-10: 40 h). Desde o lote 3 (T2) a carga tem de caber no
+// horário: a turma de meio período destes testes ocupa os dias que o horário pede (ver `dias_para`)
 const NR35 = {
   codigo: "NR-35",
   nome: "Trabalho em Altura — NR-35",
-  carga_horaria_horas: "3",
+  carga_horaria_horas: "8",
   validade_meses: "24",
   norma_referencia: "NR-35",
 };
-const NR10 = { codigo: "NR-10", nome: "Segurança em Eletricidade — NR-10", carga_horaria_horas: "3" };
+const NR10 = { codigo: "NR-10", nome: "Segurança em Eletricidade — NR-10", carga_horaria_horas: "40" };
+
+/**
+ * Quantos dias a turma precisa para a carga caber no horário (T2): 8 h das 8h às 12h são 2 dias;
+ * 40 h das 19h às 22h são 14 dias. Sem horário completo, um dia (dia inteiro).
+ */
+function dias_para(carga_horas: string, hora_inicio?: unknown, hora_fim?: unknown): number {
+  if (typeof hora_inicio !== "string" || typeof hora_fim !== "string" || !hora_inicio || !hora_fim) return 1;
+  const min = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+  const por_dia = min(hora_fim) - min(hora_inicio);
+  if (por_dia <= 0) return 1;
+  return Math.max(1, Math.ceil((Number(carga_horas) * 60) / por_dia));
+}
 
 const PEDIDO = {
   nome: "Joana Prestes da Silva",
@@ -86,7 +98,13 @@ async function abrir(dados: Campos = {}, de: Record<string, string> = NR35) {
   await entrar(cliente, "coordenador_csso");
   const r = await cliente.post(
     "/turmas",
-    { treinamento_id: String(t), data_inicio: FUTURO, data_fim: FUTURO, local: "Auditório", ...dados },
+    {
+      treinamento_id: String(t),
+      data_inicio: FUTURO,
+      data_fim: somar_dias(FUTURO, dias_para(de.carga_horaria_horas!, dados.hora_inicio, dados.hora_fim) - 1),
+      local: "Auditório",
+      ...dados,
+    },
     { seguir: false },
   );
   const ultima = (await db.select().from(e.turma).orderBy(asc(e.turma.id))).at(-1);
@@ -212,7 +230,9 @@ describe("hora da turma", () => {
       .from(e.historico_evento)
       .where(and(eq(e.historico_evento.entidade, "turma"), eq(e.historico_evento.entidade_id, id), eq(e.historico_evento.campo, "hora_inicio")));
     expect(sem_mudanca).toHaveLength(0);
+    // das 13h30 às 17h, as 8 h pedem 3 dias (a turma das 8h às 12h tinha 2)
     const r = await editar(id, {
+      data_fim: somar_dias(FUTURO, 2),
       hora_inicio: "13:30",
       hora_fim: "17:00",
       publico_no_formulario: "1",

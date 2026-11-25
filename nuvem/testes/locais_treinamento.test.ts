@@ -320,11 +320,13 @@ describe("avisos do local (não bloqueiam)", () => {
 
   it("choque de sala com horário: manhã e tarde convivem, horários que se cruzam avisam, sem hora avisa", async () => {
     const l = await local({ capacidade: null });
-    // lote 3 (T2): a carga de 3 h cabe em todos os horários do teste (a do catálogo, 8 h, não cabe das 8h às 12h)
-    const manha = await turma_servico({ local_id: l.id, hora_inicio: "08:00", hora_fim: "12:00", carga_horaria_horas: "3" });
-    const tarde = await turma_servico({ local_id: l.id, hora_inicio: "12:00", hora_fim: "17:00", carga_horaria_horas: "3" });
+    // a carga real do curso (8 h) e os dias que cada horário pede (T2, lote 3): das 8h às 12h e das
+    // 10h às 14h, 2 dias; das 12h às 17h, 2 dias também (5 h por dia)
+    const DOIS_DIAS = somar_dias(FUTURO, 1);
+    const manha = await turma_servico({ local_id: l.id, data_fim: DOIS_DIAS, hora_inicio: "08:00", hora_fim: "12:00" });
+    const tarde = await turma_servico({ local_id: l.id, data_fim: DOIS_DIAS, hora_inicio: "12:00", hora_fim: "17:00" });
     expect(await local_treinamento.avisos_da_turma(db, tarde)).toEqual([]);
-    const meio = await turma_servico({ local_id: l.id, hora_inicio: "10:00", hora_fim: "14:00", carga_horaria_horas: "3" });
+    const meio = await turma_servico({ local_id: l.id, data_fim: DOIS_DIAS, hora_inicio: "10:00", hora_fim: "14:00" });
     const avisos = await local_treinamento.avisos_da_turma(db, meio);
     expect(avisos).toHaveLength(2);
     expect(avisos.join(" ")).toContain(manha.codigo);
