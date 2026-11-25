@@ -379,6 +379,7 @@ export const ROTULO_EVENTO: Record<string, string> = {
   EPI_ENTREGA_RECUSADA: "Entrega de EPI recusada",
   EPI_MAXIMO_EXCEDIDO: "Máximo de EPI excedido",
   EPI_COMPROVANTE_IMPRESSO: "Comprovante de EPI impresso",
+  EPI_COMPROVANTE_COPIA_TITULAR: "Cópia do comprovante de EPI baixada pelo titular",
   EPI_COMPROVANTE_ANEXADO: "Comprovante de EPI anexado",
   EPI_COMPROVANTE_DIVERGENTE: "Comprovante de EPI divergente",
   // --- EPI: requisição (o envelope) ---

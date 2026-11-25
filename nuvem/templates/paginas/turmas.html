@@ -319,7 +319,10 @@
              value="{{ d['nota_minima_aprovacao'] or '' }}"></div>
     <div class="campo"><label for="nova-freq">Frequência mínima (%)</label>
       <input id="nova-freq" name="frequencia_minima_percentual" inputmode="decimal" autocomplete="off"
-             value="{{ d['frequencia_minima_percentual'] or 75 }}"></div>
+             aria-describedby="dica-nova-freq"
+             value="{{ d['frequencia_minima_percentual'] or 75 }}">
+      <span class="dica" id="dica-nova-freq">Em treinamento em tempos (brigada), no mínimo 75%
+        (Portaria CBMMG nº 54/2020, art. 40).</span></div>
   </div>
   {# Visitante e Outro no link público só com esta marca (`inscricao_publica.vinculos_aceitos`) #}
   <div class="campo"><label class="turma-marcar" for="nova-comunidade"><input id="nova-comunidade" type="checkbox" name="aceita_comunidade_externa" value="1"

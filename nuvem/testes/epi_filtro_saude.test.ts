@@ -78,9 +78,10 @@ describe("EPI — pessoa: termo de saúde recusado sem confirmação", () => {
     }
   });
 
-  it("'risco de lesão': passa no posto e é recusado nos campos da pessoa (regra de 24/11/2026)", () => {
+  it("'risco de lesão': passa no posto com a caixa (lote 5, ajuste 2) e é recusado nos campos da pessoa", () => {
     const t = "Trabalho em altura acima de 2 m, com risco de queda e de lesão.";
-    expect(textos.exigir_texto_limpo(t, "riscos declarados", textos.CONTEXTO_EPI_POSTO)).toBe(t);
+    expect(() => textos.exigir_texto_limpo(t, "riscos declarados", textos.CONTEXTO_EPI_POSTO)).toThrow(textos.MencaoDeSaude);
+    expect(textos.exigir_texto_limpo(t, "riscos declarados", textos.CONTEXTO_EPI_POSTO, true)).toBe(t);
     expect(() => textos.exigir_texto_limpo(t, "parecer da análise", PESSOA)).toThrow(/lesao/);
   });
 
@@ -90,10 +91,11 @@ describe("EPI — pessoa: termo de saúde recusado sem confirmação", () => {
 });
 
 describe("EPI — posto (rotina de trabalho e riscos declarados, 24/11/2026)", () => {
-  it("o risco do posto passa nos dois campos", () => {
+  it("o risco do posto passa nos dois campos, com a caixa (lote 5, ajuste 2)", () => {
     for (const campo of ["rotina de trabalho", "riscos declarados"]) {
       for (const t of ["risco de dermatite de contato", "risco de lesão por corte", "Risco de dermatite de contato com solventes e risco de lesão por corte."]) {
-        expect(textos.exigir_texto_limpo(t, campo, POSTO)).toBe(t);
+        expect(() => textos.exigir_texto_limpo(t, campo, POSTO)).toThrow(/descreve o posto/);
+        expect(textos.exigir_texto_limpo(t, campo, POSTO, true)).toBe(t);
       }
     }
   });
@@ -111,11 +113,11 @@ describe("EPI — 'lesão' e variações (24/11/2026)", () => {
       expect(() => textos.exigir_texto_limpo(t, "observação da entrega", PESSOA), t).toThrow(/no EPI/);
     }
   });
-  it("no material e no posto, 'lesão' continua livre", () => {
-    for (const ctx of [textos.CONTEXTO_EPI_MATERIAL, textos.CONTEXTO_EPI_POSTO]) {
-      for (const t of ["protege contra lesões por corte", "risco de lesão por corte"]) {
-        expect(textos.exigir_texto_limpo(t, "campo", ctx)).toBe(t);
-      }
+  it("no material, 'lesão' continua livre; no posto, passa com a caixa (lote 5, ajuste 2)", () => {
+    for (const t of ["protege contra lesões por corte", "risco de lesão por corte"]) {
+      expect(textos.exigir_texto_limpo(t, "campo", textos.CONTEXTO_EPI_MATERIAL)).toBe(t);
+      expect(() => textos.exigir_texto_limpo(t, "campo", textos.CONTEXTO_EPI_POSTO)).toThrow(textos.MencaoDeSaude);
+      expect(textos.exigir_texto_limpo(t, "campo", textos.CONTEXTO_EPI_POSTO, true)).toBe(t);
     }
   });
 });

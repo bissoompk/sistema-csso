@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from "vitest";
 import * as servico from "../src/servicos/epi_requisicao.js";
-import { TextoProibido } from "../src/servicos/textos.js";
+import { MencaoDeSaude, TextoProibido } from "../src/servicos/textos.js";
+import * as mencao from "../src/nucleo/mencao_saude.js";
 import { bancoLimpo } from "./ajuda";
 import {
   ANALISTA,
@@ -134,12 +135,15 @@ describe("filtro de saúde por campo — pedido de EPI (24/11/2026)", () => {
       expect(await itens(tx, r)).toEqual([]);
     }));
 
-  it("rotina de trabalho e riscos declarados: 'lesão' e 'dermatite' do posto passam; a lista antiga não", () =>
+  it("rotina de trabalho e riscos declarados: 'lesão' e 'dermatite' do posto passam com a caixa (lote 5, ajuste 2); a lista antiga não", () =>
     desfeito(async (tx) => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const cen = await cenario(tx);
       for (const texto of ["Risco de lesão por corte.", "Risco de dermatite de contato.", "Risco de lesões por impacto e de lesionar as mãos."]) {
-        const r = await rascunho(tx, requerente, { servidor: cen.servidor, descricao_atividade: texto, riscos_declarados: texto });
+        await recusa(rascunho(tx, requerente, { servidor: cen.servidor, descricao_atividade: texto, riscos_declarados: texto }), MencaoDeSaude);
+        const r = await mencao.com_confirmacao(true, () =>
+          rascunho(tx, requerente, { servidor: cen.servidor, descricao_atividade: texto, riscos_declarados: texto }),
+        );
         expect([r.descricao_atividade, r.riscos_declarados]).toEqual([texto, texto]);
       }
       for (const t of ["Servidora gestante", "ver diagnóstico", "CID M75"]) {

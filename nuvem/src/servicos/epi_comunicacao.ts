@@ -189,7 +189,12 @@ export async function comunicar(
   // a comunicação é do TITULAR: nem a equipe comunica em nome dele (ela tem a
   // devolução e o estorno, que são atos dela)
   if (usuario.servidor_id === null || usuario.servidor_id !== registro.servidor_id) {
-    throw new PermissaoNegada("epi.ver", "Só o titular da ficha comunica sobre o EPI que está com ele.");
+    throw new PermissaoNegada(
+      "epi.ver",
+      "Só o titular da ficha comunica sobre o EPI que está com ele. Nenhuma permissão muda isso: " +
+        "o próprio servidor comunica pela ficha de EPI dele.",
+      false,
+    );
   }
   if (!eh_tipo(d.tipo)) throw new RegraViolada("Escolha a situação do equipamento.");
   const observacao = _texto_curto(d.observacao, "observação");

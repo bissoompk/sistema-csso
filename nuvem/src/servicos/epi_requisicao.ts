@@ -156,6 +156,8 @@ export class AutoanaliseProibida extends PermissaoNegada {
         "avulsa de balcão (/epis/entregas/nova), que registra a ficha, o " +
         "lote, o CA e o comprovante assinado do mesmo jeito — só não produz " +
         "um pedido decidido por quem o fez.",
+      // regra (RN-28), não perfil: nenhuma permissão muda isso (lote 5, ajuste 4)
+      false,
     );
     this.requisicao_id = requisicao.id;
   }
@@ -235,11 +237,22 @@ export type RequisicaoCompleta = NonNullable<Awaited<ReturnType<typeof carregar>
  * Compara `servidor_id` — quem VAI USAR o equipamento, e não quem digitou.
  */
 async function _exigir_analista_diferente(tx: Executor, usuario: UsuarioAtual, requisicao: EpiRequisicao): Promise<void> {
+  // a REGRA antes da permissão (lote 5, ajuste 4): o servidor que tenta analisar o próprio pedido
+  // lê a RN-28, e não "peça a concessão de epi.analisar" — com a permissão, continuaria proibido
+  await exigir_nao_e_o_proprio_pedido(tx, usuario, requisicao);
   usuario.exigir("epi.analisar");
+}
+
+/** RN-28 sozinha: o pedido é de quem está tentando decidi-lo? */
+export async function exigir_nao_e_o_proprio_pedido(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  requisicao: Pick<EpiRequisicao, "id" | "protocolo" | "servidor_id">,
+): Promise<void> {
   if (usuario.servidor_id === null) return;
   if (requisicao.servidor_id !== usuario.servidor_id) return;
   const [servidor] = await tx.select().from(tabela_servidor).where(eq(tabela_servidor.id, requisicao.servidor_id));
-  throw new AutoanaliseProibida(requisicao, servidor ? servidor.nome : "você mesmo");
+  throw new AutoanaliseProibida(requisicao as EpiRequisicao, servidor ? servidor.nome : "você mesmo");
 }
 
 /**
@@ -701,7 +714,14 @@ export async function exigir_requerente_permitido(
     ]);
   }
   if (servidor.id !== usuario.servidor_id) {
-    throw new PermissaoNegada("epi.requisitar", "O pedido de EPI é individual: você pede só para você mesmo.");
+    // regra, não perfil (lote 5, ajuste 4): a tela diz o motivo e o caminho, sem "peça a concessão"
+    throw new PermissaoNegada(
+      "epi.requisitar",
+      "O pedido de EPI é individual: você pede só para você mesmo. Nenhuma permissão muda isso. " +
+        "Quem precisa do equipamento entra no sistema e pede em “Pedir EPI”; se o equipamento precisa " +
+        "sair agora, a equipe registra a entrega de balcão.",
+      false,
+    );
   }
 }
 
@@ -827,8 +847,8 @@ function _campos_do_cabecalho(c: {
 
   return {
     finalidade: c.finalidade,
-    // RN-21 (24/11/2026): rotina e riscos descrevem o POSTO — só a lista de sempre; a justificativa
-    // fala da pessoa — a lista ampliada. Recusa, sem caixa de confirmação
+    // RN-21: rotina e riscos descrevem o POSTO — a lista de sempre recusa e os termos de saúde pedem
+    // a caixa (lote 5, ajuste 2); a justificativa fala da pessoa — a lista ampliada, em dois níveis
     descricao_atividade:
       textos.exigir_texto_limpo((c.descricao_atividade || "").trim(), "rotina de trabalho", textos.CONTEXTO_EPI_POSTO) || null,
     riscos_declarados:

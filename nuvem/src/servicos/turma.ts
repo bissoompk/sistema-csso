@@ -390,11 +390,16 @@ function _conferir_prazo_de_inscricao(
   }
 }
 
+/** Lote 6: o piso da frequência na turma em TEMPOS (brigada). */
+export const FREQUENCIA_MINIMA_TEMPOS = "75";
+
 function _conferir_numeros(d: {
   carga_horaria_horas: string | null;
   vagas: number | null;
   nota_minima_aprovacao: string | null;
   frequencia_minima_percentual: string;
+  /** a unidade da carga do treinamento: em TEMPOS a frequência não fica abaixo de 75% */
+  carga_unidade?: string | null;
 }): void {
   if (d.carga_horaria_horas !== null && comparar(d.carga_horaria_horas, "0") <= 0) {
     throw new RegraDaTurma("Carga horária da turma: informe um número maior que zero.");
@@ -410,6 +415,13 @@ function _conferir_numeros(d: {
   }
   if (!(comparar(d.frequencia_minima_percentual, "0") >= 0 && comparar(d.frequencia_minima_percentual, "100") <= 0)) {
     throw new RegraDaTurma("Frequência mínima: use um percentual entre 0 e 100.");
+  }
+  // lote 6: a turma em TEMPOS (brigada CBMMG) exige ao menos 75% de frequência; acima, à escolha
+  if (d.carga_unidade === "TEMPOS" && comparar(d.frequencia_minima_percentual, FREQUENCIA_MINIMA_TEMPOS) < 0) {
+    throw new RegraDaTurma(
+      "Frequência mínima: na turma em tempos (brigada) ela não fica abaixo de 75% " +
+        "(Portaria CBMMG nº 54/2020, art. 40). Use 75% ou mais.",
+    );
   }
 }
 
@@ -527,6 +539,7 @@ export async function criar_turma(tx: Executor, usuario: UsuarioAtual, d: DadosT
     vagas: d.vagas ?? null,
     nota_minima_aprovacao: d.nota_minima_aprovacao ?? null,
     frequencia_minima_percentual: frequencia,
+    carga_unidade: treinamento.carga_unidade,
   });
   if (d.data_base_vencimento && d.data_base_vencimento < d.data_inicio) {
     throw new RegraDaTurma("A data base do vencimento não pode ser anterior ao início da turma.");
@@ -698,6 +711,7 @@ export async function editar_turma(
     vagas: valor("vagas"),
     nota_minima_aprovacao: valor("nota_minima_aprovacao"),
     frequencia_minima_percentual: valor("frequencia_minima_percentual"),
+    carga_unidade: turma.treinamento.carga_unidade,
   });
   // NUVEM (lote 3): carga na unidade, carga por dia e conferência com o horário (T2)
   const unidade = T.unidade(turma);

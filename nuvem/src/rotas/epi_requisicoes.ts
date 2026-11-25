@@ -1383,9 +1383,16 @@ rotas.post(`${FILA}/:requisicao_id{[0-9]+}/enviar`, async (c) => {
  * (sem campus) analisava e entregava pedido de todos os campi — e, com a
  * concessão do titular (D16), o próprio pedido feito em outro campus.
  */
-function _exigir_ato(usuario: UsuarioAtual, ato: string | readonly string[]): void {
+async function _exigir_ato(c: Ctx, usuario: UsuarioAtual, ato: string | readonly string[], requisicao_id: number | null = null): Promise<void> {
   const lista = typeof ato === "string" ? [ato] : ato;
-  if (!lista.some((p) => usuario.pode(p))) throw new PermissaoNegada(lista[0]!);
+  if (lista.some((p) => usuario.pode(p))) return;
+  // lote 5, ajuste 4: ato só de quem analisa, tentado no PRÓPRIO pedido — a recusa é a RN-28 (regra,
+  // sem "peça a concessão"), e não a falta de `epi.analisar`
+  if (requisicao_id !== null && !lista.includes("epi.requisitar") && lista.includes("epi.analisar")) {
+    const [pedido] = await c.get("tx").select().from(epi_requisicao).where(eq(epi_requisicao.id, requisicao_id));
+    if (pedido) await servico.exigir_nao_e_o_proprio_pedido(c.get("tx"), usuario, pedido);
+  }
+  throw new PermissaoNegada(lista[0]!);
 }
 
 /** A janela (popup) de cada ação do envelope, para reabrir com o aviso de saúde. */
@@ -1406,7 +1413,7 @@ function acao_de_envelope(
 ) {
   rotas.post(`${FILA}/:requisicao_id{[0-9]+}/${sufixo}`, async (c) => {
     const usuario = await usuarioLogado(c);
-    _exigir_ato(usuario, ato);
+    await _exigir_ato(c, usuario, ato, _param_id(c, "requisicao_id"));
     const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), ato);
     if (!requisicao) return redirecionar(c, FILA);
     const destino = _ficha(requisicao.id);
@@ -1462,7 +1469,7 @@ acao_de_envelope(
 /** EM_ANALISE → INDEFERIDA, com o motivo do catálogo (RN-27). */
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/indeferir`, async (c) => {
   const usuario = await usuarioLogado(c);
-  usuario.exigir("epi.analisar");
+  await _exigir_ato(c, usuario, "epi.analisar", _param_id(c, "requisicao_id"));
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.analisar");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);
@@ -1535,7 +1542,7 @@ interface AcaoDeItem {
 function acao_de_item(a: AcaoDeItem) {
   rotas.post(`${FILA}/:requisicao_id{[0-9]+}/itens/:linha_id{[0-9]+}/${a.sufixo}`, async (c) => {
     const usuario = await usuarioLogado(c);
-    _exigir_ato(usuario, a.permissao);
+    await _exigir_ato(c, usuario, a.permissao, _param_id(c, "requisicao_id"));
     const requisicao_id = _param_id(c, "requisicao_id")!;
     const linha_id = _param_id(c, "linha_id")!;
     const destino = _ficha(requisicao_id);
@@ -1678,7 +1685,7 @@ export function recado_da_separacao(r: servico.ResultadoSeparacao): string {
  */
 rotas.post(`${FILA}/:requisicao_id{[0-9]+}/separar-todos`, async (c) => {
   const usuario = await usuarioLogado(c);
-  _exigir_ato(usuario, "epi.estoque");
+  await _exigir_ato(c, usuario, "epi.estoque");
   const requisicao = await _requisicao(c, usuario, _param_id(c, "requisicao_id"), "epi.estoque");
   if (!requisicao) return redirecionar(c, FILA);
   const destino = _ficha(requisicao.id);

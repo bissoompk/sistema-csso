@@ -18,7 +18,8 @@ import * as epi_ficha from "../src/servicos/epi_ficha.js";
 import * as numeracao from "../src/servicos/numeracao.js";
 import * as servico from "../src/servicos/epi_requisicao.js";
 import { PERMISSOES, PermissaoNegada, modulo_da_permissao } from "../src/servicos/rbac.js";
-import { TextoProibido } from "../src/servicos/textos.js";
+import { MencaoDeSaude, TextoProibido } from "../src/servicos/textos.js";
+import * as mencao from "../src/nucleo/mencao_saude.js";
 import { bancoLimpo } from "./ajuda";
 import {
   HOJE,
@@ -577,11 +578,15 @@ describe("as duas máquinas de estado", () => {
       expect(requisicao.estado).toBe("ANALISADA");
     }));
 
-  it("rotina e riscos descrevem o posto: risco de dermatite e de lesão passam; a lista antiga e a justificativa clínica, não (24/11/2026)", () =>
+  it("rotina e riscos descrevem o posto: risco de dermatite e de lesão passam com a caixa (lote 5, ajuste 2); a lista antiga e a justificativa clínica, não", () =>
     desfeito(async (tx) => {
       const u = await usuario(tx);
       const cen = await cenario(tx);
       const posto = { descricao_atividade: "Corte de vidraria no laboratório; risco de lesão por corte.", riscos_declarados: "Risco de dermatite de contato com solventes." };
+      // sem a caixa, pede a confirmação
+      await recusa(rascunho(tx, u, { servidor: cen.servidor, ...posto }), MencaoDeSaude);
+      // com a caixa marcada, o resto do teste como era
+      await mencao.com_confirmacao(true, async () => {
       const r = await rascunho(tx, u, { servidor: cen.servidor, ...posto });
       expect(r.descricao_atividade).toBe(posto.descricao_atividade);
       expect(r.riscos_declarados).toBe(posto.riscos_declarados);
@@ -599,6 +604,7 @@ describe("as duas máquinas de estado", () => {
         servico.atualizar_rascunho(tx, dono, r, { urgencia: "URGENTE", justificativa_urgencia: "Servidor com dermatite alérgica nas mãos" }),
         TextoProibido,
       );
+      });
     }));
 
   it("parecer com termo de saúde é recusado e não grava (alergia ao látex, 24/11/2026)", () =>

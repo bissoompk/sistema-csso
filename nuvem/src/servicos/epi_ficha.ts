@@ -62,6 +62,7 @@ export const EPI_DEVOLVIDO = "EPI_DEVOLVIDO";
 export const EPI_COMPROVANTE_ANEXADO = "EPI_COMPROVANTE_ANEXADO";
 export const EPI_COMPROVANTE_IMPRESSO = "EPI_COMPROVANTE_IMPRESSO";
 export const EPI_COMPROVANTE_DIVERGENTE = "EPI_COMPROVANTE_DIVERGENTE";
+export const EPI_COMPROVANTE_COPIA_TITULAR = "EPI_COMPROVANTE_COPIA_TITULAR";
 export const EPI_MAXIMO_EXCEDIDO = "EPI_MAXIMO_EXCEDIDO";
 export const EPI_ENTREGA_RECUSADA = "EPI_ENTREGA_RECUSADA";
 
@@ -1375,6 +1376,32 @@ export async function imprimir(tx: Executor, usuario: UsuarioAtual, registro: Ep
     finalidade: "impressão do comprovante de entrega de EPI para assinatura",
   });
   return { destino, aviso, bytes: info.bytes, nome: comprovante_epi.nome_para_download(contexto) };
+}
+
+/**
+ * Lote 5, ajuste 5: o TITULAR vê e baixa o comprovante das PRÓPRIAS entregas, só para leitura. É o
+ * mesmo papel, dos dados congelados; não conta como impressão para assinatura (não entra na
+ * conferência de hash da primeira impressão nem abre nada) — imprimir para assinar continua com a
+ * equipe (`imprimir`, `epi.entregar`). A trilha guarda a cópia, com o nome de quem baixou.
+ */
+export async function copia_do_titular(
+  tx: Executor,
+  usuario: UsuarioAtual,
+  registro: EpiFichaRegistro,
+): Promise<{ bytes: Uint8Array; nome: string }> {
+  if (usuario.servidor_id === null || usuario.servidor_id !== registro.servidor_id) {
+    throw new PermissaoNegada("epi.ficha", "Não há entrega da sua ficha de EPI neste endereço.", false);
+  }
+  const contexto = montar_contexto(registro);
+  const info = await comprovante_epi.renderizar(contexto, null);
+  await auditoria.registrar(tx, {
+    entidade: ENTIDADE,
+    entidade_id: registro.id,
+    tipo_evento: EPI_COMPROVANTE_COPIA_TITULAR,
+    descricao: `Cópia do comprovante do registro ${registro.id} baixada pelo titular (só leitura)`,
+    usuario,
+  });
+  return { bytes: info.bytes, nome: comprovante_epi.nome_para_download(contexto) };
 }
 
 /** O hash que a trilha guardou na primeira vez (a ficha é append-only). */

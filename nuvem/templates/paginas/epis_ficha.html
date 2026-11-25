@@ -349,6 +349,9 @@
           {% if l.comprovante %}
           <a class="botao secundario compacto" href="/epis/fichas/registros/{{ r.id }}/anexo">Ver o assinado</a>
           {% endif %}
+          {# lote 5, ajuste 5: a cópia do comprovante, só para leitura (assinar é com a equipe) #}
+          <a class="botao secundario compacto" title="Cópia para consulta; a via para assinar é impressa pela equipe"
+             href="/epis/fichas/registros/{{ r.id }}/{{ 'comprovante.pdf' if pdf_fiel() else 'comprovante' }}">Comprovante (cópia)</a>
           {% endif %}
           {% if pode_entregar and not titular %}
           {% if falta_papel %}

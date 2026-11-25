@@ -104,10 +104,12 @@ describe("filtro em dois níveis — o filtro (24/11/2026)", () => {
     );
   });
 
-  it("rotina de trabalho, riscos declarados, catálogo e lote ficam como estavam (sem caixa)", () => {
+  it("catálogo e lote sem caixa; rotina e riscos declarados com a caixa (lote 5, ajuste 2); a lista antiga recusa nos dois", () => {
+    for (const t of TECNICOS) expect(textos.exigir_texto_limpo(t, "campo", textos.CONTEXTO_EPI_MATERIAL)).toBe(t);
+    for (const t of TECNICOS) expect(textos.exigir_texto_limpo(t, "campo", textos.CONTEXTO_EPI_POSTO, true)).toBe(t);
     for (const ctx of [textos.CONTEXTO_EPI_POSTO, textos.CONTEXTO_EPI_MATERIAL]) {
-      for (const t of TECNICOS) expect(textos.exigir_texto_limpo(t, "campo", ctx)).toBe(t);
       expect(() => textos.exigir_texto_limpo("servidora gestante", "campo", ctx)).toThrow(TextoProibido);
+      expect(() => textos.exigir_texto_limpo("servidora gestante", "campo", ctx, true)).toThrow(TextoProibido);
     }
   });
 });
@@ -176,11 +178,16 @@ describe("filtro em dois níveis — parecer e justificativa da aprovação (24/
       expect(trilha.some((ev) => ev.tipo_evento === MENCAO_SAUDE_CONFIRMADA)).toBe(false);
     }));
 
-  it("riscos declarados do pedido: 'risco de lesão por corte' passa sem caixa (como antes)", () =>
+  it("riscos declarados do pedido: 'risco de lesão por corte' pede a caixa e, com ela, grava (lote 5, ajuste 2)", () =>
     desfeito(async (tx) => {
       const requerente = await usuario(tx, { permissoes: REQUERENTE, login: "joana" });
       const cen = await cenario(tx);
-      const r = await rascunho(tx, requerente, { servidor: cen.servidor, riscos_declarados: "Risco de lesão por corte." });
+      await expect(rascunho(tx, requerente, { servidor: cen.servidor, riscos_declarados: "Risco de lesão por corte." })).rejects.toThrow(
+        textos.MencaoDeSaude,
+      );
+      const r = await mencao.com_confirmacao(true, () =>
+        rascunho(tx, requerente, { servidor: cen.servidor, riscos_declarados: "Risco de lesão por corte." }),
+      );
       expect(r.riscos_declarados).toBe("Risco de lesão por corte.");
     }));
 });

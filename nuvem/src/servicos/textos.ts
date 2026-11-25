@@ -233,8 +233,11 @@ export const CONTEXTO_EPI_MATERIAL = "epi_material";
 
 /**
  * EPI, nos campos que descrevem a EXPOSIÇÃO DO POSTO (pedido: rotina de trabalho e riscos
- * declarados): só a lista de sempre, recusada, com a mensagem do EPI (24/11/2026). "Risco de
- * dermatite de contato" e "risco de lesão por corte" descrevem o agente, não a pessoa.
+ * declarados). A lista de sempre (e "CID") recusa. Os termos de saúde do EPI, dos dois grupos
+ * (alergia, dermatite, asma… e lesão, cirurgia…), exigem a caixa de confirmação, com a mensagem
+ * lembrando que o campo descreve o posto e não a saúde de quem pede (lote 5, ajuste 2:
+ * "tenho alergia ao látex" passava calado). "Risco de dermatite de contato" e "risco de lesão por
+ * corte" descrevem o agente: passam, com a caixa.
  */
 export const CONTEXTO_EPI_POSTO = "epi_posto";
 
@@ -375,7 +378,7 @@ export function termos_proibidos_em(texto: string | null | undefined, contexto: 
     contexto === CONTEXTO_EPI_PESSOA
       ? [...TERMOS_PROIBIDOS, ...TERMOS_SAUDE_EPI]
       : contexto === CONTEXTO_EPI_POSTO
-        ? [...TERMOS_PROIBIDOS, "cid"] // "CID J45" sem o "-10" também é código de doença
+        ? [...TERMOS_PROIBIDOS, ...TERMOS_SAUDE_EPI] // inclui "cid": "CID J45" sem o "-10" também é código de doença
         : TERMOS_PROIBIDOS;
   for (const termo of lista) {
     const chave = chave_busca(termo);
@@ -427,6 +430,29 @@ export function exigir_texto_limpo<T extends string | null | undefined>(
           "necessária” e envie de novo: a confirmação fica no histórico com o seu nome. Estado de " +
           "saúde de uma pessoa não se registra no EPI (LGPD art. 11).",
         aviso,
+      );
+    }
+    achados = duros;
+  }
+  if (achados.length && contexto === CONTEXTO_EPI_POSTO) {
+    // lote 5, ajuste 2: a lista de sempre e o CID recusam; os termos de saúde do EPI pedem a caixa
+    const duros_posto = new Set([...TERMOS_PROIBIDOS.map(chave_busca), "cid"]);
+    const confirmaveis = achados.filter((t) => !duros_posto.has(chave_busca(t)));
+    const duros = achados.filter((t) => duros_posto.has(chave_busca(t)));
+    if (!duros.length) {
+      if (mencao_confirmada || mencao.marcada()) {
+        mencao.anotar(campo, confirmaveis);
+        return texto;
+      }
+      const citados = confirmaveis.map((t) => `“${_como_escrito(String(texto ?? ""), chave_busca(t))}”`).join(", ");
+      throw new MencaoDeSaude(
+        `O campo ${campo} cita ${citados}. Este campo descreve o posto e os riscos da atividade, ` +
+          "não a saúde de quem pede: escreva o agente e a exposição (por exemplo, “risco de dermatite " +
+          "de contato com solventes”), nunca uma condição sua ou de outra pessoa (LGPD art. 11). Se o " +
+          "texto descreve o risco do posto, marque “confirmo que a menção é necessária” e envie de novo: " +
+          "a confirmação fica no histórico com o seu nome. Se a sua saúde muda o EPI, quem orienta é o " +
+          "médico do trabalho, fora deste pedido.",
+        confirmaveis,
       );
     }
     achados = duros;

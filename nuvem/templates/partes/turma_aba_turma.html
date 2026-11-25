@@ -280,8 +280,10 @@
       </table>
       {% else %}
       <div class="corpo">
-        <p class="discreto sem-margem">Nenhum ajudante: só {{ direito.nome_do_dono if direito.dono else 'a coordenação do setor' }}
-          {{- '' if direito.dono else ' e a superintendência' }} alteram esta turma.</p>
+        {# lote 5, ajuste 1: com dono, o sujeito é uma pessoa — verbo no singular, como no T12 #}
+        <p class="discreto sem-margem">Nenhum ajudante:
+          {%- if direito.dono %} só {{ direito.nome_do_dono }} ou a coordenação acima altera esta turma.
+          {%- else %} só a coordenação do setor e a superintendência alteram esta turma.{% endif %}</p>
       </div>
       {% endif %}
       {% if direito.designa and pode_aqui('turma.criar') %}

@@ -369,7 +369,8 @@ describe("RN-28 na tela", () => {
     const negado = await cliente.post(`${FILA}/${requisicao_id}/analise`, {}, { seguir: false, cabecalhos: { accept: "text/html" } });
     expect(negado.status).toBe(403);
     expect(negado.text).toContain("Quem analisa não é quem requisita");
-    expect(negado.text).toContain("epi.analisar");
+    // lote 5, ajuste 4: recusa de regra — sem a orientação de pedir a concessão de `epi.analisar`
+    expect(negado.text).not.toContain("A saída é a concessão do perfil");
     expect(negado.text).toContain("/epis/entregas/nova");
     expect(negado.text).toContain("outra pessoa com a permissão de analisar EPI");
     expect((await ultima(amb)).estado).toBe("ENVIADA");
